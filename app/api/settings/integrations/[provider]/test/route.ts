@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import {
   getIntegrationCredential,
@@ -52,12 +51,10 @@ async function testProvider(provider: IntegrationProvider, config: Record<string
   }
 
   if (provider === "BINOTEL") {
-    const params: Record<string, unknown> = {};
-    const signature = createHash("md5").update(`${config.apiSecret || ""}${JSON.stringify(params)}`, "utf8").digest("hex");
     const response = await fetchWithTimeout("https://api.binotel.com/api/4.0/settings/list-of-employees.json", {
       method: "POST",
       headers: { "Content-Type": "application/json", Accept: "application/json" },
-      body: JSON.stringify({ ...params, signature, key: config.apiKey }),
+      body: JSON.stringify({ key: config.apiKey || "", secret: config.apiSecret || "" }),
     });
     if (!response.ok) return { ok: false, message: `Binotel відповів HTTP ${response.status}.` };
     const data = await response.json().catch(() => null) as { status?: string; message?: string } | null;
