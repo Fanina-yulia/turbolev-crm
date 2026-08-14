@@ -8,7 +8,8 @@ export type IntegrationProvider =
   | "OLX"
   | "BM_PARTS"
   | "UNIQUE_TRADE"
-  | "AUTONOVA_D";
+  | "AUTONOVA_D"
+  | "ATL";
 
 export type IntegrationCategory = "COMMUNICATIONS" | "SUPPLIERS";
 
@@ -150,6 +151,24 @@ export const integrationProviderSpecs: ProviderSpec[] = [
       baseUrl: "AUTONOVA_API_BASE_URL",
       login: "AUTONOVA_API_LOGIN",
       password: "AUTONOVA_API_PASSWORD",
+    },
+  },
+  {
+    provider: "ATL",
+    category: "SUPPLIERS",
+    title: "ATL",
+    description: "Постачальник автозапчастин ATL. Доступи зберігаємо в CRM; live API активуємо після отримання офіційного B2B/API endpoint.",
+    fields: [
+      { key: "login", label: "B2B логін / email", secret: false, required: true },
+      { key: "password", label: "Пароль", secret: true, required: true },
+      { key: "baseUrl", label: "API / B2B URL", secret: false, placeholder: "https://atl.ua" },
+      { key: "apiKey", label: "API key / token", secret: true, placeholder: "Якщо ATL надасть окремий токен" },
+    ],
+    envFallback: {
+      login: "ATL_LOGIN",
+      password: "ATL_PASSWORD",
+      baseUrl: "ATL_API_BASE_URL",
+      apiKey: "ATL_API_KEY",
     },
   },
 ];
