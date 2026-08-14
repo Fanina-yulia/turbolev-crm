@@ -6,7 +6,7 @@ on:
       years:
         description: "Comma-separated years; blank means recovery set"
         required: false
-        default: "2026,2023,2022,2018,2017"
+        default: "2023,2022,2018,2017"
   push:
     branches: [main]
     paths:
@@ -44,11 +44,11 @@ jobs:
           REQUESTED_YEARS: ${{ github.event.inputs.years }}
         run: |
           if [ "$EVENT_NAME" = "schedule" ]; then
-            YEARS="2026"
+            YEARS="2023,2022,2018,2017"
           elif [ -n "$REQUESTED_YEARS" ]; then
             YEARS="$REQUESTED_YEARS"
           else
-            YEARS="2026,2023,2022,2018,2017"
+            YEARS="2023,2022,2018,2017"
           fi
           echo "MVS_IMPORT_YEARS=$YEARS" >> "$GITHUB_ENV"
           echo "Will import MVS years: $YEARS"

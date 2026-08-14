@@ -48,6 +48,18 @@ ALIASES = {
 }
 
 
+def configure_csv_field_limit():
+    limit = sys.maxsize
+    while True:
+        try:
+            csv.field_size_limit(limit)
+            return
+        except OverflowError:
+            limit //= 10
+            if limit <= 0:
+                raise
+
+
 def clip(value, size):
     value = str(value or "").strip()
     return value[:size] if value else None
@@ -198,6 +210,22 @@ def row_payload(row, columns, source_year):
     )
 
 
+def ensure_stage_table(conn):
+    with conn.cursor() as cur:
+        cur.execute(
+            '''
+            CREATE TEMP TABLE IF NOT EXISTS mvs_stage (
+              "plateKey" BIGINT PRIMARY KEY,
+              vin VARCHAR(17), brand VARCHAR(32), model VARCHAR(48),
+              "makeYear" SMALLINT, "engineVolumeCm3" INTEGER,
+              "fuelType" VARCHAR(24), "vehicleTypeRaw" VARCHAR(48), "sourceYear" SMALLINT
+            ) ON COMMIT PRESERVE ROWS
+            '''
+        )
+        cur.execute("TRUNCATE mvs_stage")
+    conn.commit()
+
+
 def flush_batch(conn, batch):
     if not batch:
         return
@@ -327,6 +355,7 @@ def download(url, destination):
 
 
 def main():
+    configure_csv_field_limit()
     database_url = os.environ.get("DATABASE_URL", "").strip()
     if not database_url:
         print("DATABASE_URL is required", file=sys.stderr)
@@ -339,25 +368,13 @@ def main():
     imported = {}
 
     with psycopg.connect(database_url, autocommit=False) as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                '''
-                CREATE TEMP TABLE mvs_stage (
-                  "plateKey" BIGINT PRIMARY KEY,
-                  vin VARCHAR(17), brand VARCHAR(32), model VARCHAR(48),
-                  "makeYear" SMALLINT, "engineVolumeCm3" INTEGER,
-                  "fuelType" VARCHAR(24), "vehicleTypeRaw" VARCHAR(48), "sourceYear" SMALLINT
-                ) ON COMMIT PRESERVE ROWS
-                '''
-            )
-        conn.commit()
-
         with tempfile.TemporaryDirectory(prefix="turbolev-mvs-") as temp_dir:
             for year, url in RESOURCES:
                 if years is not None and year not in years:
                     continue
                 target = os.path.join(temp_dir, f"mvs-{year}.zip")
                 try:
+                    ensure_stage_table(conn)
                     download(url, target)
                     rows = import_archive(conn, year, target)
                     if rows <= 0:
