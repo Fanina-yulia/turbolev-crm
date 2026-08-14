@@ -67,10 +67,16 @@ export function getCarLogo(carBrand: string): ReactElement {
       src={logoUrl}
       alt={`${brand.name} logo`}
       title={brand.name}
-      className={`carBrandImage${monochrome ? " carBrandImageMono" : ""}`}
       loading="lazy"
       decoding="async"
       referrerPolicy="no-referrer"
+      style={{
+        display: "block",
+        width: 34,
+        height: 34,
+        objectFit: "contain",
+        filter: monochrome ? "brightness(0) invert(1)" : undefined,
+      }}
     />
   );
 }
