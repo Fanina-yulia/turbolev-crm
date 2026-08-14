@@ -42,20 +42,26 @@ const STATUS_META: Record<Status, { label: string; tone: string }> = {
 };
 const STATUS_OPTIONS = Object.keys(STATUS_META) as Status[];
 const POST_COLORS = ["#ff5a1f", "#2f80ed", "#7c3aed", "#16a34a", "#d97706", "#0891b2", "#db2777", "#475569"];
+const KYIV_TZ = "Europe/Kyiv";
 const pad = (n: number) => String(n).padStart(2, "0");
 
 function dayKey(date: Date) { return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`; }
-function startOfWeek(value: string) {
-  const d = new Date(`${value}T12:00:00`);
-  const weekday = d.getDay() || 7;
-  d.setDate(d.getDate() - weekday + 1);
-  return dayKey(d);
+function kyivDateKey(date = new Date()) {
+  const parts = new Intl.DateTimeFormat("en-CA", { timeZone: KYIV_TZ, year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(date);
+  const value = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${value.year}-${value.month}-${value.day}`;
 }
-function addDays(day: string, count: number) { const d = new Date(`${day}T12:00:00`); d.setDate(d.getDate() + count); return dayKey(d); }
-function formatDate(day: string) { return new Intl.DateTimeFormat("uk-UA", { day: "2-digit", month: "2-digit", year: "numeric" }).format(new Date(`${day}T12:00:00`)); }
-function formatDayShort(day: string) { return new Intl.DateTimeFormat("uk-UA", { weekday: "short" }).format(new Date(`${day}T12:00:00`)).replace(".", ""); }
-function formatClock(iso: string | null) { if (!iso) return "—"; const d = new Date(iso); return `${pad(d.getHours())}:${pad(d.getMinutes())}`; }
-function localDateTimeValue(iso: string | null) { if (!iso) return ""; const d = new Date(iso); return `${dayKey(d)}T${pad(d.getHours())}:${pad(d.getMinutes())}`; }
+function startOfWeek(value: string) {
+  const d = new Date(`${value}T12:00:00Z`);
+  const weekday = d.getUTCDay() || 7;
+  d.setUTCDate(d.getUTCDate() - weekday + 1);
+  return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
+}
+function addDays(day: string, count: number) { const d = new Date(`${day}T12:00:00Z`); d.setUTCDate(d.getUTCDate() + count); return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`; }
+function formatDate(day: string) { return new Intl.DateTimeFormat("uk-UA", { timeZone: "UTC", day: "2-digit", month: "2-digit", year: "numeric" }).format(new Date(`${day}T12:00:00Z`)); }
+function formatDayShort(day: string) { return new Intl.DateTimeFormat("uk-UA", { timeZone: "UTC", weekday: "short" }).format(new Date(`${day}T12:00:00Z`)).replace(".", ""); }
+function formatClock(iso: string | null) { if (!iso) return "—"; return new Intl.DateTimeFormat("uk-UA", { timeZone: KYIV_TZ, hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(new Date(iso)); }
+function localDateTimeValue(iso: string | null) { if (!iso) return ""; return `${kyivDateKey(new Date(iso))}T${formatClock(iso)}`; }
 function durationMinutes(item: Appointment) { return Math.max(30, Math.round((new Date(item.plannedEndAt).getTime() - new Date(item.plannedStartAt).getTime()) / 60000)); }
 function money(value: Appointment["estimatedAmount"]) { const n = Number(value); return value != null && value !== "" && Number.isFinite(n) ? new Intl.NumberFormat("uk-UA", { style: "currency", currency: "UAH", maximumFractionDigits: 0 }).format(n) : null; }
 function planTypeFromSource(source: string | null): PlanType { return source === "APPROVED_REPAIR" ? "APPROVED_REPAIR" : "DIAGNOSTICS_BOOKING"; }
@@ -64,7 +70,7 @@ function emptyForm(date: string, start = "09:00"): FormState {
 }
 
 export function PlannerV2() {
-  const [anchorDay, setAnchorDay] = useState(() => dayKey(new Date()));
+  const [anchorDay, setAnchorDay] = useState(() => kyivDateKey());
   const [view, setView] = useState<ViewMode>("WEEK");
   const [locations, setLocations] = useState<Location[]>([]);
   const [locationId, setLocationId] = useState("");
@@ -85,8 +91,8 @@ export function PlannerV2() {
   const load = useCallback(async (nextLocationId?: string) => {
     setBusy(true);
     try {
-      const from = new Date(`${weekStart}T00:00:00`).toISOString();
-      const to = new Date(`${addDays(weekStart, 7)}T00:00:00`).toISOString();
+      const from = new Date(`${weekStart}T00:00:00+03:00`).toISOString();
+      const to = new Date(`${addDays(weekStart, 7)}T00:00:00+03:00`).toISOString();
       const params = new URLSearchParams({ from, to });
       const requestedLocation = nextLocationId ?? locationId;
       if (requestedLocation) params.set("locationId", requestedLocation);
@@ -120,9 +126,10 @@ export function PlannerV2() {
       });
   }, [appointments, statusFilter, mechanicFilter, searchTerm]);
 
-  const activeDayItems = useMemo(() => filtered.filter((item) => dayKey(new Date(item.plannedStartAt)) === anchorDay), [filtered, anchorDay]);
+  const activeDayItems = useMemo(() => filtered.filter((item) => kyivDateKey(new Date(item.plannedStartAt)) === anchorDay), [filtered, anchorDay]);
   const weekRange = `${formatDate(weekStart)} — ${formatDate(addDays(weekStart, 6))}`;
-  const thisWeek = startOfWeek(dayKey(new Date()));
+  const today = kyivDateKey();
+  const thisWeek = startOfWeek(today);
 
   function colorForPost(postId: string | null) {
     if (!postId || !location) return "#64748b";
@@ -141,7 +148,7 @@ export function PlannerV2() {
 
   function dayItems(day: string) {
     return filtered
-      .filter((item) => dayKey(new Date(item.plannedStartAt)) === day)
+      .filter((item) => kyivDateKey(new Date(item.plannedStartAt)) === day)
       .sort((a, b) => +new Date(a.plannedStartAt) - +new Date(b.plannedStartAt));
   }
 
@@ -152,12 +159,13 @@ export function PlannerV2() {
 
   function openEdit(item: Appointment) {
     const start = new Date(item.plannedStartAt);
-    setAnchorDay(dayKey(start));
+    const date = kyivDateKey(start);
+    setAnchorDay(date);
     setModal({
-      id: item.id, workOrderId: item.workOrderId ?? null, date: dayKey(start), postId: item.postId ?? "", mechanicId: item.mechanicId ?? "",
+      id: item.id, workOrderId: item.workOrderId ?? null, date, postId: item.postId ?? "", mechanicId: item.mechanicId ?? "",
       status: item.status, planType: planTypeFromSource(item.source), customerName: item.customerName ?? "", phone: item.phone ?? "",
       vehicleLabel: item.vehicleLabel ?? "", plateNumber: item.plateNumber ?? "", problem: item.problem ?? "", comment: item.comment ?? "",
-      estimatedAmount: item.estimatedAmount == null ? "" : String(item.estimatedAmount), start: `${pad(start.getHours())}:${pad(start.getMinutes())}`,
+      estimatedAmount: item.estimatedAmount == null ? "" : String(item.estimatedAmount), start: formatClock(item.plannedStartAt),
       duration: String(durationMinutes(item)), partsEtaAt: localDateTimeValue(item.partsEtaAt),
     });
   }
@@ -176,13 +184,13 @@ export function PlannerV2() {
 
   async function saveModal() {
     if (!modal || !location) return;
-    const start = new Date(`${modal.date}T${modal.start}:00`);
+    const start = new Date(`${modal.date}T${modal.start}:00+03:00`);
     const end = new Date(start.getTime() + Number(modal.duration || 60) * 60_000);
     const payload = {
       locationId: location.id, postId: modal.postId || null, mechanicId: modal.mechanicId || null, status: modal.status,
       customerName: modal.customerName, phone: modal.phone, vehicleLabel: modal.vehicleLabel, plateNumber: modal.plateNumber,
       problem: modal.problem, comment: modal.comment, estimatedAmount: modal.estimatedAmount || null, source: modal.planType,
-      plannedStartAt: start.toISOString(), plannedEndAt: end.toISOString(), partsEtaAt: modal.partsEtaAt ? new Date(modal.partsEtaAt).toISOString() : null,
+      plannedStartAt: start.toISOString(), plannedEndAt: end.toISOString(), partsEtaAt: modal.partsEtaAt ? new Date(`${modal.partsEtaAt}:00+03:00`).toISOString() : null,
     };
     setSaving(true);
     try {
@@ -207,8 +215,7 @@ export function PlannerV2() {
     const id = event.dataTransfer.getData("text/planner-appointment");
     const item = appointments.find((entry) => entry.id === id);
     if (!item) return;
-    const sourceStart = new Date(item.plannedStartAt);
-    const start = new Date(`${targetDay}T${pad(sourceStart.getHours())}:${pad(sourceStart.getMinutes())}:00`);
+    const start = new Date(`${targetDay}T${formatClock(item.plannedStartAt)}:00+03:00`);
     const end = new Date(start.getTime() + durationMinutes(item) * 60_000);
     await patchAppointment(id, { plannedStartAt: start.toISOString(), plannedEndAt: end.toISOString() }, `Наряд перенесено на ${formatDate(targetDay)}.`);
   }
@@ -243,7 +250,7 @@ export function PlannerV2() {
       <div className={styles.weekNav}>
         <button onClick={() => setAnchorDay(addDays(weekStart, -7))}>‹ Попередній тиждень</button>
         <button className={styles.rangeButton} onClick={() => setView("WEEK")}>{weekRange} <span>⌄</span></button>
-        <button className={styles.thisWeek} disabled={weekStart === thisWeek} onClick={() => setAnchorDay(dayKey(new Date()))}>▣ Цей тиждень</button>
+        <button className={styles.thisWeek} disabled={weekStart === thisWeek} onClick={() => setAnchorDay(today)}>▣ Цей тиждень</button>
         <button onClick={() => setAnchorDay(addDays(weekStart, 7))}>Наступний тиждень ›</button>
       </div>
     </section>
@@ -256,18 +263,18 @@ export function PlannerV2() {
     {message ? <div className={styles.systemMessage}>{busy ? "Оновлюю…" : message}</div> : null}
 
     {view === "WEEK" && <section className={styles.weekBoard}>
-      {weekDays.map((day) => <DayColumn key={day} day={day} today={day === dayKey(new Date())} items={dayItems(day)} colorForPost={colorForPost} onOpen={openEdit} onAdd={openCreate} onDrop={dropToDay} />)}
+      {weekDays.map((day) => <DayColumn key={day} day={day} today={day === today} items={dayItems(day)} colorForPost={colorForPost} onOpen={openEdit} onAdd={openCreate} onDrop={dropToDay} />)}
     </section>}
 
     {view === "DAY" && <section className={styles.dayMode}>
-      <div className={styles.dayModeHead}><button onClick={() => setAnchorDay(addDays(anchorDay, -1))}>‹</button><div><strong>{new Intl.DateTimeFormat("uk-UA", { weekday: "long", day: "numeric", month: "long", year: "numeric" }).format(new Date(`${anchorDay}T12:00:00`))}</strong><span>{activeDayItems.length} нарядів</span></div><button onClick={() => setAnchorDay(addDays(anchorDay, 1))}>›</button></div>
+      <div className={styles.dayModeHead}><button onClick={() => setAnchorDay(addDays(anchorDay, -1))}>‹</button><div><strong>{new Intl.DateTimeFormat("uk-UA", { timeZone: "UTC", weekday: "long", day: "numeric", month: "long", year: "numeric" }).format(new Date(`${anchorDay}T12:00:00Z`))}</strong><span>{activeDayItems.length} нарядів</span></div><button onClick={() => setAnchorDay(addDays(anchorDay, 1))}>›</button></div>
       <div className={styles.dayCards} onDragOver={(e) => e.preventDefault()} onDrop={(e) => void dropToDay(e, anchorDay)}>{activeDayItems.length ? activeDayItems.map((item) => <WorkCard key={item.id} item={item} color={colorForPost(item.postId)} onOpen={() => openEdit(item)} />) : <div className={styles.dayEmpty}>На цей день робіт немає</div>}</div>
       <button className={styles.dayAdd} onClick={() => openCreate(anchorDay)}>+ Додати наряд</button>
     </section>}
 
     {view === "LIST" && <section className={styles.listMode}>
       <div className={styles.listHead}><span>Дата / час</span><span>Автомобіль</span><span>Клієнт</span><span>Пост</span><span>Майстер</span><span>Статус</span></div>
-      {filtered.length ? filtered.sort((a, b) => +new Date(a.plannedStartAt) - +new Date(b.plannedStartAt)).map((item) => <button key={item.id} className={styles.listRow} onClick={() => openEdit(item)}><span><b>{formatDate(dayKey(new Date(item.plannedStartAt)))}</b><small>{formatClock(item.plannedStartAt)}–{formatClock(item.plannedEndAt)}</small></span><span><b>{item.plateNumber || "Без номера"}</b><small>{item.vehicleLabel || "Авто не вказано"}</small></span><span>{item.customerName || "—"}</span><span><i style={{ background: colorForPost(item.postId) }} />{item.post?.name || "Зона приймання"}</span><span>{item.mechanic?.name || "—"}</span><span><em className={`${styles.statusBadge} ${styles[`status_${STATUS_META[item.status].tone}`]}`}>{STATUS_META[item.status].label}</em></span></button>) : <div className={styles.listEmpty}>Нарядів у цьому періоді немає.</div>}
+      {filtered.length ? [...filtered].sort((a, b) => +new Date(a.plannedStartAt) - +new Date(b.plannedStartAt)).map((item) => <button key={item.id} className={styles.listRow} onClick={() => openEdit(item)}><span><b>{formatDate(kyivDateKey(new Date(item.plannedStartAt)))}</b><small>{formatClock(item.plannedStartAt)}–{formatClock(item.plannedEndAt)}</small></span><span><b>{item.plateNumber || "Без номера"}</b><small>{item.vehicleLabel || "Авто не вказано"}</small></span><span>{item.customerName || "—"}</span><span><i style={{ background: colorForPost(item.postId) }} />{item.post?.name || "Зона приймання"}</span><span>{item.mechanic?.name || "—"}</span><span><em className={`${styles.statusBadge} ${styles[`status_${STATUS_META[item.status].tone}`]}`}>{STATUS_META[item.status].label}</em></span></button>) : <div className={styles.listEmpty}>Нарядів у цьому періоді немає.</div>}
     </section>}
 
     <p className={styles.ruleText}>Колір картки відповідає робочому посту. Перетин постів блокується; один майстер може вести до двох автомобілів одночасно, про паралельне завантаження CRM попереджає.</p>
@@ -305,7 +312,7 @@ export function PlannerV2() {
 
 function DayColumn({ day, today, items, colorForPost, onOpen, onAdd, onDrop }: { day: string; today: boolean; items: Appointment[]; colorForPost: (postId: string | null) => string; onOpen: (item: Appointment) => void; onAdd: (day: string) => void; onDrop: (event: DragEvent, targetDay: string) => Promise<void> }) {
   return <article className={`${styles.dayColumn} ${today ? styles.todayColumn : ""}`} onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; }} onDrop={(e) => void onDrop(e, day)}>
-    <header><div><strong>{formatDayShort(day)}</strong><span>{new Date(`${day}T12:00:00`).getDate()}</span></div><b>{items.length}</b></header>
+    <header><div><strong>{formatDayShort(day)}</strong><span>{new Date(`${day}T12:00:00Z`).getUTCDate()}</span></div><b>{items.length}</b></header>
     <div className={styles.dayBody}>{items.length ? items.map((item) => <WorkCard key={item.id} item={item} color={colorForPost(item.postId)} onOpen={() => onOpen(item)} />) : <div className={styles.freeSlot}>Вільно</div>}</div>
     <button className={styles.addButton} onClick={() => onAdd(day)}>+ <span>Додати</span></button>
   </article>;
