@@ -93,32 +93,32 @@ button{letter-spacing:0}
 .panel{padding:20px}
 .linkButton{padding:7px 10px;background:transparent;color:var(--orange);border-color:transparent}
 .carList{display:flex;flex-direction:column}
-.carRow{display:grid;grid-template-columns:126px minmax(145px,1fr) 52px minmax(190px,1.35fr) 34px;gap:14px;align-items:center;border-top:1px solid var(--line);padding:14px 2px}
-.uaPlate{height:42px;display:grid;grid-template-columns:22px 1fr;align-items:stretch;overflow:hidden;background:#fbfbf7;color:#0d0f11;border:1px solid #9ca1a6;border-radius:6px;box-shadow:inset 0 0 0 1px rgba(255,255,255,.7),0 2px 7px rgba(0,0,0,.2)}
+.carRow{display:grid;grid-template-columns:142px minmax(145px,1fr) 56px minmax(190px,1.35fr) 34px;gap:14px;align-items:center;border-top:1px solid var(--line);padding:14px 2px}
+.uaPlate{height:46px;display:grid;grid-template-columns:24px 1fr;align-items:stretch;overflow:hidden;background:#fbfbf7;color:#0d0f11;border:1px solid #9ca1a6;border-radius:6px;box-shadow:inset 0 0 0 1px rgba(255,255,255,.7),0 2px 7px rgba(0,0,0,.2)}
 .uaPlateCountry{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;background:#1453a5;color:#fff;border-right:1px solid rgba(0,0,0,.28)}
 .uaPlateCountry small{font-size:6px;line-height:1;font-weight:700;letter-spacing:.04em}
 .uaFlag{width:11px;height:7px;display:grid;grid-template-rows:1fr 1fr;overflow:hidden;border-radius:1px;box-shadow:0 0 0 1px rgba(255,255,255,.35)}
 .uaFlagBlue{background:#1b73d1}
 .uaFlagYellow{background:#ffd500}
-.uaPlateText{display:flex;align-items:center;justify-content:center;padding:0 5px 0 8px;font-family:ui-monospace,"SFMono-Regular",Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace;font-size:13px;font-weight:800;letter-spacing:.12em;white-space:nowrap;text-transform:uppercase;font-variant-numeric:tabular-nums;text-rendering:geometricPrecision}
+.uaPlateText{display:flex;align-items:center;justify-content:center;padding:0 8px 0 10px;font-family:"Arial Narrow","Roboto Condensed","Bahnschrift SemiCondensed","Segoe UI",Arial,sans-serif;font-size:15px;font-weight:700;letter-spacing:.08em;line-height:1;white-space:nowrap;text-transform:uppercase;font-variant-numeric:tabular-nums;text-rendering:optimizeLegibility}
 .carInfo{display:flex;align-items:flex-start;flex-direction:column;gap:7px;min-width:0}
-.carInfo strong{font-size:15px;line-height:1.35;font-weight:650;letter-spacing:-.01em}
+.carInfo strong{font-size:15px;line-height:1.35;font-weight:700;letter-spacing:-.01em}
 .badge{font-size:11px;font-weight:500;padding:5px 8px;border-radius:99px}
 .badge.warn{background:rgba(240,180,41,.13);color:#c58c00}
 .badge.active{background:rgba(79,124,255,.13);color:#5079e7}
 .badge.waiting{background:rgba(255,102,0,.14);color:var(--orange-2)}
 .badge.good{background:rgba(43,182,115,.13);color:var(--green)}
-.carBrandLogo{width:44px;height:44px;display:grid;place-items:center;color:var(--text);border:1px solid var(--line);border-radius:12px;background:var(--panel-2);box-shadow:inset 0 1px 0 rgba(255,255,255,.04)}
-.carBrandSvg{display:block;width:34px;height:34px;color:currentColor}
+.carBrandLogo{width:48px;height:48px;display:grid;place-items:center;color:var(--text);border:1px solid var(--line);border-radius:12px;background:var(--panel-2);box-shadow:inset 0 1px 0 rgba(255,255,255,.04)}
+.carBrandSvg{display:block;width:36px;height:36px;color:currentColor}
 .next{display:flex;flex-direction:column;gap:4px;min-width:0}
 .next small,.next span{font-size:11px;color:var(--muted)}
-.next strong{font-size:13px;line-height:1.4;font-weight:600}
+.next strong{font-size:14px;line-height:1.4;font-weight:600}
 .rowArrow{width:32px;height:32px;border-radius:50%;border:1px solid var(--line);background:var(--row-button);color:var(--orange);cursor:pointer}
 .blockers{align-self:start}
 .blocker{display:grid;grid-template-columns:1fr auto;gap:5px 12px;padding:14px 0;border-top:1px solid var(--line)}
-.blocker b{font-size:13px;font-weight:600}
-.blocker strong{font-size:14px;color:var(--orange);font-weight:650}
-.blocker span{grid-column:1/-1;color:var(--muted);font-size:11px}
+.blocker b{font-size:14px;font-weight:700}
+.blocker strong{font-size:18px;color:var(--orange);font-weight:700}
+.blocker span{grid-column:1/-1;color:var(--muted);font-size:12px}
 .rule{margin-top:8px;padding:13px;border-radius:10px;border:1px solid rgba(255,102,0,.22);background:rgba(255,102,0,.07);color:var(--soft-text);font-size:12px;line-height:1.5}
 .settingsBackdrop{position:fixed;inset:0;z-index:1500;background:rgba(0,0,0,.54);display:grid;place-items:center;padding:24px;backdrop-filter:blur(6px)}
 .settingsModal{width:min(620px,100%);background:var(--panel);border:1px solid var(--line);border-radius:18px;box-shadow:0 28px 90px rgba(0,0,0,.38);padding:22px}
@@ -163,10 +163,10 @@ button{letter-spacing:0}
   .alert{grid-template-columns:1fr}
   .kpis{grid-template-columns:1fr 1fr}
   .pipeline{grid-template-columns:1fr 1fr}
-  .carRow{grid-template-columns:114px 1fr 44px;gap:10px}
-  .uaPlateText{font-size:12px;letter-spacing:.1em}
-  .carBrandLogo{width:40px;height:40px}
-  .carBrandSvg{width:31px;height:31px}
+  .carRow{grid-template-columns:132px 1fr 44px;gap:10px}
+  .uaPlateText{font-size:14px;letter-spacing:.06em}
+  .carBrandLogo{width:44px;height:44px}
+  .carBrandSvg{width:34px;height:34px}
   .next{grid-column:1/-1;padding-left:2px}
   .rowArrow{display:none}
   .themeOptions{grid-template-columns:1fr}
