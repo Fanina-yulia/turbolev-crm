@@ -109,13 +109,51 @@ model Vehicle {
   createdAt                DateTime @default(now())
   updatedAt                DateTime @updatedAt
 
-  client             Client              @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  client             Client                @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  registrations      VehicleRegistration[]
   diagnosticRequests DiagnosticRequest[]
   workOrders         WorkOrder[]
 
   @@index([clientId])
   @@index([brand, model])
   @@index([turboLevClass])
+}
+
+model VehicleRegistration {
+  id              String   @id @default(cuid())
+  vehicleId       String
+  countryCode     String   @db.VarChar(2)
+  plateNumber     String   @db.VarChar(24)
+  plateNormalized String   @db.VarChar(24)
+  source          String?  @db.VarChar(40)
+  isCurrent       Boolean  @default(true)
+  validFrom       DateTime?
+  validTo         DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  vehicle Vehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+
+  @@index([countryCode, plateNormalized])
+  @@index([vehicleId, isCurrent])
+}
+
+model VinDecodeCache {
+  vin             String   @id @db.VarChar(17)
+  source          String   @db.VarChar(40)
+  providerVersion String?  @db.VarChar(24)
+  confidence      Int
+  vehicle         Json
+  fieldConfidence Json
+  validation      Json
+  decodedAt       DateTime @default(now())
+  expiresAt       DateTime?
+  lastError       String?  @db.Text
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([source, updatedAt])
+  @@index([expiresAt])
 }
 
 // Compact, read-optimized cache of open MVS data.
