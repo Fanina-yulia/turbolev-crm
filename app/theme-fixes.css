@@ -1,0 +1,19 @@
+.carBrandImage{
+  display:block;
+  width:34px;
+  height:34px;
+  object-fit:contain;
+}
+
+.carBrandImageMonochrome{
+  filter:brightness(0) invert(1);
+  transition:filter .18s ease;
+}
+
+:root[data-theme="light"] .carBrandImageMonochrome{
+  filter:brightness(0);
+}
+
+@media (prefers-reduced-motion: reduce){
+  .carBrandImageMonochrome{transition:none}
+}
