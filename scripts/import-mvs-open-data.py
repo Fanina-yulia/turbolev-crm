@@ -7,7 +7,7 @@ import sys
 import tempfile
 import urllib.request
 import zipfile
-from datetime import datetime
+from itertools import chain
 
 import psycopg
 
@@ -28,22 +28,23 @@ RESOURCES = [
     (2013, "https://data.gov.ua/dataset/0ffd8b75-0628-48cc-952a-9302f9799ec0/resource/86a9548b-8323-4fa2-972e-0692edf6959f/download/tz_opendata_z01012013_po31122013.zip"),
 ]
 
+BATCH_SIZE = 20_000
 CYR_TO_LAT = str.maketrans({
     "А": "A", "В": "B", "С": "C", "Е": "E", "Н": "H", "І": "I",
     "К": "K", "М": "M", "О": "O", "Р": "P", "Т": "T", "Х": "X",
 })
 
-PLATE_KEYS = ("n_reg_new", "plate", "registration_number", "n_reg")
-VIN_KEYS = ("vin", "vin_code")
-BRAND_KEYS = ("brand", "make")
-MODEL_KEYS = ("model",)
-YEAR_KEYS = ("make_year", "year")
-CAPACITY_KEYS = ("capacity", "engine_capacity", "volume")
-FUEL_KEYS = ("fuel", "fuel_type")
-BODY_KEYS = ("body", "body_type")
-KIND_KEYS = ("kind", "vehicle_kind", "type")
-WEIGHT_KEYS = ("total_weight", "gross_weight")
-DATE_KEYS = ("d_reg", "registration_date")
+ALIASES = {
+    "plate": ("n_reg_new", "n_reg", "plate", "registration_number", "number", "номерний_знак", "державний_номер", "реєстраційний_номер"),
+    "vin": ("vin", "vin_code", "номер_кузова", "номер_шасі"),
+    "brand": ("brand", "make", "марка"),
+    "model": ("model", "модель"),
+    "year": ("make_year", "year", "рік_випуску", "rik_vypusku"),
+    "capacity": ("capacity", "engine_capacity", "volume", "обєм_двигуна", "об_єм_двигуна"),
+    "fuel": ("fuel", "fuel_type", "паливо", "тип_палива"),
+    "body": ("body", "body_type", "кузов", "тип_кузова"),
+    "kind": ("kind", "vehicle_kind", "type", "тип_тз", "категорія_тз"),
+}
 
 
 def clip(value, size):
@@ -51,12 +52,10 @@ def clip(value, size):
     return value[:size] if value else None
 
 
-def first(row, keys):
-    for key in keys:
-        value = row.get(key)
-        if value is not None and str(value).strip():
-            return str(value).strip()
-    return ""
+def normalize_header(value):
+    text = str(value or "").replace("\ufeff", "").strip().lower()
+    text = re.sub(r"[\s.()\-/]+", "_", text)
+    return re.sub(r"_+", "_", text).strip("_")
 
 
 def normalize_plate(value):
@@ -64,8 +63,14 @@ def normalize_plate(value):
     return compact.translate(CYR_TO_LAT)[:10]
 
 
+def plate_key(plate):
+    if not plate or not re.fullmatch(r"[A-Z0-9]{6,10}", plate):
+        return None
+    return int(plate, 36) * 16 + len(plate)
+
+
 def to_int(value):
-    match = re.search(r"-?\d+", str(value or ""))
+    match = re.search(r"\d+", str(value or ""))
     if not match:
         return None
     try:
@@ -74,122 +79,195 @@ def to_int(value):
         return None
 
 
-def normalize_date(value):
-    text = str(value or "").strip()
-    if not text:
-        return None
-    candidates = ("%d.%m.%Y", "%Y-%m-%d", "%d/%m/%Y", "%Y.%m.%d", "%d-%m-%Y")
-    for fmt in candidates:
-        try:
-            return datetime.strptime(text[:10], fmt).strftime("%Y-%m-%d")
-        except ValueError:
-            pass
-    return clip(text, 16)
-
-
-def normalize_headers(fieldnames):
-    return [str(x or "").replace("\ufeff", "").strip().lower() for x in fieldnames]
-
-
 def detect_encoding(stream):
     pos = stream.tell()
-    sample = stream.read(8192)
+    sample = stream.read(16384)
     stream.seek(pos)
-    try:
-        sample.decode("utf-8-sig")
-        return "utf-8-sig"
-    except UnicodeDecodeError:
-        return "cp1251"
+    for encoding in ("utf-8-sig", "cp1251", "utf-16"):
+        try:
+            sample.decode(encoding)
+            return encoding
+        except UnicodeDecodeError:
+            pass
+    return "cp1251"
 
 
 def detect_dialect(text):
     try:
-        return csv.Sniffer().sniff(text, delimiters=",;\t")
+        return csv.Sniffer().sniff(text, delimiters=",;\t|")
     except csv.Error:
         class Semi(csv.excel):
             delimiter = ";"
         return Semi
 
 
-def row_payload(row, source_year):
-    plate = normalize_plate(first(row, PLATE_KEYS))
-    if len(plate) < 6:
+def looks_like_plate(value):
+    plate = normalize_plate(value)
+    return bool(
+        re.fullmatch(r"[A-Z]{1,3}\d{3,6}[A-Z]{0,3}", plate)
+        or (6 <= len(plate) <= 10 and any(c.isdigit() for c in plate) and any(c.isalpha() for c in plate))
+    )
+
+
+def resolve_columns(fieldnames, sample_rows):
+    fields = [normalize_header(x) for x in fieldnames]
+    mapping = {}
+    for target, aliases in ALIASES.items():
+        mapping[target] = next((a for a in aliases if a in fields), None)
+
+    if not mapping["plate"] and sample_rows:
+        best_field = None
+        best_score = 0
+        for field in fields:
+            score = sum(1 for row in sample_rows if looks_like_plate(row.get(field)))
+            if score > best_score:
+                best_field, best_score = field, score
+        threshold = max(3, len(sample_rows) // 20)
+        if best_score >= threshold:
+            mapping["plate"] = best_field
+
+    return mapping
+
+
+def row_payload(row, columns, source_year):
+    def val(name):
+        key = columns.get(name)
+        return row.get(key, "") if key else ""
+
+    plate = normalize_plate(val("plate"))
+    key = plate_key(plate)
+    if key is None:
         return None
-    make_year = to_int(first(row, YEAR_KEYS))
+
+    make_year = to_int(val("year"))
     if make_year and not (1900 <= make_year <= 2100):
         make_year = None
-    capacity = to_int(first(row, CAPACITY_KEYS))
-    gross = to_int(first(row, WEIGHT_KEYS))
+    capacity = to_int(val("capacity"))
+    vehicle_type_raw = " / ".join(x for x in (str(val("kind")).strip(), str(val("body")).strip()) if x)
+
     return (
-        plate,
-        clip(first(row, VIN_KEYS).upper(), 17),
-        clip(first(row, BRAND_KEYS), 48),
-        clip(first(row, MODEL_KEYS), 64),
+        key,
+        clip(str(val("vin")).upper(), 17),
+        clip(val("brand"), 32),
+        clip(val("model"), 48),
         make_year,
         capacity,
-        clip(first(row, FUEL_KEYS), 24),
-        clip(first(row, BODY_KEYS), 40),
-        clip(first(row, KIND_KEYS), 40),
-        gross,
-        normalize_date(first(row, DATE_KEYS)),
+        clip(val("fuel"), 24),
+        clip(vehicle_type_raw, 48),
         source_year,
     )
 
 
+def flush_batch(conn, batch):
+    if not batch:
+        return
+    rows = list(batch.values())
+    with conn.cursor().copy(
+        'COPY mvs_stage ("plateKey", vin, brand, model, "makeYear", "engineVolumeCm3", "fuelType", "vehicleTypeRaw", "sourceYear") FROM STDIN'
+    ) as copy:
+        for row in rows:
+            copy.write_row(row)
+
+    with conn.cursor() as cur:
+        cur.execute(
+            '''
+            INSERT INTO "VehicleRegistryCompact" (
+              "plateKey", vin, brand, model, "makeYear", "engineVolumeCm3", "fuelType", "vehicleTypeRaw", "sourceYear"
+            )
+            SELECT "plateKey", vin, brand, model, "makeYear", "engineVolumeCm3", "fuelType", "vehicleTypeRaw", "sourceYear"
+            FROM mvs_stage
+            ON CONFLICT ("plateKey") DO UPDATE SET
+              vin = EXCLUDED.vin,
+              brand = EXCLUDED.brand,
+              model = EXCLUDED.model,
+              "makeYear" = EXCLUDED."makeYear",
+              "engineVolumeCm3" = EXCLUDED."engineVolumeCm3",
+              "fuelType" = EXCLUDED."fuelType",
+              "vehicleTypeRaw" = EXCLUDED."vehicleTypeRaw",
+              "sourceYear" = EXCLUDED."sourceYear"
+            WHERE EXCLUDED."sourceYear" >= "VehicleRegistryCompact"."sourceYear"
+            '''
+        )
+        cur.execute("TRUNCATE mvs_stage")
+    conn.commit()
+    batch.clear()
+
+
+def import_text_member(conn, year, binary, label, batch):
+    encoding = detect_encoding(binary)
+    sample_bytes = binary.read(16384)
+    binary.seek(0)
+    dialect = detect_dialect(sample_bytes.decode(encoding, errors="replace"))
+    text = io.TextIOWrapper(binary, encoding=encoding, errors="replace", newline="")
+    reader = csv.DictReader(text, dialect=dialect)
+    if not reader.fieldnames:
+        print(f"  {label}: no headers", flush=True)
+        return 0
+
+    reader.fieldnames = [normalize_header(x) for x in reader.fieldnames]
+    sample_rows = []
+    for _ in range(200):
+        try:
+            sample_rows.append(next(reader))
+        except StopIteration:
+            break
+
+    columns = resolve_columns(reader.fieldnames, sample_rows)
+    print(f"  {label}: columns={reader.fieldnames}", flush=True)
+    print(f"  {label}: mapped={columns}", flush=True)
+    if not columns.get("plate"):
+        print(f"  {label}: SKIPPED - registration plate column was not detected", flush=True)
+        return 0
+
+    total = 0
+    for row in chain(sample_rows, reader):
+        payload = row_payload(row, columns, year)
+        if not payload:
+            continue
+        batch[payload[0]] = payload
+        total += 1
+        if len(batch) >= BATCH_SIZE:
+            flush_batch(conn, batch)
+    return total
+
+
+def import_archive(conn, year, zip_path):
+    total = 0
+    batch = {}
+    with zipfile.ZipFile(zip_path) as archive:
+        members = [m for m in archive.infolist() if not m.is_dir()]
+        print(f"{year}: archive members={[m.filename for m in members]}", flush=True)
+        for member in members:
+            name = member.filename
+            lower = name.lower()
+            if lower.endswith(".zip"):
+                nested_bytes = archive.read(member)
+                with zipfile.ZipFile(io.BytesIO(nested_bytes)) as nested:
+                    nested_members = [m for m in nested.infolist() if not m.is_dir()]
+                    print(f"  nested {name}: members={[m.filename for m in nested_members]}", flush=True)
+                    for inner in nested_members:
+                        if inner.filename.lower().endswith((".csv", ".txt")) or "." not in os.path.basename(inner.filename):
+                            with nested.open(inner, "r") as binary:
+                                total += import_text_member(conn, year, binary, f"{name}/{inner.filename}", batch)
+                continue
+
+            if lower.endswith((".csv", ".txt")) or "." not in os.path.basename(name):
+                with archive.open(member, "r") as binary:
+                    total += import_text_member(conn, year, binary, name, batch)
+
+    flush_batch(conn, batch)
+    return total
+
+
 def download(url, destination):
     print(f"Downloading {url}", flush=True)
-    request = urllib.request.Request(url, headers={"User-Agent": "TurboLEV-CRM/1.0"})
+    request = urllib.request.Request(url, headers={"User-Agent": "TurboLEV-CRM/2.0"})
     with urllib.request.urlopen(request, timeout=120) as response, open(destination, "wb") as out:
         while True:
             chunk = response.read(1024 * 1024)
             if not chunk:
                 break
             out.write(chunk)
-
-
-def import_zip(conn, year, zip_path):
-    total = 0
-    with zipfile.ZipFile(zip_path) as archive:
-        members = [m for m in archive.infolist() if not m.is_dir() and m.filename.lower().endswith((".csv", ".txt"))]
-        for member in members:
-            print(f"  Reading {member.filename}", flush=True)
-            with archive.open(member, "r") as binary:
-                encoding = detect_encoding(binary)
-                sample = binary.read(8192)
-                binary.seek(0)
-                sample_text = sample.decode(encoding, errors="replace")
-                dialect = detect_dialect(sample_text)
-                text = io.TextIOWrapper(binary, encoding=encoding, errors="replace", newline="")
-                reader = csv.DictReader(text, dialect=dialect)
-                if not reader.fieldnames:
-                    continue
-                reader.fieldnames = normalize_headers(reader.fieldnames)
-
-                with conn.cursor().copy(
-                    'COPY mvs_stage ("plateNormalized", vin, brand, model, "makeYear", "engineVolumeCm3", "fuelType", "bodyType", "vehicleKind", "grossWeightKg", "registrationDate", "sourceYear") FROM STDIN'
-                ) as copy:
-                    for row in reader:
-                        payload = row_payload(row, year)
-                        if payload:
-                            copy.write_row(payload)
-                            total += 1
-
-    with conn.cursor() as cur:
-        cur.execute(
-            '''
-            INSERT INTO "VehicleRegistryEntry" (
-              "plateNormalized", vin, brand, model, "makeYear", "engineVolumeCm3", "fuelType", "bodyType", "vehicleKind", "grossWeightKg", "registrationDate", "sourceYear"
-            )
-            SELECT DISTINCT ON ("plateNormalized")
-              "plateNormalized", vin, brand, model, "makeYear", "engineVolumeCm3", "fuelType", "bodyType", "vehicleKind", "grossWeightKg", "registrationDate", "sourceYear"
-            FROM mvs_stage
-            ORDER BY "plateNormalized", "registrationDate" DESC NULLS LAST
-            ON CONFLICT ("plateNormalized") DO NOTHING
-            '''
-        )
-        cur.execute("TRUNCATE mvs_stage")
-    conn.commit()
-    return total
 
 
 def main():
@@ -199,19 +277,17 @@ def main():
         return 2
 
     requested = os.environ.get("MVS_IMPORT_YEARS", "").strip()
-    years = None
-    if requested:
-        years = {int(x.strip()) for x in requested.split(",") if x.strip()}
+    years = {int(x.strip()) for x in requested.split(",") if x.strip()} if requested else None
 
     with psycopg.connect(database_url, autocommit=False) as conn:
         with conn.cursor() as cur:
             cur.execute(
                 '''
                 CREATE TEMP TABLE mvs_stage (
-                  "plateNormalized" VARCHAR(10), vin VARCHAR(17), brand VARCHAR(48), model VARCHAR(64),
-                  "makeYear" SMALLINT, "engineVolumeCm3" INTEGER, "fuelType" VARCHAR(24),
-                  "bodyType" VARCHAR(40), "vehicleKind" VARCHAR(40), "grossWeightKg" INTEGER,
-                  "registrationDate" VARCHAR(16), "sourceYear" SMALLINT
+                  "plateKey" BIGINT PRIMARY KEY,
+                  vin VARCHAR(17), brand VARCHAR(32), model VARCHAR(48),
+                  "makeYear" SMALLINT, "engineVolumeCm3" INTEGER,
+                  "fuelType" VARCHAR(24), "vehicleTypeRaw" VARCHAR(48), "sourceYear" SMALLINT
                 ) ON COMMIT PRESERVE ROWS
                 '''
             )
@@ -224,11 +300,11 @@ def main():
                 target = os.path.join(temp_dir, f"mvs-{year}.zip")
                 try:
                     download(url, target)
-                    rows = import_zip(conn, year, target)
+                    rows = import_archive(conn, year, target)
                     with conn.cursor() as cur:
-                        cur.execute('SELECT count(*) FROM "VehicleRegistryEntry"')
+                        cur.execute('SELECT count(*) FROM "VehicleRegistryCompact"')
                         indexed = cur.fetchone()[0]
-                    print(f"{year}: processed {rows:,} rows; compact index now {indexed:,} plates", flush=True)
+                    print(f"{year}: processed {rows:,} valid rows; compact index now {indexed:,} plates", flush=True)
                 except Exception as exc:
                     conn.rollback()
                     print(f"{year}: FAILED: {exc}", file=sys.stderr, flush=True)
