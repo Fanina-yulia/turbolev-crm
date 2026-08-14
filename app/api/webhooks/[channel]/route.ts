@@ -5,7 +5,7 @@ import { ingestCommunicationInquiry, recordWebhookEvent, type CommunicationChann
 export const runtime = "nodejs";
 
 function resolveChannel(slug: string, body?: any): CommunicationChannel | null {
-  if (slug === "binotel") return "BINOTEL";
+  if (slug === "website") return "WEBSITE";
   if (slug === "tiktok") return "TIKTOK";
   if (slug === "olx") return "OLX";
   if (slug === "meta") return String(body?.object || body?.channel || "").toLowerCase().includes("instagram") ? "INSTAGRAM" : "FACEBOOK";
@@ -30,37 +30,24 @@ export async function GET(request: NextRequest, context: { params: Promise<{ cha
 export async function POST(request: NextRequest, context: { params: Promise<{ channel: string }> }) {
   try {
     const { channel: slug } = await context.params;
+
+    if (slug === "binotel") {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "Use the protected Binotel telephony webhook",
+          endpoint: "/api/telephony/binotel-webhook",
+        },
+        { status: 410 },
+      );
+    }
+
     const body = await request.json();
     const channel = resolveChannel(slug, body);
     if (!channel) return NextResponse.json({ ok: false, error: "Unsupported webhook" }, { status: 404 });
 
     const externalEventId = String(pick(body, ["event_id","eventId","call_id","callId","id","request_id","requestId"]) || `${slug}-${randomUUID()}`);
     await recordWebhookEvent(channel, externalEventId, String(pick(body, ["event_type","eventType","type","status"]) || "event"), body);
-
-    if (channel === "BINOTEL") {
-      const phone = String(pick(body, ["externalNumber","external_number","phone","src","caller","from"]) || "");
-      const status = String(pick(body, ["status","callStatus","disposition"]) || "").toLowerCase();
-      const duration = Number(pick(body, ["duration","billsec","seconds"]) || 0);
-      const callType = String(pick(body, ["callType","call_type","direction","type"]) || "incoming").toLowerCase();
-      const isIncoming = !callType || callType.includes("in") || callType.includes("incoming");
-      const isMissed = status.includes("miss") || status.includes("busy") || status.includes("no_answer") || status.includes("no answer") || (duration === 0 && isIncoming);
-      if (phone && isIncoming && isMissed) {
-        const inquiry = await ingestCommunicationInquiry({
-          channel: "BINOTEL",
-          externalId: externalEventId,
-          externalMessageId: `${externalEventId}:call`,
-          name: pick(body, ["name","clientName","client_name"]) || "Невідомий номер",
-          phone,
-          subject: "Пропущений дзвінок",
-          preview: "Пропущений дзвінок — потрібно передзвонити",
-          message: "Пропущений вхідний дзвінок. Потрібно передзвонити клієнту.",
-          sourceDetail: "Binotel · пропущений",
-          metadata: body,
-        });
-        return NextResponse.json({ ok: true, accepted: true, inquiry });
-      }
-      return NextResponse.json({ ok: true, accepted: true, inquiry: null });
-    }
 
     const normalized = body.normalized && typeof body.normalized === "object" ? body.normalized : body;
     const message = pick(normalized, ["message","text","comment","description"]);

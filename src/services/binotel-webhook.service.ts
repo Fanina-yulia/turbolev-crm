@@ -1,13 +1,13 @@
 import {
   CallStatus,
   CallType,
-  LeadSource,
   LeadStatus,
   Prisma,
 } from "@/src/generated/prisma/client";
 import { getPrisma } from "@/src/lib/prisma";
 import { normalizePhone, phoneVariants } from "@/src/lib/phone";
 import { getBinotelService } from "@/src/services/binotel.service";
+import { syncBinotelInquiry } from "@/src/services/binotel-communications.service";
 
 export type SupportedBinotelEvent =
   | "incomingCall"
@@ -47,12 +47,12 @@ type ParsedWebhook = {
   raw: JsonRecord;
 };
 
-const ACTIVE_LEAD_STATUSES = new Set<LeadStatus>([
+const ACTIVE_LEAD_STATUSES: LeadStatus[] = [
   LeadStatus.NEW,
   LeadStatus.QUALIFYING,
   LeadStatus.WARM_LEAD,
   LeadStatus.BOOKED,
-]);
+];
 
 function isRecord(value: unknown): value is JsonRecord {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
@@ -273,18 +273,10 @@ export async function processBinotelWebhook(raw: JsonRecord) {
       });
     }
 
-    let activeWorkOrder = client
-      ? await tx.workOrder.findFirst({
-          where: { clientId: client.id, closedAt: null },
-          orderBy: { updatedAt: "desc" },
-        })
-      : null;
-
-    let createdLead = false;
-
     if (!client && !lead) {
       lead = await tx.lead.findFirst({
         where: {
+          status: { in: ACTIVE_LEAD_STATUSES },
           OR: [
             { phoneNormalized: normalizedNumber },
             ...(variants.length ? [{ phone: { in: variants } }] : []),
@@ -294,22 +286,12 @@ export async function processBinotelWebhook(raw: JsonRecord) {
       });
     }
 
-    if (!client && !lead) {
-      lead = await tx.lead.create({
-        data: {
-          phone: normalizedNumber,
-          phoneNormalized: normalizedNumber,
-          status: LeadStatus.NEW,
-          source: LeadSource.BINOTEL,
-        },
-      });
-      createdLead = true;
-    } else if (!client && lead && ACTIVE_LEAD_STATUSES.has(lead.status)) {
-      lead = await tx.lead.update({
-        where: { id: lead.id },
-        data: { updatedAt: now },
-      });
-    }
+    let activeWorkOrder = client
+      ? await tx.workOrder.findFirst({
+          where: { clientId: client.id, closedAt: null },
+          orderBy: { updatedAt: "desc" },
+        })
+      : null;
 
     const internalNumber = parsed.internalNumber || existing?.internalNumber || null;
     const manager = internalNumber
@@ -390,7 +372,7 @@ export async function processBinotelWebhook(raw: JsonRecord) {
       },
     });
 
-    return { call, client, lead, activeWorkOrder, createdLead };
+    return { call, client, lead, activeWorkOrder };
   });
 
   let recordingUrl = result.call.recordingUrl;
@@ -417,14 +399,42 @@ export async function processBinotelWebhook(raw: JsonRecord) {
     }
   }
 
+  let inquiryId: string | null = null;
+
+  if (result.call.type === CallType.INCOMING) {
+    const eventAt =
+      parsed.event === "hangupTheCall"
+        ? result.call.endedAt
+        : parsed.event === "answeredTheCall"
+          ? result.call.answeredAt
+          : result.call.startedAt;
+
+    const inquiry = await syncBinotelInquiry({
+      callId: parsed.callId,
+      event: parsed.event,
+      phone: normalizedNumber,
+      name: result.client?.name || result.lead?.name || "Невідомий номер",
+      status: result.call.status,
+      duration: result.call.duration,
+      internalNumber: result.call.internalNumber,
+      recordingAvailable: Boolean(recordingUrl),
+      clientId: result.client?.id || null,
+      leadId: result.client ? null : result.lead?.id || null,
+      workOrderId: result.activeWorkOrder?.id || null,
+      occurredAt: eventAt,
+    });
+    inquiryId = inquiry.id;
+  }
+
   return {
     event: parsed.event,
     callId: parsed.callId,
     callStatus: result.call.status,
-    createdLead: result.createdLead,
+    createdLead: false,
     clientId: result.client?.id || null,
     leadId: result.client ? null : result.lead?.id || null,
     workOrderId: result.activeWorkOrder?.id || null,
-    recordingUrl,
+    inquiryId,
+    recordingAvailable: Boolean(recordingUrl),
   };
 }

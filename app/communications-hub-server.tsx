@@ -28,6 +28,18 @@ type Inquiry = {
   messages: Message[];
 };
 
+type BinotelHealth = {
+  ok: boolean;
+  databaseConfigured: boolean;
+  restConfigured: boolean;
+  webhookTokenConfigured: boolean;
+  websocketConfigured: boolean;
+  companyIdConfigured: boolean;
+  webhookPath: string;
+  missing: string[];
+  optionalMissing: string[];
+};
+
 const LOCAL_KEY = "turbolev-communications-v1";
 const channelMeta: Record<Channel, { label: string; short: string; tone: string }> = {
   FACEBOOK: { label: "Facebook", short: "f", tone: "#1877f2" },
@@ -40,7 +52,7 @@ const channelMeta: Record<Channel, { label: string; short: string; tone: string 
 
 const integrations = [
   { key: "META", title: "Facebook + Instagram", endpoint: "/api/webhooks/meta", text: "Messenger, Instagram та Meta lead forms", status: "Потрібні Meta App, токен сторінки і verify token" },
-  { key: "BINOTEL", title: "Binotel", endpoint: "/api/webhooks/binotel", text: "Пропущені дзвінки → звернення; історія дзвінків", status: "Потрібні API key/secret і webhook у Binotel" },
+  { key: "BINOTEL", title: "Binotel", endpoint: "/api/telephony/binotel-webhook", text: "Вхідні та пропущені дзвінки → Inbox; CallHistory і записи розмов", status: "Потрібні серверні доступи Binotel" },
   { key: "WEBSITE", title: "Сайт / Lead Forms", endpoint: "/api/webhooks/website", text: "Форми сайту та landing pages", status: "CRM endpoint готовий до POST" },
   { key: "TIKTOK", title: "TikTok", endpoint: "/api/webhooks/tiktok", text: "Lead forms / події акаунта", status: "Потрібен TikTok Business/Developer access" },
   { key: "OLX", title: "OLX", endpoint: "/api/webhooks/olx", text: "Діалоги та прив'язка до оголошень", status: "Потрібен доступ OLX API" },
@@ -67,6 +79,7 @@ export function CommunicationsHub() {
   const [toast, setToast] = useState("");
   const [serverMode, setServerMode] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [binotelHealth, setBinotelHealth] = useState<BinotelHealth | null>(null);
 
   const notify = (message: string) => {
     setToast(message);
@@ -97,7 +110,30 @@ export function CommunicationsHub() {
     }
   }, []);
 
-  useEffect(() => { void load(); }, [load]);
+  const loadBinotelHealth = useCallback(async () => {
+    try {
+      const response = await fetch("/api/telephony/binotel-health", { cache: "no-store" });
+      const data = await response.json();
+      setBinotelHealth(data as BinotelHealth);
+    } catch {
+      setBinotelHealth({
+        ok: false,
+        databaseConfigured: false,
+        restConfigured: false,
+        webhookTokenConfigured: false,
+        websocketConfigured: false,
+        companyIdConfigured: false,
+        webhookPath: "/api/telephony/binotel-webhook",
+        missing: ["перевірка недоступна"],
+        optionalMissing: [],
+      });
+    }
+  }, []);
+
+  useEffect(() => { void load(); void loadBinotelHealth(); }, [load, loadBinotelHealth]);
+  useEffect(() => {
+    if (tab === "integrations") void loadBinotelHealth();
+  }, [tab, loadBinotelHealth]);
   useEffect(() => {
     if (!serverMode) {
       try { window.localStorage.setItem(LOCAL_KEY, JSON.stringify(items)); } catch {}
@@ -143,7 +179,7 @@ export function CommunicationsHub() {
   async function convertToLead() {
     if (!selected) return;
     if (!serverMode) {
-      notify("Серверна БД ще не активована. Після міграції конвертація піде в Neon.");
+      notify("Серверна БД недоступна. Конвертація в Lead можлива тільки через Neon.");
       return;
     }
     try {
@@ -174,6 +210,17 @@ export function CommunicationsHub() {
     } catch (error) { notify(error instanceof Error ? error.message : "Помилка"); }
   }
 
+  function integrationState(item: (typeof integrations)[number]) {
+    if (item.key === "WEBSITE") return { ready: true, label: "Endpoint готовий", detail: item.status };
+    if (item.key === "BINOTEL") {
+      if (!binotelHealth) return { ready: false, label: "Перевіряю…", detail: "Перевіряю серверну конфігурацію Binotel" };
+      if (binotelHealth.ok) return { ready: true, label: "Готово до Binotel", detail: binotelHealth.websocketConfigured ? "REST + webhook + WebSocket налаштовані" : "REST + webhook готові; WebSocket можна додати пізніше" };
+      const missing = binotelHealth.missing?.length ? binotelHealth.missing.join(", ") : "доступи Binotel";
+      return { ready: false, label: "Потрібен доступ", detail: `Потрібні: ${missing}` };
+    }
+    return { ready: false, label: "Потрібен доступ", detail: item.status };
+  }
+
   const navigateToLeads = () => window.dispatchEvent(new CustomEvent("turbolev:navigate", { detail: "Ліди" }));
 
   return <div className="commsPage">
@@ -184,15 +231,15 @@ export function CommunicationsHub() {
     </header>
 
     {tab === "integrations" ? <section className="integrationPage">
-      <div className="integrationIntro"><div><p className="eyebrow">КАНАЛИ</p><h2>Інтеграційний контур</h2></div><span>Webhook/API-рівень CRM підготовлений. Для живих каналів залишиться додати зовнішні доступи.</span></div>
-      <div className="integrationGrid">{integrations.map((item) => <article key={item.key}><div className="integrationIcon">{item.key === "BINOTEL" ? "☎" : item.key.slice(0,1)}</div><div className="integrationCopy"><strong>{item.title}</strong><span>{item.text}</span><code>{item.endpoint}</code><small>{item.status}</small></div><div className={`integrationState ${item.key === "WEBSITE" ? "ready" : "waiting"}`}>{item.key === "WEBSITE" ? "Endpoint готовий" : "Потрібен доступ"}</div></article>)}</div>
-      <div className="integrationFlow"><b>Правило</b><span>Webhook не створює клієнта напряму. Він створює звернення. Лише після кваліфікації звернення переходить у Lead.</span></div>
+      <div className="integrationIntro"><div><p className="eyebrow">КАНАЛИ</p><h2>Інтеграційний контур</h2></div><span>CRM сама показує, що вже готово на сервері, а для чого ще потрібні доступи зовнішнього сервісу.</span></div>
+      <div className="integrationGrid">{integrations.map((item) => { const state = integrationState(item); return <article key={item.key}><div className="integrationIcon">{item.key === "BINOTEL" ? "☎" : item.key.slice(0,1)}</div><div className="integrationCopy"><strong>{item.title}</strong><span>{item.text}</span><code>{item.endpoint}</code><small>{state.detail}</small></div><div className={`integrationState ${state.ready ? "ready" : "waiting"}`}>{state.label}</div></article>; })}</div>
+      <div className="integrationFlow"><b>Правило</b><span>Webhook не створює клієнта напряму. Вхідна комунікація спочатку стає зверненням. Лише після кваліфікації звернення переходить у Lead.</span></div>
     </section> : <div className="commsLayout">
       <aside className="commsFilters"><div className="commsFilterTitle">Вхідні</div>{filters.map((item) => <button key={item.key} className={filter === item.key ? "active" : ""} onClick={() => setFilter(item.key)}><span>{item.label}</span><b>{item.count}</b></button>)}<div className="commsRule"><strong>SLA 2 години</strong><span>Комерційне звернення має отримати відповідального і наступну дію.</span></div></aside>
 
       <section className="commsList"><div className="commsSearch"><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Пошук: клієнт, телефон, авто…" /><button onClick={() => void load()}>↻</button></div><div className="commsListScroll">{loading ? <div className="commsEmpty">Завантажую звернення…</div> : visible.map((item) => { const meta = channelMeta[item.channel]; return <button key={item.id} className={`commsConversation ${selected?.id === item.id ? "selected" : ""} ${item.unread ? "unread" : ""}`} onClick={() => openInquiry(item.id)}><span className="commsChannelIcon" style={{ background: meta.tone }}>{meta.short}</span><span className="commsConversationCopy"><span className="commsNameLine"><strong>{item.name}</strong><small>{fmt(item.receivedAt)}</small></span><b>{meta.label}</b><span>{item.preview}</span>{item.existingLeadId && <em>Лід {item.existingLeadId}</em>}</span></button>; })}{!loading && !visible.length && <div className="commsEmpty"><b>Поки немає звернень</b><span>Після підключення каналів вони автоматично з'являтимуться тут.</span></div>}</div></section>
 
-      <section className="commsThread">{selected ? <><header><div><span className="commsChannelIcon" style={{ background: channelMeta[selected.channel].tone }}>{channelMeta[selected.channel].short}</span><div><strong>{selected.name}</strong><small>{selected.phone || selected.handle || "Контакт ще не отримано"}</small></div></div><span className={`inquiryState state-${selected.state.toLowerCase()}`}>{stateLabel(selected.state)}</span></header><div className="threadMessages">{selected.messages.map((message) => <div className={`threadBubble ${message.direction}`} key={message.id}><p>{message.text}</p><small>{fmt(message.at)}</small></div>)}</div>{selected.channel === "BINOTEL" ? <div className="threadCallAction"><a href={`tel:${(selected.phone || "").replace(/\D/g, "")}`}>☎ Передзвонити</a><span>Після підключення Binotel тут також буде журнал дзвінків і записи.</span></div> : <div className="threadComposer"><textarea value={reply} onChange={(e) => setReply(e.target.value)} placeholder="Відповідь клієнту…" /><button className="primary" onClick={() => void sendReply()}>Зберегти</button></div>}</> : <div className="threadPlaceholder"><strong>Оберіть звернення</strong><span>Тут буде вся історія комунікації з клієнтом.</span></div>}</section>
+      <section className="commsThread">{selected ? <><header><div><span className="commsChannelIcon" style={{ background: channelMeta[selected.channel].tone }}>{channelMeta[selected.channel].short}</span><div><strong>{selected.name}</strong><small>{selected.phone || selected.handle || "Контакт ще не отримано"}</small></div></div><span className={`inquiryState state-${selected.state.toLowerCase()}`}>{stateLabel(selected.state)}</span></header><div className="threadMessages">{selected.messages.map((message) => <div className={`threadBubble ${message.direction}`} key={message.id}><p>{message.text}</p><small>{fmt(message.at)}</small></div>)}</div>{selected.channel === "BINOTEL" ? <div className="threadCallAction"><a href={`tel:${(selected.phone || "").replace(/\D/g, "")}`}>☎ Передзвонити</a><span>Події дзвінка зберігаються в CallHistory і тут як системні повідомлення. Запис розмови сервер зберігає, коли Binotel його віддає.</span></div> : <div className="threadComposer"><textarea value={reply} onChange={(e) => setReply(e.target.value)} placeholder="Відповідь клієнту…" /><button className="primary" onClick={() => void sendReply()}>Зберегти</button></div>}</> : <div className="threadPlaceholder"><strong>Оберіть звернення</strong><span>Тут буде вся історія комунікації з клієнтом.</span></div>}</section>
 
       <aside className="commsContext">{selected ? <><div className="contextHead"><p className="eyebrow">ЗВЕРНЕННЯ · {selected.id}</p><h3>{selected.subject}</h3><span>{selected.sourceDetail || channelMeta[selected.channel].label}</span></div><div className="contextGrid"><div><small>Телефон</small><strong>{selected.phone || "Не отримано"}</strong></div><div><small>Авто</small><strong>{selected.vehicle || "Уточнюється"}</strong><span>{selected.plate || ""}</span></div>{selected.campaign && <div><small>Кампанія</small><strong>{selected.campaign}</strong></div>}{selected.utm && <div><small>UTM</small><strong>{selected.utm}</strong></div>}</div>{selected.duplicateLead && !selected.existingLeadId && <div className="duplicateBox"><b>Можливий дубль</b><span>Телефон уже є у ліді <strong>{selected.duplicateLead.id}</strong></span><button onClick={() => void convertToLead()}>Прив'язати</button></div>}{selected.existingLeadId ? <div className="linkedBox"><b>Уже в продажах</b><span>Лід {selected.existingLeadId}</span><button onClick={navigateToLeads}>Відкрити «Ліди» →</button></div> : <button className="contextPrimary" onClick={() => void convertToLead()}>+ Створити / прив'язати лід</button>}<button className="contextSecondary" onClick={navigateToLeads} disabled={!selected.existingLeadId}>Перейти в запис / заявку</button><button className="contextLink" onClick={() => void patch(selected.id, { state: "SPAM", unread: false })}>Спам / нецільове</button><div className="contextRule"><b>Правило Turbo LEV</b><span>Звернення ≠ клієнт. Клієнт + автомобіль формуються далі, коли лід переходить у реальну заявку/заїзд.</span></div></> : <div className="contextEmpty">Дані звернення з'являться після вибору діалогу.</div>}</aside>
     </div>}

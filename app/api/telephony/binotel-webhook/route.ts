@@ -16,9 +16,13 @@ function secureEqual(left: string, right: string): boolean {
   return timingSafeEqual(a, b);
 }
 
+function webhookToken() {
+  return process.env.BINOTEL_WEBHOOK_TOKEN?.trim() || "";
+}
+
 function isAuthorized(request: NextRequest): boolean {
-  const expected = process.env.BINOTEL_WEBHOOK_TOKEN?.trim();
-  if (!expected) return true;
+  const expected = webhookToken();
+  if (!expected) return process.env.NODE_ENV !== "production";
 
   const headerToken = request.headers.get("x-binotel-webhook-token")?.trim();
   const queryToken = request.nextUrl.searchParams.get("token")?.trim();
@@ -89,6 +93,13 @@ function attachEventFromQuery(
 }
 
 export async function POST(request: NextRequest) {
+  if (process.env.NODE_ENV === "production" && !webhookToken()) {
+    return NextResponse.json(
+      { ok: false, error: "Binotel webhook is not enabled: server secret is missing" },
+      { status: 503 },
+    );
+  }
+
   if (!isAuthorized(request)) {
     return NextResponse.json({ ok: false, error: "Unauthorized webhook" }, { status: 401 });
   }
@@ -107,7 +118,6 @@ export async function POST(request: NextRequest) {
         payloadKeys: payload ? Object.keys(payload) : [],
       });
 
-      // Acknowledge events we do not use yet so Binotel does not keep retrying.
       return NextResponse.json(
         { ok: true, ignored: true, event: error.eventName || null },
         { status: 202 },

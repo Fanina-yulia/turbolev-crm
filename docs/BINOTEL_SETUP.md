@@ -1,73 +1,70 @@
-# Turbo LEV CRM — Binotel + PostgreSQL setup
+# Turbo LEV CRM — підключення Binotel
 
-## 1. Database
+## Що вже робить CRM
 
-For new Vercel projects use a PostgreSQL provider from Vercel Marketplace. Turbo LEV uses Neon.
+Binotel підключається до єдиного розділу **Комунікації**. Вхідний дзвінок не створює клієнта або нового ліда напряму: спочатку він стає зверненням у Inbox, а менеджер уже кваліфікує його та переводить у Lead.
 
-Required Vercel environment variables:
+CRM зберігає життєвий цикл дзвінка в `CallHistory`, нормалізує телефон, намагається знайти існуючого клієнта або активний Lead, прив'язує відповідального менеджера за внутрішнім номером і додає системні події дзвінка в історію звернення.
 
-- `DATABASE_URL` — pooled runtime connection.
-- `DATABASE_URL_UNPOOLED` — direct connection for Prisma migrations (when provided by Neon).
+## 1. Vercel Environment Variables
 
-After the variables are connected, apply the migration already committed in `prisma/migrations`:
+Обов'язкові для живого Binotel:
 
-```bash
-npm run db:migrate:deploy
-```
+- `DATABASE_URL`
+- `BINOTEL_API_KEY`
+- `BINOTEL_API_SECRET`
+- `BINOTEL_WEBHOOK_TOKEN` — окремий довгий випадковий секрет для захисту webhook.
 
-Development-only workflow against a disposable development database:
+Опціональні:
 
-```bash
-npm run db:migrate:dev -- --name your_change_name
-```
+- `BINOTEL_COMPANY_ID`
+- `BINOTEL_WS_KEY`
+- `BINOTEL_WS_SECRET`
+- `BINOTEL_WS_URL`
 
-Do not use `migrate dev` against production.
+WebSocket не потрібен для базового прийому webhook-подій. Його можна підключити пізніше для realtime popup.
 
-## 2. Binotel webhook
+## 2. Захищений webhook
 
-Endpoint:
+Єдина точка для Binotel:
 
 ```text
-POST https://YOUR_DOMAIN/api/telephony/binotel-webhook
+POST https://YOUR_DOMAIN/api/telephony/binotel-webhook?token=YOUR_BINOTEL_WEBHOOK_TOKEN
 ```
 
-Supported CRM events:
+Старий універсальний маршрут `/api/webhooks/binotel` навмисно не використовується. У production CRM не приймає Binotel webhook без `BINOTEL_WEBHOOK_TOKEN`.
+
+Підтримуються події CRM:
 
 - `incomingCall`
 - `answeredTheCall`
 - `hangupTheCall`
 
-The route accepts JSON, `application/x-www-form-urlencoded`, and multipart form data.
-
-If Binotel does not include the event name in the callback body, configure an explicit event query parameter:
+Якщо конкретний callback Binotel не передає назву події у payload, її можна зафіксувати в URL:
 
 ```text
-https://YOUR_DOMAIN/api/telephony/binotel-webhook?event=incomingCall
-https://YOUR_DOMAIN/api/telephony/binotel-webhook?event=answeredTheCall
-https://YOUR_DOMAIN/api/telephony/binotel-webhook?event=hangupTheCall
+https://YOUR_DOMAIN/api/telephony/binotel-webhook?event=incomingCall&token=YOUR_TOKEN
+https://YOUR_DOMAIN/api/telephony/binotel-webhook?event=answeredTheCall&token=YOUR_TOKEN
+https://YOUR_DOMAIN/api/telephony/binotel-webhook?event=hangupTheCall&token=YOUR_TOKEN
 ```
 
-For additional webhook protection set `BINOTEL_WEBHOOK_TOKEN` in Vercel and append the same secret token to the configured callback URL:
+Маршрут приймає JSON, form-urlencoded і multipart form data.
 
-```text
-https://YOUR_DOMAIN/api/telephony/binotel-webhook?event=incomingCall&token=YOUR_SECRET_TOKEN
-```
+## 3. Логіка в CRM
 
-Do not commit the token or any Binotel credentials to Git.
+Для вхідного дзвінка CRM:
 
-## 3. Webhook behavior
+1. Нормалізує зовнішній номер телефону.
+2. Шукає `Client` за телефоном.
+3. Якщо клієнта немає — шукає активний Lead з цим телефоном.
+4. Створює або оновлює один `CallHistory` за унікальним Binotel call ID.
+5. Прив'язує дзвінок до знайденого Client/Lead, активного WorkOrder і менеджера, якщо їх можна визначити.
+6. Створює/оновлює `CommunicationInquiry` у каналі `BINOTEL`.
+7. Додає системні повідомлення: новий дзвінок, відповідь, завершення, пропущений/зайнято.
+8. **Не створює новий Lead автоматично для невідомого номера.** Менеджер бачить звернення в «Комунікаціях» і натискає «Створити / прив'язати лід» після кваліфікації.
+9. Для завершеної розмови намагається отримати URL запису і зберегти його серверно в `CallHistory`. Відсутність готового запису не ламає webhook.
 
-For every supported event CRM:
-
-1. Normalizes the external phone number.
-2. Searches `Client` first.
-3. If no Client is found, searches `Lead`.
-4. If neither exists, creates `Lead(status=NEW_REQUEST, source=BINOTEL)`.
-5. Upserts `CallHistory` by unique `binotelCallId`.
-6. Links the call to the matched Client/Lead and to the User found by `internalNumber`.
-7. On answer, sets `ANSWERED` and `answeredAt`.
-8. On hangup, calculates duration and final status (`ANSWERED`, `MISSED`, or `BUSY`).
-9. For answered completed calls, attempts to fetch and save `recordingUrl` without failing the webhook if Binotel has not prepared the recording yet.
+Таким чином один дзвінок не розмножується на кілька звернень: call ID використовується для ідемпотентного оновлення.
 
 ## 4. Health check
 
@@ -75,14 +72,20 @@ For every supported event CRM:
 GET https://YOUR_DOMAIN/api/telephony/binotel-health
 ```
 
-The response reports whether DB/Binotel variables are configured, but never returns secret values.
+Відповідь показує тільки стан конфігурації (`restConfigured`, `webhookTokenConfigured`, `databaseConfigured` тощо) та список відсутніх змінних. Секретні значення ніколи не повертаються у браузер.
 
-## 5. First live test
+У CRM цей health check використовується у вкладці **Комунікації → Інтеграції**: картка Binotel сама показує, чи готовий сервер до живого підключення.
 
-After database migration and Binotel callback configuration:
+## 5. Перший live-тест
 
-1. Make one inbound call from a phone number that does not exist in CRM.
-2. Confirm that a new `Lead` with source `BINOTEL` appears.
-3. Answer and hang up.
-4. Confirm that the same `CallHistory` row is updated instead of duplicated.
-5. Inspect the Vercel function logs only if the payload format differs. The webhook logs field names, not the full payload, for unsupported/malformed events.
+Після додавання credentials у Vercel і callback-ів у Binotel:
+
+1. Подзвонити на номер СТО з телефону, якого немає в CRM.
+2. Перевірити, що в **Комунікації → Binotel** з'явилося звернення, але новий Lead ще не створений.
+3. Відповісти/завершити дзвінок або зробити пропущений тест.
+4. Перевірити, що в тому самому зверненні з'явилися системні події, а `CallHistory` не дублюється.
+5. Для комерційного звернення натиснути «Створити / прив'язати лід» і перевірити перехід у воронку продажів.
+
+## 6. Безпека
+
+Не зберігайте Binotel API key/secret/token у GitHub, frontend-коді або змінних `NEXT_PUBLIC_*`. Усі секрети — тільки server-side Vercel Environment Variables.

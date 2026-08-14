@@ -1,43 +1,41 @@
 # Turbo LEV CRM — Binotel telephony
 
-## Phase 1: database + server client
+## Реалізовано
 
-Implemented:
+- `CallHistory` для повного життєвого циклу дзвінка.
+- Server-only Binotel REST client.
+- Захищений `POST /api/telephony/binotel-webhook`.
+- Події `incomingCall`, `answeredTheCall`, `hangupTheCall`.
+- Нормалізація телефону та дедуп за Binotel call ID.
+- Прив'язка дзвінка до існуючого Client, активного Lead, WorkOrder і менеджера, коли вони визначені.
+- Вхідний дзвінок дзеркалиться в `CommunicationInquiry` і стає частиною єдиного Inbox.
+- Пропущений дзвінок залишається відкритим зверненням для передзвону.
+- Запис завершеної розмови зберігається серверно в `CallHistory`, коли провайдер уже підготував media URL.
+- Health check: `GET /api/telephony/binotel-health`.
 
-- `prisma/schema.prisma` — `CallHistory`, `Lead`, `Client`, `User` and telephony enums.
-- `src/lib/prisma.ts` — singleton Prisma client for Next.js/Vercel.
-- `src/services/binotel.service.ts` — server-only REST client with Click-to-Call and call-record media lookup.
-- `app/api/telephony/binotel-health/route.ts` — safe configuration health check; never exposes secrets.
-- `.env.example` and `.gitignore` — environment contract and secret protection.
+## Головне бізнес-правило
 
-## CallHistory lifecycle
+**Телефонний дзвінок не створює нового Lead автоматично.**
 
-A call can be created while ringing with `status = null`. The final status is written only when Binotel reports the completed state: `ANSWERED`, `MISSED` or `BUSY`.
+Маршрут:
 
-`binotelCallId` is unique, which allows webhook processing to be idempotent and prevents duplicate call history rows when Binotel retries an event.
+`Binotel → CommunicationInquiry → кваліфікація менеджером → Lead → Запис/Заявка → Client + Vehicle`.
 
-## Relations
+Якщо телефон уже належить активному Lead, звернення може бути одразу прив'язане до нього. Якщо телефон належить існуючому Client, історія дзвінка зберігається в клієнтському контексті, але новий Lead не створюється без потреби.
 
-`CallHistory` can be linked independently to:
+## Статуси
 
-- `Lead` — when the caller is still a sales lead;
-- `Client` — when the phone number already belongs to a customer;
-- `User` — the responsible/connected manager, resolved by Binotel internal number.
+Під час дзвінка статус може бути ще невизначеним. На завершенні CRM фіксує `ANSWERED`, `MISSED` або `BUSY`. Повторні webhook-події оновлюють той самий `CallHistory`.
 
-All relations use `onDelete: SetNull` so historical telephony records are not deleted when a CRM entity is removed.
+## Безпека
 
-## Required production configuration
+Production webhook активний тільки якщо задано `BINOTEL_WEBHOOK_TOKEN`. API credentials і token зберігаються виключно у Vercel Environment Variables і не передаються у frontend.
 
-The repository must never contain real secrets. Production values belong in Vercel Environment Variables.
+Детальна інструкція з налаштування: `docs/BINOTEL_SETUP.md`.
 
-In addition to Binotel credentials, the next database step requires a PostgreSQL `DATABASE_URL`.
+## Наступні розширення
 
-## Next phase
-
-1. Apply the Prisma schema to PostgreSQL.
-2. Implement `POST /api/telephony/binotel-webhook` with idempotent upsert by `binotelCallId`.
-3. Resolve caller by normalized phone across `Client` and `Lead`.
-4. Auto-create `Lead(source=BINOTEL, status=NEW_REQUEST)` for unknown inbound numbers.
-5. Create missed-call alerts.
-6. Add realtime WebSocket event delivery to the frontend.
-7. Add `/telephony`, incoming-call popup and Click-to-Call actions.
+- realtime incoming-call popup через WebSocket;
+- click-to-call після появи авторизації/ролей у CRM;
+- відтворення записів дзвінків у захищеному інтерфейсі;
+- KPI по пропущених дзвінках, швидкості передзвону та конверсії телефонії в запис.
