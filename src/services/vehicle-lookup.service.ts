@@ -110,10 +110,7 @@ async function lookupCrmVehicle(plate: string): Promise<GlobalVehicleLookupRespo
 
 async function lookupRegistryIndex(plate: string): Promise<GlobalVehicleLookupResponse | null> {
   const prisma = getPrisma();
-  const row = await prisma.vehicleRegistryEntry.findFirst({
-    where: { plateNormalized: plate },
-    orderBy: [{ sourceYear: "desc" }, { id: "desc" }],
-  });
+  const row = await prisma.vehicleRegistryEntry.findUnique({ where: { plateNormalized: plate } });
   if (!row) return null;
 
   const classification = classifyVehicle({
@@ -234,7 +231,6 @@ export async function lookupVehicleByPlate(rawPlate: string, options?: { deep?: 
     console.warn("Fast database vehicle lookup unavailable", error);
   }
 
-  // Deep ZIP scanning is never run while the manager types. It is explicit service fallback only.
   if (options?.deep) {
     try {
       const live = mapLiveMvs(plate, await lookupMvsOpenDataByPlate(plate));
