@@ -21,8 +21,11 @@ def schema_aware_encoding(stream):
     ranked = []
 
     for encoding in candidates:
+        # The 2022 export contains a few damaged bytes. Evaluate all decoders
+        # with replacement enabled, then trust CSV structure rather than byte
+        # heuristics. The main TextIOWrapper also uses errors='replace'.
         try:
-            text = sample.decode(encoding, errors="strict")
+            text = sample.decode(encoding, errors="replace")
         except UnicodeError:
             continue
 
@@ -50,7 +53,8 @@ def schema_aware_encoding(stream):
         preview = header[:180].encode("unicode_escape", errors="backslashreplace").decode("ascii", errors="replace")
         print(
             f"2022 encoding candidate {encoding}: score={score}, known={known}, "
-            f"lines={line_count}, delimiters={delimiters}, nul={nul_count}, preview={preview}",
+            f"lines={line_count}, delimiters={delimiters}, replacements={replacement_count}, "
+            f"nul={nul_count}, preview={preview}",
             flush=True,
         )
         ranked.append((score, known, line_count, delimiters, encoding))
@@ -70,8 +74,6 @@ def schema_aware_encoding(stream):
     return encoding
 
 
-# Functions created by runpy keep the original execution globals dict.
-# Patch that dict directly so import_text_member() really calls our detector.
 importer_globals = mod["import_text_member"].__globals__
 importer_globals["detect_encoding"] = schema_aware_encoding
 
