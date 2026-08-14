@@ -1,46 +1,22 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 type Channel = "FACEBOOK" | "INSTAGRAM" | "TIKTOK" | "BINOTEL" | "OLX" | "WEBSITE";
 type Filter = "ALL" | "UNREAD" | "NO_REPLY" | Channel;
 type InquiryState = "NEW" | "IN_WORK" | "CONVERTED" | "LINKED" | "SPAM";
 type Message = { id: string; direction: "in" | "out" | "system"; text: string; at: string; metadata?: unknown };
 type Inquiry = {
-  id: string;
-  channel: Channel;
-  state: InquiryState;
-  name: string;
-  phone?: string;
-  handle?: string;
-  subject: string;
-  preview: string;
-  vehicle?: string;
-  plate?: string;
-  unread: boolean;
-  answered: boolean;
-  receivedAt: string;
-  sourceDetail?: string;
-  campaign?: string;
-  utm?: string;
-  existingLeadId?: string;
-  duplicateLead?: { id: string; name?: string | null } | null;
-  messages: Message[];
+  id: string; channel: Channel; state: InquiryState; name: string; phone?: string; handle?: string;
+  subject: string; preview: string; vehicle?: string; plate?: string; unread: boolean; answered: boolean;
+  receivedAt: string; sourceDetail?: string; campaign?: string; utm?: string; existingLeadId?: string;
+  duplicateLead?: { id: string; name?: string | null } | null; messages: Message[];
 };
 
-type BinotelHealth = {
-  ok: boolean;
-  databaseConfigured: boolean;
-  restConfigured: boolean;
-  webhookTokenConfigured: boolean;
-  websocketConfigured: boolean;
-  companyIdConfigured: boolean;
-  webhookPath: string;
-  missing: string[];
-  optionalMissing: string[];
-};
+type BinotelHealth = { ok: boolean; databaseConfigured: boolean; restConfigured: boolean; webhookTokenConfigured: boolean; websocketConfigured: boolean; companyIdConfigured: boolean; webhookPath: string; missing: string[]; optionalMissing: string[] };
 
 const LOCAL_KEY = "turbolev-communications-v1";
+const channels: Channel[] = ["INSTAGRAM", "FACEBOOK", "TIKTOK", "BINOTEL", "OLX", "WEBSITE"];
 const channelMeta: Record<Channel, { label: string; short: string; tone: string }> = {
   FACEBOOK: { label: "Facebook", short: "f", tone: "#1877f2" },
   INSTAGRAM: { label: "Instagram", short: "◎", tone: "#e1306c" },
@@ -49,13 +25,13 @@ const channelMeta: Record<Channel, { label: string; short: string; tone: string 
   OLX: { label: "OLX", short: "O", tone: "#23e5db" },
   WEBSITE: { label: "Сайт", short: "W", tone: "#7c8cff" },
 };
-
+const emojis = ["😀","😊","👍","❤️","🔥","✅","🙏","😉","😂","🚗","🔧","📍","☎️","💬","👌","🎯"];
 const integrations = [
-  { key: "META", title: "Facebook + Instagram", endpoint: "/api/webhooks/meta", text: "Messenger, Instagram та Meta lead forms", status: "Потрібні Meta App, токен сторінки і verify token" },
-  { key: "BINOTEL", title: "Binotel", endpoint: "/api/telephony/binotel-webhook", text: "Вхідні та пропущені дзвінки → Inbox; CallHistory і записи розмов", status: "Потрібні серверні доступи Binotel" },
-  { key: "WEBSITE", title: "Сайт / Lead Forms", endpoint: "/api/webhooks/website", text: "Форми сайту та landing pages", status: "CRM endpoint готовий до POST" },
-  { key: "TIKTOK", title: "TikTok", endpoint: "/api/webhooks/tiktok", text: "Lead forms / події акаунта", status: "Потрібен TikTok Business/Developer access" },
-  { key: "OLX", title: "OLX", endpoint: "/api/webhooks/olx", text: "Діалоги та прив'язка до оголошень", status: "Потрібен доступ OLX API" },
+  { key: "META", title: "Facebook + Instagram", endpoint: "/api/webhooks/meta", text: "Messenger, Instagram та Meta lead forms" },
+  { key: "BINOTEL", title: "Binotel", endpoint: "/api/telephony/binotel-webhook", text: "Вхідні та пропущені дзвінки, CallHistory, записи розмов" },
+  { key: "WEBSITE", title: "Сайт / Lead Forms", endpoint: "/api/webhooks/website", text: "Форми сайту та landing pages" },
+  { key: "TIKTOK", title: "TikTok", endpoint: "/api/webhooks/tiktok", text: "Lead forms та повідомлення" },
+  { key: "OLX", title: "OLX", endpoint: "/api/webhooks/olx", text: "Діалоги та прив'язка до оголошень" },
 ];
 
 function fmt(value: string) {
@@ -64,184 +40,145 @@ function fmt(value: string) {
   const today = new Date();
   return new Intl.DateTimeFormat("uk-UA", date.toDateString() === today.toDateString() ? { hour: "2-digit", minute: "2-digit" } : { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }).format(date);
 }
-
-function stateLabel(state: InquiryState) {
-  return state === "NEW" ? "Нове" : state === "IN_WORK" ? "В роботі" : state === "CONVERTED" ? "Лід створено" : state === "LINKED" ? "Прив'язано" : "Спам";
-}
+function stateLabel(state: InquiryState) { return state === "NEW" ? "Нове" : state === "IN_WORK" ? "В роботі" : state === "CONVERTED" ? "Лід створено" : state === "LINKED" ? "Прив'язано" : "Спам"; }
 
 export function CommunicationsHub() {
   const [items, setItems] = useState<Inquiry[]>([]);
-  const [selectedId, setSelectedId] = useState<string>("");
+  const [selectedId, setSelectedId] = useState("");
   const [filter, setFilter] = useState<Filter>("ALL");
   const [query, setQuery] = useState("");
   const [tab, setTab] = useState<"inbox" | "integrations">("inbox");
   const [reply, setReply] = useState("");
+  const [files, setFiles] = useState<File[]>([]);
+  const [emojiOpen, setEmojiOpen] = useState(false);
   const [toast, setToast] = useState("");
   const [serverMode, setServerMode] = useState(false);
   const [loading, setLoading] = useState(true);
   const [binotelHealth, setBinotelHealth] = useState<BinotelHealth | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  const notify = (message: string) => {
-    setToast(message);
-    window.setTimeout(() => setToast(""), 3200);
-  };
-
+  const notify = (message: string) => { setToast(message); window.setTimeout(() => setToast(""), 3200); };
   const load = useCallback(async () => {
     setLoading(true);
     try {
       const response = await fetch("/api/communications", { cache: "no-store" });
-      if (!response.ok) throw new Error("server unavailable");
+      if (!response.ok) throw new Error();
       const data = await response.json();
       const next = (data.items || []) as Inquiry[];
-      setItems(next);
-      setServerMode(true);
-      setSelectedId((current) => next.some((x) => x.id === current) ? current : next[0]?.id || "");
+      setItems(next); setServerMode(true); setSelectedId((current) => next.some((x) => x.id === current) ? current : next[0]?.id || "");
     } catch {
       setServerMode(false);
-      try {
-        const local = JSON.parse(window.localStorage.getItem(LOCAL_KEY) || "[]") as Inquiry[];
-        setItems(local);
-        setSelectedId((current) => local.some((x) => x.id === current) ? current : local[0]?.id || "");
-      } catch {
-        setItems([]);
-      }
-    } finally {
-      setLoading(false);
-    }
+      try { const local = JSON.parse(window.localStorage.getItem(LOCAL_KEY) || "[]") as Inquiry[]; setItems(local); setSelectedId((current) => local.some((x) => x.id === current) ? current : local[0]?.id || ""); } catch { setItems([]); }
+    } finally { setLoading(false); }
   }, []);
-
   const loadBinotelHealth = useCallback(async () => {
-    try {
-      const response = await fetch("/api/telephony/binotel-health", { cache: "no-store" });
-      const data = await response.json();
-      setBinotelHealth(data as BinotelHealth);
-    } catch {
-      setBinotelHealth({
-        ok: false,
-        databaseConfigured: false,
-        restConfigured: false,
-        webhookTokenConfigured: false,
-        websocketConfigured: false,
-        companyIdConfigured: false,
-        webhookPath: "/api/telephony/binotel-webhook",
-        missing: ["перевірка недоступна"],
-        optionalMissing: [],
-      });
-    }
+    try { const r = await fetch("/api/telephony/binotel-health", { cache: "no-store" }); setBinotelHealth(await r.json()); }
+    catch { setBinotelHealth(null); }
   }, []);
 
   useEffect(() => { void load(); void loadBinotelHealth(); }, [load, loadBinotelHealth]);
-  useEffect(() => {
-    if (tab === "integrations") void loadBinotelHealth();
-  }, [tab, loadBinotelHealth]);
-  useEffect(() => {
-    if (!serverMode) {
-      try { window.localStorage.setItem(LOCAL_KEY, JSON.stringify(items)); } catch {}
-    }
-  }, [items, serverMode]);
+  useEffect(() => { if (!serverMode) try { window.localStorage.setItem(LOCAL_KEY, JSON.stringify(items)); } catch {} }, [items, serverMode]);
 
   const selected = items.find((x) => x.id === selectedId);
-  const counts = useMemo(() => ({
-    ALL: items.filter((x) => x.state !== "SPAM").length,
-    UNREAD: items.filter((x) => x.unread && x.state !== "SPAM").length,
-    NO_REPLY: items.filter((x) => !x.answered && x.state !== "SPAM").length,
-  }), [items]);
-
+  const counts = useMemo(() => ({ ALL: items.filter((x) => x.state !== "SPAM").length, UNREAD: items.filter((x) => x.unread && x.state !== "SPAM").length, NO_REPLY: items.filter((x) => !x.answered && x.state !== "SPAM").length }), [items]);
   const visible = useMemo(() => items.filter((item) => {
     if (item.state === "SPAM") return false;
     if (filter === "UNREAD" && !item.unread) return false;
     if (filter === "NO_REPLY" && item.answered) return false;
-    if (!["ALL","UNREAD","NO_REPLY"].includes(filter) && item.channel !== filter) return false;
-    const hay = `${item.name} ${item.phone || ""} ${item.handle || ""} ${item.subject} ${item.vehicle || ""} ${item.plate || ""}`.toLowerCase();
-    return hay.includes(query.trim().toLowerCase());
+    if (!(["ALL","UNREAD","NO_REPLY"] as string[]).includes(filter) && item.channel !== filter) return false;
+    return `${item.name} ${item.phone || ""} ${item.handle || ""} ${item.subject} ${item.vehicle || ""} ${item.plate || ""}`.toLowerCase().includes(query.trim().toLowerCase());
   }).sort((a,b) => +new Date(b.receivedAt) - +new Date(a.receivedAt)), [items, filter, query]);
-
-  const filters: { key: Filter; label: string; count: number }[] = [
-    { key: "ALL", label: "Усі звернення", count: counts.ALL },
-    { key: "UNREAD", label: "Непрочитані", count: counts.UNREAD },
-    { key: "NO_REPLY", label: "Без відповіді", count: counts.NO_REPLY },
-    ...(["INSTAGRAM","FACEBOOK","TIKTOK","BINOTEL","OLX","WEBSITE"] as Channel[]).map((key) => ({ key, label: channelMeta[key].label, count: items.filter((x) => x.channel === key && x.state !== "SPAM").length })),
-  ];
 
   async function patch(id: string, data: Partial<Pick<Inquiry,"unread"|"answered"|"state">>) {
     setItems((current) => current.map((x) => x.id === id ? { ...x, ...data } : x));
     if (!serverMode) return;
-    try {
-      await fetch(`/api/communications/${id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(data) });
-    } catch { notify("Не вдалося зберегти зміну на сервері"); }
+    try { await fetch(`/api/communications/${id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(data) }); }
+    catch { notify("Не вдалося зберегти зміну"); }
   }
-
-  function openInquiry(id: string) {
-    setSelectedId(id);
-    void patch(id, { unread: false });
-  }
-
-  async function convertToLead() {
-    if (!selected) return;
-    if (!serverMode) {
-      notify("Серверна БД недоступна. Конвертація в Lead можлива тільки через Neon.");
-      return;
-    }
-    try {
-      const response = await fetch(`/api/communications/${selected.id}/convert`, { method: "POST" });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "Помилка");
-      notify(data.linkedExisting ? `Прив'язано до існуючого ліда ${data.lead.id}` : `Створено лід ${data.lead.id}`);
-      await load();
-    } catch (error) {
-      notify(error instanceof Error ? error.message : "Не вдалося створити лід");
-    }
-  }
+  function openInquiry(id: string) { setSelectedId(id); setFiles([]); setEmojiOpen(false); void patch(id, { unread: false }); }
 
   async function sendReply() {
-    if (!selected || !reply.trim()) return;
+    if (!selected || (!reply.trim() && files.length === 0)) return;
+    const attachmentText = files.length ? `\n${files.map((f) => `📎 ${f.name}`).join("\n")}` : "";
+    const finalText = `${reply.trim()}${attachmentText}`.trim();
     if (!serverMode) {
-      const message: Message = { id: `local-${Date.now()}`, direction: "out", text: reply.trim(), at: new Date().toISOString() };
+      const message: Message = { id: `local-${Date.now()}`, direction: "out", text: finalText, at: new Date().toISOString(), metadata: { attachments: files.map((f) => ({ name: f.name, type: f.type, size: f.size })) } };
       setItems((current) => current.map((x) => x.id === selected.id ? { ...x, messages: [...x.messages, message], answered: true, state: x.state === "NEW" ? "IN_WORK" : x.state } : x));
-      setReply("");
-      return;
+      setReply(""); setFiles([]); return;
     }
     try {
-      const response = await fetch(`/api/communications/${selected.id}/messages`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text: reply.trim() }) });
-      if (!response.ok) throw new Error("Не вдалося зберегти повідомлення");
-      setReply("");
-      notify("Повідомлення збережено в CRM. Відправка в канал запрацює після підключення його API.");
-      await load();
-    } catch (error) { notify(error instanceof Error ? error.message : "Помилка"); }
+      const response = await fetch(`/api/communications/${selected.id}/messages`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text: finalText, attachments: files.map((f) => ({ name: f.name, type: f.type, size: f.size })) }) });
+      if (!response.ok) throw new Error();
+      setReply(""); setFiles([]); setEmojiOpen(false); await load();
+      notify("Повідомлення збережено. Фактична доставка запрацює після підключення API каналу.");
+    } catch { notify("Не вдалося зберегти повідомлення"); }
+  }
+  async function convertToLead() {
+    if (!selected || !serverMode) return notify("Для створення ліда потрібне серверне з'єднання");
+    try { const r = await fetch(`/api/communications/${selected.id}/convert`, { method: "POST" }); const data = await r.json(); if (!r.ok) throw new Error(data.error || "Помилка"); notify(data.linkedExisting ? "Звернення прив'язано до існуючого ліда" : "Лід створено"); await load(); }
+    catch (e) { notify(e instanceof Error ? e.message : "Не вдалося створити лід"); }
   }
 
-  function integrationState(item: (typeof integrations)[number]) {
-    if (item.key === "WEBSITE") return { ready: true, label: "Endpoint готовий", detail: item.status };
-    if (item.key === "BINOTEL") {
-      if (!binotelHealth) return { ready: false, label: "Перевіряю…", detail: "Перевіряю серверну конфігурацію Binotel" };
-      if (binotelHealth.ok) return { ready: true, label: "Готово до Binotel", detail: binotelHealth.websocketConfigured ? "REST + webhook + WebSocket налаштовані" : "REST + webhook готові; WebSocket можна додати пізніше" };
-      const missing = binotelHealth.missing?.length ? binotelHealth.missing.join(", ") : "доступи Binotel";
-      return { ready: false, label: "Потрібен доступ", detail: `Потрібні: ${missing}` };
-    }
-    return { ready: false, label: "Потрібен доступ", detail: item.status };
-  }
-
+  const filterPills: { key: Filter; label: string; count: number }[] = [
+    { key: "ALL", label: "Усі", count: counts.ALL }, { key: "UNREAD", label: "Непрочитані", count: counts.UNREAD }, { key: "NO_REPLY", label: "Без відповіді", count: counts.NO_REPLY },
+    ...channels.map((key) => ({ key, label: channelMeta[key].label, count: items.filter((x) => x.channel === key && x.state !== "SPAM").length })),
+  ];
   const navigateToLeads = () => window.dispatchEvent(new CustomEvent("turbolev:navigate", { detail: "Ліди" }));
 
-  return <div className="commsPage">
-    {toast && <div className="commsToast">{toast}</div>}
-    <header className="commsTop">
-      <div><p className="eyebrow">OMNICHANNEL · ЄДИНА ТОЧКА ВХОДУ</p><h1>Комунікації</h1><p>Канал → звернення → дедуп → лід → заявка → клієнт + авто.</p></div>
-      <div className="commsTopRight"><span className={`commsServer ${serverMode ? "online" : "fallback"}`}>{serverMode ? "NEON SERVER" : "LOCAL FALLBACK"}</span><div className="commsTopTabs"><button className={tab === "inbox" ? "active" : ""} onClick={() => setTab("inbox")}>Inbox</button><button className={tab === "integrations" ? "active" : ""} onClick={() => setTab("integrations")}>Інтеграції</button></div></div>
+  return <div className="msgPage">
+    {toast && <div className="msgToast">{toast}</div>}
+    <header className="msgHeader">
+      <div><p className="eyebrow">OMNICHANNEL · ЄДИНА ТОЧКА ВХОДУ</p><h1>Комунікації</h1><p>Всі діалоги, дзвінки та звернення в одному робочому вікні.</p></div>
+      <div className="msgHeaderRight"><span className={`serverBadge ${serverMode ? "ok" : "local"}`}>{serverMode ? "NEON SERVER" : "LOCAL FALLBACK"}</span><div className="msgTabs"><button className={tab === "inbox" ? "active" : ""} onClick={() => setTab("inbox")}>Inbox</button><button className={tab === "integrations" ? "active" : ""} onClick={() => setTab("integrations")}>Інтеграції</button></div></div>
     </header>
 
-    {tab === "integrations" ? <section className="integrationPage">
-      <div className="integrationIntro"><div><p className="eyebrow">КАНАЛИ</p><h2>Інтеграційний контур</h2></div><span>CRM сама показує, що вже готово на сервері, а для чого ще потрібні доступи зовнішнього сервісу.</span></div>
-      <div className="integrationGrid">{integrations.map((item) => { const state = integrationState(item); return <article key={item.key}><div className="integrationIcon">{item.key === "BINOTEL" ? "☎" : item.key.slice(0,1)}</div><div className="integrationCopy"><strong>{item.title}</strong><span>{item.text}</span><code>{item.endpoint}</code><small>{state.detail}</small></div><div className={`integrationState ${state.ready ? "ready" : "waiting"}`}>{state.label}</div></article>; })}</div>
-      <div className="integrationFlow"><b>Правило</b><span>Webhook не створює клієнта напряму. Вхідна комунікація спочатку стає зверненням. Лише після кваліфікації звернення переходить у Lead.</span></div>
-    </section> : <div className="commsLayout">
-      <aside className="commsFilters"><div className="commsFilterTitle">Вхідні</div>{filters.map((item) => <button key={item.key} className={filter === item.key ? "active" : ""} onClick={() => setFilter(item.key)}><span>{item.label}</span><b>{item.count}</b></button>)}<div className="commsRule"><strong>SLA 2 години</strong><span>Комерційне звернення має отримати відповідального і наступну дію.</span></div></aside>
+    {tab === "integrations" ? <section className="integrationPage"><div className="integrationTitle"><div><p className="eyebrow">КАНАЛИ</p><h2>Інтеграції комунікацій</h2></div><span>Підключення каналів керується централізовано.</span></div><div className="integrationGrid">{integrations.map((item) => <article key={item.key}><div className="intIcon">{item.key === "BINOTEL" ? "☎" : item.key[0]}</div><div><strong>{item.title}</strong><p>{item.text}</p><code>{item.endpoint}</code></div><span className={`intState ${item.key === "BINOTEL" && binotelHealth?.ok ? "ready" : ""}`}>{item.key === "BINOTEL" && binotelHealth?.ok ? "Підключено" : item.key === "WEBSITE" ? "Endpoint готовий" : "Потрібен доступ"}</span></article>)}</div></section> : <>
+      <div className="sourceToolbar">
+        <div className="sourceTitle"><b>Фільтр джерел</b><span>Оберіть канал або стан звернень</span></div>
+        <div className="sourcePills">{filterPills.map((f) => <button key={f.key} className={filter === f.key ? "active" : ""} onClick={() => setFilter(f.key)}>{f.label}<span>{f.count}</span></button>)}</div>
+      </div>
 
-      <section className="commsList"><div className="commsSearch"><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Пошук: клієнт, телефон, авто…" /><button onClick={() => void load()}>↻</button></div><div className="commsListScroll">{loading ? <div className="commsEmpty">Завантажую звернення…</div> : visible.map((item) => { const meta = channelMeta[item.channel]; return <button key={item.id} className={`commsConversation ${selected?.id === item.id ? "selected" : ""} ${item.unread ? "unread" : ""}`} onClick={() => openInquiry(item.id)}><span className="commsChannelIcon" style={{ background: meta.tone }}>{meta.short}</span><span className="commsConversationCopy"><span className="commsNameLine"><strong>{item.name}</strong><small>{fmt(item.receivedAt)}</small></span><b>{meta.label}</b><span>{item.preview}</span>{item.existingLeadId && <em>Лід {item.existingLeadId}</em>}</span></button>; })}{!loading && !visible.length && <div className="commsEmpty"><b>Поки немає звернень</b><span>Після підключення каналів вони автоматично з'являтимуться тут.</span></div>}</div></section>
+      <section className="messengerShell">
+        <div className="conversationList">
+          <div className="searchRow"><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Пошук: клієнт, телефон, авто..."/><button onClick={() => void load()} aria-label="Оновити">↻</button></div>
+          <div className="listScroll">{loading ? <div className="empty">Завантаження…</div> : visible.length === 0 ? <div className="empty">Немає звернень за цим фільтром.</div> : visible.map((item) => <button key={item.id} className={`dialogRow ${selectedId === item.id ? "selected" : ""} ${item.unread ? "unread" : ""}`} onClick={() => openInquiry(item.id)}>
+            <span className="channelAvatar" style={{ background: channelMeta[item.channel].tone }}>{channelMeta[item.channel].short}</span>
+            <span className="dialogMain"><span className="dialogTop"><b>{item.name}</b><small>{fmt(item.receivedAt)}</small></span><em>{channelMeta[item.channel].label}</em><span className="preview">{item.preview}</span>{item.existingLeadId && <span className="leadTag">Лід {item.existingLeadId}</span>}</span>
+            {item.unread && <i className="unreadDot" aria-label="Непрочитане" />}
+          </button>)}</div>
+        </div>
 
-      <section className="commsThread">{selected ? <><header><div><span className="commsChannelIcon" style={{ background: channelMeta[selected.channel].tone }}>{channelMeta[selected.channel].short}</span><div><strong>{selected.name}</strong><small>{selected.phone || selected.handle || "Контакт ще не отримано"}</small></div></div><span className={`inquiryState state-${selected.state.toLowerCase()}`}>{stateLabel(selected.state)}</span></header><div className="threadMessages">{selected.messages.map((message) => <div className={`threadBubble ${message.direction}`} key={message.id}><p>{message.text}</p><small>{fmt(message.at)}</small></div>)}</div>{selected.channel === "BINOTEL" ? <div className="threadCallAction"><a href={`tel:${(selected.phone || "").replace(/\D/g, "")}`}>☎ Передзвонити</a><span>Події дзвінка зберігаються в CallHistory і тут як системні повідомлення. Запис розмови сервер зберігає, коли Binotel його віддає.</span></div> : <div className="threadComposer"><textarea value={reply} onChange={(e) => setReply(e.target.value)} placeholder="Відповідь клієнту…" /><button className="primary" onClick={() => void sendReply()}>Зберегти</button></div>}</> : <div className="threadPlaceholder"><strong>Оберіть звернення</strong><span>Тут буде вся історія комунікації з клієнтом.</span></div>}</section>
+        <div className="chatPane">
+          {!selected ? <div className="empty big">Оберіть звернення</div> : <>
+            <div className="chatHead"><span className="channelAvatar" style={{ background: channelMeta[selected.channel].tone }}>{channelMeta[selected.channel].short}</span><div><b>{selected.name}</b><span>{selected.phone || selected.handle || channelMeta[selected.channel].label}</span></div><span className="stateChip">{stateLabel(selected.state)}</span></div>
+            <div className="messageScroll">{selected.messages.length === 0 ? <div className="empty big">Історія повідомлень порожня.</div> : selected.messages.map((m) => <div key={m.id} className={`bubbleWrap ${m.direction}`}><div className={`bubble ${m.direction}`}><p>{m.text}</p><small>{fmt(m.at)}</small></div></div>)}</div>
+            <div className="composer">
+              {files.length > 0 && <div className="fileChips">{files.map((f, index) => <span key={`${f.name}-${index}`}>📎 {f.name}<button onClick={() => setFiles((current) => current.filter((_, i) => i !== index))}>×</button></span>)}</div>}
+              {emojiOpen && <div className="emojiPicker">{emojis.map((emoji) => <button key={emoji} onClick={() => { setReply((v) => v + emoji); setEmojiOpen(false); }}>{emoji}</button>)}</div>}
+              <div className="composeRow">
+                <input ref={fileInputRef} type="file" multiple hidden onChange={(e) => setFiles((current) => [...current, ...Array.from(e.target.files || [])].slice(0, 8))} />
+                <button className="toolBtn" onClick={() => fileInputRef.current?.click()} title="Додати файл">＋</button>
+                <button className="toolBtn" onClick={() => setEmojiOpen((v) => !v)} title="Emoji">☺</button>
+                <textarea value={reply} onChange={(e) => setReply(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void sendReply(); } }} placeholder="Напишіть повідомлення…" rows={1}/>
+                <button className="sendBtn" onClick={() => void sendReply()} disabled={!reply.trim() && files.length === 0}>➤</button>
+              </div>
+              <small className="composeHint">Enter — відправити · Shift+Enter — новий рядок · до 8 вкладень</small>
+            </div>
+          </>}
+        </div>
 
-      <aside className="commsContext">{selected ? <><div className="contextHead"><p className="eyebrow">ЗВЕРНЕННЯ · {selected.id}</p><h3>{selected.subject}</h3><span>{selected.sourceDetail || channelMeta[selected.channel].label}</span></div><div className="contextGrid"><div><small>Телефон</small><strong>{selected.phone || "Не отримано"}</strong></div><div><small>Авто</small><strong>{selected.vehicle || "Уточнюється"}</strong><span>{selected.plate || ""}</span></div>{selected.campaign && <div><small>Кампанія</small><strong>{selected.campaign}</strong></div>}{selected.utm && <div><small>UTM</small><strong>{selected.utm}</strong></div>}</div>{selected.duplicateLead && !selected.existingLeadId && <div className="duplicateBox"><b>Можливий дубль</b><span>Телефон уже є у ліді <strong>{selected.duplicateLead.id}</strong></span><button onClick={() => void convertToLead()}>Прив'язати</button></div>}{selected.existingLeadId ? <div className="linkedBox"><b>Уже в продажах</b><span>Лід {selected.existingLeadId}</span><button onClick={navigateToLeads}>Відкрити «Ліди» →</button></div> : <button className="contextPrimary" onClick={() => void convertToLead()}>+ Створити / прив'язати лід</button>}<button className="contextSecondary" onClick={navigateToLeads} disabled={!selected.existingLeadId}>Перейти в запис / заявку</button><button className="contextLink" onClick={() => void patch(selected.id, { state: "SPAM", unread: false })}>Спам / нецільове</button><div className="contextRule"><b>Правило Turbo LEV</b><span>Звернення ≠ клієнт. Клієнт + автомобіль формуються далі, коли лід переходить у реальну заявку/заїзд.</span></div></> : <div className="contextEmpty">Дані звернення з'являться після вибору діалогу.</div>}</aside>
-    </div>}
+        <aside className="contextPane">{!selected ? <div className="empty big">Дані звернення з'являться після вибору діалогу.</div> : <><p className="eyebrow">ЗВЕРНЕННЯ · {selected.id}</p><h2>{selected.subject}</h2><span className="sourceName">{selected.sourceDetail || channelMeta[selected.channel].label}</span><div className="contextCards">{selected.phone && <div><small>ТЕЛЕФОН</small><b>{selected.phone}</b></div>}{selected.vehicle && <div><small>АВТО</small><b>{selected.vehicle}</b>{selected.plate && <span>{selected.plate}</span>}</div>}{selected.campaign && <div><small>КАМПАНІЯ</small><b>{selected.campaign}</b></div>}{selected.utm && <div><small>UTM</small><b className="ellipsis">{selected.utm}</b></div>}</div><button className="leadAction" onClick={() => void convertToLead()}>{selected.existingLeadId ? "Прив'язано до ліда" : selected.duplicateLead ? "+ Прив'язати до існуючого ліда" : "+ Створити лід"}</button><button className="secondaryAction" disabled={!selected.existingLeadId} onClick={navigateToLeads}>Перейти в Ліди</button><button className="spamAction" onClick={() => void patch(selected.id, { state: "SPAM" })}>Спам / нецільове</button></>}</aside>
+      </section>
+    </>}
+
+    <style jsx global>{`
+      .msgPage{padding:0 0 32px;min-width:0}.msgHeader{display:flex;justify-content:space-between;gap:24px;align-items:flex-start;margin:0 0 22px}.msgHeader h1{font-size:44px;line-height:1;margin:4px 0 18px}.msgHeader p{color:var(--muted);margin:0}.msgHeaderRight{display:flex;gap:14px;align-items:center}.serverBadge{font-size:11px;font-weight:800;letter-spacing:.08em;border-radius:999px;padding:9px 14px;border:1px solid var(--line)}.serverBadge.ok{color:#21c887;border-color:#1b674a;background:#0d2b20}.serverBadge.local{color:#ff8c42}.msgTabs{display:flex;border:1px solid var(--line);border-radius:14px;overflow:hidden}.msgTabs button{border:0;background:transparent;padding:14px 22px;color:var(--muted);font-size:16px}.msgTabs button.active{background:var(--orange);color:#111;font-weight:800}
+      .sourceToolbar{display:flex;align-items:center;gap:18px;padding:13px 16px;border:1px solid var(--line);border-radius:16px 16px 0 0;background:var(--panel);overflow:hidden}.sourceTitle{min-width:150px;display:flex;flex-direction:column}.sourceTitle b{font-size:13px}.sourceTitle span{font-size:11px;color:var(--muted)}.sourcePills{display:flex;gap:7px;overflow-x:auto;padding:1px}.sourcePills button{white-space:nowrap;border:1px solid var(--line);background:var(--surface);color:var(--text);border-radius:999px;padding:8px 11px;display:flex;gap:7px;align-items:center;font-size:12px}.sourcePills button span{min-width:19px;height:19px;border-radius:99px;background:var(--panel);display:grid;place-items:center;font-size:10px}.sourcePills button.active{background:var(--orange);border-color:var(--orange);color:#111;font-weight:800}.sourcePills button.active span{background:rgba(0,0,0,.15)}
+      .messengerShell{display:grid;grid-template-columns:365px minmax(420px,1fr) 335px;min-height:650px;height:calc(100vh - 285px);border:1px solid var(--line);border-top:0;border-radius:0 0 18px 18px;overflow:hidden;background:var(--surface)}.conversationList{border-right:1px solid var(--line);min-width:0;display:flex;flex-direction:column}.searchRow{display:flex;gap:8px;padding:14px;border-bottom:1px solid var(--line)}.searchRow input{flex:1;min-width:0;border:1px solid var(--line);background:var(--panel);color:var(--text);border-radius:12px;padding:11px 13px}.searchRow button{width:44px;border:1px solid var(--line);border-radius:12px;background:var(--panel);color:var(--text);font-size:20px}.listScroll{overflow:auto;flex:1}.dialogRow{position:relative;width:100%;display:grid;grid-template-columns:42px 1fr;gap:11px;text-align:left;padding:12px 14px;border:0;border-bottom:1px solid var(--line);background:transparent;color:var(--text)}.dialogRow:hover{background:var(--panel)}.dialogRow.selected{background:color-mix(in srgb,var(--orange) 10%,var(--surface));box-shadow:inset 3px 0 0 var(--orange)}.dialogRow.unread{background:color-mix(in srgb,var(--orange) 16%,var(--surface));}.dialogRow.unread .dialogTop b,.dialogRow.unread .preview{font-weight:800;color:var(--text)}.channelAvatar{width:40px;height:40px;border-radius:11px;display:grid;place-items:center;color:#071014;font-weight:900}.dialogMain{min-width:0;display:flex;flex-direction:column}.dialogTop{display:flex;justify-content:space-between;gap:8px}.dialogTop b{font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.dialogTop small{font-size:10px;color:var(--muted)}.dialogMain em{font-style:normal;color:var(--orange);font-weight:700;font-size:10px;margin:3px 0}.preview{font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.leadTag{font-size:10px;color:#2bb673;margin-top:4px}.unreadDot{position:absolute;right:9px;bottom:10px;width:8px;height:8px;background:var(--orange);border-radius:50%;box-shadow:0 0 0 3px color-mix(in srgb,var(--orange) 18%,transparent)}
+      .chatPane{min-width:0;display:flex;flex-direction:column;background:color-mix(in srgb,var(--panel) 25%,var(--surface))}.chatHead{height:68px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:12px;padding:0 18px;background:var(--surface)}.chatHead div{display:flex;flex-direction:column;min-width:0}.chatHead b{font-size:14px}.chatHead span{font-size:11px;color:var(--muted)}.stateChip{margin-left:auto!important;border:1px solid color-mix(in srgb,var(--orange) 45%,var(--line));padding:6px 9px;border-radius:999px;color:var(--orange)!important}.messageScroll{flex:1;overflow:auto;padding:22px 24px}.bubbleWrap{display:flex;margin:0 0 10px}.bubbleWrap.out{justify-content:flex-end}.bubbleWrap.system{justify-content:center}.bubble{max-width:72%;border:1px solid var(--line);border-radius:17px;padding:10px 13px;background:var(--surface)}.bubble.out{background:color-mix(in srgb,var(--orange) 18%,var(--surface));border-color:color-mix(in srgb,var(--orange) 35%,var(--line))}.bubble.system{background:transparent;border-style:dashed;color:var(--muted);font-size:11px}.bubble p{white-space:pre-wrap;margin:0;font-size:13px;line-height:1.45}.bubble small{display:block;text-align:right;color:var(--muted);font-size:9px;margin-top:5px}.composer{position:relative;border-top:1px solid var(--line);background:var(--surface);padding:10px 13px}.composeRow{display:flex;align-items:flex-end;gap:8px}.toolBtn{width:38px;height:38px;border-radius:11px;border:1px solid var(--line);background:var(--panel);color:var(--text);font-size:20px}.composeRow textarea{flex:1;resize:none;min-height:38px;max-height:110px;border:1px solid var(--line);border-radius:13px;background:var(--panel);color:var(--text);padding:10px 12px;font:inherit}.sendBtn{width:42px;height:38px;border:0;border-radius:11px;background:var(--orange);color:#111;font-size:18px;font-weight:900}.sendBtn:disabled{opacity:.35}.composeHint{display:block;margin:5px 0 0 91px;color:var(--muted);font-size:9px}.fileChips{display:flex;gap:6px;overflow-x:auto;padding:0 0 8px 91px}.fileChips span{display:flex;align-items:center;gap:5px;border:1px solid var(--line);background:var(--panel);border-radius:8px;padding:5px 7px;font-size:10px;white-space:nowrap}.fileChips button{border:0;background:none;color:var(--muted)}.emojiPicker{position:absolute;left:50px;bottom:65px;display:grid;grid-template-columns:repeat(8,34px);gap:3px;padding:8px;background:var(--surface);border:1px solid var(--line);border-radius:13px;box-shadow:0 15px 45px rgba(0,0,0,.22);z-index:5}.emojiPicker button{width:34px;height:34px;border:0;background:transparent;font-size:19px;border-radius:7px}.emojiPicker button:hover{background:var(--panel)}
+      .contextPane{border-left:1px solid var(--line);padding:20px;overflow:auto;background:var(--surface)}.contextPane h2{font-size:20px;margin:8px 0}.sourceName{font-size:11px;color:var(--muted)}.contextCards{display:grid;gap:8px;margin:18px 0 24px}.contextCards>div{padding:12px;border:1px solid var(--line);border-radius:12px;background:var(--panel);display:flex;flex-direction:column;gap:3px}.contextCards small{font-size:9px;letter-spacing:.1em;color:var(--muted)}.contextCards b{font-size:12px}.contextCards span{font-size:10px;color:var(--muted)}.ellipsis{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.leadAction,.secondaryAction{width:100%;border-radius:12px;padding:13px 10px;font-weight:800;margin-bottom:8px}.leadAction{border:0;background:var(--orange);color:#111}.secondaryAction{border:1px solid var(--line);background:transparent;color:var(--text)}.secondaryAction:disabled{opacity:.35}.spamAction{width:100%;border:0;background:transparent;color:var(--muted);padding:12px}.empty{padding:30px;text-align:center;color:var(--muted);font-size:12px}.empty.big{margin:auto}.msgToast{position:fixed;right:24px;bottom:24px;z-index:999;background:#111;color:#fff;border:1px solid #333;border-radius:12px;padding:12px 16px;box-shadow:0 12px 40px rgba(0,0,0,.3)}
+      .integrationPage{border:1px solid var(--line);border-radius:18px;padding:20px;background:var(--surface)}.integrationTitle{display:flex;justify-content:space-between;gap:20px;align-items:flex-end;margin-bottom:16px}.integrationTitle h2{margin:4px 0}.integrationTitle>span{color:var(--muted);font-size:12px}.integrationGrid{display:grid;gap:10px}.integrationGrid article{display:grid;grid-template-columns:48px 1fr auto;gap:13px;align-items:center;border:1px solid var(--line);border-radius:14px;padding:13px;background:var(--panel)}.intIcon{width:46px;height:46px;border-radius:12px;background:var(--surface);display:grid;place-items:center;font-weight:900}.integrationGrid strong{display:block}.integrationGrid p{font-size:11px;color:var(--muted);margin:4px 0}.integrationGrid code{font-size:10px}.intState{font-size:10px;border:1px solid var(--line);padding:7px 9px;border-radius:999px;color:var(--muted)}.intState.ready{color:#21c887;border-color:#267855}
+      @media(max-width:1250px){.messengerShell{grid-template-columns:330px minmax(380px,1fr)}.contextPane{display:none}}@media(max-width:850px){.msgHeader{flex-direction:column}.msgHeader h1{font-size:34px}.sourceToolbar{align-items:flex-start;flex-direction:column}.messengerShell{grid-template-columns:1fr;height:auto;min-height:700px}.conversationList{max-height:330px;border-right:0;border-bottom:1px solid var(--line)}.chatPane{min-height:560px}.contextPane{display:none}}
+    `}</style>
   </div>;
 }
