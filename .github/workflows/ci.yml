@@ -31,6 +31,9 @@ jobs:
       - name: Install dependencies
         run: npm install --no-audit --no-fund
 
+      - name: Vehicle pricing classifier smoke test
+        run: npx --no-install tsx scripts/vehicle-classifier-smoke.ts
+
       - name: Production build
         env:
           DATABASE_URL: postgresql://build:build@localhost:5432/build
