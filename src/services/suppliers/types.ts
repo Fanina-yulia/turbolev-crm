@@ -1,4 +1,4 @@
-export type SupplierId = "bm-parts" | "unique-trade" | "autonova-d";
+export type SupplierId = "bm-parts" | "unique-trade" | "autonova-d" | "atl";
 
 export type SupplierCapability =
   | "SEARCH"
