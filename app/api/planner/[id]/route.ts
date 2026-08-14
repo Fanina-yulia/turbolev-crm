@@ -15,11 +15,13 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
     if (!result.ok && "conflict" in result) {
       return NextResponse.json({
         status: "CONFLICT",
-        message: `Перенесення неможливе: ${result.conflict.resource} вже зайнятий у цей час.`,
+        message: result.conflict.resourceType === "MECHANIC"
+          ? `Перенесення неможливе: ${result.conflict.resource} уже веде 2 автомобілі одночасно. Третє паралельне авто заборонено.`
+          : `Перенесення неможливе: ${result.conflict.resource} уже зайнятий у цей час.`,
         conflict: result.conflict,
       }, { status: 409 });
     }
-    return NextResponse.json({ status: "OK", appointment: result.appointment });
+    return NextResponse.json({ status: "OK", appointment: result.appointment, warning: result.warning ?? null });
   } catch (error) {
     const code = error instanceof Error ? error.message : "UNKNOWN";
     const message = code === "INVALID_TIME_RANGE"
