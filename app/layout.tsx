@@ -3,6 +3,7 @@ import "./globals.css";
 import "./theme-fixes.css";
 import "./new-request-wizard.css";
 import "./vehicle-identification-v3.css";
+import "./vehicle-configuration.css";
 import "./vehicle-lookup.css";
 import "./vehicle-intelligence.css";
 import "./quick-lookup-order.css";
@@ -14,6 +15,7 @@ import "./settings-suppliers.css";
 import "./settings-integrations.css";
 import { PhoneInputNormalizer } from "./phone-input-normalizer";
 import { LeadDetailsEnhancer } from "./lead-details-enhancer";
+import { VehicleConfigurationEnhancer } from "./vehicle-configuration-enhancer";
 
 export const metadata: Metadata = {
   title: "Turbo LEV CRM",
@@ -26,7 +28,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
   return (
     <html lang="uk" suppressHydrationWarning>
       <head><script dangerouslySetInnerHTML={{ __html: themeBootstrap }} /></head>
-      <body><PhoneInputNormalizer /><LeadDetailsEnhancer />{children}</body>
+      <body><PhoneInputNormalizer /><LeadDetailsEnhancer /><VehicleConfigurationEnhancer />{children}</body>
     </html>
   );
 }
