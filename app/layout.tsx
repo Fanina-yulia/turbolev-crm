@@ -18,6 +18,7 @@ import "./settings-integrations.css";
 import { PhoneInputNormalizer } from "./phone-input-normalizer";
 import { LeadDetailsEnhancer } from "./lead-details-enhancer";
 import { VehicleConfigurationEnhancer } from "./vehicle-configuration-enhancer";
+import { WorkflowFilterEnhancer } from "./workflow-filter-enhancer";
 
 export const metadata: Metadata = {
   title: "Turbo LEV CRM",
@@ -30,7 +31,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
   return (
     <html lang="uk" suppressHydrationWarning>
       <head><script dangerouslySetInnerHTML={{ __html: themeBootstrap }} /></head>
-      <body><PhoneInputNormalizer /><LeadDetailsEnhancer /><VehicleConfigurationEnhancer />{children}</body>
+      <body><PhoneInputNormalizer /><LeadDetailsEnhancer /><VehicleConfigurationEnhancer /><WorkflowFilterEnhancer />{children}</body>
     </html>
   );
 }
