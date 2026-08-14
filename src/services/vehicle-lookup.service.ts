@@ -48,6 +48,29 @@ export type GlobalVehicleLookupResponse = {
   };
 };
 
+type CompactRegistryRow = {
+  vin: string | null;
+  brand: string | null;
+  model: string | null;
+  makeYear: number | null;
+  engineVolumeCm3: number | null;
+  fuelType: string | null;
+  vehicleTypeRaw: string | null;
+  sourceYear: number;
+};
+
+function registrationPlateKey(plate: string): bigint | null {
+  if (!/^[A-Z0-9]{6,10}$/.test(plate)) return null;
+  let value = 0n;
+  for (const char of plate) {
+    const code = char.charCodeAt(0);
+    const digit = code >= 48 && code <= 57 ? code - 48 : code - 65 + 10;
+    if (digit < 0 || digit >= 36) return null;
+    value = value * 36n + BigInt(digit);
+  }
+  return value * 16n + BigInt(plate.length);
+}
+
 async function lookupCrmVehicle(plate: string): Promise<GlobalVehicleLookupResponse | null> {
   const prisma = getPrisma();
   const vehicle = await prisma.vehicle.findFirst({
@@ -108,8 +131,73 @@ async function lookupCrmVehicle(plate: string): Promise<GlobalVehicleLookupRespo
   };
 }
 
+function mapCompactRegistryRow(plate: string, row: CompactRegistryRow): GlobalVehicleLookupResponse {
+  const classification = classifyVehicle({
+    make: row.brand ?? "",
+    model: row.model ?? "",
+    year: row.makeYear?.toString() ?? "",
+    engineVolume: row.engineVolumeCm3 ? (row.engineVolumeCm3 / 1000).toString() : "",
+    fuelType: row.fuelType ?? "",
+    bodyType: row.vehicleTypeRaw ?? "",
+  });
+
+  return {
+    status: "FOUND",
+    lookupLevel: "MVS_INDEX",
+    plate,
+    attributionUrl: MVS_OPEN_DATA_SOURCE_URL,
+    message: `Знайдено у швидкому локальному індексі МВС за ${row.sourceYear} рік`,
+    vehicle: {
+      id: null,
+      clientId: null,
+      clientName: null,
+      clientPhone: null,
+      vin: row.vin,
+      make: row.brand,
+      model: row.model,
+      year: row.makeYear,
+      mileageKm: null,
+      engine: row.engineVolumeCm3 ? `${(row.engineVolumeCm3 / 1000).toFixed(1)} ${row.fuelType ?? ""}`.trim() : row.fuelType,
+      engineVolumeCm3: row.engineVolumeCm3,
+      engineVolumeL: row.engineVolumeCm3 ? row.engineVolumeCm3 / 1000 : null,
+      fuelType: row.fuelType,
+      bodyType: row.vehicleTypeRaw,
+      grossWeightKg: null,
+      driveType: null,
+      vehicleType: classification.vehicleType,
+      turboLevClass: classification.turboLevClass,
+      turboLevClassLabel: TURBO_LEV_CLASS_LABELS[classification.turboLevClass],
+      priceCoefficient: classification.priceCoefficient,
+      classificationSource: "MVS_COMPACT_INDEX+RULES",
+      classificationConfidence: classification.confidence,
+      classificationReason: classification.reason,
+      manualClassOverride: false,
+      vehicleDataSource: "MVS_INDEX",
+      vehicleDataConfidence: row.vin ? 96 : 90,
+      registrationDate: null,
+      sourceYear: row.sourceYear,
+    },
+  };
+}
+
 async function lookupRegistryIndex(plate: string): Promise<GlobalVehicleLookupResponse | null> {
   const prisma = getPrisma();
+  const key = registrationPlateKey(plate);
+
+  if (key !== null) {
+    try {
+      const rows = await prisma.$queryRaw<CompactRegistryRow[]>`
+        SELECT vin, brand, model, "makeYear", "engineVolumeCm3", "fuelType", "vehicleTypeRaw", "sourceYear"
+        FROM "VehicleRegistryCompact"
+        WHERE "plateKey" = ${key}
+        LIMIT 1
+      `;
+      if (rows[0]) return mapCompactRegistryRow(plate, rows[0]);
+    } catch (error) {
+      console.warn("Compact MVS registry is not available yet; trying legacy index", error);
+    }
+  }
+
   const row = await prisma.vehicleRegistryEntry.findUnique({ where: { plateNormalized: plate } });
   if (!row) return null;
 
