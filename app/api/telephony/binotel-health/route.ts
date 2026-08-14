@@ -13,18 +13,26 @@ export async function GET() {
   ] as const;
 
   const missing = required.filter((name) => !process.env[name]?.trim());
+  const databaseConfigured = Boolean(process.env.DATABASE_URL?.trim());
 
   return NextResponse.json(
     {
-      ok: missing.length === 0,
+      ok: missing.length === 0 && databaseConfigured,
       integration: "binotel",
       apiVersion: process.env.BINOTEL_API_VERSION?.trim() || "4.0",
       websocketConfigured: Boolean(
         process.env.BINOTEL_WS_KEY?.trim() && process.env.BINOTEL_WS_SECRET?.trim(),
       ),
-      databaseConfigured: Boolean(process.env.DATABASE_URL?.trim()),
-      missing,
+      webhookTokenConfigured: Boolean(process.env.BINOTEL_WEBHOOK_TOKEN?.trim()),
+      databaseConfigured,
+      migrationConnectionConfigured: Boolean(
+        process.env.DATABASE_URL_UNPOOLED?.trim() || process.env.DATABASE_URL?.trim(),
+      ),
+      missing: [
+        ...missing,
+        ...(!databaseConfigured ? ["DATABASE_URL"] : []),
+      ],
     },
-    { status: missing.length === 0 ? 200 : 503 },
+    { status: missing.length === 0 && databaseConfigured ? 200 : 503 },
   );
 }
