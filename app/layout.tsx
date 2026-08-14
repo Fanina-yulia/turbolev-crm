@@ -3,6 +3,7 @@ import "./globals.css";
 import "./theme-fixes.css";
 import "./chatgpt-typography.css";
 import "./pipeline-navigation.css";
+import "./sidebar-groups.css";
 import "./new-request-wizard.css";
 import "./vehicle-identification-v3.css";
 import "./vehicle-configuration.css";
@@ -19,6 +20,7 @@ import { PhoneInputNormalizer } from "./phone-input-normalizer";
 import { LeadDetailsEnhancer } from "./lead-details-enhancer";
 import { VehicleConfigurationEnhancer } from "./vehicle-configuration-enhancer";
 import { WorkflowFilterEnhancer } from "./workflow-filter-enhancer";
+import { CrmDataBridge } from "./crm-data-bridge";
 
 export const metadata: Metadata = {
   title: "Turbo LEV CRM",
@@ -31,7 +33,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
   return (
     <html lang="uk" suppressHydrationWarning>
       <head><script dangerouslySetInnerHTML={{ __html: themeBootstrap }} /></head>
-      <body><PhoneInputNormalizer /><LeadDetailsEnhancer /><VehicleConfigurationEnhancer /><WorkflowFilterEnhancer />{children}</body>
+      <body><PhoneInputNormalizer /><LeadDetailsEnhancer /><VehicleConfigurationEnhancer /><WorkflowFilterEnhancer /><CrmDataBridge />{children}</body>
     </html>
   );
 }
