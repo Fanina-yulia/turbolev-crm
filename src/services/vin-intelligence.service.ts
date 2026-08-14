@@ -202,7 +202,7 @@ async function writeCache(result: VinIntelligence) {
 }
 
 async function decodeLocal(vin: string, validation: ReturnType<typeof validateVin>): Promise<VinIntelligence | null> {
-  if (process.env.VPIC_LOCAL_ENABLED !== "true") return null;
+  if (process.env.VPIC_LOCAL_ENABLED === "false") return null;
   try {
     const prisma = getPrisma();
     const rows = await prisma.$queryRawUnsafe<Record<string, unknown>[]>("SELECT * FROM vpic.spVinDecode($1)", vin);
