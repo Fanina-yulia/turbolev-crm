@@ -1,16 +1,10 @@
 #!/usr/bin/env python3
-"""One-shot/resumable recovery for the malformed 2022 MVS export.
-
-Loads the normal importer, replaces only its encoding detector with a
-schema-aware detector, and runs year 2022. This keeps the production import
-logic identical while making the historical malformed export diagnosable.
-"""
+"""One-shot/resumable recovery for the malformed 2022 MVS export."""
 import os
 import runpy
 
 IMPORTER_PATH = os.path.join(os.path.dirname(__file__), "import-mvs-open-data.py")
 mod = runpy.run_path(IMPORTER_PATH)
-
 SAMPLE_SIZE = mod["SAMPLE_SIZE"]
 
 
@@ -40,7 +34,10 @@ def schema_aware_encoding(stream):
         line_count = len(lines)
         nul_count = lower.count("\x00")
         replacement_count = lower.count("\ufffd")
-        asciiish = sum(1 for ch in lower[:12000] if ch.isascii() and (ch.isprintable() or ch in "\r\n\t"))
+        asciiish = sum(
+            1 for ch in lower[:12000]
+            if ch.isascii() and (ch.isprintable() or ch in "\r\n\t")
+        )
         ascii_ratio = asciiish / max(1, min(len(lower), 12000))
 
         score = known * 1000
@@ -73,7 +70,11 @@ def schema_aware_encoding(stream):
     return encoding
 
 
-mod["detect_encoding"] = schema_aware_encoding
+# Functions created by runpy keep the original execution globals dict.
+# Patch that dict directly so import_text_member() really calls our detector.
+importer_globals = mod["import_text_member"].__globals__
+importer_globals["detect_encoding"] = schema_aware_encoding
+
 os.environ["MVS_IMPORT_YEARS"] = "2022"
 os.environ.pop("MVS_RESUME_RECOVERY", None)
 raise SystemExit(mod["main"]())
