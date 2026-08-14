@@ -5,6 +5,8 @@ import styles from "./global-vehicle-search.module.css";
 
 type VehicleResult = {
   vin?: string | null;
+  wmi?: string | null;
+  region?: string | null;
   make?: string | null;
   model?: string | null;
   year?: number | null;
@@ -15,7 +17,15 @@ type VehicleResult = {
   driveType?: string | null;
   trim?: string | null;
   series?: string | null;
+  transmission?: string | null;
   plantCountry?: string | null;
+};
+
+type Validation = {
+  region?: string;
+  wmi?: string | null;
+  checkDigit?: { status?: string; actual?: string | null; expected?: string | null };
+  warnings?: string[];
 };
 
 function normalizePlate(value: string) {
@@ -35,11 +45,15 @@ export function GlobalVehicleSearch() {
   const [message, setMessage] = useState("");
   const [askVin, setAskVin] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [confidence, setConfidence] = useState<number | null>(null);
+  const [fieldConfidence, setFieldConfidence] = useState<Record<string, number>>({});
+  const [validation, setValidation] = useState<Validation | null>(null);
+  const [cached, setCached] = useState(false);
 
   async function lookupPlate() {
     const normalized = normalizePlate(plate);
     if (normalized.length < 6) return setMessage("Вкажіть державний номер.");
-    setBusy(true); setMessage(""); setResult(null); setAskVin(false);
+    setBusy(true); setMessage(""); setResult(null); setAskVin(false); setConfidence(null); setValidation(null);
     try {
       const response = await fetch(`/api/vehicles/lookup?plate=${encodeURIComponent(normalized)}`, { cache: "no-store" });
       const data = await response.json();
@@ -47,6 +61,7 @@ export function GlobalVehicleSearch() {
         setResult(data.vehicle);
         setVin(data.vehicle.vin ?? "");
         setSource(data.lookupLevel ?? data.vehicle.vehicleDataSource ?? "CRM");
+        setConfidence(data.vehicle.vehicleDataConfidence ?? null);
       } else {
         setAskVin(true);
         setMessage("Номер не знайдено в українській базі. Для іноземного або невідомого номера введіть VIN.");
@@ -60,13 +75,17 @@ export function GlobalVehicleSearch() {
   async function lookupVin() {
     const normalized = normalizeVin(vin);
     if (normalized.length !== 17) return setMessage("VIN має містити 17 символів.");
-    setBusy(true); setMessage(""); setResult(null);
+    setBusy(true); setMessage(""); setResult(null); setConfidence(null); setFieldConfidence({}); setValidation(null);
     try {
       const response = await fetch(`/api/vehicles/vin?vin=${encodeURIComponent(normalized)}`, { cache: "no-store" });
       const data = await response.json();
+      setValidation(data.validation ?? null);
       if (response.ok && data.status === "FOUND" && data.vehicle) {
         setResult(data.vehicle);
-        setSource(data.source ?? "NHTSA_VPIC");
+        setSource(data.sourceDetail ?? data.source ?? "NHTSA_VPIC_API");
+        setConfidence(typeof data.confidence === "number" ? data.confidence : null);
+        setFieldConfidence(data.fieldConfidence ?? {});
+        setCached(Boolean(data.cached));
         setAskVin(false);
         if (data.warning) setMessage(data.warning);
       } else {
@@ -78,7 +97,7 @@ export function GlobalVehicleSearch() {
   }
 
   function close() {
-    setOpen(false); setMessage(""); setResult(null); setAskVin(false);
+    setOpen(false); setMessage(""); setResult(null); setAskVin(false); setConfidence(null); setFieldConfidence({}); setValidation(null); setCached(false);
   }
 
   return <div className={styles.wrap}>
@@ -88,11 +107,22 @@ export function GlobalVehicleSearch() {
         <div className={styles.head}><div><p>TURBO LEV · VEHICLE ID</p><h2>Ідентифікація автомобіля</h2></div><button className={styles.close} onClick={close}>×</button></div>
         <div className={styles.body}>
           <label className={styles.label}><span>Державний номер</span><div className={styles.row}><input value={plate} onChange={(e) => setPlate(normalizePlate(e.target.value))} placeholder="AA1234BB / AB1234" /><button type="button" onClick={lookupPlate} disabled={busy}>{busy ? "Шукаю…" : "Знайти"}</button></div></label>
-          {(askVin || vin) && <div className={styles.askVin}><b>Не український номер або авто не знайдено?</b><span>Введіть VIN — це наш основний fallback для Латвії, Литви, Польщі, Німеччини та інших країн.</span></div>}
+          {(askVin || vin) && <div className={styles.askVin}><b>Не український номер або авто не знайдено?</b><span>Введіть VIN. Для Turbo LEV VIN є головним ідентифікатором автомобіля, а номер — лише способом його знайти.</span></div>}
           <label className={styles.label}><span>VIN</span><div className={styles.row}><input value={vin} onChange={(e) => setVin(normalizeVin(e.target.value))} placeholder="17 символів" /><button type="button" onClick={lookupVin} disabled={busy}>{busy ? "Декодую…" : "Декодувати VIN"}</button></div></label>
+
+          {validation && <div className={styles.validation}>
+            <div><small>WMI</small><b>{validation.wmi ?? "—"}</b></div>
+            <div><small>Регіон</small><b>{validation.region ?? "—"}</b></div>
+            <div><small>Контроль VIN</small><b>{validation.checkDigit?.status ?? "—"}</b></div>
+          </div>}
+
           {message && <div className={styles.hint}>{message}</div>}
-          {result && <div className={styles.result}><strong>{[result.make, result.model, result.year].filter(Boolean).join(" ") || "Автомобіль знайдено"}</strong>{result.vin && <span>VIN {result.vin}</span>}<div className={styles.meta}>{result.engineVolumeL && <span>{result.engineVolumeL} л</span>}{result.engine && <span>{result.engine}</span>}{result.fuelType && <span>{result.fuelType}</span>}{result.bodyType && <span>{result.bodyType}</span>}{result.driveType && <span>{result.driveType}</span>}{result.trim && <span>{result.trim}</span>}{result.plantCountry && <span>{result.plantCountry}</span>}</div><small className={styles.source}>Джерело: {source}</small></div>}
-          <div className={styles.hint}>Логіка CRM: український номер → локальний індекс МВС. Не знайдено / іноземний номер → просимо VIN → безкоштовний VIN-декодер.</div>
+          {result && <div className={styles.result}>
+            <div className={styles.resultHead}><div><strong>{[result.make, result.model, result.year].filter(Boolean).join(" ") || "Автомобіль знайдено"}</strong>{result.vin && <span>VIN {result.vin}</span>}</div>{confidence != null && <div className={styles.score}><small>Довіра</small><b>{confidence}%</b></div>}</div>
+            <div className={styles.meta}>{result.engineVolumeL && <span>{result.engineVolumeL} л · {fieldConfidence.engineVolumeL ?? "—"}%</span>}{result.engine && <span>{result.engine} · {fieldConfidence.engine ?? "—"}%</span>}{result.fuelType && <span>{result.fuelType} · {fieldConfidence.fuelType ?? "—"}%</span>}{result.bodyType && <span>{result.bodyType} · {fieldConfidence.bodyType ?? "—"}%</span>}{result.driveType && <span>{result.driveType} · {fieldConfidence.driveType ?? "—"}%</span>}{result.transmission && <span>{result.transmission}</span>}{result.trim && <span>{result.trim}</span>}{result.plantCountry && <span>{result.plantCountry}</span>}</div>
+            <small className={styles.source}>Джерело: {source}{cached ? " · кеш Turbo LEV" : ""}</small>
+          </div>}
+          <div className={styles.hint}>Каскад: український номер → локальний МВС → VIN → кеш Turbo LEV → локальний vPIC → NHTSA API. Якщо джерело не підтверджує поле, CRM залишає його порожнім, а не вигадує.</div>
         </div>
       </div>
     }</div>}
