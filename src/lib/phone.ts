@@ -7,28 +7,29 @@ export function normalizePhone(input: unknown): string {
   let digits = raw.replace(/\D/g, "");
   if (!digits) return "";
 
-  // 00XXXXXXXX -> +XXXXXXXX
+  // International prefix 00XXXXXXXX -> XXXXXXXX.
   if (digits.startsWith("00")) {
     digits = digits.slice(2);
   }
 
-  // Ukrainian national format 0XXXXXXXXX -> +380XXXXXXXXX.
+  // Ukrainian national format 0XXXXXXXXX -> 380XXXXXXXXX.
   if (digits.length === 10 && digits.startsWith("0")) {
     digits = `38${digits}`;
   }
 
-  return `+${digits}`;
+  // Canonical CRM key contains digits only. This is the value stored in
+  // phoneNormalized and used for deduplication/matching.
+  return digits;
 }
 
 export function phoneVariants(input: unknown): string[] {
   const normalized = normalizePhone(input);
   if (!normalized) return [];
 
-  const digits = normalized.replace(/\D/g, "");
-  const variants = new Set<string>([normalized, digits]);
+  const variants = new Set<string>([normalized, `+${normalized}`]);
 
-  if (digits.length === 12 && digits.startsWith("380")) {
-    variants.add(`0${digits.slice(3)}`);
+  if (normalized.length === 12 && normalized.startsWith("380")) {
+    variants.add(`0${normalized.slice(3)}`);
   }
 
   return [...variants];
