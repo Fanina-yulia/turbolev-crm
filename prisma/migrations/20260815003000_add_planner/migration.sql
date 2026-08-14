@@ -104,3 +104,8 @@ INSERT INTO "ServicePost" ("id","locationId","name","sortOrder","isActive","capa
 ('post_glevakha_1','loc_glevakha','Пост 1',10,true,ARRAY[]::TEXT[],CURRENT_TIMESTAMP),
 ('post_glevakha_2','loc_glevakha','Пост 2',20,true,ARRAY[]::TEXT[],CURRENT_TIMESTAMP)
 ON CONFLICT ("id") DO NOTHING;
+
+INSERT INTO "ServiceMechanic" ("id","locationId","name","sortOrder","isActive","updatedAt") VALUES
+('mechanic_glevakha_1','loc_glevakha','Автомеханік 1',10,true,CURRENT_TIMESTAMP),
+('mechanic_glevakha_2','loc_glevakha','Автомеханік 2',20,true,CURRENT_TIMESTAMP)
+ON CONFLICT ("id") DO NOTHING;
