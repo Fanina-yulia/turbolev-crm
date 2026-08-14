@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 import "./theme-fixes.css";
 import "./new-request-wizard.css";
+import "./vehicle-identification-v3.css";
 import "./vehicle-lookup.css";
 import "./vehicle-intelligence.css";
 import "./quick-lookup-order.css";
@@ -24,14 +25,8 @@ const themeBootstrap = `(function(){try{var saved=window.localStorage.getItem('t
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="uk" suppressHydrationWarning>
-      <head>
-        <script dangerouslySetInnerHTML={{ __html: themeBootstrap }} />
-      </head>
-      <body>
-        <PhoneInputNormalizer />
-        <LeadDetailsEnhancer />
-        {children}
-      </body>
+      <head><script dangerouslySetInnerHTML={{ __html: themeBootstrap }} /></head>
+      <body><PhoneInputNormalizer /><LeadDetailsEnhancer />{children}</body>
     </html>
   );
 }
