@@ -6,6 +6,8 @@ import { NewRequestWizardV2 } from "./new-request-wizard-v2";
 import { SettingsPanel } from "./settings-panel";
 import { LeadsBoardV2 } from "./leads-board-v2";
 import { CommunicationsHub } from "./communications-hub";
+import { GlobalVehicleSearch } from "./global-vehicle-search";
+import { PartsCatalog } from "./parts-catalog";
 import { turboLevLogoDark, turboLevLogoLight } from "@/src/brand/logos";
 
 const nav = ["Огляд станції", "Комунікації", "Ліди", "Клієнти та авто", "Планувальник", "Діагностика", "Замовлення-наряди", "Підбір запчастин", "Закупівлі та склад", "Виробництво", "Контроль якості", "Оплати", "Гарантії", "Аналітика"];
@@ -36,14 +38,14 @@ export function CrmShell() {
       <div className="sidebarFoot"><span className="liveDot" /> Станція онлайн</div>
     </aside>
     <section className="workspace">
-      {active === "Комунікації" ? <CommunicationsHub /> : active === "Ліди" ? <LeadsBoardV2 /> : active === "Огляд станції" ? <Overview /> : <div className="comingSoon"><p className="eyebrow">TURBO LEV CRM</p><h1>{active}</h1><p>Розділ буде реалізований наступним.</p></div>}
+      {active === "Комунікації" ? <CommunicationsHub /> : active === "Ліди" ? <LeadsBoardV2 /> : active === "Підбір запчастин" ? <PartsCatalog /> : active === "Огляд станції" ? <Overview /> : <div className="comingSoon"><p className="eyebrow">TURBO LEV CRM</p><h1>{active}</h1><p>Розділ буде реалізований наступним.</p></div>}
     </section>
   </main>;
 }
 
 function Overview() {
   return <>
-    <header className="topbar"><div><p className="eyebrow">TURBO LEV · ОПЕРАЦІЙНИЙ ЦЕНТР</p><h1>Огляд станції</h1></div><div className="topActions"><button className="ghost">Пошук VIN / номер</button><NewRequestWizardV2 /></div></header>
+    <header className="topbar"><div><p className="eyebrow">TURBO LEV · ОПЕРАЦІЙНИЙ ЦЕНТР</p><h1>Огляд станції</h1></div><div className="topActions"><GlobalVehicleSearch /><NewRequestWizardV2 /></div></header>
     <div className="alert"><strong>3 авто потребують дії</strong><span>CRM показує тільки те, що має відповідального, строк і наступний крок.</span><button onClick={() => window.dispatchEvent(new CustomEvent("turbolev:navigate", { detail: "Комунікації" }))}>Комунікації</button></div>
     <section className="kpis"><article><span>Авто сьогодні</span><strong>14</strong><small>+3 до вчора</small></article><article><span>В роботі</span><strong>6</strong><small>2 / 2 постів зайнято</small></article><article><span>Виручка сьогодні</span><strong>₴ 42 680</strong><small>роботи + деталі</small></article><article><span>Валовий прибуток</span><strong>₴ 17 240</strong><small>40,4% від виручки</small></article></section>
     <section className="sectionBlock"><div className="sectionHead"><div><p className="eyebrow">ВІД ЗАЯВКИ ДО ГРОШЕЙ</p><h2>Живий маршрут станції</h2></div><span className="muted">сьогодні · демо-дані</span></div><div className="pipeline">{pipeline.map(([name,value,sub]) => <article key={name}><span>{name}</span><strong>{value}</strong><small>{sub}</small></article>)}</div></section>
