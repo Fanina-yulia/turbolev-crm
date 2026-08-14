@@ -118,6 +118,29 @@ model Vehicle {
   @@index([turboLevClass])
 }
 
+model VehicleRegistryEntry {
+  id               BigInt   @id @default(autoincrement())
+  plateNormalized  String
+  vin              String?
+  brand            String?
+  model            String?
+  makeYear         Int?
+  engineVolumeCm3  Int?
+  fuelType         String?
+  bodyType         String?
+  vehicleKind      String?
+  grossWeightKg    Int?
+  registrationDate String?
+  sourceYear       Int
+  importedAt       DateTime @default(now())
+
+  @@unique([plateNormalized, sourceYear, vin])
+  @@index([plateNormalized])
+  @@index([vin])
+  @@index([brand, model])
+  @@index([sourceYear])
+}
+
 model DiagnosticRequest {
   id                  String                  @id @default(cuid())
   clientId            String
