@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 import "./new-request-wizard.css";
 import "./vehicle-lookup.css";
+import { PhoneInputNormalizer } from "./phone-input-normalizer";
 
 export const metadata: Metadata = {
   title: "Turbo LEV CRM",
@@ -11,7 +12,10 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="uk">
-      <body>{children}</body>
+      <body>
+        <PhoneInputNormalizer />
+        {children}
+      </body>
     </html>
   );
 }
