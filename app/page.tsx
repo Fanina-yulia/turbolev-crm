@@ -1,5 +1,6 @@
 import { WorkOrderCockpit, type AttentionCar } from "@/src/components/work-order-cockpit";
 import { ThemeToggle } from "./theme-toggle";
+import { NewRequestWizard } from "./new-request-wizard";
 import { turboLevLogoDark, turboLevLogoLight } from "@/src/brand/logos";
 
 const nav = [
@@ -107,7 +108,7 @@ export default function HomePage() {
           <div className="topActions">
             <ThemeToggle />
             <button className="ghost">Пошук VIN / номер</button>
-            <button className="primary">+ Нова заявка</button>
+            <NewRequestWizard />
           </div>
         </header>
 
