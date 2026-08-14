@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { WorkOrderCockpit, type AttentionCar } from "@/src/components/work-order-cockpit";
-import { NewRequestWizardV3 } from "./new-request-wizard-v3";
 import { GlobalVehicleSearch } from "./global-vehicle-search";
 import type { CrmSectionLabel } from "./crm-navigation";
 
@@ -43,7 +42,7 @@ export function StationOverview(){
   const cars=useMemo<AttentionCar[]>(()=>data?data.attention.map((item)=>{const car=parseVehicle(item.vehicle);return{plate:item.plate,brand:car.brand,model:car.model,year:car.year,status:statusLabels[item.status]||item.status,action:statusAction[item.status]||item.problem||"Відкрити картку",owner:item.mechanic||item.post||"Не призначено",tone:tone(item.status)};}):[],[data]);
 
   return <>
-    <header className="topbar"><div><p className="eyebrow">TURBO LEV · ОПЕРАЦІЙНИЙ ЦЕНТР</p><h1>Огляд станції</h1><span className="muted">{loading?"Синхронізую…":"живі дані Neon"}</span></div><div className="topActions"><GlobalVehicleSearch/><NewRequestWizardV3/></div></header>
+    <header className="topbar"><div><p className="eyebrow">TURBO LEV · ОПЕРАЦІЙНИЙ ЦЕНТР</p><h1>Огляд станції</h1><span className="muted">{loading?"Синхронізую…":"живі дані Neon"}</span></div><div className="topActions"><GlobalVehicleSearch/></div></header>
     {error&&<div className="alert"><strong>Не вдалося оновити огляд</strong><span>{error}</span><button onClick={()=>void load()}>Повторити</button></div>}
     <section className="kpis"><article><span>Авто сьогодні</span><strong>{data?.kpis.carsToday??"—"}</strong><small>{data?.kpis.booked??0} ще записані</small></article><article><span>В роботі</span><strong>{data?.kpis.inRepair??"—"}</strong><small>{data?.kpis.postsOccupied??0} постів зайнято</small></article><article><span>Виручка сьогодні</span><strong>{money(data?.kpis.revenue??null)}</strong><small>з'явиться після модуля оплат</small></article><article><span>Валовий прибуток</span><strong>{money(data?.kpis.grossProfit??null)}</strong><small>без вигаданих цифр</small></article></section>
     <section className="sectionBlock"><div className="sectionHead"><div><p className="eyebrow">ВІД ЗАЯВКИ ДО ГРОШЕЙ</p><h2>Живий маршрут станції</h2></div><span className="muted">сьогодні · Neon</span></div><div className="pipeline">{pipeline.map((item)=><button type="button" className="pipelineAction" key={item.name} onClick={()=>navigate(item)}><span>{item.name}</span><strong>{item.value}</strong><small>{item.sub}</small><em>{item.section} →</em></button>)}</div></section>
