@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 import "./theme-fixes.css";
 import "./chatgpt-typography.css";
+import "./pipeline-navigation.css";
 import "./new-request-wizard.css";
 import "./vehicle-identification-v3.css";
 import "./vehicle-configuration.css";
