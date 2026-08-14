@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import "./new-request-wizard.css";
+import "./vehicle-lookup.css";
 
 export const metadata: Metadata = {
   title: "Turbo LEV CRM",
