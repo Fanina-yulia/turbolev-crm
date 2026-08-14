@@ -60,7 +60,7 @@ export function getCarLogo(carBrand: string): ReactElement {
 
   if (!brand || !logoUrl) return <GenericCarLogo />;
 
-  const monochrome = logoUrl.includes("cdn.jsdelivr.net/npm/simple-icons");
+  const monochrome = Boolean(brand.logoSvgUrl) || logoUrl.toLowerCase().includes(".svg");
 
   return (
     <img
