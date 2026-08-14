@@ -16,7 +16,6 @@
   --soft-text:#aeb6bf;
   --soft-text-2:#79838e;
   --row-button:#171c22;
-  --logo-bg:#0f1216;
   color-scheme:dark;
 }
 :root[data-theme="light"]{
@@ -37,7 +36,6 @@
   --soft-text:#5f6974;
   --soft-text-2:#77818c;
   --row-button:#f4f5f7;
-  --logo-bg:#ffffff;
   color-scheme:light;
 }
 *{box-sizing:border-box}
@@ -46,9 +44,10 @@ button{font:inherit}
 .shell{min-height:100vh;display:grid;grid-template-columns:265px 1fr}
 .sidebar{position:sticky;top:0;height:100vh;background:var(--sidebar);border-right:1px solid var(--line);padding:24px 18px;display:flex;flex-direction:column;transition:background .18s ease,border-color .18s ease}
 .brand{display:flex;gap:14px;align-items:center;padding:4px 6px 28px}
-.brandLogoWrap{width:144px;min-width:144px;height:54px;display:flex;align-items:center;overflow:hidden;border-radius:8px;background:var(--logo-bg)}
-.brandLogo{width:144px;height:auto;display:block}
-.brandLogoLight{display:none}
+.brandLogoWrap{width:144px;min-width:144px;height:54px;display:flex;align-items:center;overflow:hidden;background:transparent}
+.brandLogo{width:144px;height:auto;display:block;background:transparent}
+.brandLogoDark{mix-blend-mode:screen}
+.brandLogoLight{display:none;mix-blend-mode:multiply}
 :root[data-theme="light"] .brandLogoDark{display:none}
 :root[data-theme="light"] .brandLogoLight{display:block}
 .brandText{display:flex;flex-direction:column;border-left:1px solid var(--line);padding-left:12px}
@@ -62,7 +61,7 @@ button{font:inherit}
 .navActive .navDot{background:var(--orange);box-shadow:0 0 0 4px rgba(255,106,0,.12)}
 .sidebarFoot{margin-top:auto;padding:15px 12px;border-top:1px solid var(--line);color:var(--muted);font-size:12px}
 .liveDot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--green);margin-right:8px}
-.workspace{padding:30px 34px 60px;min-width:0}
+.workspace{padding:64px 34px 60px;min-width:0}
 .topbar{display:flex;justify-content:space-between;gap:24px;align-items:center;margin-bottom:22px}
 .eyebrow{margin:0 0 6px;color:var(--orange);font-size:10px;font-weight:800;letter-spacing:.18em}
 .topbar h1,.sectionHead h2{margin:0}
@@ -70,7 +69,7 @@ button{font:inherit}
 .topActions{display:flex;gap:10px;align-items:center}
 .ghost,.primary,.linkButton,.alert button,.themeToggle{border-radius:10px;padding:10px 14px;border:1px solid var(--line);cursor:pointer}
 .ghost,.themeToggle{background:var(--button-bg);color:var(--button-text)}
-.themeToggle{display:inline-flex;gap:7px;align-items:center;white-space:nowrap}
+.themeToggle{position:fixed;top:12px;right:16px;z-index:1000;display:inline-flex;gap:7px;align-items:center;white-space:nowrap;box-shadow:0 8px 24px rgba(0,0,0,.18)}
 .themeToggle span{color:var(--orange);font-size:15px;line-height:1}
 .primary{background:var(--orange);border-color:var(--orange);color:#111;font-weight:800}
 .alert{display:grid;grid-template-columns:auto 1fr auto;gap:16px;align-items:center;border:1px solid rgba(255,106,0,.28);background:linear-gradient(90deg,rgba(255,106,0,.12),rgba(255,106,0,.025));padding:13px 16px;border-radius:12px;margin-bottom:18px}
@@ -136,11 +135,11 @@ button{font:inherit}
   .shell{display:block}
   .sidebar{position:relative;height:auto}
   .sidebar nav{display:none}
-  .workspace{padding:20px 14px}
+  .workspace{padding:64px 14px 20px}
   .topbar{align-items:flex-start;flex-direction:column}
   .topActions{width:100%;flex-wrap:wrap}
-  .topActions button{flex:1}
-  .themeToggle{min-width:104px}
+  .topActions button:not(.themeToggle){flex:1}
+  .themeToggle{top:10px;right:10px;min-width:104px}
   .alert{grid-template-columns:1fr}
   .kpis{grid-template-columns:1fr 1fr}
   .pipeline{grid-template-columns:1fr 1fr}
