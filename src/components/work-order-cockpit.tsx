@@ -21,7 +21,20 @@ function UkrainianPlate({ plate }: { plate: string }) {
         </span>
         <small>UA</small>
       </span>
-      <span className="uaPlateText">{plate}</span>
+      <span
+        className="uaPlateText"
+        style={{
+          fontFamily: '"Bahnschrift Condensed", "Arial Narrow", "Roboto Condensed", Arial, sans-serif',
+          fontSize: "24px",
+          fontWeight: 700,
+          letterSpacing: ".06em",
+          lineHeight: 1,
+          transform: "scaleX(.68) scaleY(1.08)",
+          transformOrigin: "center",
+        }}
+      >
+        {plate}
+      </span>
     </div>
   );
 }
