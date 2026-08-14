@@ -1,6 +1,5 @@
-import { Readable } from "node:stream";
-import { parse } from "csv-parse";
-import unzipper from "unzipper";
+import { unzipSync } from "fflate";
+import { parse } from "csv-parse/sync";
 import { classifyVehicle, type VehicleLookupResult } from "@/src/domain/vehicle-intelligence";
 
 export const MVS_OPEN_DATA_SOURCE_URL =
@@ -55,6 +54,12 @@ function toInt(value: string) {
   return Number.isFinite(parsed) ? parsed : undefined;
 }
 
+function detectDelimiter(text: string) {
+  const firstLine = text.split(/\r?\n/, 1)[0] ?? "";
+  const variants = [",", ";", "\t"];
+  return variants.sort((a, b) => firstLine.split(b).length - firstLine.split(a).length)[0];
+}
+
 function mapRow(row: Record<string, unknown>, sourceYear: number, sourceUrl: string): MvsOpenDataVehicle {
   const capacity = first(row, ["capacity", "engine_capacity", "volume"]);
   const kind = first(row, ["kind", "vehicle_kind", "type"]);
@@ -101,6 +106,34 @@ function mapRow(row: Record<string, unknown>, sourceYear: number, sourceUrl: str
   };
 }
 
+function parseCsvAndFind(bytes: Uint8Array, resource: { year: number; url: string }, targetPlate: string) {
+  const text = new TextDecoder("utf-8").decode(bytes);
+  const delimiter = detectDelimiter(text);
+  const rows = parse(text, {
+    bom: true,
+    columns: (headers: string[]) => headers.map(normalizeHeader),
+    delimiter,
+    relax_column_count: true,
+    relax_quotes: true,
+    skip_empty_lines: true,
+    trim: true,
+  }) as Record<string, unknown>[];
+
+  let latest: Record<string, unknown> | null = null;
+  let latestDate = "";
+  for (const row of rows) {
+    const plate = normalizePlate(first(row, ["n_reg_new", "plate", "registration_number"]));
+    if (plate !== targetPlate) continue;
+    const registrationDate = first(row, ["d_reg", "registration_date"]);
+    if (!latest || registrationDate >= latestDate) {
+      latest = row;
+      latestDate = registrationDate;
+    }
+  }
+
+  return latest ? mapRow(latest, resource.year, resource.url) : null;
+}
+
 async function findInZipResource(
   resource: { year: number; url: string },
   targetPlate: string,
@@ -115,38 +148,15 @@ async function findInZipResource(
     },
   });
 
-  if (!response.ok || !response.body) {
+  if (!response.ok) {
     throw new Error(`MVS resource ${resource.year} returned ${response.status}`);
   }
 
-  const zipStream = Readable.fromWeb(response.body as never).pipe(unzipper.Parse({ forceStream: true }));
-
-  for await (const entry of zipStream) {
-    if (entry.type !== "File" || !/\.(csv|txt)$/i.test(entry.path)) {
-      entry.autodrain();
-      continue;
-    }
-
-    const parser = entry.pipe(
-      parse({
-        bom: true,
-        columns: (headers: string[]) => headers.map(normalizeHeader),
-        delimiter: [",", ";", "\t"],
-        relax_column_count: true,
-        relax_quotes: true,
-        skip_empty_lines: true,
-        trim: true,
-      }),
-    );
-
-    for await (const rawRow of parser) {
-      const row = rawRow as Record<string, unknown>;
-      const plate = normalizePlate(first(row, ["n_reg_new", "plate", "registration_number"]));
-      if (plate && plate === targetPlate) {
-        zipStream.destroy();
-        return mapRow(row, resource.year, resource.url);
-      }
-    }
+  const archive = unzipSync(new Uint8Array(await response.arrayBuffer()));
+  const entries = Object.entries(archive).filter(([name]) => /\.(csv|txt)$/i.test(name));
+  for (const [, bytes] of entries) {
+    const found = parseCsvAndFind(bytes, resource, targetPlate);
+    if (found) return found;
   }
 
   return null;
@@ -156,18 +166,17 @@ export async function lookupMvsOpenDataByPlate(rawPlate: string): Promise<MvsOpe
   const plate = normalizePlate(rawPlate);
   if (plate.length < 6) return null;
 
-  const timeoutMs = Number(process.env.MVS_OPEN_DATA_TIMEOUT_MS ?? 22000);
+  const timeoutMs = Number(process.env.MVS_OPEN_DATA_TIMEOUT_MS ?? 25000);
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
-    // Current year is small enough for live lookup and gives an immediate free result.
+    // 2026 archive is the fast, no-cost online path used in production.
     const current = await findInZipResource(CURRENT_RESOURCE, plate, controller.signal);
     if (current) return current;
 
-    // Historical live scans are opt-in because older archives are much larger.
-    const historicalEnabled = process.env.MVS_OPEN_DATA_HISTORICAL_LIVE === "true";
-    if (!historicalEnabled) return null;
+    // Older archives are much larger, so live historical scanning is opt-in.
+    if (process.env.MVS_OPEN_DATA_HISTORICAL_LIVE !== "true") return null;
 
     for (const resource of EXTRA_RESOURCES) {
       const found = await findInZipResource(resource, plate, controller.signal);
