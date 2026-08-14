@@ -1,0 +1,113 @@
+enum SupplierCode {
+  BM_PARTS
+  UNIQUE_TRADE
+  AUTONOVA_D
+  OTHER
+}
+
+enum SupplierConnectionStatus {
+  NOT_CONFIGURED
+  CONFIGURED
+  CONNECTED
+  ERROR
+  DISABLED
+}
+
+enum SupplierOrderStatus {
+  DRAFT
+  SUBMITTED
+  CONFIRMED
+  PARTIAL
+  FULFILLED
+  CANCELLED
+  ERROR
+}
+
+model Supplier {
+  id                   String   @id @default(cuid())
+  code                 SupplierCode @unique
+  name                 String
+  websiteUrl           String?  @db.Text
+  apiBaseUrl           String?  @db.Text
+  isActive             Boolean  @default(true)
+  priority             Int      @default(100)
+  defaultMarkupPercent Decimal  @default(23.00) @db.Decimal(5, 2)
+  defaultCurrency      String   @default("UAH") @db.VarChar(3)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  credential SupplierCredential?
+  quotes     SupplierProductQuote[]
+  orders     SupplierOrder[]
+
+  @@index([isActive, priority])
+}
+
+model SupplierCredential {
+  id               String                   @id @default(cuid())
+  supplierId       String                   @unique
+  authType         String                   @db.VarChar(40)
+  loginHint        String?                  @db.VarChar(160)
+  externalClientId String?                  @db.VarChar(120)
+  secretRef        Json?
+  status           SupplierConnectionStatus @default(NOT_CONFIGURED)
+  lastCheckedAt    DateTime?
+  lastLatencyMs    Int?
+  lastError        String?                  @db.Text
+  createdAt        DateTime                 @default(now())
+  updatedAt        DateTime                 @updatedAt
+
+  supplier Supplier @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+
+  @@index([status])
+}
+
+model SupplierProductQuote {
+  id                String   @id @default(cuid())
+  supplierId        String
+  query             String?  @db.VarChar(160)
+  externalProductId String?  @db.VarChar(160)
+  article           String   @db.VarChar(120)
+  brand             String?  @db.VarChar(120)
+  name              String?  @db.Text
+  purchasePrice     Decimal? @db.Decimal(14, 2)
+  currency          String?  @db.VarChar(3)
+  multiplicity      Decimal? @db.Decimal(10, 2)
+  available         Boolean  @default(false)
+  stock             Json?
+  delivery          Json?
+  raw               Json?
+  fetchedAt         DateTime @default(now())
+  expiresAt         DateTime?
+
+  supplier Supplier @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+
+  @@index([supplierId, article])
+  @@index([brand, article])
+  @@index([fetchedAt])
+  @@index([expiresAt])
+}
+
+model SupplierOrder {
+  id              String              @id @default(cuid())
+  supplierId      String
+  workOrderId     String?
+  externalOrderId String?             @db.VarChar(160)
+  status          SupplierOrderStatus @default(DRAFT)
+  totalPurchase   Decimal?            @db.Decimal(14, 2)
+  currency        String              @default("UAH") @db.VarChar(3)
+  items           Json
+  requestPayload  Json?
+  responsePayload Json?
+  submittedAt     DateTime?
+  confirmedAt     DateTime?
+  completedAt     DateTime?
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  supplier Supplier @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+
+  @@index([supplierId, status, createdAt])
+  @@index([workOrderId])
+  @@index([externalOrderId])
+}
