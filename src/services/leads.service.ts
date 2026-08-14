@@ -1,4 +1,8 @@
-import { LeadStatus, Prisma } from "@/src/generated/prisma/client";
+import {
+  DiagnosticRequestStatus,
+  LeadStatus,
+  Prisma,
+} from "@/src/generated/prisma/client";
 import type { LeadPatchDto, LeadQuickFilter } from "@/src/dto/leads";
 import { getPrisma } from "@/src/lib/prisma";
 
@@ -137,6 +141,11 @@ export async function updateLead(id: string, dto: LeadPatchDto) {
   });
 }
 
+/**
+ * ARRIVED conversion obeys Hard Gate #1:
+ * Lead -> Client + Vehicle + DiagnosticRequest.
+ * A WorkOrder is deliberately NOT created here.
+ */
 export async function convertLead(id: string) {
   const prisma = getPrisma();
 
@@ -166,6 +175,7 @@ export async function convertLead(id: string) {
       if (byVin && byVin.clientId !== client.id) {
         throw new LeadConflictError("VIN is already linked to another client");
       }
+
       vehicle = byVin || (await tx.vehicle.create({
         data: {
           clientId: client.id,
@@ -184,11 +194,12 @@ export async function convertLead(id: string) {
       });
     }
 
-    const workOrder = await tx.workOrder.create({
+    const diagnosticRequest = await tx.diagnosticRequest.create({
       data: {
         clientId: client.id,
         vehicleId: vehicle.id,
-        status: "ARRIVED",
+        leadId: lead.id,
+        status: DiagnosticRequestStatus.PENDING,
       },
     });
 
@@ -197,7 +208,7 @@ export async function convertLead(id: string) {
       data: {
         leadId: null,
         clientId: client.id,
-        workOrderId: workOrder.id,
+        workOrderId: null,
       },
     });
 
@@ -213,8 +224,14 @@ export async function convertLead(id: string) {
       lead: updatedLead,
       client,
       vehicle,
-      workOrder,
+      diagnosticRequest,
+      workOrder: null,
       movedCallCount: movedCalls.count,
+      hardGate: {
+        code: "WORK_ORDER_AFTER_CONFIRMED_DIAGNOSTICS",
+        passed: false,
+        nextRequiredStatus: DiagnosticRequestStatus.CONFIRMED,
+      },
     };
   });
 }
