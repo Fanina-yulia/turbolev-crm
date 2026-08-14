@@ -13,7 +13,7 @@ function normalizeName(value: unknown) {
   return String(value ?? "").trim().replace(/\s+/g, " ");
 }
 
-function uniqueByName<T extends { name: string }>(items: T[]) {
+function uniqueByName<T extends { name: string }>(items: T[]): T[] {
   const seen = new Set<string>();
   return items.filter((item) => {
     const key = item.name.toLocaleLowerCase("uk-UA");
@@ -34,14 +34,14 @@ async function getJson(path: string) {
 }
 
 export async function listVehicleMakes(query = ""): Promise<{ items: VehicleMakeOption[]; source: string }> {
-  const fallback = FALLBACK_MAKES.map((name) => ({ id: null, name }));
+  const fallback: VehicleMakeOption[] = FALLBACK_MAKES.map((name) => ({ id: null, name }));
   let remote: VehicleMakeOption[] = [];
   let source = "FALLBACK";
 
   try {
     const payload = await getJson("/GetAllMakes?format=json");
     remote = Array.isArray(payload?.Results)
-      ? payload.Results.map((row: Record<string, unknown>) => ({
+      ? payload.Results.map((row: Record<string, unknown>): VehicleMakeOption => ({
           id: Number.isFinite(Number(row.Make_ID)) ? Number(row.Make_ID) : null,
           name: normalizeName(row.Make_Name),
         }))
@@ -52,7 +52,7 @@ export async function listVehicleMakes(query = ""): Promise<{ items: VehicleMake
   }
 
   const needle = query.trim().toLocaleLowerCase("uk-UA");
-  const items = uniqueByName([...fallback, ...remote])
+  const items = uniqueByName<VehicleMakeOption>([...fallback, ...remote])
     .filter((item) => !needle || item.name.toLocaleLowerCase("uk-UA").includes(needle))
     .sort((a, b) => a.name.localeCompare(b.name, "uk-UA"));
 
@@ -65,16 +65,17 @@ export async function listVehicleModels(make: string): Promise<{ items: VehicleM
 
   try {
     const payload = await getJson(`/GetModelsForMake/${encodeURIComponent(normalizedMake)}?format=json`);
-    const items = uniqueByName(
-      Array.isArray(payload?.Results)
-        ? payload.Results.map((row: Record<string, unknown>) => ({
-            id: Number.isFinite(Number(row.Model_ID)) ? Number(row.Model_ID) : null,
-            name: normalizeName(row.Model_Name),
-            makeId: Number.isFinite(Number(row.Make_ID)) ? Number(row.Make_ID) : null,
-            makeName: normalizeName(row.Make_Name) || normalizedMake,
-          }))
-        : [],
-    ).sort((a, b) => a.name.localeCompare(b.name, "uk-UA"));
+    const rawModels: VehicleModelOption[] = Array.isArray(payload?.Results)
+      ? payload.Results.map((row: Record<string, unknown>): VehicleModelOption => ({
+          id: Number.isFinite(Number(row.Model_ID)) ? Number(row.Model_ID) : null,
+          name: normalizeName(row.Model_Name),
+          makeId: Number.isFinite(Number(row.Make_ID)) ? Number(row.Make_ID) : null,
+          makeName: normalizeName(row.Make_Name) || normalizedMake,
+        }))
+      : [];
+
+    const items = uniqueByName<VehicleModelOption>(rawModels)
+      .sort((a, b) => a.name.localeCompare(b.name, "uk-UA"));
 
     return { items, source: "NHTSA_VPIC" };
   } catch (error) {
