@@ -6,10 +6,12 @@ import re
 import sys
 import tempfile
 import urllib.request
+import uuid
 import zipfile
 from itertools import chain
 
 import psycopg
+from psycopg import sql
 
 RESOURCES = [
     (2026, "https://data.gov.ua/dataset/0ffd8b75-0628-48cc-952a-9302f9799ec0/resource/3f13166f-090b-499e-8e23-e9851c5a5f67/download/reestrtz2026.zip"),
@@ -28,8 +30,22 @@ RESOURCES = [
     (2013, "https://data.gov.ua/dataset/0ffd8b75-0628-48cc-952a-9302f9799ec0/resource/86a9548b-8323-4fa2-972e-0692edf6959f/download/tz_opendata_z01012013_po31122013.zip"),
 ]
 
+RESOURCE_FALLBACKS = {
+    2026: [
+        "https://data.gov.ua/dataset/0ffd8b75-0628-48cc-952a-9302f9799ec0/resource/3f13166f-090b-499e-8e23-e9851c5a5f67/revision/514215/download",
+        "https://data.gov.ua/dataset/0ffd8b75-0628-48cc-952a-9302f9799ec0/resource/3f13166f-090b-499e-8e23-e9851c5a5f67/revision/509956/download",
+        "https://data.gov.ua/dataset/0ffd8b75-0628-48cc-952a-9302f9799ec0/resource/3f13166f-090b-499e-8e23-e9851c5a5f67/revision/509953/download",
+        "https://data.gov.ua/dataset/0ffd8b75-0628-48cc-952a-9302f9799ec0/resource/3f13166f-090b-499e-8e23-e9851c5a5f67/revision/508698/download",
+        "https://data.gov.ua/dataset/0ffd8b75-0628-48cc-952a-9302f9799ec0/resource/3f13166f-090b-499e-8e23-e9851c5a5f67/revision/495030/download",
+        "https://data.gov.ua/dataset/0ffd8b75-0628-48cc-952a-9302f9799ec0/resource/3f13166f-090b-499e-8e23-e9851c5a5f67/revision/489672/download",
+        "https://data.gov.ua/dataset/0ffd8b75-0628-48cc-952a-9302f9799ec0/resource/3f13166f-090b-499e-8e23-e9851c5a5f67/revision/484082/download",
+    ]
+}
+
 BATCH_SIZE = 20_000
 SAMPLE_SIZE = 64 * 1024
+csv.field_size_limit(16 * 1024 * 1024)
+
 CYR_TO_LAT = str.maketrans({
     "А": "A", "В": "B", "С": "C", "Е": "E", "Н": "H", "І": "I",
     "К": "K", "М": "M", "О": "O", "Р": "P", "Т": "T", "Х": "X",
@@ -46,6 +62,12 @@ ALIASES = {
     "body": ("body", "body_type", "кузов", "тип_кузова"),
     "kind": ("kind", "vehicle_kind", "type", "тип_тз", "категорія_тз"),
 }
+
+PLATE_INFERENCE_BLOCKLIST = (
+    "oper", "operation", "code", "vin", "year", "date", "reg_date",
+    "dep", "person", "brand", "model", "fuel", "body", "kind", "purpose",
+    "weight", "capacity", "power", "color",
+)
 
 
 def clip(value, size):
@@ -145,7 +167,7 @@ def looks_like_plate(value):
     plate = normalize_plate(value)
     return bool(
         re.fullmatch(r"[A-Z]{1,3}\d{3,6}[A-Z]{0,3}", plate)
-        or (6 <= len(plate) <= 10 and any(c.isdigit() for c in plate) and any(c.isalpha() for c in plate))
+        or re.fullmatch(r"\d{3,6}[A-Z]{1,3}", plate)
     )
 
 
@@ -157,13 +179,19 @@ def resolve_columns(fieldnames, sample_rows):
 
     if not mapping["plate"] and sample_rows:
         best_field = None
-        best_score = 0
+        best_ratio = 0.0
+        best_matches = 0
         for field in fields:
-            score = sum(1 for row in sample_rows if looks_like_plate(row.get(field)))
-            if score > best_score:
-                best_field, best_score = field, score
-        threshold = max(3, len(sample_rows) // 20)
-        if best_score >= threshold:
+            if any(token in field for token in PLATE_INFERENCE_BLOCKLIST):
+                continue
+            values = [row.get(field) for row in sample_rows if str(row.get(field, "")).strip()]
+            if len(values) < 20:
+                continue
+            matches = sum(1 for value in values if looks_like_plate(value))
+            ratio = matches / len(values)
+            if ratio > best_ratio:
+                best_field, best_ratio, best_matches = field, ratio, matches
+        if best_field and best_matches >= 20 and best_ratio >= 0.90:
             mapping["plate"] = best_field
 
     return mapping
@@ -198,42 +226,79 @@ def row_payload(row, columns, source_year):
     )
 
 
-def flush_batch(conn, batch):
+def create_stage_table(conn):
+    table = f"mvs_stage_import_{uuid.uuid4().hex[:12]}"
+    with conn.cursor() as cur:
+        cur.execute(
+            sql.SQL(
+                '''
+                CREATE TABLE {} (
+                  "plateKey" BIGINT PRIMARY KEY,
+                  vin VARCHAR(17), brand VARCHAR(32), model VARCHAR(48),
+                  "makeYear" SMALLINT, "engineVolumeCm3" INTEGER,
+                  "fuelType" VARCHAR(24), "vehicleTypeRaw" VARCHAR(48), "sourceYear" SMALLINT
+                )
+                '''
+            ).format(sql.Identifier(table))
+        )
+    conn.commit()
+    return table
+
+
+def drop_stage_table(conn, table):
+    try:
+        conn.rollback()
+    except Exception:
+        pass
+    try:
+        with conn.cursor() as cur:
+            cur.execute(sql.SQL("DROP TABLE IF EXISTS {}").format(sql.Identifier(table)))
+        conn.commit()
+    except Exception as exc:
+        conn.rollback()
+        print(f"WARNING: could not drop staging table {table}: {exc}", file=sys.stderr, flush=True)
+
+
+def flush_batch(conn, batch, stage_table):
     if not batch:
         return
     rows = list(batch.values())
-    with conn.cursor().copy(
-        'COPY mvs_stage ("plateKey", vin, brand, model, "makeYear", "engineVolumeCm3", "fuelType", "vehicleTypeRaw", "sourceYear") FROM STDIN'
-    ) as copy:
+    copy_sql = sql.SQL(
+        'COPY {} ("plateKey", vin, brand, model, "makeYear", "engineVolumeCm3", "fuelType", "vehicleTypeRaw", "sourceYear") FROM STDIN'
+    ).format(sql.Identifier(stage_table))
+
+    with conn.cursor().copy(copy_sql) as copy:
         for row in rows:
             copy.write_row(row)
 
     with conn.cursor() as cur:
         cur.execute(
-            '''
-            INSERT INTO "VehicleRegistryCompact" (
-              "plateKey", vin, brand, model, "makeYear", "engineVolumeCm3", "fuelType", "vehicleTypeRaw", "sourceYear"
-            )
-            SELECT "plateKey", vin, brand, model, "makeYear", "engineVolumeCm3", "fuelType", "vehicleTypeRaw", "sourceYear"
-            FROM mvs_stage
-            ON CONFLICT ("plateKey") DO UPDATE SET
-              vin = COALESCE(EXCLUDED.vin, "VehicleRegistryCompact".vin),
-              brand = COALESCE(EXCLUDED.brand, "VehicleRegistryCompact".brand),
-              model = COALESCE(EXCLUDED.model, "VehicleRegistryCompact".model),
-              "makeYear" = COALESCE(EXCLUDED."makeYear", "VehicleRegistryCompact"."makeYear"),
-              "engineVolumeCm3" = COALESCE(EXCLUDED."engineVolumeCm3", "VehicleRegistryCompact"."engineVolumeCm3"),
-              "fuelType" = COALESCE(EXCLUDED."fuelType", "VehicleRegistryCompact"."fuelType"),
-              "vehicleTypeRaw" = COALESCE(EXCLUDED."vehicleTypeRaw", "VehicleRegistryCompact"."vehicleTypeRaw"),
-              "sourceYear" = GREATEST(EXCLUDED."sourceYear", "VehicleRegistryCompact"."sourceYear")
-            WHERE EXCLUDED."sourceYear" >= "VehicleRegistryCompact"."sourceYear"
-            '''
+            sql.SQL(
+                '''
+                INSERT INTO "VehicleRegistryCompact" (
+                  "plateKey", vin, brand, model, "makeYear", "engineVolumeCm3", "fuelType", "vehicleTypeRaw", "sourceYear"
+                )
+                SELECT "plateKey", vin, brand, model, "makeYear", "engineVolumeCm3", "fuelType", "vehicleTypeRaw", "sourceYear"
+                FROM {}
+                ON CONFLICT ("plateKey") DO UPDATE SET
+                  vin = COALESCE(EXCLUDED.vin, "VehicleRegistryCompact".vin),
+                  brand = COALESCE(EXCLUDED.brand, "VehicleRegistryCompact".brand),
+                  model = COALESCE(EXCLUDED.model, "VehicleRegistryCompact".model),
+                  "makeYear" = COALESCE(EXCLUDED."makeYear", "VehicleRegistryCompact"."makeYear"),
+                  "engineVolumeCm3" = COALESCE(EXCLUDED."engineVolumeCm3", "VehicleRegistryCompact"."engineVolumeCm3"),
+                  "fuelType" = COALESCE(EXCLUDED."fuelType", "VehicleRegistryCompact"."fuelType"),
+                  "vehicleTypeRaw" = COALESCE(EXCLUDED."vehicleTypeRaw", "VehicleRegistryCompact"."vehicleTypeRaw"),
+                  "sourceYear" = GREATEST(EXCLUDED."sourceYear", "VehicleRegistryCompact"."sourceYear")
+                WHERE EXCLUDED."sourceYear" >= "VehicleRegistryCompact"."sourceYear"
+                '''
+            ).format(sql.Identifier(stage_table))
         )
-        cur.execute("TRUNCATE mvs_stage")
+        cur.execute(sql.SQL("TRUNCATE {}").format(sql.Identifier(stage_table)))
     conn.commit()
     batch.clear()
 
 
-def import_text_member(conn, year, binary, label, batch):
+def import_text_member(conn, year, binary, label, batch, stage_table):
     encoding = detect_encoding(binary)
     sample_bytes = binary.read(SAMPLE_SIZE)
     binary.seek(0)
@@ -259,7 +324,7 @@ def import_text_member(conn, year, binary, label, batch):
     print(f"  {label}: columns={reader.fieldnames}", flush=True)
     print(f"  {label}: mapped={columns}", flush=True)
     if not columns.get("plate"):
-        print(f"  {label}: SKIPPED - registration plate column was not detected", flush=True)
+        print(f"  {label}: SKIPPED - trustworthy registration plate column was not detected", flush=True)
         return 0
 
     total = 0
@@ -270,7 +335,7 @@ def import_text_member(conn, year, binary, label, batch):
         batch[payload[0]] = payload
         total += 1
         if len(batch) >= BATCH_SIZE:
-            flush_batch(conn, batch)
+            flush_batch(conn, batch, stage_table)
     return total
 
 
@@ -283,11 +348,10 @@ def is_probable_text_member(name):
         return True
     if "." not in basename:
         return True
-    # Some historical MVS ZIPs contain damaged/non-ASCII CSV extensions (e.g. .ßsv).
     return basename.startswith(("tz_", "reestr", "registry", "opendata"))
 
 
-def import_archive(conn, year, zip_path):
+def import_archive(conn, year, zip_path, stage_table):
     total = 0
     batch = {}
     with zipfile.ZipFile(zip_path) as archive:
@@ -304,26 +368,55 @@ def import_archive(conn, year, zip_path):
                     for inner in nested_members:
                         if is_probable_text_member(inner.filename):
                             with nested.open(inner, "r") as binary:
-                                total += import_text_member(conn, year, binary, f"{name}/{inner.filename}", batch)
+                                total += import_text_member(conn, year, binary, f"{name}/{inner.filename}", batch, stage_table)
                 continue
 
             if is_probable_text_member(name):
                 with archive.open(member, "r") as binary:
-                    total += import_text_member(conn, year, binary, name, batch)
+                    total += import_text_member(conn, year, binary, name, batch, stage_table)
 
-    flush_batch(conn, batch)
+    flush_batch(conn, batch, stage_table)
     return total
 
 
 def download(url, destination):
     print(f"Downloading {url}", flush=True)
-    request = urllib.request.Request(url, headers={"User-Agent": "TurboLEV-CRM/2.1"})
-    with urllib.request.urlopen(request, timeout=120) as response, open(destination, "wb") as out:
+    request = urllib.request.Request(url, headers={"User-Agent": "TurboLEV-CRM/2.2"})
+    with urllib.request.urlopen(request, timeout=180) as response, open(destination, "wb") as out:
         while True:
             chunk = response.read(1024 * 1024)
             if not chunk:
                 break
             out.write(chunk)
+
+
+def candidate_urls(year, primary_url):
+    return [primary_url, *RESOURCE_FALLBACKS.get(year, [])]
+
+
+def import_year(conn, year, primary_url, temp_dir, stage_table):
+    errors = []
+    for attempt, url in enumerate(candidate_urls(year, primary_url), start=1):
+        target = os.path.join(temp_dir, f"mvs-{year}-{attempt}.zip")
+        try:
+            download(url, target)
+            rows = import_archive(conn, year, target, stage_table)
+            if rows > 0:
+                if attempt > 1:
+                    print(f"{year}: using official fallback revision #{attempt - 1}", flush=True)
+                return rows
+            errors.append(f"{url}: archive produced 0 valid vehicle rows")
+        except Exception as exc:
+            conn.rollback()
+            errors.append(f"{url}: {exc}")
+            print(f"{year}: candidate {attempt} failed: {exc}", file=sys.stderr, flush=True)
+        finally:
+            try:
+                os.remove(target)
+            except OSError:
+                pass
+
+    raise RuntimeError(" | ".join(errors[-4:]) or "all source candidates failed")
 
 
 def main():
@@ -339,43 +432,26 @@ def main():
     imported = {}
 
     with psycopg.connect(database_url, autocommit=False) as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                '''
-                CREATE TEMP TABLE mvs_stage (
-                  "plateKey" BIGINT PRIMARY KEY,
-                  vin VARCHAR(17), brand VARCHAR(32), model VARCHAR(48),
-                  "makeYear" SMALLINT, "engineVolumeCm3" INTEGER,
-                  "fuelType" VARCHAR(24), "vehicleTypeRaw" VARCHAR(48), "sourceYear" SMALLINT
-                ) ON COMMIT PRESERVE ROWS
-                '''
-            )
-        conn.commit()
-
-        with tempfile.TemporaryDirectory(prefix="turbolev-mvs-") as temp_dir:
-            for year, url in RESOURCES:
-                if years is not None and year not in years:
-                    continue
-                target = os.path.join(temp_dir, f"mvs-{year}.zip")
-                try:
-                    download(url, target)
-                    rows = import_archive(conn, year, target)
-                    if rows <= 0:
-                        raise RuntimeError("archive produced 0 valid vehicle rows")
-                    imported[year] = rows
-                    with conn.cursor() as cur:
-                        cur.execute('SELECT count(*) FROM "VehicleRegistryCompact"')
-                        indexed = cur.fetchone()[0]
-                    print(f"{year}: processed {rows:,} valid rows; compact index now {indexed:,} plates", flush=True)
-                except Exception as exc:
-                    conn.rollback()
-                    failures.append((year, str(exc)))
-                    print(f"{year}: FAILED: {exc}", file=sys.stderr, flush=True)
-                finally:
+        stage_table = create_stage_table(conn)
+        print(f"Using durable staging table {stage_table}", flush=True)
+        try:
+            with tempfile.TemporaryDirectory(prefix="turbolev-mvs-") as temp_dir:
+                for year, url in RESOURCES:
+                    if years is not None and year not in years:
+                        continue
                     try:
-                        os.remove(target)
-                    except OSError:
-                        pass
+                        rows = import_year(conn, year, url, temp_dir, stage_table)
+                        imported[year] = rows
+                        with conn.cursor() as cur:
+                            cur.execute('SELECT count(*) FROM "VehicleRegistryCompact"')
+                            indexed = cur.fetchone()[0]
+                        print(f"{year}: processed {rows:,} valid rows; compact index now {indexed:,} plates", flush=True)
+                    except Exception as exc:
+                        conn.rollback()
+                        failures.append((year, str(exc)))
+                        print(f"{year}: FAILED: {exc}", file=sys.stderr, flush=True)
+        finally:
+            drop_stage_table(conn, stage_table)
 
     print("\nMVS import summary", flush=True)
     for year in selected_years:
