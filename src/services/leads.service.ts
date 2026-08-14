@@ -21,10 +21,7 @@ function leadSlaMinutes(): number {
 }
 function endOfTodayUtc(now: Date): Date { const end = new Date(now); end.setUTCHours(23, 59, 59, 999); return end; }
 function jsonSafe(value: unknown): Prisma.InputJsonValue { return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue; }
-
-function normalizeLead<T extends { status: LeadStatus }>(lead: T) {
-  return { ...lead, status: normalizeLegacyLeadStatus(lead.status) };
-}
+function normalizeLead<T extends { status: LeadStatus }>(lead: T) { return { ...lead, status: normalizeLegacyLeadStatus(lead.status) }; }
 
 export async function listLeads(input: ListLeadsInput) {
   const prisma = getPrisma();
@@ -49,11 +46,7 @@ export async function listLeads(input: ListLeadsInput) {
     prisma.user.findMany({ where: { isActive: true }, select: { id: true, name: true, internalNumber: true }, orderBy: { name: "asc" } }),
   ]);
 
-  return {
-    leads: leads.map(normalizeLead),
-    users,
-    meta: { count: leads.length, slaMinutes: leadSlaMinutes(), quickFilter: input.quickFilter || null, serverTime: now.toISOString() },
-  };
+  return { leads: leads.map(normalizeLead), users, meta: { count: leads.length, slaMinutes: leadSlaMinutes(), quickFilter: input.quickFilter || null, serverTime: now.toISOString() } };
 }
 
 export async function updateLead(id: string, dto: LeadPatchDto, actorName = "CRM") {
@@ -71,7 +64,8 @@ export async function updateLead(id: string, dto: LeadPatchDto, actorName = "CRM
   if (nextStatus === LeadStatus.LOST && !nextRejectReason) dto.rejectReason = current.rejectReason ?? undefined;
 
   const data: Prisma.LeadUncheckedUpdateInput = { ...dto, lastActivityAt: new Date() };
-  if (dto.status && ![LeadStatus.LOST, LeadStatus.REJECTED, LeadStatus.SPAM_WRONG].includes(dto.status) && dto.rejectReason === undefined) data.rejectReason = null;
+  const rejectedStatuses = new Set<LeadStatus>([LeadStatus.LOST, LeadStatus.REJECTED, LeadStatus.SPAM_WRONG]);
+  if (dto.status && !rejectedStatuses.has(dto.status) && dto.rejectReason === undefined) data.rejectReason = null;
 
   const updated = await prisma.$transaction(async (tx) => {
     const lead = await tx.lead.update({
@@ -79,9 +73,7 @@ export async function updateLead(id: string, dto: LeadPatchDto, actorName = "CRM
       data,
       include: { assignedUser: { select: { id: true, name: true, internalNumber: true, isActive: true } }, _count: { select: { calls: true } } },
     });
-    await tx.auditEvent.create({
-      data: { actorName, entityType: "Lead", entityId: id, action: "UPDATE", before: jsonSafe(current), after: jsonSafe(lead) },
-    });
+    await tx.auditEvent.create({ data: { actorName, entityType: "Lead", entityId: id, action: "UPDATE", before: jsonSafe(current), after: jsonSafe(lead) } });
     return lead;
   });
   return normalizeLead(updated);
@@ -92,7 +84,8 @@ export async function incrementLeadAttempt(id: string, actorName = "CRM") {
   const current = await prisma.lead.findUnique({ where: { id } });
   if (!current) throw new LeadNotFoundError(id);
   const nextAttempts = Math.min(99, current.contactAttempts + 1);
-  const status = nextAttempts >= 1 && normalizeLegacyLeadStatus(current.status) === LeadStatus.NEW ? LeadStatus.CONTACTED : normalizeLegacyLeadStatus(current.status);
+  const normalized = normalizeLegacyLeadStatus(current.status);
+  const status = normalized === LeadStatus.NEW ? LeadStatus.CONTACTED : normalized;
   return updateLead(id, { contactAttempts: nextAttempts, status, nextAction: nextAttempts >= 3 ? "Визначити результат контакту" : "Наступна спроба контакту" }, actorName);
 }
 
@@ -114,10 +107,22 @@ export async function convertLead(id: string) {
     if (lead.vin) {
       const byVin = await tx.vehicle.findUnique({ where: { vin: lead.vin } });
       if (byVin && byVin.clientId !== client.id) throw new LeadConflictError("VIN is already linked to another client");
-      vehicle = byVin || await tx.vehicle.create({ data: { clientId: client.id, brand: lead.carBrand, model: lead.carModel, year: lead.carYear, plateNumber: lead.plateNumber, plateNormalized: lead.plateNumber?.replace(/[^A-ZА-ЯІЇЄ0-9]/gi, "").toUpperCase() || null, vin: lead.vin } });
+      vehicle = byVin || await tx.vehicle.create({
+        data: {
+          clientId: client.id,
+          brand: lead.carBrand,
+          model: lead.carModel,
+          year: lead.carYear,
+          plateNumber: lead.plateNumber,
+          plateNormalized: lead.plateNumber?.replace(/[^A-ZА-ЯІЇЄ0-9]/gi, "").toUpperCase() || null,
+          vin: lead.vin,
+        },
+      });
     } else {
-      const byPlate = lead.plateNumber ? await tx.vehicle.findFirst({ where: { plateNormalized: lead.plateNumber.replace(/[^A-ZА-ЯІЇЄ0-9]/gi, "").toUpperCase() } }) : null;
-      vehicle = byPlate || await tx.vehicle.create({ data: { clientId: client.id, brand: lead.carBrand, model: lead.carModel, year: lead.carYear, plateNumber: lead.plateNumber, plateNormalized: lead.plateNumber?.replace(/[^A-ZА-ЯІЇЄ0-9]/gi, "").toUpperCase() || null } });
+      const normalizedPlate = lead.plateNumber?.replace(/[^A-ZА-ЯІЇЄ0-9]/gi, "").toUpperCase() || null;
+      const byPlate = normalizedPlate ? await tx.vehicle.findFirst({ where: { plateNormalized: normalizedPlate } }) : null;
+      if (byPlate && byPlate.clientId !== client.id) throw new LeadConflictError("Plate is already linked to another client");
+      vehicle = byPlate || await tx.vehicle.create({ data: { clientId: client.id, brand: lead.carBrand, model: lead.carModel, year: lead.carYear, plateNumber: lead.plateNumber, plateNormalized: normalizedPlate } });
     }
 
     const diagnosticRequest = await tx.diagnosticRequest.create({ data: { clientId: client.id, vehicleId: vehicle.id, leadId: lead.id, status: DiagnosticRequestStatus.PENDING } });
