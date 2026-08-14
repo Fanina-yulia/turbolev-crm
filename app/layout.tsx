@@ -5,6 +5,7 @@ import "./vehicle-lookup.css";
 import "./vehicle-intelligence.css";
 import "./quick-lookup-order.css";
 import "./leads.css";
+import "./leads-kpi.css";
 import { PhoneInputNormalizer } from "./phone-input-normalizer";
 
 export const metadata: Metadata = {
