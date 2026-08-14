@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { lookupVehicleByPlate, normalizeRegistrationPlate } from "@/src/services/vehicle-lookup.service";
 
 export const runtime = "nodejs";
-// Deep historical MVS lookup may need to inspect several annual archives on a cache miss.
+// Vehicle lookup reads the fast Neon registry index first; deep MVS scans are opt-in only.
 export const maxDuration = 300;
 
 export async function GET(request: Request) {
