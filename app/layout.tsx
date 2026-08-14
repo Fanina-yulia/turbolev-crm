@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import "./new-request-wizard.css";
 
 export const metadata: Metadata = {
   title: "Turbo LEV CRM",
