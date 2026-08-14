@@ -7,7 +7,7 @@ type ThemeMode = "light" | "dark" | "auto";
 type ResolvedTheme = "light" | "dark";
 type SettingsTab = "appearance" | "integrations";
 type IntegrationCategory = "COMMUNICATIONS" | "SUPPLIERS";
-type Provider = "BINOTEL" | "META" | "TIKTOK" | "OLX" | "BM_PARTS" | "UNIQUE_TRADE" | "AUTONOVA_D";
+type Provider = "BINOTEL" | "META" | "TIKTOK" | "OLX" | "BM_PARTS" | "UNIQUE_TRADE" | "AUTONOVA_D" | "ATL";
 
 type IntegrationField = {
   key: string;
@@ -48,6 +48,7 @@ const providerMarks: Record<Provider, string> = {
   BM_PARTS: "BM",
   UNIQUE_TRADE: "UT",
   AUTONOVA_D: "AD",
+  ATL: "ATL",
 };
 
 function resolveTheme(mode: ThemeMode): ResolvedTheme {
