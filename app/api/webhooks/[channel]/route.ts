@@ -1,6 +1,7 @@
-import { randomUUID } from "node:crypto";
+import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { ingestCommunicationInquiry, recordWebhookEvent, type CommunicationChannel } from "@/src/services/communications-server.service";
+import { getIntegrationCredential } from "@/src/services/integration-credentials.service";
 
 export const runtime = "nodejs";
 
@@ -17,32 +18,51 @@ function pick(body: any, keys: string[]) {
   return undefined;
 }
 
+function secureEqual(left: string, right: string) {
+  const a = Buffer.from(left);
+  const b = Buffer.from(right);
+  return a.length === b.length && timingSafeEqual(a, b);
+}
+
 export async function GET(request: NextRequest, context: { params: Promise<{ channel: string }> }) {
   const { channel } = await context.params;
   if (channel !== "meta") return NextResponse.json({ ok: true });
-  const token = request.nextUrl.searchParams.get("hub.verify_token");
+
+  const token = request.nextUrl.searchParams.get("hub.verify_token") || "";
   const challenge = request.nextUrl.searchParams.get("hub.challenge");
-  const expected = process.env.META_WEBHOOK_VERIFY_TOKEN?.trim();
-  if (expected && token === expected && challenge) return new NextResponse(challenge, { status: 200 });
+  const meta = await getIntegrationCredential("META").catch(() => null);
+  const expected = meta?.verifyToken?.trim() || process.env.META_WEBHOOK_VERIFY_TOKEN?.trim() || "";
+  if (expected && token && secureEqual(token, expected) && challenge) return new NextResponse(challenge, { status: 200 });
   return NextResponse.json({ ok: false, error: "Verification failed" }, { status: 403 });
 }
 
 export async function POST(request: NextRequest, context: { params: Promise<{ channel: string }> }) {
   try {
     const { channel: slug } = await context.params;
-
     if (slug === "binotel") {
       return NextResponse.json(
-        {
-          ok: false,
-          error: "Use the protected Binotel telephony webhook",
-          endpoint: "/api/telephony/binotel-webhook",
-        },
+        { ok: false, error: "Use the protected Binotel telephony webhook", endpoint: "/api/telephony/binotel-webhook" },
         { status: 410 },
       );
     }
 
-    const body = await request.json();
+    const rawBody = await request.text();
+    let body: any;
+    try { body = rawBody ? JSON.parse(rawBody) : {}; }
+    catch { return NextResponse.json({ ok: false, error: "Invalid JSON" }, { status: 400 }); }
+
+    if (slug === "meta") {
+      const meta = await getIntegrationCredential("META").catch(() => null);
+      const appSecret = meta?.appSecret || process.env.META_APP_SECRET || "";
+      if (appSecret) {
+        const supplied = request.headers.get("x-hub-signature-256") || "";
+        const expected = `sha256=${createHmac("sha256", appSecret).update(rawBody, "utf8").digest("hex")}`;
+        if (!supplied || !secureEqual(supplied, expected)) {
+          return NextResponse.json({ ok: false, error: "Invalid Meta webhook signature" }, { status: 401 });
+        }
+      }
+    }
+
     const channel = resolveChannel(slug, body);
     if (!channel) return NextResponse.json({ ok: false, error: "Unsupported webhook" }, { status: 404 });
 
@@ -53,10 +73,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ ch
     const message = pick(normalized, ["message","text","comment","description"]);
     const phone = pick(normalized, ["phone","phoneNumber","phone_number"]);
     const subject = pick(normalized, ["subject","service","need","title"]) || (message ? "Нове звернення" : undefined);
-
-    if (!message && !phone && !subject) {
-      return NextResponse.json({ ok: true, accepted: true, normalized: false });
-    }
+    if (!message && !phone && !subject) return NextResponse.json({ ok: true, accepted: true, normalized: false });
 
     const inquiry = await ingestCommunicationInquiry({
       channel,

@@ -60,7 +60,7 @@ export interface SupplierAdapter {
   readonly authType: string;
   readonly capabilities: SupplierCapability[];
   readonly setupHint: string;
-  isConfigured(): boolean;
+  isConfigured(): Promise<boolean>;
   testConnection(): Promise<SupplierConnectionCheck>;
   search(query: string, limit?: number): Promise<SupplierOffer[]>;
 }

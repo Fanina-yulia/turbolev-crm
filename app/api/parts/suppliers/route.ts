@@ -12,12 +12,16 @@ export async function GET(request: Request) {
     return NextResponse.json({ status: "INVALID_QUERY", message: "Введіть артикул або назву деталі." }, { status: 400 });
   }
 
-  const result = await searchConfiguredSuppliers(q, 20);
+  const [result, suppliers] = await Promise.all([
+    searchConfiguredSuppliers(q, 20),
+    listSupplierStatuses(),
+  ]);
+
   return NextResponse.json({
     status: "OK",
     query: q,
     ...result,
-    suppliers: listSupplierStatuses(),
+    suppliers,
     policy: {
       priceType: "PURCHASE_PRICE",
       fitmentConfirmed: false,

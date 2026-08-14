@@ -1,28 +1,30 @@
 import { NextResponse } from "next/server";
+import { getIntegrationCredential } from "@/src/services/integration-credentials.service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET() {
   const databaseConfigured = Boolean(process.env.DATABASE_URL?.trim());
-  const apiKeyConfigured = Boolean(process.env.BINOTEL_API_KEY?.trim());
-  const apiSecretConfigured = Boolean(process.env.BINOTEL_API_SECRET?.trim());
+  const config = await getIntegrationCredential("BINOTEL").catch(() => null);
+  const apiKeyConfigured = Boolean(config?.apiKey);
+  const apiSecretConfigured = Boolean(config?.apiSecret);
   const restConfigured = apiKeyConfigured && apiSecretConfigured;
-  const webhookTokenConfigured = Boolean(process.env.BINOTEL_WEBHOOK_TOKEN?.trim());
-  const websocketConfigured = Boolean(
-    process.env.BINOTEL_WS_KEY?.trim() && process.env.BINOTEL_WS_SECRET?.trim(),
-  );
-  const companyIdConfigured = Boolean(process.env.BINOTEL_COMPANY_ID?.trim());
+  const webhookTokenConfigured = Boolean(config?.webhookToken);
+  const websocketConfigured = Boolean(config?.wsKey && config?.wsSecret);
+  const companyIdConfigured = Boolean(config?.companyId);
+  const source = config?.__source || null;
 
   const missing: string[] = [];
   if (!databaseConfigured) missing.push("DATABASE_URL");
-  if (!apiKeyConfigured) missing.push("BINOTEL_API_KEY");
-  if (!apiSecretConfigured) missing.push("BINOTEL_API_SECRET");
-  if (!webhookTokenConfigured) missing.push("BINOTEL_WEBHOOK_TOKEN");
+  if (!apiKeyConfigured) missing.push("API key");
+  if (!apiSecretConfigured) missing.push("API secret");
+  if (!webhookTokenConfigured) missing.push("Webhook token");
 
   return NextResponse.json({
     ok: databaseConfigured && restConfigured && webhookTokenConfigured,
     integration: "binotel",
+    configuredVia: source,
     apiVersion: process.env.BINOTEL_API_VERSION?.trim() || "4.0",
     databaseConfigured,
     restConfigured,
@@ -30,13 +32,10 @@ export async function GET() {
     websocketConfigured,
     companyIdConfigured,
     webhookPath: "/api/telephony/binotel-webhook",
-    migrationConnectionConfigured: Boolean(
-      process.env.DATABASE_URL_UNPOOLED?.trim() || process.env.DATABASE_URL?.trim(),
-    ),
     missing,
     optionalMissing: [
-      ...(!companyIdConfigured ? ["BINOTEL_COMPANY_ID"] : []),
-      ...(!websocketConfigured ? ["BINOTEL_WS_KEY / BINOTEL_WS_SECRET"] : []),
+      ...(!companyIdConfigured ? ["Company ID"] : []),
+      ...(!websocketConfigured ? ["WebSocket key / secret"] : []),
     ],
   });
 }

@@ -5,6 +5,7 @@ import {
   UnsupportedBinotelWebhookEvent,
   processBinotelWebhook,
 } from "@/src/services/binotel-webhook.service";
+import { getIntegrationCredential } from "@/src/services/integration-credentials.service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -16,19 +17,9 @@ function secureEqual(left: string, right: string): boolean {
   return timingSafeEqual(a, b);
 }
 
-function webhookToken() {
-  return process.env.BINOTEL_WEBHOOK_TOKEN?.trim() || "";
-}
-
-function isAuthorized(request: NextRequest): boolean {
-  const expected = webhookToken();
-  if (!expected) return process.env.NODE_ENV !== "production";
-
-  const headerToken = request.headers.get("x-binotel-webhook-token")?.trim();
-  const queryToken = request.nextUrl.searchParams.get("token")?.trim();
-  const supplied = headerToken || queryToken || "";
-
-  return Boolean(supplied && secureEqual(supplied, expected));
+async function webhookToken() {
+  const stored = await getIntegrationCredential("BINOTEL").catch(() => null);
+  return stored?.webhookToken?.trim() || process.env.BINOTEL_WEBHOOK_TOKEN?.trim() || "";
 }
 
 async function readWebhookBody(request: NextRequest): Promise<Record<string, unknown>> {
@@ -42,74 +33,51 @@ async function readWebhookBody(request: NextRequest): Promise<Record<string, unk
     return body as Record<string, unknown>;
   }
 
-  if (
-    contentType.includes("application/x-www-form-urlencoded") ||
-    contentType.includes("multipart/form-data")
-  ) {
+  if (contentType.includes("application/x-www-form-urlencoded") || contentType.includes("multipart/form-data")) {
     const form = await request.formData();
     const body: Record<string, unknown> = {};
-
-    for (const [key, value] of form.entries()) {
-      body[key] = typeof value === "string" ? value : value.name;
-    }
-
+    for (const [key, value] of form.entries()) body[key] = typeof value === "string" ? value : value.name;
     return body;
   }
 
   const text = await request.text();
   if (!text.trim()) return {};
-
   try {
     const parsed = JSON.parse(text);
-    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-      return parsed as Record<string, unknown>;
-    }
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) return parsed as Record<string, unknown>;
   } catch {
     // Fall through to URLSearchParams for providers that omit content-type.
   }
-
   return Object.fromEntries(new URLSearchParams(text));
 }
 
-function attachEventFromQuery(
-  request: NextRequest,
-  payload: Record<string, unknown>,
-): Record<string, unknown> {
+function attachEventFromQuery(request: NextRequest, payload: Record<string, unknown>): Record<string, unknown> {
   const queryEvent = request.nextUrl.searchParams.get("event")?.trim();
   if (!queryEvent) return payload;
-
-  const bodyAlreadyIdentifiesEvent = [
-    "eventName",
-    "eventType",
-    "requestType",
-    "action",
-    "method",
-    "event",
-  ].some((key) => payload[key] !== undefined && payload[key] !== null && payload[key] !== "");
-
-  return bodyAlreadyIdentifiesEvent
-    ? payload
-    : { ...payload, eventName: queryEvent };
+  const bodyAlreadyIdentifiesEvent = ["eventName", "eventType", "requestType", "action", "method", "event"]
+    .some((key) => payload[key] !== undefined && payload[key] !== null && payload[key] !== "");
+  return bodyAlreadyIdentifiesEvent ? payload : { ...payload, eventName: queryEvent };
 }
 
 export async function POST(request: NextRequest) {
-  if (process.env.NODE_ENV === "production" && !webhookToken()) {
+  const expected = await webhookToken();
+  if (process.env.NODE_ENV === "production" && !expected) {
     return NextResponse.json(
-      { ok: false, error: "Binotel webhook is not enabled: server secret is missing" },
+      { ok: false, error: "Binotel webhook is not enabled: webhook token is missing" },
       { status: 503 },
     );
   }
 
-  if (!isAuthorized(request)) {
-    return NextResponse.json({ ok: false, error: "Unauthorized webhook" }, { status: 401 });
-  }
+  const headerToken = request.headers.get("x-binotel-webhook-token")?.trim();
+  const queryToken = request.nextUrl.searchParams.get("token")?.trim();
+  const supplied = headerToken || queryToken || "";
+  const authorized = expected ? Boolean(supplied && secureEqual(supplied, expected)) : process.env.NODE_ENV !== "production";
+  if (!authorized) return NextResponse.json({ ok: false, error: "Unauthorized webhook" }, { status: 401 });
 
   let payload: Record<string, unknown> | null = null;
-
   try {
     payload = attachEventFromQuery(request, await readWebhookBody(request));
     const result = await processBinotelWebhook(payload);
-
     return NextResponse.json({ ok: true, ...result }, { status: 200 });
   } catch (error) {
     if (error instanceof UnsupportedBinotelWebhookEvent) {
@@ -117,11 +85,7 @@ export async function POST(request: NextRequest) {
         event: error.eventName || "unknown",
         payloadKeys: payload ? Object.keys(payload) : [],
       });
-
-      return NextResponse.json(
-        { ok: true, ignored: true, event: error.eventName || null },
-        { status: 202 },
-      );
+      return NextResponse.json({ ok: true, ignored: true, event: error.eventName || null }, { status: 202 });
     }
 
     if (error instanceof BinotelWebhookPayloadError) {
@@ -129,20 +93,12 @@ export async function POST(request: NextRequest) {
         message: error.message,
         payloadKeys: payload ? Object.keys(payload) : [],
       });
-
-      return NextResponse.json(
-        { ok: false, error: error.message },
-        { status: 422 },
-      );
+      return NextResponse.json({ ok: false, error: error.message }, { status: 422 });
     }
 
     console.error("Binotel webhook processing failed", {
       message: error instanceof Error ? error.message : "unknown error",
     });
-
-    return NextResponse.json(
-      { ok: false, error: "Webhook processing failed" },
-      { status: 500 },
-    );
+    return NextResponse.json({ ok: false, error: "Webhook processing failed" }, { status: 500 });
   }
 }
