@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import { lookupVehicleByPlate, normalizeRegistrationPlate } from "@/src/services/vehicle-lookup.service";
 
+export const runtime = "nodejs";
+export const maxDuration = 60;
+
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const plate = normalizeRegistrationPlate(searchParams.get("plate") ?? "");
@@ -26,7 +29,7 @@ export async function GET(request: Request) {
         status: "LOOKUP_UNAVAILABLE",
         lookupLevel: "EXTERNAL_REQUIRED",
         plate,
-        message: "Внутрішній пошук тимчасово недоступний. Дані можна заповнити вручну.",
+        message: "Пошук тимчасово недоступний. Дані можна заповнити вручну.",
       },
       { status: 503 },
     );
