@@ -19,12 +19,23 @@ enum CallStatus {
 }
 
 enum LeadStatus {
-  NEW_REQUEST
-  CONTACTED
-  QUALIFIED
+  NEW
+  QUALIFYING
   BOOKED
-  LOST
-  CONVERTED
+  ARRIVED
+  WARM_LEAD
+  REJECTED
+  SPAM_WRONG
+  SUPPLIER_PARTNER
+}
+
+enum RejectReason {
+  TOO_EXPENSIVE
+  NO_CAPACITY_NO_TIME
+  SERVICE_NOT_PROVIDED
+  WRONG_NUMBER
+  SPAM_ADS
+  OTHER
 }
 
 enum LeadSource {
@@ -44,7 +55,9 @@ model User {
   isActive       Boolean       @default(true)
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
+
   managedCalls   CallHistory[] @relation("CallManager")
+  assignedLeads  Lead[]        @relation("LeadAssignee")
 }
 
 model Client {
@@ -54,7 +67,44 @@ model Client {
   phoneNormalized String        @unique
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
+
+  vehicles        Vehicle[]
+  workOrders      WorkOrder[]
   calls           CallHistory[]
+}
+
+model Vehicle {
+  id        String      @id @default(cuid())
+  clientId  String
+  brand     String?
+  model     String?
+  vin       String?     @unique
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+
+  client    Client      @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  workOrders WorkOrder[]
+
+  @@index([clientId])
+  @@index([brand, model])
+}
+
+model WorkOrder {
+  id        String        @id @default(cuid())
+  clientId  String
+  vehicleId String
+  status    String        @default("ARRIVED")
+  closedAt  DateTime?
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+
+  client    Client        @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  vehicle   Vehicle       @relation(fields: [vehicleId], references: [id], onDelete: Restrict)
+  calls     CallHistory[]
+
+  @@index([clientId, closedAt])
+  @@index([vehicleId, closedAt])
+  @@index([status, updatedAt])
 }
 
 model Lead {
@@ -62,41 +112,54 @@ model Lead {
   name            String?
   phone           String
   phoneNormalized String
-  status          LeadStatus    @default(NEW_REQUEST)
+  status          LeadStatus    @default(NEW)
   source          LeadSource    @default(OTHER)
+  carBrand        String?
+  carModel        String?
+  vin             String?
+  comment         String?       @db.Text
+  rejectReason    RejectReason?
+  nextContactAt   DateTime?
+  assignedUserId  String?
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
+
+  assignedUser    User?         @relation("LeadAssignee", fields: [assignedUserId], references: [id], onDelete: SetNull)
   calls           CallHistory[]
 
   @@index([phone])
   @@index([phoneNormalized])
-  @@index([status, createdAt])
+  @@index([status, updatedAt])
   @@index([source, createdAt])
+  @@index([assignedUserId, status])
+  @@index([nextContactAt])
 }
 
 model CallHistory {
-  id             String     @id @default(cuid())
-  binotelCallId  String     @unique
+  id             String      @id @default(cuid())
+  binotelCallId  String      @unique
   externalNumber String
   internalNumber String?
   type           CallType
   status         CallStatus?
-  duration       Int        @default(0)
-  recordingUrl   String?    @db.Text
+  duration       Int         @default(0)
+  recordingUrl   String?     @db.Text
   startedAt      DateTime?
   answeredAt     DateTime?
   endedAt        DateTime?
   rawPayload     Json?
-  createdAt      DateTime   @default(now())
-  updatedAt      DateTime   @updatedAt
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
 
-  leadId    String?
-  clientId  String?
-  managerId String?
+  leadId         String?
+  clientId       String?
+  workOrderId    String?
+  managerId      String?
 
-  lead    Lead?   @relation(fields: [leadId], references: [id], onDelete: SetNull)
-  client  Client? @relation(fields: [clientId], references: [id], onDelete: SetNull)
-  manager User?   @relation("CallManager", fields: [managerId], references: [id], onDelete: SetNull)
+  lead           Lead?       @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  client         Client?     @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  workOrder      WorkOrder?  @relation(fields: [workOrderId], references: [id], onDelete: SetNull)
+  manager        User?       @relation("CallManager", fields: [managerId], references: [id], onDelete: SetNull)
 
   @@index([externalNumber, createdAt])
   @@index([internalNumber, createdAt])
@@ -104,5 +167,6 @@ model CallHistory {
   @@index([status, createdAt])
   @@index([leadId])
   @@index([clientId])
+  @@index([workOrderId])
   @@index([managerId])
 }

@@ -47,16 +47,20 @@ type ParsedWebhook = {
   raw: JsonRecord;
 };
 
+const ACTIVE_LEAD_STATUSES = new Set<LeadStatus>([
+  LeadStatus.NEW,
+  LeadStatus.QUALIFYING,
+  LeadStatus.WARM_LEAD,
+  LeadStatus.BOOKED,
+]);
+
 function isRecord(value: unknown): value is JsonRecord {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
 function searchableContainers(raw: JsonRecord): JsonRecord[] {
   const nestedNames = ["data", "call", "request", "payload"];
-  const nested = nestedNames
-    .map((name) => raw[name])
-    .filter(isRecord);
-
+  const nested = nestedNames.map((name) => raw[name]).filter(isRecord);
   return [raw, ...nested];
 }
 
@@ -64,12 +68,9 @@ function firstField(raw: JsonRecord, names: string[]): unknown {
   for (const container of searchableContainers(raw)) {
     for (const name of names) {
       const value = container[name];
-      if (value !== undefined && value !== null && value !== "") {
-        return value;
-      }
+      if (value !== undefined && value !== null && value !== "") return value;
     }
   }
-
   return undefined;
 }
 
@@ -113,11 +114,9 @@ function normalizeEventName(value: string | null): SupportedBinotelEvent {
   if (normalized === "incomingcall" || normalized === "receivedthecall") {
     return "incomingCall";
   }
-
   if (normalized === "answeredthecall" || normalized === "callanswered") {
     return "answeredTheCall";
   }
-
   if (
     normalized === "hangupthecall" ||
     normalized === "callcompleted" ||
@@ -131,17 +130,19 @@ function normalizeEventName(value: string | null): SupportedBinotelEvent {
 }
 
 function inferCallType(raw: JsonRecord, event: SupportedBinotelEvent): CallType | null {
-  const direction = firstString(raw, [
+  const rawDirection = firstString(raw, [
     "direction",
     "callDirection",
     "callType",
     "type",
-  ])?.toLowerCase();
+  ]);
+  const direction = rawDirection?.toLowerCase();
 
+  if (direction === "0") return CallType.INCOMING;
+  if (direction === "1") return CallType.OUTGOING;
   if (direction && /(outgoing|outbound|external)/.test(direction)) {
     return CallType.OUTGOING;
   }
-
   if (direction && /(incoming|inbound)/.test(direction)) {
     return CallType.INCOMING;
   }
@@ -154,15 +155,9 @@ function toJson(value: JsonRecord): Prisma.InputJsonValue {
 }
 
 export function parseBinotelWebhook(raw: JsonRecord): ParsedWebhook {
-  const eventName = firstString(raw, [
-    "eventName",
-    "eventType",
-    "requestType",
-    "action",
-    "method",
-    "event",
-  ]);
-  const event = normalizeEventName(eventName);
+  const event = normalizeEventName(
+    firstString(raw, ["eventName", "eventType", "requestType", "action", "method", "event"]),
+  );
 
   const callId = firstString(raw, [
     "generalCallID",
@@ -171,7 +166,6 @@ export function parseBinotelWebhook(raw: JsonRecord): ParsedWebhook {
     "callId",
     "id",
   ]);
-
   if (!callId) {
     throw new BinotelWebhookPayloadError("Binotel webhook has no call identifier");
   }
@@ -185,48 +179,26 @@ export function parseBinotelWebhook(raw: JsonRecord): ParsedWebhook {
     "from",
   ]);
 
-  const externalNumber = rawExternalNumber
+  const normalizedExternal = rawExternalNumber
     ? normalizePhone(rawExternalNumber)
     : null;
-
-  const internalNumber = firstString(raw, [
-    "internalNumber",
-    "internalPhone",
-    "employeeNumber",
-    "extension",
-    "to",
-  ]);
 
   return {
     event,
     callId,
-    externalNumber: externalNumber || null,
-    internalNumber,
+    externalNumber: normalizedExternal || null,
+    internalNumber: firstString(raw, [
+      "internalNumber",
+      "internalPhone",
+      "employeeNumber",
+      "extension",
+      "to",
+    ]),
     type: inferCallType(raw, event),
-    duration: firstInteger(raw, [
-      "duration",
-      "callDuration",
-      "billsec",
-      "billSec",
-      "seconds",
-    ]),
-    startedAt: firstDate(raw, [
-      "startedAt",
-      "startTime",
-      "startTimestamp",
-      "callStartTime",
-    ]),
-    answeredAt: firstDate(raw, [
-      "answeredAt",
-      "answerTime",
-      "answerTimestamp",
-    ]),
-    endedAt: firstDate(raw, [
-      "endedAt",
-      "endTime",
-      "hangupTime",
-      "endTimestamp",
-    ]),
+    duration: firstInteger(raw, ["duration", "callDuration", "billsec", "billSec", "seconds"]),
+    startedAt: firstDate(raw, ["startedAt", "startTime", "startTimestamp", "callStartTime"]),
+    answeredAt: firstDate(raw, ["answeredAt", "answerTime", "answerTimestamp"]),
+    endedAt: firstDate(raw, ["endedAt", "endTime", "hangupTime", "endTimestamp"]),
     terminalHint: firstString(raw, [
       "status",
       "callStatus",
@@ -274,6 +246,10 @@ export async function processBinotelWebhook(raw: JsonRecord) {
   }
 
   const normalizedNumber = normalizePhone(externalNumber);
+  if (!normalizedNumber) {
+    throw new BinotelWebhookPayloadError("External number cannot be normalized");
+  }
+
   const variants = phoneVariants(normalizedNumber);
   const now = new Date();
 
@@ -297,6 +273,13 @@ export async function processBinotelWebhook(raw: JsonRecord) {
       });
     }
 
+    let activeWorkOrder = client
+      ? await tx.workOrder.findFirst({
+          where: { clientId: client.id, closedAt: null },
+          orderBy: { updatedAt: "desc" },
+        })
+      : null;
+
     let createdLead = false;
 
     if (!client && !lead) {
@@ -307,7 +290,7 @@ export async function processBinotelWebhook(raw: JsonRecord) {
             ...(variants.length ? [{ phone: { in: variants } }] : []),
           ],
         },
-        orderBy: { createdAt: "desc" },
+        orderBy: { updatedAt: "desc" },
       });
     }
 
@@ -316,11 +299,16 @@ export async function processBinotelWebhook(raw: JsonRecord) {
         data: {
           phone: normalizedNumber,
           phoneNormalized: normalizedNumber,
-          status: LeadStatus.NEW_REQUEST,
+          status: LeadStatus.NEW,
           source: LeadSource.BINOTEL,
         },
       });
       createdLead = true;
+    } else if (!client && lead && ACTIVE_LEAD_STATUSES.has(lead.status)) {
+      lead = await tx.lead.update({
+        where: { id: lead.id },
+        data: { updatedAt: now },
+      });
     }
 
     const internalNumber = parsed.internalNumber || existing?.internalNumber || null;
@@ -339,10 +327,7 @@ export async function processBinotelWebhook(raw: JsonRecord) {
       (parsed.event === "hangupTheCall" ? now : null);
 
     let status = existing?.status || null;
-
-    if (parsed.event === "answeredTheCall") {
-      status = CallStatus.ANSWERED;
-    }
+    if (parsed.event === "answeredTheCall") status = CallStatus.ANSWERED;
 
     if (parsed.event === "hangupTheCall") {
       if (
@@ -358,16 +343,17 @@ export async function processBinotelWebhook(raw: JsonRecord) {
       }
     }
 
-    const calculatedDuration = calculateDurationSeconds(
-      startedAt,
-      answeredAt,
-      endedAt,
-    );
     const duration = Math.max(
       existing?.duration || 0,
       parsed.duration || 0,
-      calculatedDuration,
+      calculateDurationSeconds(startedAt, answeredAt, endedAt),
     );
+
+    if (client && !activeWorkOrder && existing?.workOrderId) {
+      activeWorkOrder = await tx.workOrder.findUnique({
+        where: { id: existing.workOrderId },
+      });
+    }
 
     const call = await tx.callHistory.upsert({
       where: { binotelCallId: parsed.callId },
@@ -384,6 +370,7 @@ export async function processBinotelWebhook(raw: JsonRecord) {
         rawPayload: toJson({ event: parsed.event, payload: parsed.raw }),
         clientId: client?.id || null,
         leadId: client ? null : lead?.id || null,
+        workOrderId: activeWorkOrder?.id || null,
         managerId: manager?.id || null,
       },
       update: {
@@ -398,16 +385,12 @@ export async function processBinotelWebhook(raw: JsonRecord) {
         rawPayload: toJson({ event: parsed.event, payload: parsed.raw }),
         clientId: client?.id || existing?.clientId || null,
         leadId: client ? null : lead?.id || existing?.leadId || null,
+        workOrderId: activeWorkOrder?.id || existing?.workOrderId || null,
         managerId: manager?.id || existing?.managerId || null,
       },
     });
 
-    return {
-      call,
-      client,
-      lead,
-      createdLead,
-    };
+    return { call, client, lead, activeWorkOrder, createdLead };
   });
 
   let recordingUrl = result.call.recordingUrl;
@@ -427,8 +410,6 @@ export async function processBinotelWebhook(raw: JsonRecord) {
         recordingUrl = updated.recordingUrl;
       }
     } catch (error) {
-      // Recording generation may lag behind the hangup event. Do not reject the
-      // webhook; the recording can be fetched again later from call history.
       console.warn("Binotel recording URL is not available yet", {
         callId: parsed.callId,
         message: error instanceof Error ? error.message : "unknown error",
@@ -443,6 +424,7 @@ export async function processBinotelWebhook(raw: JsonRecord) {
     createdLead: result.createdLead,
     clientId: result.client?.id || null,
     leadId: result.client ? null : result.lead?.id || null,
+    workOrderId: result.activeWorkOrder?.id || null,
     recordingUrl,
   };
 }

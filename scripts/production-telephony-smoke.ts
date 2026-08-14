@@ -25,7 +25,6 @@ async function invokeWebhook(event: string, body: Record<string, unknown>) {
 
   assert.equal(response.status, 200, `${event} webhook failed: ${JSON.stringify(json)}`);
   assert.equal(json.ok, true, `${event} webhook returned ok=false`);
-
   return json as Record<string, unknown>;
 }
 
@@ -36,11 +35,11 @@ async function main() {
     SELECT tablename
     FROM pg_tables
     WHERE schemaname = 'public'
-      AND tablename IN ('Client', 'Lead', 'CallHistory', 'User')
+      AND tablename IN ('Client', 'Lead', 'CallHistory', 'User', 'Vehicle', 'WorkOrder')
   `;
 
   const tableNames = new Set(tables.map((row) => row.tablename));
-  for (const name of ["Client", "Lead", "CallHistory", "User"]) {
+  for (const name of ["Client", "Lead", "CallHistory", "User", "Vehicle", "WorkOrder"]) {
     assert(tableNames.has(name), `Missing production table: ${name}`);
   }
 
@@ -51,32 +50,38 @@ async function main() {
       AND indexname IN (
         'Client_phoneNormalized_key',
         'Lead_phoneNormalized_idx',
+        'Lead_assignedUserId_status_idx',
+        'Lead_nextContactAt_idx',
         'CallHistory_binotelCallId_key',
-        'CallHistory_externalNumber_createdAt_idx',
-        'CallHistory_status_createdAt_idx'
+        'CallHistory_workOrderId_idx',
+        'WorkOrder_clientId_closedAt_idx'
       )
   `;
 
-  const indexNames = new Set(indexes.map((row) => row.indexname));
-  for (const name of [
+  const requiredIndexes = [
     "Client_phoneNormalized_key",
     "Lead_phoneNormalized_idx",
+    "Lead_assignedUserId_status_idx",
+    "Lead_nextContactAt_idx",
     "CallHistory_binotelCallId_key",
-    "CallHistory_externalNumber_createdAt_idx",
-    "CallHistory_status_createdAt_idx",
-  ]) {
+    "CallHistory_workOrderId_idx",
+    "WorkOrder_clientId_closedAt_idx",
+  ];
+  const indexNames = new Set(indexes.map((row) => row.indexname));
+  for (const name of requiredIndexes) {
     assert(indexNames.has(name), `Missing production index: ${name}`);
   }
 
-  const existingClient = await prisma.client.findFirst({
-    where: {
-      OR: [{ phoneNormalized: TEST_PHONE }, { phone: { in: [TEST_PHONE, `+${TEST_PHONE}`] } }],
-    },
+  const existingClient = await prisma.client.findUnique({
+    where: { phoneNormalized: TEST_PHONE },
   });
-  assert.equal(existingClient, null, "Smoke-test phone already belongs to a Client; aborting to avoid touching real data");
+  assert.equal(
+    existingClient,
+    null,
+    "Smoke-test phone belongs to a Client; aborting to avoid touching real client data",
+  );
 
   const beforeLeads = await prisma.lead.count({ where: { phoneNormalized: TEST_PHONE } });
-  const beforeCalls = await prisma.callHistory.count({ where: { binotelCallId: TEST_CALL_ID } });
 
   const incoming = await invokeWebhook("incomingCall", {
     callID: TEST_CALL_ID,
@@ -87,20 +92,20 @@ async function main() {
 
   const lead = await prisma.lead.findFirst({
     where: { phoneNormalized: TEST_PHONE },
-    orderBy: { createdAt: "desc" },
+    orderBy: { updatedAt: "desc" },
   });
 
   assert(lead, "Lead was not created/found after incomingCall");
   assert.equal(lead.phoneNormalized, TEST_PHONE);
-  assert.equal(lead.status, "NEW_REQUEST");
+  assert.equal(lead.status, "NEW");
   assert.equal(lead.source, "BINOTEL");
 
   const callAfterIncoming = await prisma.callHistory.findUnique({
     where: { binotelCallId: TEST_CALL_ID },
   });
-
   assert(callAfterIncoming, "CallHistory was not created after incomingCall");
-  assert.equal(callAfterIncoming.leadId, lead.id, "CallHistory is not linked to the expected Lead");
+  assert.equal(callAfterIncoming.leadId, lead.id, "CallHistory is not linked to Lead");
+  assert.equal(callAfterIncoming.clientId, null);
   assert.equal(callAfterIncoming.externalNumber, TEST_PHONE);
 
   await invokeWebhook("answeredTheCall", {
@@ -110,7 +115,6 @@ async function main() {
     callType: "0",
   });
 
-  // Repeat the same event to prove idempotency of the upsert.
   await invokeWebhook("answeredTheCall", {
     callID: TEST_CALL_ID,
     externalNumber: `+${TEST_PHONE}`,
@@ -120,22 +124,24 @@ async function main() {
 
   const afterLeads = await prisma.lead.count({ where: { phoneNormalized: TEST_PHONE } });
   const afterCalls = await prisma.callHistory.count({ where: { binotelCallId: TEST_CALL_ID } });
-  const finalCall = await prisma.callHistory.findUnique({ where: { binotelCallId: TEST_CALL_ID } });
+  const finalCall = await prisma.callHistory.findUnique({
+    where: { binotelCallId: TEST_CALL_ID },
+  });
+  const finalLead = await prisma.lead.findUnique({ where: { id: lead.id } });
 
-  assert.equal(afterCalls, Math.max(beforeCalls, 1), "Duplicate CallHistory rows detected");
-  assert.equal(afterCalls, 1, "Expected exactly one CallHistory row for the Binotel call id");
+  assert.equal(afterCalls, 1, "Duplicate CallHistory rows detected");
   assert.equal(afterLeads, Math.max(beforeLeads, 1), "Duplicate Lead rows detected");
-  assert.equal(afterLeads, 1, "Expected exactly one smoke-test Lead");
-  assert.equal(finalCall?.status, "ANSWERED", "answeredTheCall did not update status to ANSWERED");
-  assert.equal(finalCall?.leadId, lead.id, "Lead relation changed after idempotent update");
+  assert.equal(finalCall?.status, "ANSWERED", "answeredTheCall did not set ANSWERED");
+  assert.equal(finalCall?.leadId, lead.id, "Lead relation changed during UPSERT");
+  assert.equal(finalLead?.status, "NEW", "Existing active lead status was reset unexpectedly");
 
   console.log("PRODUCTION_TELEPHONY_SMOKE_OK", {
-    migrationSchema: "ready",
     requiredTables: [...tableNames].sort(),
     requiredIndexes: [...indexNames].sort(),
     lead: {
+      id: lead.id,
       phoneNormalized: lead.phoneNormalized,
-      status: lead.status,
+      status: finalLead?.status,
       source: lead.source,
     },
     call: {
