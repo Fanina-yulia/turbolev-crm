@@ -1,24 +1,32 @@
 import { unzipSync } from "fflate";
 import { parse } from "csv-parse/sync";
 import { classifyVehicle, type VehicleLookupResult } from "@/src/domain/vehicle-intelligence";
+import { normalizeRegistrationPlate } from "@/src/domain/registration-plate";
 
 export const MVS_OPEN_DATA_SOURCE_URL =
   "https://data.gov.ua/dataset/06779371-308f-42d7-895e-5a39833375f0";
 
-const CURRENT_RESOURCE = {
-  year: 2026,
-  url: "https://data.gov.ua/dataset/0ffd8b75-0628-48cc-952a-9302f9799ec0/resource/3f13166f-090b-499e-8e23-e9851c5a5f67/download/reestrtz2026.zip",
-};
+export type MvsResource = { year: number; url: string };
 
-const EXTRA_RESOURCES = [
-  {
-    year: 2025,
-    url: "https://data.gov.ua/dataset/0ffd8b75-0628-48cc-952a-9302f9799ec0/resource/b7e72d22-55f5-4545-87dc-94e6c8ee03ef/download/reestrtz2025.zip",
-  },
-  {
-    year: 2024,
-    url: "https://data.gov.ua/dataset/0ffd8b75-0628-48cc-952a-9302f9799ec0/resource/c3ffecc4-bb5c-4102-b761-6dcfeb60b4fe/download/reestrtz2024.zip",
-  },
+/**
+ * All annual vehicle-registry archives currently published by MVS on data.gov.ua.
+ * Newest first so the most relevant registration event is found as early as possible.
+ */
+export const MVS_OPEN_DATA_RESOURCES: MvsResource[] = [
+  { year: 2026, url: "https://data.gov.ua/dataset/0ffd8b75-0628-48cc-952a-9302f9799ec0/resource/3f13166f-090b-499e-8e23-e9851c5a5f67/download/reestrtz2026.zip" },
+  { year: 2025, url: "https://data.gov.ua/dataset/0ffd8b75-0628-48cc-952a-9302f9799ec0/resource/b7e72d22-55f5-4545-87dc-94e6c8ee03ef/download/reestrtz2025.zip" },
+  { year: 2024, url: "https://data.gov.ua/dataset/0ffd8b75-0628-48cc-952a-9302f9799ec0/resource/c3ffecc4-bb5c-4102-b761-6dcfeb60b4fe/download/reestrtz2024.zip" },
+  { year: 2023, url: "https://data.gov.ua/dataset/0ffd8b75-0628-48cc-952a-9302f9799ec0/resource/c3a12388-55c2-4546-8b71-b4b7ff0d8b16/download/reestrtz2023.zip" },
+  { year: 2022, url: "https://data.gov.ua/dataset/0ffd8b75-0628-48cc-952a-9302f9799ec0/resource/b1bcb4a9-8e60-4a1c-91c0-00faae008816/download/reestrtz2022.zip" },
+  { year: 2021, url: "https://data.gov.ua/dataset/0ffd8b75-0628-48cc-952a-9302f9799ec0/resource/c5cb530d-0533-40be-b9ad-f03e06c94b10/download/tz_opendata_z01012021_po01012022.zip" },
+  { year: 2020, url: "https://data.gov.ua/dataset/0ffd8b75-0628-48cc-952a-9302f9799ec0/resource/ebeb92fe-424c-41d1-aacf-288e91049dc9/download/tz_opendata_z01012020_po01012021.zip" },
+  { year: 2019, url: "https://data.gov.ua/dataset/0ffd8b75-0628-48cc-952a-9302f9799ec0/resource/7a58e8f7-9323-47d4-a21d-19486e014eb4/download/tz_opendata_z01012019_po01012020.zip" },
+  { year: 2018, url: "https://data.gov.ua/dataset/0ffd8b75-0628-48cc-952a-9302f9799ec0/resource/01323740-88df-46c2-b06e-fbb58c89fe17/download/tz_opendata_z01012018_po01012019.zip" },
+  { year: 2017, url: "https://data.gov.ua/dataset/0ffd8b75-0628-48cc-952a-9302f9799ec0/resource/9ce32352-bd11-4324-a2b4-5addbd228b1b/download/tz_opendata_z01012017_po31122017.zip" },
+  { year: 2016, url: "https://data.gov.ua/dataset/0ffd8b75-0628-48cc-952a-9302f9799ec0/resource/7bdc2a1b-5399-4ab0-97e0-633e68837b04/download/tz_opendata_z01012016_po31122016.zip" },
+  { year: 2015, url: "https://data.gov.ua/dataset/0ffd8b75-0628-48cc-952a-9302f9799ec0/resource/09c606dc-d740-40db-96f0-e679eeca6ace/download/tz_opendata_z01012015_po31122015.zip" },
+  { year: 2014, url: "https://data.gov.ua/dataset/0ffd8b75-0628-48cc-952a-9302f9799ec0/resource/80a115ae-61df-4a13-8771-36c2826268df/download/tz_opendata_z01012014_po31122014.zip" },
+  { year: 2013, url: "https://data.gov.ua/dataset/0ffd8b75-0628-48cc-952a-9302f9799ec0/resource/86a9548b-8323-4fa2-972e-0692edf6959f/download/tz_opendata_z01012013_po31122013.zip" },
 ];
 
 export type MvsOpenDataVehicle = VehicleLookupResult & {
@@ -28,10 +36,6 @@ export type MvsOpenDataVehicle = VehicleLookupResult & {
   sourceYear: number;
   sourceUrl: string;
 };
-
-function normalizePlate(value: string) {
-  return value.toUpperCase().replace(/[^A-ZА-ЯІЇЄ0-9]/g, "");
-}
 
 function normalizeHeader(value: string) {
   return value.trim().replace(/^\uFEFF/, "").toLowerCase();
@@ -85,7 +89,7 @@ function mapRow(row: Record<string, unknown>, sourceYear: number, sourceUrl: str
   });
 
   return {
-    plate: normalizePlate(plate),
+    plate: normalizeRegistrationPlate(plate),
     vin,
     make,
     model,
@@ -106,8 +110,18 @@ function mapRow(row: Record<string, unknown>, sourceYear: number, sourceUrl: str
   };
 }
 
-function parseCsvAndFind(bytes: Uint8Array, resource: { year: number; url: string }, targetPlate: string) {
-  const text = new TextDecoder("utf-8").decode(bytes);
+function parseCsvAndFind(bytes: Uint8Array, resource: MvsResource, targetPlate: string) {
+  let text = new TextDecoder("utf-8").decode(bytes);
+  // Older MVS exports can be Windows-1251. If UTF-8 decoding is clearly broken,
+  // retry with the browser/Node-supported Windows decoder.
+  if (text.includes("�")) {
+    try {
+      text = new TextDecoder("windows-1251").decode(bytes);
+    } catch {
+      // Keep UTF-8 result if the runtime does not support this label.
+    }
+  }
+
   const delimiter = detectDelimiter(text);
   const rows = parse(text, {
     bom: true,
@@ -122,7 +136,7 @@ function parseCsvAndFind(bytes: Uint8Array, resource: { year: number; url: strin
   let latest: Record<string, unknown> | null = null;
   let latestDate = "";
   for (const row of rows) {
-    const plate = normalizePlate(first(row, ["n_reg_new", "plate", "registration_number"]));
+    const plate = normalizeRegistrationPlate(first(row, ["n_reg_new", "plate", "registration_number"]));
     if (plate !== targetPlate) continue;
     const registrationDate = first(row, ["d_reg", "registration_date"]);
     if (!latest || registrationDate >= latestDate) {
@@ -135,12 +149,12 @@ function parseCsvAndFind(bytes: Uint8Array, resource: { year: number; url: strin
 }
 
 async function findInZipResource(
-  resource: { year: number; url: string },
+  resource: MvsResource,
   targetPlate: string,
   signal?: AbortSignal,
 ): Promise<MvsOpenDataVehicle | null> {
   const response = await fetch(resource.url, {
-    cache: "no-store",
+    cache: "force-cache",
     signal,
     headers: {
       "user-agent": "TurboLEV-CRM/1.0 (+https://data.gov.ua/)",
@@ -148,9 +162,7 @@ async function findInZipResource(
     },
   });
 
-  if (!response.ok) {
-    throw new Error(`MVS resource ${resource.year} returned ${response.status}`);
-  }
+  if (!response.ok) throw new Error(`MVS resource ${resource.year} returned ${response.status}`);
 
   const archive = unzipSync(new Uint8Array(await response.arrayBuffer()));
   const entries = Object.entries(archive).filter(([name]) => /\.(csv|txt)$/i.test(name));
@@ -158,31 +170,29 @@ async function findInZipResource(
     const found = parseCsvAndFind(bytes, resource, targetPlate);
     if (found) return found;
   }
-
   return null;
 }
 
 export async function lookupMvsOpenDataByPlate(rawPlate: string): Promise<MvsOpenDataVehicle | null> {
-  const plate = normalizePlate(rawPlate);
+  const plate = normalizeRegistrationPlate(rawPlate);
   if (plate.length < 6) return null;
 
-  const timeoutMs = Number(process.env.MVS_OPEN_DATA_TIMEOUT_MS ?? 25000);
+  const timeoutMs = Number(process.env.MVS_OPEN_DATA_TIMEOUT_MS ?? 55000);
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
-    // 2026 archive is the fast, no-cost online path used in production.
-    const current = await findInZipResource(CURRENT_RESOURCE, plate, controller.signal);
-    if (current) return current;
-
-    // Older archives are much larger, so live historical scanning is opt-in.
-    if (process.env.MVS_OPEN_DATA_HISTORICAL_LIVE !== "true") return null;
-
-    for (const resource of EXTRA_RESOURCES) {
-      const found = await findInZipResource(resource, plate, controller.signal);
-      if (found) return found;
+    for (const resource of MVS_OPEN_DATA_RESOURCES) {
+      if (controller.signal.aborted) break;
+      try {
+        const found = await findInZipResource(resource, plate, controller.signal);
+        if (found) return found;
+      } catch (error) {
+        if (controller.signal.aborted) break;
+        // One damaged/unavailable annual archive must not disable the whole lookup chain.
+        console.warn(`MVS archive ${resource.year} lookup failed`, error);
+      }
     }
-
     return null;
   } finally {
     clearTimeout(timer);
