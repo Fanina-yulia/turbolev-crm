@@ -77,8 +77,9 @@ jobs:
       - name: Prepare maintenance SQL
         shell: bash
         run: |
-          cat > drop-vpic.sql <<'SQL'
+          cat > reset-vpic.sql <<'SQL'
           DROP SCHEMA IF EXISTS vpic CASCADE;
+          CREATE SCHEMA vpic;
           SQL
           cat > verify-vpic.sql <<'SQL'
           SELECT count(*) AS decoder_functions
@@ -107,7 +108,7 @@ jobs:
             -e DATABASE_URL="$DATABASE_URL" \
             -v "$PWD:/work:ro" \
             postgres:18 \
-            sh -lc 'psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f /work/drop-vpic.sql'
+            sh -lc 'psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f /work/reset-vpic.sql'
 
           docker run --rm \
             -e DATABASE_URL="$DATABASE_URL" \
@@ -126,4 +127,4 @@ jobs:
 
       - name: Cleanup archive
         if: always()
-        run: rm -f vpic.custom.zip vpic.custom drop-vpic.sql verify-vpic.sql
+        run: rm -f vpic.custom.zip vpic.custom reset-vpic.sql verify-vpic.sql
