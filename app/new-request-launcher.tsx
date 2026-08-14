@@ -15,14 +15,22 @@ function setNativeInputValue(input: HTMLInputElement, value: string) {
 
 export function NewRequestLauncher() {
   const host = useRef<HTMLDivElement>(null);
+  const wasModalOpen = useRef(false);
 
   useEffect(() => {
     const applyPrefill = () => {
+      const modal = document.querySelector(".requestModal");
+      if (!modal) {
+        if (wasModalOpen.current) window.sessionStorage.removeItem(PREFILL_KEY);
+        wasModalOpen.current = false;
+        return;
+      }
+      wasModalOpen.current = true;
+
       let detail: OpenRequestDetail | null = null;
       try { detail = JSON.parse(window.sessionStorage.getItem(PREFILL_KEY) || "null") as OpenRequestDetail | null; } catch { detail = null; }
       if (!detail) return;
-      const modal = document.querySelector(".requestModal");
-      if (!modal) return;
+
       const date = modal.querySelector('input[type="date"]') as HTMLInputElement | null;
       const time = modal.querySelector('input[type="time"]') as HTMLInputElement | null;
       if (date && detail.appointmentDate && date.value !== detail.appointmentDate) setNativeInputValue(date, detail.appointmentDate);
@@ -43,6 +51,7 @@ export function NewRequestLauncher() {
     return () => {
       window.clearInterval(timer);
       window.removeEventListener("turbolev:open-new-request", openRequest as EventListener);
+      window.sessionStorage.removeItem(PREFILL_KEY);
     };
   }, []);
 
