@@ -51,4 +51,4 @@ jobs:
       - name: Import compact MVS vehicle registry
         run: python scripts/import-mvs-open-data.py
 
-# Initial import trigger: 2026-08-14
+# Rebuild compact registry trigger: 2026-08-14 22:53 Europe/Kyiv
