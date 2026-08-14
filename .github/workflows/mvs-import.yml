@@ -1,0 +1,52 @@
+name: Import MVS Vehicle Registry
+
+on:
+  workflow_dispatch:
+    inputs:
+      years:
+        description: "Comma-separated years, leave blank for all 2013-2026"
+        required: false
+        default: ""
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/mvs-import.yml"
+  schedule:
+    - cron: "17 3 2 * *"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mvs-vehicle-registry-import
+  cancel-in-progress: false
+
+jobs:
+  import:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      MVS_IMPORT_YEARS: ${{ github.event.inputs.years || '' }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install importer dependency
+        run: python -m pip install --disable-pip-version-check "psycopg[binary]>=3.2,<4"
+
+      - name: Verify database secret
+        shell: bash
+        run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "DATABASE_URL repository secret is missing"
+            exit 1
+          fi
+
+      - name: Import compact MVS vehicle registry
+        run: python scripts/import-mvs-open-data.py
