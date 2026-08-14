@@ -39,3 +39,5 @@ jobs:
           fi
       - name: Recover 2022 registry
         run: python scripts/recover-mvs-2022.py
+
+# recovery trigger: schema-aware decoder
