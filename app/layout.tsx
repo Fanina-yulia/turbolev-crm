@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 import "./new-request-wizard.css";
 import "./vehicle-lookup.css";
+import "./vehicle-intelligence.css";
 import { PhoneInputNormalizer } from "./phone-input-normalizer";
 
 export const metadata: Metadata = {
