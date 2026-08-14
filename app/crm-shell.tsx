@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { WorkOrderCockpit, type AttentionCar } from "@/src/components/work-order-cockpit";
 import { NewRequestWizardV2 } from "./new-request-wizard-v2";
 import { SettingsPanel } from "./settings-panel";
@@ -9,9 +9,9 @@ import { CommunicationsHub } from "./communications-hub-server";
 import { GlobalVehicleSearch } from "./global-vehicle-search";
 import { PartsCatalog } from "./parts-catalog";
 import { Planner } from "./planner";
+import { CRM_NAV, isCrmSection, sectionFromSlug, slugFromSection, type CrmSectionLabel } from "./crm-navigation";
 import { turboLevLogoDark, turboLevLogoLight } from "@/src/brand/logos";
 
-const nav = ["Огляд станції", "Комунікації", "Ліди", "Клієнти та авто", "Планувальник", "Діагностика", "Замовлення-наряди", "Підбір запчастин", "Закупівлі та склад", "Виробництво", "Контроль якості", "Оплати", "Гарантії", "Аналітика"];
 const pipeline = [["Нові заявки", "7", "2 прострочені SLA"],["Записані", "11", "4 сьогодні"],["На діагностиці", "3", "1 очікує майстра"],["Погодження", "5", "₴ 48 700"],["Очікують деталі", "4", "2 ETA сьогодні"],["В ремонті", "6", "2 пости зайняті"],["QC / готові", "2", "1 до видачі"]];
 const cars: AttentionCar[] = [
   { plate: "AA 4271 KI", brand: "Mazda", model: "6", year: 2016, status: "Погодження", action: "Погодити КП ₴18 450", owner: "Продавник", tone: "warn" },
@@ -20,22 +20,44 @@ const cars: AttentionCar[] = [
   { plate: "CB 1038 EA", brand: "BMW", model: "3", year: 2018, status: "Контроль якості", action: "Провести фінальний QC", owner: "Завідуючий", tone: "good" },
 ];
 
-export function CrmShell() {
-  const [active, setActive] = useState("Огляд станції");
+export function CrmShell({ initialSection }: { initialSection?: string }) {
+  const [active, setActive] = useState<CrmSectionLabel>(() => sectionFromSlug(initialSection));
+
+  const navigateTo = useCallback((next: CrmSectionLabel, historyMode: "push" | "replace" = "push") => {
+    setActive(next);
+
+    const url = new URL(window.location.href);
+    const slug = slugFromSection(next);
+    if (slug === "overview") url.searchParams.delete("section");
+    else url.searchParams.set("section", slug);
+
+    const nextUrl = `${url.pathname}${url.search}${url.hash}`;
+    if (historyMode === "replace") window.history.replaceState({}, "", nextUrl);
+    else window.history.pushState({}, "", nextUrl);
+  }, []);
 
   useEffect(() => {
     const navigate = (event: Event) => {
       const next = (event as CustomEvent<string>).detail;
-      if (next && nav.includes(next)) setActive(next);
+      if (typeof next === "string" && isCrmSection(next)) navigateTo(next);
     };
+    const restoreFromHistory = () => {
+      const slug = new URL(window.location.href).searchParams.get("section");
+      setActive(sectionFromSlug(slug));
+    };
+
     window.addEventListener("turbolev:navigate", navigate);
-    return () => window.removeEventListener("turbolev:navigate", navigate);
-  }, []);
+    window.addEventListener("popstate", restoreFromHistory);
+    return () => {
+      window.removeEventListener("turbolev:navigate", navigate);
+      window.removeEventListener("popstate", restoreFromHistory);
+    };
+  }, [navigateTo]);
 
   return <main className="shell">
     <aside className="sidebar">
       <div className="brand"><div className="brandLogoWrap" aria-label="Turbo LEV"><img className="brandLogo brandLogoDark" src={turboLevLogoDark} alt="Turbo LEV" /><img className="brandLogo brandLogoLight" src={turboLevLogoLight} alt="Turbo LEV" /></div></div>
-      <nav>{nav.map((item) => <button className={active === item ? "navActive" : ""} key={item} onClick={() => setActive(item)}><span className="navDot" />{item}{item === "Комунікації" && <span style={{marginLeft:"auto",fontSize:9,color:"var(--orange)"}}>NEW</span>}</button>)}<SettingsPanel /></nav>
+      <nav>{CRM_NAV.map((item) => <button className={active === item.label ? "navActive" : ""} key={item.slug} onClick={() => navigateTo(item.label)}><span className="navDot" />{item.label}{item.label === "Комунікації" && <span style={{marginLeft:"auto",fontSize:9,color:"var(--orange)"}}>NEW</span>}</button>)}<SettingsPanel /></nav>
       <div className="sidebarFoot"><span className="liveDot" /> Станція онлайн</div>
     </aside>
     <section className="workspace">
