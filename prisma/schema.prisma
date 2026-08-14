@@ -118,27 +118,21 @@ model Vehicle {
   @@index([turboLevClass])
 }
 
+// Compact, read-optimized cache of open MVS data.
+// Only the latest known record for a registration plate is stored.
 model VehicleRegistryEntry {
-  id               BigInt   @id @default(autoincrement())
-  plateNormalized  String
-  vin              String?
-  brand            String?
-  model            String?
-  makeYear         Int?
+  plateNormalized  String   @id @db.VarChar(10)
+  vin              String?  @db.VarChar(17)
+  brand            String?  @db.VarChar(48)
+  model            String?  @db.VarChar(64)
+  makeYear         Int?     @db.SmallInt
   engineVolumeCm3  Int?
-  fuelType         String?
-  bodyType         String?
-  vehicleKind      String?
+  fuelType         String?  @db.VarChar(24)
+  bodyType         String?  @db.VarChar(40)
+  vehicleKind      String?  @db.VarChar(40)
   grossWeightKg    Int?
-  registrationDate String?
-  sourceYear       Int
-  importedAt       DateTime @default(now())
-
-  @@unique([plateNormalized, sourceYear])
-  @@index([plateNormalized])
-  @@index([vin])
-  @@index([brand, model])
-  @@index([sourceYear])
+  registrationDate String?  @db.VarChar(16)
+  sourceYear       Int      @db.SmallInt
 }
 
 model DiagnosticRequest {
