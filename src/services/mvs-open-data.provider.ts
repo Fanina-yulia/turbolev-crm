@@ -189,6 +189,17 @@ async function findInZipResource(
   return latest ? mapRow(latest, resource.year, resource.url) : null;
 }
 
+export async function lookupMvsOpenDataByPlateYear(
+  rawPlate: string,
+  year: number,
+  signal?: AbortSignal,
+): Promise<MvsOpenDataVehicle | null> {
+  const plate = normalizeRegistrationPlate(rawPlate);
+  const resource = MVS_OPEN_DATA_RESOURCES.find((item) => item.year === year);
+  if (plate.length < 6 || !resource) return null;
+  return findInZipResource(resource, plate, signal);
+}
+
 export async function lookupMvsOpenDataByPlate(rawPlate: string): Promise<MvsOpenDataVehicle | null> {
   const plate = normalizeRegistrationPlate(rawPlate);
   if (plate.length < 6) return null;
@@ -196,17 +207,27 @@ export async function lookupMvsOpenDataByPlate(rawPlate: string): Promise<MvsOpe
   const timeoutMs = Number(process.env.MVS_OPEN_DATA_TIMEOUT_MS ?? 280000);
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
+  const batchSize = 3;
 
   try {
-    for (const resource of MVS_OPEN_DATA_RESOURCES) {
+    for (let index = 0; index < MVS_OPEN_DATA_RESOURCES.length; index += batchSize) {
       if (controller.signal.aborted) break;
-      try {
-        const found = await findInZipResource(resource, plate, controller.signal);
-        if (found) return found;
-      } catch (error) {
-        if (controller.signal.aborted) break;
-        console.warn(`MVS archive ${resource.year} lookup failed`, error);
-      }
+      const batch = MVS_OPEN_DATA_RESOURCES.slice(index, index + batchSize);
+      const results = await Promise.all(
+        batch.map(async (resource) => {
+          try {
+            return await findInZipResource(resource, plate, controller.signal);
+          } catch (error) {
+            if (!controller.signal.aborted) {
+              console.warn(`MVS archive ${resource.year} lookup failed`, error);
+            }
+            return null;
+          }
+        }),
+      );
+
+      const found = results.find(Boolean);
+      if (found) return found;
     }
     return null;
   } finally {
