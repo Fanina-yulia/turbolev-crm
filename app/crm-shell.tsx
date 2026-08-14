@@ -8,6 +8,7 @@ import { LeadsBoardV2 } from "./leads-board-v2";
 import { CommunicationsHub } from "./communications-hub-server";
 import { GlobalVehicleSearch } from "./global-vehicle-search";
 import { PartsCatalog } from "./parts-catalog";
+import { Planner } from "./planner";
 import { turboLevLogoDark, turboLevLogoLight } from "@/src/brand/logos";
 
 const nav = ["Огляд станції", "Комунікації", "Ліди", "Клієнти та авто", "Планувальник", "Діагностика", "Замовлення-наряди", "Підбір запчастин", "Закупівлі та склад", "Виробництво", "Контроль якості", "Оплати", "Гарантії", "Аналітика"];
@@ -38,7 +39,7 @@ export function CrmShell() {
       <div className="sidebarFoot"><span className="liveDot" /> Станція онлайн</div>
     </aside>
     <section className="workspace">
-      {active === "Комунікації" ? <CommunicationsHub /> : active === "Ліди" ? <LeadsBoardV2 /> : active === "Підбір запчастин" ? <PartsCatalog /> : active === "Огляд станції" ? <Overview /> : <div className="comingSoon"><p className="eyebrow">TURBO LEV CRM</p><h1>{active}</h1><p>Розділ буде реалізований наступним.</p></div>}
+      {active === "Комунікації" ? <CommunicationsHub /> : active === "Ліди" ? <LeadsBoardV2 /> : active === "Планувальник" ? <Planner /> : active === "Підбір запчастин" ? <PartsCatalog /> : active === "Огляд станції" ? <Overview /> : <div className="comingSoon"><p className="eyebrow">TURBO LEV CRM</p><h1>{active}</h1><p>Розділ буде реалізований наступним.</p></div>}
     </section>
   </main>;
 }
