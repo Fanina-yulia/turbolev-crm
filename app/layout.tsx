@@ -6,7 +6,9 @@ import "./vehicle-intelligence.css";
 import "./quick-lookup-order.css";
 import "./leads.css";
 import "./leads-kpi.css";
+import "./lead-details.css";
 import { PhoneInputNormalizer } from "./phone-input-normalizer";
+import { LeadDetailsEnhancer } from "./lead-details-enhancer";
 
 export const metadata: Metadata = {
   title: "Turbo LEV CRM",
@@ -18,6 +20,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
     <html lang="uk">
       <body>
         <PhoneInputNormalizer />
+        <LeadDetailsEnhancer />
         {children}
       </body>
     </html>
