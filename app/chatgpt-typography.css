@@ -1,0 +1,64 @@
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap");
+
+:root{
+  --ui-font:"OpenAI Sans","Inter",ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+}
+
+html,body,
+button,input,textarea,select{
+  font-family:var(--ui-font)!important;
+  font-synthesis:none;
+  font-optical-sizing:auto;
+  font-feature-settings:"kern" 1,"liga" 1,"calt" 1;
+  -webkit-font-smoothing:antialiased;
+  -moz-osx-font-smoothing:grayscale;
+  text-rendering:optimizeLegibility;
+}
+
+body{
+  font-weight:400;
+  letter-spacing:0;
+}
+
+h1,h2,h3,h4,h5,h6{
+  font-family:var(--ui-font)!important;
+  font-weight:600!important;
+  letter-spacing:-0.025em!important;
+}
+
+strong,b{
+  font-weight:600;
+}
+
+.sidebar nav button,
+.settingsNavButton{
+  font-family:var(--ui-font)!important;
+  font-weight:500!important;
+  letter-spacing:-0.008em;
+}
+
+.sidebar nav .navActive{
+  font-weight:600!important;
+}
+
+.eyebrow,
+[class*="eyebrow"]{
+  font-family:var(--ui-font)!important;
+  font-weight:600!important;
+}
+
+button,
+input,
+textarea,
+select{
+  letter-spacing:-0.005em;
+}
+
+p,span,small,label,td,th{
+  font-family:var(--ui-font);
+}
+
+/* Keep number plates intentionally condensed and independent from the UI typeface. */
+.uaPlateText{
+  font-family:"Arial Narrow","Roboto Condensed","Bahnschrift SemiCondensed","Segoe UI",Arial,sans-serif!important;
+}
