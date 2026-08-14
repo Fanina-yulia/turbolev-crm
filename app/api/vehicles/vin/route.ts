@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { decodeVinIntelligence } from "@/src/services/vin-intelligence.service";
 import { validateVin } from "@/src/domain/vin";
+import { classifyVehicle, TURBO_LEV_CLASS_LABELS } from "@/src/domain/vehicle-intelligence";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -31,8 +32,25 @@ export async function GET(request: Request) {
 
   try {
     const result = await decodeVinIntelligence(validation.vin, { forceRefresh });
+    const classification = result.vehicle ? classifyVehicle({
+      make: result.vehicle.make ?? "",
+      model: result.vehicle.model ?? "",
+      year: result.vehicle.year?.toString() ?? "",
+      engine: result.vehicle.engine ?? "",
+      engineVolume: result.vehicle.engineVolumeL?.toString() ?? "",
+      fuelType: result.vehicle.fuelType ?? "",
+      bodyType: result.vehicle.bodyType ?? "",
+      driveType: result.vehicle.driveType ?? "",
+      vehicleType: result.vehicle.vehicleType ?? "",
+    }) : null;
+
     return NextResponse.json({
       ...result,
+      classification: classification ? {
+        ...classification,
+        label: TURBO_LEV_CLASS_LABELS[classification.turboLevClass],
+        autoPriceAdjustmentAllowed: classification.confidence >= 85 && classification.turboLevClass !== "UNKNOWN",
+      } : null,
       attributionUrl: "https://vpic.nhtsa.dot.gov/",
     });
   } catch (error) {

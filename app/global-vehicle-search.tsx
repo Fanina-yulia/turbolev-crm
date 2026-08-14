@@ -19,6 +19,11 @@ type VehicleResult = {
   series?: string | null;
   transmission?: string | null;
   plantCountry?: string | null;
+  turboLevClass?: string | null;
+  turboLevClassLabel?: string | null;
+  priceCoefficient?: number | null;
+  classificationConfidence?: number | null;
+  classificationReason?: string | null;
 };
 
 type Validation = {
@@ -26,6 +31,14 @@ type Validation = {
   wmi?: string | null;
   checkDigit?: { status?: string; actual?: string | null; expected?: string | null };
   warnings?: string[];
+};
+
+type ClassificationResult = {
+  turboLevClass?: string;
+  label?: string;
+  priceCoefficient?: number;
+  confidence?: number;
+  reason?: string;
 };
 
 function normalizePlate(value: string) {
@@ -81,7 +94,15 @@ export function GlobalVehicleSearch() {
       const data = await response.json();
       setValidation(data.validation ?? null);
       if (response.ok && data.status === "FOUND" && data.vehicle) {
-        setResult(data.vehicle);
+        const classification = (data.classification ?? {}) as ClassificationResult;
+        setResult({
+          ...data.vehicle,
+          turboLevClass: classification.turboLevClass ?? null,
+          turboLevClassLabel: classification.label ?? null,
+          priceCoefficient: classification.priceCoefficient ?? 1,
+          classificationConfidence: classification.confidence ?? null,
+          classificationReason: classification.reason ?? null,
+        });
         setSource(data.sourceDetail ?? data.source ?? "NHTSA_VPIC_API");
         setConfidence(typeof data.confidence === "number" ? data.confidence : null);
         setFieldConfidence(data.fieldConfidence ?? {});
@@ -118,11 +139,17 @@ export function GlobalVehicleSearch() {
 
           {message && <div className={styles.hint}>{message}</div>}
           {result && <div className={styles.result}>
-            <div className={styles.resultHead}><div><strong>{[result.make, result.model, result.year].filter(Boolean).join(" ") || "Автомобіль знайдено"}</strong>{result.vin && <span>VIN {result.vin}</span>}</div>{confidence != null && <div className={styles.score}><small>Довіра</small><b>{confidence}%</b></div>}</div>
+            <div className={styles.resultHead}><div><strong>{[result.make, result.model, result.year].filter(Boolean).join(" ") || "Автомобіль знайдено"}</strong>{result.vin && <span>VIN {result.vin}</span>}</div>{confidence != null && <div className={styles.score}><small>Довіра даних</small><b>{confidence}%</b></div>}</div>
+            {result.turboLevClassLabel && <div className={styles.validation}>
+              <div><small>Категорія Turbo LEV</small><b>{result.turboLevClassLabel}</b></div>
+              <div><small>Коефіцієнт робіт</small><b>×{Number(result.priceCoefficient ?? 1).toFixed(2)}</b></div>
+              <div><small>Довіра категорії</small><b>{result.classificationConfidence ?? "—"}%</b></div>
+            </div>}
+            {result.classificationReason && <div className={styles.hint}>{result.classificationReason}</div>}
             <div className={styles.meta}>{result.engineVolumeL && <span>{result.engineVolumeL} л · {fieldConfidence.engineVolumeL ?? "—"}%</span>}{result.engine && <span>{result.engine} · {fieldConfidence.engine ?? "—"}%</span>}{result.fuelType && <span>{result.fuelType} · {fieldConfidence.fuelType ?? "—"}%</span>}{result.bodyType && <span>{result.bodyType} · {fieldConfidence.bodyType ?? "—"}%</span>}{result.driveType && <span>{result.driveType} · {fieldConfidence.driveType ?? "—"}%</span>}{result.transmission && <span>{result.transmission}</span>}{result.trim && <span>{result.trim}</span>}{result.plantCountry && <span>{result.plantCountry}</span>}</div>
             <small className={styles.source}>Джерело: {source}{cached ? " · кеш Turbo LEV" : ""}</small>
           </div>}
-          <div className={styles.hint}>Каскад: український номер → локальний МВС → VIN → кеш Turbo LEV → локальний vPIC → NHTSA API. Якщо джерело не підтверджує поле, CRM залишає його порожнім, а не вигадує.</div>
+          <div className={styles.hint}>Каскад: український номер → локальний МВС → VIN → кеш Turbo LEV → локальний vPIC → NHTSA API. Категорія Turbo LEV визначається окремим класифікатором. Коефіцієнт призначений тільки для робіт, не для запчастин; низька впевненість потребує підтвердження менеджера.</div>
         </div>
       </div>
     </div>}
