@@ -1,0 +1,12 @@
+.vehicleIntelligenceCard{margin-top:18px;border:1px solid rgba(255,106,0,.28);background:linear-gradient(135deg,rgba(255,106,0,.10),rgba(255,106,0,.025));border-radius:14px;padding:16px;display:grid;grid-template-columns:minmax(0,1.5fr) minmax(160px,.55fr) minmax(230px,.8fr);gap:16px;align-items:end}
+.vehicleIntelligenceCard>div{display:grid;gap:5px}
+.vehicleIntelligenceCard small,.vehicleIntelligenceCard label>span{font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;font-weight:800}
+.vehicleIntelligenceCard strong{font-size:17px;line-height:1.25}
+.vehicleIntelligenceCard>div>span{font-size:10px;color:var(--soft-text);line-height:1.45}
+.vehicleCoefficient{border-left:1px solid var(--line);padding-left:16px}
+.vehicleCoefficient b{font-size:28px;color:var(--orange);letter-spacing:-.04em}
+.vehicleIntelligenceCard label{display:grid;gap:7px}
+.vehicleIntelligenceCard select{width:100%;border:1px solid var(--line);background:var(--panel);color:var(--text);border-radius:10px;padding:10px 11px;outline:0;font:inherit;font-size:11px}
+.vehicleIntelligenceCard select:focus{border-color:var(--orange);box-shadow:0 0 0 3px rgba(255,106,0,.1)}
+@media(max-width:900px){.vehicleIntelligenceCard{grid-template-columns:1fr 1fr}.vehicleIntelligenceCard label{grid-column:1/-1}}
+@media(max-width:650px){.vehicleIntelligenceCard{grid-template-columns:1fr}.vehicleCoefficient{border-left:0;border-top:1px solid var(--line);padding-left:0;padding-top:12px}.vehicleIntelligenceCard label{grid-column:auto}}
