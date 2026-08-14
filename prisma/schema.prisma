@@ -82,13 +82,32 @@ model Client {
 }
 
 model Vehicle {
-  id        String   @id @default(cuid())
-  clientId  String
-  brand     String?
-  model     String?
-  vin       String?  @unique
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id                       String   @id @default(cuid())
+  clientId                 String
+  plateNumber              String?  @unique
+  plateNormalized          String?  @unique
+  brand                    String?
+  model                    String?
+  vin                      String?  @unique
+  year                     Int?
+  mileageKm                Int?
+  engineName               String?
+  engineVolumeCm3          Int?
+  fuelType                 String?
+  bodyType                 String?
+  grossWeightKg            Int?
+  driveType                String?
+  vehicleType              String?
+  turboLevClass            String?
+  priceCoefficient         Decimal  @default(1.00) @db.Decimal(4, 2)
+  classificationSource     String?
+  classificationConfidence Int?
+  manualClassOverride      Boolean  @default(false)
+  vehicleDataSource        String?
+  vehicleDataConfidence    Int?
+  lastVehicleLookupAt      DateTime?
+  createdAt                DateTime @default(now())
+  updatedAt                DateTime @updatedAt
 
   client             Client              @relation(fields: [clientId], references: [id], onDelete: Cascade)
   diagnosticRequests DiagnosticRequest[]
@@ -96,6 +115,7 @@ model Vehicle {
 
   @@index([clientId])
   @@index([brand, model])
+  @@index([turboLevClass])
 }
 
 model DiagnosticRequest {
