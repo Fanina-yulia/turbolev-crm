@@ -1,0 +1,105 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum CallType {
+  INCOMING
+  OUTGOING
+}
+
+enum CallStatus {
+  ANSWERED
+  MISSED
+  BUSY
+}
+
+enum LeadStatus {
+  NEW_REQUEST
+  CONTACTED
+  QUALIFIED
+  BOOKED
+  LOST
+  CONVERTED
+}
+
+enum LeadSource {
+  BINOTEL
+  WEBSITE
+  PHONE
+  MESSENGER
+  WALK_IN
+  OTHER
+}
+
+model User {
+  id             String        @id @default(cuid())
+  name           String
+  email          String?       @unique
+  internalNumber String?       @unique
+  isActive       Boolean       @default(true)
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  managedCalls   CallHistory[] @relation("CallManager")
+}
+
+model Client {
+  id        String        @id @default(cuid())
+  name      String?
+  phone     String        @unique
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+  calls     CallHistory[]
+}
+
+model Lead {
+  id        String        @id @default(cuid())
+  name      String?
+  phone     String
+  status    LeadStatus    @default(NEW_REQUEST)
+  source    LeadSource    @default(OTHER)
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+  calls     CallHistory[]
+
+  @@index([phone])
+  @@index([status, createdAt])
+  @@index([source, createdAt])
+}
+
+model CallHistory {
+  id               String      @id @default(cuid())
+  binotelCallId    String      @unique
+  externalNumber   String
+  internalNumber   String?
+  type             CallType
+  status           CallStatus?
+  duration         Int         @default(0)
+  recordingUrl     String?     @db.Text
+  startedAt        DateTime?
+  answeredAt       DateTime?
+  endedAt          DateTime?
+  rawPayload       Json?
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+
+  leadId           String?
+  clientId         String?
+  managerId        String?
+
+  lead             Lead?       @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  client           Client?     @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  manager          User?       @relation("CallManager", fields: [managerId], references: [id], onDelete: SetNull)
+
+  @@index([externalNumber, createdAt])
+  @@index([internalNumber, createdAt])
+  @@index([type, createdAt])
+  @@index([status, createdAt])
+  @@index([leadId])
+  @@index([clientId])
+  @@index([managerId])
+}
