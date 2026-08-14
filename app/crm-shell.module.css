@@ -6,12 +6,12 @@
   display:flex;
   align-items:center;
   justify-content:flex-end;
-  filter:drop-shadow(0 12px 26px rgba(0,0,0,.18));
 }
 
-.globalNewRequest :global(button){
+.globalNewRequest > :global(button){
   min-height:46px;
   white-space:nowrap;
+  box-shadow:0 12px 26px rgba(0,0,0,.18);
 }
 
 .workspaceWithFloatingAction{
@@ -23,7 +23,7 @@
     top:10px;
     right:12px;
   }
-  .globalNewRequest :global(button){
+  .globalNewRequest > :global(button){
     min-height:42px;
     padding-left:14px;
     padding-right:14px;
