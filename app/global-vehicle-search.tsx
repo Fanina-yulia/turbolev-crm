@@ -125,6 +125,6 @@ export function GlobalVehicleSearch() {
           <div className={styles.hint}>Каскад: український номер → локальний МВС → VIN → кеш Turbo LEV → локальний vPIC → NHTSA API. Якщо джерело не підтверджує поле, CRM залишає його порожнім, а не вигадує.</div>
         </div>
       </div>
-    }</div>}
+    </div>}
   </div>;
 }
