@@ -31,6 +31,13 @@ type StoredRequest = RequestForm & {
 
 type LookupState = "idle" | "searching" | "found" | "not-found";
 
+type ClientLookup = {
+  name: string;
+  phone: string;
+  lastVisit: string;
+  vehicles: StoredRequest[];
+};
+
 const STORAGE_KEY = "turbolev-manual-requests-v1";
 
 const initialForm: RequestForm = {
@@ -73,6 +80,20 @@ function normalizeVin(value: string) {
   return value.toUpperCase().replace(/[^A-HJ-NPR-Z0-9]/g, "").slice(0, 17);
 }
 
+function normalizePhone(value: string) {
+  const digits = value.replace(/\D/g, "");
+  if (digits.startsWith("380")) return digits;
+  if (digits.startsWith("0") && digits.length === 10) return `38${digits}`;
+  if (digits.length === 9) return `380${digits}`;
+  return digits;
+}
+
+function formatPhone(value: string) {
+  const digits = normalizePhone(value);
+  if (digits.length !== 12 || !digits.startsWith("380")) return value;
+  return `+${digits.slice(0, 3)} ${digits.slice(3, 5)} ${digits.slice(5, 8)} ${digits.slice(8, 10)} ${digits.slice(10, 12)}`;
+}
+
 function formatDate(value: string) {
   if (!value) return "—";
   const date = new Date(value);
@@ -91,6 +112,15 @@ function readStoredRequests(): StoredRequest[] {
   }
 }
 
+function uniqueVehicles(requests: StoredRequest[]) {
+  const map = new Map<string, StoredRequest>();
+  for (const item of requests.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())) {
+    const key = normalizeVin(item.vin || "") || normalizePlate(item.plate || "") || `${item.make}-${item.model}-${item.year}`;
+    if (key && !map.has(key)) map.set(key, item);
+  }
+  return [...map.values()];
+}
+
 export function NewRequestWizard() {
   const [open, setOpen] = useState(false);
   const [step, setStep] = useState(1);
@@ -99,6 +129,8 @@ export function NewRequestWizard() {
   const [success, setSuccess] = useState("");
   const [lookupState, setLookupState] = useState<LookupState>("idle");
   const [foundRequest, setFoundRequest] = useState<StoredRequest | null>(null);
+  const [phoneLookupState, setPhoneLookupState] = useState<LookupState>("idle");
+  const [foundClient, setFoundClient] = useState<ClientLookup | null>(null);
 
   const status = useMemo(
     () => (form.appointmentDate && form.appointmentTime ? "BOOKED" : "NEW_LEAD"),
@@ -123,6 +155,16 @@ export function NewRequestWizard() {
       year: request.year || "",
       engine: request.engine || "",
       mileage: request.mileage || "",
+    }));
+    setStep(2);
+  }
+
+  function applyFoundClient(client: ClientLookup) {
+    setForm((current) => ({
+      ...current,
+      customerName: client.name || current.customerName,
+      phone: formatPhone(client.phone),
+      source: "Повторний клієнт",
     }));
   }
 
@@ -150,6 +192,38 @@ export function NewRequestWizard() {
     }
   }
 
+  function lookupByPhone(rawPhone: string, autoApply = true) {
+    const phone = normalizePhone(rawPhone);
+    setFoundClient(null);
+
+    if (phone.length < 10) {
+      setPhoneLookupState("idle");
+      return;
+    }
+
+    setPhoneLookupState("searching");
+    const existing = readStoredRequests()
+      .filter((item) => normalizePhone(item.phone || "") === phone)
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+    if (!existing.length) {
+      setPhoneLookupState("not-found");
+      return;
+    }
+
+    const latest = existing[0];
+    const client: ClientLookup = {
+      name: latest.customerName || existing.find((item) => item.customerName)?.customerName || "Клієнт Turbo LEV",
+      phone,
+      lastVisit: latest.createdAt,
+      vehicles: uniqueVehicles(existing),
+    };
+
+    setFoundClient(client);
+    setPhoneLookupState("found");
+    if (autoApply) applyFoundClient(client);
+  }
+
   useEffect(() => {
     if (!open) return;
     const plate = normalizePlate(form.plate);
@@ -162,18 +236,32 @@ export function NewRequestWizard() {
     return () => window.clearTimeout(timer);
   }, [form.plate, open]);
 
+  useEffect(() => {
+    if (!open) return;
+    const phone = normalizePhone(form.phone);
+    if (phone.length < 10) {
+      setPhoneLookupState("idle");
+      setFoundClient(null);
+      return;
+    }
+    const timer = window.setTimeout(() => lookupByPhone(phone), 350);
+    return () => window.clearTimeout(timer);
+  }, [form.phone, open]);
+
   function close() {
     setOpen(false);
     setStep(1);
     setError("");
     setLookupState("idle");
     setFoundRequest(null);
+    setPhoneLookupState("idle");
+    setFoundClient(null);
   }
 
   function validateCurrentStep() {
     if (step === 1) {
       if (!form.customerName.trim()) return "Вкажіть ім’я клієнта.";
-      if (form.phone.replace(/\D/g, "").length < 9) return "Вкажіть коректний номер телефону.";
+      if (normalizePhone(form.phone).length < 10) return "Вкажіть коректний номер телефону.";
     }
     if (step === 2) {
       if (!form.plate.trim()) return "Вкажіть державний номер автомобіля.";
@@ -210,6 +298,7 @@ export function NewRequestWizard() {
       createdAt: new Date().toISOString(),
       status,
       ...form,
+      phone: formatPhone(form.phone),
       plate: normalizePlate(form.plate),
       vin: normalizeVin(form.vin),
     };
@@ -223,6 +312,8 @@ export function NewRequestWizard() {
     setStep(1);
     setLookupState("idle");
     setFoundRequest(null);
+    setPhoneLookupState("idle");
+    setFoundClient(null);
     window.setTimeout(() => {
       setSuccess("");
       setOpen(false);
@@ -242,43 +333,96 @@ export function NewRequestWizard() {
               <div>
                 <p className="eyebrow">TURBO LEV · РУЧНЕ СТВОРЕННЯ</p>
                 <h2>Нова заявка</h2>
-                <span>Швидкий пошук авто → клієнт → авто → потреба → запис</span>
+                <span>Пошук клієнта / авто → потреба → запис</span>
               </div>
               <button className="requestClose" type="button" onClick={close} aria-label="Закрити">×</button>
             </div>
 
-            <div className="plateQuickLookup">
-              <div className="plateQuickCopy">
-                <b>Швидкий пошук по номеру авто</b>
-                <span>Спочатку перевіряємо базу Turbo LEV і не створюємо дубль автомобіля чи клієнта.</span>
-              </div>
-              <div className="plateQuickControls">
-                <input value={form.plate} onChange={(event) => update("plate", normalizePlate(event.target.value))} placeholder="AA1234BB" aria-label="Державний номер автомобіля" autoFocus />
-                <button type="button" onClick={() => lookupByPlate(form.plate)}>Знайти</button>
-              </div>
+            <div className="quickLookupGrid">
+              <div className="phoneQuickLookup">
+                <div className="plateQuickCopy">
+                  <b>Пошук клієнта по телефону</b>
+                  <span>Якщо клієнт уже є — показуємо картку та всі його автомобілі.</span>
+                </div>
+                <div className="plateQuickControls">
+                  <input value={form.phone} onChange={(event) => update("phone", event.target.value)} placeholder="+380 67 123 45 67" aria-label="Телефон клієнта" inputMode="tel" autoFocus />
+                  <button type="button" onClick={() => lookupByPhone(form.phone)}>Знайти</button>
+                </div>
 
-              {lookupState === "searching" && <div className="vehicleLookupState searching">Шукаю автомобіль у базі Turbo LEV…</div>}
+                {phoneLookupState === "searching" && <div className="vehicleLookupState searching">Шукаю клієнта у базі Turbo LEV…</div>}
 
-              {lookupState === "found" && foundRequest && (
-                <div className="vehicleLookupResult found">
-                  <div className="vehicleLookupIcon">✓</div>
-                  <div className="vehicleLookupMain">
-                    <b>Автомобіль знайдено</b>
-                    <strong>{[foundRequest.make, foundRequest.model, foundRequest.year].filter(Boolean).join(" ") || foundRequest.plate}</strong>
-                    <span>{normalizePlate(foundRequest.plate)}{foundRequest.vin ? ` · VIN ${foundRequest.vin}` : ""}</span>
+                {phoneLookupState === "found" && foundClient && (
+                  <div className="clientLookupCard">
+                    <div className="clientLookupHead">
+                      <div className="clientLookupAvatar">{foundClient.name.slice(0, 1).toUpperCase()}</div>
+                      <div>
+                        <b>{foundClient.name}</b>
+                        <span>{formatPhone(foundClient.phone)}</span>
+                        <small>Останнє звернення: {formatDate(foundClient.lastVisit)}</small>
+                      </div>
+                      <button type="button" onClick={() => applyFoundClient(foundClient)}>Використати клієнта</button>
+                    </div>
+                    <div className="clientVehiclesTitle">
+                      <b>Автомобілі клієнта</b>
+                      <span>{foundClient.vehicles.length}</span>
+                    </div>
+                    <div className="clientVehiclesList">
+                      {foundClient.vehicles.map((vehicle) => (
+                        <button type="button" key={`${vehicle.id}-${vehicle.plate}-${vehicle.vin}`} className="clientVehicleCard" onClick={() => applyFoundVehicle(vehicle)}>
+                          <div className="clientVehiclePlate">{normalizePlate(vehicle.plate) || "БЕЗ НОМЕРА"}</div>
+                          <div className="clientVehicleInfo">
+                            <b>{[vehicle.make, vehicle.model, vehicle.year].filter(Boolean).join(" ") || "Автомобіль"}</b>
+                            <span>{vehicle.vin ? `VIN ${vehicle.vin}` : "VIN не вказаний"}</span>
+                            <small>{vehicle.engine || "Двигун не вказаний"}{vehicle.mileage ? ` · ${vehicle.mileage} км` : ""}</small>
+                          </div>
+                          <div className="clientVehicleChoose">Обрати →</div>
+                        </button>
+                      ))}
+                    </div>
                   </div>
-                  <div className="vehicleLookupMeta"><small>Клієнт</small><b>{foundRequest.customerName || "—"}</b><span>{foundRequest.phone || "—"}</span></div>
-                  <div className="vehicleLookupMeta"><small>Останнє звернення</small><b>{formatDate(foundRequest.createdAt)}</b><span>{foundRequest.mileage ? `${foundRequest.mileage} км` : "Пробіг не вказаний"}</span></div>
-                  <button type="button" className="lookupUseButton" onClick={() => applyFoundVehicle(foundRequest)}>Підтягнути дані</button>
-                </div>
-              )}
+                )}
 
-              {lookupState === "not-found" && (
-                <div className="vehicleLookupResult empty">
-                  <div className="vehicleLookupIcon">?</div>
-                  <div><b>У базі Turbo LEV такого номера ще немає</b><span>Створюємо нове авто. Зовнішні джерела для номера підключимо як наступний рівень пошуку.</span></div>
+                {phoneLookupState === "not-found" && (
+                  <div className="vehicleLookupResult empty">
+                    <div className="vehicleLookupIcon">+</div>
+                    <div><b>Клієнта з таким телефоном ще немає</b><span>Створюємо нову картку клієнта без дублювання існуючих даних.</span></div>
+                  </div>
+                )}
+              </div>
+
+              <div className="plateQuickLookup">
+                <div className="plateQuickCopy">
+                  <b>Пошук по номеру авто</b>
+                  <span>Перевіряємо базу Turbo LEV і підтягуємо клієнта та дані автомобіля.</span>
                 </div>
-              )}
+                <div className="plateQuickControls">
+                  <input value={form.plate} onChange={(event) => update("plate", normalizePlate(event.target.value))} placeholder="AA1234BB" aria-label="Державний номер автомобіля" />
+                  <button type="button" onClick={() => lookupByPlate(form.plate)}>Знайти</button>
+                </div>
+
+                {lookupState === "searching" && <div className="vehicleLookupState searching">Шукаю автомобіль у базі Turbo LEV…</div>}
+
+                {lookupState === "found" && foundRequest && (
+                  <div className="vehicleLookupResult found">
+                    <div className="vehicleLookupIcon">✓</div>
+                    <div className="vehicleLookupMain">
+                      <b>Автомобіль знайдено</b>
+                      <strong>{[foundRequest.make, foundRequest.model, foundRequest.year].filter(Boolean).join(" ") || foundRequest.plate}</strong>
+                      <span>{normalizePlate(foundRequest.plate)}{foundRequest.vin ? ` · VIN ${foundRequest.vin}` : ""}</span>
+                    </div>
+                    <div className="vehicleLookupMeta"><small>Клієнт</small><b>{foundRequest.customerName || "—"}</b><span>{foundRequest.phone || "—"}</span></div>
+                    <div className="vehicleLookupMeta"><small>Останнє звернення</small><b>{formatDate(foundRequest.createdAt)}</b><span>{foundRequest.mileage ? `${foundRequest.mileage} км` : "Пробіг не вказаний"}</span></div>
+                    <button type="button" className="lookupUseButton" onClick={() => applyFoundVehicle(foundRequest)}>Підтягнути дані</button>
+                  </div>
+                )}
+
+                {lookupState === "not-found" && (
+                  <div className="vehicleLookupResult empty">
+                    <div className="vehicleLookupIcon">?</div>
+                    <div><b>У базі Turbo LEV такого номера ще немає</b><span>Створюємо нове авто. Зовнішній пошук підключимо окремим рівнем.</span></div>
+                  </div>
+                )}
+              </div>
             </div>
 
             <div className="requestStepper" aria-label="Кроки створення заявки">
