@@ -31,7 +31,35 @@ const autoNovaAdapter: SupplierAdapter = {
   },
 };
 
-export const supplierAdapters: SupplierAdapter[] = [bmPartsAdapter, uniqueTradeAdapter, autoNovaAdapter];
+const atlAdapter: SupplierAdapter = {
+  id: "atl",
+  name: "ATL",
+  website: "https://atl.ua/",
+  apiBaseUrl: null,
+  authType: "B2B / API доступ після підтвердження ATL",
+  capabilities: ["SEARCH", "PRICE", "STOCK", "WAREHOUSES", "VIN"],
+  setupHint: "Збережіть B2B-доступи в Налаштуваннях. Live-пошук увімкнемо після отримання офіційного API endpoint/контракту ATL.",
+  async isConfigured() {
+    const config = await getIntegrationCredential("ATL");
+    return Boolean(config?.login && config?.password);
+  },
+  async testConnection(): Promise<SupplierConnectionCheck> {
+    const configured = await this.isConfigured();
+    return {
+      ok: false,
+      state: configured ? "MANUAL_SETUP" : "NOT_CONFIGURED",
+      message: configured
+        ? "Доступи ATL збережені. Live API не вмикаємо без офіційного endpoint і документації."
+        : "Додайте B2B/API доступи ATL у Налаштуваннях.",
+      checkedAt: new Date().toISOString(),
+    };
+  },
+  async search(): Promise<SupplierOffer[]> {
+    return [];
+  },
+};
+
+export const supplierAdapters: SupplierAdapter[] = [bmPartsAdapter, uniqueTradeAdapter, autoNovaAdapter, atlAdapter];
 
 export function getSupplierAdapter(id: SupplierId) {
   return supplierAdapters.find((adapter) => adapter.id === id) ?? null;
@@ -40,6 +68,7 @@ export function getSupplierAdapter(id: SupplierId) {
 export async function listSupplierStatuses(): Promise<SupplierStatus[]> {
   return Promise.all(supplierAdapters.map(async (adapter) => {
     const configured = await adapter.isConfigured();
+    const needsManualApi = adapter.id === "autonova-d" || adapter.id === "atl";
     return {
       id: adapter.id,
       name: adapter.name,
@@ -47,7 +76,7 @@ export async function listSupplierStatuses(): Promise<SupplierStatus[]> {
       apiBaseUrl: adapter.apiBaseUrl,
       authType: adapter.authType,
       configured,
-      state: adapter.id === "autonova-d" && configured ? "MANUAL_SETUP" : configured ? "CONFIGURED" : "NOT_CONFIGURED",
+      state: needsManualApi && configured ? "MANUAL_SETUP" : configured ? "CONFIGURED" : "NOT_CONFIGURED",
       capabilities: adapter.capabilities,
       setupHint: adapter.setupHint,
     };
@@ -62,7 +91,9 @@ export async function testSupplier(id: SupplierId) {
 
 export async function searchConfiguredSuppliers(query: string, limitPerSupplier = 20) {
   const readiness = await Promise.all(supplierAdapters.map(async (adapter) => ({ adapter, configured: await adapter.isConfigured() })));
-  const searchable = readiness.filter((item) => item.adapter.id !== "autonova-d" && item.configured).map((item) => item.adapter);
+  const searchable = readiness
+    .filter((item) => item.adapter.id !== "autonova-d" && item.adapter.id !== "atl" && item.configured)
+    .map((item) => item.adapter);
   const settled = await Promise.allSettled(searchable.map((adapter) => adapter.search(query, limitPerSupplier)));
 
   const offers: SupplierOffer[] = [];
