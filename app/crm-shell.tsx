@@ -6,6 +6,7 @@ import { NewRequestWizardV3 } from "./new-request-wizard-v3";
 import { SettingsPanel } from "./settings-panel";
 import { LeadsBoardV2 } from "./leads-board-v2";
 import { CommunicationsHub } from "./communications-hub-server";
+import { ClientsVehicles } from "./clients-vehicles";
 import { GlobalVehicleSearch } from "./global-vehicle-search";
 import { PartsCatalog } from "./parts-catalog";
 import { PlannerV2 } from "./planner-v2";
@@ -89,7 +90,7 @@ export function CrmShell({ initialSection }: { initialSection?: string }) {
   return <main className="shell">
     <aside className="sidebar"><div className="brand"><div className="brandLogoWrap" aria-label="Turbo LEV"><img className="brandLogo brandLogoDark" src={turboLevLogoDark} alt="Turbo LEV" /><img className="brandLogo brandLogoLight" src={turboLevLogoLight} alt="Turbo LEV" /></div></div><nav>{CRM_NAV.map((item) => <button className={active === item.label ? "navActive" : ""} key={item.slug} onClick={() => navigateTo(item.label)}><span className="navDot" />{item.label}{item.label === "Комунікації" && <span style={{marginLeft:"auto",fontSize:9,color:"var(--orange)"}}>NEW</span>}</button>)}<SettingsPanel /></nav><div className="sidebarFoot"><span className="liveDot" /> Станція онлайн</div></aside>
     <div className={shellStyles.globalNewRequest}><NewRequestWizardV3 /></div>
-    <section className={`workspace ${shellStyles.workspaceWithFloatingAction}`}>{active !== "Огляд станції" && filterBanner}{active === "Комунікації" ? <CommunicationsHub /> : active === "Ліди" ? <LeadsBoardV2 /> : active === "Планувальник" ? <PlannerV2 /> : active === "Підбір запчастин" ? <PartsCatalog /> : active === "Огляд станції" ? <Overview /> : <div className="comingSoon"><p className="eyebrow">TURBO LEV CRM</p><h1>{active}</h1>{workflowFilter ? <p>Показуємо зріз: <strong>{workflowFilterLabel || workflowFilter}</strong>. Фільтр уже переданий цьому розділу через CRM route state.</p> : <p>Розділ буде реалізований наступним.</p>}</div>}</section>
+    <section className={`workspace ${shellStyles.workspaceWithFloatingAction}`}>{active !== "Огляд станції" && filterBanner}{active === "Комунікації" ? <CommunicationsHub /> : active === "Ліди" ? <LeadsBoardV2 /> : active === "Клієнти та авто" ? <ClientsVehicles /> : active === "Планувальник" ? <PlannerV2 /> : active === "Підбір запчастин" ? <PartsCatalog /> : active === "Огляд станції" ? <Overview /> : <div className="comingSoon"><p className="eyebrow">TURBO LEV CRM</p><h1>{active}</h1>{workflowFilter ? <p>Показуємо зріз: <strong>{workflowFilterLabel || workflowFilter}</strong>. Фільтр уже переданий цьому розділу через CRM route state.</p> : <p>Розділ буде реалізований наступним.</p>}</div>}</section>
   </main>;
 }
 
