@@ -134,7 +134,7 @@ model VehicleRegistryEntry {
   sourceYear       Int
   importedAt       DateTime @default(now())
 
-  @@unique([plateNormalized, sourceYear, vin])
+  @@unique([plateNormalized, sourceYear])
   @@index([plateNormalized])
   @@index([vin])
   @@index([brand, model])
