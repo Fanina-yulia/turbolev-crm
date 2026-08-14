@@ -1,0 +1,115 @@
+enum PlannerAppointmentStatus {
+  BOOKED
+  ARRIVED
+  DIAGNOSTICS
+  WAITING_PARTS_SELECTION
+  WAITING_CALCULATION
+  WAITING_APPROVAL
+  WAITING_PARTS
+  READY_FOR_REPAIR
+  IN_REPAIR
+  WAITING_QC
+  READY_FOR_PICKUP
+  COMPLETED
+  WARRANTY
+  PAUSED
+  NO_SHOW
+  CANCELLED
+  RESERVE
+}
+
+model ServiceLocation {
+  id          String   @id @default(cuid())
+  name        String
+  timezone    String   @default("Europe/Kyiv") @db.VarChar(64)
+  openMinute  Int      @default(540)
+  closeMinute Int      @default(1260)
+  isActive    Boolean  @default(true)
+  sortOrder   Int      @default(100)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  posts        ServicePost[]
+  mechanics    ServiceMechanic[]
+  appointments ServiceAppointment[]
+
+  @@index([isActive, sortOrder])
+}
+
+model ServicePost {
+  id           String   @id @default(cuid())
+  locationId   String
+  name         String
+  sortOrder    Int      @default(100)
+  isActive     Boolean  @default(true)
+  capabilities String[] @default([])
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  location     ServiceLocation      @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  appointments ServiceAppointment[]
+
+  @@unique([locationId, name])
+  @@index([locationId, isActive, sortOrder])
+}
+
+model ServiceMechanic {
+  id          String   @id @default(cuid())
+  locationId  String
+  userId      String?  @db.VarChar(64)
+  name        String
+  sortOrder   Int      @default(100)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  location     ServiceLocation      @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  appointments ServiceAppointment[]
+
+  @@index([locationId, isActive, sortOrder])
+  @@index([userId])
+}
+
+model ServiceAppointment {
+  id              String                   @id @default(cuid())
+  locationId      String
+  postId          String?
+  mechanicId      String?
+  leadId          String?                  @db.VarChar(64)
+  clientId        String?                  @db.VarChar(64)
+  vehicleId       String?                  @db.VarChar(64)
+  workOrderId     String?                  @db.VarChar(64)
+  status          PlannerAppointmentStatus @default(BOOKED)
+  customerName    String?
+  phone           String?                  @db.VarChar(32)
+  vehicleLabel    String?
+  plateNumber     String?                  @db.VarChar(24)
+  problem         String?                  @db.Text
+  comment         String?                  @db.Text
+  source          String?                  @db.VarChar(40)
+  estimatedAmount Decimal?                 @db.Decimal(14, 2)
+  priority        Int                      @default(0)
+  plannedStartAt  DateTime
+  plannedEndAt    DateTime
+  actualArrivalAt DateTime?
+  actualStartAt   DateTime?
+  actualEndAt     DateTime?
+  partsEtaAt      DateTime?
+  noShowAt        DateTime?
+  createdById     String?                  @db.VarChar(64)
+  createdAt       DateTime                 @default(now())
+  updatedAt       DateTime                 @updatedAt
+
+  location ServiceLocation @relation(fields: [locationId], references: [id], onDelete: Restrict)
+  post     ServicePost?     @relation(fields: [postId], references: [id], onDelete: SetNull)
+  mechanic ServiceMechanic? @relation(fields: [mechanicId], references: [id], onDelete: SetNull)
+
+  @@index([locationId, plannedStartAt, plannedEndAt])
+  @@index([postId, plannedStartAt, plannedEndAt])
+  @@index([mechanicId, plannedStartAt, plannedEndAt])
+  @@index([status, plannedStartAt])
+  @@index([leadId])
+  @@index([clientId])
+  @@index([vehicleId])
+  @@index([workOrderId])
+}
