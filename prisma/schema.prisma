@@ -47,6 +47,13 @@ enum LeadSource {
   OTHER
 }
 
+enum DiagnosticRequestStatus {
+  PENDING
+  IN_PROGRESS
+  CONFIRMED
+  CANCELLED
+}
+
 model User {
   id             String        @id @default(cuid())
   name           String
@@ -61,46 +68,72 @@ model User {
 }
 
 model Client {
-  id              String        @id @default(cuid())
+  id              String              @id @default(cuid())
   name            String?
-  phone           String        @unique
-  phoneNormalized String        @unique
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
+  phone           String              @unique
+  phoneNormalized String              @unique
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
 
-  vehicles        Vehicle[]
-  workOrders      WorkOrder[]
-  calls           CallHistory[]
+  vehicles           Vehicle[]
+  diagnosticRequests DiagnosticRequest[]
+  workOrders         WorkOrder[]
+  calls              CallHistory[]
 }
 
 model Vehicle {
-  id        String      @id @default(cuid())
+  id        String   @id @default(cuid())
   clientId  String
   brand     String?
   model     String?
-  vin       String?     @unique
-  createdAt DateTime    @default(now())
-  updatedAt DateTime    @updatedAt
+  vin       String?  @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  client    Client      @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  workOrders WorkOrder[]
+  client             Client              @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  diagnosticRequests DiagnosticRequest[]
+  workOrders         WorkOrder[]
 
   @@index([clientId])
   @@index([brand, model])
 }
 
-model WorkOrder {
-  id        String        @id @default(cuid())
-  clientId  String
-  vehicleId String
-  status    String        @default("ARRIVED")
-  closedAt  DateTime?
-  createdAt DateTime      @default(now())
-  updatedAt DateTime      @updatedAt
+model DiagnosticRequest {
+  id                  String                  @id @default(cuid())
+  clientId            String
+  vehicleId           String
+  leadId              String?
+  status              DiagnosticRequestStatus @default(PENDING)
+  technicalConclusion String?                 @db.Text
+  confirmedAt         DateTime?
+  createdAt           DateTime                @default(now())
+  updatedAt           DateTime                @updatedAt
 
-  client    Client        @relation(fields: [clientId], references: [id], onDelete: Restrict)
-  vehicle   Vehicle       @relation(fields: [vehicleId], references: [id], onDelete: Restrict)
-  calls     CallHistory[]
+  client    Client @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  vehicle   Vehicle @relation(fields: [vehicleId], references: [id], onDelete: Restrict)
+  lead      Lead? @relation("LeadDiagnostics", fields: [leadId], references: [id], onDelete: SetNull)
+  workOrder WorkOrder?
+
+  @@index([clientId, status])
+  @@index([vehicleId, status])
+  @@index([leadId])
+  @@index([createdAt])
+}
+
+model WorkOrder {
+  id                  String   @id @default(cuid())
+  clientId            String
+  vehicleId           String
+  diagnosticRequestId String   @unique
+  status              String   @default("PARTS_REVIEW")
+  closedAt            DateTime?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  client            Client            @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  vehicle           Vehicle           @relation(fields: [vehicleId], references: [id], onDelete: Restrict)
+  diagnosticRequest DiagnosticRequest @relation(fields: [diagnosticRequestId], references: [id], onDelete: Restrict)
+  calls             CallHistory[]
 
   @@index([clientId, closedAt])
   @@index([vehicleId, closedAt])
@@ -124,8 +157,9 @@ model Lead {
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
 
-  assignedUser    User?         @relation("LeadAssignee", fields: [assignedUserId], references: [id], onDelete: SetNull)
-  calls           CallHistory[]
+  assignedUser       User?               @relation("LeadAssignee", fields: [assignedUserId], references: [id], onDelete: SetNull)
+  calls              CallHistory[]
+  diagnosticRequests DiagnosticRequest[] @relation("LeadDiagnostics")
 
   @@index([phone])
   @@index([phoneNormalized])
@@ -151,15 +185,15 @@ model CallHistory {
   createdAt      DateTime    @default(now())
   updatedAt      DateTime    @updatedAt
 
-  leadId         String?
-  clientId       String?
-  workOrderId    String?
-  managerId      String?
+  leadId      String?
+  clientId    String?
+  workOrderId String?
+  managerId   String?
 
-  lead           Lead?       @relation(fields: [leadId], references: [id], onDelete: SetNull)
-  client         Client?     @relation(fields: [clientId], references: [id], onDelete: SetNull)
-  workOrder      WorkOrder?  @relation(fields: [workOrderId], references: [id], onDelete: SetNull)
-  manager        User?       @relation("CallManager", fields: [managerId], references: [id], onDelete: SetNull)
+  lead      Lead?      @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  client    Client?    @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  workOrder WorkOrder? @relation(fields: [workOrderId], references: [id], onDelete: SetNull)
+  manager   User?      @relation("CallManager", fields: [managerId], references: [id], onDelete: SetNull)
 
   @@index([externalNumber, createdAt])
   @@index([internalNumber, createdAt])
