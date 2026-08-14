@@ -8,6 +8,7 @@ import "./leads.css";
 import "./leads-kpi.css";
 import "./lead-details.css";
 import "./communications.css";
+import "./settings-suppliers.css";
 import { PhoneInputNormalizer } from "./phone-input-normalizer";
 import { LeadDetailsEnhancer } from "./lead-details-enhancer";
 
