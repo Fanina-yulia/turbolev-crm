@@ -1,4 +1,6 @@
 import { WorkOrderCockpit, type AttentionCar } from "@/src/components/work-order-cockpit";
+import { ThemeToggle } from "./theme-toggle";
+import { turboLevLogoDark, turboLevLogoLight } from "@/src/brand/logos";
 
 const nav = [
   "Огляд станції",
@@ -74,7 +76,10 @@ export default function HomePage() {
     <main className="shell">
       <aside className="sidebar">
         <div className="brand">
-          <img src="/brand/turbolev-logo.png" alt="Turbo LEV" />
+          <div className="brandLogoWrap" aria-label="Turbo LEV">
+            <img className="brandLogo brandLogoDark" src={turboLevLogoDark} alt="Turbo LEV" />
+            <img className="brandLogo brandLogoLight" src={turboLevLogoLight} alt="Turbo LEV" />
+          </div>
           <div className="brandText">
             <strong>CRM</strong>
             <span>СТО · Глеваха</span>
@@ -100,6 +105,7 @@ export default function HomePage() {
             <h1>Огляд станції</h1>
           </div>
           <div className="topActions">
+            <ThemeToggle />
             <button className="ghost">Пошук VIN / номер</button>
             <button className="primary">+ Нова заявка</button>
           </div>
