@@ -225,10 +225,15 @@ export async function lookupVehicleByPlate(rawPlate: string, options?: { deep?: 
   try {
     const crm = await lookupCrmVehicle(plate);
     if (crm) return crm;
+  } catch (error) {
+    console.warn("CRM vehicle lookup unavailable; continuing with MVS index", error);
+  }
+
+  try {
     const indexed = await lookupRegistryIndex(plate);
     if (indexed) return indexed;
   } catch (error) {
-    console.warn("Fast database vehicle lookup unavailable", error);
+    console.warn("MVS registry index lookup unavailable", error);
   }
 
   if (options?.deep) {
