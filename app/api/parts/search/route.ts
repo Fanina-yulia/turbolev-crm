@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getGenerationByYear, searchParts } from "auto-parts-db";
+import { FREE_PARTS_SOURCE, searchReferenceParts } from "@/src/services/free-parts-catalog.service";
 import { decodeVinIntelligence } from "@/src/services/vin-intelligence.service";
 import { validateVin } from "@/src/domain/vin";
 
@@ -26,22 +26,17 @@ export async function GET(request: Request) {
   }
 
   const vehicle = vehicleContext?.vehicle ?? null;
-  const generation = vehicle?.make && vehicle?.model && vehicle?.year
-    ? getGenerationByYear(vehicle.make, vehicle.model, vehicle.year)
-    : null;
-
-  const fitmentConfidence = generation ? 45 : vehicle ? 30 : 10;
-  const parts = searchParts(q).slice(0, 50).map((part) => ({
+  const reference = await searchReferenceParts(q, 50);
+  const fitmentConfidence = vehicle ? 30 : 10;
+  const parts = reference.parts.map((part) => ({
     ...part,
     fitment: {
       status: "REFERENCE_ONLY" as const,
       confidence: fitmentConfidence,
       confirmed: false,
-      reason: generation
-        ? `Каталог знає покоління ${vehicle?.make ?? ""} ${vehicle?.model ?? ""}, але не містить OEM/VIN-прив'язки цієї деталі.`
-        : vehicle
-          ? "VIN визначив автомобіль, але безкоштовний каталог не підтверджує точну сумісність деталі."
-          : "Пошук лише за назвою деталі без підтвердження автомобіля.",
+      reason: vehicle
+        ? "VIN визначив автомобіль, але безкоштовний довідник не містить OEM/VIN-прив'язки цієї деталі."
+        : "Пошук лише за назвою деталі без підтвердження автомобіля.",
     },
   }));
 
@@ -56,7 +51,6 @@ export async function GET(request: Request) {
       engine: vehicle.engine,
       engineVolumeL: vehicle.engineVolumeL,
       fuelType: vehicle.fuelType,
-      generation,
       confidence: vehicleContext?.confidence ?? 0,
       source: vehicleContext?.sourceDetail ?? vehicleContext?.source ?? null,
     } : null,
@@ -68,7 +62,12 @@ export async function GET(request: Request) {
       message: "CRM не має права позначити деталь як сумісну лише за збігом назви. Перед замовленням потрібне підтвердження OEM-каталогом або API постачальника.",
     },
     providers: [
-      { id: "AUTO_PARTS_DB", role: "REFERENCE_CATALOG", license: "MIT" },
+      {
+        id: reference.remote ? FREE_PARTS_SOURCE.id : "TURBO_LEV_LOCAL_FALLBACK",
+        role: "REFERENCE_CATALOG",
+        license: reference.remote ? FREE_PARTS_SOURCE.license : "Turbo LEV internal",
+        pinnedCommit: reference.remote ? FREE_PARTS_SOURCE.commit : null,
+      },
       { id: vehicleContext?.sourceDetail ?? "VIN_NOT_USED", role: "VEHICLE_IDENTITY" },
     ],
   });
