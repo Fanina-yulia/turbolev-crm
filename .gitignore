@@ -16,7 +16,8 @@
 # Vercel
 .vercel
 
-# Prisma local/dev artifacts
+# Prisma generated/local artifacts
+/src/generated/prisma/
 *.db
 *.db-journal
 
