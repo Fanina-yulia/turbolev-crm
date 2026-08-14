@@ -1,35 +1,39 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
-type LeadStatus = "NEW" | "CONTACTED" | "QUALIFIED" | "ESTIMATE" | "WAITING" | "NO_ANSWER" | "BOOKED" | "LOST";
-type LeadSource = "Телефон" | "Instagram" | "Facebook" | "Google Maps" | "Сайт" | "Viber" | "WhatsApp" | "OLX" | "Рекомендація";
+type LeadStatus = "NEW" | "CONTACTED" | "QUALIFIED" | "ESTIMATE" | "WAITING" | "NO_ANSWER" | "BOOKED" | "ARRIVED" | "LOST" | "SPAM_WRONG" | "SUPPLIER_PARTNER";
 type KpiKey = "new" | "unanswered" | "overdue" | "booked" | "conversion";
-
+type UserOption = { id: string; name: string; internalNumber?: string | null };
 type Lead = {
   id: string;
-  name: string;
+  name: string | null;
   phone: string;
-  plate: string;
-  car: string;
-  need: string;
-  source: LeadSource;
+  phoneNormalized: string;
   status: LeadStatus;
-  responsible: string;
-  nextAction: string;
-  nextContactAt: string;
+  source: string;
+  carBrand: string | null;
+  carModel: string | null;
+  carYear: number | null;
+  plateNumber: string | null;
+  vin: string | null;
+  need: string | null;
+  comment: string | null;
+  nextAction: string | null;
+  nextContactAt: string | null;
   contactAttempts: number;
   lastActivityAt: string;
-  lossReason?: string;
+  preliminaryAmount: string | number | null;
+  assignedUserId: string | null;
+  createdAt: string;
+  updatedAt: string;
+  assignedUser?: UserOption | null;
+  _count?: { calls: number };
 };
+type PlannerLocation = { id: string; name: string; posts: Array<{ id: string; name: string }>; mechanics: Array<{ id: string; name: string }> };
+type BookingState = { lead: Lead; locationId: string; postId: string; mechanicId: string; date: string; time: string; duration: string };
 
-const STORAGE_KEY = "turbolev-leads-v1";
-const SLA_MS = 2 * 60 * 60 * 1000;
-const managers = ["Марія", "Юрій", "Продавник 1", "Продавник 2"];
-const sources: LeadSource[] = ["Телефон", "Instagram", "Facebook", "Google Maps", "Сайт", "Viber", "WhatsApp", "OLX", "Рекомендація"];
-const lossReasons = ["Дорого", "Далеко", "Передумав", "Не додзвонились", "Поїхав на інше СТО", "Інше"];
-
-const columns: { key: LeadStatus; label: string }[] = [
+const columns: Array<{ key: LeadStatus; label: string }> = [
   { key: "NEW", label: "Нові" },
   { key: "CONTACTED", label: "Контакт" },
   { key: "QUALIFIED", label: "Потреба" },
@@ -39,234 +43,249 @@ const columns: { key: LeadStatus; label: string }[] = [
   { key: "BOOKED", label: "Записані" },
   { key: "LOST", label: "Неуспішні" },
 ];
+const sourceLabels: Record<string, string> = {
+  PHONE: "Телефон", BINOTEL: "Binotel", WEBSITE: "Сайт", MESSENGER: "Messenger", INSTAGRAM: "Instagram", FACEBOOK: "Facebook",
+  GOOGLE_MAPS: "Google Maps", VIBER: "Viber", WHATSAPP: "WhatsApp", OLX: "OLX", TIKTOK: "TikTok", REFERRAL: "Рекомендація", WALK_IN: "Без запису", OTHER: "Інше",
+};
 
-const initialLeads: Lead[] = [
-  { id: "L-1042", name: "Олександр", phone: "+380 67 425 18 30", plate: "KA7584CI", car: "Авто уточнюється", need: "Стук у передній підвісці", source: "Телефон", status: "NEW", responsible: "Марія", nextAction: "Передзвонити та уточнити симптоми", nextContactAt: new Date(Date.now() + 35 * 60 * 1000).toISOString(), contactAttempts: 0, lastActivityAt: new Date(Date.now() - 55 * 60 * 1000).toISOString() },
-  { id: "L-1041", name: "Ірина", phone: "+380 93 771 42 15", plate: "BH3057TE", car: "Renault Scenic · 2013", need: "ТО + діагностика ходової", source: "Google Maps", status: "CONTACTED", responsible: "Продавник 1", nextAction: "Підтвердити дату заїзду", nextContactAt: new Date(Date.now() + 90 * 60 * 1000).toISOString(), contactAttempts: 1, lastActivityAt: new Date(Date.now() - 25 * 60 * 1000).toISOString() },
-  { id: "L-1040", name: "Андрій", phone: "+380 50 902 66 71", plate: "AI5523PM", car: "Ford S-Max · 2014", need: "Заміна сайлентблоків", source: "Facebook", status: "ESTIMATE", responsible: "Юрій", nextAction: "Надіслати прорахунок робіт", nextContactAt: new Date(Date.now() - 20 * 60 * 1000).toISOString(), contactAttempts: 1, lastActivityAt: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString() },
-  { id: "L-1039", name: "Віктор", phone: "+380 68 114 37 22", plate: "AA4271KI", car: "Mazda 6 · 2016", need: "Гальма", source: "WhatsApp", status: "WAITING", responsible: "Марія", nextAction: "Передзвонити після 17:00", nextContactAt: new Date(Date.now() + 4 * 60 * 60 * 1000).toISOString(), contactAttempts: 2, lastActivityAt: new Date(Date.now() - 70 * 60 * 1000).toISOString() },
-  { id: "L-1038", name: "Сергій", phone: "+380 99 730 11 08", plate: "CE1038EA", car: "BMW 3 · 2018", need: "Комп'ютерна діагностика", source: "OLX", status: "NO_ANSWER", responsible: "Продавник 2", nextAction: "Третя спроба дзвінка", nextContactAt: new Date(Date.now() + 20 * 60 * 1000).toISOString(), contactAttempts: 2, lastActivityAt: new Date(Date.now() - 110 * 60 * 1000).toISOString() },
-];
-
-function formatTime(value: string) {
+function pad(value: number) { return String(value).padStart(2, "0"); }
+function carLabel(lead: Lead) { return [lead.carBrand, lead.carModel, lead.carYear].filter(Boolean).join(" ") || "Авто уточнюється"; }
+function isOverdue(lead: Lead, slaMinutes: number) {
+  if (["BOOKED", "ARRIVED", "LOST", "SPAM_WRONG", "SUPPLIER_PARTNER"].includes(lead.status)) return false;
+  const stale = Date.now() - new Date(lead.lastActivityAt).getTime() > slaMinutes * 60_000;
+  const followup = lead.nextContactAt ? new Date(lead.nextContactAt).getTime() < Date.now() : false;
+  return stale || followup;
+}
+function toLocalInput(value?: string | null) {
+  if (!value) return "";
   const date = new Date(value);
-  return new Intl.DateTimeFormat("uk-UA", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }).format(date);
-}
-
-function isOverdue(lead: Lead) {
-  if (["BOOKED", "LOST"].includes(lead.status)) return false;
-  return Date.now() - new Date(lead.lastActivityAt).getTime() > SLA_MS || new Date(lead.nextContactAt).getTime() < Date.now();
-}
-
-function statusLabel(status: LeadStatus) {
-  return columns.find((item) => item.key === status)?.label ?? status;
+  if (Number.isNaN(date.getTime())) return "";
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
 export function LeadsBoardV2() {
-  const [leads, setLeads] = useState<Lead[]>(initialLeads);
+  const [leads, setLeads] = useState<Lead[]>([]);
+  const [users, setUsers] = useState<UserOption[]>([]);
+  const [slaMinutes, setSlaMinutes] = useState(120);
   const [view, setView] = useState<"kanban" | "table">("kanban");
   const [query, setQuery] = useState("");
-  const [manager, setManager] = useState("Всі менеджери");
-  const [openNew, setOpenNew] = useState(false);
-  const [flash, setFlash] = useState("");
+  const [manager, setManager] = useState("");
   const [activeKpi, setActiveKpi] = useState<KpiKey | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [flash, setFlash] = useState("");
+  const [error, setError] = useState("");
+  const [booking, setBooking] = useState<BookingState | null>(null);
+  const [locations, setLocations] = useState<PlannerLocation[]>([]);
+  const [savingBooking, setSavingBooking] = useState(false);
 
-  useEffect(() => {
+  const notify = (message: string) => { setFlash(message); window.setTimeout(() => setFlash(""), 3000); };
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError("");
     try {
-      const raw = window.localStorage.getItem(STORAGE_KEY);
-      if (raw) setLeads(JSON.parse(raw));
-    } catch {}
+      const response = await fetch("/api/leads", { cache: "no-store" });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Не вдалося завантажити ліди");
+      setLeads(Array.isArray(data.leads) ? data.leads : []);
+      setUsers(Array.isArray(data.users) ? data.users : []);
+      setSlaMinutes(Number(data.meta?.slaMinutes || 120));
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Не вдалося завантажити ліди");
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
+  useEffect(() => { void load(); }, [load]);
   useEffect(() => {
-    try { window.localStorage.setItem(STORAGE_KEY, JSON.stringify(leads)); } catch {}
-  }, [leads]);
-
-  const stats = useMemo(() => {
-    const open = leads.filter((x) => !["BOOKED", "LOST"].includes(x.status));
-    const booked = leads.filter((x) => x.status === "BOOKED").length;
-    return {
-      newCount: leads.filter((x) => x.status === "NEW").length,
-      unanswered: leads.filter((x) => x.status === "NO_ANSWER").length,
-      overdue: open.filter(isOverdue).length,
-      booked,
-      conversion: leads.length ? Math.round((booked / leads.length) * 100) : 0,
-    };
-  }, [leads]);
+    const handler = () => void load();
+    window.addEventListener("turbolev:data-changed", handler);
+    return () => window.removeEventListener("turbolev:data-changed", handler);
+  }, [load]);
 
   const visible = useMemo(() => leads.filter((lead) => {
-    const text = `${lead.name} ${lead.phone} ${lead.plate} ${lead.car} ${lead.need}`.toLowerCase();
-    return text.includes(query.toLowerCase()) && (manager === "Всі менеджери" || lead.responsible === manager);
+    const haystack = `${lead.name || ""} ${lead.phone} ${lead.plateNumber || ""} ${carLabel(lead)} ${lead.need || ""}`.toLowerCase();
+    return haystack.includes(query.trim().toLowerCase()) && (!manager || lead.assignedUserId === manager);
   }), [leads, query, manager]);
 
-  const kpiLeads = useMemo(() => {
-    if (!activeKpi) return [];
-    if (activeKpi === "new") return leads.filter((x) => x.status === "NEW");
-    if (activeKpi === "unanswered") return leads.filter((x) => x.status === "NO_ANSWER");
-    if (activeKpi === "overdue") return leads.filter(isOverdue);
-    if (activeKpi === "booked") return leads.filter((x) => x.status === "BOOKED");
-    return leads.filter((x) => x.status === "BOOKED" || !["LOST"].includes(x.status));
-  }, [activeKpi, leads]);
-
-  const kpiTitle: Record<KpiKey, string> = {
-    new: "Нові ліди",
-    unanswered: "Не додзвонились",
-    overdue: "Прострочені ліди",
-    booked: "Записані",
-    conversion: "Ліди у розрахунку конверсії",
-  };
-
-  function patchLead(id: string, patch: Partial<Lead>) {
-    setLeads((current) => current.map((lead) => lead.id === id ? { ...lead, ...patch, lastActivityAt: new Date().toISOString() } : lead));
-  }
-
-  function changeStatus(lead: Lead, status: LeadStatus) {
-    if (status === "BOOKED") {
-      patchLead(lead.id, { status, nextAction: "Створено заявку на заїзд" });
-      setFlash(`Лід ${lead.id} записаний. Заявку створено автоматично.`);
-      window.setTimeout(() => setFlash(""), 3200);
-      return;
-    }
-    if (status === "LOST" && !lead.lossReason) {
-      patchLead(lead.id, { status, lossReason: "Інше", nextAction: "Лід закрито" });
-      return;
-    }
-    patchLead(lead.id, { status });
-  }
-
-  function addAttempt(lead: Lead) {
-    const attempts = Math.min(3, lead.contactAttempts + 1);
-    patchLead(lead.id, {
-      contactAttempts: attempts,
-      status: attempts >= 3 ? "NO_ANSWER" : lead.status,
-      nextAction: attempts >= 3 ? "Закрити або призначити повторний контакт" : `Спроба зв'язку ${attempts + 1} з 3`,
-    });
-  }
-
-  function addLead(form: HTMLFormElement) {
-    const fd = new FormData(form);
-    const now = new Date();
-    const next = new Date(now.getTime() + 60 * 60 * 1000);
-    const lead: Lead = {
-      id: `L-${Math.floor(1100 + Math.random() * 8900)}`,
-      name: String(fd.get("name") || "Новий клієнт"),
-      phone: String(fd.get("phone") || ""),
-      plate: String(fd.get("plate") || "").toUpperCase(),
-      car: String(fd.get("car") || "Авто уточнюється"),
-      need: String(fd.get("need") || "Потреба уточнюється"),
-      source: String(fd.get("source") || "Телефон") as LeadSource,
-      status: "NEW",
-      responsible: String(fd.get("responsible") || managers[0]),
-      nextAction: String(fd.get("nextAction") || "Зв'язатися з клієнтом"),
-      nextContactAt: next.toISOString(),
-      contactAttempts: 0,
-      lastActivityAt: now.toISOString(),
+  const stats = useMemo(() => {
+    const business = visible.filter((lead) => !["SPAM_WRONG", "SUPPLIER_PARTNER"].includes(lead.status));
+    const booked = business.filter((lead) => lead.status === "BOOKED").length;
+    return {
+      newCount: business.filter((lead) => lead.status === "NEW").length,
+      unanswered: business.filter((lead) => lead.status === "NO_ANSWER").length,
+      overdue: business.filter((lead) => isOverdue(lead, slaMinutes)).length,
+      booked,
+      conversion: business.length ? Math.round((booked / business.length) * 100) : 0,
     };
-    setLeads((current) => [lead, ...current]);
-    setOpenNew(false);
+  }, [visible, slaMinutes]);
+
+  const filtered = useMemo(() => {
+    if (!activeKpi) return visible;
+    if (activeKpi === "new") return visible.filter((lead) => lead.status === "NEW");
+    if (activeKpi === "unanswered") return visible.filter((lead) => lead.status === "NO_ANSWER");
+    if (activeKpi === "overdue") return visible.filter((lead) => isOverdue(lead, slaMinutes));
+    if (activeKpi === "booked") return visible.filter((lead) => lead.status === "BOOKED");
+    return visible.filter((lead) => !["LOST", "SPAM_WRONG", "SUPPLIER_PARTNER"].includes(lead.status));
+  }, [activeKpi, visible, slaMinutes]);
+
+  async function patchLead(id: string, patch: Record<string, unknown>, success?: string) {
+    try {
+      const response = await fetch(`/api/leads/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(patch) });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Не вдалося зберегти зміну");
+      setLeads((current) => current.map((lead) => lead.id === id ? data.lead : lead));
+      if (success) notify(success);
+      window.dispatchEvent(new CustomEvent("turbolev:data-changed", { detail: { entity: "lead", id } }));
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Не вдалося зберегти зміну");
+    }
   }
 
-  function toggleKpi(key: KpiKey) {
-    setActiveKpi((current) => current === key ? null : key);
+  async function addAttempt(lead: Lead) {
+    try {
+      const response = await fetch(`/api/leads/${lead.id}/attempt`, { method: "POST" });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Не вдалося зафіксувати контакт");
+      setLeads((current) => current.map((item) => item.id === lead.id ? data.lead : item));
+      notify(`Спроба контакту №${data.lead.contactAttempts} зафіксована.`);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Не вдалося зафіксувати контакт");
+    }
   }
+
+  async function openBooking(lead: Lead) {
+    try {
+      const now = new Date();
+      const to = new Date(now.getTime() + 24 * 60 * 60_000);
+      const response = await fetch(`/api/planner?from=${encodeURIComponent(now.toISOString())}&to=${encodeURIComponent(to.toISOString())}`, { cache: "no-store" });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.message || "Планувальник недоступний");
+      const nextLocations: PlannerLocation[] = Array.isArray(data.locations) ? data.locations : [];
+      setLocations(nextLocations);
+      const start = new Date(Date.now() + 60 * 60_000);
+      setBooking({
+        lead,
+        locationId: data.activeLocationId || nextLocations[0]?.id || "",
+        postId: "",
+        mechanicId: "",
+        date: `${start.getFullYear()}-${pad(start.getMonth() + 1)}-${pad(start.getDate())}`,
+        time: `${pad(start.getHours())}:00`,
+        duration: "60",
+      });
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Не вдалося відкрити запис");
+    }
+  }
+
+  async function saveBooking() {
+    if (!booking) return;
+    setSavingBooking(true);
+    setError("");
+    try {
+      const start = new Date(`${booking.date}T${booking.time}:00`);
+      const end = new Date(start.getTime() + Number(booking.duration) * 60_000);
+      const response = await fetch(`/api/leads/${booking.lead.id}/book`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ locationId: booking.locationId, postId: booking.postId || null, mechanicId: booking.mechanicId || null, plannedStartAt: start.toISOString(), plannedEndAt: end.toISOString() }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Не вдалося записати клієнта");
+      setBooking(null);
+      notify("Лід записано — запис створено у Планувальнику.");
+      await load();
+      window.dispatchEvent(new CustomEvent("turbolev:data-changed", { detail: { entity: "booking" } }));
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Не вдалося записати клієнта");
+    } finally {
+      setSavingBooking(false);
+    }
+  }
+
+  const bookingLocation = booking ? locations.find((location) => location.id === booking.locationId) : null;
 
   return <div className="leadsPage">
     {flash && <div className="leadFlash">{flash}</div>}
-
     <header className="leadsHeader">
-      <div>
-        <p className="eyebrow">ВІДДІЛ ПРОДАЖІВ · SLA 2 ГОДИНИ</p>
-        <h1>Ліди</h1>
-        <p className="leadsSubtitle">Кому зараз треба подзвонити і кого ми ризикуємо втратити.</p>
-      </div>
-      <button className="primary" onClick={() => setOpenNew(true)}>+ Новий лід</button>
+      <div><p className="eyebrow">ПРОДАЖІ · NEON SERVER</p><h1>Ліди</h1><p className="leadsSubtitle">Єдина серверна база для всіх менеджерів.</p></div>
+      <button className="primary" type="button" onClick={() => void load()} disabled={loading}>{loading ? "Оновлення…" : "Оновити"}</button>
     </header>
 
-    <section className="leadKpis leadKpisInteractive">
-      <button className={`leadKpiCard ${activeKpi === "new" ? "leadKpiActive" : ""}`} onClick={() => toggleKpi("new")}>
-        <span>Нові</span><strong>{stats.newCount}</strong><small>потребують першого контакту</small><em>Відкрити →</em>
-      </button>
-      <button className={`leadKpiCard ${activeKpi === "unanswered" ? "leadKpiActive" : ""}`} onClick={() => toggleKpi("unanswered")}>
-        <span>Не додзвонились</span><strong>{stats.unanswered}</strong><small>максимум 3 спроби</small><em>Відкрити →</em>
-      </button>
-      <button className={`leadKpiCard ${stats.overdue ? "dangerKpi" : ""} ${activeKpi === "overdue" ? "leadKpiActive" : ""}`} onClick={() => toggleKpi("overdue")}>
-        <span>Прострочені</span><strong>{stats.overdue}</strong><small>SLA або наступна дія</small><em>Відкрити →</em>
-      </button>
-      <button className={`leadKpiCard ${activeKpi === "booked" ? "leadKpiActive" : ""}`} onClick={() => toggleKpi("booked")}>
-        <span>Записані</span><strong>{stats.booked}</strong><small>конверсія {stats.conversion}%</small><em>Відкрити →</em>
-      </button>
-      <button className={`leadKpiCard ${activeKpi === "conversion" ? "leadKpiActive" : ""}`} onClick={() => toggleKpi("conversion")}>
-        <span>Конверсія в запис</span><strong>{stats.conversion}%</strong><small>від усіх лідів</small><em>Відкрити →</em>
-      </button>
+    {error && <div className="alert"><strong>Помилка</strong><span>{error}</span><button onClick={() => setError("")}>Закрити</button></div>}
+
+    <section className="leadKpis">
+      <Kpi active={activeKpi === "new"} label="Нові" value={stats.newCount} sub="потребують першого контакту" onClick={() => setActiveKpi(activeKpi === "new" ? null : "new")} />
+      <Kpi active={activeKpi === "unanswered"} label="Не додзвонились" value={stats.unanswered} sub="повторний контакт" onClick={() => setActiveKpi(activeKpi === "unanswered" ? null : "unanswered")} />
+      <Kpi active={activeKpi === "overdue"} danger label="Прострочені" value={stats.overdue} sub="SLA / next action" onClick={() => setActiveKpi(activeKpi === "overdue" ? null : "overdue")} />
+      <Kpi active={activeKpi === "booked"} label="Записані" value={stats.booked} sub="у планувальнику" onClick={() => setActiveKpi(activeKpi === "booked" ? null : "booked")} />
+      <Kpi active={activeKpi === "conversion"} label="Конверсія в запис" value={`${stats.conversion}%`} sub="від робочих лідів" onClick={() => setActiveKpi(activeKpi === "conversion" ? null : "conversion")} />
     </section>
 
-    {activeKpi && <section className="leadKpiDrawer">
-      <header>
-        <div><p className="eyebrow">ШВИДКИЙ ЗРІЗ</p><h2>{kpiTitle[activeKpi]}</h2></div>
-        <button onClick={() => setActiveKpi(null)} aria-label="Закрити">×</button>
-      </header>
-      {activeKpi === "conversion" && <div className="conversionSummary"><strong>{stats.booked} / {leads.length}</strong><span>записано · конверсія {stats.conversion}%</span></div>}
-      <div className="leadKpiDrawerList">
-        {kpiLeads.map((lead) => <article className={`leadKpiRow ${isOverdue(lead) ? "leadKpiRowOverdue" : ""}`} key={lead.id}>
-          <div className="leadKpiPerson"><small>{lead.id}</small><strong>{lead.name}</strong><a href={`tel:${lead.phone.replace(/\s/g, "")}`}>{lead.phone}</a></div>
-          <div><small>Авто</small><strong>{lead.plate || "—"}</strong><span>{lead.car}</span></div>
-          <div><small>Звернення</small><strong>{lead.need}</strong><span>{lead.source}</span></div>
-          <div><small>Відповідальний</small><strong>{lead.responsible}</strong><span>{lead.contactAttempts}/3 спроб</span></div>
-          <div><small>Наступна дія</small><strong>{lead.nextAction}</strong><span>{formatTime(lead.nextContactAt)}</span></div>
-          <div className="leadKpiRowStatus"><span className={isOverdue(lead) ? "slaLate" : "slaOk"}>{isOverdue(lead) ? "ПРОСТРОЧЕНО" : statusLabel(lead.status)}</span></div>
-        </article>)}
-        {!kpiLeads.length && <div className="emptyKpiDrawer">У цій категорії зараз немає лідів.</div>}
-      </div>
-    </section>}
+    <div className="leadsToolbar">
+      <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Пошук: клієнт, телефон, номер, авто…" />
+      <select value={manager} onChange={(event) => setManager(event.target.value)}><option value="">Всі менеджери</option>{users.map((user) => <option key={user.id} value={user.id}>{user.name}</option>)}</select>
+      <div className="viewSwitch"><button className={view === "kanban" ? "active" : ""} onClick={() => setView("kanban")}>Канбан</button><button className={view === "table" ? "active" : ""} onClick={() => setView("table")}>Таблиця</button></div>
+    </div>
 
-    <section className="leadsToolbar">
-      <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Пошук: ім'я, телефон, номер авто…" />
-      <select value={manager} onChange={(e) => setManager(e.target.value)}><option>Всі менеджери</option>{managers.map((x) => <option key={x}>{x}</option>)}</select>
-      <div className="viewSwitch"><button className={view === "kanban" ? "active" : ""} onClick={() => setView("kanban")}>Kanban</button><button className={view === "table" ? "active" : ""} onClick={() => setView("table")}>Таблиця</button></div>
-    </section>
-
-    {view === "kanban" ? <div className="leadKanban">
-      {columns.map((column) => {
-        const items = visible.filter((lead) => lead.status === column.key);
-        return <section className="leadColumn" key={column.key}>
-          <header><strong>{column.label}</strong><span>{items.length}</span></header>
-          <div className="leadColumnBody">{items.map((lead) => <LeadCard key={lead.id} lead={lead} onPatch={patchLead} onStatus={changeStatus} onAttempt={addAttempt} />)}{!items.length && <div className="emptyColumn">Немає лідів</div>}</div>
-        </section>;
-      })}
-    </div> : <div className="leadTableWrap"><table className="leadTable"><thead><tr><th>Клієнт</th><th>Авто</th><th>Звернення</th><th>Статус</th><th>Відповідальний</th><th>Наступна дія</th><th>SLA</th></tr></thead><tbody>{visible.map((lead) => <tr key={lead.id} className={isOverdue(lead) ? "overdueRow" : ""}><td><strong>{lead.name}</strong><small>{lead.phone}</small></td><td><strong>{lead.plate || "—"}</strong><small>{lead.car}</small></td><td>{lead.need}<small>{lead.source}</small></td><td><select value={lead.status} onChange={(e) => changeStatus(lead, e.target.value as LeadStatus)}>{columns.map((c) => <option value={c.key} key={c.key}>{c.label}</option>)}</select></td><td>{lead.responsible}</td><td>{lead.nextAction}<small>{formatTime(lead.nextContactAt)}</small></td><td>{isOverdue(lead) ? <span className="slaLate">ПРОСТРОЧЕНО</span> : <span className="slaOk">В нормі</span>}</td></tr>)}</tbody></table></div>}
-
-    {openNew && <div className="leadModalBackdrop" onMouseDown={() => setOpenNew(false)}><div className="leadModal" onMouseDown={(e) => e.stopPropagation()}>
-      <header><div><p className="eyebrow">НОВЕ ЗВЕРНЕННЯ</p><h2>Створити лід</h2></div><button onClick={() => setOpenNew(false)}>×</button></header>
-      <form onSubmit={(e) => { e.preventDefault(); addLead(e.currentTarget); }}>
-        <div className="leadFormGrid">
-          <label>Ім'я<input name="name" required /></label>
-          <label>Телефон<input name="phone" required placeholder="+380…" /></label>
-          <label>Держномер<input name="plate" /></label>
-          <label>Авто<input name="car" placeholder="Марка, модель, рік" /></label>
-          <label className="wide">Потреба<input name="need" required /></label>
-          <label>Джерело<select name="source">{sources.map((x) => <option key={x}>{x}</option>)}</select></label>
-          <label>Відповідальний<select name="responsible">{managers.map((x) => <option key={x}>{x}</option>)}</select></label>
-          <label className="wide">Наступна дія<input name="nextAction" required placeholder="Напр. передзвонити і уточнити симптоми" /></label>
+    {loading && !leads.length ? <div className="emptyColumn">Завантажую ліди з Neon…</div> : view === "kanban" ?
+      <div className="leadKanban">{columns.map((column) => <section className="leadColumn" key={column.key}>
+        <header><strong>{column.label}</strong><span>{filtered.filter((lead) => lead.status === column.key).length}</span></header>
+        <div className="leadColumnBody">{filtered.filter((lead) => lead.status === column.key).map((lead) =>
+          <LeadCard key={lead.id} lead={lead} slaMinutes={slaMinutes} users={users} onPatch={patchLead} onAttempt={addAttempt} onBook={openBooking} />)}
+          {!filtered.some((lead) => lead.status === column.key) && <div className="emptyColumn">Порожньо</div>}
         </div>
-        <footer><button type="button" className="ghost" onClick={() => setOpenNew(false)}>Скасувати</button><button className="primary" type="submit">Створити лід</button></footer>
-      </form>
-    </div></div>}
+      </section>)}</div>
+      : <div className="leadTableWrap"><table className="leadTable"><thead><tr><th>Клієнт</th><th>Авто</th><th>Потреба</th><th>Відповідальний</th><th>Наступна дія</th><th>Статус</th></tr></thead><tbody>{filtered.map((lead) =>
+        <tr key={lead.id} className={isOverdue(lead, slaMinutes) ? "overdueRow" : ""}>
+          <td><strong>{lead.name || "Без імені"}</strong><small>{lead.phone}</small></td>
+          <td><strong>{lead.plateNumber || "—"}</strong><small>{carLabel(lead)}</small></td>
+          <td>{lead.need || "—"}</td>
+          <td><select value={lead.assignedUserId || ""} onChange={(event) => void patchLead(lead.id, { assignedUserId: event.target.value || null })}><option value="">Не призначено</option>{users.map((user) => <option key={user.id} value={user.id}>{user.name}</option>)}</select></td>
+          <td><strong>{lead.nextAction || "—"}</strong><small>{lead.nextContactAt ? new Date(lead.nextContactAt).toLocaleString("uk-UA") : "—"}</small></td>
+          <td><select value={lead.status} onChange={(event) => event.target.value === "BOOKED" ? void openBooking(lead) : void patchLead(lead.id, { status: event.target.value })}>{columns.map((column) => <option key={column.key} value={column.key}>{column.label}</option>)}</select></td>
+        </tr>)}</tbody></table></div>}
+
+    {booking && <div className="leadModalBackdrop" onMouseDown={() => setBooking(null)}><section className="leadModal" onMouseDown={(event) => event.stopPropagation()}>
+      <header><div><p className="eyebrow">ЛІД → ПЛАНУВАЛЬНИК</p><h2>Записати {booking.lead.name || "клієнта"}</h2></div><button onClick={() => setBooking(null)}>×</button></header>
+      <div className="leadFormGrid">
+        <label><span>Дата</span><input type="date" value={booking.date} onChange={(event) => setBooking({ ...booking, date: event.target.value })} /></label>
+        <label><span>Час</span><input type="time" step="1800" value={booking.time} onChange={(event) => setBooking({ ...booking, time: event.target.value })} /></label>
+        <label><span>Локація</span><select value={booking.locationId} onChange={(event) => setBooking({ ...booking, locationId: event.target.value, postId: "", mechanicId: "" })}>{locations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}</select></label>
+        <label><span>Тривалість</span><select value={booking.duration} onChange={(event) => setBooking({ ...booking, duration: event.target.value })}>{[30, 60, 90, 120, 180, 240].map((minutes) => <option key={minutes} value={minutes}>{minutes < 60 ? `${minutes} хв` : `${minutes / 60} год`}</option>)}</select></label>
+        <label><span>Пост</span><select value={booking.postId} onChange={(event) => setBooking({ ...booking, postId: event.target.value })}><option value="">Черга / без поста</option>{bookingLocation?.posts.map((post) => <option key={post.id} value={post.id}>{post.name}</option>)}</select></label>
+        <label><span>Механік</span><select value={booking.mechanicId} onChange={(event) => setBooking({ ...booking, mechanicId: event.target.value })}><option value="">Не призначено</option>{bookingLocation?.mechanics.map((mechanic) => <option key={mechanic.id} value={mechanic.id}>{mechanic.name}</option>)}</select></label>
+      </div>
+      <footer><button className="secondary" onClick={() => setBooking(null)}>Скасувати</button><button className="primary" disabled={savingBooking || !booking.locationId || !booking.date || !booking.time} onClick={() => void saveBooking()}>{savingBooking ? "Записую…" : "Записати в планувальник"}</button></footer>
+    </section></div>}
   </div>;
 }
 
-function LeadCard({ lead, onPatch, onStatus, onAttempt }: { lead: Lead; onPatch: (id: string, patch: Partial<Lead>) => void; onStatus: (lead: Lead, status: LeadStatus) => void; onAttempt: (lead: Lead) => void }) {
-  const overdue = isOverdue(lead);
+function Kpi({ active, danger, label, value, sub, onClick }: { active: boolean; danger?: boolean; label: string; value: string | number; sub: string; onClick: () => void }) {
+  return <button type="button" className={`${active ? "activeKpi" : ""} ${danger ? "dangerKpi" : ""}`} onClick={onClick}><span>{label}</span><strong>{value}</strong><small>{sub}</small></button>;
+}
+
+function LeadCard({ lead, slaMinutes, users, onPatch, onAttempt, onBook }: {
+  lead: Lead;
+  slaMinutes: number;
+  users: UserOption[];
+  onPatch: (id: string, patch: Record<string, unknown>, success?: string) => Promise<void>;
+  onAttempt: (lead: Lead) => Promise<void>;
+  onBook: (lead: Lead) => Promise<void>;
+}) {
+  const overdue = isOverdue(lead, slaMinutes);
   return <article className={`leadCard ${overdue ? "leadCardOverdue" : ""}`}>
-    <div className="leadCardTop"><span className="leadId">{lead.id}</span><span className={`leadSla ${overdue ? "late" : "ok"}`}>{overdue ? "SLA ПРОСТРОЧЕНО" : "SLA В НОРМІ"}</span></div>
-    <strong className="leadName">{lead.name}</strong>
-    <a className="leadPhone" href={`tel:${lead.phone.replace(/\s/g, "")}`}>{lead.phone}</a>
-    <div className="leadVehicle"><b>{lead.plate || "Без номера"}</b><span>{lead.car}</span></div>
-    <p className="leadNeed">{lead.need}</p>
-    <div className="leadMeta"><span>{lead.source}</span><span>{lead.responsible}</span></div>
-    <label className="leadNextLabel"><span>Наступна дія</span><input value={lead.nextAction} onChange={(e) => onPatch(lead.id, { nextAction: e.target.value })} /></label>
-    <div className="leadNextTime">до {formatTime(lead.nextContactAt)}</div>
-    <div className="attempts"><span>Спроби контакту: <b>{lead.contactAttempts}/3</b></span><button disabled={lead.contactAttempts >= 3} onClick={() => onAttempt(lead)}>+ спроба</button></div>
-    <select className="leadStatusSelect" value={lead.status} onChange={(e) => onStatus(lead, e.target.value as LeadStatus)}>{columns.map((c) => <option key={c.key} value={c.key}>{c.label}</option>)}</select>
-    {lead.status === "LOST" && <select className="lossReason" value={lead.lossReason || "Інше"} onChange={(e) => onPatch(lead.id, { lossReason: e.target.value })}>{lossReasons.map((x) => <option key={x}>{x}</option>)}</select>}
+    <div className="leadCardTop"><span className="leadId">{lead.id.slice(-8).toUpperCase()}</span><span className={`leadSla ${overdue ? "late" : "ok"}`}>{overdue ? "ПОТРІБНА ДІЯ" : "SLA OK"}</span></div>
+    <strong className="leadName">{lead.name || "Без імені"}</strong>
+    <a className="leadPhone" href={`tel:${lead.phoneNormalized}`}>{lead.phone}</a>
+    <div className="leadVehicle"><b>{lead.plateNumber || "БЕЗ НОМЕРА"}</b><span>{carLabel(lead)}</span>{lead.vin && <span>VIN {lead.vin}</span>}</div>
+    <p className="leadNeed">{lead.need || "Потреба ще не описана"}</p>
+    <div className="leadMeta"><span>{sourceLabels[lead.source] || lead.source}</span><span>{lead.assignedUser?.name || "Не призначено"}</span><span>{lead._count?.calls || 0} дзв.</span></div>
+    <label className="leadNextLabel"><span>Наступна дія</span><input key={`${lead.id}-${lead.nextAction || ""}`} defaultValue={lead.nextAction || ""} onBlur={(event) => void onPatch(lead.id, { nextAction: event.target.value })} placeholder="Що зробити далі" /></label>
+    <label className="leadNextLabel"><span>Наступний контакт</span><input key={`${lead.id}-${lead.nextContactAt || ""}`} type="datetime-local" defaultValue={toLocalInput(lead.nextContactAt)} onBlur={(event) => void onPatch(lead.id, { nextContactAt: event.target.value ? new Date(event.target.value).toISOString() : null })} /></label>
+    <div className="attempts"><span>Спроби: {lead.contactAttempts}</span><button type="button" onClick={() => void onAttempt(lead)}>+ зафіксувати дзвінок</button></div>
+    <select className="leadStatusSelect" value={lead.status} onChange={(event) => event.target.value === "BOOKED" ? void onBook(lead) : void onPatch(lead.id, { status: event.target.value }, "Статус ліда змінено.")}>{columns.map((column) => <option key={column.key} value={column.key}>{column.label}</option>)}</select>
+    <select className="leadStatusSelect" value={lead.assignedUserId || ""} onChange={(event) => void onPatch(lead.id, { assignedUserId: event.target.value || null })}><option value="">Не призначено</option>{users.map((user) => <option key={user.id} value={user.id}>{user.name}</option>)}</select>
   </article>;
 }

@@ -1,0 +1,16 @@
+model AuditEvent {
+  id         String   @id @default(cuid())
+  actorId    String?  @db.VarChar(64)
+  actorName  String?  @db.VarChar(160)
+  entityType String   @db.VarChar(64)
+  entityId   String   @db.VarChar(96)
+  action     String   @db.VarChar(64)
+  before     Json?
+  after      Json?
+  metadata   Json?
+  createdAt  DateTime @default(now())
+
+  @@index([entityType, entityId, createdAt])
+  @@index([actorId, createdAt])
+  @@index([action, createdAt])
+}

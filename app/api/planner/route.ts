@@ -34,13 +34,11 @@ export async function POST(request: Request) {
     if (!result.ok) {
       return NextResponse.json({
         status: "CONFLICT",
-        message: result.conflict.resourceType === "MECHANIC"
-          ? `Механік ${result.conflict.resource} уже веде 2 автомобілі одночасно. Третє паралельне авто заборонено.`
-          : `Конфлікт ресурсу: ${result.conflict.resource} уже зайнятий у цей час.`,
+        message: `Конфлікт ресурсу: ${result.conflict.resource} вже зайнятий у цей час.`,
         conflict: result.conflict,
       }, { status: 409 });
     }
-    return NextResponse.json({ status: "CREATED", appointment: result.appointment, warning: result.warning ?? null }, { status: 201 });
+    return NextResponse.json({ status: "CREATED", appointment: result.appointment }, { status: 201 });
   } catch (error) {
     const code = error instanceof Error ? error.message : "UNKNOWN";
     const message = code === "INVALID_TIME_RANGE"

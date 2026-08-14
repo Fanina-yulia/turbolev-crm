@@ -20,9 +20,17 @@ enum CallStatus {
 
 enum LeadStatus {
   NEW
-  QUALIFYING
+  CONTACTED
+  QUALIFIED
+  ESTIMATE
+  WAITING
+  NO_ANSWER
   BOOKED
   ARRIVED
+  LOST
+
+  // Legacy values kept for backward compatibility with existing records/API.
+  QUALIFYING
   WARM_LEAD
   REJECTED
   SPAM_WRONG
@@ -43,6 +51,14 @@ enum LeadSource {
   WEBSITE
   PHONE
   MESSENGER
+  INSTAGRAM
+  FACEBOOK
+  GOOGLE_MAPS
+  VIBER
+  WHATSAPP
+  OLX
+  TIKTOK
+  REFERRAL
   WALK_IN
   OTHER
 }
@@ -216,21 +232,28 @@ model WorkOrder {
 }
 
 model Lead {
-  id              String        @id @default(cuid())
-  name            String?
-  phone           String
-  phoneNormalized String
-  status          LeadStatus    @default(NEW)
-  source          LeadSource    @default(OTHER)
-  carBrand        String?
-  carModel        String?
-  vin             String?
-  comment         String?       @db.Text
-  rejectReason    RejectReason?
-  nextContactAt   DateTime?
-  assignedUserId  String?
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
+  id                String        @id @default(cuid())
+  name              String?
+  phone             String
+  phoneNormalized   String
+  status            LeadStatus    @default(NEW)
+  source            LeadSource    @default(OTHER)
+  carBrand          String?
+  carModel          String?
+  carYear           Int?
+  plateNumber       String?       @db.VarChar(24)
+  vin               String?
+  need              String?       @db.Text
+  comment           String?       @db.Text
+  rejectReason      RejectReason?
+  nextAction        String?       @db.Text
+  nextContactAt     DateTime?
+  contactAttempts   Int           @default(0)
+  lastActivityAt    DateTime      @default(now())
+  preliminaryAmount Decimal?      @db.Decimal(14, 2)
+  assignedUserId    String?
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
 
   assignedUser       User?               @relation("LeadAssignee", fields: [assignedUserId], references: [id], onDelete: SetNull)
   calls              CallHistory[]
@@ -242,6 +265,8 @@ model Lead {
   @@index([source, createdAt])
   @@index([assignedUserId, status])
   @@index([nextContactAt])
+  @@index([lastActivityAt])
+  @@index([plateNumber])
 }
 
 model CallHistory {

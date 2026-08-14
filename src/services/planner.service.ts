@@ -67,14 +67,6 @@ export type AppointmentWrite = {
   createdById?: string | null;
 };
 
-export type PlannerResourceWarning = {
-  type: "MECHANIC_PARALLEL_LOAD";
-  mechanicId: string;
-  mechanic: string;
-  parallelCount: number;
-  message: string;
-};
-
 function clean(value: unknown, max = 500) {
   if (typeof value !== "string") return null;
   const next = value.trim();
@@ -172,86 +164,45 @@ export async function getPlannerBoard(from: Date, to: Date, locationId?: string 
   return { locations, activeLocationId, appointments };
 }
 
-export async function validatePlannerResources(input: AppointmentWrite, excludeId?: string) {
-  if (input.status === "CANCELLED" || input.status === "NO_SHOW" || input.status === "COMPLETED") {
-    return { conflict: null, warning: null };
-  }
-
+export async function validatePlannerConflict(input: AppointmentWrite, excludeId?: string) {
+  if (input.status === "CANCELLED" || input.status === "NO_SHOW" || input.status === "COMPLETED") return null;
   const prisma = getPrisma();
-  const overlapWhere = {
-    id: excludeId ? { not: excludeId } : undefined,
-    locationId: input.locationId,
-    status: { in: [...PLANNER_BLOCKING_STATUSES] },
-    plannedStartAt: { lt: input.plannedEndAt },
-    plannedEndAt: { gt: input.plannedStartAt },
+  const resourceClauses: Array<Record<string, string>> = [];
+  if (input.postId) resourceClauses.push({ postId: input.postId });
+  if (input.mechanicId) resourceClauses.push({ mechanicId: input.mechanicId });
+  if (!resourceClauses.length) return null;
+
+  const conflict = await prisma.serviceAppointment.findFirst({
+    where: {
+      id: excludeId ? { not: excludeId } : undefined,
+      locationId: input.locationId,
+      status: { in: [...PLANNER_BLOCKING_STATUSES] },
+      plannedStartAt: { lt: input.plannedEndAt },
+      plannedEndAt: { gt: input.plannedStartAt },
+      OR: resourceClauses,
+    },
+    include: { post: true, mechanic: true },
+  });
+
+  if (!conflict) return null;
+  const resource = input.postId && conflict.postId === input.postId
+    ? conflict.post?.name ?? "цей пост"
+    : conflict.mechanic?.name ?? "цей механік";
+  return {
+    id: conflict.id,
+    resource,
+    start: conflict.plannedStartAt,
+    end: conflict.plannedEndAt,
+    vehicle: conflict.vehicleLabel ?? conflict.plateNumber ?? "інший запис",
   };
-
-  if (input.postId) {
-    const postConflict = await prisma.serviceAppointment.findFirst({
-      where: { ...overlapWhere, postId: input.postId },
-      include: { post: true, mechanic: true },
-    });
-    if (postConflict) {
-      return {
-        conflict: {
-          id: postConflict.id,
-          resource: postConflict.post?.name ?? "цей пост",
-          resourceType: "POST" as const,
-          start: postConflict.plannedStartAt,
-          end: postConflict.plannedEndAt,
-          vehicle: postConflict.vehicleLabel ?? postConflict.plateNumber ?? "інший запис",
-        },
-        warning: null,
-      };
-    }
-  }
-
-  if (input.mechanicId) {
-    const mechanicOverlaps = await prisma.serviceAppointment.findMany({
-      where: { ...overlapWhere, mechanicId: input.mechanicId },
-      include: { mechanic: true },
-      orderBy: { plannedStartAt: "asc" },
-      take: 2,
-    });
-
-    if (mechanicOverlaps.length >= 2) {
-      const conflict = mechanicOverlaps[0];
-      return {
-        conflict: {
-          id: conflict.id,
-          resource: conflict.mechanic?.name ?? "цей механік",
-          resourceType: "MECHANIC" as const,
-          start: conflict.plannedStartAt,
-          end: conflict.plannedEndAt,
-          vehicle: conflict.vehicleLabel ?? conflict.plateNumber ?? "інший запис",
-        },
-        warning: null,
-      };
-    }
-
-    if (mechanicOverlaps.length === 1) {
-      const parallel = mechanicOverlaps[0];
-      const mechanicName = parallel.mechanic?.name ?? "Механік";
-      const warning: PlannerResourceWarning = {
-        type: "MECHANIC_PARALLEL_LOAD",
-        mechanicId: input.mechanicId,
-        mechanic: mechanicName,
-        parallelCount: 2,
-        message: `${mechanicName} буде вести 2 автомобілі одночасно. CRM дозволяє це, але попереджає про паралельне завантаження.`,
-      };
-      return { conflict: null, warning };
-    }
-  }
-
-  return { conflict: null, warning: null };
 }
 
 export async function createPlannerAppointment(input: AppointmentWrite) {
-  const validation = await validatePlannerResources(input);
-  if (validation.conflict) return { ok: false as const, conflict: validation.conflict };
+  const conflict = await validatePlannerConflict(input);
+  if (conflict) return { ok: false as const, conflict };
   const prisma = getPrisma();
   const appointment = await prisma.serviceAppointment.create({ data: input, include: { post: true, mechanic: true } });
-  return { ok: true as const, appointment, warning: validation.warning };
+  return { ok: true as const, appointment };
 }
 
 export async function updatePlannerAppointment(id: string, body: Record<string, unknown>) {
@@ -293,9 +244,9 @@ export async function updatePlannerAppointment(id: string, body: Record<string, 
   if (input.status === "COMPLETED" && !input.actualEndAt) input.actualEndAt = new Date();
   if (input.status === "NO_SHOW" && !input.noShowAt) input.noShowAt = new Date();
 
-  const validation = await validatePlannerResources(input, id);
-  if (validation.conflict) return { ok: false as const, conflict: validation.conflict };
+  const conflict = await validatePlannerConflict(input, id);
+  if (conflict) return { ok: false as const, conflict };
 
   const appointment = await prisma.serviceAppointment.update({ where: { id }, data: input, include: { post: true, mechanic: true } });
-  return { ok: true as const, appointment, warning: validation.warning };
+  return { ok: true as const, appointment };
 }
