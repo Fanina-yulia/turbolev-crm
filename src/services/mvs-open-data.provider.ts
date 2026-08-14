@@ -112,8 +112,6 @@ function mapRow(row: Record<string, unknown>, sourceYear: number, sourceUrl: str
 
 function parseCsvAndFind(bytes: Uint8Array, resource: MvsResource, targetPlate: string) {
   let text = new TextDecoder("utf-8").decode(bytes);
-  // Older MVS exports can be Windows-1251. If UTF-8 decoding is clearly broken,
-  // retry with the browser/Node-supported Windows decoder.
   if (text.includes("�")) {
     try {
       text = new TextDecoder("windows-1251").decode(bytes);
@@ -177,7 +175,7 @@ export async function lookupMvsOpenDataByPlate(rawPlate: string): Promise<MvsOpe
   const plate = normalizeRegistrationPlate(rawPlate);
   if (plate.length < 6) return null;
 
-  const timeoutMs = Number(process.env.MVS_OPEN_DATA_TIMEOUT_MS ?? 55000);
+  const timeoutMs = Number(process.env.MVS_OPEN_DATA_TIMEOUT_MS ?? 280000);
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
 
@@ -189,7 +187,6 @@ export async function lookupMvsOpenDataByPlate(rawPlate: string): Promise<MvsOpe
         if (found) return found;
       } catch (error) {
         if (controller.signal.aborted) break;
-        // One damaged/unavailable annual archive must not disable the whole lookup chain.
         console.warn(`MVS archive ${resource.year} lookup failed`, error);
       }
     }
