@@ -1,0 +1,41 @@
+name: Recover MVS 2022 Registry
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/mvs-2022-recovery.yml"
+      - "scripts/recover-mvs-2022.py"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mvs-2022-recovery
+  cancel-in-progress: false
+
+jobs:
+  recover:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install importer dependency
+        run: python -m pip install --disable-pip-version-check "psycopg[binary]>=3.2,<4"
+      - name: Verify database secret
+        shell: bash
+        run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "DATABASE_URL repository secret is missing"
+            exit 1
+          fi
+      - name: Recover 2022 registry
+        run: python scripts/recover-mvs-2022.py
