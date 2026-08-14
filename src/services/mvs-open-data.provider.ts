@@ -1,5 +1,4 @@
-import { Readable } from "node:stream";
-import { unzipSync } from "fflate";
+import { Unzip, UnzipInflate } from "fflate";
 import { parse } from "csv-parse";
 import { classifyVehicle, type VehicleLookupResult } from "@/src/domain/vehicle-intelligence";
 import { normalizeRegistrationPlate } from "@/src/domain/registration-plate";
@@ -9,10 +8,7 @@ export const MVS_OPEN_DATA_SOURCE_URL =
 
 export type MvsResource = { year: number; url: string };
 
-/**
- * All annual vehicle-registry archives currently published by MVS on data.gov.ua.
- * Newest first so the most relevant registration event is found as early as possible.
- */
+/** All annual MVS vehicle-registry archives currently published on data.gov.ua. */
 export const MVS_OPEN_DATA_RESOURCES: MvsResource[] = [
   { year: 2026, url: "https://data.gov.ua/dataset/0ffd8b75-0628-48cc-952a-9302f9799ec0/resource/3f13166f-090b-499e-8e23-e9851c5a5f67/download/reestrtz2026.zip" },
   { year: 2025, url: "https://data.gov.ua/dataset/0ffd8b75-0628-48cc-952a-9302f9799ec0/resource/b7e72d22-55f5-4545-87dc-94e6c8ee03ef/download/reestrtz2025.zip" },
@@ -57,20 +53,6 @@ function first(row: Record<string, unknown>, names: string[]) {
 function toInt(value: string) {
   const parsed = Number.parseInt(value.replace(/[^0-9-]/g, ""), 10);
   return Number.isFinite(parsed) ? parsed : undefined;
-}
-
-function detectDelimiter(bytes: Uint8Array) {
-  const sample = bytes.subarray(0, Math.min(bytes.length, 8192));
-  let firstLine = new TextDecoder("utf-8").decode(sample).split(/\r?\n/, 1)[0] ?? "";
-  if (firstLine.includes("�")) {
-    try {
-      firstLine = new TextDecoder("windows-1251").decode(sample).split(/\r?\n/, 1)[0] ?? "";
-    } catch {
-      // Ignore and keep UTF-8 sample.
-    }
-  }
-  const variants = [",", ";", "\t"];
-  return variants.sort((a, b) => firstLine.split(b).length - firstLine.split(a).length)[0];
 }
 
 function mapRow(row: Record<string, unknown>, sourceYear: number, sourceUrl: string): MvsOpenDataVehicle {
@@ -119,37 +101,6 @@ function mapRow(row: Record<string, unknown>, sourceYear: number, sourceUrl: str
   };
 }
 
-async function parseCsvAndFind(bytes: Uint8Array, resource: MvsResource, targetPlate: string) {
-  const delimiter = detectDelimiter(bytes);
-  const parser = Readable.from([Buffer.from(bytes)]).pipe(
-    parse({
-      bom: true,
-      columns: (headers: string[]) => headers.map(normalizeHeader),
-      delimiter,
-      relax_column_count: true,
-      relax_quotes: true,
-      skip_empty_lines: true,
-      trim: true,
-    }),
-  );
-
-  let latest: Record<string, unknown> | null = null;
-  let latestDate = "";
-
-  for await (const rawRow of parser) {
-    const row = rawRow as Record<string, unknown>;
-    const plate = normalizeRegistrationPlate(first(row, ["n_reg_new", "plate", "registration_number"]));
-    if (plate !== targetPlate) continue;
-    const registrationDate = first(row, ["d_reg", "registration_date"]);
-    if (!latest || registrationDate >= latestDate) {
-      latest = row;
-      latestDate = registrationDate;
-    }
-  }
-
-  return latest ? mapRow(latest, resource.year, resource.url) : null;
-}
-
 async function findInZipResource(
   resource: MvsResource,
   targetPlate: string,
@@ -164,15 +115,78 @@ async function findInZipResource(
     },
   });
 
-  if (!response.ok) throw new Error(`MVS resource ${resource.year} returned ${response.status}`);
-
-  const archive = unzipSync(new Uint8Array(await response.arrayBuffer()));
-  const entries = Object.entries(archive).filter(([name]) => /\.(csv|txt)$/i.test(name));
-  for (const [, bytes] of entries) {
-    const found = await parseCsvAndFind(bytes, resource, targetPlate);
-    if (found) return found;
+  if (!response.ok || !response.body) {
+    throw new Error(`MVS resource ${resource.year} returned ${response.status}`);
   }
-  return null;
+
+  let latest: Record<string, unknown> | null = null;
+  let latestDate = "";
+  const parserPromises: Promise<void>[] = [];
+  let zipError: Error | null = null;
+
+  const unzip = new Unzip((file) => {
+    if (!/\.(csv|txt)$/i.test(file.name)) {
+      file.ondata = (error) => {
+        if (error) zipError = error;
+      };
+      file.start();
+      return;
+    }
+
+    const parser = parse({
+      bom: true,
+      columns: (headers: string[]) => headers.map(normalizeHeader),
+      delimiter: [",", ";", "\t"],
+      relax_column_count: true,
+      relax_quotes: true,
+      skip_empty_lines: true,
+      trim: true,
+    });
+
+    const done = new Promise<void>((resolve, reject) => {
+      parser.on("data", (rawRow: Record<string, unknown>) => {
+        const row = rawRow as Record<string, unknown>;
+        const plate = normalizeRegistrationPlate(first(row, ["n_reg_new", "plate", "registration_number"]));
+        if (plate !== targetPlate) return;
+        const registrationDate = first(row, ["d_reg", "registration_date"]);
+        if (!latest || registrationDate >= latestDate) {
+          latest = row;
+          latestDate = registrationDate;
+        }
+      });
+      parser.on("end", resolve);
+      parser.on("error", reject);
+    });
+    parserPromises.push(done);
+
+    file.ondata = (error, data, final) => {
+      if (error) {
+        parser.destroy(error);
+        return;
+      }
+      if (data.length) parser.write(Buffer.from(data));
+      if (final) parser.end();
+    };
+    file.start();
+  });
+  unzip.register(UnzipInflate);
+
+  const reader = response.body.getReader();
+  while (true) {
+    if (signal?.aborted) {
+      await reader.cancel();
+      throw new DOMException("MVS lookup aborted", "AbortError");
+    }
+    const { done, value } = await reader.read();
+    if (done) break;
+    unzip.push(value, false);
+  }
+  unzip.push(new Uint8Array(0), true);
+
+  await Promise.all(parserPromises);
+  if (zipError) throw zipError;
+
+  return latest ? mapRow(latest, resource.year, resource.url) : null;
 }
 
 export async function lookupMvsOpenDataByPlate(rawPlate: string): Promise<MvsOpenDataVehicle | null> {
