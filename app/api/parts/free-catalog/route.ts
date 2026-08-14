@@ -1,29 +1,25 @@
 import { NextResponse } from "next/server";
-import { getGenerationByYear, searchModels, searchParts } from "auto-parts-db";
+import { FREE_PARTS_SOURCE, searchReferenceParts } from "@/src/services/free-parts-catalog.service";
 
 export const runtime = "nodejs";
+export const maxDuration = 20;
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const q = (searchParams.get("q") ?? "").trim();
-  const make = (searchParams.get("make") ?? "").trim();
-  const model = (searchParams.get("model") ?? "").trim();
-  const year = Number(searchParams.get("year") ?? "");
 
-  const parts = q.length >= 2 ? searchParts(q).slice(0, 40) : [];
-  const generation = make && model && Number.isFinite(year) && year > 1900
-    ? getGenerationByYear(make, model, year)
-    : null;
-  const models = q.length >= 2 ? searchModels(q).slice(0, 20) : [];
+  if (q.length < 2) {
+    return NextResponse.json({ status: "INVALID_QUERY", message: "Введіть щонайменше 2 символи." }, { status: 400 });
+  }
 
+  const result = await searchReferenceParts(q, 40);
   return NextResponse.json({
     status: "OK",
-    source: "AUTO_PARTS_DB",
-    license: "MIT",
+    source: result.remote ? FREE_PARTS_SOURCE.id : "TURBO_LEV_LOCAL_FALLBACK",
+    sourceCommit: result.remote ? FREE_PARTS_SOURCE.commit : null,
+    license: result.remote ? FREE_PARTS_SOURCE.license : "Turbo LEV internal",
     referenceOnly: true,
-    warning: "Довідковий безкоштовний каталог. Не підтверджує точну сумісність деталі з VIN і не замінює TecDoc/OEM-каталог.",
-    vehicle: generation ? { make, model, year, generation } : null,
-    parts,
-    models,
+    warning: "Довідковий каталог. Не підтверджує точну сумісність деталі з VIN і не замінює TecDoc/OEM-каталог або каталог постачальника.",
+    parts: result.parts,
   });
 }
