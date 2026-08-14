@@ -29,6 +29,7 @@ RESOURCES = [
 ]
 
 BATCH_SIZE = 20_000
+SAMPLE_SIZE = 64 * 1024
 CYR_TO_LAT = str.maketrans({
     "А": "A", "В": "B", "С": "C", "Е": "E", "Н": "H", "І": "I",
     "К": "K", "М": "M", "О": "O", "Р": "P", "Т": "T", "Х": "X",
@@ -79,26 +80,65 @@ def to_int(value):
         return None
 
 
+def encoding_score(text):
+    if not text:
+        return -10_000
+    first_lines = text[:12000].lower()
+    score = 0
+    score += sum(first_lines.count(token) * 30 for token in ("n_reg", "brand", "model", "vin", "make_year", "марка", "модель"))
+    score += max(first_lines.count(";"), first_lines.count(","), first_lines.count("\t"))
+    score -= first_lines.count("\x00") * 20
+    replacement_ratio = first_lines.count("\ufffd") / max(1, len(first_lines))
+    score -= int(replacement_ratio * 10_000)
+    printable = sum(1 for ch in first_lines if ch.isprintable() or ch in "\r\n\t") / max(1, len(first_lines))
+    score += int(printable * 100)
+    return score
+
+
 def detect_encoding(stream):
     pos = stream.tell()
-    sample = stream.read(16384)
+    sample = stream.read(SAMPLE_SIZE)
     stream.seek(pos)
-    for encoding in ("utf-8-sig", "cp1251", "utf-16"):
+
+    if sample.startswith(b"\xef\xbb\xbf"):
+        return "utf-8-sig"
+    if sample.startswith(b"\xff\xfe"):
+        return "utf-16-le"
+    if sample.startswith(b"\xfe\xff"):
+        return "utf-16-be"
+
+    even_nulls = sample[0::2].count(0)
+    odd_nulls = sample[1::2].count(0)
+    pairs = max(1, len(sample) // 2)
+    if odd_nulls / pairs > 0.20 and even_nulls / pairs < 0.05:
+        return "utf-16-le"
+    if even_nulls / pairs > 0.20 and odd_nulls / pairs < 0.05:
+        return "utf-16-be"
+
+    candidates = ("utf-8-sig", "utf-8", "cp1251", "utf-16-le", "utf-16-be")
+    ranked = []
+    for encoding in candidates:
         try:
-            sample.decode(encoding)
-            return encoding
-        except UnicodeDecodeError:
-            pass
-    return "cp1251"
+            text = sample.decode(encoding, errors="strict")
+        except (UnicodeDecodeError, UnicodeError):
+            continue
+        ranked.append((encoding_score(text), encoding))
+
+    if not ranked:
+        return "cp1251"
+    ranked.sort(reverse=True)
+    return ranked[0][1]
 
 
 def detect_dialect(text):
     try:
         return csv.Sniffer().sniff(text, delimiters=",;\t|")
     except csv.Error:
-        class Semi(csv.excel):
-            delimiter = ";"
-        return Semi
+        delimiter = max((";", ",", "\t", "|"), key=text.count)
+        class Fallback(csv.excel):
+            pass
+        Fallback.delimiter = delimiter
+        return Fallback
 
 
 def looks_like_plate(value):
@@ -177,14 +217,14 @@ def flush_batch(conn, batch):
             SELECT "plateKey", vin, brand, model, "makeYear", "engineVolumeCm3", "fuelType", "vehicleTypeRaw", "sourceYear"
             FROM mvs_stage
             ON CONFLICT ("plateKey") DO UPDATE SET
-              vin = EXCLUDED.vin,
-              brand = EXCLUDED.brand,
-              model = EXCLUDED.model,
-              "makeYear" = EXCLUDED."makeYear",
-              "engineVolumeCm3" = EXCLUDED."engineVolumeCm3",
-              "fuelType" = EXCLUDED."fuelType",
-              "vehicleTypeRaw" = EXCLUDED."vehicleTypeRaw",
-              "sourceYear" = EXCLUDED."sourceYear"
+              vin = COALESCE(EXCLUDED.vin, "VehicleRegistryCompact".vin),
+              brand = COALESCE(EXCLUDED.brand, "VehicleRegistryCompact".brand),
+              model = COALESCE(EXCLUDED.model, "VehicleRegistryCompact".model),
+              "makeYear" = COALESCE(EXCLUDED."makeYear", "VehicleRegistryCompact"."makeYear"),
+              "engineVolumeCm3" = COALESCE(EXCLUDED."engineVolumeCm3", "VehicleRegistryCompact"."engineVolumeCm3"),
+              "fuelType" = COALESCE(EXCLUDED."fuelType", "VehicleRegistryCompact"."fuelType"),
+              "vehicleTypeRaw" = COALESCE(EXCLUDED."vehicleTypeRaw", "VehicleRegistryCompact"."vehicleTypeRaw"),
+              "sourceYear" = GREATEST(EXCLUDED."sourceYear", "VehicleRegistryCompact"."sourceYear")
             WHERE EXCLUDED."sourceYear" >= "VehicleRegistryCompact"."sourceYear"
             '''
         )
@@ -195,9 +235,12 @@ def flush_batch(conn, batch):
 
 def import_text_member(conn, year, binary, label, batch):
     encoding = detect_encoding(binary)
-    sample_bytes = binary.read(16384)
+    sample_bytes = binary.read(SAMPLE_SIZE)
     binary.seek(0)
-    dialect = detect_dialect(sample_bytes.decode(encoding, errors="replace"))
+    sample_text = sample_bytes.decode(encoding, errors="replace")
+    dialect = detect_dialect(sample_text)
+    print(f"  {label}: encoding={encoding}, delimiter={repr(dialect.delimiter)}", flush=True)
+
     text = io.TextIOWrapper(binary, encoding=encoding, errors="replace", newline="")
     reader = csv.DictReader(text, dialect=dialect)
     if not reader.fieldnames:
@@ -231,6 +274,19 @@ def import_text_member(conn, year, binary, label, batch):
     return total
 
 
+def is_probable_text_member(name):
+    lower = name.lower()
+    basename = os.path.basename(lower)
+    if lower.endswith(".zip"):
+        return False
+    if lower.endswith((".csv", ".txt", ".tsv", ".dat")):
+        return True
+    if "." not in basename:
+        return True
+    # Some historical MVS ZIPs contain damaged/non-ASCII CSV extensions (e.g. .ßsv).
+    return basename.startswith(("tz_", "reestr", "registry", "opendata"))
+
+
 def import_archive(conn, year, zip_path):
     total = 0
     batch = {}
@@ -246,12 +302,12 @@ def import_archive(conn, year, zip_path):
                     nested_members = [m for m in nested.infolist() if not m.is_dir()]
                     print(f"  nested {name}: members={[m.filename for m in nested_members]}", flush=True)
                     for inner in nested_members:
-                        if inner.filename.lower().endswith((".csv", ".txt")) or "." not in os.path.basename(inner.filename):
+                        if is_probable_text_member(inner.filename):
                             with nested.open(inner, "r") as binary:
                                 total += import_text_member(conn, year, binary, f"{name}/{inner.filename}", batch)
                 continue
 
-            if lower.endswith((".csv", ".txt")) or "." not in os.path.basename(name):
+            if is_probable_text_member(name):
                 with archive.open(member, "r") as binary:
                     total += import_text_member(conn, year, binary, name, batch)
 
@@ -261,7 +317,7 @@ def import_archive(conn, year, zip_path):
 
 def download(url, destination):
     print(f"Downloading {url}", flush=True)
-    request = urllib.request.Request(url, headers={"User-Agent": "TurboLEV-CRM/2.0"})
+    request = urllib.request.Request(url, headers={"User-Agent": "TurboLEV-CRM/2.1"})
     with urllib.request.urlopen(request, timeout=120) as response, open(destination, "wb") as out:
         while True:
             chunk = response.read(1024 * 1024)
@@ -278,6 +334,9 @@ def main():
 
     requested = os.environ.get("MVS_IMPORT_YEARS", "").strip()
     years = {int(x.strip()) for x in requested.split(",") if x.strip()} if requested else None
+    selected_years = [year for year, _ in RESOURCES if years is None or year in years]
+    failures = []
+    imported = {}
 
     with psycopg.connect(database_url, autocommit=False) as conn:
         with conn.cursor() as cur:
@@ -301,12 +360,16 @@ def main():
                 try:
                     download(url, target)
                     rows = import_archive(conn, year, target)
+                    if rows <= 0:
+                        raise RuntimeError("archive produced 0 valid vehicle rows")
+                    imported[year] = rows
                     with conn.cursor() as cur:
                         cur.execute('SELECT count(*) FROM "VehicleRegistryCompact"')
                         indexed = cur.fetchone()[0]
                     print(f"{year}: processed {rows:,} valid rows; compact index now {indexed:,} plates", flush=True)
                 except Exception as exc:
                     conn.rollback()
+                    failures.append((year, str(exc)))
                     print(f"{year}: FAILED: {exc}", file=sys.stderr, flush=True)
                 finally:
                     try:
@@ -314,6 +377,19 @@ def main():
                     except OSError:
                         pass
 
+    print("\nMVS import summary", flush=True)
+    for year in selected_years:
+        if year in imported:
+            print(f"  {year}: OK - {imported[year]:,} valid rows", flush=True)
+        else:
+            detail = next((message for failed_year, message in failures if failed_year == year), "not processed")
+            print(f"  {year}: FAILED - {detail}", file=sys.stderr, flush=True)
+
+    if failures or len(imported) != len(selected_years):
+        print(f"Import incomplete: {len(imported)}/{len(selected_years)} requested years succeeded", file=sys.stderr, flush=True)
+        return 1
+
+    print(f"Import complete: {len(imported)}/{len(selected_years)} requested years succeeded", flush=True)
     return 0
 
 
