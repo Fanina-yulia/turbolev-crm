@@ -1,5 +1,6 @@
+import { Readable } from "node:stream";
 import { unzipSync } from "fflate";
-import { parse } from "csv-parse/sync";
+import { parse } from "csv-parse";
 import { classifyVehicle, type VehicleLookupResult } from "@/src/domain/vehicle-intelligence";
 import { normalizeRegistrationPlate } from "@/src/domain/registration-plate";
 
@@ -58,8 +59,16 @@ function toInt(value: string) {
   return Number.isFinite(parsed) ? parsed : undefined;
 }
 
-function detectDelimiter(text: string) {
-  const firstLine = text.split(/\r?\n/, 1)[0] ?? "";
+function detectDelimiter(bytes: Uint8Array) {
+  const sample = bytes.subarray(0, Math.min(bytes.length, 8192));
+  let firstLine = new TextDecoder("utf-8").decode(sample).split(/\r?\n/, 1)[0] ?? "";
+  if (firstLine.includes("�")) {
+    try {
+      firstLine = new TextDecoder("windows-1251").decode(sample).split(/\r?\n/, 1)[0] ?? "";
+    } catch {
+      // Ignore and keep UTF-8 sample.
+    }
+  }
   const variants = [",", ";", "\t"];
   return variants.sort((a, b) => firstLine.split(b).length - firstLine.split(a).length)[0];
 }
@@ -110,30 +119,25 @@ function mapRow(row: Record<string, unknown>, sourceYear: number, sourceUrl: str
   };
 }
 
-function parseCsvAndFind(bytes: Uint8Array, resource: MvsResource, targetPlate: string) {
-  let text = new TextDecoder("utf-8").decode(bytes);
-  if (text.includes("�")) {
-    try {
-      text = new TextDecoder("windows-1251").decode(bytes);
-    } catch {
-      // Keep UTF-8 result if the runtime does not support this label.
-    }
-  }
-
-  const delimiter = detectDelimiter(text);
-  const rows = parse(text, {
-    bom: true,
-    columns: (headers: string[]) => headers.map(normalizeHeader),
-    delimiter,
-    relax_column_count: true,
-    relax_quotes: true,
-    skip_empty_lines: true,
-    trim: true,
-  }) as Record<string, unknown>[];
+async function parseCsvAndFind(bytes: Uint8Array, resource: MvsResource, targetPlate: string) {
+  const delimiter = detectDelimiter(bytes);
+  const parser = Readable.from([Buffer.from(bytes)]).pipe(
+    parse({
+      bom: true,
+      columns: (headers: string[]) => headers.map(normalizeHeader),
+      delimiter,
+      relax_column_count: true,
+      relax_quotes: true,
+      skip_empty_lines: true,
+      trim: true,
+    }),
+  );
 
   let latest: Record<string, unknown> | null = null;
   let latestDate = "";
-  for (const row of rows) {
+
+  for await (const rawRow of parser) {
+    const row = rawRow as Record<string, unknown>;
     const plate = normalizeRegistrationPlate(first(row, ["n_reg_new", "plate", "registration_number"]));
     if (plate !== targetPlate) continue;
     const registrationDate = first(row, ["d_reg", "registration_date"]);
@@ -165,7 +169,7 @@ async function findInZipResource(
   const archive = unzipSync(new Uint8Array(await response.arrayBuffer()));
   const entries = Object.entries(archive).filter(([name]) => /\.(csv|txt)$/i.test(name));
   for (const [, bytes] of entries) {
-    const found = parseCsvAndFind(bytes, resource, targetPlate);
+    const found = await parseCsvAndFind(bytes, resource, targetPlate);
     if (found) return found;
   }
   return null;
