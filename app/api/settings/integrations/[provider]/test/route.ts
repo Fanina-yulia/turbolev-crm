@@ -75,6 +75,10 @@ async function testProvider(provider: IntegrationProvider, config: Record<string
     return { ok: false, message: "Доступ збережено. Автоматична перевірка буде доступна після офіційної API-документації Автонова-Д." };
   }
 
+  if (provider === "ATL") {
+    return { ok: false, message: "Доступ ATL збережено. Live-перевірку не запускаємо без офіційного B2B/API endpoint та документації ATL." };
+  }
+
   return { ok: true, message: "Доступи збережені. З'єднання буде остаточно підтверджене першою live-подією провайдера." };
 }
 
