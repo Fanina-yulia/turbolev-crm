@@ -223,6 +223,7 @@ def ensure_stage_table(conn):
             '''
         )
         cur.execute("TRUNCATE mvs_stage")
+    conn.commit()
 
 
 def flush_batch(conn, batch):
