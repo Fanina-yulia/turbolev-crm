@@ -5,11 +5,10 @@ import {
   type TurboLevClass,
   type VehicleType,
 } from "@/src/domain/vehicle-intelligence";
+import { normalizeRegistrationPlate } from "@/src/domain/registration-plate";
 import { lookupMvsOpenDataByPlate, MVS_OPEN_DATA_SOURCE_URL } from "@/src/services/mvs-open-data.provider";
 
-export function normalizeRegistrationPlate(value: string) {
-  return value.toUpperCase().replace(/[^A-ZА-ЯІЇЄ0-9]/g, "").slice(0, 10);
-}
+export { normalizeRegistrationPlate };
 
 export type GlobalVehicleLookupResponse = {
   status: "FOUND" | "NOT_FOUND";
@@ -119,7 +118,6 @@ async function lookupCrmVehicle(plate: string): Promise<GlobalVehicleLookupRespo
       },
     };
   } catch (error) {
-    // CRM DB can be temporarily unavailable during deployment; free MVS lookup still works.
     console.warn("CRM vehicle lookup unavailable, falling back to MVS open data", error);
     return null;
   }
@@ -157,7 +155,7 @@ export async function lookupVehicleByPlate(rawPlate: string): Promise<GlobalVehi
         lookupLevel: "MVS_OPEN_DATA",
         plate,
         attributionUrl: MVS_OPEN_DATA_SOURCE_URL,
-        message: "Знайдено у безкоштовних відкритих даних МВС України",
+        message: `Знайдено у безкоштовних відкритих даних МВС України за ${mvs.sourceYear} рік`,
         vehicle: {
           id: null,
           clientId: null,
@@ -200,6 +198,6 @@ export async function lookupVehicleByPlate(rawPlate: string): Promise<GlobalVehi
     plate,
     attributionUrl: MVS_OPEN_DATA_SOURCE_URL,
     message:
-      "Авто не знайдено у CRM або в актуальному відкритому ресурсі МВС. VIN можна ввести вручну; історичний індекс додамо окремо.",
+      "Авто не знайдено у CRM або доступних архівах відкритих даних МВС за 2013–2026 роки. VIN можна ввести вручну.",
   };
 }
