@@ -53,7 +53,7 @@ export function CommunicationsHub() {
   const loadBinotelHealth = useCallback(async () => { try { const r = await fetch("/api/telephony/binotel-health", { cache: "no-store" }); setBinotelHealth(await r.json()); } catch { setBinotelHealth(null); } }, []);
   useEffect(() => { void load(); void loadBinotelHealth(); }, [load, loadBinotelHealth]);
   useEffect(() => { if (!serverMode) try { window.localStorage.setItem(LOCAL_KEY, JSON.stringify(items)); } catch {} }, [items, serverMode]);
-  useEffect(() => { messageEndRef.current?.scrollIntoView({ block: "end" }); }, [selectedId, selected?.messages.length]);
+  useEffect(() => { messageEndRef.current?.scrollIntoView({ block: "end" }); }, [selectedId, items]);
 
   const selected = items.find((x) => x.id === selectedId);
   const counts = useMemo(() => ({ ALL: items.filter((x) => x.state !== "SPAM").length, UNREAD: items.filter((x) => x.unread && x.state !== "SPAM").length, NO_REPLY: items.filter((x) => !x.answered && x.state !== "SPAM").length }), [items]);
