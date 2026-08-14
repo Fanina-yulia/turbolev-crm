@@ -4,13 +4,14 @@ on:
   workflow_dispatch:
     inputs:
       years:
-        description: "Comma-separated years, leave blank for all 2013-2026"
+        description: "Comma-separated years; blank means recovery set"
         required: false
-        default: ""
+        default: "2026,2023,2022,2018,2017"
   push:
     branches: [main]
     paths:
       - ".github/workflows/mvs-import.yml"
+      - "scripts/import-mvs-open-data.py"
   schedule:
     - cron: "17 3 2 * *"
 
@@ -27,7 +28,6 @@ jobs:
     timeout-minutes: 360
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
-      MVS_IMPORT_YEARS: ${{ github.event.inputs.years || '' }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -36,6 +36,22 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+
+      - name: Resolve import years
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          REQUESTED_YEARS: ${{ github.event.inputs.years }}
+        run: |
+          if [ "$EVENT_NAME" = "schedule" ]; then
+            YEARS="2026"
+          elif [ -n "$REQUESTED_YEARS" ]; then
+            YEARS="$REQUESTED_YEARS"
+          else
+            YEARS="2026,2023,2022,2018,2017"
+          fi
+          echo "MVS_IMPORT_YEARS=$YEARS" >> "$GITHUB_ENV"
+          echo "Will import MVS years: $YEARS"
 
       - name: Install importer dependency
         run: python -m pip install --disable-pip-version-check "psycopg[binary]>=3.2,<4"
@@ -50,5 +66,3 @@ jobs:
 
       - name: Import compact MVS vehicle registry
         run: python scripts/import-mvs-open-data.py
-
-# Rebuild compact registry trigger: 2026-08-14 22:53 Europe/Kyiv
