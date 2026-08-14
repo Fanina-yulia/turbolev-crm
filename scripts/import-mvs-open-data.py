@@ -129,13 +129,12 @@ def detect_encoding(stream):
     if sample.startswith(b"\xfe\xff"):
         return "utf-16-be"
 
+    # Do not trust NUL-byte endianness heuristics by themselves. Some MVS
+    # exports have an uneven byte distribution that previously selected the
+    # wrong UTF-16 byte order, turning the whole file into one gigantic field.
     even_nulls = sample[0::2].count(0)
     odd_nulls = sample[1::2].count(0)
     pairs = max(1, len(sample) // 2)
-    if odd_nulls / pairs > 0.20 and even_nulls / pairs < 0.05:
-        return "utf-16-le"
-    if even_nulls / pairs > 0.20 and odd_nulls / pairs < 0.05:
-        return "utf-16-be"
 
     candidates = ("utf-8-sig", "utf-8", "cp1251", "utf-16-le", "utf-16-be")
     ranked = []
@@ -144,7 +143,12 @@ def detect_encoding(stream):
             text = sample.decode(encoding, errors="strict")
         except (UnicodeDecodeError, UnicodeError):
             continue
-        ranked.append((encoding_score(text), encoding))
+        score = encoding_score(text)
+        if encoding == "utf-16-le" and odd_nulls / pairs > 0.15:
+            score += 250
+        if encoding == "utf-16-be" and even_nulls / pairs > 0.15:
+            score += 250
+        ranked.append((score, encoding))
 
     if not ranked:
         return "cp1251"
@@ -427,11 +431,30 @@ def main():
 
     requested = os.environ.get("MVS_IMPORT_YEARS", "").strip()
     years = {int(x.strip()) for x in requested.split(",") if x.strip()} if requested else None
-    selected_years = [year for year, _ in RESOURCES if years is None or year in years]
     failures = []
     imported = {}
 
     with psycopg.connect(database_url, autocommit=False) as conn:
+        if years and os.environ.get("MVS_RESUME_RECOVERY", "").lower() == "true":
+            with conn.cursor() as cur:
+                cur.execute(
+                    'SELECT "sourceYear", count(*) FROM "VehicleRegistryCompact" '
+                    'WHERE "sourceYear" = ANY(%s) GROUP BY "sourceYear"',
+                    (list(years),),
+                )
+                present = {int(row[0]) for row in cur.fetchall() if int(row[1]) > 0}
+            pending = years - present
+            if pending:
+                print(
+                    f"Recovery resume: already represented={sorted(present)}, pending={sorted(pending)}",
+                    flush=True,
+                )
+                years = pending
+            else:
+                print("Recovery resume: all requested years are already represented; nothing to do", flush=True)
+                return 0
+
+        selected_years = [year for year, _ in RESOURCES if years is None or year in years]
         stage_table = create_stage_table(conn)
         print(f"Using durable staging table {stage_table}", flush=True)
         try:
