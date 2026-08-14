@@ -5,7 +5,7 @@ import { WorkOrderCockpit, type AttentionCar } from "@/src/components/work-order
 import { NewRequestWizardV2 } from "./new-request-wizard-v2";
 import { SettingsPanel } from "./settings-panel";
 import { LeadsBoardV2 } from "./leads-board-v2";
-import { CommunicationsHub } from "./communications-hub";
+import { CommunicationsHub } from "./communications-hub-server";
 import { GlobalVehicleSearch } from "./global-vehicle-search";
 import { PartsCatalog } from "./parts-catalog";
 import { turboLevLogoDark, turboLevLogoLight } from "@/src/brand/logos";
