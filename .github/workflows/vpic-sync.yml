@@ -2,6 +2,9 @@ name: Sync NHTSA vPIC Local Database
 
 on:
   workflow_dispatch:
+  push:
+    paths:
+      - ".github/workflows/vpic-sync.yml"
   schedule:
     - cron: "27 4 20 * *"
 
@@ -83,10 +86,21 @@ jobs:
           JOIN pg_namespace n ON n.oid = p.pronamespace
           WHERE n.nspname = 'vpic' AND lower(p.proname) = 'spvindecode';
 
+          DO $$
+          BEGIN
+            IF NOT EXISTS (
+              SELECT 1 FROM pg_proc p
+              JOIN pg_namespace n ON n.oid = p.pronamespace
+              WHERE n.nspname = 'vpic' AND lower(p.proname) = 'spvindecode'
+            ) THEN
+              RAISE EXCEPTION 'vpic.spVinDecode was not restored';
+            END IF;
+          END $$;
+
           SELECT * FROM vpic.spVinDecode('1HGCM82633A004352') LIMIT 5;
           SQL
 
-      - name: Restore only the vpic schema
+      - name: Restore isolated vpic schema
         shell: bash
         run: |
           docker run --rm \
@@ -99,7 +113,7 @@ jobs:
             -e DATABASE_URL="$DATABASE_URL" \
             -v "$PWD:/work:ro" \
             postgres:18 \
-            sh -lc 'pg_restore --dbname="$DATABASE_URL" --no-owner --no-privileges --exit-on-error /work/vpic.custom'
+            sh -lc 'pg_restore --dbname="$DATABASE_URL" --no-owner --no-privileges --exit-on-error --schema=vpic /work/vpic.custom'
 
       - name: Verify local decoder
         shell: bash
