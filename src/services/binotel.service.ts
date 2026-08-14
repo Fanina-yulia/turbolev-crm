@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import { getIntegrationCredential } from "@/src/services/integration-credentials.service";
 
 export type BinotelJson = Record<string, unknown>;
@@ -102,14 +101,10 @@ export class BinotelService {
     this.wsUrl = config.wsUrl?.trim() || process.env.BINOTEL_WS_URL?.trim() || "wss://ws.binotel.com:9002";
   }
 
-  private createSignature(params: BinotelJson): string {
-    return createHash("md5").update(`${this.apiSecret}${JSON.stringify(params)}`, "utf8").digest("hex");
-  }
-
   private async request<T extends BinotelApiResponse>(method: string, params: BinotelJson = {}): Promise<T> {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), this.requestTimeoutMs);
-    const payload = { ...params, signature: this.createSignature(params), key: this.apiKey };
+    const payload = { ...params, key: this.apiKey, secret: this.apiSecret };
     const url = `${this.apiBaseUrl}/${this.apiVersion}/${method}.json`;
 
     try {
