@@ -67,18 +67,46 @@ async function readWebhookBody(request: NextRequest): Promise<Record<string, unk
   return Object.fromEntries(new URLSearchParams(text));
 }
 
+function attachEventFromQuery(
+  request: NextRequest,
+  payload: Record<string, unknown>,
+): Record<string, unknown> {
+  const queryEvent = request.nextUrl.searchParams.get("event")?.trim();
+  if (!queryEvent) return payload;
+
+  const bodyAlreadyIdentifiesEvent = [
+    "eventName",
+    "eventType",
+    "requestType",
+    "action",
+    "method",
+    "event",
+  ].some((key) => payload[key] !== undefined && payload[key] !== null && payload[key] !== "");
+
+  return bodyAlreadyIdentifiesEvent
+    ? payload
+    : { ...payload, eventName: queryEvent };
+}
+
 export async function POST(request: NextRequest) {
   if (!isAuthorized(request)) {
     return NextResponse.json({ ok: false, error: "Unauthorized webhook" }, { status: 401 });
   }
 
+  let payload: Record<string, unknown> | null = null;
+
   try {
-    const payload = await readWebhookBody(request);
+    payload = attachEventFromQuery(request, await readWebhookBody(request));
     const result = await processBinotelWebhook(payload);
 
     return NextResponse.json({ ok: true, ...result }, { status: 200 });
   } catch (error) {
     if (error instanceof UnsupportedBinotelWebhookEvent) {
+      console.warn("Ignored unsupported Binotel webhook event", {
+        event: error.eventName || "unknown",
+        payloadKeys: payload ? Object.keys(payload) : [],
+      });
+
       // Acknowledge events we do not use yet so Binotel does not keep retrying.
       return NextResponse.json(
         { ok: true, ignored: true, event: error.eventName || null },
@@ -87,6 +115,11 @@ export async function POST(request: NextRequest) {
     }
 
     if (error instanceof BinotelWebhookPayloadError) {
+      console.warn("Invalid Binotel webhook payload", {
+        message: error.message,
+        payloadKeys: payload ? Object.keys(payload) : [],
+      });
+
       return NextResponse.json(
         { ok: false, error: error.message },
         { status: 422 },
