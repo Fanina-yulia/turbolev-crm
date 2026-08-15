@@ -1,12 +1,12 @@
 -- Link planner mechanic resources to canonical EmployeeProfile records.
 -- employeeId intentionally remains nullable so historical legacy appointments can keep their old ServiceMechanic rows.
 ALTER TABLE "ServiceMechanic"
-ADD COLUMN "employeeId" VARCHAR(64);
+ADD COLUMN IF NOT EXISTS "employeeId" VARCHAR(64);
 
-CREATE UNIQUE INDEX "ServiceMechanic_locationId_employeeId_key"
+CREATE UNIQUE INDEX IF NOT EXISTS "ServiceMechanic_locationId_employeeId_key"
 ON "ServiceMechanic"("locationId", "employeeId");
 
-CREATE INDEX "ServiceMechanic_employeeId_idx"
+CREATE INDEX IF NOT EXISTS "ServiceMechanic_employeeId_idx"
 ON "ServiceMechanic"("employeeId");
 
 -- Legacy seeded placeholders must never be offered for new appointments.
