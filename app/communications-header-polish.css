@@ -1,0 +1,9 @@
+.chatHead{position:relative}
+.chatHead>.channelAvatar{position:relative;z-index:3;pointer-events:none;transition:transform .18s ease,box-shadow .18s ease}
+.clientHeadButton{position:relative;z-index:2;margin-left:-52px;padding:7px 14px 7px 62px!important;min-width:285px;min-height:52px;border:1px solid transparent!important;border-radius:14px!important;cursor:pointer!important;transition:background .18s ease,border-color .18s ease,box-shadow .18s ease,transform .18s ease}
+.clientHeadButton:hover,.clientHeadButton:focus-visible{background:color-mix(in srgb,var(--orange) 9%,var(--panel))!important;border-color:color-mix(in srgb,var(--orange) 35%,var(--line))!important;box-shadow:0 6px 20px color-mix(in srgb,var(--orange) 12%,transparent);outline:none;transform:translateY(-1px)}
+.chatHead:has(.clientHeadButton:hover)>.channelAvatar,.chatHead:has(.clientHeadButton:focus-visible)>.channelAvatar{transform:scale(1.06);box-shadow:0 0 0 3px color-mix(in srgb,var(--orange) 20%,transparent)}
+.clientHeadButton b::after{content:'  ›';color:var(--orange);font-weight:900;opacity:.8}
+.clientHeadButton span{transition:color .18s ease}.clientHeadButton:hover span{color:var(--text)!important}
+.chatHeadActions>button{display:none!important}
+@media(max-width:700px){.clientHeadButton{min-width:0;max-width:calc(100vw - 170px)}}
