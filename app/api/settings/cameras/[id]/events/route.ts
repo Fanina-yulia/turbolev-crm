@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getPrisma } from "@/src/lib/prisma";
+import { authorize } from "@/src/security/authorize";
+import { PERMISSIONS } from "@/src/security/permissions";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -7,6 +9,13 @@ export const dynamic = "force-dynamic";
 type RouteContext = { params: Promise<{ id: string }> };
 
 export async function GET(request: NextRequest, context: RouteContext) {
+  const access = await authorize(PERMISSIONS.SETTINGS_READ, {
+    request,
+    strict: true,
+    minimumScope: "ALL",
+  });
+  if (!access.allowed) return access.response!;
+
   const prisma = getPrisma();
   try {
     const { id } = await context.params;
