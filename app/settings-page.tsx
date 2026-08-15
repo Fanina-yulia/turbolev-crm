@@ -5,7 +5,7 @@ import { SettingsCenter } from "./settings-center";
 import { WorkflowSettingsBridge } from "./workflow-settings-bridge";
 import styles from "./settings-page.module.css";
 
-const SETTINGS_LABELS:Record<string,string>={schedule:"Графік",personnel:"Персонал",clients:"Клієнти",suppliers:"Постачальники",warehouse:"Склад",workPrices:"Прайс робіт",posts:"Пости",markup:"Націнка",cash:"Каса",integrations:"Інтеграції",appearance:"Оформлення"};
+const SETTINGS_LABELS:Record<string,string>={schedule:"Графік",personnel:"Персонал",suppliers:"Постачальники",warehouse:"Склад",workPrices:"Прайс робіт",posts:"Пости",markup:"Націнка",cash:"Каса",integrations:"Інтеграції",appearance:"Оформлення"};
 
 export function SettingsPage(){
   const hostRef=useRef<HTMLDivElement|null>(null);
