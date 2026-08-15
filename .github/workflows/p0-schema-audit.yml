@@ -1,0 +1,51 @@
+name: P0 Schema Audit
+
+on:
+  push:
+    branches: [agent/p0-schema-baseline]
+
+permissions:
+  contents: read
+
+jobs:
+  schema-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: turbolev_schema_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d turbolev_schema_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/turbolev_schema_test
+      DATABASE_URL_UNPOOLED: postgresql://postgres:postgres@localhost:5432/turbolev_schema_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm install --no-audit --no-fund
+      - name: Validate Prisma schema
+        run: npx prisma validate
+      - name: Generate current-schema baseline SQL
+        run: npx prisma migrate diff --from-empty --to-schema prisma --script > baseline.sql
+      - name: Test existing migration history from empty database
+        run: npx prisma migrate deploy
+      - name: Compare migrated database with Prisma schema
+        run: npx prisma migrate diff --exit-code --from-config-datasource --to-schema prisma
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: p0-schema-audit
+          path: baseline.sql
+          if-no-files-found: error
