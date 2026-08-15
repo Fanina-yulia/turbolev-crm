@@ -35,6 +35,7 @@ model ServiceLocation {
   employeeRoleAssignments EmployeeRoleAssignment[]
   performanceEvents       PerformanceEvent[]
   roleCapacityStandards   RoleCapacityStandard[]
+  roleDemandSnapshots     RoleDemandSnapshot[]
   roleEconomicsSnapshots  RoleEconomicsSnapshot[]
 
   @@index([isActive, sortOrder])

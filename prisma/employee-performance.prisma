@@ -4,6 +4,13 @@ enum StaffAttributionType {
   INFLUENCED
 }
 
+enum RoleEconomicsMode {
+  DIRECT_ROI
+  MANAGED_VALUE
+  SUPPORT_CAPACITY
+  OWNER
+}
+
 enum KpiDirection {
   HIGHER_BETTER
   LOWER_BETTER
@@ -130,15 +137,17 @@ model StaffRole {
   id        String   @id @default(cuid())
   code      String   @unique @db.VarChar(64)
   name      String
-  category  String?  @db.VarChar(64)
-  isActive  Boolean  @default(true)
+  category      String?           @db.VarChar(64)
+  economicsMode RoleEconomicsMode @default(SUPPORT_CAPACITY)
+  isActive      Boolean           @default(true)
   sortOrder Int      @default(100)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   assignments       EmployeeRoleAssignment[]
   kpiRules          RoleKpiRule[]
-  capacityStandards RoleCapacityStandard[]
+  capacityStandards  RoleCapacityStandard[]
+  demandSnapshots    RoleDemandSnapshot[]
   economicsSnapshots RoleEconomicsSnapshot[]
 
   @@index([isActive, sortOrder])
@@ -377,9 +386,10 @@ model EmployeeEconomicsSnapshot {
   id                   String          @id @default(cuid())
   employeeId           String
   payrollPeriodId      String?
-  periodStart          DateTime        @db.Date
-  periodEnd            DateTime        @db.Date
-  fullCost             Decimal         @default(0) @db.Decimal(14, 2)
+  periodStart          DateTime          @db.Date
+  periodEnd            DateTime          @db.Date
+  economicsMode       RoleEconomicsMode @default(SUPPORT_CAPACITY)
+  fullCost             Decimal           @default(0) @db.Decimal(14, 2)
   directContribution   Decimal         @default(0) @db.Decimal(14, 2)
   managedValue         Decimal         @default(0) @db.Decimal(14, 2)
   influencedValue      Decimal         @default(0) @db.Decimal(14, 2)
@@ -448,4 +458,29 @@ model RoleEconomicsSnapshot {
   @@index([roleId, periodStart, periodEnd])
   @@index([locationId, periodStart, periodEnd])
   @@index([status, periodStart, periodEnd])
+}
+
+
+model RoleDemandSnapshot {
+  id                  String       @id @default(cuid())
+  snapshotKey         String       @unique @db.VarChar(160)
+  roleId              String
+  locationId          String?
+  periodStart         DateTime     @db.Date
+  periodEnd           DateTime     @db.Date
+  metricCode          String       @db.VarChar(96)
+  demandValue         Decimal      @db.Decimal(18, 4)
+  unit                KpiValueUnit
+  sourceType          String       @db.VarChar(64)
+  sourceId            String?      @db.VarChar(160)
+  dataCompletenessPct Decimal?     @db.Decimal(7, 2)
+  computedAt          DateTime     @default(now())
+  createdAt           DateTime     @default(now())
+  updatedAt           DateTime     @updatedAt
+
+  role     StaffRole        @relation(fields: [roleId], references: [id], onDelete: Restrict)
+  location ServiceLocation? @relation(fields: [locationId], references: [id], onDelete: SetNull)
+
+  @@index([roleId, periodStart, periodEnd, metricCode])
+  @@index([locationId, periodStart, periodEnd, metricCode])
 }
