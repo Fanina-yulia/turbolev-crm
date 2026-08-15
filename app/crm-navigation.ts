@@ -10,6 +10,7 @@ export const CRM_NAV = [
   { label: "Контроль якості", slug: "quality" },
   { label: "Підбір запчастин", slug: "parts" },
   { label: "Закупівлі та склад", slug: "procurement" },
+  { label: "Фінансовий центр", slug: "finance" },
   { label: "Оплати", slug: "payments" },
   { label: "Гарантії", slug: "warranties" },
   { label: "Аналітика", slug: "analytics" },
@@ -35,7 +36,7 @@ export const CRM_NAV_GROUPS: readonly CrmNavGroup[] = [
   { label: "Продажі", items: navItems("communications", "leads", "clients") },
   { label: "Сервіс", items: navItems("planner", "diagnostics", "work-orders", "production", "quality") },
   { label: "Запчастини", items: navItems("parts", "procurement") },
-  { label: "Фінанси", items: navItems("payments") },
+  { label: "Фінанси", items: navItems("finance", "payments") },
   { label: "Управління", items: navItems("warranties", "analytics", "settings") },
 ];
 
