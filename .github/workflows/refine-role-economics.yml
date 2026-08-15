@@ -1,0 +1,188 @@
+name: Refine Role Economics
+
+on:
+  push:
+    branches: [agent/employee-performance-core-v1]
+
+permissions:
+  contents: write
+
+jobs:
+  refine:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Refine Prisma role economics model
+        shell: python
+        run: |
+          from pathlib import Path
+
+          ep = Path('prisma/employee-performance.prisma')
+          text = ep.read_text()
+          enum_anchor = '''enum StaffAttributionType {
+            DIRECT
+            MANAGED
+            INFLUENCED
+          }
+          '''
+          enum_insert = enum_anchor + '''
+          enum RoleEconomicsMode {
+            DIRECT_ROI
+            MANAGED_VALUE
+            SUPPORT_CAPACITY
+            OWNER
+          }
+          '''
+          if 'enum RoleEconomicsMode' not in text:
+              if enum_anchor not in text: raise SystemExit('Missing StaffAttributionType anchor')
+              text = text.replace(enum_anchor, enum_insert)
+
+          role_anchor = '''  category  String?  @db.VarChar(64)
+            isActive  Boolean  @default(true)'''
+          role_replace = '''  category      String?           @db.VarChar(64)
+            economicsMode RoleEconomicsMode @default(SUPPORT_CAPACITY)
+            isActive      Boolean           @default(true)'''
+          if 'economicsMode RoleEconomicsMode' not in text:
+              if role_anchor not in text: raise SystemExit('Missing StaffRole field anchor')
+              text = text.replace(role_anchor, role_replace)
+
+          rel_anchor = '''  capacityStandards RoleCapacityStandard[]
+            economicsSnapshots RoleEconomicsSnapshot[]'''
+          rel_replace = '''  capacityStandards  RoleCapacityStandard[]
+            demandSnapshots    RoleDemandSnapshot[]
+            economicsSnapshots RoleEconomicsSnapshot[]'''
+          if 'demandSnapshots    RoleDemandSnapshot[]' not in text:
+              if rel_anchor not in text: raise SystemExit('Missing StaffRole relation anchor')
+              text = text.replace(rel_anchor, rel_replace)
+
+          snap_anchor = '''  periodStart          DateTime        @db.Date
+            periodEnd            DateTime        @db.Date
+            fullCost             Decimal         @default(0) @db.Decimal(14, 2)'''
+          snap_replace = '''  periodStart          DateTime          @db.Date
+            periodEnd            DateTime          @db.Date
+            economicsMode       RoleEconomicsMode @default(SUPPORT_CAPACITY)
+            fullCost             Decimal           @default(0) @db.Decimal(14, 2)'''
+          if 'economicsMode       RoleEconomicsMode' not in text:
+              if snap_anchor not in text: raise SystemExit('Missing EmployeeEconomicsSnapshot anchor')
+              text = text.replace(snap_anchor, snap_replace)
+
+          if 'model RoleDemandSnapshot {' not in text:
+              text += '''
+
+          model RoleDemandSnapshot {
+            id                  String       @id @default(cuid())
+            snapshotKey         String       @unique @db.VarChar(160)
+            roleId              String
+            locationId          String?
+            periodStart         DateTime     @db.Date
+            periodEnd           DateTime     @db.Date
+            metricCode          String       @db.VarChar(96)
+            demandValue         Decimal      @db.Decimal(18, 4)
+            unit                KpiValueUnit
+            sourceType          String       @db.VarChar(64)
+            sourceId            String?      @db.VarChar(160)
+            dataCompletenessPct Decimal?     @db.Decimal(7, 2)
+            computedAt          DateTime     @default(now())
+            createdAt           DateTime     @default(now())
+            updatedAt           DateTime     @updatedAt
+
+            role     StaffRole        @relation(fields: [roleId], references: [id], onDelete: Restrict)
+            location ServiceLocation? @relation(fields: [locationId], references: [id], onDelete: SetNull)
+
+            @@index([roleId, periodStart, periodEnd, metricCode])
+            @@index([locationId, periodStart, periodEnd, metricCode])
+          }
+          '''
+          ep.write_text(text)
+
+          planner = Path('prisma/planner.prisma')
+          ptext = planner.read_text()
+          p_anchor = '''  roleCapacityStandards   RoleCapacityStandard[]
+            roleEconomicsSnapshots  RoleEconomicsSnapshot[]'''
+          p_replace = '''  roleCapacityStandards   RoleCapacityStandard[]
+            roleDemandSnapshots     RoleDemandSnapshot[]
+            roleEconomicsSnapshots  RoleEconomicsSnapshot[]'''
+          if 'roleDemandSnapshots     RoleDemandSnapshot[]' not in ptext:
+              if p_anchor not in ptext: raise SystemExit('Missing ServiceLocation relation anchor')
+              ptext = ptext.replace(p_anchor, p_replace)
+          planner.write_text(ptext)
+
+          migration = Path('prisma/migrations/20260815060500_role_economics_mode_capacity_demand/migration.sql')
+          migration.parent.mkdir(parents=True, exist_ok=True)
+          migration.write_text(r'''-- Role economics modes separate direct ROI from managed/support evaluation.
+          DO $migration$
+          BEGIN
+            IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'RoleEconomicsMode') THEN
+              CREATE TYPE "RoleEconomicsMode" AS ENUM ('DIRECT_ROI','MANAGED_VALUE','SUPPORT_CAPACITY','OWNER');
+            END IF;
+          END
+          $migration$;
+
+          ALTER TABLE "StaffRole"
+            ADD COLUMN IF NOT EXISTS "economicsMode" "RoleEconomicsMode" NOT NULL DEFAULT 'SUPPORT_CAPACITY';
+
+          UPDATE "StaffRole" SET "economicsMode" = 'OWNER' WHERE "code" = 'OWNER';
+          UPDATE "StaffRole" SET "economicsMode" = 'MANAGED_VALUE' WHERE "code" IN ('EXECUTIVE_DIRECTOR','HEAD_OF_SALES','STATION_MANAGER');
+          UPDATE "StaffRole" SET "economicsMode" = 'DIRECT_ROI' WHERE "code" IN ('SALES','PARTS_SPECIALIST','MECHANIC');
+          UPDATE "StaffRole" SET "economicsMode" = 'SUPPORT_CAPACITY' WHERE "code" IN ('ACCOUNTANT','ADMINISTRATOR');
+
+          ALTER TABLE "EmployeeEconomicsSnapshot"
+            ADD COLUMN IF NOT EXISTS "economicsMode" "RoleEconomicsMode" NOT NULL DEFAULT 'SUPPORT_CAPACITY';
+
+          CREATE TABLE IF NOT EXISTS "RoleDemandSnapshot" (
+            "id" TEXT NOT NULL,
+            "snapshotKey" VARCHAR(160) NOT NULL,
+            "roleId" TEXT NOT NULL,
+            "locationId" TEXT,
+            "periodStart" DATE NOT NULL,
+            "periodEnd" DATE NOT NULL,
+            "metricCode" VARCHAR(96) NOT NULL,
+            "demandValue" DECIMAL(18,4) NOT NULL,
+            "unit" "KpiValueUnit" NOT NULL,
+            "sourceType" VARCHAR(64) NOT NULL,
+            "sourceId" VARCHAR(160),
+            "dataCompletenessPct" DECIMAL(7,2),
+            "computedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            "updatedAt" TIMESTAMP(3) NOT NULL,
+            CONSTRAINT "RoleDemandSnapshot_pkey" PRIMARY KEY ("id")
+          );
+
+          CREATE UNIQUE INDEX IF NOT EXISTS "RoleDemandSnapshot_snapshotKey_key" ON "RoleDemandSnapshot"("snapshotKey");
+          CREATE INDEX IF NOT EXISTS "RoleDemandSnapshot_roleId_periodStart_periodEnd_metricCode_idx" ON "RoleDemandSnapshot"("roleId","periodStart","periodEnd","metricCode");
+          CREATE INDEX IF NOT EXISTS "RoleDemandSnapshot_locationId_periodStart_periodEnd_metricCode_idx" ON "RoleDemandSnapshot"("locationId","periodStart","periodEnd","metricCode");
+
+          DO $migration$
+          BEGIN
+            IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'RoleDemandSnapshot_roleId_fkey') THEN
+              ALTER TABLE "RoleDemandSnapshot" ADD CONSTRAINT "RoleDemandSnapshot_roleId_fkey"
+                FOREIGN KEY ("roleId") REFERENCES "StaffRole"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+            END IF;
+            IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'RoleDemandSnapshot_locationId_fkey') THEN
+              ALTER TABLE "RoleDemandSnapshot" ADD CONSTRAINT "RoleDemandSnapshot_locationId_fkey"
+                FOREIGN KEY ("locationId") REFERENCES "ServiceLocation"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+            END IF;
+            IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'RoleDemandSnapshot_date_order_check') THEN
+              ALTER TABLE "RoleDemandSnapshot" ADD CONSTRAINT "RoleDemandSnapshot_date_order_check"
+                CHECK ("periodStart" <= "periodEnd");
+            END IF;
+            IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'RoleDemandSnapshot_demand_nonnegative_check') THEN
+              ALTER TABLE "RoleDemandSnapshot" ADD CONSTRAINT "RoleDemandSnapshot_demand_nonnegative_check"
+                CHECK ("demandValue" >= 0);
+            END IF;
+            IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'RoleDemandSnapshot_completeness_range_check') THEN
+              ALTER TABLE "RoleDemandSnapshot" ADD CONSTRAINT "RoleDemandSnapshot_completeness_range_check"
+                CHECK ("dataCompletenessPct" IS NULL OR ("dataCompletenessPct" >= 0 AND "dataCompletenessPct" <= 100));
+            END IF;
+          END
+          $migration$;
+          ''')
+      - name: Remove one-time workflow and commit
+        shell: bash
+        run: |
+          rm .github/workflows/refine-role-economics.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add prisma/employee-performance.prisma prisma/planner.prisma prisma/migrations/20260815060500_role_economics_mode_capacity_demand/migration.sql .github/workflows/refine-role-economics.yml
+          git commit -m "Separate direct managed and support role economics"
+          git push
