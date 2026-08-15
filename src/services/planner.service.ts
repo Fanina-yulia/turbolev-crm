@@ -180,10 +180,25 @@ export async function getPlannerBoard(from: Date, to: Date, locationId?: string 
       ])
     : [[], null];
 
+  const activeMechanicIds = new Set(
+    locations
+      .find((location) => location.id === activeLocationId)
+      ?.mechanics.map((mechanic) => mechanic.id) ?? [],
+  );
+
+  // Legacy appointments may still reference a mechanic who was deactivated or replaced by
+  // a real EmployeeProfile-backed mechanic. Preserve that historical relation in the DB,
+  // but surface the work as unassigned on the operational board so it cannot disappear.
+  const boardAppointments = appointments.map((appointment) =>
+    appointment.mechanicId && !activeMechanicIds.has(appointment.mechanicId)
+      ? { ...appointment, mechanicId: null, mechanic: null }
+      : appointment,
+  );
+
   return {
     locations,
     activeLocationId,
-    appointments,
+    appointments: boardAppointments,
     workSchedule: availability?.schedule ?? [],
   };
 }
