@@ -43,7 +43,7 @@ CREATE TABLE IF NOT EXISTS "RoleDemandSnapshot" (
 
 CREATE UNIQUE INDEX IF NOT EXISTS "RoleDemandSnapshot_snapshotKey_key" ON "RoleDemandSnapshot"("snapshotKey");
 CREATE INDEX IF NOT EXISTS "RoleDemandSnapshot_roleId_periodStart_periodEnd_metricCode_idx" ON "RoleDemandSnapshot"("roleId","periodStart","periodEnd","metricCode");
-CREATE INDEX IF NOT EXISTS "RoleDemandSnapshot_locationId_periodStart_periodEnd_metricCode_idx" ON "RoleDemandSnapshot"("locationId","periodStart","periodEnd","metricCode");
+CREATE INDEX IF NOT EXISTS "RoleDemandSnapshot_locationId_periodStart_periodEnd_metricC_idx" ON "RoleDemandSnapshot"("locationId","periodStart","periodEnd","metricCode");
 
 DO $migration$
 BEGIN
