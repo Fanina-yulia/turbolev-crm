@@ -1,80 +1,69 @@
-/* Global CRM layout stability guardrails.
-   Wide modules scroll inside themselves; the CRM shell must never shift sideways. */
+/* CRM shell placement guard.
+   The New Request launcher stays mounted for cross-module events, but it must
+   never participate in the two-column grid. The workspace always occupies
+   the content column next to the sidebar. */
 html,body{max-width:100%;overflow-x:hidden}
-.shell{width:100%;max-width:100vw;min-width:0;overflow-x:clip}
-.workspace{width:100%;max-width:100%;min-width:0;overflow-x:clip}
-.workspace>*{width:100%;max-width:100%;min-width:0}
 
-.commsPage,.leadsPage,
+.shell{
+  width:100%;
+  max-width:100%;
+  min-width:0;
+  align-items:start;
+}
+
+.shell>.sidebar{
+  grid-column:1;
+  grid-row:1;
+}
+
+/* NewRequestLauncher host is the direct div immediately after the sidebar.
+   Keep it out of grid flow on every section, not only on Overview. */
+.shell>.sidebar+div{
+  position:fixed;
+  top:18px;
+  right:24px;
+  z-index:900;
+  display:flex;
+  align-items:center;
+  justify-content:flex-end;
+}
+
+.shell>.workspace{
+  grid-column:2;
+  grid-row:1;
+  width:auto;
+  min-width:0;
+  max-width:none;
+  overflow:visible;
+}
+
+/* Wide operational views scroll internally instead of widening the shell. */
+.leadKanban,
+.leadTableWrap,
+[class*="planner-v2_weekBoard"]{
+  max-width:100%;
+  overflow-x:auto!important;
+  overscroll-behavior-x:contain;
+}
+
+.commsPage,
+.leadsPage,
 [class*="planner-v2_page"],
 [class*="diagnostics_page"],
 [class*="work-orders_page"],
-[class*="clients-vehicles_page"],
-[class*="financial-center_"]{
-  width:100%!important;
-  max-width:100%!important;
-  min-width:0!important;
-}
-
-/* Horizontal-heavy views own their scrolling instead of expanding the entire shell. */
-.leadKanban,.leadTableWrap,.filters,
-[class*="planner-v2_weekBoard"],
-[class*="planner-v2_resourceLegend"]{
-  max-width:100%!important;
-  overscroll-behavior-x:contain;
-}
-.leadKanban,.leadTableWrap,[class*="planner-v2_weekBoard"]{overflow-x:auto!important}
-[class*="planner-v2_weekBoard"]{width:100%!important;min-width:0!important}
-
-.commsLayout{width:100%;max-width:100%;min-width:0}
-.commsFilters,.commsList,.commsThread,.commsContext{min-width:0}
-
-/* Module breakpoints need to account for the persistent CRM sidebar. */
-@media(max-width:1600px){
-  .commsLayout{
-    grid-template-columns:150px minmax(245px,300px) minmax(320px,1fr)!important;
-    height:auto!important;
-    min-height:610px;
-  }
-  .commsContext{
-    grid-column:1/-1;
-    border-top:1px solid var(--line);
-    max-height:340px;
-  }
-}
-
-@media(max-width:1450px){
-  [class*="diagnostics_layout"],
-  [class*="work-orders_layout"]{
-    grid-template-columns:1fr!important;
-  }
-  [class*="diagnostics_detail"],
-  [class*="work-orders_detail"]{
-    position:static!important;
-    top:auto!important;
-    max-height:none!important;
-  }
-  [class*="diagnostics_list"],
-  [class*="work-orders_list"]{
-    max-height:440px!important;
-  }
-  [class*="diagnostics_infoGrid"]{
-    grid-template-columns:repeat(2,minmax(0,1fr))!important;
-  }
-}
-
-@media(max-width:1250px){
-  .workspace{padding-left:22px!important;padding-right:22px!important}
-  .leadKpis{grid-template-columns:repeat(2,minmax(0,1fr))!important}
-  .commsLayout{display:block!important;min-height:0!important}
-  .commsFilters{border-right:0!important;border-bottom:1px solid var(--line);max-height:220px;overflow:auto}
-  .commsList{border-right:0!important;max-height:360px}
-  .commsThread{border-right:0!important;min-height:520px}
-  .commsContext{max-height:none}
+[class*="clients-vehicles_page"]{
+  min-width:0;
+  max-width:100%;
 }
 
 @media(max-width:760px){
-  html,body{overflow-x:hidden}
-  .workspace{max-width:100%!important;padding-left:14px!important;padding-right:14px!important}
-  [class*="diagnostics_infoGrid"]{grid-template-columns:1fr!important}
+  .shell>.workspace{
+    grid-column:1;
+    grid-row:auto;
+    width:100%;
+  }
+  .shell>.sidebar+div{
+    top:10px;
+    right:12px;
+  }
 }
