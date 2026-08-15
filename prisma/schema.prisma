@@ -228,6 +228,7 @@ model WorkOrder {
   lines             WorkOrderLine[]
   estimates         WorkOrderEstimate[]
   partsRequests     PartsRequest[]
+  qualityControls   WorkOrderQualityControl[]
 
   @@index([clientId, closedAt])
   @@index([vehicleId, closedAt])
