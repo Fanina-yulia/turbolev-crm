@@ -86,12 +86,12 @@ export function LeadsBoardV2() {
     try {
       const response = await fetch("/api/leads", { cache: "no-store" });
       const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "Не вдалося завантажити ліди");
+      if (!response.ok) throw new Error(data.error || "Не вдалося завантажити активні звернення");
       setLeads(Array.isArray(data.leads) ? data.leads : []);
       setUsers(Array.isArray(data.users) ? data.users : []);
       setSlaMinutes(Number(data.meta?.slaMinutes || 120));
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Не вдалося завантажити ліди");
+      setError(cause instanceof Error ? cause.message : "Не вдалося завантажити активні звернення");
     } finally {
       setLoading(false);
     }
@@ -194,7 +194,7 @@ export function LeadsBoardV2() {
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Не вдалося записати клієнта");
       setBooking(null);
-      notify("Лід записано — запис створено у Планувальнику.");
+      notify("Клієнта записано — запис створено у Планувальнику.");
       await load();
       window.dispatchEvent(new CustomEvent("turbolev:data-changed", { detail: { entity: "booking" } }));
     } catch (cause) {
@@ -209,7 +209,7 @@ export function LeadsBoardV2() {
   return <div className="leadsPage">
     {flash && <div className="leadFlash">{flash}</div>}
     <header className="leadsHeader">
-      <div><p className="eyebrow">ПРОДАЖІ · NEON SERVER</p><h1>Ліди</h1><p className="leadsSubtitle">Єдина серверна база для всіх менеджерів.</p></div>
+      <div><p className="eyebrow">ПРОДАЖІ · NEON SERVER</p><h1>Активні</h1><p className="leadsSubtitle">Клієнти та звернення, які зараз ведуть менеджери.</p></div>
       <button className="primary" type="button" onClick={() => void load()} disabled={loading}>{loading ? "Оновлення…" : "Оновити"}</button>
     </header>
 
@@ -220,7 +220,7 @@ export function LeadsBoardV2() {
       <Kpi active={activeKpi === "unanswered"} label="Не додзвонились" value={stats.unanswered} sub="повторний контакт" onClick={() => setActiveKpi(activeKpi === "unanswered" ? null : "unanswered")} />
       <Kpi active={activeKpi === "overdue"} danger label="Прострочені" value={stats.overdue} sub="SLA / next action" onClick={() => setActiveKpi(activeKpi === "overdue" ? null : "overdue")} />
       <Kpi active={activeKpi === "booked"} label="Записані" value={stats.booked} sub="у планувальнику" onClick={() => setActiveKpi(activeKpi === "booked" ? null : "booked")} />
-      <Kpi active={activeKpi === "conversion"} label="Конверсія в запис" value={`${stats.conversion}%`} sub="від робочих лідів" onClick={() => setActiveKpi(activeKpi === "conversion" ? null : "conversion")} />
+      <Kpi active={activeKpi === "conversion"} label="Конверсія в запис" value={`${stats.conversion}%`} sub="від активних звернень" onClick={() => setActiveKpi(activeKpi === "conversion" ? null : "conversion")} />
     </section>
 
     <div className="leadsToolbar">
@@ -229,7 +229,7 @@ export function LeadsBoardV2() {
       <div className="viewSwitch"><button className={view === "kanban" ? "active" : ""} onClick={() => setView("kanban")}>Канбан</button><button className={view === "table" ? "active" : ""} onClick={() => setView("table")}>Таблиця</button></div>
     </div>
 
-    {loading && !leads.length ? <div className="emptyColumn">Завантажую ліди з Neon…</div> : view === "kanban" ?
+    {loading && !leads.length ? <div className="emptyColumn">Завантажую активні звернення з Neon…</div> : view === "kanban" ?
       <div className="leadKanban">{columns.map((column) => <section className="leadColumn" key={column.key}>
         <header><strong>{column.label}</strong><span>{filtered.filter((lead) => lead.status === column.key).length}</span></header>
         <div className="leadColumnBody">{filtered.filter((lead) => lead.status === column.key).map((lead) =>
@@ -248,7 +248,7 @@ export function LeadsBoardV2() {
         </tr>)}</tbody></table></div>}
 
     {booking && <div className="leadModalBackdrop" onMouseDown={() => setBooking(null)}><section className="leadModal" onMouseDown={(event) => event.stopPropagation()}>
-      <header><div><p className="eyebrow">ЛІД → ПЛАНУВАЛЬНИК</p><h2>Записати {booking.lead.name || "клієнта"}</h2></div><button onClick={() => setBooking(null)}>×</button></header>
+      <header><div><p className="eyebrow">АКТИВНЕ ЗВЕРНЕННЯ → ПЛАНУВАЛЬНИК</p><h2>Записати {booking.lead.name || "клієнта"}</h2></div><button onClick={() => setBooking(null)}>×</button></header>
       <div className="leadFormGrid">
         <label><span>Дата</span><input type="date" value={booking.date} onChange={(event) => setBooking({ ...booking, date: event.target.value })} /></label>
         <label><span>Час</span><input type="time" step="1800" value={booking.time} onChange={(event) => setBooking({ ...booking, time: event.target.value })} /></label>
@@ -285,7 +285,7 @@ function LeadCard({ lead, slaMinutes, users, onPatch, onAttempt, onBook }: {
     <label className="leadNextLabel"><span>Наступна дія</span><input key={`${lead.id}-${lead.nextAction || ""}`} defaultValue={lead.nextAction || ""} onBlur={(event) => void onPatch(lead.id, { nextAction: event.target.value })} placeholder="Що зробити далі" /></label>
     <label className="leadNextLabel"><span>Наступний контакт</span><input key={`${lead.id}-${lead.nextContactAt || ""}`} type="datetime-local" defaultValue={toLocalInput(lead.nextContactAt)} onBlur={(event) => void onPatch(lead.id, { nextContactAt: event.target.value ? new Date(event.target.value).toISOString() : null })} /></label>
     <div className="attempts"><span>Спроби: {lead.contactAttempts}</span><button type="button" onClick={() => void onAttempt(lead)}>+ зафіксувати дзвінок</button></div>
-    <select className="leadStatusSelect" value={lead.status} onChange={(event) => event.target.value === "BOOKED" ? void onBook(lead) : void onPatch(lead.id, { status: event.target.value }, "Статус ліда змінено.")}>{columns.map((column) => <option key={column.key} value={column.key}>{column.label}</option>)}</select>
+    <select className="leadStatusSelect" value={lead.status} onChange={(event) => event.target.value === "BOOKED" ? void onBook(lead) : void onPatch(lead.id, { status: event.target.value }, "Статус звернення змінено.")}>{columns.map((column) => <option key={column.key} value={column.key}>{column.label}</option>)}</select>
     <select className="leadStatusSelect" value={lead.assignedUserId || ""} onChange={(event) => void onPatch(lead.id, { assignedUserId: event.target.value || null })}><option value="">Не призначено</option>{users.map((user) => <option key={user.id} value={user.id}>{user.name}</option>)}</select>
   </article>;
 }
