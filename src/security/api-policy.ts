@@ -59,6 +59,10 @@ const RULES: Rule[] = [
     resolve: () => internal(PERMISSIONS.PAYROLL_SELF_READ, "SELF", "Authenticated employee can read only own salary projection.", true),
   },
   {
+    match: exact("/api/cabinet/home"),
+    resolve: () => internal(PERMISSIONS.OVERVIEW_READ, "LOCATION", "Authenticated role-specific cabinet. Response is narrowed server-side to assigned mechanic work or the manager's station and excludes global finance.", true),
+  },
+  {
     match: exact("/api/audit"),
     resolve: () => internal(PERMISSIONS.AUDIT_READ, "ALL", "Audit log is sensitive and never inherits generic analytics access."),
   },
