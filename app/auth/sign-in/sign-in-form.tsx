@@ -57,6 +57,35 @@ export function SignInForm() {
     }
   }
 
+  async function activateAccount() {
+    if (!email.trim() || password.length < 8) {
+      setMessage("Для активації введіть робочий email і пароль щонайменше з 8 символів.");
+      return;
+    }
+    setBusy(true);
+    setMessage("");
+    try {
+      const response = await fetch("/api/auth/activate", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify({ email: email.trim().toLowerCase(), password }),
+      });
+      const result = await response.json().catch(() => null);
+      if (!response.ok) {
+        setMessage(result?.message || result?.error || "Не вдалося активувати обліковий запис.");
+        return;
+      }
+      if (!(await confirmCrmAccess())) {
+        setMessage("Акаунт створено. Тепер натисніть «Увійти» з цим email і паролем.");
+      }
+    } catch {
+      setMessage("Сервіс активації тимчасово недоступний.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function signInWithGoogle() {
     setBusy(true);
     setMessage("");
@@ -98,8 +127,9 @@ export function SignInForm() {
         <input type="password" autoComplete="current-password" minLength={8} value={password} onChange={(event) => setPassword(event.target.value)} required />
       </label>
       <button type="submit" disabled={busy}>{busy ? "Перевіряю…" : "Увійти"}</button>
+      <button type="button" disabled={busy} onClick={activateAccount}>Перший вхід · активувати email і пароль</button>
       {message ? <div className={styles.message} role="status">{message}</div> : null}
-      <p className={styles.help}>Навіть успішний вхід не відкриває CRM без призначеної ролі Turbo LEV.</p>
+      <p className={styles.help}>Активація працює тільки для email, який адміністратор уже додав у Turbo LEV CRM і якому призначено роль.</p>
     </form>
   );
 }
