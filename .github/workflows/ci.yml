@@ -61,5 +61,8 @@ jobs:
       - name: Vehicle pricing classifier smoke test
         run: npx --no-install tsx scripts/vehicle-classifier-smoke.ts
 
+      - name: Employee economics attribution smoke test
+        run: npx --no-install tsx scripts/employee-economics-smoke.ts
+
       - name: Production build
         run: npm run build
