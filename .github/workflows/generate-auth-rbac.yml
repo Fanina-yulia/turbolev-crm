@@ -47,17 +47,19 @@ jobs:
       - name: Validate security schema
         run: npx prisma validate
 
-      - name: Create Prisma migration
+      - name: Generate Prisma migration non-interactively
         shell: bash
         run: |
           set -euo pipefail
-          if find prisma/migrations -maxdepth 1 -type d -name '*_auth_rbac_v1' | grep -q .; then
+          MIGRATION_DIR='prisma/migrations/20260815074500_auth_rbac_v1'
+          if test -f "$MIGRATION_DIR/migration.sql"; then
             echo 'Migration already exists.'
             exit 0
           fi
-          npx prisma migrate dev --name auth_rbac_v1 --create-only
-          MIGRATION_DIR="$(find prisma/migrations -maxdepth 1 -type d -name '*_auth_rbac_v1' | sort | tail -1)"
-          test -n "$MIGRATION_DIR"
+          npx prisma migrate deploy
+          mkdir -p "$MIGRATION_DIR"
+          npx prisma migrate diff --from-config-datasource --to-schema prisma --script > "$MIGRATION_DIR/migration.sql"
+          test -s "$MIGRATION_DIR/migration.sql"
           printf '\n' >> "$MIGRATION_DIR/migration.sql"
           cat scripts/auth-rbac-seed.sql >> "$MIGRATION_DIR/migration.sql"
 
@@ -67,7 +69,7 @@ jobs:
           set -euo pipefail
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add prisma/migrations
+          git add prisma/migrations/20260815074500_auth_rbac_v1/migration.sql
           if git diff --cached --quiet; then
             echo 'Nothing to commit.'
             exit 0
