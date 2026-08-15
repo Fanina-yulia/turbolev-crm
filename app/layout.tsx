@@ -36,10 +36,11 @@ import { NewRequestContextBridge } from "./new-request-context-bridge";
 import { CrmScrollReset } from "./crm-scroll-reset";
 import { ActiveTerminologyBridge } from "./active-terminology-bridge";
 import { TelephonyRealtimeBridge } from "./telephony-realtime-bridge";
+import { PlannerEditEnhancer } from "./planner-edit-enhancer";
 
 export const metadata: Metadata = { title: "Turbo LEV CRM", description: "Операційна CRM-система СТО Turbo LEV" };
 const themeBootstrap = `(function(){try{var saved=window.localStorage.getItem('turbolev-theme-mode')||window.localStorage.getItem('turbolev-theme')||'auto';if(saved!=='light'&&saved!=='dark'&&saved!=='auto')saved='auto';var resolved=saved==='light'||saved==='dark'?saved:(window.matchMedia('(prefers-color-scheme: light)').matches?'light':'dark');var root=document.documentElement;root.dataset.theme=resolved;root.dataset.themeMode=saved;root.style.colorScheme=resolved;}catch(e){}})();`;
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  return <html lang="uk" suppressHydrationWarning><head><script dangerouslySetInnerHTML={{ __html: themeBootstrap }} /></head><body><CrmScrollReset/><ActiveTerminologyBridge/><PhoneInputNormalizer/><LeadDetailsEnhancer/><VehicleConfigurationEnhancer/><WorkflowFilterEnhancer/><CrmDataBridge/><ClientsVehiclesRichCards/><WorkPriceTableEnhancer/><NewRequestContextBridge/><TelephonyRealtimeBridge/>{children}</body></html>;
+  return <html lang="uk" suppressHydrationWarning><head><script dangerouslySetInnerHTML={{ __html: themeBootstrap }} /></head><body><CrmScrollReset/><ActiveTerminologyBridge/><PlannerEditEnhancer/><PhoneInputNormalizer/><LeadDetailsEnhancer/><VehicleConfigurationEnhancer/><WorkflowFilterEnhancer/><CrmDataBridge/><ClientsVehiclesRichCards/><WorkPriceTableEnhancer/><NewRequestContextBridge/><TelephonyRealtimeBridge/>{children}</body></html>;
 }
