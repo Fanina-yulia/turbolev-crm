@@ -1,7 +1,7 @@
 FROM node:20-bullseye-slim
 
+ARG TARGETARCH
 ARG NEOLINK_VERSION=v0.6.2
-ARG NEOLINK_ASSET=neolink_linux_x86_64_bullseye.zip
 
 RUN apt-get update \
   && apt-get install -y --no-install-recommends \
@@ -20,6 +20,11 @@ RUN apt-get update \
   && rm -rf /var/lib/apt/lists/*
 
 RUN set -eux; \
+  case "${TARGETARCH:-amd64}" in \
+    amd64) NEOLINK_ASSET="neolink_linux_x86_64_bullseye.zip" ;; \
+    arm64) NEOLINK_ASSET="neolink_linux_arm64.zip" ;; \
+    *) echo "Unsupported architecture: ${TARGETARCH}" >&2; exit 1 ;; \
+  esac; \
   curl -fsSL "https://github.com/QuantumEntangledAndy/neolink/releases/download/${NEOLINK_VERSION}/${NEOLINK_ASSET}" -o /tmp/neolink.zip; \
   mkdir -p /tmp/neolink-unpack; \
   unzip /tmp/neolink.zip -d /tmp/neolink-unpack; \
@@ -33,7 +38,8 @@ RUN set -eux; \
 WORKDIR /app
 COPY services/camera-bridge/server.mjs /app/server.mjs
 
-ENV NEOLINK_BINARY=/usr/local/bin/neolink \
+ENV PORT=8787 \
+    NEOLINK_BINARY=/usr/local/bin/neolink \
     FFMPEG_BINARY=/usr/bin/ffmpeg \
     CAMERA_TEST_TIMEOUT_MS=20000 \
     RUST_LOG=info
