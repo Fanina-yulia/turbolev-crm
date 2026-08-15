@@ -12,7 +12,6 @@ type RouteContext = { params: Promise<{ id: string }> };
 export async function POST(request: NextRequest, context: RouteContext) {
   const access = await authorize(PERMISSIONS.SETTINGS_WRITE, {
     request,
-    strict: true,
     minimumScope: "ALL",
   });
   if (!access.allowed) return access.response!;
