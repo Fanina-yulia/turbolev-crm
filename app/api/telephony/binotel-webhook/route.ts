@@ -7,6 +7,10 @@ import {
   UnsupportedBinotelWebhookEvent,
   processBinotelWebhook,
 } from "@/src/services/binotel-webhook.service";
+import {
+  inflateBinotelFormEntries,
+  requiresBinotelSuccessAck,
+} from "@/src/services/binotel-webhook-payload";
 import { getIntegrationCredential } from "@/src/services/integration-credentials.service";
 
 export const runtime = "nodejs";
@@ -37,9 +41,9 @@ async function readWebhookBody(request: NextRequest): Promise<Record<string, unk
 
   if (contentType.includes("application/x-www-form-urlencoded") || contentType.includes("multipart/form-data")) {
     const form = await request.formData();
-    const body: Record<string, unknown> = {};
-    for (const [key, value] of form.entries()) body[key] = typeof value === "string" ? value : value.name;
-    return body;
+    const entries: Array<[string, string]> = [];
+    for (const [key, value] of form.entries()) entries.push([key, typeof value === "string" ? value : value.name]);
+    return inflateBinotelFormEntries(entries);
   }
 
   const text = await request.text();
@@ -50,7 +54,7 @@ async function readWebhookBody(request: NextRequest): Promise<Record<string, unk
   } catch {
     // Fall through to URLSearchParams for providers that omit content-type.
   }
-  return Object.fromEntries(new URLSearchParams(text));
+  return inflateBinotelFormEntries(new URLSearchParams(text).entries());
 }
 
 function attachEventFromQuery(request: NextRequest, payload: Record<string, unknown>): Record<string, unknown> {
@@ -147,6 +151,13 @@ export async function POST(request: NextRequest) {
     await recordDelivery(payload, "RECEIVED");
     const result = await processBinotelWebhook(payload);
     await recordDelivery(payload, "PROCESSED");
+
+    // Binotel API CALL COMPLETED retries up to seven times unless it receives
+    // this acknowledgement contract.
+    if (requiresBinotelSuccessAck(payload)) {
+      return NextResponse.json({ status: "success" }, { status: 200 });
+    }
+
     return NextResponse.json({ ok: true, ...result }, { status: 200 });
   } catch (error) {
     if (error instanceof UnsupportedBinotelWebhookEvent) {

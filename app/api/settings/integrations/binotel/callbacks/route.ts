@@ -21,8 +21,10 @@ export async function GET(request: NextRequest) {
   }
 
   const origin = request.nextUrl.origin.replace(/\/$/, "");
-  const base = `${origin}/api/telephony/binotel-webhook`;
-  const callback = (event: string) => `${base}?event=${encodeURIComponent(event)}&token=${encodeURIComponent(token)}`;
+  const pushBase = `${origin}/api/telephony/binotel-webhook`;
+  const settingsBase = `${origin}/api/webhooks/binotel-call-settings`;
+  const callback = (event: string) => `${pushBase}?event=${encodeURIComponent(event)}&token=${encodeURIComponent(token)}`;
+  const callSettings = `${settingsBase}?token=${encodeURIComponent(token)}`;
 
   return NextResponse.json({
     ok: true,
@@ -30,6 +32,14 @@ export async function GET(request: NextRequest) {
       incomingCall: callback("incomingCall"),
       answeredTheCall: callback("answeredTheCall"),
       hangupTheCall: callback("hangupTheCall"),
+      apiCallCompleted: callback("apiCallCompleted"),
+      apiCallSettings: callSettings,
+    },
+    providerContract: {
+      apiPushContentType: "application/x-www-form-urlencoded",
+      apiCallCompletedAck: { status: "success" },
+      recordingAvailability: "after-call; reconcile if the URL is not ready immediately",
+      webSocketMode: "events-only",
     },
     note: "Ці URL містять секретний webhook token. Передавайте їх лише в налаштування Binotel або техпідтримці Binotel.",
   }, { headers: { "Cache-Control": "private, no-store" } });
