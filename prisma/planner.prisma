@@ -37,6 +37,8 @@ model ServiceLocation {
   roleCapacityStandards   RoleCapacityStandard[]
   roleDemandSnapshots     RoleDemandSnapshot[]
   roleEconomicsSnapshots  RoleEconomicsSnapshot[]
+  accessRoleAssignments   UserAccessRole[]
+  permissionOverrides     UserPermissionOverride[]
 
   @@index([isActive, sortOrder])
 }
