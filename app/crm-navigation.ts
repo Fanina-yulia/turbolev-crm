@@ -13,6 +13,7 @@ export const CRM_NAV = [
   { label: "Оплати", slug: "payments" },
   { label: "Гарантії", slug: "warranties" },
   { label: "Аналітика", slug: "analytics" },
+  { label: "Налаштування", slug: "settings" },
 ] as const;
 
 export type CrmSectionLabel = (typeof CRM_NAV)[number]["label"];
@@ -35,7 +36,7 @@ export const CRM_NAV_GROUPS: readonly CrmNavGroup[] = [
   { label: "Сервіс", items: navItems("planner", "diagnostics", "work-orders", "production", "quality") },
   { label: "Запчастини", items: navItems("parts", "procurement") },
   { label: "Фінанси", items: navItems("payments") },
-  { label: "Управління", items: navItems("warranties", "analytics") },
+  { label: "Управління", items: navItems("warranties", "analytics", "settings") },
 ];
 
 export function sectionFromSlug(value: string | null | undefined): CrmSectionLabel {
