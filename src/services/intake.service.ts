@@ -1,6 +1,11 @@
 import { LeadStatus, PlannerAppointmentStatus, Prisma } from "@/src/generated/prisma/client";
 import { mapUiSourceToLeadSource } from "@/src/domain/workflow/lead";
 import { getPrisma } from "@/src/lib/prisma";
+import {
+  buildPlannerAvailability,
+  plannerLocalDateTimeToUtc,
+  validateAppointmentAgainstSchedule,
+} from "@/src/services/planner-availability.service";
 
 export class IntakeValidationError extends Error {}
 export class IntakeConflictError extends Error {}
@@ -56,23 +61,53 @@ function clean(value: unknown, max = 1000) {
   const trimmed = value.trim();
   return trimmed ? trimmed.slice(0, max) : null;
 }
-function digits(value: unknown) { return String(value || "").replace(/\D/g, ""); }
+
+function digits(value: unknown) {
+  return String(value || "").replace(/\D/g, "");
+}
+
 function normalizePhone(value: unknown) {
   let d = digits(value);
   if (d.startsWith("0")) d = `38${d}`;
   if (!d.startsWith("380") && d.length === 9) d = `380${d}`;
-  if (d.length !== 12 || !d.startsWith("380")) throw new IntakeValidationError("Вкажіть коректний український номер телефону.");
+  if (d.length !== 12 || !d.startsWith("380")) {
+    throw new IntakeValidationError("Вкажіть коректний український номер телефону.");
+  }
   return d;
 }
-function displayPhone(normalized: string) { return `+${normalized}`; }
-function normalizeVin(value: unknown) { return String(value || "").toUpperCase().replace(/[^A-HJ-NPR-Z0-9]/g, "").slice(0, 17); }
-function normalizePlate(value: unknown) { return String(value || "").toUpperCase().replace(/[^A-ZА-ЯІЇЄ0-9]/gi, "").slice(0, 24); }
-function toInt(value: unknown) { if (value === null || value === undefined || value === "") return null; const n = Number(value); return Number.isFinite(n) ? Math.round(n) : null; }
-function toDecimal(value: unknown) { if (value === null || value === undefined || value === "") return null; const n = Number(String(value).replace(",", ".")); return Number.isFinite(n) && n >= 0 ? n : null; }
-function json(value: unknown): Prisma.InputJsonValue { return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue; }
+
+function displayPhone(normalized: string) {
+  return `+${normalized}`;
+}
+
+function normalizeVin(value: unknown) {
+  return String(value || "").toUpperCase().replace(/[^A-HJ-NPR-Z0-9]/g, "").slice(0, 17);
+}
+
+function normalizePlate(value: unknown) {
+  return String(value || "").toUpperCase().replace(/[^A-ZА-ЯІЇЄ0-9]/gi, "").slice(0, 24);
+}
+
+function toInt(value: unknown) {
+  if (value === null || value === undefined || value === "") return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? Math.round(n) : null;
+}
+
+function toDecimal(value: unknown) {
+  if (value === null || value === undefined || value === "") return null;
+  const n = Number(String(value).replace(",", "."));
+  return Number.isFinite(n) && n >= 0 ? n : null;
+}
+
+function json(value: unknown): Prisma.InputJsonValue {
+  return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
+}
 
 function normalizePreliminaryWorks(value: unknown) {
-  if (!Array.isArray(value)) return [] as Array<{ name:string; quantity:number; total:number; manual:boolean }>;
+  if (!Array.isArray(value)) {
+    return [] as Array<{ name: string; quantity: number; total: number; manual: boolean }>;
+  }
   return value.slice(0, 40).flatMap((item) => {
     if (!item || typeof item !== "object") return [];
     const record = item as Record<string, unknown>;
@@ -84,7 +119,7 @@ function normalizePreliminaryWorks(value: unknown) {
   });
 }
 
-function worksSummary(works: Array<{ name:string; quantity:number; total:number; manual:boolean }>) {
+function worksSummary(works: Array<{ name: string; quantity: number; total: number; manual: boolean }>) {
   if (!works.length) return null;
   const lines = works.map((work) => {
     const quantity = work.quantity > 1 ? ` ×${work.quantity}` : "";
@@ -98,16 +133,20 @@ export async function createIntake(input: IntakeInput) {
   const prisma = getPrisma();
   const phoneNormalized = normalizePhone(input.phone);
   const vin = normalizeVin(input.vin) || null;
-  if (vin && vin.length !== 17) throw new IntakeValidationError("VIN повинен містити 17 символів або бути порожнім.");
+  if (vin && vin.length !== 17) {
+    throw new IntakeValidationError("VIN повинен містити 17 символів або бути порожнім.");
+  }
   const plateNormalized = normalizePlate(input.plate) || null;
-  if (!plateNormalized && !vin) throw new IntakeValidationError("Вкажіть державний номер або VIN автомобіля.");
+  if (!plateNormalized && !vin) {
+    throw new IntakeValidationError("Вкажіть державний номер або VIN автомобіля.");
+  }
 
   const appointmentDate = clean(input.appointmentDate, 10);
   const appointmentTime = clean(input.appointmentTime, 8);
   const hasAppointment = Boolean(appointmentDate && appointmentTime);
-  const appointmentStart = hasAppointment ? new Date(`${appointmentDate}T${appointmentTime}:00`) : null;
-  if (appointmentStart && Number.isNaN(appointmentStart.getTime())) throw new IntakeValidationError("Некоректна дата або час запису.");
-  const appointmentEnd = appointmentStart ? new Date(appointmentStart.getTime() + 60 * 60_000) : null;
+  if (hasAppointment && (!/^\d{4}-\d{2}-\d{2}$/.test(appointmentDate!) || !/^\d{2}:\d{2}$/.test(appointmentTime!))) {
+    throw new IntakeValidationError("Некоректна дата або час запису.");
+  }
 
   const preliminaryWorks = normalizePreliminaryWorks(input.preliminaryWorks);
   const preliminaryWorksText = worksSummary(preliminaryWorks);
@@ -115,6 +154,89 @@ export async function createIntake(input: IntakeInput) {
   const combinedComment = [userComment, preliminaryWorksText].filter(Boolean).join("\n\n") || null;
 
   return prisma.$transaction(async (tx) => {
+    let location = null;
+    let post = null;
+    let mechanic = null;
+    let appointmentStart: Date | null = null;
+    let appointmentEnd: Date | null = null;
+
+    if (hasAppointment) {
+      const requestedLocationId = clean(input.locationId, 80);
+      location = requestedLocationId
+        ? await tx.serviceLocation.findFirst({ where: { id: requestedLocationId, isActive: true } })
+        : await tx.serviceLocation.findFirst({
+            where: { isActive: true },
+            orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
+          });
+      if (!location) {
+        throw new IntakeValidationError("У CRM немає активної локації СТО для запису.");
+      }
+
+      const setting = await tx.crmSetting.findUnique({
+        where: { key: "work_schedule" },
+        select: { value: true },
+      });
+      const availability = buildPlannerAvailability({
+        locationId: location.id,
+        timezone: location.timezone,
+        openMinute: location.openMinute,
+        closeMinute: location.closeMinute,
+        scheduleValue: setting?.value,
+      });
+      appointmentStart = plannerLocalDateTimeToUtc(appointmentDate!, appointmentTime!, availability.timezone);
+      if (!appointmentStart) throw new IntakeValidationError("Некоректна дата або час запису.");
+      appointmentEnd = new Date(appointmentStart.getTime() + 60 * 60_000);
+
+      const scheduleValidation = validateAppointmentAgainstSchedule(availability, appointmentStart, appointmentEnd);
+      if (!scheduleValidation.ok) {
+        throw new IntakeConflictError(scheduleValidation.conflict.message);
+      }
+
+      const postId = clean(input.postId, 80);
+      const mechanicId = clean(input.mechanicId, 80);
+      if (!postId) throw new IntakeValidationError("Оберіть пост СТО.");
+      if (!mechanicId) throw new IntakeValidationError("Закріпіть майстра.");
+
+      post = await tx.servicePost.findFirst({
+        where: { id: postId, locationId: location.id, isActive: true },
+      });
+      mechanic = await tx.serviceMechanic.findFirst({
+        where: { id: mechanicId, locationId: location.id, isActive: true },
+      });
+      if (!post) throw new IntakeValidationError("Обраний пост недоступний.");
+      if (!mechanic) throw new IntakeValidationError("Обраний майстер недоступний.");
+
+      // Серіалізуємо бронювання ресурсів усередині однієї локації, щоб два паралельні
+      // запити не змогли одночасно зайняти того самого механіка або пост.
+      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`planner-location:${location.id}`}))`;
+
+      const nonBlocking = [
+        PlannerAppointmentStatus.COMPLETED,
+        PlannerAppointmentStatus.NO_SHOW,
+        PlannerAppointmentStatus.CANCELLED,
+      ];
+      const overlap = {
+        locationId: location.id,
+        status: { notIn: nonBlocking },
+        plannedStartAt: { lt: appointmentEnd },
+        plannedEndAt: { gt: appointmentStart },
+      };
+      const postConflict = await tx.serviceAppointment.findFirst({
+        where: { ...overlap, postId: post.id },
+        select: { id: true },
+      });
+      if (postConflict) {
+        throw new IntakeConflictError(`Пост «${post.name}» уже зайнятий у цей час. Оберіть інший пост або час.`);
+      }
+      const mechanicConflict = await tx.serviceAppointment.findFirst({
+        where: { ...overlap, mechanicId: mechanic.id },
+        select: { id: true },
+      });
+      if (mechanicConflict) {
+        throw new IntakeConflictError(`${mechanic.name} уже зайнятий у цей час. Оберіть іншого механіка або час.`);
+      }
+    }
+
     const matchingClients = await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
       SELECT DISTINCT c."id"
       FROM "Client" c
@@ -122,10 +244,15 @@ export async function createIntake(input: IntakeInput) {
       WHERE c."phoneNormalized" = ${phoneNormalized} OR cp."phoneNormalized" = ${phoneNormalized}
       LIMIT 1
     `);
-    let client = matchingClients[0] ? await tx.client.findUnique({ where: { id: matchingClients[0].id } }) : null;
+    let client = matchingClients[0]
+      ? await tx.client.findUnique({ where: { id: matchingClients[0].id } })
+      : null;
     const inputName = clean(input.customerName, 160);
+
     if (!client) {
-      client = await tx.client.create({ data: { name: inputName, phone: displayPhone(phoneNormalized), phoneNormalized } });
+      client = await tx.client.create({
+        data: { name: inputName, phone: displayPhone(phoneNormalized), phoneNormalized },
+      });
       await tx.$executeRaw(Prisma.sql`
         INSERT INTO "ClientPhone" ("id","clientId","phone","phoneNormalized","label","isPrimary","createdAt","updatedAt")
         VALUES (${`cp_${client.id}_${phoneNormalized}`},${client.id},${displayPhone(phoneNormalized)},${phoneNormalized},'Основний',true,NOW(),NOW())
@@ -144,7 +271,9 @@ export async function createIntake(input: IntakeInput) {
     }
 
     let vehicle = vin ? await tx.vehicle.findUnique({ where: { vin } }) : null;
-    if (!vehicle && plateNormalized) vehicle = await tx.vehicle.findUnique({ where: { plateNormalized } });
+    if (!vehicle && plateNormalized) {
+      vehicle = await tx.vehicle.findUnique({ where: { plateNormalized } });
+    }
     const previousClientId = vehicle?.clientId || null;
     const needsReassign = Boolean(vehicle && vehicle.clientId !== client.id);
     if (needsReassign && !input.forceReassignVehicle) {
@@ -157,7 +286,9 @@ export async function createIntake(input: IntakeInput) {
       year: toInt(input.year),
       mileageKm: toInt(input.mileage),
       engineName: clean(input.engine, 200),
-      engineVolumeCm3: input.engineVolume ? Math.round((Number(String(input.engineVolume).replace(",", ".")) || 0) * 1000) || null : null,
+      engineVolumeCm3: input.engineVolume
+        ? Math.round((Number(String(input.engineVolume).replace(",", ".")) || 0) * 1000) || null
+        : null,
       fuelType: clean(input.fuelType, 80),
       bodyType: clean(input.bodyType, 80),
       grossWeightKg: toInt(input.grossWeight),
@@ -196,45 +327,15 @@ export async function createIntake(input: IntakeInput) {
       });
     }
 
-    const assignee = clean(input.responsible, 160)
-      ? await tx.user.findFirst({ where: { isActive: true, name: { equals: clean(input.responsible, 160)!, mode: "insensitive" } } })
+    const responsible = clean(input.responsible, 160);
+    const assignee = responsible
+      ? await tx.user.findFirst({
+          where: { isActive: true, name: { equals: responsible, mode: "insensitive" } },
+        })
       : null;
-    const need = [clean(input.category, 100), clean(input.complaint, 4000)].filter(Boolean).join(" · ") || preliminaryWorks[0]?.name || null;
-
-    let location = null;
-    let post = null;
-    let mechanic = null;
-    if (hasAppointment) {
-      const requestedLocationId = clean(input.locationId, 80);
-      location = requestedLocationId
-        ? await tx.serviceLocation.findFirst({ where: { id: requestedLocationId, isActive: true } })
-        : await tx.serviceLocation.findFirst({ where: { isActive: true }, orderBy: [{ sortOrder: "asc" }, { name: "asc" }] });
-      if (!location) throw new IntakeValidationError("У CRM немає активної локації СТО для запису.");
-
-      const postId = clean(input.postId, 80);
-      const mechanicId = clean(input.mechanicId, 80);
-      if (!postId) throw new IntakeValidationError("Оберіть пост СТО.");
-      if (!mechanicId) throw new IntakeValidationError("Закріпіть майстра.");
-
-      post = await tx.servicePost.findFirst({ where: { id: postId, locationId: location.id, isActive: true } });
-      mechanic = await tx.serviceMechanic.findFirst({ where: { id: mechanicId, locationId: location.id, isActive: true } });
-      if (!post) throw new IntakeValidationError("Обраний пост недоступний.");
-      if (!mechanic) throw new IntakeValidationError("Обраний майстер недоступний.");
-
-      if (appointmentStart && appointmentEnd) {
-        const nonBlocking = [PlannerAppointmentStatus.COMPLETED, PlannerAppointmentStatus.NO_SHOW, PlannerAppointmentStatus.CANCELLED];
-        const overlap = {
-          locationId: location.id,
-          status: { notIn: nonBlocking },
-          plannedStartAt: { lt: appointmentEnd },
-          plannedEndAt: { gt: appointmentStart },
-        };
-        const postConflict = await tx.serviceAppointment.findFirst({ where: { ...overlap, postId: post.id }, select: { id: true } });
-        if (postConflict) throw new IntakeConflictError(`Пост «${post.name}» уже зайнятий у цей час. Оберіть інший пост або час.`);
-        const mechanicParallel = await tx.serviceAppointment.count({ where: { ...overlap, mechanicId: mechanic.id } });
-        if (mechanicParallel >= 2) throw new IntakeConflictError(`${mechanic.name} уже веде 2 автомобілі одночасно. Оберіть іншого майстра або час.`);
-      }
-    }
+    const need = [clean(input.category, 100), clean(input.complaint, 4000)]
+      .filter(Boolean)
+      .join(" · ") || preliminaryWorks[0]?.name || null;
 
     const lead = await tx.lead.create({
       data: {
@@ -270,7 +371,9 @@ export async function createIntake(input: IntakeInput) {
           status: PlannerAppointmentStatus.BOOKED,
           customerName: client.name,
           phone: client.phone,
-          vehicleLabel: [vehicle.brand, vehicle.model, vehicle.year].filter(Boolean).join(" ") || vehicle.plateNumber || vehicle.vin,
+          vehicleLabel: [vehicle.brand, vehicle.model, vehicle.year].filter(Boolean).join(" ")
+            || vehicle.plateNumber
+            || vehicle.vin,
           plateNumber: vehicle.plateNumber,
           problem: need,
           comment: combinedComment,
@@ -284,38 +387,68 @@ export async function createIntake(input: IntakeInput) {
 
     await tx.auditEvent.create({
       data: {
-        actorName: clean(input.responsible, 160) || "CRM",
+        actorName: responsible || "CRM",
         entityType: "Lead",
         entityId: lead.id,
         action: "CREATE_FROM_INTAKE",
         after: json(lead),
-        metadata: json({ clientId: client.id, vehicleId: vehicle.id, appointmentId: appointment?.id || null, vehicleReassigned: needsReassign, previousClientId, contactPhone: displayPhone(phoneNormalized), preliminaryWorksCount: preliminaryWorks.length, postId: post?.id || null, mechanicId: mechanic?.id || null }),
+        metadata: json({
+          clientId: client.id,
+          vehicleId: vehicle.id,
+          appointmentId: appointment?.id || null,
+          vehicleReassigned: needsReassign,
+          previousClientId,
+          contactPhone: displayPhone(phoneNormalized),
+          preliminaryWorksCount: preliminaryWorks.length,
+          postId: post?.id || null,
+          mechanicId: mechanic?.id || null,
+        }),
       },
     });
+
     if (needsReassign) {
       await tx.auditEvent.create({
         data: {
-          actorName: clean(input.responsible, 160) || "CRM",
+          actorName: responsible || "CRM",
           entityType: "Vehicle",
           entityId: vehicle.id,
           action: "MANUAL_REASSIGN_FROM_INTAKE",
-          metadata: json({ previousClientId, clientId: client.id, plateNumber: vehicle.plateNumber, vin: vehicle.vin }),
-        },
-      });
-    }
-    if (appointment) {
-      await tx.auditEvent.create({
-        data: {
-          actorName: clean(input.responsible, 160) || "CRM",
-          entityType: "ServiceAppointment",
-          entityId: appointment.id,
-          action: "CREATE_FROM_INTAKE",
-          after: json(appointment),
-          metadata: json({ leadId: lead.id, clientId: client.id, vehicleId: vehicle.id, postId: post?.id || null, mechanicId: mechanic?.id || null }),
+          metadata: json({
+            previousClientId,
+            clientId: client.id,
+            plateNumber: vehicle.plateNumber,
+            vin: vehicle.vin,
+          }),
         },
       });
     }
 
-    return { client, vehicle, lead, appointment, vehicleReassigned: needsReassign, preliminaryWorks };
+    if (appointment) {
+      await tx.auditEvent.create({
+        data: {
+          actorName: responsible || "CRM",
+          entityType: "ServiceAppointment",
+          entityId: appointment.id,
+          action: "CREATE_FROM_INTAKE",
+          after: json(appointment),
+          metadata: json({
+            leadId: lead.id,
+            clientId: client.id,
+            vehicleId: vehicle.id,
+            postId: post?.id || null,
+            mechanicId: mechanic?.id || null,
+          }),
+        },
+      });
+    }
+
+    return {
+      client,
+      vehicle,
+      lead,
+      appointment,
+      vehicleReassigned: needsReassign,
+      preliminaryWorks,
+    };
   });
 }
