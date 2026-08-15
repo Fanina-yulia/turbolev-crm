@@ -55,6 +55,8 @@ model WorkOrderLine {
   createdAt        DateTime            @default(now())
   updatedAt        DateTime            @updatedAt
 
+  workOrder        WorkOrder           @relation(fields: [workOrderId], references: [id], onDelete: Restrict)
+
   @@index([workOrderId, status, sortOrder])
   @@index([workOrderId, type])
   @@index([supplierId])
