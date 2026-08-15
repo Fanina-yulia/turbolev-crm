@@ -1,0 +1,42 @@
+name: HR UI Copy Fix
+
+on:
+  push:
+    branches: [agent/employee-performance-core-v1]
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Align personnel wording with performance core
+        shell: python
+        run: |
+          from pathlib import Path
+          path = Path('app/personnel.tsx')
+          text = path.read_text()
+          replacements = {
+            '"Продавник"': '"Продавець"',
+            'Видалити співробітника?': 'Деактивувати співробітника? Історія KPI, нарахувань і робіт буде збережена.',
+            'Особисті дані, роль у Turbo LEV, документи, доступ до CRM і зарплатна формула.': 'Особисті дані, роль у Turbo LEV, документи, CRM-доступ, KPI та параметри мотивації.',
+            '<strong>Правила нарахування зарплати</strong><span>Ставка та змінні складові винагороди</span>': '<strong>Чернетка параметрів мотивації</strong><span>Формула зарплати ще не активна; поля збережені для майбутнього налаштування</span>',
+            '>Видалити працівника</button>': '>Деактивувати працівника</button>',
+            'Співробітники, посади, документи, CRM-доступ і правила нарахування зарплати': 'Співробітники, посади, документи, CRM-доступ, KPI та майбутні параметри мотивації',
+          }
+          for old, new in replacements.items():
+              if old not in text:
+                  raise SystemExit(f'Missing expected text: {old}')
+              text = text.replace(old, new)
+          path.write_text(text)
+      - name: Remove one-time workflow and commit
+        shell: bash
+        run: |
+          rm .github/workflows/hr-ui-copy-fix.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/personnel.tsx .github/workflows/hr-ui-copy-fix.yml
+          git commit -m "Align personnel UI with KPI and payroll core"
+          git push
