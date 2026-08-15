@@ -7,6 +7,15 @@ export const dynamic = "force-dynamic";
 
 type RouteContext = { params: Promise<{ id: string }> };
 type CameraPurposeValue = "ENTRY" | "EXIT" | "TERRITORY" | "SERVICE_POST";
+type CameraStatusValue = "DISABLED" | "NOT_TESTED";
+type CameraPatchData = {
+  name?: string;
+  username?: string;
+  purpose?: CameraPurposeValue;
+  encryptedPassword?: string;
+  isActive?: boolean;
+  status?: CameraStatusValue;
+};
 const PURPOSES = new Set<CameraPurposeValue>(["ENTRY", "EXIT", "TERRITORY", "SERVICE_POST"]);
 
 function clean(value: unknown, max = 180) {
@@ -57,7 +66,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     if (!current) return NextResponse.json({ ok: false, error: "Камеру не знайдено." }, { status: 404 });
 
     const body = await request.json() as Record<string, unknown>;
-    const data: Record<string, unknown> = {};
+    const data: CameraPatchData = {};
 
     if (Object.prototype.hasOwnProperty.call(body, "name")) {
       const name = clean(body.name, 120);
