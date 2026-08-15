@@ -1,0 +1,28 @@
+enum WorkOrderQualityStatus {
+  PENDING
+  IN_PROGRESS
+  PASSED
+  FAILED
+  RECHECK
+  CANCELLED
+}
+
+model WorkOrderQualityControl {
+  id              String                 @id @default(cuid())
+  workOrderId     String
+  attempt         Int
+  status          WorkOrderQualityStatus @default(PENDING)
+  checklist       Json?
+  resultNote      String?                @db.Text
+  performedByName String?                @db.VarChar(160)
+  startedAt       DateTime?
+  completedAt     DateTime?
+  createdAt       DateTime               @default(now())
+  updatedAt       DateTime               @updatedAt
+
+  workOrder WorkOrder @relation(fields: [workOrderId], references: [id], onDelete: Restrict)
+
+  @@unique([workOrderId, attempt])
+  @@index([workOrderId, status, attempt])
+  @@index([status, updatedAt])
+}
