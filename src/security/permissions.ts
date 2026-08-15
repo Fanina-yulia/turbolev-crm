@@ -61,6 +61,10 @@ export function widerScope(a: AccessScopeCode, b: AccessScopeCode): AccessScopeC
   return SCOPE_RANK[a] >= SCOPE_RANK[b] ? a : b;
 }
 
+export function scopeCovers(actual: AccessScopeCode | null | undefined, required: AccessScopeCode) {
+  return Boolean(actual) && SCOPE_RANK[actual!] >= SCOPE_RANK[required];
+}
+
 export const NAV_PERMISSION: Record<string, PermissionCode> = {
   overview: PERMISSIONS.OVERVIEW_READ,
   communications: PERMISSIONS.COMMUNICATIONS_READ,
