@@ -33,11 +33,12 @@ function navItems(...slugs: CrmSectionSlug[]): CrmNavItem[] {
 
 export const CRM_NAV_GROUPS: readonly CrmNavGroup[] = [
   { label: "Головне", items: navItems("overview") },
-  { label: "Продажі", items: navItems("communications", "leads", "clients") },
-  { label: "Сервіс", items: navItems("planner", "diagnostics", "work-orders", "production", "quality") },
+  { label: "Клієнти", items: navItems("communications", "leads", "clients") },
+  { label: "Сервіс", items: navItems("planner", "diagnostics", "work-orders") },
+  { label: "Ремонт", items: navItems("production", "quality", "warranties") },
   { label: "Запчастини", items: navItems("parts", "procurement") },
   { label: "Фінанси", items: navItems("finance", "payments") },
-  { label: "Управління", items: navItems("warranties", "analytics", "settings") },
+  { label: "Управління", items: navItems("analytics", "settings") },
 ];
 
 export function sectionFromSlug(value: string | null | undefined): CrmSectionLabel {
