@@ -1,0 +1,10 @@
+{$BRIDGE_HOSTNAME} {
+  encode zstd gzip
+  reverse_proxy camera-bridge:8787
+
+  header {
+    X-Content-Type-Options nosniff
+    X-Frame-Options DENY
+    Referrer-Policy no-referrer
+  }
+}
