@@ -19,6 +19,12 @@ export function SettingsPage(){
       window.scrollTo({top:0,left:0,behavior:"auto"});
       document.documentElement.scrollTop=0;
       document.body.scrollTop=0;
+      const heading=Array.from(document.querySelectorAll<HTMLHeadingElement>("h2")).find(node=>(node.textContent||"").trim()==="Налаштування");
+      const modal=heading?.closest<HTMLElement>("section");
+      const backdrop=modal?.parentElement as HTMLElement|null;
+      if(backdrop)backdrop.scrollTop=0;
+      const content=modal?.querySelector<HTMLElement>('main[class*="content"]');
+      if(content)content.scrollTop=0;
     };
 
     const selectTab=(id?:string|null)=>{
@@ -26,6 +32,7 @@ export function SettingsPage(){
       const candidates=Array.from(document.querySelectorAll<HTMLButtonElement>("button"));
       const button=candidates.find(node=>node.closest('[class*="settings-center_tabs"]')&&(node.textContent||"").includes(label));
       button?.click();
+      window.requestAnimationFrame(resetScroll);
     };
 
     const open=()=>{
@@ -33,7 +40,7 @@ export function SettingsPage(){
       if(button)button.click();
       const url=new URL(window.location.href);
       window.setTimeout(()=>selectTab(url.searchParams.get("settingsTab")),0);
-      resetScroll();
+      window.setTimeout(resetScroll,0);
     };
 
     const onTab=(event:Event)=>selectTab((event as CustomEvent<string>).detail);
