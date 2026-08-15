@@ -13,11 +13,20 @@ export function SettingsPage(){
     let frame=0;
     let timer=0;
 
+    const resetScroll=()=>{
+      window.scrollTo({top:0,left:0,behavior:"auto"});
+      document.documentElement.scrollTop=0;
+      document.body.scrollTop=0;
+      hostRef.current?.scrollIntoView({block:"start",inline:"nearest",behavior:"auto"});
+    };
+
     const open=()=>{
       const button=hostRef.current?.querySelector<HTMLButtonElement>(".settingsNavButton");
       if(button)button.click();
+      resetScroll();
     };
 
+    resetScroll();
     frame=requestAnimationFrame(open);
     timer=window.setTimeout(open,80);
 
