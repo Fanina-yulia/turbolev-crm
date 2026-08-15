@@ -1,13 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getPrisma } from "@/src/lib/prisma";
 import { encryptCameraPassword, maskCameraUid } from "@/src/services/camera-credentials.service";
+import { generateCameraIngestToken, hashCameraIngestToken } from "@/src/services/camera-ingest-token.service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const PURPOSES = new Set(["ENTRY", "EXIT", "TERRITORY", "SERVICE_POST"] as const);
+const CONNECTION_MODES = new Set(["EMAIL_EVENTS", "UID_P2P", "LOCAL"] as const);
 
 type CameraPurposeValue = "ENTRY" | "EXIT" | "TERRITORY" | "SERVICE_POST";
+type CameraConnectionModeValue = "EMAIL_EVENTS" | "UID_P2P" | "LOCAL";
 
 function clean(value: unknown, max = 180) {
   return typeof value === "string" ? value.trim().slice(0, max) : "";
@@ -76,24 +79,33 @@ export async function POST(request: NextRequest) {
     const password = typeof body.password === "string" ? body.password.slice(0, 256) : "";
     const purposeRaw = clean(body.purpose, 32) as CameraPurposeValue;
     const purpose: CameraPurposeValue = PURPOSES.has(purposeRaw) ? purposeRaw : "TERRITORY";
+    const modeRaw = clean(body.connectionMode, 32) as CameraConnectionModeValue;
+    const connectionMode: CameraConnectionModeValue = CONNECTION_MODES.has(modeRaw) ? modeRaw : "EMAIL_EVENTS";
 
     if (!name) return NextResponse.json({ ok: false, error: "Вкажіть назву камери." }, { status: 400 });
     if (!/^[A-Z0-9]{12,40}$/.test(uid)) return NextResponse.json({ ok: false, error: "Перевірте UID Reolink." }, { status: 400 });
 
+    const ingestToken = connectionMode === "EMAIL_EVENTS" ? generateCameraIngestToken() : null;
     const camera = await prisma.camera.create({
       data: {
         name,
         uid,
         username,
         encryptedPassword: encryptCameraPassword(password),
+        ingestTokenHash: ingestToken ? hashCameraIngestToken(ingestToken) : null,
         provider: "REOLINK",
         purpose,
-        connectionMode: "UID_P2P",
-        status: "NOT_TESTED",
+        connectionMode,
+        status: connectionMode === "EMAIL_EVENTS" ? "NOT_TESTED" : "NOT_TESTED",
       },
     });
 
-    return NextResponse.json({ ok: true, camera: publicCamera(camera) }, { status: 201 });
+    return NextResponse.json({
+      ok: true,
+      camera: publicCamera(camera),
+      ingestToken,
+      ingestEndpoint: connectionMode === "EMAIL_EVENTS" ? "/api/camera-events/email" : null,
+    }, { status: 201 });
   } catch (error) {
     const message = error instanceof Error ? error.message : "unknown";
     if (/unique constraint|Camera_uid_key|uid/i.test(message)) {
