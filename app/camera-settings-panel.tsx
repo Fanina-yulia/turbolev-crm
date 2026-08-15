@@ -177,7 +177,7 @@ export function CameraSettingsPanel() {
     <div className={styles.header}>
       <div className={styles.headerCopy}>
         <h2>Камери відеоспостереження</h2>
-        <p>Reolink підключаємо через UID/P2P. CRM зберігає пароль у зашифрованому вигляді; повний UID та пароль після збереження в інтерфейс не повертаються.</p>
+        <p>Reolink підключаємо через UID/P2P. Спочатку можна перевірити UID із користувачем admin без пароля; якщо камера захищена, додамо її пароль.</p>
       </div>
       <button className={styles.primary} type="button" onClick={() => setShowForm((value) => !value)}>{showForm ? "Закрити" : "+ Додати камеру"}</button>
     </div>
@@ -195,8 +195,8 @@ export function CameraSettingsPanel() {
         <label><span>Призначення</span><select value={form.purpose} onChange={(event) => setForm((current) => ({ ...current, purpose: event.target.value as CameraPurpose }))}><option value="ENTRY">В'їзд</option><option value="EXIT">Виїзд</option><option value="TERRITORY">Територія</option><option value="SERVICE_POST">Робочий пост</option></select></label>
         <label><span>Reolink UID</span><input autoCapitalize="characters" value={form.uid} onChange={(event) => setForm((current) => ({ ...current, uid: event.target.value.toUpperCase() }))} placeholder="9527XXXXXXXXXXXX" /></label>
         <label><span>Логін камери</span><input value={form.username} onChange={(event) => setForm((current) => ({ ...current, username: event.target.value }))} placeholder="admin" /></label>
-        <label><span>Пароль камери</span><input type="password" autoComplete="new-password" value={form.password} onChange={(event) => setForm((current) => ({ ...current, password: event.target.value }))} placeholder="Пароль користувача Reolink" /></label>
-        <p className={styles.hint}>UID не записується у вихідний код CRM. Облікові дані передаються Camera Bridge тільки сервер-сервер під час перевірки або підключення.</p>
+        <label><span>Пароль камери (якщо встановлений)</span><input type="password" autoComplete="new-password" value={form.password} onChange={(event) => setForm((current) => ({ ...current, password: event.target.value }))} placeholder="Можна залишити порожнім" /></label>
+        <p className={styles.hint}>Повний UID і пароль не повертаються в інтерфейс після збереження. Якщо пароль введено, CRM зберігає його зашифрованим і передає Camera Bridge тільки сервер-сервер під час перевірки або підключення.</p>
       </div>
       <div className={styles.formActions}><button className={styles.secondary} type="button" onClick={() => { setShowForm(false); setForm(EMPTY_FORM); }}>Скасувати</button><button className={styles.primary} type="button" disabled={saving} onClick={() => void addCamera()}>{saving ? "Зберігаю…" : "Зберегти камеру"}</button></div>
     </section> : null}
