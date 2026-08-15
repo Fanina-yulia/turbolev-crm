@@ -134,7 +134,7 @@ export async function getAccessContext(input?: Request | Headers): Promise<Acces
     employeeName,
   };
 
-  if (!appUser.isActive) {
+  if (!appUser.isActive || appUser.employeeProfile?.isActive === false) {
     return {
       ...anonymous,
       authenticated: true,
