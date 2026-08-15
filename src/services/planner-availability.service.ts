@@ -44,12 +44,12 @@ function pad(value: number) {
   return String(value).padStart(2, "0");
 }
 
-function minuteToClock(value: number) {
+export function minuteToPlannerClock(value: number) {
   const safe = Math.max(0, Math.min(1439, Math.round(value)));
   return `${pad(Math.floor(safe / 60))}:${pad(safe % 60)}`;
 }
 
-function parseClock(value: unknown) {
+export function plannerClockToMinute(value: unknown) {
   if (typeof value !== "string") return null;
   const match = /^(\d{2}):(\d{2})$/.exec(value.trim());
   if (!match) return null;
@@ -59,28 +59,26 @@ function parseClock(value: unknown) {
   return hour * 60 + minute;
 }
 
-function normalizeSchedule(
+export function normalizePlannerSchedule(
   value: unknown,
   fallbackOpenMinute: number,
   fallbackCloseMinute: number,
 ): PlannerScheduleDay[] {
-  const fallbackOpen = minuteToClock(fallbackOpenMinute);
-  const fallbackClose = minuteToClock(fallbackCloseMinute);
+  const fallbackOpen = minuteToPlannerClock(fallbackOpenMinute);
+  const fallbackClose = minuteToPlannerClock(fallbackCloseMinute);
   const rows = Array.isArray(value) ? value : [];
 
   return DAY_LABELS.map((label, index) => {
     const expectedDay = index + 1;
     const raw = rows.find((entry) => {
       if (!entry || typeof entry !== "object" || Array.isArray(entry)) return false;
-      const day = Number((entry as Record<string, unknown>).day);
-      return day === expectedDay;
+      return Number((entry as Record<string, unknown>).day) === expectedDay;
     }) ?? rows[index];
-
     const record = raw && typeof raw === "object" && !Array.isArray(raw)
       ? raw as Record<string, unknown>
       : {};
-    const openMinute = parseClock(record.open) ?? fallbackOpenMinute;
-    const closeMinute = parseClock(record.close) ?? fallbackCloseMinute;
+    const openMinute = plannerClockToMinute(record.open) ?? fallbackOpenMinute;
+    const closeMinute = plannerClockToMinute(record.close) ?? fallbackCloseMinute;
     const validRange = closeMinute > openMinute;
 
     return {
@@ -89,8 +87,8 @@ function normalizeSchedule(
         ? record.label.trim().slice(0, 4)
         : label,
       enabled: typeof record.enabled === "boolean" ? record.enabled : true,
-      open: validRange ? minuteToClock(openMinute) : fallbackOpen,
-      close: validRange ? minuteToClock(closeMinute) : fallbackClose,
+      open: validRange ? minuteToPlannerClock(openMinute) : fallbackOpen,
+      close: validRange ? minuteToPlannerClock(closeMinute) : fallbackClose,
       openMinute: validRange ? openMinute : fallbackOpenMinute,
       closeMinute: validRange ? closeMinute : fallbackCloseMinute,
     };
@@ -109,14 +107,67 @@ function localParts(date: Date, timezone: string) {
     hourCycle: "h23",
   }).formatToParts(date);
   const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
-  const weekday = WEEKDAY_NUMBER[values.weekday] ?? 1;
-  const hour = Number(values.hour);
-  const minute = Number(values.minute);
-
   return {
-    weekday,
+    weekday: WEEKDAY_NUMBER[values.weekday] ?? 1,
     dateKey: `${values.year}-${values.month}-${values.day}`,
-    minuteOfDay: hour * 60 + minute,
+    minuteOfDay: Number(values.hour) * 60 + Number(values.minute),
+  };
+}
+
+function timeZoneOffsetMs(date: Date, timeZone: string) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(date);
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  const wallClockAsUtc = Date.UTC(
+    Number(values.year),
+    Number(values.month) - 1,
+    Number(values.day),
+    Number(values.hour),
+    Number(values.minute),
+    Number(values.second),
+  );
+  return wallClockAsUtc - date.getTime();
+}
+
+export function plannerLocalDateTimeToUtc(day: string, time: string, timeZone: string) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return null;
+  const minute = plannerClockToMinute(time);
+  if (minute == null) return null;
+  const [year, month, date] = day.split("-").map(Number);
+  const wallClockAsUtc = new Date(Date.UTC(
+    year,
+    month - 1,
+    date,
+    Math.floor(minute / 60),
+    minute % 60,
+    0,
+  ));
+  const firstOffset = timeZoneOffsetMs(wallClockAsUtc, timeZone);
+  const firstPass = new Date(wallClockAsUtc.getTime() - firstOffset);
+  const refinedOffset = timeZoneOffsetMs(firstPass, timeZone);
+  const result = new Date(wallClockAsUtc.getTime() - refinedOffset);
+  return Number.isFinite(result.getTime()) ? result : null;
+}
+
+export function buildPlannerAvailability(input: {
+  locationId: string;
+  timezone?: string | null;
+  openMinute: number;
+  closeMinute: number;
+  scheduleValue: unknown;
+}): PlannerAvailability {
+  return {
+    locationId: input.locationId,
+    timezone: input.timezone || "Europe/Kyiv",
+    schedule: normalizePlannerSchedule(input.scheduleValue, input.openMinute, input.closeMinute),
   };
 }
 
@@ -140,12 +191,13 @@ export async function getPlannerAvailability(locationId: string): Promise<Planne
   ]);
 
   if (!location || !location.isActive) return null;
-
-  return {
+  return buildPlannerAvailability({
     locationId: location.id,
-    timezone: location.timezone || "Europe/Kyiv",
-    schedule: normalizeSchedule(setting?.value, location.openMinute, location.closeMinute),
-  };
+    timezone: location.timezone,
+    openMinute: location.openMinute,
+    closeMinute: location.closeMinute,
+    scheduleValue: setting?.value,
+  });
 }
 
 export function validateAppointmentAgainstSchedule(
