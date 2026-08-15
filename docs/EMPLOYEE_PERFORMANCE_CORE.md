@@ -8,7 +8,7 @@ One source of truth for:
 - own salary by day / week / month;
 - full employee cost;
 - direct economic contribution;
-- role break-even and ROI;
+- role break-even / managed value / support efficiency;
 - required FTE / capacity;
 - attribution of business events;
 - personnel analytics without double-counting accounting profit.
@@ -35,6 +35,8 @@ Examples:
 
 Only explicitly marked additive DIRECT economic values may participate in employee ROI.
 
+A single PerformanceEvent may contain only one additive economic metric. If several employees share that result, all shares must be explicit and add up to 100%.
+
 ### MANAGED
 The employee manages a system that produced the result.
 
@@ -54,9 +56,43 @@ Examples:
 - administrator intervention;
 - technical help during estimate explanation.
 
+## Role economics modes
+
+Different jobs must not be forced into one fake ROI formula.
+
+### DIRECT_ROI
+Used for roles with directly attributable economic output:
+- SALES;
+- PARTS_SPECIALIST;
+- MECHANIC.
+
+For these roles CRM may calculate:
+- Direct Contribution;
+- Break-even %;
+- ROI %;
+- Break-even date.
+
+### MANAGED_VALUE
+Used for management roles:
+- EXECUTIVE_DIRECTOR;
+- HEAD_OF_SALES;
+- STATION_MANAGER.
+
+They are evaluated through managed business outcome, KPI and capacity. Their managed GP / operating result is not added again to employee contribution and CRM does not manufacture a fake direct ROI.
+
+### SUPPORT_CAPACITY
+Used for support roles:
+- ACCOUNTANT;
+- ADMINISTRATOR.
+
+They are evaluated through KPI, workload/capacity, risk, SLA and cost efficiency rather than fake sales attribution.
+
+### OWNER
+OWNER is evaluated by company-level economics and ownership return, not as a normal employee ROI role. If the owner also works as an executive, that operational role can be measured separately.
+
 ## Employee economics
 
-For each employee and period:
+For a `DIRECT_ROI` employee and period:
 
 - `Full Employee Cost` = posted payroll accruals + employer / workplace / software / tools / training / other direct employee costs;
 - `Direct Contribution` = additive DIRECT attribution only;
@@ -65,16 +101,27 @@ For each employee and period:
 - `Break-even date` = first date when cumulative additive DIRECT contribution reaches Full Employee Cost;
 - `KPI Score` and `Capacity Utilization` are shown separately and do not alter accounting profit.
 
-A negative ROI does **not** automatically mean an employee should be dismissed. Analytics must distinguish:
+For MANAGED_VALUE / SUPPORT_CAPACITY, ROI and break-even remain null unless a future explicit economic model is approved. Statuses instead explain the operating situation:
+
+- `EFFECTIVE`;
+- `UNDERUTILIZED`;
+- `NEEDS_ATTENTION`;
+- `CAPACITY_CONSTRAINED`;
+- `INSUFFICIENT_DATA`.
+
+A negative ROI or weak status does **not** automatically mean an employee should be dismissed. Analytics must distinguish:
 
 1. insufficient demand / low capacity utilization;
 2. sufficient workload but weak performance;
-3. onboarding / incomplete period;
-4. support or management roles that should be evaluated through managed / risk / capacity metrics rather than fake revenue attribution.
+3. capacity shortage;
+4. onboarding / incomplete period;
+5. support or management roles whose value is not direct revenue.
 
 ## Capacity and required FTE
 
 `Required FTE = verified demand / verified productive capacity per FTE`
+
+`Utilization % = verified demand / (capacity per FTE × actual FTE) × 100`
 
 Examples:
 - sales: active leads / lead capacity per salesperson;
@@ -82,7 +129,11 @@ Examples:
 - parts: PartsRequest volume / verified PartsRequest capacity;
 - support: transaction/task volume / verified task capacity.
 
-Capacity standards are effective-dated and can vary by role and service location.
+`RoleDemandSnapshot` stores the observed demand for a role/period/location. `RoleCapacityStandard` stores effective-dated verified capacity and may vary by location.
+
+CRM must never guess Required FTE. If demand is missing, capacity is missing, units do not match, or more than one capacity metric is simultaneously authoritative, Required FTE remains null and Analytics reports insufficient/ambiguous capacity data.
+
+Actual FTE is time-weighted over the period, so an employee assigned for half a month contributes roughly 0.5 FTE instead of being counted as a full month.
 
 ## Salary
 
@@ -93,7 +144,8 @@ Every authenticated employee must later receive an OWN-scoped view:
 - selected month accrued;
 - paid;
 - amount due;
-- detailed accrual sources.
+- detailed accrual sources;
+- month history.
 
 `SalaryAccrual` is an immutable business fact after posting. Corrections are made via reversal / adjustment, not destructive deletion.
 
@@ -237,9 +289,10 @@ Primary personnel analytics:
 - GP/FTE;
 - Direct Contribution/FTE;
 - employee KPI / cost / contribution / ROI / capacity;
-- role actual FTE / required FTE / role economics;
-- employee break-even dates;
-- capacity shortage / overstaffing indicators.
+- role actual FTE / required FTE / FTE gap / role economics mode;
+- employee break-even dates for DIRECT_ROI roles;
+- capacity shortage / overstaffing indicators;
+- data completeness / missing demand / ambiguous capacity diagnostics.
 
 ## Security requirement
 
@@ -273,6 +326,7 @@ UI hiding is not security. The API/server must enforce these permissions and sco
 - `PerformanceEvent`
 - `AttributionLedgerEntry`
 - `EmployeeEconomicsSnapshot`
+- `RoleDemandSnapshot`
 - `RoleCapacityStandard`
 - `RoleEconomicsSnapshot`
 
@@ -280,9 +334,13 @@ UI hiding is not security. The API/server must enforce these permissions and sco
 
 1. MANAGED and INFLUENCED values never inflate accounting GP.
 2. Employee ROI uses only explicitly additive DIRECT contribution.
-3. Posted payroll history is corrected by reversal / adjustment, not deletion.
-4. Employee records with history are deactivated, not physically deleted.
-5. Closed payroll periods are frozen.
-6. Every attribution correction must remain auditable.
-7. Required FTE is based on observed demand and verified capacity, not management intuition alone.
-8. KPI definitions are separate from salary formulas.
+3. One PerformanceEvent cannot contain several different additive economic metrics.
+4. Shared additive contribution requires explicit shares totaling 100%.
+5. Posted payroll history is corrected by reversal / adjustment, not deletion.
+6. Employee records with history are deactivated, not physically deleted.
+7. Closed payroll periods are frozen.
+8. Every attribution correction must remain auditable.
+9. Required FTE is based on observed demand and verified capacity, not management intuition alone.
+10. Ambiguous capacity inputs produce no Required FTE rather than a guessed number.
+11. KPI definitions are separate from salary formulas.
+12. Sensitive salary/employee-economics projections remain server-only until Auth/RBAC enforces OWN / authorized scopes.
