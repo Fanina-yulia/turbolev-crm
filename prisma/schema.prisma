@@ -225,6 +225,8 @@ model WorkOrder {
   vehicle           Vehicle           @relation(fields: [vehicleId], references: [id], onDelete: Restrict)
   diagnosticRequest DiagnosticRequest @relation(fields: [diagnosticRequestId], references: [id], onDelete: Restrict)
   calls             CallHistory[]
+  estimates         WorkOrderEstimate[]
+  partsRequests     PartsRequest[]
 
   @@index([clientId, closedAt])
   @@index([vehicleId, closedAt])
