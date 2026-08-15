@@ -13,16 +13,26 @@ type DashboardData = {
   attention: Array<{ id:string; plate:string; vehicle:string; status:string; problem:string|null; plannedStartAt:string; post:string|null; mechanic:string|null }>;
 };
 
-type WorkflowRoute = { name:string; value:number; sub:string; section:CrmSectionLabel; filter:string; filterLabel:string };
+type WorkflowRoute = { name:string; value:number|string; sub:string; section:CrmSectionLabel; filter:string; filterLabel:string };
 type NavigateDetail = { section: CrmSectionLabel; filter?: string; filterLabel?: string };
 
 const statusLabels: Record<string,string> = { BOOKED:"Записаний", WAITING_APPROVAL:"Погодження", WAITING_PARTS:"Очікує деталі", IN_REPAIR:"У ремонті", WAITING_QC:"Контроль якості", READY_FOR_PICKUP:"Готовий до видачі", NO_SHOW:"No-show" };
 const statusAction: Record<string,string> = { BOOKED:"Підтвердити заїзд", WAITING_APPROVAL:"Отримати погодження", WAITING_PARTS:"Контроль ETA деталей", IN_REPAIR:"Контроль виконання робіт", WAITING_QC:"Провести QC", READY_FOR_PICKUP:"Підготувати до видачі", NO_SHOW:"Зв'язатися з клієнтом" };
+const statusRoute: Record<string,{section:CrmSectionLabel;filter:string;label:string}> = {
+  BOOKED:{section:"Планувальник",filter:"booked",label:"Записані"},
+  WAITING_APPROVAL:{section:"Замовлення-наряди",filter:"approval",label:"Очікують погодження"},
+  WAITING_PARTS:{section:"Закупівлі та склад",filter:"waiting-parts",label:"Очікують деталі"},
+  IN_REPAIR:{section:"Виробництво",filter:"in-repair",label:"В ремонті"},
+  WAITING_QC:{section:"Контроль якості",filter:"qc-ready",label:"Контроль якості"},
+  READY_FOR_PICKUP:{section:"Контроль якості",filter:"qc-ready",label:"Готові до видачі"},
+  NO_SHOW:{section:"Планувальник",filter:"no-show",label:"No-show"},
+};
 
 function money(value:number|null){ return value == null ? "—" : new Intl.NumberFormat("uk-UA",{style:"currency",currency:"UAH",maximumFractionDigits:0}).format(value); }
 function parseVehicle(label:string){ const parts=label.trim().split(/\s+/).filter(Boolean); const yearToken=parts.find((x)=>/^20\d{2}$|^19\d{2}$/.test(x)); const year=yearToken?Number(yearToken):new Date().getFullYear(); const brand=parts[0]||"Авто"; const model=parts.slice(1).filter((x)=>x!==yearToken).join(" ")||""; return {brand,model,year}; }
 function tone(status:string): AttentionCar["tone"] { if(status==="NO_SHOW") return "warn"; if(status==="IN_REPAIR") return "active"; if(status==="WAITING_PARTS"||status==="WAITING_APPROVAL") return "waiting"; return "good"; }
-function navigate(item:WorkflowRoute){ window.dispatchEvent(new CustomEvent<NavigateDetail>("turbolev:navigate",{detail:{section:item.section,filter:item.filter,filterLabel:item.filterLabel}})); }
+function navigate(section:CrmSectionLabel,filter="",filterLabel=""){ window.dispatchEvent(new CustomEvent<NavigateDetail>("turbolev:navigate",{detail:{section,filter,filterLabel}})); }
+function urgency(status:string){return status==="NO_SHOW"?0:status==="WAITING_APPROVAL"?1:status==="WAITING_PARTS"?2:status==="WAITING_QC"?3:status==="IN_REPAIR"?4:5;}
 
 export function StationOverview(){
   const [data,setData]=useState<DashboardData|null>(null); const [loading,setLoading]=useState(true); const [error,setError]=useState("");
@@ -39,13 +49,26 @@ export function StationOverview(){
     {name:"QC / готові",value:data.pipeline.qcReady,sub:"контроль / видача",section:"Контроль якості",filter:"qc-ready",filterLabel:"QC / готові"},
   ]:[],[data]);
 
-  const cars=useMemo<AttentionCar[]>(()=>data?data.attention.map((item)=>{const car=parseVehicle(item.vehicle);return{plate:item.plate,brand:car.brand,model:car.model,year:car.year,status:statusLabels[item.status]||item.status,action:statusAction[item.status]||item.problem||"Відкрити картку",owner:item.mechanic||item.post||"Не призначено",tone:tone(item.status)};}):[],[data]);
+  const kpiRoutes=useMemo<WorkflowRoute[]>(()=>[
+    {name:"Авто сьогодні",value:data?.kpis.carsToday??"—",sub:`${data?.kpis.booked??0} ще записані`,section:"Планувальник",filter:"today",filterLabel:"Авто сьогодні"},
+    {name:"В роботі",value:data?.kpis.inRepair??"—",sub:`${data?.kpis.postsOccupied??0} постів зайнято`,section:"Виробництво",filter:"in-repair",filterLabel:"В роботі"},
+    {name:"Виручка сьогодні",value:money(data?.kpis.revenue??null),sub:"проведені платежі за сьогодні",section:"Оплати",filter:"today",filterLabel:"Виручка сьогодні"},
+    {name:"Валовий прибуток",value:money(data?.kpis.grossProfit??null),sub:"виручка мінус прямі витрати",section:"Аналітика",filter:"gross-profit",filterLabel:"Валовий прибуток"},
+  ],[data]);
+
+  const cars=useMemo<AttentionCar[]>(()=>data?[...data.attention].sort((a,b)=>urgency(a.status)-urgency(b.status)||new Date(a.plannedStartAt).getTime()-new Date(b.plannedStartAt).getTime()).map((item)=>{const car=parseVehicle(item.vehicle);const route=statusRoute[item.status]||{section:"Клієнти та авто" as CrmSectionLabel,filter:"",label:"Автомобіль"};return{id:item.id,plate:item.plate,brand:car.brand,model:car.model,year:car.year,status:statusLabels[item.status]||item.status,action:statusAction[item.status]||item.problem||"Відкрити картку",owner:item.mechanic||item.post||"Не призначено",problem:item.problem,plannedStartAt:item.plannedStartAt,tone:tone(item.status),section:route.section,filter:route.filter,filterLabel:`${route.label} · ${item.plate}`};}):[],[data]);
+
+  const blockers:WorkflowRoute[]=[
+    {name:"Погодження клієнта",value:data?.blockers.approval??0,sub:"активних авто",section:"Замовлення-наряди",filter:"approval",filterLabel:"Очікують погодження"},
+    {name:"Очікування деталей",value:data?.blockers.waitingParts??0,sub:"авто заблоковано деталями",section:"Закупівлі та склад",filter:"waiting-parts",filterLabel:"Очікують деталі"},
+    {name:"No-show",value:data?.blockers.noShow??0,sub:"потрібен контакт із клієнтом",section:"Планувальник",filter:"no-show",filterLabel:"No-show"},
+  ];
 
   return <>
     <header className="topbar"><div><p className="eyebrow">TURBO LEV · ОПЕРАЦІЙНИЙ ЦЕНТР</p><h1>Огляд станції</h1><span className="muted">{loading?"Синхронізую…":"живі дані Neon"}</span></div><div className="topActions"><GlobalVehicleSearch/></div></header>
     {error&&<div className="alert"><strong>Не вдалося оновити огляд</strong><span>{error}</span><button onClick={()=>void load()}>Повторити</button></div>}
-    <section className="kpis"><article><span>Авто сьогодні</span><strong>{data?.kpis.carsToday??"—"}</strong><small>{data?.kpis.booked??0} ще записані</small></article><article><span>В роботі</span><strong>{data?.kpis.inRepair??"—"}</strong><small>{data?.kpis.postsOccupied??0} постів зайнято</small></article><article><span>Виручка сьогодні</span><strong>{money(data?.kpis.revenue??null)}</strong><small>з'явиться після модуля оплат</small></article><article><span>Валовий прибуток</span><strong>{money(data?.kpis.grossProfit??null)}</strong><small>без вигаданих цифр</small></article></section>
-    <section className="sectionBlock"><div className="sectionHead"><div><p className="eyebrow">ВІД ЗАЯВКИ ДО ГРОШЕЙ</p><h2>Живий маршрут станції</h2></div><span className="muted">сьогодні · Neon</span></div><div className="pipeline">{pipeline.map((item)=><button type="button" className="pipelineAction" key={item.name} onClick={()=>navigate(item)}><span>{item.name}</span><strong>{item.value}</strong><small>{item.sub}</small><em>{item.section} →</em></button>)}</div></section>
-    <section className="gridTwo"><WorkOrderCockpit cars={cars}/><aside className="panel blockers"><div className="sectionHead"><div><p className="eyebrow">БЛОКЕРИ</p><h2>Що стопорить потік</h2></div></div><div className="blocker"><b>Погодження клієнта</b><strong>{data?.blockers.approval??0}</strong><span>активних авто</span></div><div className="blocker"><b>Очікування деталей</b><strong>{data?.blockers.waitingParts??0}</strong><span>авто заблоковано деталями</span></div><div className="blocker"><b>No-show</b><strong>{data?.blockers.noShow??0}</strong><span>потрібен контакт із клієнтом</span></div><div className="rule">Dashboard більше не містить demo-цифр: якщо даних немає, CRM показує «—», а не вигаданий результат.</div></aside></section>
+    <section className="kpis">{kpiRoutes.map(item=><article className="dashboardClickCard" key={item.name} role="button" tabIndex={0} onClick={()=>navigate(item.section,item.filter,item.filterLabel)} onKeyDown={e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();navigate(item.section,item.filter,item.filterLabel);}}}><span>{item.name}</span><strong>{item.value}</strong><small>{item.sub}</small><em>Відкрити →</em></article>)}</section>
+    <section className="sectionBlock"><div className="sectionHead"><div><p className="eyebrow">ВІД ЗАЯВКИ ДО ГРОШЕЙ</p><h2>Живий маршрут станції</h2></div><span className="muted">сьогодні · Neon</span></div><div className="pipeline">{pipeline.map((item)=><button type="button" className="pipelineAction" key={item.name} onClick={()=>navigate(item.section,item.filter,item.filterLabel)}><span>{item.name}</span><strong>{item.value}</strong><small>{item.sub}</small><em>{item.section} →</em></button>)}</div></section>
+    <section className="gridTwo"><WorkOrderCockpit cars={cars} onAll={()=>navigate("Клієнти та авто","attention","Потребують уваги")} onOpen={car=>navigate(car.section as CrmSectionLabel,car.filter,car.filterLabel)}/><aside className="panel blockers"><div className="sectionHead"><div><p className="eyebrow">БЛОКЕРИ</p><h2>Що стопорить потік</h2></div></div><div className="blockerList">{blockers.map(item=><button type="button" className="blocker blockerAction" key={item.name} onClick={()=>navigate(item.section,item.filter,item.filterLabel)}><b>{item.name}</b><strong>{item.value}</strong><span>{item.sub}</span><em>{item.section} →</em></button>)}</div><div className="blockerHint">Блокер — це не просто статус. Тут мають залишатися тільки авто, де потік реально зупинено і потрібне рішення людини.</div></aside></section>
   </>;
 }
