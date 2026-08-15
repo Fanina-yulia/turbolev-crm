@@ -226,6 +226,8 @@ model WorkOrder {
   diagnosticRequest DiagnosticRequest @relation(fields: [diagnosticRequestId], references: [id], onDelete: Restrict)
   calls             CallHistory[]
   lines             WorkOrderLine[]
+  estimates         WorkOrderEstimate[]
+  partsRequests     PartsRequest[]
 
   @@index([clientId, closedAt])
   @@index([vehicleId, closedAt])
