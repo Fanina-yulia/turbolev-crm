@@ -55,6 +55,26 @@ const RULES: Rule[] = [
     resolve: () => ({ kind: "EXTERNAL_PROVIDER", note: "Reolink Gmail bridge callback authenticated by a dedicated per-camera ingest token." }),
   },
   {
+    match: prefix("/api/telephony/binotel-employees"),
+    resolve: () => internal(PERMISSIONS.SETTINGS_INTEGRATIONS, "ALL", "Binotel employee/extension mapping is integration administration.", true),
+  },
+  {
+    match: exact("/api/telephony/call"),
+    resolve: () => internal(PERMISSIONS.COMMUNICATIONS_WRITE, "TEAM", "Authenticated click-to-call through the caller's own mapped Binotel extension.", true),
+  },
+  {
+    match: exact("/api/telephony/live"),
+    resolve: () => internal(PERMISSIONS.COMMUNICATIONS_READ, "TEAM", "Authenticated live incoming-call feed for CRM popup.", true),
+  },
+  {
+    match: exact("/api/telephony/recordings/sync"),
+    resolve: () => internal(PERMISSIONS.COMMUNICATIONS_WRITE, "TEAM", "Reconcile missing Binotel recording links for authorized communication staff.", true),
+  },
+  {
+    match: prefix("/api/telephony/recordings"),
+    resolve: () => internal(PERMISSIONS.COMMUNICATIONS_READ, "TEAM", "Protected access to Binotel call recordings.", true),
+  },
+  {
     match: prefix("/api/security"),
     resolve: () => internal(PERMISSIONS.SECURITY_ACCESS_MANAGE, "ALL", "Security administration is always strict.", true),
   },
