@@ -48,6 +48,7 @@ model WorkOrderEstimate {
   createdAt          DateTime                @default(now())
   updatedAt          DateTime                @updatedAt
 
+  workOrder     WorkOrder      @relation(fields: [workOrderId], references: [id], onDelete: Restrict)
   partsRequests PartsRequest[]
 
   @@unique([workOrderId, revision])
@@ -71,8 +72,9 @@ model PartsRequest {
   createdAt          DateTime           @default(now())
   updatedAt          DateTime           @updatedAt
 
-  estimate WorkOrderEstimate @relation(fields: [estimateId], references: [id], onDelete: Restrict)
-  items    PartsRequestItem[]
+  workOrder WorkOrder         @relation(fields: [workOrderId], references: [id], onDelete: Restrict)
+  estimate  WorkOrderEstimate @relation(fields: [estimateId], references: [id], onDelete: Restrict)
+  items     PartsRequestItem[]
 
   @@index([workOrderId, status, updatedAt])
 }
