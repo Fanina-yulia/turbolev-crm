@@ -1,7 +1,8 @@
 /* CRM shell placement guard.
    The New Request launcher stays mounted for cross-module events, but it must
    never participate in the two-column grid. The workspace always occupies
-   the content column next to the sidebar. */
+   the content column next to the sidebar.
+   Deployment retry after a transient Prisma advisory-lock conflict. */
 html,body{max-width:100%;overflow-x:hidden}
 
 .shell{
