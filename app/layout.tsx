@@ -3,6 +3,7 @@ import "./globals.css";
 import "./theme-fixes.css";
 import "./chatgpt-typography.css";
 import "./pipeline-navigation.css";
+import "./dashboard-actions.css";
 import "./sidebar-groups.css";
 import "./crm-core.css";
 import "./new-request-wizard.css";
