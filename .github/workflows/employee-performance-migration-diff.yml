@@ -9,7 +9,7 @@ permissions:
 
 concurrency:
   group: employee-performance-migration-diff
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   diff:
