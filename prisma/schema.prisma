@@ -92,10 +92,26 @@ model Client {
   createdAt       DateTime            @default(now())
   updatedAt       DateTime            @updatedAt
 
+  phones             ClientPhone[]
   vehicles           Vehicle[]
   diagnosticRequests DiagnosticRequest[]
   workOrders         WorkOrder[]
   calls              CallHistory[]
+}
+
+model ClientPhone {
+  id              String   @id
+  clientId        String
+  phone           String
+  phoneNormalized String   @unique
+  label           String?
+  isPrimary       Boolean  @default(false)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @default(now()) @updatedAt
+
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([clientId, isPrimary])
 }
 
 model Vehicle {
