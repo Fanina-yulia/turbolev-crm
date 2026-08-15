@@ -5,6 +5,7 @@ import { NewRequestLauncher } from "./new-request-launcher";
 import { SettingsCenter } from "./settings-center";
 import { LeadsBoardV2 } from "./leads-board-v2";
 import { CommunicationsHub } from "./communications-hub-server";
+import { ClientsVehicles } from "./clients-vehicles";
 import { PartsCatalog } from "./parts-catalog";
 import { PlannerV2 } from "./planner-v2";
 import { StationOverview } from "./station-overview";
@@ -47,6 +48,6 @@ export function CrmShell({ initialSection }: { initialSection?: string }) {
       <div className="sidebarFoot"><span className="liveDot"/> Станція онлайн</div>
     </aside>
     <div className={shellStyles.globalNewRequest}><NewRequestLauncher/></div>
-    <section className={`workspace ${shellStyles.workspaceWithFloatingAction}`}>{active!=="Огляд станції"&&filterBanner}{active==="Комунікації"?<CommunicationsHub/>:active==="Ліди"?<LeadsBoardV2/>:active==="Планувальник"?<PlannerV2/>:active==="Підбір запчастин"?<PartsCatalog/>:active==="Огляд станції"?<StationOverview/>:<div className="comingSoon"><p className="eyebrow">TURBO LEV CRM</p><h1>{active}</h1>{workflowFilter?<p>Показуємо зріз: <strong>{workflowFilterLabel||workflowFilter}</strong>.</p>:<p>Розділ буде реалізований наступним.</p>}</div>}</section>
+    <section className={`workspace ${shellStyles.workspaceWithFloatingAction}`}>{active!=="Огляд станції"&&filterBanner}{active==="Комунікації"?<CommunicationsHub/>:active==="Ліди"?<LeadsBoardV2/>:active==="Клієнти та авто"?<ClientsVehicles/>:active==="Планувальник"?<PlannerV2/>:active==="Підбір запчастин"?<PartsCatalog/>:active==="Огляд станції"?<StationOverview/>:<div className="comingSoon"><p className="eyebrow">TURBO LEV CRM</p><h1>{active}</h1>{workflowFilter?<p>Показуємо зріз: <strong>{workflowFilterLabel||workflowFilter}</strong>.</p>:<p>Розділ буде реалізований наступним.</p>}</div>}</section>
   </main>;
 }
