@@ -1,0 +1,135 @@
+import { NextResponse } from "next/server";
+import { inflateRawSync } from "node:zlib";
+import { getPrisma } from "@/src/lib/prisma";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+export const maxDuration = 30;
+
+type PriceRow = {
+  code: string;
+  category: string;
+  name: string;
+  unit: string;
+  price: number;
+  normHours: number | null;
+  complexSurcharge: number | null;
+  note: string;
+};
+type ExistingRow = { id:string; code:string|null };
+
+function xmlDecode(value:string) {
+  return value.replace(/&lt;/g,"<").replace(/&gt;/g,">").replace(/&quot;/g,'"').replace(/&apos;/g,"'").replace(/&amp;/g,"&").replace(/&#(\d+);/g,(_,n)=>String.fromCodePoint(Number(n))).replace(/&#x([0-9a-f]+);/gi,(_,n)=>String.fromCodePoint(parseInt(n,16)));
+}
+function attr(source:string,name:string) {
+  const escaped=name.replace(":","\\:");
+  const match=new RegExp(`(?:^|\\s)${escaped}="([^"]*)"`).exec(source);
+  return match?xmlDecode(match[1]):"";
+}
+function unzip(buffer:Buffer) {
+  let eocd=-1;
+  for(let i=buffer.length-22;i>=Math.max(0,buffer.length-65557);i--){if(buffer.readUInt32LE(i)===0x06054b50){eocd=i;break;}}
+  if(eocd<0) throw new Error("INVALID_XLSX");
+  const total=buffer.readUInt16LE(eocd+10);
+  let offset=buffer.readUInt32LE(eocd+16);
+  const files=new Map<string,Buffer>();
+  for(let i=0;i<total;i++){
+    if(buffer.readUInt32LE(offset)!==0x02014b50) throw new Error("INVALID_XLSX");
+    const method=buffer.readUInt16LE(offset+10);
+    const compressedSize=buffer.readUInt32LE(offset+20);
+    const nameLength=buffer.readUInt16LE(offset+28);
+    const extraLength=buffer.readUInt16LE(offset+30);
+    const commentLength=buffer.readUInt16LE(offset+32);
+    const localOffset=buffer.readUInt32LE(offset+42);
+    const name=buffer.subarray(offset+46,offset+46+nameLength).toString("utf8");
+    if(buffer.readUInt32LE(localOffset)!==0x04034b50) throw new Error("INVALID_XLSX");
+    const localNameLength=buffer.readUInt16LE(localOffset+26);
+    const localExtraLength=buffer.readUInt16LE(localOffset+28);
+    const dataStart=localOffset+30+localNameLength+localExtraLength;
+    const compressed=buffer.subarray(dataStart,dataStart+compressedSize);
+    const content=method===0?compressed:method===8?inflateRawSync(compressed):null;
+    if(content) files.set(name.replace(/^\//,""),content);
+    offset+=46+nameLength+extraLength+commentLength;
+  }
+  return files;
+}
+function sharedStrings(files:Map<string,Buffer>) {
+  const xml=files.get("xl/sharedStrings.xml")?.toString("utf8")||"";
+  const result:string[]=[];
+  for(const match of xml.matchAll(/<si\b[^>]*>([\s\S]*?)<\/si>/g)){
+    const parts=[...match[1].matchAll(/<t\b[^>]*>([\s\S]*?)<\/t>/g)].map(x=>xmlDecode(x[1]));
+    result.push(parts.join(""));
+  }
+  return result;
+}
+function sheetPath(files:Map<string,Buffer>,wanted:string) {
+  const workbook=files.get("xl/workbook.xml")?.toString("utf8")||"";
+  const rels=files.get("xl/_rels/workbook.xml.rels")?.toString("utf8")||"";
+  let relationshipId="";
+  for(const match of workbook.matchAll(/<sheet\b([^>]*)\/?\s*>/g)){
+    if(attr(match[1],"name").trim().toLocaleLowerCase("uk-UA")===wanted.trim().toLocaleLowerCase("uk-UA")){relationshipId=attr(match[1],"r:id");break;}
+  }
+  if(!relationshipId) throw new Error("PRICE_SHEET_NOT_FOUND");
+  for(const match of rels.matchAll(/<Relationship\b([^>]*)\/?\s*>/g)){
+    if(attr(match[1],"Id")===relationshipId){const target=attr(match[1],"Target").replace(/^\//,"");return target.startsWith("xl/")?target:`xl/${target.replace(/^\.\//,"")}`;}
+  }
+  throw new Error("PRICE_SHEET_NOT_FOUND");
+}
+function columnIndex(ref:string) {
+  const letters=(/^([A-Z]+)/i.exec(ref)?.[1]||"A").toUpperCase();
+  let index=0;for(const ch of letters)index=index*26+(ch.charCodeAt(0)-64);return index-1;
+}
+function parseSheet(xml:string,shared:string[]) {
+  const rows:Array<Array<string|number|null>>=[];
+  for(const rowMatch of xml.matchAll(/<row\b[^>]*>([\s\S]*?)<\/row>/g)){
+    const row:Array<string|number|null>=[];
+    for(const cellMatch of rowMatch[1].matchAll(/<c\b([^>]*)>([\s\S]*?)<\/c>/g)){
+      const attrs=cellMatch[1];const body=cellMatch[2];const ref=attr(attrs,"r");const type=attr(attrs,"t");
+      const v=/<v\b[^>]*>([\s\S]*?)<\/v>/.exec(body)?.[1]??"";
+      const inline=[...body.matchAll(/<t\b[^>]*>([\s\S]*?)<\/t>/g)].map(x=>xmlDecode(x[1])).join("");
+      let value:string|number|null=null;
+      if(type==="s") value=shared[Number(v)]??""; else if(type==="inlineStr"||type==="str") value=inline||xmlDecode(v); else if(v!==""){const n=Number(v);value=Number.isFinite(n)?n:xmlDecode(v);} else if(inline) value=inline;
+      row[columnIndex(ref)]=value;
+    }
+    rows.push(row);
+  }
+  return rows;
+}
+function clean(value:unknown){return String(value??"").trim();}
+function numeric(value:unknown){const n=typeof value==="number"?value:Number(String(value??"").replace(/\s/g,"").replace(",","."));return Number.isFinite(n)?n:0;}
+function parsePriceRows(buffer:Buffer):PriceRow[]{
+  const files=unzip(buffer);const shared=sharedStrings(files);const path=sheetPath(files,"Повний внутрішній прайс");const xml=files.get(path)?.toString("utf8");if(!xml)throw new Error("PRICE_SHEET_NOT_FOUND");
+  const rows=parseSheet(xml,shared);
+  const headerIndex=rows.findIndex(row=>row.some(v=>clean(v)==="Код")&&row.some(v=>clean(v)==="Назва роботи"));
+  if(headerIndex<0)throw new Error("PRICE_HEADER_NOT_FOUND");
+  const headers=rows[headerIndex].map(v=>clean(v));
+  const col=(name:string)=>headers.findIndex(h=>h===name);
+  const indexes={code:col("Код"),category:col("Категорія"),name:col("Назва роботи"),unit:col("Одиниця"),price:col("Базова ціна"),hours:col("Нормо-години"),surcharge:col("Доплата в комплексі"),note:col("Примітка")};
+  if(indexes.code<0||indexes.name<0||indexes.price<0)throw new Error("PRICE_HEADER_NOT_FOUND");
+  const result:PriceRow[]=[];
+  for(const row of rows.slice(headerIndex+1)){
+    const code=clean(row[indexes.code]);const name=clean(row[indexes.name]);if(!code||!name)continue;
+    const price=numeric(row[indexes.price]);if(price<0)continue;
+    const hoursRaw=indexes.hours>=0?row[indexes.hours]:null;const surchargeRaw=indexes.surcharge>=0?row[indexes.surcharge]:null;
+    result.push({code:code.slice(0,64),category:indexes.category>=0?clean(row[indexes.category]).slice(0,180):"",name:name.slice(0,180),unit:indexes.unit>=0?clean(row[indexes.unit]).slice(0,80):"",price,normHours:hoursRaw==null||clean(hoursRaw)===""?null:numeric(hoursRaw),complexSurcharge:surchargeRaw==null||clean(surchargeRaw)===""?null:numeric(surchargeRaw),note:indexes.note>=0?clean(row[indexes.note]).slice(0,1000):""});
+  }
+  if(!result.length)throw new Error("PRICE_EMPTY");
+  return result;
+}
+
+export async function POST(request:Request){
+  try{
+    const form=await request.formData();const file=form.get("file");const mode=String(form.get("mode")||"preview");
+    if(!(file instanceof File))return NextResponse.json({ok:false,error:"Оберіть XLSX-файл прайсу."},{status:400});
+    if(file.size>8*1024*1024)return NextResponse.json({ok:false,error:"Файл завеликий. Максимум 8 МБ."},{status:413});
+    if(!file.name.toLowerCase().endsWith(".xlsx"))return NextResponse.json({ok:false,error:"Підтримується формат .xlsx."},{status:400});
+    const rows=parsePriceRows(Buffer.from(await file.arrayBuffer()));const prisma=getPrisma();
+    const existing=await prisma.$queryRawUnsafe<ExistingRow[]>(`SELECT "id","code" FROM "CrmDirectoryItem" WHERE "category"='WORK_PRICE' AND "code" IS NOT NULL`);
+    const byCode=new Map(existing.filter(x=>x.code).map(x=>[String(x.code).toUpperCase(),x]));
+    const stats={total:rows.length,create:rows.filter(x=>!byCode.has(x.code.toUpperCase())).length,update:rows.filter(x=>byCode.has(x.code.toUpperCase())).length};
+    if(mode!=="import")return NextResponse.json({ok:true,mode:"preview",fileName:file.name,stats,rows:rows.slice(0,25)});
+    const operations=rows.map((row,index)=>{const current=byCode.get(row.code.toUpperCase());const data={category:row.category,price:row.price,unit:row.unit,normHours:row.normHours,complexSurcharge:row.complexSurcharge,note:row.note,importSource:file.name,importedAt:new Date().toISOString()};if(current)return prisma.$executeRawUnsafe(`UPDATE "CrmDirectoryItem" SET "name"=$2,"data"=$3::jsonb,"isActive"=TRUE,"sortOrder"=$4,"updatedAt"=CURRENT_TIMESTAMP WHERE "id"=$1`,current.id,row.name,JSON.stringify(data),index+1);const id=`dir_work_price_${crypto.randomUUID()}`;return prisma.$executeRawUnsafe(`INSERT INTO "CrmDirectoryItem" ("id","category","name","code","data","isActive","sortOrder","updatedAt") VALUES ($1,'WORK_PRICE',$2,$3,$4::jsonb,TRUE,$5,CURRENT_TIMESTAMP)`,id,row.name,row.code,JSON.stringify(data),index+1);});
+    await prisma.$transaction(operations);
+    return NextResponse.json({ok:true,mode:"import",fileName:file.name,stats,message:`Імпортовано ${stats.total}: додано ${stats.create}, оновлено ${stats.update}.`});
+  }catch(error){const code=error instanceof Error?error.message:"UNKNOWN";const message=code==="INVALID_XLSX"?"Файл не схожий на коректний XLSX.":code==="PRICE_SHEET_NOT_FOUND"?"Не знайдено аркуш «Повний внутрішній прайс».":code==="PRICE_HEADER_NOT_FOUND"?"Не знайдено обов'язкові колонки: Код, Назва роботи, Базова ціна.":code==="PRICE_EMPTY"?"У файлі не знайдено позицій прайсу.":"Не вдалося імпортувати прайс.";console.error("work price import failed",error);return NextResponse.json({ok:false,error:message},{status:400});}
+}
