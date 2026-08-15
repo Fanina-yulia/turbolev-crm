@@ -1,3 +1,4 @@
+import { Prisma } from "@/src/generated/prisma/client";
 import { getPrisma } from "@/src/lib/prisma";
 
 export type AttributionInput = {
@@ -28,6 +29,10 @@ export type PerformanceEventInput = {
   payload?: Record<string, unknown>;
   attributions: AttributionInput[];
 };
+
+function jsonSafe(value: Record<string, unknown> | undefined): Prisma.InputJsonValue {
+  return JSON.parse(JSON.stringify(value ?? {})) as Prisma.InputJsonValue;
+}
 
 function validateAttributions(items: AttributionInput[]) {
   if (!items.length) throw new Error("Performance event requires at least one attribution entry.");
@@ -86,7 +91,7 @@ export async function postPerformanceEvent(input: PerformanceEventInput) {
       workOrderId: input.workOrderId ?? null,
       leadId: input.leadId ?? null,
       locationId: input.locationId ?? null,
-      payload: input.payload ?? {},
+      payload: jsonSafe(input.payload),
       attributions: {
         create: input.attributions.map((item) => ({
           employeeId: item.employeeId,
@@ -101,7 +106,7 @@ export async function postPerformanceEvent(input: PerformanceEventInput) {
           additiveContribution: item.additiveContribution ?? false,
           reason: item.reason ?? null,
           payrollPeriodId: item.payrollPeriodId ?? null,
-          metadata: item.metadata ?? {},
+          metadata: jsonSafe(item.metadata),
         })),
       },
     },
