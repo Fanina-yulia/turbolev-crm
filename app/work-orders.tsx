@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { WorkOrderCommercialPanel } from "./work-order-commercial-panel";
 import styles from "./work-orders.module.css";
 
 type GateItem = { code: string; label: string };
@@ -164,9 +165,8 @@ export function WorkOrders() {
         const missing = payload.workflowDecision?.missingGates as string[] | undefined;
         throw new Error(missing?.length ? `${payload.error} ${missing.join(", ")}` : payload.error || "Перехід не виконано.");
       }
-      setDetail(payload.workOrder);
       setMessage({ kind: "success", text: `Статус змінено: ${payload.workOrder.statusLabel}.` });
-      await loadRows();
+      await Promise.all([loadRows(), loadDetail(detail.id)]);
     } catch (error) {
       setMessage({ kind: "error", text: error instanceof Error ? error.message : "Не вдалося змінити статус." });
     } finally {
@@ -179,7 +179,7 @@ export function WorkOrders() {
       <div>
         <p className={styles.eyebrow}>СЕРВІС · WORKFLOW RUNTIME</p>
         <h1>Замовлення-наряди</h1>
-        <p>Фактичний виробничий контур після підтвердженої діагностики. Дозволені переходи виконуються через Workflow Runtime, а Hard Gates не можна обійти ручною зміною статусу.</p>
+        <p>Фактичний виробничий контур після підтвердженої діагностики. Кошторис, запчастини й переходи працюють на реальних даних, а Hard Gates не можна обійти ручною зміною статусу.</p>
       </div>
       <button className={styles.refresh} type="button" onClick={() => void loadRows()} disabled={loading}>{loading ? "Оновлюю…" : "Оновити"}</button>
     </header>
@@ -230,6 +230,11 @@ export function WorkOrders() {
           <section className={styles.section}>
             <h3>Технічний висновок</h3>
             <div className={styles.conclusion}>{detail.diagnosticRequest.technicalConclusion || "Технічний висновок відсутній."}</div>
+          </section>
+
+          <section className={styles.section}>
+            <h3>Кошторис · погодження · запчастини</h3>
+            <WorkOrderCommercialPanel workOrderId={detail.id} onChanged={() => { void loadDetail(detail.id); void loadRows(); }}/>
           </section>
 
           <section className={styles.section}>

@@ -15,16 +15,17 @@ enum WorkOrderLineStatus {
 }
 
 model WorkOrderLine {
-  id               String              @id @default(cuid())
-  workOrderId      String
-  type             WorkOrderLineType
-  status           WorkOrderLineStatus @default(DRAFT)
-  description      String
-  code             String?             @db.VarChar(120)
-  article          String?             @db.VarChar(120)
-  brand            String?             @db.VarChar(120)
-  unit             String              @default("шт") @db.VarChar(32)
-  currency         String              @default("UAH") @db.VarChar(3)
+  id                String              @id @default(cuid())
+  workOrderId       String
+  type              WorkOrderLineType
+  status            WorkOrderLineStatus @default(DRAFT)
+  description       String
+  code              String?             @db.VarChar(120)
+  article           String?             @db.VarChar(120)
+  brand             String?             @db.VarChar(120)
+  unit              String              @default("шт") @db.VarChar(32)
+  currency          String              @default("UAH") @db.VarChar(3)
+  requiredForRepair Boolean             @default(true)
 
   plannedQuantity  Decimal             @default(1) @db.Decimal(12, 3)
   plannedUnitPrice Decimal             @default(0) @db.Decimal(14, 2)

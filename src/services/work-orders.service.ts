@@ -9,9 +9,17 @@ import {
   getWorkflowStatus,
   getWorkflowStatusLabel,
   normalizeWorkflowStatus,
+  type HardGateCode,
   type WorkflowActionCode,
+  type WorkflowGateState,
   type WorkflowTransitionDecision,
 } from "@/src/domain/workflow";
+import {
+  ensureEstimateSnapshotTx,
+  ensurePartsRequestTx,
+  getWorkOrderCommercialState,
+  getWorkOrderGateStateTx,
+} from "@/src/services/work-order-commercial.service";
 import { getPrisma } from "@/src/lib/prisma";
 
 export class DiagnosticRequestNotFoundError extends Error {
@@ -53,14 +61,52 @@ function jsonSafe(value: unknown): Prisma.InputJsonValue {
   return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
 }
 
-const IMPLEMENTED_WORK_ORDER_ACTIONS = new Set<WorkflowActionCode>(["CLOSE_WORK_ORDER"]);
+const IMPLEMENTED_WORK_ORDER_ACTIONS = new Set<WorkflowActionCode>([
+  "CREATE_ESTIMATE",
+  "OPEN_PARTS_REQUEST",
+  "CLOSE_WORK_ORDER",
+]);
 
 function unsupportedActions(actions: readonly WorkflowActionCode[]) {
   return actions.filter((action) => !IMPLEMENTED_WORK_ORDER_ACTIONS.has(action));
 }
 
-function transitionView(from: string, to: string) {
-  const decision = evaluateWorkflowTransition({ entity: "WORK_ORDER", from, to, gates: {} });
+function uniqueGates(values: readonly HardGateCode[]) {
+  return [...new Set(values)] as HardGateCode[];
+}
+
+/**
+ * READY_FOR_REPAIR is an operational promise, so we additionally require the same
+ * approved-scope and required-parts facts that protect repair start. The canonical
+ * registry still remains the source for legal transitions; this layer tightens only
+ * the readiness boundary until those gates are promoted into registry v2.
+ */
+function evaluateWorkOrderTransition(from: string, to: string, gates: WorkflowGateState = {}) {
+  const base = evaluateWorkflowTransition({ entity: "WORK_ORDER", from, to, gates });
+  if (!base.allowed || base.code === "NOOP" || base.normalizedTo !== "READY_FOR_REPAIR") return base;
+
+  const operational: HardGateCode[] = [
+    "ESTIMATE_APPROVED_BEFORE_REPAIR",
+    "REQUIRED_PARTS_READY_BEFORE_REPAIR",
+  ];
+  const missing = operational.filter((gate) => gates[gate] !== true);
+  if (!missing.length) return base;
+
+  const requiredGates = uniqueGates([...base.requiredGates, ...operational]);
+  const missingGates = uniqueGates([...base.missingGates, ...missing]);
+  const satisfiedGates = requiredGates.filter((gate) => gates[gate] === true);
+  return {
+    ...base,
+    allowed: false,
+    code: "GATES_NOT_SATISFIED" as const,
+    requiredGates,
+    missingGates,
+    satisfiedGates,
+  };
+}
+
+function transitionView(from: string, to: string, gates: WorkflowGateState = {}) {
+  const decision = evaluateWorkOrderTransition(from, to, gates);
   const unsupported = unsupportedActions(decision.actions);
   return {
     to: decision.normalizedTo,
@@ -74,10 +120,10 @@ function transitionView(from: string, to: string) {
   };
 }
 
-function decorateWorkOrder<T extends { status: string }>(workOrder: T) {
+function decorateWorkOrder<T extends { status: string }>(workOrder: T, gates: WorkflowGateState = {}) {
   const status = normalizeWorkflowStatus("WORK_ORDER", workOrder.status);
   const statusDefinition = getWorkflowStatus("WORK_ORDER", status);
-  const transitions = getAllowedTransitions("WORK_ORDER", status).map((item) => transitionView(status, item.to));
+  const transitions = getAllowedTransitions("WORK_ORDER", status).map((item) => transitionView(status, item.to, gates));
   return {
     ...workOrder,
     status,
@@ -101,14 +147,8 @@ export async function createWorkOrderFromConfirmedDiagnostic(diagnosticRequestId
       include: { workOrder: true },
     });
 
-    if (!diagnosticRequest) {
-      throw new DiagnosticRequestNotFoundError(diagnosticRequestId);
-    }
-
-    if (
-      diagnosticRequest.status !== DiagnosticRequestStatus.CONFIRMED ||
-      !diagnosticRequest.confirmedAt
-    ) {
+    if (!diagnosticRequest) throw new DiagnosticRequestNotFoundError(diagnosticRequestId);
+    if (diagnosticRequest.status !== DiagnosticRequestStatus.CONFIRMED || !diagnosticRequest.confirmedAt) {
       throw new WorkOrderHardGateError();
     }
 
@@ -133,7 +173,6 @@ export async function createWorkOrderFromConfirmedDiagnostic(diagnosticRequestId
         },
       });
     }
-
     return workOrder;
   });
 }
@@ -178,7 +217,8 @@ export async function listWorkOrders(input?: { status?: string | null; limit?: n
     take: limit,
   });
 
-  return rows.map(decorateWorkOrder);
+  // List remains deliberately cheap; authoritative gates are loaded in the selected detail.
+  return rows.map((row) => decorateWorkOrder(row));
 }
 
 export async function getWorkOrder(id: string) {
@@ -186,30 +226,69 @@ export async function getWorkOrder(id: string) {
   const workOrder = await prisma.workOrder.findUnique({ where: { id }, include: workOrderInclude });
   if (!workOrder) return null;
 
-  const [appointment, recentCalls] = await Promise.all([
+  const [appointment, recentCalls, commercial] = await Promise.all([
     workOrder.diagnosticRequest.leadId
       ? prisma.serviceAppointment.findFirst({
           where: { leadId: workOrder.diagnosticRequest.leadId },
           orderBy: { createdAt: "desc" },
           include: { post: true, mechanic: true },
         })
-      : Promise.resolve(null),
+      : prisma.serviceAppointment.findFirst({
+          where: { workOrderId: id },
+          orderBy: { createdAt: "desc" },
+          include: { post: true, mechanic: true },
+        }),
     prisma.callHistory.findMany({
       where: { OR: [{ workOrderId: id }, { clientId: workOrder.clientId }] },
       orderBy: { createdAt: "desc" },
       take: 10,
-      select: {
-        id: true,
-        type: true,
-        status: true,
-        duration: true,
-        startedAt: true,
-        recordingUrl: true,
-      },
+      select: { id: true, type: true, status: true, duration: true, startedAt: true, recordingUrl: true },
     }),
+    getWorkOrderCommercialState(id),
   ]);
 
-  return { ...decorateWorkOrder(workOrder), appointment, recentCalls };
+  return {
+    ...decorateWorkOrder(workOrder, commercial.gates),
+    appointment,
+    recentCalls,
+    commercial,
+  };
+}
+
+async function executeWorkOrderActions(
+  tx: Prisma.TransactionClient,
+  workOrderId: string,
+  actions: readonly WorkflowActionCode[],
+  actorName: string,
+) {
+  const results: Record<string, unknown> = {};
+  for (const action of actions) {
+    if (action === "CREATE_ESTIMATE") {
+      const result = await ensureEstimateSnapshotTx(tx, workOrderId, { send: true, actorName });
+      results[action] = { estimateId: result.estimate.id, revision: result.estimate.revision, status: result.estimate.status };
+    } else if (action === "OPEN_PARTS_REQUEST") {
+      const request = await ensurePartsRequestTx(tx, workOrderId, actorName);
+      results[action] = { partsRequestId: request.id, status: request.status, itemCount: request.items.length };
+    } else if (action === "CLOSE_WORK_ORDER") {
+      results[action] = { handledByStatusUpdate: true };
+    }
+  }
+  return results;
+}
+
+function plannerStatusForWorkOrder(status: string) {
+  const mapping: Record<string, string> = {
+    WAITING_APPROVAL: "WAITING_APPROVAL",
+    WAITING_PARTS: "WAITING_PARTS",
+    READY_FOR_REPAIR: "READY_FOR_REPAIR",
+    IN_REPAIR: "IN_REPAIR",
+    PAUSED: "PAUSED",
+    WAITING_QC: "WAITING_QC",
+    READY_FOR_PICKUP: "READY_FOR_PICKUP",
+    CLOSED: "COMPLETED",
+    CANCELLED: "CANCELLED",
+  };
+  return mapping[status] ?? "";
 }
 
 export async function transitionWorkOrder(id: string, toStatus: string, actorName = "CRM") {
@@ -226,21 +305,32 @@ export async function transitionWorkOrder(id: string, toStatus: string, actorNam
     const current = await tx.workOrder.findUnique({ where: { id }, include: workOrderInclude });
     if (!current) throw new WorkOrderNotFoundError(id);
 
-    const decision = evaluateWorkflowTransition({ entity: "WORK_ORDER", from: current.status, to: requested, gates: {} });
+    const gates = await getWorkOrderGateStateTx(tx, id);
+    const decision = evaluateWorkOrderTransition(current.status, requested, gates);
     const unsupported = unsupportedActions(decision.actions);
     if (!decision.allowed || unsupported.length) throw new WorkOrderTransitionError(decision, unsupported);
+    if (decision.code === "NOOP") return decorateWorkOrder(current, gates);
 
-    if (decision.code === "NOOP") return decorateWorkOrder(current);
-
+    const actionResults = await executeWorkOrderActions(tx, id, decision.actions, actorName);
     const terminal = decision.normalizedTo === "CLOSED" || decision.normalizedTo === "CANCELLED";
     const updated = await tx.workOrder.update({
       where: { id },
-      data: {
-        status: decision.normalizedTo,
-        closedAt: terminal ? current.closedAt ?? new Date() : null,
-      },
+      data: { status: decision.normalizedTo, closedAt: terminal ? current.closedAt ?? new Date() : null },
       include: workOrderInclude,
     });
+
+    const plannerStatus = plannerStatusForWorkOrder(decision.normalizedTo);
+    if (plannerStatus) {
+      const now = new Date();
+      await tx.serviceAppointment.updateMany({
+        where: { workOrderId: id },
+        data: {
+          status: plannerStatus as never,
+          actualStartAt: decision.normalizedTo === "IN_REPAIR" ? now : undefined,
+          actualEndAt: decision.normalizedTo === "CLOSED" ? now : undefined,
+        },
+      });
+    }
 
     await tx.auditEvent.create({
       data: {
@@ -253,18 +343,14 @@ export async function transitionWorkOrder(id: string, toStatus: string, actorNam
         metadata: jsonSafe({
           workflowCode: decision.code,
           requiredGates: decision.requiredGates,
+          satisfiedGates: decision.satisfiedGates,
           actions: decision.actions,
+          actionResults,
         }),
       },
     });
 
-    if (decision.normalizedTo === "CLOSED" && current.diagnosticRequest.leadId) {
-      await tx.serviceAppointment.updateMany({
-        where: { leadId: current.diagnosticRequest.leadId },
-        data: { status: "COMPLETED", actualEndAt: new Date(), workOrderId: id },
-      });
-    }
-
-    return decorateWorkOrder(updated);
+    const refreshedGates = await getWorkOrderGateStateTx(tx, id);
+    return decorateWorkOrder(updated, refreshedGates);
   });
 }
