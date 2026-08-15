@@ -31,6 +31,14 @@ type CameraForm = {
   purpose: CameraPurpose;
 };
 
+type CameraTestResponse = {
+  ok?: boolean;
+  pending?: boolean;
+  message?: string;
+  error?: string;
+  snapshotDataUrl?: string | null;
+};
+
 const EMPTY_FORM: CameraForm = {
   name: "В'їзд",
   uid: "",
@@ -66,6 +74,7 @@ export function CameraSettingsPanel() {
   const [form, setForm] = useState<CameraForm>(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
   const [testingId, setTestingId] = useState<string | null>(null);
+  const [snapshots, setSnapshots] = useState<Record<string, string>>({});
   const [toast, setToast] = useState("");
 
   const connected = useMemo(() => cameras.filter((camera) => camera.status === "CONNECTED" && camera.isActive).length, [cameras]);
@@ -117,7 +126,10 @@ export function CameraSettingsPanel() {
     setTestingId(camera.id);
     try {
       const response = await fetch(`/api/settings/cameras/${camera.id}/test`, { method: "POST" });
-      const data = await response.json() as { ok?: boolean; pending?: boolean; message?: string; error?: string };
+      const data = await response.json() as CameraTestResponse;
+      if (data.snapshotDataUrl?.startsWith("data:image/jpeg;base64,")) {
+        setSnapshots((current) => ({ ...current, [camera.id]: data.snapshotDataUrl! }));
+      }
       notify(data.message || data.error || (data.ok ? "Камера відповідає" : "Перевірка не пройдена"));
       await load();
     } catch {
@@ -148,6 +160,11 @@ export function CameraSettingsPanel() {
       const response = await fetch(`/api/settings/cameras/${camera.id}`, { method: "DELETE" });
       const data = await response.json() as { ok?: boolean; error?: string };
       if (!response.ok || !data.ok) throw new Error(data.error || "Не вдалося видалити камеру");
+      setSnapshots((current) => {
+        const next = { ...current };
+        delete next[camera.id];
+        return next;
+      });
       notify("Камеру видалено.");
       await load();
     } catch (error) {
@@ -187,11 +204,13 @@ export function CameraSettingsPanel() {
     {loading ? <div className={styles.empty}>Завантажую камери…</div> : cameras.length === 0 ? <div className={styles.empty}><strong>Камер ще немає</strong>Додай першу Reolink за UID.</div> : <div className={styles.list}>
       {cameras.map((camera) => {
         const status = statusCopy(camera.status);
+        const snapshot = snapshots[camera.id];
         return <article className={styles.card} key={camera.id}>
           <div className={styles.cardTop}>
             <div className={styles.identity}><span className={styles.mark}>R</span><div><strong>{camera.name}</strong><span>{camera.model || "Reolink"} · {PURPOSE_LABEL[camera.purpose]}</span></div></div>
             <div className={styles.badges}><span className={`${styles.badge} ${status.className}`}>{status.label}</span><span className={styles.badge}>UID / P2P</span></div>
           </div>
+          {snapshot ? <div className={styles.snapshot}><img src={snapshot} alt={`Останній тестовий кадр: ${camera.name}`} /><span>Живий кадр із останньої успішної перевірки</span></div> : null}
           <div className={styles.details}>
             <div><small>UID</small><code>{camera.maskedUid}</code></div>
             <div><small>Користувач</small><strong>{camera.username}</strong></div>
@@ -200,7 +219,7 @@ export function CameraSettingsPanel() {
           </div>
           {camera.lastTestMessage ? <p className={styles.message}>{camera.lastTestMessage}</p> : null}
           <div className={styles.actions}>
-            <button className={styles.small} type="button" disabled={!camera.isActive || testingId === camera.id} onClick={() => void testCamera(camera)}>{testingId === camera.id ? "Перевіряю…" : "Перевірити підключення"}</button>
+            <button className={styles.small} type="button" disabled={!camera.isActive || testingId === camera.id} onClick={() => void testCamera(camera)}>{testingId === camera.id ? "Підключаюсь…" : "Перевірити підключення"}</button>
             <button className={styles.small} type="button" onClick={() => void toggleCamera(camera)}>{camera.isActive ? "Вимкнути" : "Увімкнути"}</button>
             <button className={styles.danger} type="button" onClick={() => void removeCamera(camera)}>Видалити</button>
           </div>
