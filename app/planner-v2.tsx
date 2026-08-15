@@ -141,15 +141,15 @@ const IMMUTABLE_DRAG_STATUSES = new Set<Status>(["COMPLETED", "NO_SHOW", "CANCEL
 const pad = (value: number) => String(value).padStart(2, "0");
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
 
-function kyivDateKey(date = new Date()) {
+function dateKey(date: Date, timeZone: string) {
   const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone: KYIV_TZ,
+    timeZone,
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
   }).formatToParts(date);
-  const map = Object.fromEntries(parts.map((part) => [part.type, part.value]));
-  return `${map.year}-${map.month}-${map.day}`;
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${values.year}-${values.month}-${values.day}`;
 }
 
 function addDays(day: string, count: number) {
@@ -189,7 +189,7 @@ function clockToMinute(value: string) {
   return match ? Number(match[1]) * 60 + Number(match[2]) : 0;
 }
 
-function datePartsInZone(date: Date, timeZone = KYIV_TZ) {
+function localDateTime(date: Date, timeZone: string) {
   const parts = new Intl.DateTimeFormat("en-CA", {
     timeZone,
     year: "numeric",
@@ -206,8 +206,8 @@ function datePartsInZone(date: Date, timeZone = KYIV_TZ) {
   };
 }
 
-function clock(iso: string, timeZone = KYIV_TZ) {
-  return minuteToClock(datePartsInZone(new Date(iso), timeZone).minute);
+function clock(iso: string, timeZone: string) {
+  return minuteToClock(localDateTime(new Date(iso), timeZone).minute);
 }
 
 function duration(item: Appointment) {
@@ -226,7 +226,7 @@ function timeZoneOffsetMs(date: Date, timeZone: string) {
     hourCycle: "h23",
   }).formatToParts(date);
   const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
-  const asUtc = Date.UTC(
+  const wallClock = Date.UTC(
     Number(values.year),
     Number(values.month) - 1,
     Number(values.day),
@@ -234,28 +234,28 @@ function timeZoneOffsetMs(date: Date, timeZone: string) {
     Number(values.minute),
     Number(values.second),
   );
-  return asUtc - date.getTime();
+  return wallClock - date.getTime();
 }
 
 function toIso(day: string, minute: number, timeZone: string) {
   const [year, month, date] = day.split("-").map(Number);
   const hour = Math.floor(minute / 60);
   const mins = minute % 60;
-  const wallClockAsUtc = new Date(Date.UTC(year, month - 1, date, hour, mins, 0));
-  const offset = timeZoneOffsetMs(wallClockAsUtc, timeZone);
-  const firstPass = new Date(wallClockAsUtc.getTime() - offset);
+  const wallClock = new Date(Date.UTC(year, month - 1, date, hour, mins, 0));
+  const firstOffset = timeZoneOffsetMs(wallClock, timeZone);
+  const firstPass = new Date(wallClock.getTime() - firstOffset);
   const refinedOffset = timeZoneOffsetMs(firstPass, timeZone);
-  return new Date(wallClockAsUtc.getTime() - refinedOffset).toISOString();
+  return new Date(wallClock.getTime() - refinedOffset).toISOString();
 }
 
 function amount(value: Appointment["estimatedAmount"]) {
-  const number = Number(value);
-  return value != null && value !== "" && Number.isFinite(number)
+  const parsed = Number(value);
+  return value != null && value !== "" && Number.isFinite(parsed)
     ? new Intl.NumberFormat("uk-UA", {
         style: "currency",
         currency: "UAH",
         maximumFractionDigits: 0,
-      }).format(number)
+      }).format(parsed)
     : "";
 }
 
@@ -281,12 +281,12 @@ function scheduleForDay(day: string, schedule: ScheduleDay[], location: Location
 }
 
 function isSameDay(item: Appointment, day: string, timeZone: string) {
-  return datePartsInZone(new Date(item.plannedStartAt), timeZone).day === day;
+  return localDateTime(new Date(item.plannedStartAt), timeZone).day === day;
 }
 
 function isOutsideSchedule(item: Appointment, day: string, schedule: ScheduleDay, timeZone: string) {
-  const start = datePartsInZone(new Date(item.plannedStartAt), timeZone);
-  const end = datePartsInZone(new Date(item.plannedEndAt), timeZone);
+  const start = localDateTime(new Date(item.plannedStartAt), timeZone);
+  const end = localDateTime(new Date(item.plannedEndAt), timeZone);
   return !schedule.enabled
     || start.day !== day
     || end.day !== day
@@ -296,21 +296,18 @@ function isOutsideSchedule(item: Appointment, day: string, schedule: ScheduleDay
 
 function itemMinutesInsideSchedule(item: Appointment, day: string, schedule: ScheduleDay, timeZone: string) {
   if (!schedule.enabled || !isSameDay(item, day, timeZone)) return 0;
-  const start = datePartsInZone(new Date(item.plannedStartAt), timeZone).minute;
-  const end = datePartsInZone(new Date(item.plannedEndAt), timeZone).minute;
+  const start = localDateTime(new Date(item.plannedStartAt), timeZone).minute;
+  const end = localDateTime(new Date(item.plannedEndAt), timeZone).minute;
   return Math.max(0, Math.min(end, schedule.closeMinute) - Math.max(start, schedule.openMinute));
 }
 
 function overlapPercent(item: Appointment, schedule: ScheduleDay, timeZone: string) {
   const span = Math.max(1, schedule.closeMinute - schedule.openMinute);
-  const start = datePartsInZone(new Date(item.plannedStartAt), timeZone).minute;
-  const end = datePartsInZone(new Date(item.plannedEndAt), timeZone).minute;
+  const start = localDateTime(new Date(item.plannedStartAt), timeZone).minute;
+  const end = localDateTime(new Date(item.plannedEndAt), timeZone).minute;
   const left = clamp(((start - schedule.openMinute) / span) * 100, 0, 100);
   const right = clamp(((end - schedule.openMinute) / span) * 100, 0, 100);
-  return {
-    left,
-    width: Math.max(1.3, right - left),
-  };
+  return { left, width: Math.max(1.3, right - left) };
 }
 
 function operationalLabel(item: Appointment, now: Date) {
@@ -322,26 +319,17 @@ function operationalLabel(item: Appointment, now: Date) {
     const minutes = Math.max(0, Math.round((nowMs - new Date(item.actualStartAt).getTime()) / 60000));
     return { label: `У роботі · ${minutes} хв`, tone: "live" };
   }
-
   if (item.status === "ARRIVED" && item.actualArrivalAt && nowMs < endMs) {
     const minutes = Math.max(0, Math.round((nowMs - new Date(item.actualArrivalAt).getTime()) / 60000));
     return { label: `Очікує · ${minutes} хв`, tone: "waiting" };
   }
-
   if (!item.actualStartAt && nowMs > startMs && nowMs < endMs && !IMMUTABLE_DRAG_STATUSES.has(item.status)) {
-    const minutes = Math.round((nowMs - startMs) / 60000);
-    return { label: `Не розпочато · +${minutes} хв`, tone: "danger" };
+    return { label: `Не розпочато · +${Math.round((nowMs - startMs) / 60000)} хв`, tone: "danger" };
   }
-
   if (!item.actualEndAt && nowMs > endMs && !IMMUTABLE_DRAG_STATUSES.has(item.status)) {
-    const minutes = Math.round((nowMs - endMs) / 60000);
-    return { label: `Перевищення · +${minutes} хв`, tone: "danger" };
+    return { label: `Перевищення · +${Math.round((nowMs - endMs) / 60000)} хв`, tone: "danger" };
   }
-
-  return {
-    label: STATUS_META[item.status].label,
-    tone: STATUS_META[item.status].tone,
-  };
+  return { label: STATUS_META[item.status].label, tone: STATUS_META[item.status].tone };
 }
 
 function matchesSearch(item: Appointment, query: string) {
@@ -368,7 +356,7 @@ function hoursLabel(minutes: number) {
 }
 
 export function PlannerV2() {
-  const [anchorDay, setAnchorDay] = useState(() => kyivDateKey());
+  const [anchorDay, setAnchorDay] = useState(() => dateKey(new Date(), KYIV_TZ));
   const [viewMode, setViewMode] = useState<ViewMode>("DAY");
   const [locations, setLocations] = useState<Location[]>([]);
   const [locationId, setLocationId] = useState("");
@@ -381,16 +369,13 @@ export function PlannerV2() {
   const [saving, setSaving] = useState(false);
   const [now, setNow] = useState(() => new Date());
 
-  const days = useMemo(
-    () => Array.from({ length: 7 }, (_, index) => addDays(anchorDay, index)),
-    [anchorDay],
-  );
   const location = useMemo(
     () => locations.find((item) => item.id === locationId) ?? locations[0] ?? null,
     [locations, locationId],
   );
   const timeZone = location?.timezone || KYIV_TZ;
-  const today = kyivDateKey(now);
+  const today = dateKey(now, timeZone);
+  const days = useMemo(() => Array.from({ length: 7 }, (_, index) => addDays(anchorDay, index)), [anchorDay]);
   const selectedSchedule = useMemo(
     () => scheduleForDay(anchorDay, workSchedule, location),
     [anchorDay, workSchedule, location],
@@ -399,9 +384,10 @@ export function PlannerV2() {
   const load = useCallback(async () => {
     setBusy(true);
     try {
-      const from = toIso(anchorDay, 0, timeZone);
-      const to = toIso(addDays(anchorDay, 7), 0, timeZone);
-      const params = new URLSearchParams({ from, to });
+      const params = new URLSearchParams({
+        from: toIso(anchorDay, 0, timeZone),
+        to: toIso(addDays(anchorDay, 7), 0, timeZone),
+      });
       if (locationId) params.set("locationId", locationId);
       const response = await fetch(`/api/planner?${params}`, { cache: "no-store" });
       const data = await response.json() as BoardResponse;
@@ -418,15 +404,11 @@ export function PlannerV2() {
     }
   }, [anchorDay, locationId, timeZone]);
 
-  useEffect(() => {
-    void load();
-  }, [load]);
-
+  useEffect(() => { void load(); }, [load]);
   useEffect(() => {
     const timer = window.setInterval(() => void load(), 45000);
     return () => window.clearInterval(timer);
   }, [load]);
-
   useEffect(() => {
     const timer = window.setInterval(() => setNow(new Date()), 30000);
     return () => window.clearInterval(timer);
@@ -438,27 +420,22 @@ export function PlannerV2() {
       .filter((item) => isSameDay(item, anchorDay, timeZone)),
     [appointments, anchorDay, timeZone],
   );
-
   const visibleDayItems = useMemo(
     () => dayItems.filter((item) => matchesSearch(item, search)),
     [dayItems, search],
   );
-
   const outsideScheduleItems = useMemo(
     () => visibleDayItems.filter((item) => isOutsideSchedule(item, anchorDay, selectedSchedule, timeZone)),
     [visibleDayItems, anchorDay, selectedSchedule, timeZone],
   );
-
   const inScheduleItems = useMemo(
     () => visibleDayItems.filter((item) => !isOutsideSchedule(item, anchorDay, selectedSchedule, timeZone)),
     [visibleDayItems, anchorDay, selectedSchedule, timeZone],
   );
-
   const unassignedItems = useMemo(
     () => inScheduleItems.filter((item) => !item.mechanicId),
     [inScheduleItems],
   );
-
   const capacityItems = useMemo(
     () => dayItems.filter((item) => !NON_CAPACITY_STATUSES.has(item.status)),
     [dayItems],
@@ -467,16 +444,10 @@ export function PlannerV2() {
   const capacityMinutes = selectedSchedule.enabled
     ? Math.max(0, selectedSchedule.closeMinute - selectedSchedule.openMinute) * (location?.mechanics.length ?? 0)
     : 0;
-
   const plannedMinutes = capacityItems
     .filter((item) => item.mechanicId)
-    .reduce(
-      (sum, item) => sum + itemMinutesInsideSchedule(item, anchorDay, selectedSchedule, timeZone),
-      0,
-    );
-
+    .reduce((sum, item) => sum + itemMinutesInsideSchedule(item, anchorDay, selectedSchedule, timeZone), 0);
   const loadPercent = capacityMinutes > 0 ? Math.round((plannedMinutes / capacityMinutes) * 100) : 0;
-
   const liveDeviations = capacityItems.filter((item) => {
     if (isOutsideSchedule(item, anchorDay, selectedSchedule, timeZone)) return true;
     if (anchorDay !== today) return false;
@@ -495,14 +466,13 @@ export function PlannerV2() {
     return [...new Set(markers)];
   }, [selectedSchedule]);
 
-  const currentMinute = datePartsInZone(now, timeZone).minute;
+  const currentMinute = localDateTime(now, timeZone).minute;
   const showNowLine = anchorDay === today
     && selectedSchedule.enabled
     && currentMinute >= selectedSchedule.openMinute
     && currentMinute <= selectedSchedule.closeMinute;
   const nowLeft = showNowLine
-    ? ((currentMinute - selectedSchedule.openMinute)
-      / Math.max(1, selectedSchedule.closeMinute - selectedSchedule.openMinute)) * 100
+    ? ((currentMinute - selectedSchedule.openMinute) / Math.max(1, selectedSchedule.closeMinute - selectedSchedule.openMinute)) * 100
     : 0;
 
   function colorForPost(postId: string | null) {
@@ -544,7 +514,7 @@ export function PlannerV2() {
   function openEdit(item: Appointment) {
     setEdit({
       id: item.id,
-      date: datePartsInZone(new Date(item.plannedStartAt), timeZone).day,
+      date: localDateTime(new Date(item.plannedStartAt), timeZone).day,
       status: item.status,
       postId: item.postId || "",
       mechanicId: item.mechanicId || "",
@@ -556,27 +526,25 @@ export function PlannerV2() {
   async function saveEdit() {
     if (!edit || !location) return;
     const daySchedule = scheduleForDay(edit.date, workSchedule, location);
-    const startMinute = clockToMinute(edit.start);
-    const durationMinutes = Math.max(SNAP_MINUTES, Number(edit.duration || 60));
     if (!daySchedule.enabled) {
       setMessage(`${daySchedule.label} — неробочий день.`);
       return;
     }
+    const startMinute = clockToMinute(edit.start);
+    const durationMinutes = Math.max(SNAP_MINUTES, Number(edit.duration || 60));
     setSaving(true);
-    const start = toIso(edit.date, startMinute, timeZone);
-    const end = toIso(edit.date, startMinute + durationMinutes, timeZone);
     const ok = await patch(edit.id, {
       status: edit.status,
       postId: edit.postId || null,
       mechanicId: edit.mechanicId || null,
-      plannedStartAt: start,
-      plannedEndAt: end,
+      plannedStartAt: toIso(edit.date, startMinute, timeZone),
+      plannedEndAt: toIso(edit.date, startMinute + durationMinutes, timeZone),
     }, "Наряд оновлено.");
     setSaving(false);
     if (ok) setEdit(null);
   }
 
-  async function dropOnMechanic(event: DragEvent<HTMLDivElement>, mechanicId: string | null) {
+  async function dropOnMechanic(event: DragEvent<HTMLDivElement>, mechanicId: string) {
     event.preventDefault();
     if (!location || !selectedSchedule.enabled) return;
     const id = event.dataTransfer.getData("text/planner-appointment");
@@ -595,13 +563,19 @@ export function PlannerV2() {
       Math.max(selectedSchedule.openMinute, selectedSchedule.closeMinute - itemDuration),
     );
 
-    const start = toIso(anchorDay, startMinute, timeZone);
-    const end = toIso(anchorDay, startMinute + itemDuration, timeZone);
     await patch(id, {
       mechanicId,
-      plannedStartAt: start,
-      plannedEndAt: end,
-    }, mechanicId ? "Роботу переплановано." : "Роботу повернуто в нерозподілені.");
+      plannedStartAt: toIso(anchorDay, startMinute, timeZone),
+      plannedEndAt: toIso(anchorDay, startMinute + itemDuration, timeZone),
+    }, "Роботу переплановано.");
+  }
+
+  async function dropUnassigned(event: DragEvent<HTMLElement>) {
+    event.preventDefault();
+    const id = event.dataTransfer.getData("text/planner-appointment");
+    const item = appointments.find((entry) => entry.id === id);
+    if (!item || IMMUTABLE_DRAG_STATUSES.has(item.status)) return;
+    await patch(id, { mechanicId: null }, "Роботу повернуто в нерозподілені без зміни часу.");
   }
 
   function timelineClick(event: MouseEvent<HTMLDivElement>, mechanicId: string) {
@@ -631,10 +605,9 @@ export function PlannerV2() {
       (sum, item) => sum + itemMinutesInsideSchedule(item, day, daySchedule, timeZone),
       0,
     );
-    const capacity = Math.max(1, daySchedule.closeMinute - daySchedule.openMinute);
     return {
       minutes,
-      percent: Math.round((minutes / capacity) * 100),
+      percent: Math.round((minutes / Math.max(1, daySchedule.closeMinute - daySchedule.openMinute)) * 100),
       jobs: items.length,
     };
   }
@@ -642,18 +615,20 @@ export function PlannerV2() {
   function renderAppointmentCard(item: Appointment, compact = false) {
     const position = overlapPercent(item, selectedSchedule, timeZone);
     const operational = operationalLabel(item, now);
-    const cardStyle = {
-      "--card-left": `${position.left}%`,
-      "--card-width": `${position.width}%`,
-      "--post-color": colorForPost(item.postId),
-    } as CSSProperties;
+    const cardStyle = compact
+      ? { "--post-color": colorForPost(item.postId) } as CSSProperties
+      : {
+          "--card-left": `${position.left}%`,
+          "--card-width": `${position.width}%`,
+          "--post-color": colorForPost(item.postId),
+        } as CSSProperties;
     const isViolation = isOutsideSchedule(item, anchorDay, selectedSchedule, timeZone);
 
     return (
       <button
         key={item.id}
         className={`${styles.timelineCard} ${isViolation ? styles.violationCard : ""}`}
-        style={compact ? { "--post-color": colorForPost(item.postId) } as CSSProperties : cardStyle}
+        style={cardStyle}
         draggable={!IMMUTABLE_DRAG_STATUSES.has(item.status)}
         onDragStart={(event) => {
           event.dataTransfer.setData("text/planner-appointment", item.id);
@@ -700,47 +675,25 @@ export function PlannerV2() {
             <span>{selectedSchedule.enabled ? `${selectedSchedule.open}–${selectedSchedule.close}` : "Вихідний"}</span>
           </div>
           <button onClick={() => setAnchorDay(addDays(anchorDay, 1))}>›</button>
-          <button
-            className={styles.todayButton}
-            onClick={() => setAnchorDay(today)}
-            disabled={anchorDay === today}
-          >
+          <button className={styles.todayButton} onClick={() => setAnchorDay(today)} disabled={anchorDay === today}>
             Сьогодні
           </button>
         </div>
 
         <div className={styles.viewSwitch}>
-          <button
-            className={viewMode === "DAY" ? styles.activeView : ""}
-            onClick={() => setViewMode("DAY")}
-          >
-            День
-          </button>
-          <button
-            className={viewMode === "WEEK" ? styles.activeView : ""}
-            onClick={() => setViewMode("WEEK")}
-          >
-            Тиждень
-          </button>
+          <button className={viewMode === "DAY" ? styles.activeView : ""} onClick={() => setViewMode("DAY")}>День</button>
+          <button className={viewMode === "WEEK" ? styles.activeView : ""} onClick={() => setViewMode("WEEK")}>Тиждень</button>
         </div>
 
         {locations.length > 1 && (
-          <select
-            className={styles.locationSelect}
-            value={locationId}
-            onChange={(event) => setLocationId(event.target.value)}
-          >
+          <select className={styles.locationSelect} value={locationId} onChange={(event) => setLocationId(event.target.value)}>
             {locations.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
           </select>
         )}
 
         <div className={styles.compactSearch}>
           <span>⌕</span>
-          <input
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            placeholder="Авто, номер, клієнт, наряд..."
-          />
+          <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Авто, номер, клієнт, наряд..." />
         </div>
       </section>
 
@@ -749,50 +702,36 @@ export function PlannerV2() {
         <div><strong>{hoursLabel(capacityMinutes)}</strong><span>доступна потужність</span></div>
         <div><strong>{hoursLabel(plannedMinutes)}</strong><span>заплановано</span></div>
         <div><strong>{loadPercent}%</strong><span>завантаження</span></div>
-        <div><strong>{dayItems.filter((item) => !item.mechanicId && item.status !== "CANCELLED").length}</strong><span>без виконавця</span></div>
+        <div><strong>{dayItems.filter((item) => !item.mechanicId).length}</strong><span>без виконавця</span></div>
         <div className={liveDeviations ? styles.metricAlert : ""}><strong>{liveDeviations}</strong><span>відхилення</span></div>
       </section>
 
-      <div className={styles.systemMessage}>
-        {busy ? "Оновлюю картину…" : message}
-      </div>
+      <div className={styles.systemMessage}>{busy ? "Оновлюю картину…" : message}</div>
 
       {viewMode === "DAY" ? (
         <>
           {outsideScheduleItems.length > 0 && (
             <section className={styles.alertQueue}>
               <div className={styles.queueTitle}>
-                <div>
-                  <strong>Поза робочим графіком</strong>
-                  <span>Ці записи потрібно перепланувати в доступний час.</span>
-                </div>
+                <div><strong>Поза робочим графіком</strong><span>Ці записи потрібно перепланувати в доступний час.</span></div>
                 <b>{outsideScheduleItems.length}</b>
               </div>
-              <div className={styles.queueCards}>
-                {outsideScheduleItems.map((item) => renderAppointmentCard(item, true))}
-              </div>
+              <div className={styles.queueCards}>{outsideScheduleItems.map((item) => renderAppointmentCard(item, true))}</div>
             </section>
           )}
 
           <section
             className={styles.unassignedQueue}
             onDragOver={(event) => event.preventDefault()}
-            onDrop={(event) => void dropOnMechanic(event, null)}
+            onDrop={(event) => void dropUnassigned(event)}
           >
             <div className={styles.queueTitle}>
-              <div>
-                <strong>Нерозподілені роботи</strong>
-                <span>Перетягніть картку на рядок потрібного механіка.</span>
-              </div>
+              <div><strong>Нерозподілені роботи</strong><span>Перетягніть картку на рядок потрібного механіка.</span></div>
               <b>{unassignedItems.length}</b>
             </div>
-            {unassignedItems.length > 0 ? (
-              <div className={styles.queueCards}>
-                {unassignedItems.map((item) => renderAppointmentCard(item, true))}
-              </div>
-            ) : (
-              <span className={styles.queueEmpty}>Усі роботи мають виконавця.</span>
-            )}
+            {unassignedItems.length > 0
+              ? <div className={styles.queueCards}>{unassignedItems.map((item) => renderAppointmentCard(item, true))}</div>
+              : <span className={styles.queueEmpty}>Усі роботи мають виконавця.</span>}
           </section>
 
           {!selectedSchedule.enabled ? (
@@ -808,23 +747,10 @@ export function PlannerV2() {
                     <div className={styles.mechanicHeading}>Механік / завантаження</div>
                     <div className={styles.timeAxis}>
                       {timeMarkers.map((minute) => {
-                        const left = ((minute - selectedSchedule.openMinute)
-                          / Math.max(1, selectedSchedule.closeMinute - selectedSchedule.openMinute)) * 100;
-                        return (
-                          <span
-                            key={minute}
-                            style={{ left: `${left}%` }}
-                            className={styles.timeLabel}
-                          >
-                            {minuteToClock(minute)}
-                          </span>
-                        );
+                        const left = ((minute - selectedSchedule.openMinute) / Math.max(1, selectedSchedule.closeMinute - selectedSchedule.openMinute)) * 100;
+                        return <span key={minute} style={{ left: `${left}%` }} className={styles.timeLabel}>{minuteToClock(minute)}</span>;
                       })}
-                      {showNowLine && (
-                        <span className={styles.nowAxis} style={{ left: `${nowLeft}%` }}>
-                          <b>ЗАРАЗ</b>
-                        </span>
-                      )}
+                      {showNowLine && <span className={styles.nowAxis} style={{ left: `${nowLeft}%` }}><b>ЗАРАЗ</b></span>}
                     </div>
                   </div>
 
@@ -833,21 +759,14 @@ export function PlannerV2() {
                       .filter((item) => item.mechanicId === mechanic.id)
                       .sort((left, right) => +new Date(left.plannedStartAt) - +new Date(right.plannedStartAt));
                     const load = mechanicLoad(mechanic.id, anchorDay);
-
                     return (
                       <div className={styles.mechanicRow} key={mechanic.id}>
                         <div className={styles.mechanicCell}>
                           <div className={styles.mechanicAvatar}>
                             {mechanic.name.split(/\s+/).slice(0, 2).map((part) => part[0]).join("").toUpperCase()}
                           </div>
-                          <div>
-                            <strong>{mechanic.name}</strong>
-                            <span>{hoursLabel(load.minutes)} · {load.percent}%</span>
-                          </div>
-                          <i
-                            className={`${styles.loadDot} ${load.percent > 100 ? styles.overloaded : ""}`}
-                            title={`${load.percent}% завантаження`}
-                          />
+                          <div><strong>{mechanic.name}</strong><span>{hoursLabel(load.minutes)} · {load.percent}%</span></div>
+                          <i className={`${styles.loadDot} ${load.percent > 100 ? styles.overloaded : ""}`} title={`${load.percent}% завантаження`} />
                         </div>
                         <div
                           className={styles.timelineLane}
@@ -857,8 +776,7 @@ export function PlannerV2() {
                           title="Клік по вільному часу — нова заявка. Перетягування — перепланування."
                         >
                           {timeMarkers.map((minute) => {
-                            const left = ((minute - selectedSchedule.openMinute)
-                              / Math.max(1, selectedSchedule.closeMinute - selectedSchedule.openMinute)) * 100;
+                            const left = ((minute - selectedSchedule.openMinute) / Math.max(1, selectedSchedule.closeMinute - selectedSchedule.openMinute)) * 100;
                             return <i key={minute} className={styles.gridLine} style={{ left: `${left}%` }} />;
                           })}
                           {showNowLine && <i className={styles.nowLine} style={{ left: `${nowLeft}%` }} />}
@@ -870,15 +788,12 @@ export function PlannerV2() {
                   })}
 
                   {(location?.mechanics.length ?? 0) === 0 && (
-                    <div className={styles.noMechanics}>
-                      У «Налаштування → Персонал» немає активних механіків для цієї локації.
-                    </div>
+                    <div className={styles.noMechanics}>У «Налаштування → Персонал» немає активних механіків для цієї локації.</div>
                   )}
                 </div>
               </div>
               <p className={styles.helpText}>
-                Перетягніть роботу по горизонталі — зміниться час; на інший рядок — зміниться механік.
-                Клік по вільній ділянці відкриває «Нову заявку» з обраними датою та часом.
+                Перетягніть роботу по горизонталі — зміниться час; на інший рядок — зміниться механік. Клік по вільній ділянці відкриває «Нову заявку» з обраними датою та часом.
               </p>
             </section>
           )}
@@ -893,10 +808,7 @@ export function PlannerV2() {
                 <button
                   key={day}
                   className={`${styles.weekCell} ${styles.weekDayHead} ${day === today ? styles.weekToday : ""}`}
-                  onClick={() => {
-                    setAnchorDay(day);
-                    setViewMode("DAY");
-                  }}
+                  onClick={() => { setAnchorDay(day); setViewMode("DAY"); }}
                 >
                   <strong>{dayName(day)}</strong>
                   <span>{new Date(`${day}T12:00:00Z`).getUTCDate()}</span>
@@ -907,9 +819,7 @@ export function PlannerV2() {
 
             {(location?.mechanics || []).map((mechanic) => (
               <div className={styles.weekRow} key={mechanic.id}>
-                <div className={`${styles.weekCell} ${styles.weekMechanic}`}>
-                  <strong>{mechanic.name}</strong>
-                </div>
+                <div className={`${styles.weekCell} ${styles.weekMechanic}`}><strong>{mechanic.name}</strong></div>
                 {days.map((day) => {
                   const schedule = scheduleForDay(day, workSchedule, location);
                   const load = mechanicLoad(mechanic.id, day);
@@ -926,20 +836,11 @@ export function PlannerV2() {
                     <button
                       key={day}
                       className={`${styles.weekCell} ${styles.weekLoad} ${cellClass}`}
-                      onClick={() => {
-                        setAnchorDay(day);
-                        setViewMode("DAY");
-                      }}
+                      onClick={() => { setAnchorDay(day); setViewMode("DAY"); }}
                     >
-                      {schedule.enabled ? (
-                        <>
-                          <strong>{load.percent}%</strong>
-                          <span>{hoursLabel(load.minutes)}</span>
-                          <small>{load.jobs} роб.</small>
-                        </>
-                      ) : (
-                        <strong>Вихідний</strong>
-                      )}
+                      {schedule.enabled
+                        ? <><strong>{load.percent}%</strong><span>{hoursLabel(load.minutes)}</span><small>{load.jobs} роб.</small></>
+                        : <strong>Вихідний</strong>}
                     </button>
                   );
                 })}
@@ -953,90 +854,43 @@ export function PlannerV2() {
         <div className={styles.modalBackdrop} onMouseDown={() => setEdit(null)}>
           <section className={styles.modal} onMouseDown={(event) => event.stopPropagation()}>
             <div className={styles.modalHead}>
-              <div>
-                <p>РЕДАГУВАННЯ ВИРОБНИЧОГО СЛОТУ</p>
-                <h2>{appointments.find((item) => item.id === edit.id)?.plateNumber || "Наряд"}</h2>
-              </div>
+              <div><p>РЕДАГУВАННЯ ВИРОБНИЧОГО СЛОТУ</p><h2>{appointments.find((item) => item.id === edit.id)?.plateNumber || "Наряд"}</h2></div>
               <button onClick={() => setEdit(null)}>×</button>
             </div>
-
             <div className={styles.formGrid}>
-              <label>
-                <span>Дата</span>
-                <input
-                  type="date"
-                  value={edit.date}
-                  onChange={(event) => setEdit({ ...edit, date: event.target.value })}
-                />
-              </label>
-              <label>
-                <span>Початок</span>
-                <input
-                  type="time"
-                  step={SNAP_MINUTES * 60}
-                  value={edit.start}
-                  onChange={(event) => setEdit({ ...edit, start: event.target.value })}
-                />
-              </label>
-              <label>
-                <span>Тривалість, хв</span>
-                <input
-                  type="number"
-                  min={SNAP_MINUTES}
-                  step={SNAP_MINUTES}
-                  value={edit.duration}
-                  onChange={(event) => setEdit({ ...edit, duration: event.target.value })}
-                />
-              </label>
+              <label><span>Дата</span><input type="date" value={edit.date} onChange={(event) => setEdit({ ...edit, date: event.target.value })} /></label>
+              <label><span>Початок</span><input type="time" step={SNAP_MINUTES * 60} value={edit.start} onChange={(event) => setEdit({ ...edit, start: event.target.value })} /></label>
+              <label><span>Тривалість, хв</span><input type="number" min={SNAP_MINUTES} step={SNAP_MINUTES} value={edit.duration} onChange={(event) => setEdit({ ...edit, duration: event.target.value })} /></label>
               <label>
                 <span>Механік</span>
-                <select
-                  value={edit.mechanicId}
-                  onChange={(event) => setEdit({ ...edit, mechanicId: event.target.value })}
-                >
+                <select value={edit.mechanicId} onChange={(event) => setEdit({ ...edit, mechanicId: event.target.value })}>
                   <option value="">Нерозподілено</option>
-                  {location.mechanics.map((mechanic) => (
-                    <option key={mechanic.id} value={mechanic.id}>{mechanic.name}</option>
-                  ))}
+                  {location.mechanics.map((mechanic) => <option key={mechanic.id} value={mechanic.id}>{mechanic.name}</option>)}
                 </select>
               </label>
               <label>
                 <span>Пост</span>
-                <select
-                  value={edit.postId}
-                  onChange={(event) => setEdit({ ...edit, postId: event.target.value })}
-                >
+                <select value={edit.postId} onChange={(event) => setEdit({ ...edit, postId: event.target.value })}>
                   <option value="">Без поста / зона приймання</option>
                   {location.posts.map((post) => <option key={post.id} value={post.id}>{post.name}</option>)}
                 </select>
               </label>
               <label>
                 <span>Статус</span>
-                <select
-                  value={edit.status}
-                  onChange={(event) => setEdit({ ...edit, status: event.target.value as Status })}
-                >
-                  {STATUS_OPTIONS.map((status) => (
-                    <option key={status} value={status}>{STATUS_META[status].label}</option>
-                  ))}
+                <select value={edit.status} onChange={(event) => setEdit({ ...edit, status: event.target.value as Status })}>
+                  {STATUS_OPTIONS.map((status) => <option key={status} value={status}>{STATUS_META[status].label}</option>)}
                 </select>
               </label>
             </div>
-
             <div className={styles.modalSchedule}>
               {(() => {
                 const schedule = scheduleForDay(edit.date, workSchedule, location);
-                return schedule.enabled
-                  ? `Графік на ${schedule.label}: ${schedule.open}–${schedule.close}`
-                  : `${schedule.label}: вихідний`;
+                return schedule.enabled ? `Графік на ${schedule.label}: ${schedule.open}–${schedule.close}` : `${schedule.label}: вихідний`;
               })()}
             </div>
-
             <div className={styles.modalFoot}>
               <button className={styles.secondary} onClick={() => setEdit(null)}>Скасувати</button>
-              <button className={styles.primary} onClick={() => void saveEdit()} disabled={saving}>
-                {saving ? "Зберігаю…" : "Зберегти"}
-              </button>
+              <button className={styles.primary} onClick={() => void saveEdit()} disabled={saving}>{saving ? "Зберігаю…" : "Зберегти"}</button>
             </div>
           </section>
         </div>
