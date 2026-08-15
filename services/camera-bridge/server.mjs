@@ -22,9 +22,10 @@ function json(res, status, body) {
   res.end(payload);
 }
 
-function authorized(req) {
-  if (!BRIDGE_TOKEN) return true;
-  return req.headers.authorization === `Bearer ${BRIDGE_TOKEN}`;
+function authFailure(req) {
+  if (!BRIDGE_TOKEN) return { status: 503, message: "Camera Bridge token is not configured." };
+  if (req.headers.authorization !== `Bearer ${BRIDGE_TOKEN}`) return { status: 401, message: "Unauthorized" };
+  return null;
 }
 
 async function readJson(req) {
@@ -52,7 +53,6 @@ function validateProbe(body) {
   const password = typeof body.password === "string" ? body.password.slice(0, 256) : "";
   if (!/^[A-Z0-9]{12,40}$/.test(uid)) throw new Error("INVALID_UID");
   if (!username) throw new Error("INVALID_USERNAME");
-  if (!password) throw new Error("PASSWORD_REQUIRED");
   return { uid, username, password };
 }
 
@@ -152,18 +152,21 @@ async function probeReolink(body) {
   const configPath = join(dir, "neolink.toml");
   const snapshotPath = join(dir, "snapshot.jpg");
   const rtspPort = await getFreePort();
-  const config = [
+  const cameraConfig = [
     'bind = "127.0.0.1"',
     `bind_port = ${rtspPort}`,
     "",
     "[[cameras]]",
     'name = "probe"',
     `username = ${tomlString(credentials.username)}`,
-    `password = ${tomlString(credentials.password)}`,
+  ];
+  if (credentials.password) cameraConfig.push(`password = ${tomlString(credentials.password)}`);
+  cameraConfig.push(
     `uid = ${tomlString(credentials.uid)}`,
     'discovery = "relay"',
     "",
-  ].join("\n");
+  );
+  const config = cameraConfig.join("\n");
 
   await writeFile(configPath, config, { mode: 0o600 });
   const logs = [];
@@ -209,7 +212,8 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (req.method === "POST" && req.url === "/v1/reolink/test") {
-    if (!authorized(req)) return json(res, 401, { ok: false, message: "Unauthorized" });
+    const auth = authFailure(req);
+    if (auth) return json(res, auth.status, { ok: false, message: auth.message });
     try {
       const body = await readJson(req);
       const result = await probeReolink(body);
@@ -217,7 +221,6 @@ const server = http.createServer(async (req, res) => {
     } catch (error) {
       const code = error instanceof Error ? error.message : "UNKNOWN";
       const message = code === "INVALID_UID" ? "Некоректний Reolink UID."
-        : code === "PASSWORD_REQUIRED" ? "Потрібен пароль камери."
         : code === "BODY_TOO_LARGE" ? "Запит завеликий."
         : "Camera Bridge не зміг виконати P2P-тест.";
       console.error("camera probe failed", { code });
