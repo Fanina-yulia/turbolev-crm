@@ -7,7 +7,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
-  const auth = await authorize(PERMISSIONS.PAYROLL_SELF_READ, { strict: true, request });
+  const auth = await authorize(PERMISSIONS.PAYROLL_SELF_READ, { strict: true, request, minimumScope: "SELF" });
   if (!auth.allowed) return auth.response!;
 
   const employeeId = auth.context.user?.employeeId;
