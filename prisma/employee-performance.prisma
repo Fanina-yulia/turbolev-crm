@@ -1,0 +1,451 @@
+enum StaffAttributionType {
+  DIRECT
+  MANAGED
+  INFLUENCED
+}
+
+enum KpiDirection {
+  HIGHER_BETTER
+  LOWER_BETTER
+  TARGET
+}
+
+enum KpiValueUnit {
+  COUNT
+  HOURS
+  NORM_HOURS
+  PERCENT
+  UAH
+  SCORE
+  MINUTES
+  DAYS
+  RATIO
+}
+
+enum PayrollPeriodStatus {
+  OPEN
+  REVIEW
+  CLOSED
+}
+
+enum SalaryAccrualStatus {
+  DRAFT
+  POSTED
+  REVERSED
+}
+
+enum SalaryAccrualCategory {
+  BASE
+  LABOR
+  SALES
+  KPI
+  BONUS
+  ALLOWANCE
+  DEDUCTION
+  ADJUSTMENT
+  OTHER
+}
+
+enum EmployeeCostCategory {
+  EMPLOYER_TAX
+  WORKPLACE
+  SOFTWARE
+  TOOLS
+  TRAINING
+  TRAVEL
+  OTHER
+}
+
+enum PerformanceEventStatus {
+  POSTED
+  REVERSED
+}
+
+enum EconomicsStatus {
+  INSUFFICIENT_DATA
+  BELOW_BREAK_EVEN
+  BREAK_EVEN
+  PROFITABLE
+  CAPACITY_CONSTRAINED
+}
+
+model EmployeeProfile {
+  id                 String    @id
+  userId             String?   @unique
+  firstName          String
+  lastName           String
+  birthDate          DateTime? @db.Timestamp(6)
+  email              String?   @unique
+  phone              String?
+  phoneCountry       String?
+  address            String?
+  photoUrl           String?
+  personnelCategory  String?
+  position           String?
+  crmLogin           String?
+  crmPasswordHash    String?
+  isActive           Boolean   @default(true)
+  baseSalary         Decimal?  @db.Decimal(14, 2)
+  minimumSalary      Decimal?  @db.Decimal(14, 2)
+  workPercent        Decimal?  @db.Decimal(6, 2)
+  partsSalesPercent  Decimal?  @db.Decimal(6, 2)
+  partsMarginPercent Decimal?  @db.Decimal(6, 2)
+  netProfitPercent   Decimal?  @db.Decimal(6, 2)
+  payrollRuleNote    String?
+  createdAt          DateTime  @default(now()) @db.Timestamp(6)
+  updatedAt          DateTime  @default(now()) @updatedAt @db.Timestamp(6)
+
+  user               User?                       @relation(fields: [userId], references: [id], onDelete: SetNull)
+  documents          EmployeeDocument[]
+  roleAssignments    EmployeeRoleAssignment[]
+  kpiResults         EmployeeKpiResult[]
+  costEntries        EmployeeCostEntry[]
+  salaryAccruals     SalaryAccrual[]
+  salaryPayments     SalaryPayment[]
+  attributionEntries AttributionLedgerEntry[]
+  economicsSnapshots EmployeeEconomicsSnapshot[]
+  closedPayrolls     PayrollPeriod[]              @relation("PayrollClosedBy")
+
+  @@index([personnelCategory], map: "EmployeeProfile_category_idx")
+  @@index([position], map: "EmployeeProfile_position_idx")
+}
+
+model EmployeeDocument {
+  id         String    @id
+  employeeId String
+  type       String
+  name       String
+  fileUrl    String?
+  status     String    @default("MISSING")
+  uploadedAt DateTime? @db.Timestamp(6)
+  createdAt  DateTime  @default(now()) @db.Timestamp(6)
+  updatedAt  DateTime  @default(now()) @updatedAt @db.Timestamp(6)
+
+  employee EmployeeProfile @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@index([employeeId], map: "EmployeeDocument_employee_idx")
+}
+
+model StaffRole {
+  id        String   @id @default(cuid())
+  code      String   @unique @db.VarChar(64)
+  name      String
+  category  String?  @db.VarChar(64)
+  isActive  Boolean  @default(true)
+  sortOrder Int      @default(100)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  assignments       EmployeeRoleAssignment[]
+  kpiRules          RoleKpiRule[]
+  capacityStandards RoleCapacityStandard[]
+  economicsSnapshots RoleEconomicsSnapshot[]
+
+  @@index([isActive, sortOrder])
+}
+
+model EmployeeRoleAssignment {
+  id         String    @id @default(cuid())
+  employeeId String
+  roleId     String
+  locationId String?
+  startsAt   DateTime  @default(now())
+  endsAt     DateTime?
+  isPrimary  Boolean   @default(true)
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  employee EmployeeProfile  @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  role     StaffRole        @relation(fields: [roleId], references: [id], onDelete: Restrict)
+  location ServiceLocation? @relation(fields: [locationId], references: [id], onDelete: SetNull)
+
+  @@index([employeeId, startsAt, endsAt])
+  @@index([roleId, startsAt, endsAt])
+  @@index([locationId, startsAt, endsAt])
+}
+
+model KpiDefinition {
+  id          String       @id @default(cuid())
+  code        String       @unique @db.VarChar(96)
+  name        String
+  description String?      @db.Text
+  unit        KpiValueUnit
+  direction   KpiDirection @default(HIGHER_BETTER)
+  dataSource  String?      @db.VarChar(64)
+  isActive    Boolean      @default(true)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  roleRules          RoleKpiRule[]
+  employeeResults    EmployeeKpiResult[]
+  attributionEntries AttributionLedgerEntry[]
+
+  @@index([isActive, code])
+}
+
+model RoleKpiRule {
+  id                 String   @id @default(cuid())
+  roleId             String
+  kpiDefinitionId    String
+  weight             Decimal  @db.Decimal(5, 2)
+  defaultTarget      Decimal? @db.Decimal(18, 4)
+  yellowThresholdPct Decimal? @db.Decimal(7, 2)
+  redThresholdPct    Decimal? @db.Decimal(7, 2)
+  isCore             Boolean  @default(true)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  role StaffRole     @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  kpi  KpiDefinition @relation(fields: [kpiDefinitionId], references: [id], onDelete: Cascade)
+
+  @@unique([roleId, kpiDefinitionId])
+  @@index([kpiDefinitionId])
+}
+
+model EmployeeKpiResult {
+  id              String   @id @default(cuid())
+  employeeId      String
+  kpiDefinitionId String
+  periodStart     DateTime @db.Date
+  periodEnd       DateTime @db.Date
+  actualValue     Decimal  @db.Decimal(18, 4)
+  targetValue     Decimal? @db.Decimal(18, 4)
+  score           Decimal? @db.Decimal(7, 2)
+  source          String   @default("AUTO") @db.VarChar(32)
+  sourceRef       String?  @db.VarChar(160)
+  metadata        Json     @default("{}")
+  computedAt      DateTime @default(now())
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  employee EmployeeProfile @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  kpi      KpiDefinition   @relation(fields: [kpiDefinitionId], references: [id], onDelete: Restrict)
+
+  @@unique([employeeId, kpiDefinitionId, periodStart, periodEnd])
+  @@index([employeeId, periodStart, periodEnd])
+  @@index([kpiDefinitionId, periodStart, periodEnd])
+}
+
+model PayrollPeriod {
+  id                 String              @id @default(cuid())
+  key                String              @unique @db.VarChar(16)
+  periodStart        DateTime            @db.Date
+  periodEnd          DateTime            @db.Date
+  status             PayrollPeriodStatus @default(OPEN)
+  closedAt           DateTime?
+  closedByEmployeeId String?
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+
+  closedBy           EmployeeProfile?         @relation("PayrollClosedBy", fields: [closedByEmployeeId], references: [id], onDelete: SetNull)
+  accruals           SalaryAccrual[]
+  payments           SalaryPayment[]
+  costEntries        EmployeeCostEntry[]
+  attributionEntries AttributionLedgerEntry[]
+  economicsSnapshots EmployeeEconomicsSnapshot[]
+
+  @@unique([periodStart, periodEnd])
+  @@index([status, periodStart])
+}
+
+model SalaryAccrual {
+  id              String                @id @default(cuid())
+  employeeId      String
+  payrollPeriodId String
+  category        SalaryAccrualCategory
+  amount          Decimal               @db.Decimal(14, 2)
+  currency        String                @default("UAH") @db.VarChar(3)
+  occurredAt      DateTime
+  status          SalaryAccrualStatus   @default(DRAFT)
+  sourceType      String?               @db.VarChar(64)
+  sourceId        String?               @db.VarChar(160)
+  description     String?               @db.Text
+  reversalOfId    String?               @unique
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
+
+  employee      EmployeeProfile @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  payrollPeriod PayrollPeriod   @relation(fields: [payrollPeriodId], references: [id], onDelete: Restrict)
+  reversalOf    SalaryAccrual?  @relation("SalaryAccrualReversal", fields: [reversalOfId], references: [id], onDelete: SetNull)
+  reversal      SalaryAccrual?  @relation("SalaryAccrualReversal")
+
+  @@index([employeeId, occurredAt, status])
+  @@index([payrollPeriodId, status])
+  @@index([sourceType, sourceId])
+}
+
+model SalaryPayment {
+  id                String   @id @default(cuid())
+  employeeId        String
+  payrollPeriodId   String?
+  amount            Decimal  @db.Decimal(14, 2)
+  currency          String   @default("UAH") @db.VarChar(3)
+  paidAt            DateTime
+  cashTransactionId String?  @unique @db.VarChar(64)
+  note              String?  @db.Text
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  employee      EmployeeProfile @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  payrollPeriod PayrollPeriod?  @relation(fields: [payrollPeriodId], references: [id], onDelete: SetNull)
+
+  @@index([employeeId, paidAt])
+  @@index([payrollPeriodId, paidAt])
+}
+
+model EmployeeCostEntry {
+  id              String               @id @default(cuid())
+  employeeId      String
+  payrollPeriodId String?
+  category        EmployeeCostCategory
+  amount          Decimal              @db.Decimal(14, 2)
+  currency        String               @default("UAH") @db.VarChar(3)
+  occurredAt      DateTime
+  sourceType      String?              @db.VarChar(64)
+  sourceId        String?              @db.VarChar(160)
+  note            String?              @db.Text
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+
+  employee      EmployeeProfile @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  payrollPeriod PayrollPeriod?  @relation(fields: [payrollPeriodId], references: [id], onDelete: SetNull)
+
+  @@index([employeeId, occurredAt])
+  @@index([payrollPeriodId, category])
+  @@index([sourceType, sourceId])
+}
+
+model PerformanceEvent {
+  id             String                 @id @default(cuid())
+  idempotencyKey String                 @unique @db.VarChar(160)
+  eventType      String                 @db.VarChar(96)
+  occurredAt     DateTime
+  sourceType     String                 @db.VarChar(64)
+  sourceId       String                 @db.VarChar(160)
+  workOrderId    String?                @db.VarChar(64)
+  leadId         String?                @db.VarChar(64)
+  locationId     String?
+  status         PerformanceEventStatus @default(POSTED)
+  reversalOfId   String?                @unique
+  payload        Json                   @default("{}")
+  createdAt      DateTime               @default(now())
+
+  location    ServiceLocation?       @relation(fields: [locationId], references: [id], onDelete: SetNull)
+  reversalOf  PerformanceEvent?      @relation("PerformanceEventReversal", fields: [reversalOfId], references: [id], onDelete: SetNull)
+  reversal    PerformanceEvent?      @relation("PerformanceEventReversal")
+  attributions AttributionLedgerEntry[]
+
+  @@index([eventType, occurredAt])
+  @@index([sourceType, sourceId])
+  @@index([workOrderId])
+  @@index([leadId])
+  @@index([locationId, occurredAt])
+}
+
+model AttributionLedgerEntry {
+  id                   String               @id @default(cuid())
+  performanceEventId   String
+  employeeId           String
+  attributionType      StaffAttributionType
+  metricCode           String               @db.VarChar(96)
+  kpiDefinitionId      String?
+  value                Decimal              @default(1) @db.Decimal(18, 4)
+  unit                 KpiValueUnit
+  share                Decimal?             @db.Decimal(7, 4)
+  economicValue        Decimal?             @db.Decimal(14, 2)
+  currency             String               @default("UAH") @db.VarChar(3)
+  additiveContribution Boolean              @default(false)
+  reason               String?              @db.Text
+  isFrozen             Boolean              @default(false)
+  frozenAt             DateTime?
+  payrollPeriodId      String?
+  metadata             Json                 @default("{}")
+  createdAt            DateTime             @default(now())
+
+  event         PerformanceEvent @relation(fields: [performanceEventId], references: [id], onDelete: Restrict)
+  employee      EmployeeProfile  @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  kpi           KpiDefinition?   @relation(fields: [kpiDefinitionId], references: [id], onDelete: SetNull)
+  payrollPeriod PayrollPeriod?   @relation(fields: [payrollPeriodId], references: [id], onDelete: SetNull)
+
+  @@unique([performanceEventId, employeeId, attributionType, metricCode])
+  @@index([employeeId, attributionType, createdAt])
+  @@index([metricCode, createdAt])
+  @@index([payrollPeriodId, isFrozen])
+}
+
+model EmployeeEconomicsSnapshot {
+  id                   String          @id @default(cuid())
+  employeeId           String
+  payrollPeriodId      String?
+  periodStart          DateTime        @db.Date
+  periodEnd            DateTime        @db.Date
+  fullCost             Decimal         @default(0) @db.Decimal(14, 2)
+  directContribution   Decimal         @default(0) @db.Decimal(14, 2)
+  managedValue         Decimal         @default(0) @db.Decimal(14, 2)
+  influencedValue      Decimal         @default(0) @db.Decimal(14, 2)
+  breakEvenPct         Decimal?        @db.Decimal(9, 2)
+  roiPct               Decimal?        @db.Decimal(9, 2)
+  breakEvenAt          DateTime?
+  capacityUtilization  Decimal?        @db.Decimal(7, 2)
+  kpiScore             Decimal?        @db.Decimal(7, 2)
+  status               EconomicsStatus @default(INSUFFICIENT_DATA)
+  dataCompletenessPct  Decimal?        @db.Decimal(7, 2)
+  computedAt           DateTime        @default(now())
+  createdAt            DateTime        @default(now())
+  updatedAt            DateTime        @updatedAt
+
+  employee      EmployeeProfile @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  payrollPeriod PayrollPeriod?  @relation(fields: [payrollPeriodId], references: [id], onDelete: SetNull)
+
+  @@unique([employeeId, periodStart, periodEnd])
+  @@index([periodStart, periodEnd, status])
+  @@index([payrollPeriodId, status])
+}
+
+model RoleCapacityStandard {
+  id             String       @id @default(cuid())
+  roleId         String
+  locationId     String?
+  metricCode     String       @db.VarChar(96)
+  capacityPerFte Decimal      @db.Decimal(18, 4)
+  unit           KpiValueUnit
+  effectiveFrom  DateTime     @db.Date
+  effectiveTo    DateTime?    @db.Date
+  note           String?      @db.Text
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  role     StaffRole        @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  location ServiceLocation? @relation(fields: [locationId], references: [id], onDelete: SetNull)
+
+  @@index([roleId, effectiveFrom, effectiveTo])
+  @@index([locationId, effectiveFrom, effectiveTo])
+}
+
+model RoleEconomicsSnapshot {
+  id                  String          @id @default(cuid())
+  snapshotKey         String          @unique @db.VarChar(160)
+  roleId              String
+  locationId          String?
+  periodStart         DateTime        @db.Date
+  periodEnd           DateTime        @db.Date
+  actualFte           Decimal         @default(0) @db.Decimal(8, 2)
+  requiredFte         Decimal?        @db.Decimal(8, 2)
+  fullCost            Decimal         @default(0) @db.Decimal(14, 2)
+  directContribution  Decimal         @default(0) @db.Decimal(14, 2)
+  managedValue        Decimal         @default(0) @db.Decimal(14, 2)
+  roiPct              Decimal?        @db.Decimal(9, 2)
+  utilizationPct      Decimal?        @db.Decimal(7, 2)
+  kpiScore            Decimal?        @db.Decimal(7, 2)
+  status              EconomicsStatus @default(INSUFFICIENT_DATA)
+  computedAt          DateTime        @default(now())
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
+
+  role     StaffRole        @relation(fields: [roleId], references: [id], onDelete: Restrict)
+  location ServiceLocation? @relation(fields: [locationId], references: [id], onDelete: SetNull)
+
+  @@index([roleId, periodStart, periodEnd])
+  @@index([locationId, periodStart, periodEnd])
+  @@index([status, periodStart, periodEnd])
+}
