@@ -74,6 +74,9 @@ enum EconomicsStatus {
   BREAK_EVEN
   PROFITABLE
   CAPACITY_CONSTRAINED
+  EFFECTIVE
+  UNDERUTILIZED
+  NEEDS_ATTENTION
 }
 
 model EmployeeProfile {
