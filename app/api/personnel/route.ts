@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { randomBytes, randomUUID, scryptSync } from "node:crypto";
 import { getPrisma } from "@/src/lib/prisma";
+import { authorize } from "@/src/security/authorize";
+import { PERMISSIONS } from "@/src/security/permissions";
+import { writeAuditEvent } from "@/src/services/audit.service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -51,14 +54,47 @@ function documents(body: any) {
   }));
 }
 
-export async function GET() {
+function safePersonnelRow(row: any, canSeeCompensation: boolean) {
+  // Never serialize legacy credential material, even for OWNER.
+  const { crmPasswordHash: _credential, ...safe } = row;
+  if (canSeeCompensation) return { ...safe, compensationRestricted: false };
+  return {
+    ...safe,
+    baseSalary: null,
+    minimumSalary: null,
+    workPercent: null,
+    partsSalesPercent: null,
+    partsMarginPercent: null,
+    netProfitPercent: null,
+    payrollRuleNote: null,
+    compensationRestricted: true,
+  };
+}
+
+export async function GET(request: NextRequest) {
+  const readAccess = await authorize(PERMISSIONS.PERSONNEL_READ, { request });
+  if (!readAccess.allowed) return readAccess.response!;
+  const compensationAccess = await authorize(PERMISSIONS.PERSONNEL_COMPENSATION_READ, { request });
+  const canSeeCompensation = compensationAccess.wouldAllow;
+
   const prisma = getPrisma();
   try {
     const items = await prisma.employeeProfile.findMany({
       include: { documents: { orderBy: { name: "asc" } } },
       orderBy: [{ isActive: "desc" }, { lastName: "asc" }, { firstName: "asc" }],
     });
-    return NextResponse.json({ ok: true, items }, { headers: { "Cache-Control": "no-store" } });
+    return NextResponse.json(
+      {
+        ok: true,
+        items: items.map((item) => safePersonnelRow(item, canSeeCompensation)),
+        security: {
+          compensationRestricted: !canSeeCompensation,
+          enforcementMode: readAccess.context.enforcementMode,
+          shadowBypass: readAccess.shadowBypass,
+        },
+      },
+      { headers: { "Cache-Control": "no-store" } },
+    );
   } catch (error) {
     console.error("personnel GET failed", error);
     return NextResponse.json({ ok: false, error: "Розділ персоналу очікує активації HR-схеми." }, { status: 503 });
@@ -66,6 +102,9 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
+  const access = await authorize(PERMISSIONS.PERSONNEL_WRITE, { request });
+  if (!access.allowed) return access.response!;
+
   const prisma = getPrisma();
   try {
     const body = await request.json();
@@ -74,6 +113,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ ok: false, error: "Вкажіть ім’я та прізвище." }, { status: 400 });
     }
 
+    // Legacy compatibility only. Neon Auth is the canonical authentication source.
     const passwordHash = body.password ? hashPassword(String(body.password)) : null;
     const created = await prisma.employeeProfile.create({
       data: {
@@ -84,6 +124,7 @@ export async function POST(request: NextRequest) {
       },
       select: { id: true },
     });
+    await writeAuditEvent({ entityType: "EmployeeProfile", entityId: created.id, action: "PERSONNEL_CREATED" });
 
     return NextResponse.json({ ok: true, id: created.id });
   } catch (error) {
@@ -93,6 +134,9 @@ export async function POST(request: NextRequest) {
 }
 
 export async function PUT(request: NextRequest) {
+  const access = await authorize(PERMISSIONS.PERSONNEL_WRITE, { request });
+  if (!access.allowed) return access.response!;
+
   const prisma = getPrisma();
   try {
     const body = await request.json();
@@ -100,6 +144,7 @@ export async function PUT(request: NextRequest) {
     const p = payload(body);
     if (!id) return NextResponse.json({ ok: false, error: "Не вказано співробітника." }, { status: 400 });
 
+    const before = await prisma.employeeProfile.findUnique({ where: { id } });
     const passwordHash = body.password ? hashPassword(String(body.password)) : undefined;
     await prisma.employeeProfile.update({
       where: { id },
@@ -112,6 +157,12 @@ export async function PUT(request: NextRequest) {
         },
       },
     });
+    await writeAuditEvent({
+      entityType: "EmployeeProfile",
+      entityId: id,
+      action: "PERSONNEL_UPDATED",
+      metadata: { hadLegacyCredential: Boolean(before?.crmPasswordHash), legacyCredentialChanged: Boolean(passwordHash) },
+    });
 
     return NextResponse.json({ ok: true });
   } catch (error) {
@@ -121,12 +172,16 @@ export async function PUT(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
+  const access = await authorize(PERMISSIONS.PERSONNEL_WRITE, { request });
+  if (!access.allowed) return access.response!;
+
   const prisma = getPrisma();
   const id = request.nextUrl.searchParams.get("id");
   if (!id) return NextResponse.json({ ok: false, error: "Не вказано співробітника." }, { status: 400 });
 
   try {
     await prisma.employeeProfile.update({ where: { id }, data: { isActive: false } });
+    await writeAuditEvent({ entityType: "EmployeeProfile", entityId: id, action: "PERSONNEL_DEACTIVATED" });
     return NextResponse.json({ ok: true, archived: true });
   } catch (error) {
     console.error("personnel DELETE failed", error);
