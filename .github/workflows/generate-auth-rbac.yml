@@ -44,8 +44,8 @@ jobs:
       - name: Install locked dependencies
         run: npm ci --no-audit --no-fund
 
-      - name: Add current Neon Auth SDK
-        run: npm install @neondatabase/auth@latest --save --no-audit --no-fund
+      - name: Add Neon Auth SDK compatible with Next 15
+        run: npm install '@neondatabase/auth@0.2' --save --no-audit --no-fund
 
       - name: Validate security schema
         run: npx prisma validate
