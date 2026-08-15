@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getPrisma } from "@/src/lib/prisma";
+import { authorize } from "@/src/security/authorize";
+import { PERMISSIONS } from "@/src/security/permissions";
 import { encryptCameraPassword, maskCameraUid } from "@/src/services/camera-credentials.service";
 
 export const runtime = "nodejs";
@@ -59,6 +61,13 @@ function publicCamera(camera: {
 }
 
 export async function PATCH(request: NextRequest, context: RouteContext) {
+  const access = await authorize(PERMISSIONS.SETTINGS_WRITE, {
+    request,
+    strict: true,
+    minimumScope: "ALL",
+  });
+  if (!access.allowed) return access.response!;
+
   const prisma = getPrisma();
   try {
     const { id } = await context.params;
@@ -97,7 +106,14 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
   }
 }
 
-export async function DELETE(_request: NextRequest, context: RouteContext) {
+export async function DELETE(request: NextRequest, context: RouteContext) {
+  const access = await authorize(PERMISSIONS.SETTINGS_WRITE, {
+    request,
+    strict: true,
+    minimumScope: "ALL",
+  });
+  if (!access.allowed) return access.response!;
+
   const prisma = getPrisma();
   try {
     const { id } = await context.params;
