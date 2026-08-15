@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
 import {
-  getWorkOrderCommercialState,
   sendEstimate,
   WorkOrderCommercialError,
 } from "@/src/services/work-order-commercial.service";
+import { getWorkOrderCycleState } from "@/src/services/work-order-cycle.service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -22,8 +22,8 @@ function commercialError(error: WorkOrderCommercialError) {
 export async function GET(_request: Request, context: RouteContext) {
   const { id } = await context.params;
   try {
-    const commercial = await getWorkOrderCommercialState(id);
-    return NextResponse.json({ ok: true, commercial }, { headers: { "Cache-Control": "no-store" } });
+    const cycle = await getWorkOrderCycleState(id);
+    return NextResponse.json({ ok: true, commercial: cycle.commercial }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
     if (error instanceof WorkOrderCommercialError) return commercialError(error);
     console.error("GET /api/work-orders/[id]/estimate failed", { id, message: error instanceof Error ? error.message : "unknown" });
