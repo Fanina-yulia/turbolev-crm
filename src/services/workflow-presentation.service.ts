@@ -8,7 +8,6 @@ import {
   type WorkflowPresentationSettings,
   type WorkflowStatusPresentationOverride,
 } from "@/src/domain/workflow/presentation";
-import type { WorkflowEntity } from "@/src/domain/workflow";
 
 type SettingRow = { value: unknown };
 
