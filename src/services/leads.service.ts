@@ -97,11 +97,24 @@ export async function convertLead(id: string) {
     if (!lead) throw new LeadNotFoundError(id);
     if (lead.status === LeadStatus.ARRIVED) throw new LeadConflictError("Lead is already converted/arrived");
 
-    const client = await tx.client.upsert({
-      where: { phoneNormalized: lead.phoneNormalized },
-      create: { name: lead.name, phone: lead.phone, phoneNormalized: lead.phoneNormalized },
-      update: { name: lead.name || undefined, phone: lead.phone },
-    });
+    const matchedClients = await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+      SELECT DISTINCT c."id"
+      FROM "Client" c
+      LEFT JOIN "ClientPhone" cp ON cp."clientId" = c."id"
+      WHERE c."phoneNormalized" = ${lead.phoneNormalized} OR cp."phoneNormalized" = ${lead.phoneNormalized}
+      LIMIT 1
+    `);
+    let client = matchedClients[0] ? await tx.client.findUnique({ where: { id: matchedClients[0].id } }) : null;
+    if (!client) {
+      client = await tx.client.create({ data: { name: lead.name, phone: lead.phone, phoneNormalized: lead.phoneNormalized } });
+    } else if (lead.name && lead.name !== client.name) {
+      client = await tx.client.update({ where: { id: client.id }, data: { name: lead.name } });
+    }
+    await tx.$executeRaw(Prisma.sql`
+      INSERT INTO "ClientPhone" ("id","clientId","phone","phoneNormalized","label","isPrimary","createdAt","updatedAt")
+      VALUES (${`cp_${client.id}_${lead.phoneNormalized}`},${client.id},${lead.phone},${lead.phoneNormalized},${client.phoneNormalized === lead.phoneNormalized ? "Основний" : "Додатковий"},${client.phoneNormalized === lead.phoneNormalized},NOW(),NOW())
+      ON CONFLICT ("phoneNormalized") DO NOTHING
+    `);
 
     let vehicle;
     if (lead.vin) {
@@ -128,7 +141,7 @@ export async function convertLead(id: string) {
     const diagnosticRequest = await tx.diagnosticRequest.create({ data: { clientId: client.id, vehicleId: vehicle.id, leadId: lead.id, status: DiagnosticRequestStatus.PENDING } });
     const movedCalls = await tx.callHistory.updateMany({ where: { leadId: lead.id }, data: { leadId: null, clientId: client.id, workOrderId: null } });
     const updatedLead = await tx.lead.update({ where: { id: lead.id }, data: { status: LeadStatus.ARRIVED, nextContactAt: null, nextAction: "Провести діагностику", lastActivityAt: new Date() } });
-    await tx.auditEvent.create({ data: { actorName: "CRM", entityType: "Lead", entityId: lead.id, action: "ARRIVED_CONVERSION", before: jsonSafe(lead), after: jsonSafe(updatedLead), metadata: jsonSafe({ clientId: client.id, vehicleId: vehicle.id, diagnosticRequestId: diagnosticRequest.id }) } });
+    await tx.auditEvent.create({ data: { actorName: "CRM", entityType: "Lead", entityId: lead.id, action: "ARRIVED_CONVERSION", before: jsonSafe(lead), after: jsonSafe(updatedLead), metadata: jsonSafe({ clientId: client.id, vehicleId: vehicle.id, diagnosticRequestId: diagnosticRequest.id, matchedByAnyPhone: true }) } });
 
     return { lead: updatedLead, client, vehicle, diagnosticRequest, workOrder: null, movedCallCount: movedCalls.count, hardGate: { code: "WORK_ORDER_AFTER_CONFIRMED_DIAGNOSTICS", passed: false, nextRequiredStatus: DiagnosticRequestStatus.CONFIRMED } };
   });
