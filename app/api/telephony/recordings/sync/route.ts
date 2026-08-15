@@ -22,7 +22,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json().catch(() => ({}));
     const requestedLimit = Number(body?.limit || 10);
     const limit = Math.min(Math.max(Number.isFinite(requestedLimit) ? Math.floor(requestedLimit) : 10, 1), 25);
-    const cutoff = new Date(Date.now() - 8_000);
+    const cutoff = new Date(Date.now() - 30_000);
     const from = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000);
 
     const calls = await prisma.callHistory.findMany({
