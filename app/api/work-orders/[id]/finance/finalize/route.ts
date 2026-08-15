@@ -4,6 +4,11 @@ import {
   finalizeWorkOrderFinance,
   WorkOrderFinanceError,
 } from "@/src/services/work-order-finance.service";
+import {
+  finalizeWorkOrderFinanceFromLines,
+  hasWorkOrderLines,
+  WorkOrderLineError,
+} from "@/src/services/work-order-lines.service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -11,6 +16,10 @@ export const dynamic = "force-dynamic";
 function errorResponse(error: unknown) {
   if (error instanceof WorkOrderFinanceValidationError) {
     return NextResponse.json({ ok: false, code: error.code, error: error.message }, { status: 400 });
+  }
+  if (error instanceof WorkOrderLineError) {
+    const status = error.code === "WORK_ORDER_NOT_FOUND" ? 404 : ["ACTUAL_ALREADY_LOCKED", "LINES_NOT_COMPLETED"].includes(error.code) ? 409 : 400;
+    return NextResponse.json({ ok: false, code: error.code, error: error.message }, { status });
   }
   if (error instanceof WorkOrderFinanceError) {
     const status = error.code === "WORK_ORDER_NOT_FOUND" ? 404 : 409;
@@ -27,8 +36,16 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     const actorName = typeof body.actorName === "string" && body.actorName.trim()
       ? body.actorName.trim().slice(0, 120)
       : "CRM / Сервіс-менеджер";
-    const result = await finalizeWorkOrderFinance(id, body, actorName);
-    return NextResponse.json({ ok: true, ...result });
+
+    const result = await hasWorkOrderLines(id)
+      ? await finalizeWorkOrderFinanceFromLines(id, body, actorName)
+      : await finalizeWorkOrderFinance(id, body, actorName);
+
+    return NextResponse.json({
+      ok: true,
+      sourceOfTruth: await hasWorkOrderLines(id) ? "WORK_ORDER_LINES" : "LEGACY_FINANCE_INPUT",
+      ...result,
+    });
   } catch (error) {
     return errorResponse(error);
   }
