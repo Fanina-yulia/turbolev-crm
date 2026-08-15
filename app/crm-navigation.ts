@@ -12,7 +12,6 @@ export const CRM_NAV = [
   { label: "Закупівлі та склад", slug: "procurement" },
   { label: "Оплати", slug: "payments" },
   { label: "Гарантії", slug: "warranties" },
-  { label: "Персонал", slug: "personnel" },
   { label: "Аналітика", slug: "analytics" },
 ] as const;
 
@@ -36,7 +35,7 @@ export const CRM_NAV_GROUPS: readonly CrmNavGroup[] = [
   { label: "Сервіс", items: navItems("planner", "diagnostics", "work-orders", "production", "quality") },
   { label: "Запчастини", items: navItems("parts", "procurement") },
   { label: "Фінанси", items: navItems("payments") },
-  { label: "Управління", items: navItems("warranties", "personnel", "analytics") },
+  { label: "Управління", items: navItems("warranties", "analytics") },
 ];
 
 export function sectionFromSlug(value: string | null | undefined): CrmSectionLabel {
