@@ -1,9 +1,4 @@
 import { getPrisma } from "@/src/lib/prisma";
-import {
-  getPlannerAvailability,
-  validateAppointmentAgainstSchedule,
-  type PlannerScheduleConflict,
-} from "@/src/services/planner-availability.service";
 
 export const PLANNER_BLOCKING_STATUSES = [
   "BOOKED",
@@ -72,16 +67,13 @@ export type AppointmentWrite = {
   createdById?: string | null;
 };
 
-export type PlannerResourceConflict = {
-  id: string;
-  resource: string;
-  resourceType: "POST" | "MECHANIC";
-  start: Date;
-  end: Date;
-  vehicle: string;
+export type PlannerResourceWarning = {
+  type: "MECHANIC_PARALLEL_LOAD";
+  mechanicId: string;
+  mechanic: string;
+  parallelCount: number;
+  message: string;
 };
-
-export type PlannerConflict = PlannerResourceConflict | PlannerScheduleConflict;
 
 function clean(value: unknown, max = 500) {
   if (typeof value !== "string") return null;
@@ -165,62 +157,27 @@ export async function getPlannerBoard(from: Date, to: Date, locationId?: string 
     ? locationId
     : locations[0]?.id ?? null;
 
-  const [appointments, availability] = activeLocationId
-    ? await Promise.all([
-        prisma.serviceAppointment.findMany({
-          where: {
-            locationId: activeLocationId,
-            plannedStartAt: { lt: to },
-            plannedEndAt: { gt: from },
-          },
-          orderBy: [{ plannedStartAt: "asc" }, { priority: "desc" }],
-          include: { post: true, mechanic: true },
-        }),
-        getPlannerAvailability(activeLocationId),
-      ])
-    : [[], null];
+  const appointments = activeLocationId
+    ? await prisma.serviceAppointment.findMany({
+        where: {
+          locationId: activeLocationId,
+          plannedStartAt: { lt: to },
+          plannedEndAt: { gt: from },
+        },
+        orderBy: [{ plannedStartAt: "asc" }, { priority: "desc" }],
+        include: { post: true, mechanic: true },
+      })
+    : [];
 
-  const activeMechanicIds = new Set(
-    locations
-      .find((location) => location.id === activeLocationId)
-      ?.mechanics.map((mechanic) => mechanic.id) ?? [],
-  );
-
-  // Legacy appointments may still reference a mechanic who was deactivated or replaced by
-  // a real EmployeeProfile-backed mechanic. Preserve that historical relation in the DB,
-  // but surface the work as unassigned on the operational board so it cannot disappear.
-  const boardAppointments = appointments.map((appointment) =>
-    appointment.mechanicId && !activeMechanicIds.has(appointment.mechanicId)
-      ? { ...appointment, mechanicId: null, mechanic: null }
-      : appointment,
-  );
-
-  return {
-    locations,
-    activeLocationId,
-    appointments: boardAppointments,
-    workSchedule: availability?.schedule ?? [],
-  };
+  return { locations, activeLocationId, appointments };
 }
 
 export async function validatePlannerResources(input: AppointmentWrite, excludeId?: string) {
   if (input.status === "CANCELLED" || input.status === "NO_SHOW" || input.status === "COMPLETED") {
-    return { conflict: null as PlannerConflict | null, warning: null };
+    return { conflict: null, warning: null };
   }
 
   const prisma = getPrisma();
-  const availability = await getPlannerAvailability(input.locationId);
-  if (!availability) throw new Error("LOCATION_NOT_FOUND");
-
-  const scheduleValidation = validateAppointmentAgainstSchedule(
-    availability,
-    input.plannedStartAt,
-    input.plannedEndAt,
-  );
-  if (!scheduleValidation.ok) {
-    return { conflict: scheduleValidation.conflict as PlannerConflict, warning: null };
-  }
-
   const overlapWhere = {
     id: excludeId ? { not: excludeId } : undefined,
     locationId: input.locationId,
@@ -233,42 +190,60 @@ export async function validatePlannerResources(input: AppointmentWrite, excludeI
     const postConflict = await prisma.serviceAppointment.findFirst({
       where: { ...overlapWhere, postId: input.postId },
       include: { post: true, mechanic: true },
-      orderBy: { plannedStartAt: "asc" },
     });
     if (postConflict) {
-      const conflict: PlannerResourceConflict = {
-        id: postConflict.id,
-        resource: postConflict.post?.name ?? "цей пост",
-        resourceType: "POST",
-        start: postConflict.plannedStartAt,
-        end: postConflict.plannedEndAt,
-        vehicle: postConflict.vehicleLabel ?? postConflict.plateNumber ?? "інший запис",
+      return {
+        conflict: {
+          id: postConflict.id,
+          resource: postConflict.post?.name ?? "цей пост",
+          resourceType: "POST" as const,
+          start: postConflict.plannedStartAt,
+          end: postConflict.plannedEndAt,
+          vehicle: postConflict.vehicleLabel ?? postConflict.plateNumber ?? "інший запис",
+        },
+        warning: null,
       };
-      return { conflict, warning: null };
     }
   }
 
   if (input.mechanicId) {
-    const mechanicConflict = await prisma.serviceAppointment.findFirst({
+    const mechanicOverlaps = await prisma.serviceAppointment.findMany({
       where: { ...overlapWhere, mechanicId: input.mechanicId },
       include: { mechanic: true },
       orderBy: { plannedStartAt: "asc" },
+      take: 2,
     });
 
-    if (mechanicConflict) {
-      const conflict: PlannerResourceConflict = {
-        id: mechanicConflict.id,
-        resource: mechanicConflict.mechanic?.name ?? "цей механік",
-        resourceType: "MECHANIC",
-        start: mechanicConflict.plannedStartAt,
-        end: mechanicConflict.plannedEndAt,
-        vehicle: mechanicConflict.vehicleLabel ?? mechanicConflict.plateNumber ?? "інший запис",
+    if (mechanicOverlaps.length >= 2) {
+      const conflict = mechanicOverlaps[0];
+      return {
+        conflict: {
+          id: conflict.id,
+          resource: conflict.mechanic?.name ?? "цей механік",
+          resourceType: "MECHANIC" as const,
+          start: conflict.plannedStartAt,
+          end: conflict.plannedEndAt,
+          vehicle: conflict.vehicleLabel ?? conflict.plateNumber ?? "інший запис",
+        },
+        warning: null,
       };
-      return { conflict, warning: null };
+    }
+
+    if (mechanicOverlaps.length === 1) {
+      const parallel = mechanicOverlaps[0];
+      const mechanicName = parallel.mechanic?.name ?? "Механік";
+      const warning: PlannerResourceWarning = {
+        type: "MECHANIC_PARALLEL_LOAD",
+        mechanicId: input.mechanicId,
+        mechanic: mechanicName,
+        parallelCount: 2,
+        message: `${mechanicName} буде вести 2 автомобілі одночасно. CRM дозволяє це, але попереджає про паралельне завантаження.`,
+      };
+      return { conflict: null, warning };
     }
   }
 
-  return { conflict: null as PlannerConflict | null, warning: null };
+  return { conflict: null, warning: null };
 }
 
 export async function createPlannerAppointment(input: AppointmentWrite) {
@@ -321,10 +296,6 @@ export async function updatePlannerAppointment(id: string, body: Record<string, 
   const validation = await validatePlannerResources(input, id);
   if (validation.conflict) return { ok: false as const, conflict: validation.conflict };
 
-  const appointment = await prisma.serviceAppointment.update({
-    where: { id },
-    data: input,
-    include: { post: true, mechanic: true },
-  });
+  const appointment = await prisma.serviceAppointment.update({ where: { id }, data: input, include: { post: true, mechanic: true } });
   return { ok: true as const, appointment, warning: validation.warning };
 }

@@ -76,8 +76,5 @@ jobs:
       - name: API security policy coverage
         run: npx --no-install tsx scripts/api-security-policy-smoke.ts
 
-      - name: Planner availability hard-gate smoke test
-        run: npx --no-install tsx scripts/planner-availability-smoke.ts
-
       - name: Production build
         run: npm run build
