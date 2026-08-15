@@ -2,7 +2,8 @@ import "server-only";
 
 import { getPrisma } from "@/src/lib/prisma";
 import { getNeonAuthSession, isNeonAuthConfigured, type NeonAuthSession } from "@/src/security/neon-auth-transport";
-import { widerScope, type AccessScopeCode, type PermissionCode } from "@/src/security/permissions";
+import { computeEffectivePermissions } from "@/src/security/rbac-engine";
+import type { AccessScopeCode, PermissionCode } from "@/src/security/permissions";
 
 export type ProvisioningState = "ANONYMOUS" | "AUTHENTICATED_UNPROVISIONED" | "ACTIVE" | "INACTIVE";
 export type EnforcementMode = "SHADOW" | "ENFORCED";
@@ -70,7 +71,10 @@ async function findOrClaimAppUser(session: NeonAuthSession) {
     where: { authUserId: session.user.id },
     include: { employeeProfile: true },
   });
-  if (appUser) return appUser;
+  if (appUser) {
+    await prisma.user.update({ where: { id: appUser.id }, data: { lastSeenAt: new Date() } }).catch(() => undefined);
+    return appUser;
+  }
 
   if (!session.user.email || session.user.emailVerified !== true) return null;
 
@@ -119,21 +123,24 @@ export async function getAccessContext(input?: Request | Headers): Promise<Acces
     };
   }
 
+  const employeeName = appUser.employeeProfile
+    ? `${appUser.employeeProfile.firstName} ${appUser.employeeProfile.lastName}`.trim()
+    : null;
+  const safeUser = {
+    id: appUser.id,
+    name: appUser.name,
+    email: appUser.email,
+    employeeId: appUser.employeeProfile?.id ?? null,
+    employeeName,
+  };
+
   if (!appUser.isActive) {
     return {
       ...anonymous,
       authenticated: true,
       provisioningState: "INACTIVE",
       authIdentity: session.user,
-      user: {
-        id: appUser.id,
-        name: appUser.name,
-        email: appUser.email,
-        employeeId: appUser.employeeProfile?.id ?? null,
-        employeeName: appUser.employeeProfile
-          ? `${appUser.employeeProfile.firstName} ${appUser.employeeProfile.lastName}`.trim()
-          : null,
-      },
+      user: safeUser,
     };
   }
 
@@ -151,9 +158,7 @@ export async function getAccessContext(input?: Request | Headers): Promise<Acces
       include: {
         role: {
           include: {
-            permissions: {
-              include: { permission: true },
-            },
+            permissions: { include: { permission: true } },
           },
         },
       },
@@ -171,27 +176,18 @@ export async function getAccessContext(input?: Request | Headers): Promise<Acces
     }),
   ]);
 
-  const permissions: Record<string, AccessScopeCode> = {};
-  for (const assignment of roleAssignments) {
-    for (const grant of assignment.role.permissions) {
-      const code = grant.permission.code;
-      const scope = grant.scope as AccessScopeCode;
-      permissions[code] = permissions[code] ? widerScope(permissions[code], scope) : scope;
-    }
-  }
-
-  const denied = new Set<string>();
-  for (const override of overrides) {
-    const code = override.permission.code;
-    if (override.effect === "DENY") {
-      denied.add(code);
-      delete permissions[code];
-      continue;
-    }
-    if (denied.has(code)) continue;
-    const scope = override.scope as AccessScopeCode;
-    permissions[code] = permissions[code] ? widerScope(permissions[code], scope) : scope;
-  }
+  const grants = roleAssignments.flatMap((assignment) =>
+    assignment.role.permissions.map((grant) => ({
+      code: grant.permission.code,
+      scope: grant.scope as AccessScopeCode,
+    })),
+  );
+  const overrideInput = overrides.map((override) => ({
+    code: override.permission.code,
+    scope: override.scope as AccessScopeCode,
+    effect: override.effect as "ALLOW" | "DENY",
+  }));
+  const effective = computeEffectivePermissions(grants, overrideInput);
 
   const locationIds = Array.from(
     new Set([
@@ -200,31 +196,21 @@ export async function getAccessContext(input?: Request | Headers): Promise<Acces
     ]),
   );
 
-  const employeeName = appUser.employeeProfile
-    ? `${appUser.employeeProfile.firstName} ${appUser.employeeProfile.lastName}`.trim()
-    : null;
-
   return {
     enforcementMode,
     authConfigured,
     authenticated: true,
     provisioningState: "ACTIVE",
     authIdentity: session.user,
-    user: {
-      id: appUser.id,
-      name: appUser.name,
-      email: appUser.email,
-      employeeId: appUser.employeeProfile?.id ?? null,
-      employeeName,
-    },
+    user: safeUser,
     roles: roleAssignments.map((assignment) => ({
       code: assignment.role.code,
       name: assignment.role.name,
       locationId: assignment.locationId,
       isPrimary: assignment.isPrimary,
     })),
-    permissions,
-    deniedPermissions: Array.from(denied),
+    permissions: effective.permissions,
+    deniedPermissions: effective.deniedPermissions,
     locationIds,
   };
 }
