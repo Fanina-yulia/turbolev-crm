@@ -3,12 +3,12 @@
 import { useCallback, useEffect, useState } from "react";
 import { NewRequestLauncher } from "./new-request-launcher";
 import { SettingsCenter } from "./settings-center";
+import { SettingsPersonnelBridge } from "./settings-personnel-bridge";
 import { LeadsBoardV2 } from "./leads-board-v2";
 import { CommunicationsHub } from "./communications-hub-server";
 import { ClientsVehicles } from "./clients-vehicles";
 import { PartsCatalog } from "./parts-catalog";
 import { PlannerV2 } from "./planner-v2";
-import { Personnel } from "./personnel";
 import { StationOverview } from "./station-overview";
 import { CRM_NAV_GROUPS, isCrmSection, sectionFromSlug, slugFromSection, type CrmSectionLabel } from "./crm-navigation";
 import { turboLevLogoDark, turboLevLogoLight } from "@/src/brand/logos";
@@ -43,12 +43,13 @@ export function CrmShell({ initialSection }: { initialSection?: string }) {
   const filterBanner = workflowFilter ? <div className="routeFilterBanner"><span>Активний фільтр:</span><b>{workflowFilterLabel || workflowFilter}</b><button type="button" onClick={clearWorkflowFilter}>Скинути ×</button></div> : null;
 
   return <main className="shell">
+    <SettingsPersonnelBridge/>
     <aside className="sidebar">
       <div className="brand"><div className="brandLogoWrap" aria-label="Turbo LEV"><img className="brandLogo brandLogoDark" src={turboLevLogoDark} alt="Turbo LEV"/><img className="brandLogo brandLogoLight" src={turboLevLogoLight} alt="Turbo LEV"/></div></div>
       <nav className="groupedNav">{CRM_NAV_GROUPS.map((group)=>{const containsActive=group.items.some((item)=>item.label===active);const hidden=Boolean(collapsed[group.label]&&!containsActive);return <section className="navGroup" key={group.label}><button type="button" className="navGroupHead" onClick={()=>setCollapsed((current)=>({...current,[group.label]:!current[group.label]}))}><span>{group.label}</span><i>{hidden?"+":"−"}</i></button>{!hidden&&<div className="navGroupItems">{group.items.map((item)=><button className={active===item.label?"navActive":""} key={item.slug} onClick={()=>navigateTo(item.label)}><span className="navDot"/>{item.label}{item.label==="Комунікації"&&<span style={{marginLeft:"auto",fontSize:9,color:"var(--orange)"}}>NEW</span>}</button>)}</div>}</section>;})}<SettingsCenter/></nav>
       <div className="sidebarFoot"><span className="liveDot"/> Станція онлайн</div>
     </aside>
     <div className={shellStyles.globalNewRequest}><NewRequestLauncher/></div>
-    <section className={`workspace ${shellStyles.workspaceWithFloatingAction}`}>{active!=="Огляд станції"&&filterBanner}{active==="Комунікації"?<CommunicationsHub/>:active==="Ліди"?<LeadsBoardV2/>:active==="Клієнти та авто"?<ClientsVehicles/>:active==="Планувальник"?<PlannerV2/>:active==="Підбір запчастин"?<PartsCatalog/>:active==="Персонал"?<Personnel/>:active==="Огляд станції"?<StationOverview/>:<div className="comingSoon"><p className="eyebrow">TURBO LEV CRM</p><h1>{active}</h1>{workflowFilter?<p>Показуємо зріз: <strong>{workflowFilterLabel||workflowFilter}</strong>.</p>:<p>Розділ буде реалізований наступним.</p>}</div>}</section>
+    <section className={`workspace ${shellStyles.workspaceWithFloatingAction}`}>{active!=="Огляд станції"&&filterBanner}{active==="Комунікації"?<CommunicationsHub/>:active==="Ліди"?<LeadsBoardV2/>:active==="Клієнти та авто"?<ClientsVehicles/>:active==="Планувальник"?<PlannerV2/>:active==="Підбір запчастин"?<PartsCatalog/>:active==="Огляд станції"?<StationOverview/>:<div className="comingSoon"><p className="eyebrow">TURBO LEV CRM</p><h1>{active}</h1>{workflowFilter?<p>Показуємо зріз: <strong>{workflowFilterLabel||workflowFilter}</strong>.</p>:<p>Розділ буде реалізований наступним.</p>}</div>}</section>
   </main>;
 }
