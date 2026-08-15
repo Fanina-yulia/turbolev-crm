@@ -15,6 +15,24 @@ export function SignInForm() {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
 
+  async function confirmCrmAccess() {
+    const meResponse = await fetch("/api/auth/me", { credentials: "include", cache: "no-store" });
+    const me = (await meResponse.json().catch(() => null)) as AccessStatus | null;
+    if (me?.authenticated && me.provisioningState === "ACTIVE") {
+      window.location.assign("/");
+      return true;
+    }
+    if (me?.authenticated && me.provisioningState === "AUTHENTICATED_UNPROVISIONED") {
+      setMessage("Обліковий запис підтверджено, але доступ до Turbo LEV CRM ще не призначено адміністратором.");
+      return true;
+    }
+    if (me?.provisioningState === "INACTIVE") {
+      setMessage("Доступ цього облікового запису деактивовано.");
+      return true;
+    }
+    return false;
+  }
+
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setBusy(true);
@@ -31,22 +49,7 @@ export function SignInForm() {
         setMessage(result?.message || result?.error || "Не вдалося увійти. Перевірте email і пароль.");
         return;
       }
-
-      const meResponse = await fetch("/api/auth/me", { credentials: "include", cache: "no-store" });
-      const me = (await meResponse.json().catch(() => null)) as AccessStatus | null;
-      if (me?.authenticated && me.provisioningState === "ACTIVE") {
-        window.location.assign("/");
-        return;
-      }
-      if (me?.authenticated && me.provisioningState === "AUTHENTICATED_UNPROVISIONED") {
-        setMessage("Обліковий запис підтверджено, але доступ до Turbo LEV CRM ще не призначено адміністратором.");
-        return;
-      }
-      if (me?.provisioningState === "INACTIVE") {
-        setMessage("Доступ цього облікового запису деактивовано.");
-        return;
-      }
-      setMessage("Сесію створено, але CRM не змогла підтвердити ваш профіль доступу.");
+      if (!(await confirmCrmAccess())) setMessage("Сесію створено, але CRM не змогла підтвердити ваш профіль доступу.");
     } catch {
       setMessage("Сервіс входу тимчасово недоступний. Спробуйте ще раз.");
     } finally {
@@ -54,8 +57,38 @@ export function SignInForm() {
     }
   }
 
+  async function signInWithGoogle() {
+    setBusy(true);
+    setMessage("");
+    try {
+      const response = await fetch("/api/auth/sign-in/social", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify({ provider: "google", callbackURL: `${window.location.origin}/` }),
+      });
+      const result = await response.json().catch(() => null);
+      if (!response.ok) {
+        setMessage(result?.message || result?.error || "Не вдалося розпочати вхід через Google.");
+        return;
+      }
+      const target = typeof result?.url === "string" ? result.url : typeof result?.redirect === "string" ? result.redirect : null;
+      if (target) {
+        window.location.assign(target);
+        return;
+      }
+      setMessage("Google не повернув адресу авторизації. Спробуйте ще раз.");
+    } catch {
+      setMessage("Сервіс Google-входу тимчасово недоступний.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <form className={styles.form} onSubmit={submit}>
+      <button type="button" disabled={busy} onClick={signInWithGoogle}>Увійти через Google</button>
+      <div className={styles.help}>або робочим email і паролем</div>
       <label>
         <span>Email</span>
         <input type="email" autoComplete="username" value={email} onChange={(event) => setEmail(event.target.value)} required />
@@ -66,7 +99,7 @@ export function SignInForm() {
       </label>
       <button type="submit" disabled={busy}>{busy ? "Перевіряю…" : "Увійти"}</button>
       {message ? <div className={styles.message} role="status">{message}</div> : null}
-      <p className={styles.help}>Самостійна реєстрація не відкриває доступ до CRM. Права призначаються всередині Turbo LEV.</p>
+      <p className={styles.help}>Навіть успішний вхід не відкриває CRM без призначеної ролі Turbo LEV.</p>
     </form>
   );
 }
