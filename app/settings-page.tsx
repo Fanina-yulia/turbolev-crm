@@ -9,7 +9,6 @@ import styles from "./settings-page.module.css";
 const SETTINGS_LABELS:Record<string,string>={
   schedule:"Графік",
   personnel:"Персонал",
-  clients:"Клієнти",
   suppliers:"Постачальники",
   warehouse:"Склад",
   workPrices:"Прайс робіт",
