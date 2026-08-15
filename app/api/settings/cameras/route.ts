@@ -61,7 +61,6 @@ function publicCamera(camera: {
 export async function GET(request: NextRequest) {
   const access = await authorize(PERMISSIONS.SETTINGS_READ, {
     request,
-    strict: true,
     minimumScope: "ALL",
   });
   if (!access.allowed) return access.response!;
@@ -81,7 +80,6 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const access = await authorize(PERMISSIONS.SETTINGS_WRITE, {
     request,
-    strict: true,
     minimumScope: "ALL",
   });
   if (!access.allowed) return access.response!;

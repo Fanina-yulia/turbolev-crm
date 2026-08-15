@@ -61,16 +61,24 @@ const strictSources = [
   "app/api/security/users/[id]/roles/route.ts",
   "app/api/security/config/route.ts",
   "app/api/me/compensation/route.ts",
+];
+for (const sourcePath of strictSources) {
+  const source = await fs.readFile(sourcePath, "utf8");
+  assert.match(source, /authorize\(/, `${sourcePath} must call authorize()`);
+  assert.match(source, /strict:\s*true/, `${sourcePath} must enforce even while global mode is SHADOW`);
+}
+
+const shadowAwareSources = [
   "app/api/settings/cameras/route.ts",
   "app/api/settings/cameras/[id]/route.ts",
   "app/api/settings/cameras/[id]/events/route.ts",
   "app/api/settings/cameras/[id]/rotate-ingest-token/route.ts",
   "app/api/settings/cameras/[id]/test/route.ts",
 ];
-for (const sourcePath of strictSources) {
+for (const sourcePath of shadowAwareSources) {
   const source = await fs.readFile(sourcePath, "utf8");
-  assert.match(source, /authorize\(/, `${sourcePath} must call authorize()`);
-  assert.match(source, /strict:\s*true/, `${sourcePath} must enforce even while global mode is SHADOW`);
+  assert.match(source, /authorize\(/, `${sourcePath} must remain RBAC-aware`);
+  assert.doesNotMatch(source, /strict:\s*true/, `${sourcePath} must follow the global SHADOW/ENFORCED mode`);
 }
 
 for (const sourcePath of ["app/api/personnel/route.ts", "app/api/audit/route.ts"]) {

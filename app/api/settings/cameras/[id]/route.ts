@@ -63,7 +63,6 @@ function publicCamera(camera: {
 export async function PATCH(request: NextRequest, context: RouteContext) {
   const access = await authorize(PERMISSIONS.SETTINGS_WRITE, {
     request,
-    strict: true,
     minimumScope: "ALL",
   });
   if (!access.allowed) return access.response!;
@@ -109,7 +108,6 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
 export async function DELETE(request: NextRequest, context: RouteContext) {
   const access = await authorize(PERMISSIONS.SETTINGS_WRITE, {
     request,
-    strict: true,
     minimumScope: "ALL",
   });
   if (!access.allowed) return access.response!;
