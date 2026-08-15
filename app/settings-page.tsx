@@ -15,7 +15,8 @@ export function SettingsPage(){
     const layout=()=>{
       const headings=Array.from(document.querySelectorAll<HTMLHeadingElement>("h2"));
       const heading=headings.find(node=>(node.textContent||"").trim()==="Налаштування");
-      const modal=heading?.closest<HTMLElement>("section");
+      if(!heading)return false;
+      const modal=heading.closest<HTMLElement>("section");
       const backdrop=modal?.parentElement as HTMLElement|null;
       if(!modal||!backdrop)return false;
 
