@@ -8,7 +8,7 @@ type Employee={id:string;firstName:string;lastName:string;birthDate:string|null;
 type FormState={id?:string;firstName:string;lastName:string;birthDate:string;email:string;phone:string;phoneCountry:string;address:string;photoUrl:string;personnelCategory:string;position:string;crmLogin:string;password:string;isActive:boolean;baseSalary:string;minimumSalary:string;workPercent:string;partsSalesPercent:string;partsMarginPercent:string;netProfitPercent:string;payrollRuleNote:string;documents:EmployeeDoc[]};
 
 const categories=["Керівництво","Продажі","Підбір запчастин","Майстри","Автомеханіки","Адміністрація","Маркетинг","Інше"];
-const positions=["Виконавчий директор","РОП","Продавник","Підборщик","Завідувач станцією","Майстер","Автомеханік","Маркетинг-директор","SMM-маркетолог","Performance-маркетолог","Бухгалтер","HR","IT / Адміністратор"];
+const positions=["Виконавчий директор","РОП","Продавець","Підборщик","Завідувач станцією","Майстер","Автомеханік","Маркетинг-директор","SMM-маркетолог","Performance-маркетолог","Бухгалтер","HR","IT / Адміністратор"];
 const docs=["Паспорт","ІПН","Диплом","Трудова","Резюме","Договір підряду","Договір про найм","Договір МВ"];
 const empty:FormState={firstName:"",lastName:"",birthDate:"",email:"",phone:"+380",phoneCountry:"UA",address:"",photoUrl:"",personnelCategory:"",position:"",crmLogin:"",password:"",isActive:true,baseSalary:"",minimumSalary:"",workPercent:"",partsSalesPercent:"",partsMarginPercent:"",netProfitPercent:"",payrollRuleNote:"",documents:docs.map(name=>({type:name.toUpperCase().replaceAll(" ","_"),name,status:"MISSING"}))};
 function num(v:string|number|null){return v==null?"":String(v)}
@@ -21,14 +21,14 @@ export function Personnel(){
  useEffect(()=>{void load()},[]);
  const filtered=useMemo(()=>items.filter(e=>{const hay=`${e.firstName} ${e.lastName} ${e.email||""} ${e.phone||""} ${e.position||""}`.toLowerCase();return(!query||hay.includes(query.toLowerCase()))&&(!category||e.personnelCategory===category)}),[items,query,category]);
  async function save(){if(!form)return;setError("");setSaving(true);try{const method=form.id?"PUT":"POST";const r=await fetch("/api/personnel",{method,headers:{"content-type":"application/json"},body:JSON.stringify(form)});const d=await r.json();if(!r.ok||!d.ok)throw new Error(d.error||"Не вдалося зберегти");setForm(null);await load()}catch(e){setError(e instanceof Error?e.message:"Помилка збереження")}finally{setSaving(false)}}
- async function remove(){if(!form?.id)return;if(!window.confirm("Видалити співробітника?"))return;const r=await fetch(`/api/personnel?id=${encodeURIComponent(form.id)}`,{method:"DELETE"});if(r.ok){setForm(null);await load()}}
+ async function remove(){if(!form?.id)return;if(!window.confirm("Деактивувати співробітника? Історія KPI, нарахувань і робіт буде збережена."))return;const r=await fetch(`/api/personnel?id=${encodeURIComponent(form.id)}`,{method:"DELETE"});if(r.ok){setForm(null);await load()}}
  function generate(){const chars="ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%";let p="";for(let i=0;i<14;i++)p+=chars[Math.floor(Math.random()*chars.length)];setForm(f=>f?{...f,password:p}:f)}
  function update<K extends keyof FormState>(key:K,value:FormState[K]){setForm(f=>f?{...f,[key]:value}:f)}
  function newEmployee(){setForm({...empty,documents:empty.documents.map(d=>({...d}))})}
 
  if(form) return <div className={styles.editorPage}>
    <header className={styles.editorTop}>
-     <div><button className={styles.backLink} onClick={()=>setForm(null)}>← Персонал</button><p className={styles.eyebrow}>{form.id?"КАРТКА СПІВРОБІТНИКА":"НОВИЙ СПІВРОБІТНИК"}</p><h1>{form.firstName||"Новий"} {form.lastName||"працівник"}</h1><span className={styles.muted}>Особисті дані, роль у Turbo LEV, документи, доступ до CRM і зарплатна формула.</span></div>
+     <div><button className={styles.backLink} onClick={()=>setForm(null)}>← Персонал</button><p className={styles.eyebrow}>{form.id?"КАРТКА СПІВРОБІТНИКА":"НОВИЙ СПІВРОБІТНИК"}</p><h1>{form.firstName||"Новий"} {form.lastName||"працівник"}</h1><span className={styles.muted}>Особисті дані, роль у Turbo LEV, документи, CRM-доступ, KPI та параметри мотивації.</span></div>
      <div className={styles.topActions}><span className={`${styles.statusPill} ${form.isActive?styles.statusActive:""}`}>{form.isActive?"Активний":"Неактивний"}</span><button className={styles.secondary} onClick={()=>setForm(null)}>Закрити</button><button className={styles.save} disabled={saving} onClick={()=>void save()}>{saving?"Зберігаю…":"✓ Зберегти"}</button></div>
    </header>
    {error&&<div className={styles.error}>{error}</div>}
@@ -62,7 +62,7 @@ export function Personnel(){
      </div>
 
      <div className={styles.salarySection}>
-       <div className={styles.salaryTitle}><div><strong>Правила нарахування зарплати</strong><span>Ставка та змінні складові винагороди</span></div></div>
+       <div className={styles.salaryTitle}><div><strong>Чернетка параметрів мотивації</strong><span>Формула зарплати ще не активна; поля збережені для майбутнього налаштування</span></div></div>
        <div className={styles.salaryFormula}>
          <SalaryField label="Ставка" value={form.baseSalary} suffix="₴" onChange={v=>update("baseSalary",v)}/>
          <span className={styles.mathSign}>+</span>
@@ -75,10 +75,10 @@ export function Personnel(){
      </div>
    </section>
 
-   <footer className={styles.editorFooter}>{form.id&&<button className={styles.danger} onClick={()=>void remove()}>Видалити працівника</button>}<div className={styles.footerRight}><button className={styles.secondary} onClick={()=>setForm(null)}>Закрити</button><button className={styles.save} disabled={saving} onClick={()=>void save()}>{saving?"Зберігаю…":"✓ Зберегти"}</button></div></footer>
+   <footer className={styles.editorFooter}>{form.id&&<button className={styles.danger} onClick={()=>void remove()}>Деактивувати працівника</button>}<div className={styles.footerRight}><button className={styles.secondary} onClick={()=>setForm(null)}>Закрити</button><button className={styles.save} disabled={saving} onClick={()=>void save()}>{saving?"Зберігаю…":"✓ Зберегти"}</button></div></footer>
  </div>;
 
- return <div className={styles.page}><header className={styles.head}><div><p className={styles.eyebrow}>TURBO LEV · HR</p><h1>Персонал</h1><span className={styles.muted}>Співробітники, посади, документи, CRM-доступ і правила нарахування зарплати</span></div><button className={styles.primary} onClick={newEmployee}>+ Додати співробітника</button></header>
+ return <div className={styles.page}><header className={styles.head}><div><p className={styles.eyebrow}>TURBO LEV · HR</p><h1>Персонал</h1><span className={styles.muted}>Співробітники, посади, документи, CRM-доступ, KPI та майбутні параметри мотивації</span></div><button className={styles.primary} onClick={newEmployee}>+ Додати співробітника</button></header>
  <div className={styles.toolbar}><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Пошук за ПІБ, телефоном, e-mail або посадою..."/><select value={category} onChange={e=>setCategory(e.target.value)}><option value="">Усі категорії</option>{categories.map(c=><option key={c}>{c}</option>)}</select></div>{error&&<div className={styles.error}>{error}</div>}
  {loading?<div className={styles.empty}>Завантаження…</div>:filtered.length?<div className={styles.grid}>{filtered.map(e=><article className={styles.card} key={e.id}><button className={styles.identity} onClick={()=>setForm(toForm(e))}><span className={styles.avatar}>{e.photoUrl?<img src={e.photoUrl} alt=""/>:initials(e)}</span><span><strong>{e.firstName} {e.lastName}</strong><small>{e.position||"Посада не вказана"}</small><small>{e.phone||e.email||"Контакти не вказані"}</small></span><span className={`${styles.status} ${e.isActive?styles.active:""}`}>{e.isActive?"Активний":"Неактивний"}</span></button><div className={styles.facts}><div><span>Категорія</span><b>{e.personnelCategory||"—"}</b></div><div><span>Ставка</span><b>{e.baseSalary?`${Number(e.baseSalary).toLocaleString("uk-UA")} ₴`:"—"}</b></div><div><span>% робіт</span><b>{e.workPercent?`${e.workPercent}%`:"—"}</b></div><div><span>Документи</span><b>{e.documents.filter(d=>d.status!=="MISSING").length}/{docs.length}</b></div></div></article>)}</div>:<div className={styles.empty}>Співробітників не знайдено.</div>}
  </div>
