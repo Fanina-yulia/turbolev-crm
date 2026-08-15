@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { SettingsCenter } from "./settings-center";
+import { WorkflowSettingsBridge } from "./workflow-settings-bridge";
 import styles from "./settings-page.module.css";
 
 export function SettingsPage(){
@@ -60,5 +61,5 @@ export function SettingsPage(){
     };
   },[]);
 
-  return <div ref={hostRef} className={styles.host}><SettingsCenter/></div>;
+  return <div ref={hostRef} className={styles.host}><WorkflowSettingsBridge/><SettingsCenter/></div>;
 }
