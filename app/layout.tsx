@@ -20,6 +20,7 @@ import "./communications-header-polish.css";
 import "./clients-vehicles-rich-cards.css";
 import "./settings-suppliers.css";
 import "./settings-integrations.css";
+import "./settings-page-layout-fix.css";
 import { PhoneInputNormalizer } from "./phone-input-normalizer";
 import { LeadDetailsEnhancer } from "./lead-details-enhancer";
 import { VehicleConfigurationEnhancer } from "./vehicle-configuration-enhancer";
