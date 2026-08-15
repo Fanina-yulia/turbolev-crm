@@ -26,14 +26,10 @@ function round(value: number, digits = 2) {
   return Math.round((value + Number.EPSILON) * scale) / scale;
 }
 
-function dayCount(start: Date, end: Date) {
-  return Math.max(1, Math.round((endExclusive(end).getTime() - dateOnly(start).getTime()) / 86_400_000));
-}
-
 /**
- * Calculates effective FTE for the period. A person assigned for half of a month
- * counts as roughly 0.5 FTE. Multiple overlapping assignments of the same person
- * are capped at 1.0 FTE inside this role/location scope.
+ * Effective FTE is time-weighted over the requested period. A person assigned
+ * for half of a month counts as ~0.5 FTE. Overlapping assignments for the same
+ * person are capped at 1.0 FTE inside the role/location scope.
  */
 function effectiveFteByEmployee(
   assignments: Array<{ employeeId: string; startsAt: Date; endsAt: Date | null }>,
@@ -42,19 +38,14 @@ function effectiveFteByEmployee(
 ) {
   const periodFrom = dateOnly(periodStart);
   const periodUntil = endExclusive(periodEnd);
-  const periodDays = dayCount(periodStart, periodEnd);
+  const periodMs = Math.max(1, periodUntil.getTime() - periodFrom.getTime());
   const fractions = new Map<string, number>();
 
   for (const assignment of assignments) {
-    const from = new Date(Math.max(periodFrom.getTime(), assignment.startsAt.getTime()));
-    const until = new Date(
-      Math.min(
-        periodUntil.getTime(),
-        assignment.endsAt ? assignment.endsAt.getTime() + 1 : periodUntil.getTime(),
-      ),
-    );
-    const overlapDays = Math.max(0, (until.getTime() - from.getTime()) / 86_400_000);
-    const fraction = Math.min(1, overlapDays / periodDays);
+    const fromMs = Math.max(periodFrom.getTime(), assignment.startsAt.getTime());
+    const untilMs = Math.min(periodUntil.getTime(), assignment.endsAt?.getTime() ?? periodUntil.getTime());
+    const overlapMs = Math.max(0, untilMs - fromMs);
+    const fraction = Math.min(1, overlapMs / periodMs);
     fractions.set(assignment.employeeId, Math.min(1, (fractions.get(assignment.employeeId) ?? 0) + fraction));
   }
 
@@ -92,15 +83,24 @@ export async function recordRoleDemandSnapshot(args: {
   if (!Number.isFinite(args.demandValue) || args.demandValue < 0) {
     throw new Error("Role demand must be a non-negative finite value.");
   }
+  if (
+    args.dataCompletenessPct != null &&
+    (!Number.isFinite(args.dataCompletenessPct) || args.dataCompletenessPct < 0 || args.dataCompletenessPct > 100)
+  ) {
+    throw new Error("Demand data completeness must be between 0 and 100.");
+  }
 
   const prisma = getPrisma();
   const periodStart = dateOnly(args.periodStart);
   const periodEnd = dateOnly(args.periodEnd);
   const locationKey = args.locationId ?? "ALL";
+  const metricCode = args.metricCode.trim();
+  if (!metricCode) throw new Error("Demand metricCode is required.");
+
   const snapshotKey = [
     args.roleId,
     locationKey,
-    args.metricCode.trim(),
+    metricCode,
     periodStart.toISOString().slice(0, 10),
     periodEnd.toISOString().slice(0, 10),
   ].join(":");
@@ -113,7 +113,7 @@ export async function recordRoleDemandSnapshot(args: {
       locationId: args.locationId ?? null,
       periodStart,
       periodEnd,
-      metricCode: args.metricCode.trim(),
+      metricCode,
       demandValue: args.demandValue,
       unit: args.unit,
       sourceType: args.sourceType,
@@ -132,9 +132,24 @@ export async function recordRoleDemandSnapshot(args: {
   });
 }
 
+type CapacityMatch = {
+  demand: {
+    metricCode: string;
+    demandValue: unknown;
+    unit: string;
+    dataCompletenessPct: unknown;
+  };
+  capacity: {
+    capacityPerFte: unknown;
+    unit: string;
+    locationId: string | null;
+  };
+};
+
 /**
- * Builds the role economics snapshot from the same employee economics facts used
- * elsewhere in CRM plus explicit verified demand/capacity. It never guesses demand.
+ * Builds the role economics snapshot from employee economics plus explicit,
+ * verified demand/capacity. It never guesses demand and never silently chooses
+ * between competing capacity metrics: ambiguous capacity data blocks Required FTE.
  */
 export async function rebuildRoleEconomicsSnapshot(args: {
   roleId: string;
@@ -158,7 +173,7 @@ export async function rebuildRoleEconomicsSnapshot(args: {
       roleId: role.id,
       ...(args.locationId ? { locationId: args.locationId } : {}),
       startsAt: { lt: until },
-      OR: [{ endsAt: null }, { endsAt: { gte: periodStart } }],
+      OR: [{ endsAt: null }, { endsAt: { gt: periodStart } }],
     },
     select: { employeeId: true, startsAt: true, endsAt: true },
   });
@@ -167,40 +182,56 @@ export async function rebuildRoleEconomicsSnapshot(args: {
   const employeeIds = [...fteByEmployee.keys()];
   const actualFte = round([...fteByEmployee.values()].reduce((sum, value) => sum + value, 0));
 
-  const demand = await prisma.roleDemandSnapshot.findFirst({
+  const demands = await prisma.roleDemandSnapshot.findMany({
     where: {
       roleId: role.id,
       locationId: args.locationId ?? null,
       periodStart,
       periodEnd,
     },
-    orderBy: { computedAt: "desc" },
+    orderBy: [{ computedAt: "desc" }, { metricCode: "asc" }],
+    select: {
+      metricCode: true,
+      demandValue: true,
+      unit: true,
+      dataCompletenessPct: true,
+    },
   });
 
-  let capacity: { capacityPerFte: unknown; unit: string; locationId: string | null } | null = null;
-  if (demand) {
-    const standards = await prisma.roleCapacityStandard.findMany({
-      where: {
-        roleId: role.id,
-        metricCode: demand.metricCode,
-        effectiveFrom: { lte: periodEnd },
-        OR: [{ effectiveTo: null }, { effectiveTo: { gte: periodStart } }],
-        ...(args.locationId
-          ? { OR: [{ locationId: args.locationId }, { locationId: null }] }
-          : { locationId: null }),
-      },
-      orderBy: { effectiveFrom: "desc" },
-      select: { capacityPerFte: true, unit: true, locationId: true },
-    });
-    capacity =
-      (args.locationId ? standards.find((item) => item.locationId === args.locationId) : undefined) ??
-      standards.find((item) => item.locationId == null) ??
+  const metricCodes = [...new Set(demands.map((item) => item.metricCode))];
+  const standards = metricCodes.length
+    ? await prisma.roleCapacityStandard.findMany({
+        where: {
+          roleId: role.id,
+          metricCode: { in: metricCodes },
+          effectiveFrom: { lte: periodEnd },
+          AND: [
+            { OR: [{ effectiveTo: null }, { effectiveTo: { gte: periodStart } }] },
+            args.locationId
+              ? { OR: [{ locationId: args.locationId }, { locationId: null }] }
+              : { locationId: null },
+          ],
+        },
+        orderBy: [{ effectiveFrom: "desc" }, { metricCode: "asc" }],
+        select: { metricCode: true, capacityPerFte: true, unit: true, locationId: true },
+      })
+    : [];
+
+  const matches: CapacityMatch[] = [];
+  for (const demand of demands) {
+    const metricStandards = standards.filter((item) => item.metricCode === demand.metricCode && item.unit === demand.unit);
+    const capacity =
+      (args.locationId ? metricStandards.find((item) => item.locationId === args.locationId) : undefined) ??
+      metricStandards.find((item) => item.locationId == null) ??
       null;
+    if (capacity) matches.push({ demand, capacity });
   }
 
-  const capacityCompatible = Boolean(demand && capacity && demand.unit === capacity.unit);
-  const demandValue = demand ? n(demand.demandValue) : null;
-  const capacityPerFte = capacityCompatible && capacity ? n(capacity.capacityPerFte) : null;
+  // One role-period should have exactly one authoritative capacity metric.
+  const capacityAmbiguous = matches.length > 1;
+  const match = matches.length === 1 ? matches[0] : null;
+  const demandValue = match ? n(match.demand.demandValue) : null;
+  const capacityPerFte = match ? n(match.capacity.capacityPerFte) : null;
   const requiredFte = demandValue != null && capacityPerFte != null
     ? calculateRequiredFte(demandValue, capacityPerFte)
     : null;
@@ -222,9 +253,7 @@ export async function rebuildRoleEconomicsSnapshot(args: {
     : [];
 
   const fullCost = round(employeeSnapshots.reduce((sum, row) => sum + n(row.fullCost), 0));
-  const directContribution = round(
-    employeeSnapshots.reduce((sum, row) => sum + n(row.directContribution), 0),
-  );
+  const directContribution = round(employeeSnapshots.reduce((sum, row) => sum + n(row.directContribution), 0));
   const managedValue = round(employeeSnapshots.reduce((sum, row) => sum + n(row.managedValue), 0));
   const kpiScore = weightedAverage(
     employeeSnapshots.map((row) => ({ employeeId: row.employeeId, value: row.kpiScore })),
@@ -240,16 +269,18 @@ export async function rebuildRoleEconomicsSnapshot(args: {
     capacityUtilization: utilizationPct,
   });
 
-  const status = calculateRoleStatus({
-    economicsMode: role.economicsMode,
-    actualFte,
-    requiredFte,
-    fullCost,
-    directContribution,
-    managedValue,
-    kpiScore,
-    utilizationPct,
-  });
+  const status = capacityAmbiguous
+    ? "INSUFFICIENT_DATA" as const
+    : calculateRoleStatus({
+        economicsMode: role.economicsMode,
+        actualFte,
+        requiredFte,
+        fullCost,
+        directContribution,
+        managedValue,
+        kpiScore,
+        utilizationPct,
+      });
 
   const snapshotKey = [
     role.id,
@@ -297,23 +328,24 @@ export async function rebuildRoleEconomicsSnapshot(args: {
 
   return {
     snapshot,
-    demand: demand
+    capacityBasis: match
       ? {
-          metricCode: demand.metricCode,
+          metricCode: match.demand.metricCode,
           demandValue,
-          unit: demand.unit,
-          dataCompletenessPct: demand.dataCompletenessPct,
+          unit: match.demand.unit,
+          demandDataCompletenessPct: match.demand.dataCompletenessPct,
+          capacityPerFte,
+          capacityLocationId: match.capacity.locationId,
         }
-      : null,
-    capacity: capacityCompatible && capacity
-      ? { capacityPerFte, unit: capacity.unit, locationId: capacity.locationId }
       : null,
     diagnostics: {
       employeeCount: employeeIds.length,
       employeeSnapshotsFound: employeeSnapshots.length,
-      capacityCompatible,
-      missingDemand: !demand,
-      missingCapacity: !capacity,
+      demandMetrics: metricCodes,
+      compatibleCapacityMetrics: matches.map((item) => item.demand.metricCode),
+      capacityAmbiguous,
+      missingDemand: demands.length === 0,
+      missingCompatibleCapacity: matches.length === 0,
     },
   };
 }
