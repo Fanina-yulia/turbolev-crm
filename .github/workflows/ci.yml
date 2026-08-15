@@ -64,6 +64,9 @@ jobs:
       - name: Employee economics attribution smoke test
         run: npx --no-install tsx scripts/employee-economics-smoke.ts
 
+      - name: Telephony webhook smoke test
+        run: npx --no-install tsx scripts/production-telephony-smoke.ts
+
       - name: RBAC security smoke test
         run: npx --no-install tsx scripts/rbac-smoke.ts
 

@@ -70,6 +70,29 @@ enum DiagnosticRequestStatus {
   CANCELLED
 }
 
+enum CommunicationChannel {
+  FACEBOOK
+  INSTAGRAM
+  TIKTOK
+  BINOTEL
+  OLX
+  WEBSITE
+}
+
+enum InquiryState {
+  NEW
+  IN_WORK
+  CONVERTED
+  LINKED
+  SPAM
+}
+
+enum MessageDirection {
+  IN
+  OUT
+  SYSTEM
+}
+
 model User {
   id             String        @id @default(cuid())
   name           String
@@ -82,11 +105,12 @@ model User {
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
 
-  managedCalls        CallHistory[]             @relation("CallManager")
-  assignedLeads       Lead[]                    @relation("LeadAssignee")
-  employeeProfile     EmployeeProfile?
-  accessRoles         UserAccessRole[]
-  permissionOverrides UserPermissionOverride[]
+  managedCalls           CallHistory[]          @relation("CallManager")
+  assignedLeads          Lead[]                 @relation("LeadAssignee")
+  communicationInquiries CommunicationInquiry[] @relation("CommunicationAssignee")
+  employeeProfile        EmployeeProfile?
+  accessRoles            UserAccessRole[]
+  permissionOverrides    UserPermissionOverride[]
 
   @@index([authUserId, isActive])
 }
@@ -283,9 +307,10 @@ model Lead {
   createdAt         DateTime      @default(now())
   updatedAt         DateTime      @updatedAt
 
-  assignedUser       User?               @relation("LeadAssignee", fields: [assignedUserId], references: [id], onDelete: SetNull)
-  calls              CallHistory[]
-  diagnosticRequests DiagnosticRequest[] @relation("LeadDiagnostics")
+  assignedUser           User?                  @relation("LeadAssignee", fields: [assignedUserId], references: [id], onDelete: SetNull)
+  calls                  CallHistory[]
+  diagnosticRequests     DiagnosticRequest[]    @relation("LeadDiagnostics")
+  communicationInquiries CommunicationInquiry[]
 
   @@index([phone])
   @@index([phoneNormalized])
@@ -331,4 +356,73 @@ model CallHistory {
   @@index([clientId])
   @@index([workOrderId])
   @@index([managerId])
+}
+
+model CommunicationInquiry {
+  id              String               @id
+  externalId      String?
+  channel         CommunicationChannel
+  state           InquiryState         @default(NEW)
+  name            String?
+  phone           String?
+  phoneNormalized String?
+  handle          String?
+  subject         String
+  preview         String
+  vehicle         String?
+  plate           String?
+  plateNormalized String?
+  unread          Boolean              @default(true)
+  answered        Boolean              @default(false)
+  receivedAt      DateTime
+  sourceDetail    String?
+  campaign        String?
+  utm             String?
+  leadId          String?
+  assignedUserId  String?
+  metadata        Json?
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @default(now()) @updatedAt
+
+  lead         Lead?                  @relation(fields: [leadId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  assignedUser User?                  @relation("CommunicationAssignee", fields: [assignedUserId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  messages     CommunicationMessage[]
+
+  @@unique([channel, externalId], map: "CommunicationInquiry_channel_externalId_key")
+  @@index([channel, receivedAt])
+  @@index([state, receivedAt])
+  @@index([phoneNormalized])
+  @@index([plateNormalized])
+  @@index([assignedUserId, state])
+}
+
+model CommunicationMessage {
+  id         String           @id
+  inquiryId  String
+  externalId String?
+  direction  MessageDirection
+  text       String
+  sentAt     DateTime
+  metadata   Json?
+  createdAt  DateTime         @default(now())
+
+  inquiry CommunicationInquiry @relation(fields: [inquiryId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([inquiryId, externalId], map: "CommunicationMessage_inquiry_externalId_key")
+  @@index([inquiryId, sentAt])
+}
+
+model WebhookEvent {
+  id              String               @id
+  channel         CommunicationChannel
+  externalEventId String
+  eventType       String?
+  payload         Json
+  status          String               @default("RECEIVED")
+  processedAt     DateTime?
+  error           String?
+  createdAt       DateTime             @default(now())
+
+  @@unique([channel, externalEventId], map: "WebhookEvent_channel_externalEventId_key")
+  @@index([status, createdAt])
 }

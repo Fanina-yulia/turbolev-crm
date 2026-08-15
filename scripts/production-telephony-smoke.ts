@@ -2,15 +2,21 @@ import assert from "node:assert/strict";
 import { NextRequest } from "next/server";
 import { POST as binotelWebhookPost } from "../app/api/telephony/binotel-webhook/route";
 import { getPrisma } from "../src/lib/prisma";
+import { getSqlPool } from "../src/lib/sql";
 
-const TEST_CALL_ID = "test_binotel_call_1001";
-const TEST_PHONE = "380671234567";
-const TEST_INTERNAL = "101";
+const UNKNOWN_PHONE = "380671234567";
+const SECONDARY_PHONE = "380671234568";
+const PRIMARY_PHONE = "380671234569";
+const MISSED_PHONE = "380671234570";
+const INTERNAL_NUMBER = "101";
+const UNKNOWN_CALL_ID = "smoke_binotel_unknown_1001";
+const SECONDARY_CALL_ID = "smoke_binotel_secondary_1002";
+const MISSED_CALL_ID = "smoke_binotel_missed_1003";
+const TEST_USER_EMAIL = "telephony-smoke@turbolev.invalid";
 
 async function invokeWebhook(event: string, body: Record<string, unknown>) {
   const url = new URL("https://smoke.local/api/telephony/binotel-webhook");
   url.searchParams.set("event", event);
-
   const token = process.env.BINOTEL_WEBHOOK_TOKEN?.trim();
   if (token) url.searchParams.set("token", token);
 
@@ -19,146 +25,171 @@ async function invokeWebhook(event: string, body: Record<string, unknown>) {
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body),
   });
-
   const response = await binotelWebhookPost(request);
   const json = await response.json();
-
   assert.equal(response.status, 200, `${event} webhook failed: ${JSON.stringify(json)}`);
   assert.equal(json.ok, true, `${event} webhook returned ok=false`);
   return json as Record<string, unknown>;
 }
 
+async function inquiryCount(callId: string) {
+  const result = await getSqlPool().query(
+    `SELECT COUNT(*)::int AS count FROM "CommunicationInquiry" WHERE "channel"='BINOTEL' AND "externalId"=$1`,
+    [`binotel-call:${callId}`],
+  );
+  return Number(result.rows[0]?.count || 0);
+}
+
+async function cleanup() {
+  const prisma = getPrisma();
+  const pool = getSqlPool();
+  const callIds = [UNKNOWN_CALL_ID, SECONDARY_CALL_ID, MISSED_CALL_ID];
+  await pool.query(
+    `DELETE FROM "CommunicationMessage" WHERE "inquiryId" IN (
+       SELECT "id" FROM "CommunicationInquiry" WHERE "channel"='BINOTEL' AND "externalId" = ANY($1::text[])
+     )`,
+    [callIds.map((id) => `binotel-call:${id}`)],
+  ).catch(() => undefined);
+  await pool.query(
+    `DELETE FROM "CommunicationInquiry" WHERE "channel"='BINOTEL' AND "externalId" = ANY($1::text[])`,
+    [callIds.map((id) => `binotel-call:${id}`)],
+  ).catch(() => undefined);
+  await prisma.callHistory.deleteMany({ where: { binotelCallId: { in: callIds } } }).catch(() => undefined);
+  await prisma.user.deleteMany({ where: { email: TEST_USER_EMAIL } }).catch(() => undefined);
+  const clients = await prisma.client.findMany({
+    where: { phoneNormalized: { in: [PRIMARY_PHONE, SECONDARY_PHONE] } },
+    select: { id: true },
+  }).catch(() => []);
+  if (clients.length) {
+    await prisma.client.deleteMany({ where: { id: { in: clients.map((item) => item.id) } } }).catch(() => undefined);
+  }
+  await prisma.lead.deleteMany({ where: { phoneNormalized: { in: [UNKNOWN_PHONE, SECONDARY_PHONE, MISSED_PHONE] } } }).catch(() => undefined);
+}
+
 async function main() {
   const prisma = getPrisma();
+  await cleanup();
 
-  const tables = await prisma.$queryRaw<Array<{ tablename: string }>>`
-    SELECT tablename
-    FROM pg_tables
-    WHERE schemaname = 'public'
-      AND tablename IN ('Client', 'Lead', 'CallHistory', 'User', 'Vehicle', 'WorkOrder')
-  `;
+  try {
+    const tables = await prisma.$queryRaw<Array<{ tablename: string }>>`
+      SELECT tablename FROM pg_tables
+      WHERE schemaname='public' AND tablename IN ('Client','ClientPhone','Lead','CallHistory','User','CommunicationInquiry')
+    `;
+    const names = new Set(tables.map((row) => row.tablename));
+    for (const required of ["Client", "ClientPhone", "Lead", "CallHistory", "User", "CommunicationInquiry"]) {
+      assert(names.has(required), `Missing telephony table: ${required}`);
+    }
 
-  const tableNames = new Set(tables.map((row) => row.tablename));
-  for (const name of ["Client", "Lead", "CallHistory", "User", "Vehicle", "WorkOrder"]) {
-    assert(tableNames.has(name), `Missing production table: ${name}`);
+    await prisma.user.create({
+      data: { name: "Telephony Smoke Manager", email: TEST_USER_EMAIL, internalNumber: INTERNAL_NUMBER },
+    });
+
+    const incoming = await invokeWebhook("incomingCall", {
+      eventName: "incomingCall",
+      callDetails: {
+        generalCallID: UNKNOWN_CALL_ID,
+        externalNumber: `+${UNKNOWN_PHONE}`,
+        internalNumber: INTERNAL_NUMBER,
+        callType: "0",
+        customerData: { name: "Smoke Unknown Caller" },
+        employeeData: { email: TEST_USER_EMAIL },
+      },
+    });
+    assert.equal(incoming.createdLead, false, "Unknown call must not auto-create a Lead");
+    assert.equal(await prisma.lead.count({ where: { phoneNormalized: UNKNOWN_PHONE } }), 0, "Unknown call created a Lead");
+    assert.equal(await inquiryCount(UNKNOWN_CALL_ID), 1, "Unknown call was not mirrored into Inbox");
+
+    const callAfterIncoming = await prisma.callHistory.findUnique({ where: { binotelCallId: UNKNOWN_CALL_ID } });
+    assert(callAfterIncoming, "CallHistory was not created");
+    assert.equal(callAfterIncoming.externalNumber, UNKNOWN_PHONE);
+    assert.equal(callAfterIncoming.internalNumber, INTERNAL_NUMBER);
+    assert(callAfterIncoming.managerId, "Manager was not linked from Binotel extension/e-mail");
+
+    await invokeWebhook("answeredTheCall", {
+      eventName: "answeredTheCall",
+      callDetails: {
+        generalCallID: UNKNOWN_CALL_ID,
+        externalNumber: `+${UNKNOWN_PHONE}`,
+        internalAdditionalData: INTERNAL_NUMBER,
+        callType: "0",
+        employeeData: { email: TEST_USER_EMAIL },
+      },
+    });
+    await invokeWebhook("answeredTheCall", {
+      eventName: "answeredTheCall",
+      callDetails: {
+        generalCallID: UNKNOWN_CALL_ID,
+        externalNumber: `+${UNKNOWN_PHONE}`,
+        internalAdditionalData: INTERNAL_NUMBER,
+        callType: "0",
+      },
+    });
+    assert.equal(await prisma.callHistory.count({ where: { binotelCallId: UNKNOWN_CALL_ID } }), 1, "Duplicate CallHistory detected");
+    assert.equal(await inquiryCount(UNKNOWN_CALL_ID), 1, "Duplicate Binotel inquiry detected");
+    assert.equal((await prisma.callHistory.findUnique({ where: { binotelCallId: UNKNOWN_CALL_ID } }))?.status, "ANSWERED");
+
+    const client = await prisma.client.create({
+      data: {
+        name: "Telephony Smoke Client",
+        phone: `+${PRIMARY_PHONE}`,
+        phoneNormalized: PRIMARY_PHONE,
+        phones: {
+          create: {
+            id: "client_phone_telephony_smoke",
+            phone: `+${SECONDARY_PHONE}`,
+            phoneNormalized: SECONDARY_PHONE,
+            label: "Додатковий",
+            isPrimary: false,
+          },
+        },
+      },
+    });
+
+    await invokeWebhook("incomingCall", {
+      eventName: "incomingCall",
+      callDetails: {
+        generalCallID: SECONDARY_CALL_ID,
+        externalNumber: `+${SECONDARY_PHONE}`,
+        internalNumber: INTERNAL_NUMBER,
+        callType: "0",
+      },
+    });
+    const secondaryCall = await prisma.callHistory.findUnique({ where: { binotelCallId: SECONDARY_CALL_ID } });
+    assert.equal(secondaryCall?.clientId, client.id, "Secondary ClientPhone was not resolved to Client");
+    assert.equal(secondaryCall?.leadId, null, "Client call should not attach an unrelated Lead");
+
+    await invokeWebhook("hangupTheCall", {
+      eventName: "hangupTheCall",
+      callDetails: {
+        generalCallID: MISSED_CALL_ID,
+        externalNumber: `+${MISSED_PHONE}`,
+        internalNumber: INTERNAL_NUMBER,
+        callType: "0",
+        disposition: "NO ANSWER",
+        billsec: 0,
+      },
+    });
+    const missed = await prisma.callHistory.findUnique({ where: { binotelCallId: MISSED_CALL_ID } });
+    assert.equal(missed?.status, "MISSED", "Unanswered terminal call must be MISSED");
+    assert.equal(await inquiryCount(MISSED_CALL_ID), 1, "Missed call must remain in Inbox");
+    assert.equal(await prisma.lead.count({ where: { phoneNormalized: MISSED_PHONE } }), 0, "Missed call auto-created a Lead");
+
+    console.log("TELEPHONY_SMOKE_OK", {
+      unknownCall: "inquiry_without_auto_lead",
+      nestedCallDetails: true,
+      internalAdditionalData: true,
+      secondaryClientPhone: true,
+      idempotentCallHistory: true,
+      missedCallInbox: true,
+    });
+  } finally {
+    await cleanup();
+    await prisma.$disconnect();
+    await getSqlPool().end().catch(() => undefined);
   }
-
-  const indexes = await prisma.$queryRaw<Array<{ indexname: string }>>`
-    SELECT indexname
-    FROM pg_indexes
-    WHERE schemaname = 'public'
-      AND indexname IN (
-        'Client_phoneNormalized_key',
-        'Lead_phoneNormalized_idx',
-        'Lead_assignedUserId_status_idx',
-        'Lead_nextContactAt_idx',
-        'CallHistory_binotelCallId_key',
-        'CallHistory_workOrderId_idx',
-        'WorkOrder_clientId_closedAt_idx'
-      )
-  `;
-
-  const requiredIndexes = [
-    "Client_phoneNormalized_key",
-    "Lead_phoneNormalized_idx",
-    "Lead_assignedUserId_status_idx",
-    "Lead_nextContactAt_idx",
-    "CallHistory_binotelCallId_key",
-    "CallHistory_workOrderId_idx",
-    "WorkOrder_clientId_closedAt_idx",
-  ];
-  const indexNames = new Set(indexes.map((row) => row.indexname));
-  for (const name of requiredIndexes) {
-    assert(indexNames.has(name), `Missing production index: ${name}`);
-  }
-
-  const existingClient = await prisma.client.findUnique({
-    where: { phoneNormalized: TEST_PHONE },
-  });
-  assert.equal(
-    existingClient,
-    null,
-    "Smoke-test phone belongs to a Client; aborting to avoid touching real client data",
-  );
-
-  const beforeLeads = await prisma.lead.count({ where: { phoneNormalized: TEST_PHONE } });
-
-  const incoming = await invokeWebhook("incomingCall", {
-    callID: TEST_CALL_ID,
-    externalNumber: `+${TEST_PHONE}`,
-    internalNumber: TEST_INTERNAL,
-    callType: "0",
-  });
-
-  const lead = await prisma.lead.findFirst({
-    where: { phoneNormalized: TEST_PHONE },
-    orderBy: { updatedAt: "desc" },
-  });
-
-  assert(lead, "Lead was not created/found after incomingCall");
-  assert.equal(lead.phoneNormalized, TEST_PHONE);
-  assert.equal(lead.status, "NEW");
-  assert.equal(lead.source, "BINOTEL");
-
-  const callAfterIncoming = await prisma.callHistory.findUnique({
-    where: { binotelCallId: TEST_CALL_ID },
-  });
-  assert(callAfterIncoming, "CallHistory was not created after incomingCall");
-  assert.equal(callAfterIncoming.leadId, lead.id, "CallHistory is not linked to Lead");
-  assert.equal(callAfterIncoming.clientId, null);
-  assert.equal(callAfterIncoming.externalNumber, TEST_PHONE);
-
-  await invokeWebhook("answeredTheCall", {
-    callID: TEST_CALL_ID,
-    externalNumber: `+${TEST_PHONE}`,
-    internalNumber: TEST_INTERNAL,
-    callType: "0",
-  });
-
-  await invokeWebhook("answeredTheCall", {
-    callID: TEST_CALL_ID,
-    externalNumber: `+${TEST_PHONE}`,
-    internalNumber: TEST_INTERNAL,
-    callType: "0",
-  });
-
-  const afterLeads = await prisma.lead.count({ where: { phoneNormalized: TEST_PHONE } });
-  const afterCalls = await prisma.callHistory.count({ where: { binotelCallId: TEST_CALL_ID } });
-  const finalCall = await prisma.callHistory.findUnique({
-    where: { binotelCallId: TEST_CALL_ID },
-  });
-  const finalLead = await prisma.lead.findUnique({ where: { id: lead.id } });
-
-  assert.equal(afterCalls, 1, "Duplicate CallHistory rows detected");
-  assert.equal(afterLeads, Math.max(beforeLeads, 1), "Duplicate Lead rows detected");
-  assert.equal(finalCall?.status, "ANSWERED", "answeredTheCall did not set ANSWERED");
-  assert.equal(finalCall?.leadId, lead.id, "Lead relation changed during UPSERT");
-  assert.equal(finalLead?.status, "NEW", "Existing active lead status was reset unexpectedly");
-
-  console.log("PRODUCTION_TELEPHONY_SMOKE_OK", {
-    requiredTables: [...tableNames].sort(),
-    requiredIndexes: [...indexNames].sort(),
-    lead: {
-      id: lead.id,
-      phoneNormalized: lead.phoneNormalized,
-      status: finalLead?.status,
-      source: lead.source,
-    },
-    call: {
-      binotelCallId: finalCall?.binotelCallId,
-      status: finalCall?.status,
-      leadLinked: finalCall?.leadId === lead.id,
-      duplicateCount: afterCalls,
-    },
-    firstIncomingCreatedLead: incoming.createdLead,
-  });
-
-  await prisma.$disconnect();
 }
 
 main().catch((error) => {
-  console.error("PRODUCTION_TELEPHONY_SMOKE_FAILED", {
-    message: error instanceof Error ? error.message : String(error),
-  });
+  console.error("TELEPHONY_SMOKE_FAILED", { message: error instanceof Error ? error.message : String(error) });
   process.exit(1);
 });

@@ -38,6 +38,8 @@ type ParsedWebhook = {
   callId: string;
   externalNumber: string | null;
   internalNumber: string | null;
+  customerName: string | null;
+  employeeEmail: string | null;
   type: CallType | null;
   duration: number | null;
   startedAt: Date | null;
@@ -49,9 +51,16 @@ type ParsedWebhook = {
 
 const ACTIVE_LEAD_STATUSES: LeadStatus[] = [
   LeadStatus.NEW,
+  LeadStatus.CONTACTED,
+  LeadStatus.QUALIFIED,
+  LeadStatus.ESTIMATE,
+  LeadStatus.WAITING,
+  LeadStatus.NO_ANSWER,
+  LeadStatus.BOOKED,
+  LeadStatus.ARRIVED,
+  // Legacy active states kept for existing records during transition.
   LeadStatus.QUALIFYING,
   LeadStatus.WARM_LEAD,
-  LeadStatus.BOOKED,
 ];
 
 function isRecord(value: unknown): value is JsonRecord {
@@ -59,9 +68,13 @@ function isRecord(value: unknown): value is JsonRecord {
 }
 
 function searchableContainers(raw: JsonRecord): JsonRecord[] {
-  const nestedNames = ["data", "call", "request", "payload"];
-  const nested = nestedNames.map((name) => raw[name]).filter(isRecord);
-  return [raw, ...nested];
+  const primaryNames = ["data", "call", "request", "payload", "callDetails"];
+  const primary = [raw, ...primaryNames.map((name) => raw[name]).filter(isRecord)];
+  const secondaryNames = ["callDetails", "customerData", "employeeData", "pbxNumberData"];
+  const secondary = primary.flatMap((container) =>
+    secondaryNames.map((name) => container[name]).filter(isRecord),
+  );
+  return [...primary, ...secondary];
 }
 
 function firstField(raw: JsonRecord, names: string[]): unknown {
@@ -79,6 +92,21 @@ function firstString(raw: JsonRecord, names: string[]): string | null {
   if (value === undefined || value === null) return null;
   const result = String(value).trim();
   return result || null;
+}
+
+function nestedString(raw: JsonRecord, containerName: string, names: string[]): string | null {
+  for (const container of searchableContainers(raw)) {
+    const nested = container[containerName];
+    if (!isRecord(nested)) continue;
+    for (const name of names) {
+      const value = nested[name];
+      if (value !== undefined && value !== null && value !== "") {
+        const result = String(value).trim();
+        if (result) return result;
+      }
+    }
+  }
+  return null;
 }
 
 function firstInteger(raw: JsonRecord, names: string[]): number | null {
@@ -188,12 +216,15 @@ export function parseBinotelWebhook(raw: JsonRecord): ParsedWebhook {
     callId,
     externalNumber: normalizedExternal || null,
     internalNumber: firstString(raw, [
+      "internalAdditionalData",
       "internalNumber",
       "internalPhone",
       "employeeNumber",
       "extension",
       "to",
     ]),
+    customerName: nestedString(raw, "customerData", ["name", "fullName", "customerName"]),
+    employeeEmail: nestedString(raw, "employeeData", ["email", "employeeEmail"])?.toLowerCase() || null,
     type: inferCallType(raw, event),
     duration: firstInteger(raw, ["duration", "callDuration", "billsec", "billSec", "seconds"]),
     startedAt: firstDate(raw, ["startedAt", "startTime", "startTimestamp", "callStartTime"]),
@@ -216,7 +247,12 @@ function isBusyHint(hint: string | null): boolean {
 }
 
 function isAnsweredHint(hint: string | null): boolean {
-  return Boolean(hint && /(answered|answer|success|completed|normal.?clearing)/i.test(hint));
+  if (!hint) return false;
+  const normalized = hint.trim().toLowerCase().replace(/[_-]+/g, " ").replace(/\s+/g, " ");
+  if (/(no\s*answer|unanswered|not\s*answered|cancel(?:led)?|failed|busy)/i.test(normalized)) {
+    return false;
+  }
+  return /(^|\s)(answer|answered|success|completed|normal clearing)(\s|$)/i.test(normalized);
 }
 
 function calculateDurationSeconds(
@@ -274,6 +310,16 @@ export async function processBinotelWebhook(raw: JsonRecord) {
     }
 
     if (!client && !lead) {
+      const secondaryPhone = await tx.clientPhone.findUnique({
+        where: { phoneNormalized: normalizedNumber },
+        select: { clientId: true },
+      });
+      if (secondaryPhone) {
+        client = await tx.client.findUnique({ where: { id: secondaryPhone.clientId } });
+      }
+    }
+
+    if (!client && !lead) {
       lead = await tx.lead.findFirst({
         where: {
           status: { in: ACTIVE_LEAD_STATUSES },
@@ -294,9 +340,14 @@ export async function processBinotelWebhook(raw: JsonRecord) {
       : null;
 
     const internalNumber = parsed.internalNumber || existing?.internalNumber || null;
-    const manager = internalNumber
+    let manager = internalNumber
       ? await tx.user.findUnique({ where: { internalNumber } })
       : null;
+    if (!manager && parsed.employeeEmail) {
+      manager = await tx.user.findFirst({
+        where: { email: { equals: parsed.employeeEmail, mode: "insensitive" }, isActive: true },
+      });
+    }
 
     const startedAt =
       parsed.startedAt || existing?.startedAt ||
@@ -413,7 +464,7 @@ export async function processBinotelWebhook(raw: JsonRecord) {
       callId: parsed.callId,
       event: parsed.event,
       phone: normalizedNumber,
-      name: result.client?.name || result.lead?.name || "Невідомий номер",
+      name: result.client?.name || result.lead?.name || parsed.customerName || "Невідомий номер",
       status: result.call.status,
       duration: result.call.duration,
       internalNumber: result.call.internalNumber,
