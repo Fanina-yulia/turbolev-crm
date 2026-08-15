@@ -27,7 +27,12 @@ export async function POST(_request: Request, context: RouteContext) {
       },
     });
 
-    return NextResponse.json({ ok: true, ingestToken, ingestEndpoint: "/api/camera-events/email" });
+    return NextResponse.json({
+      ok: true,
+      cameraUid: camera.uid,
+      ingestToken,
+      ingestEndpoint: "/api/camera-events/email",
+    });
   } catch (error) {
     console.error("POST /api/settings/cameras/[id]/rotate-ingest-token failed", error);
     return NextResponse.json({ ok: false, error: "Не вдалося оновити ключ Email Events." }, { status: 500 });
