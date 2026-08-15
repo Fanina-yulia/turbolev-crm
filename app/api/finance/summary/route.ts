@@ -104,7 +104,7 @@ export async function GET(request: NextRequest) {
       _sum: { amount: true },
     }),
     prisma.moneyAccount.findMany({
-      where: { isActive: true, currency },
+      where: { isActive: true, currency, NOT: { id: { startsWith: "demo_" } } },
       select: { id: true, name: true, type: true, openingBalance: true, locationId: true, sortOrder: true },
       orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
     }),
