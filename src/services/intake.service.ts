@@ -72,11 +72,30 @@ export async function createIntake(input: IntakeInput) {
   const appointmentEnd = appointmentStart ? new Date(appointmentStart.getTime() + 60 * 60_000) : null;
 
   return prisma.$transaction(async (tx) => {
-    const client = await tx.client.upsert({
-      where: { phoneNormalized },
-      create: { name: clean(input.customerName, 160), phone: displayPhone(phoneNormalized), phoneNormalized },
-      update: { name: clean(input.customerName, 160) || undefined, phone: displayPhone(phoneNormalized) },
-    });
+    const matchingClients = await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+      SELECT DISTINCT c."id"
+      FROM "Client" c
+      LEFT JOIN "ClientPhone" cp ON cp."clientId" = c."id"
+      WHERE c."phoneNormalized" = ${phoneNormalized} OR cp."phoneNormalized" = ${phoneNormalized}
+      LIMIT 1
+    `);
+    let client = matchingClients[0] ? await tx.client.findUnique({ where: { id: matchingClients[0].id } }) : null;
+    const inputName = clean(input.customerName, 160);
+    if (!client) {
+      client = await tx.client.create({ data: { name: inputName, phone: displayPhone(phoneNormalized), phoneNormalized } });
+      await tx.$executeRaw(Prisma.sql`
+        INSERT INTO "ClientPhone" ("id","clientId","phone","phoneNormalized","label","isPrimary","createdAt","updatedAt")
+        VALUES (${`cp_${client.id}_${phoneNormalized}`},${client.id},${displayPhone(phoneNormalized)},${phoneNormalized},'Основний',true,NOW(),NOW())
+        ON CONFLICT ("phoneNormalized") DO NOTHING
+      `);
+    } else {
+      if (inputName && inputName !== client.name) client = await tx.client.update({ where: { id: client.id }, data: { name: inputName } });
+      await tx.$executeRaw(Prisma.sql`
+        INSERT INTO "ClientPhone" ("id","clientId","phone","phoneNormalized","label","isPrimary","createdAt","updatedAt")
+        VALUES (${`cp_${client.id}_${phoneNormalized}`},${client.id},${displayPhone(phoneNormalized)},${phoneNormalized},${client.phoneNormalized === phoneNormalized ? "Основний" : "Додатковий"},${client.phoneNormalized === phoneNormalized},NOW(),NOW())
+        ON CONFLICT ("phoneNormalized") DO NOTHING
+      `);
+    }
 
     let vehicle = vin ? await tx.vehicle.findUnique({ where: { vin } }) : null;
     if (!vehicle && plateNormalized) vehicle = await tx.vehicle.findUnique({ where: { plateNormalized } });
@@ -142,7 +161,7 @@ export async function createIntake(input: IntakeInput) {
       data: {
         actorName: clean(input.responsible, 160) || "CRM",
         entityType: "Lead", entityId: lead.id, action: "CREATE_FROM_INTAKE", after: json(lead),
-        metadata: json({ clientId: client.id, vehicleId: vehicle.id, appointmentId: appointment?.id || null, vehicleReassigned: needsReassign, previousClientId }),
+        metadata: json({ clientId: client.id, vehicleId: vehicle.id, appointmentId: appointment?.id || null, vehicleReassigned: needsReassign, previousClientId, contactPhone: displayPhone(phoneNormalized) }),
       },
     });
     if (needsReassign) {

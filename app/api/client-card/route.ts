@@ -7,18 +7,39 @@ import { validateVin } from "@/src/domain/vin";
 
 export const dynamic = "force-dynamic";
 
-function normalizePhone(value: string) { return value.replace(/\D/g, ""); }
+function normalizePhone(value: string) {
+  let digits = value.replace(/\D/g, "");
+  if (digits.startsWith("0")) digits = `38${digits}`;
+  if (!digits.startsWith("380") && digits.length === 9) digits = `380${digits}`;
+  return digits.slice(0, 12);
+}
 
 async function readClient(phoneNormalized: string) {
   const pool = getSqlPool();
   const result = await pool.query(
-    `SELECT c."id", c."name", c."phone",
-      COALESCE(jsonb_agg(jsonb_build_object(
-        'id', v."id", 'plateNumber', v."plateNumber", 'vin', v."vin", 'brand', v."brand", 'model', v."model", 'year', v."year",
-        'engineName', v."engineName", 'fuelType', v."fuelType", 'driveType', v."driveType", 'vehicleDataSource', v."vehicleDataSource", 'vehicleDataConfidence', v."vehicleDataConfidence"
-      ) ORDER BY v."updatedAt" DESC) FILTER (WHERE v."id" IS NOT NULL), '[]'::jsonb) AS vehicles
-     FROM "Client" c LEFT JOIN "Vehicle" v ON v."clientId" = c."id"
-     WHERE c."phoneNormalized" = $1 GROUP BY c."id" LIMIT 1`, [phoneNormalized]);
+    `WITH target AS (
+       SELECT c."id"
+       FROM "Client" c
+       LEFT JOIN "ClientPhone" cp ON cp."clientId" = c."id"
+       WHERE c."phoneNormalized" = $1 OR cp."phoneNormalized" = $1
+       ORDER BY CASE WHEN c."phoneNormalized" = $1 THEN 0 ELSE 1 END
+       LIMIT 1
+     )
+     SELECT c."id", c."name", c."phone",
+       COALESCE((
+         SELECT jsonb_agg(jsonb_build_object(
+           'id', cp."id", 'phone', cp."phone", 'phoneNormalized', cp."phoneNormalized", 'label', cp."label", 'isPrimary', cp."isPrimary"
+         ) ORDER BY cp."isPrimary" DESC, cp."createdAt" ASC)
+         FROM "ClientPhone" cp WHERE cp."clientId" = c."id"
+       ), '[]'::jsonb) AS phones,
+       COALESCE((
+         SELECT jsonb_agg(jsonb_build_object(
+           'id', v."id", 'plateNumber', v."plateNumber", 'vin', v."vin", 'brand', v."brand", 'model', v."model", 'year', v."year",
+           'engineName', v."engineName", 'fuelType', v."fuelType", 'driveType', v."driveType", 'vehicleDataSource', v."vehicleDataSource", 'vehicleDataConfidence', v."vehicleDataConfidence"
+         ) ORDER BY v."updatedAt" DESC)
+         FROM "Vehicle" v WHERE v."clientId" = c."id"
+       ), '[]'::jsonb) AS vehicles
+     FROM "Client" c JOIN target t ON t."id" = c."id"`, [phoneNormalized]);
   return result.rows[0] || null;
 }
 
@@ -35,16 +56,24 @@ export async function POST(request: NextRequest) {
   const phoneNormalized = normalizePhone(phone);
   const plate = normalizeRegistrationPlate(String(body.plate || ""));
   const vinRaw = String(body.vin || "").trim().toUpperCase();
-  if (!phoneNormalized) return NextResponse.json({ error: "Не вказаний телефон клієнта" }, { status: 400 });
+  if (phoneNormalized.length !== 12 || !phoneNormalized.startsWith("380")) return NextResponse.json({ error: "Не вказаний коректний телефон клієнта" }, { status: 400 });
   if (!plate && !vinRaw) return NextResponse.json({ error: "Вкажіть держномер або VIN" }, { status: 400 });
 
   const pool = getSqlPool(); const db = await pool.connect();
   try {
     await db.query("BEGIN");
-    const existingClient = await db.query(`SELECT "id","name","phone" FROM "Client" WHERE "phoneNormalized"=$1 LIMIT 1`, [phoneNormalized]);
+    const existingClient = await db.query(
+      `SELECT DISTINCT c."id",c."name",c."phone",c."phoneNormalized"
+       FROM "Client" c LEFT JOIN "ClientPhone" cp ON cp."clientId"=c."id"
+       WHERE c."phoneNormalized"=$1 OR cp."phoneNormalized"=$1 LIMIT 1`, [phoneNormalized]);
     const clientId = existingClient.rows[0]?.id || `client_${randomUUID()}`;
-    if (!existingClient.rows[0]) await db.query(`INSERT INTO "Client" ("id","name","phone","phoneNormalized","createdAt","updatedAt") VALUES ($1,$2,$3,$4,NOW(),NOW())`, [clientId, name, phone, phoneNormalized]);
-    else if (name && !existingClient.rows[0].name) await db.query(`UPDATE "Client" SET "name"=$2,"updatedAt"=NOW() WHERE "id"=$1`, [clientId, name]);
+    if (!existingClient.rows[0]) {
+      await db.query(`INSERT INTO "Client" ("id","name","phone","phoneNormalized","createdAt","updatedAt") VALUES ($1,$2,$3,$4,NOW(),NOW())`, [clientId, name, phone || `+${phoneNormalized}`, phoneNormalized]);
+      await db.query(`INSERT INTO "ClientPhone" ("id","clientId","phone","phoneNormalized","label","isPrimary","createdAt","updatedAt") VALUES ($1,$2,$3,$4,'Основний',true,NOW(),NOW()) ON CONFLICT ("phoneNormalized") DO NOTHING`, [`cp_${randomUUID()}`, clientId, phone || `+${phoneNormalized}`, phoneNormalized]);
+    } else {
+      if (name && name !== existingClient.rows[0].name) await db.query(`UPDATE "Client" SET "name"=$2,"updatedAt"=NOW() WHERE "id"=$1`, [clientId, name]);
+      await db.query(`INSERT INTO "ClientPhone" ("id","clientId","phone","phoneNormalized","label","isPrimary","createdAt","updatedAt") VALUES ($1,$2,$3,$4,$5,$6,NOW(),NOW()) ON CONFLICT ("phoneNormalized") DO NOTHING`, [`cp_${randomUUID()}`, clientId, phone || `+${phoneNormalized}`, phoneNormalized, existingClient.rows[0].phoneNormalized === phoneNormalized ? "Основний" : "Додатковий", existingClient.rows[0].phoneNormalized === phoneNormalized]);
+    }
 
     let data: Record<string, unknown> = {};
     if (plate) {
