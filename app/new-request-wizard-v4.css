@@ -1,24 +1,63 @@
-.requestModalV4{width:min(1220px,calc(100vw - 36px));max-height:94vh;overflow:hidden}
-.requestModalV4 .requestModalHead{flex:0 0 auto;background:var(--panel);z-index:5}
-.requestModalV4 .requestScroll{min-height:0;flex:1;overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain}
-.requestModalV4 .requestStepperV4{position:sticky;top:0;z-index:4;padding:10px 24px;background:color-mix(in srgb,var(--panel-2) 96%,transparent);backdrop-filter:blur(10px)}
-.requestModalV4 .requestStepperV4 button.locked{opacity:.58;cursor:not-allowed}
-.requestModalV4 .quickLookupGridV4{padding:10px 24px;gap:10px;background:var(--panel)}
-.requestModalV4 .phoneQuickLookup,.requestModalV4 .plateQuickLookup{padding:10px 12px;border-radius:12px;min-height:0}
-.requestModalV4 .plateQuickCopy{display:flex;justify-content:space-between;gap:12px;align-items:center;margin:0 0 7px}
-.requestModalV4 .plateQuickCopy b{font-size:10px}.requestModalV4 .plateQuickCopy span{font-size:8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.requestModalV4 .plateQuickControls input{padding:9px 11px}.requestModalV4 .plateQuickControls button{min-width:120px;padding:0 12px;transition:.15s ease}
-.requestModalV4 .plateQuickControls button.lookupState-found{background:#1eaa68;border-color:#1eaa68;color:#fff}
-.requestModalV4 .plateQuickControls button.lookupState-not-found,.requestModalV4 .plateQuickControls button.lookupState-unavailable{background:#b93535;border-color:#b93535;color:#fff}
-.requestModalV4 .plateQuickControls button.lookupState-searching{opacity:.7}
-.requestModalV4 .requestBody{overflow:visible;min-height:0;padding:22px 24px 28px}
-.requestModalV4 .requestActions{flex:0 0 auto;position:relative;z-index:6;background:var(--panel)}
-.clientLookupCompact{margin-top:8px;border:1px solid rgba(43,182,115,.35);background:color-mix(in srgb,#2bb673 7%,var(--panel));border-radius:10px;padding:9px;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center}
-.clientLookupCompact>div:first-child{display:grid;gap:2px}.clientLookupCompact b{font-size:10px}.clientLookupCompact span{font-size:8px;color:var(--muted)}
-.clientLookupCompact>button{border:1px solid #2bb673;background:#2bb673;color:#07110c;border-radius:8px;padding:7px 10px;font-size:9px;font-weight:900;cursor:pointer}
-.clientVehicleCompactList{grid-column:1/-1;display:flex;gap:6px;overflow-x:auto;padding-top:3px}.clientVehicleCompactList button{min-width:150px;text-align:left;border:1px solid var(--line);background:var(--panel-2);color:var(--text);border-radius:8px;padding:7px 9px;display:grid;gap:2px}.clientVehicleCompactList button b{font-size:9px}.clientVehicleCompactList button span{font-size:8px;color:var(--muted)}
-.vehicleOwnerConflict{margin-bottom:14px;border:1px solid rgba(255,86,86,.35);background:rgba(255,70,70,.07);border-radius:12px;padding:12px;display:flex;justify-content:space-between;gap:14px;align-items:center}.vehicleOwnerConflict.confirmed{border-color:rgba(43,182,115,.4);background:rgba(43,182,115,.07)}.vehicleOwnerConflict>div:first-child{display:grid;gap:4px}.vehicleOwnerConflict b{font-size:11px}.vehicleOwnerConflict span{font-size:9px;color:var(--muted)}.vehicleOwnerConflict>div:last-child{display:flex;gap:7px;flex-wrap:wrap;justify-content:flex-end}.vehicleOwnerConflict button{border:1px solid var(--line);background:var(--panel);color:var(--text);border-radius:9px;padding:8px 10px;font-size:9px;font-weight:800}.vehicleOwnerConflict button.danger{border-color:#d94b4b;color:#ff8f8f}.vehicleOwnerConflict.confirmed button.danger{border-color:#2bb673;color:#2bb673}
-.requestModalV4 .vehicleManualHeader{margin-top:16px}
+.requestModalV4{width:min(1040px,calc(100vw - 32px));max-height:90vh;overflow:hidden;border-radius:16px}
+.requestModalV4 .requestModalHead{flex:0 0 auto;padding:18px 20px 15px;background:var(--panel);z-index:6}
+.requestModalV4 .requestModalHead h2{font-size:23px}
+.requestModalV4 .requestModalHead>div>span{font-size:10px}
+.requestModalV4 .requestStepperV4{flex:0 0 auto;position:relative;z-index:5;padding:9px 20px;background:var(--panel-2)}
+.requestModalV4 .requestStepperV4 button{min-width:0}
+.requestModalV4 .requestStepperV4 button.locked{opacity:.5;cursor:not-allowed}
+.requestModalV4 .requestStepperV4 button span{font-size:10px}
+.requestModalV4 .requestScroll{min-height:0;flex:1 1 auto;overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain}
+.requestModalV4 .requestBody{overflow:visible;min-height:0;padding:20px}
+.requestModalV4 .requestActions{flex:0 0 auto;position:relative;z-index:6;padding:12px 20px 14px;background:var(--panel)}
 .requestModalV4 .requestActions .primary:disabled{opacity:.48;cursor:not-allowed}
-@media(max-width:900px){.requestModalV4{width:min(100%,calc(100vw - 14px))}.requestModalV4 .requestStepperV4{padding:8px 12px}.requestModalV4 .quickLookupGridV4{padding:9px 12px}.vehicleOwnerConflict{align-items:flex-start;flex-direction:column}.vehicleOwnerConflict>div:last-child{justify-content:flex-start}}
-@media(max-width:760px){.requestModalV4{max-height:96vh}.requestModalV4 .requestModalHead{padding:14px}.requestModalV4 .requestStepperV4{top:0}.requestModalV4 .quickLookupGridV4{grid-template-columns:1fr}.requestModalV4 .plateQuickCopy span{display:none}.requestModalV4 .plateQuickControls button{min-width:100px}.requestModalV4 .requestBody{padding:16px 12px 22px}.clientLookupCompact{grid-template-columns:1fr}.clientLookupCompact>button{width:100%}}
+.requestFastStep .requestStepTitle{margin-bottom:16px}
+.requestFastStep .requestStepTitle h3{font-size:20px;margin-top:4px}
+.requestFastStep .requestHint{padding:6px 9px;font-size:9px}
+.fastLookupCard{border:1px solid var(--line);border-radius:13px;padding:12px;background:var(--panel-2)}
+.fastLookupCopy{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:8px}
+.fastLookupCopy b{font-size:11px}.fastLookupCopy span{font-size:8px;color:var(--muted)}
+.fastLookupControls{display:grid;grid-template-columns:minmax(0,1fr) 126px;gap:8px}
+.fastLookupControls input{width:100%;height:42px;border:1px solid var(--line);border-radius:10px;background:var(--panel);color:var(--text);padding:0 12px;outline:0;font-size:13px}
+.fastLookupControls input:focus{border-color:var(--orange);box-shadow:0 0 0 3px rgba(255,106,0,.08)}
+.fastLookupControls button{height:42px;border:1px solid var(--orange);border-radius:10px;background:color-mix(in srgb,var(--orange) 10%,var(--panel));color:var(--orange);font-size:11px;font-weight:850;cursor:pointer}
+.fastLookupControls button.lookupState-found{background:#20a866;border-color:#20a866;color:#fff}
+.fastLookupControls button.lookupState-not-found,.fastLookupControls button.lookupState-unavailable{background:#c94141;border-color:#c94141;color:#fff}
+.fastLookupControls button.lookupState-searching{opacity:.65}
+.fastClientResult{margin-top:9px}.fastClientGrid{margin-top:14px}
+.requestModalV4 .requestGrid input,.requestModalV4 .requestGrid select,.requestModalV4 .requestFullField textarea{min-height:43px;padding:10px 12px;border-radius:10px}
+.vehicleLookupPair{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.fastVinInput{text-transform:uppercase;font-family:ui-monospace,"SFMono-Regular",Menlo,monospace;letter-spacing:.05em}
+.vehicleOwnerConflict{margin:12px 0 0;border:1px solid rgba(218,75,75,.38);background:rgba(218,75,75,.06);border-radius:12px;padding:11px 12px;display:flex;align-items:center;justify-content:space-between;gap:12px}
+.vehicleOwnerConflict.confirmed{border-color:rgba(43,182,115,.4);background:rgba(43,182,115,.06)}
+.vehicleOwnerConflict>div:first-child{display:grid;gap:3px}.vehicleOwnerConflict b{font-size:11px}.vehicleOwnerConflict span{font-size:9px;color:var(--muted)}
+.vehicleOwnerConflict>div:last-child{display:flex;gap:7px;flex-wrap:wrap;justify-content:flex-end}
+.vehicleOwnerConflict button{border:1px solid var(--line);background:var(--panel);color:var(--text);border-radius:8px;padding:7px 9px;font-size:9px;font-weight:800;cursor:pointer}
+.vehicleOwnerConflict button.danger{border-color:#d94b4b;color:#d94b4b}.vehicleOwnerConflict.confirmed button.danger{border-color:#2bb673;color:#2bb673}
+.knownVehicles{display:grid;gap:8px;margin-bottom:12px;padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:var(--panel-2)}
+.knownVehicles>div:first-child{display:flex;justify-content:space-between;gap:12px}.knownVehicles b{font-size:10px}.knownVehicles span{font-size:8px;color:var(--muted)}
+.knownVehicles>div:last-child{display:flex;gap:7px;overflow:auto}
+.knownVehicles button{min-width:145px;border:1px solid var(--line);border-radius:9px;background:var(--panel);color:var(--text);padding:8px 9px;display:grid;gap:2px;text-align:left;cursor:pointer}
+.knownVehicles button:hover{border-color:var(--orange)}.knownVehicles button strong{font-size:10px}
+.vehicleFoundCompact{display:grid;grid-template-columns:auto minmax(0,1fr) 150px;gap:12px;align-items:center;margin-top:12px;padding:12px;border:1px solid rgba(43,182,115,.34);border-radius:12px;background:color-mix(in srgb,#2bb673 6%,var(--panel))}
+.vehicleFoundIcon{width:34px;height:34px;display:grid;place-items:center;border-radius:10px;background:#2bb673;color:#fff;font-weight:900}
+.vehicleFoundCompact>div:nth-child(2){display:grid;gap:2px}.vehicleFoundCompact small{font-size:8px;color:var(--muted);letter-spacing:.08em}.vehicleFoundCompact strong{font-size:13px}.vehicleFoundCompact span{font-size:9px;color:var(--soft-text)}
+.vehicleFoundCompact>div:last-child{display:grid;gap:4px}.vehicleFoundCompact input{width:100%;height:36px;border:1px solid var(--line);border-radius:9px;background:var(--panel);color:var(--text);padding:0 9px}
+.vehicleAdvanced{margin-top:12px;border:1px solid var(--line);border-radius:11px;background:var(--panel);overflow:hidden}
+.vehicleAdvanced summary{cursor:pointer;padding:11px 12px;font-size:10px;font-weight:750;color:var(--soft-text);list-style-position:inside}
+.vehicleAdvanced[open] summary{border-bottom:1px solid var(--line);color:var(--text)}
+.vehicleAdvancedBody{padding:12px}.requestGrid.four{grid-template-columns:repeat(4,minmax(0,1fr))}.vehicleAdvancedBody .requestGrid{gap:10px}.vehicleAdvancedBody .requestGrid label>span{font-size:9px}.advancedMeta{margin-top:9px;color:var(--muted);font-size:8px}
+.vinLookupResult{margin-top:10px}.fastComplaint{margin:0}.fastComplaint textarea{min-height:96px;resize:vertical;font-size:13px;line-height:1.45}.fastCategoryTags{margin:10px 0 0}.fastCategoryTags button{padding:7px 10px;font-size:9px}
+.bookingGrid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}.bookingGrid label,.fastLocationSelect{display:grid;gap:6px}
+.bookingGrid label>span,.fastLocationSelect>span{font-size:10px;font-weight:800;color:var(--soft-text)}
+.bookingGrid input,.bookingGrid select,.fastLocationSelect select{width:100%;height:46px;border:1px solid var(--line);border-radius:10px;background:var(--panel-2);color:var(--text);padding:0 11px;outline:0;font:inherit;font-size:12px}
+.bookingGrid input:focus,.bookingGrid select:focus,.fastLocationSelect select:focus{border-color:var(--orange);box-shadow:0 0 0 3px rgba(255,106,0,.08)}
+.fastLocationSelect{margin-bottom:10px;max-width:320px}
+.fastBookingSummary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-top:14px}
+.fastBookingSummary article{min-width:0;border:1px solid var(--line);border-radius:11px;background:var(--panel-2);padding:11px;display:grid;gap:3px}
+.fastBookingSummary small{font-size:8px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em}.fastBookingSummary strong{font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.fastBookingSummary span{font-size:9px;color:var(--soft-text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.requestHiddenPricingField{display:none!important}.fastBookButton{min-width:190px}
+.clientLookupCompact{border:1px solid rgba(43,182,115,.35);background:color-mix(in srgb,#2bb673 7%,var(--panel));border-radius:10px;padding:9px;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center}
+.clientLookupCompact>div:first-child{display:grid;gap:2px}.clientLookupCompact b{font-size:10px}.clientLookupCompact span{font-size:8px;color:var(--muted)}
+.clientLookupCompact>button{border:1px solid #2bb673;background:#2bb673;color:#fff;border-radius:8px;padding:7px 10px;font-size:9px;font-weight:900;cursor:pointer}
+@media(max-width:900px){.requestModalV4{width:min(100%,calc(100vw - 14px));max-height:94vh}.requestModalV4 .requestModalHead{padding:15px}.requestModalV4 .requestStepperV4{padding:8px 12px}.requestModalV4 .requestBody{padding:16px 14px 20px}.vehicleLookupPair{grid-template-columns:1fr}.requestGrid.four{grid-template-columns:repeat(2,minmax(0,1fr))}.bookingGrid{grid-template-columns:repeat(2,minmax(0,1fr))}.fastBookingSummary{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:760px){.requestModalBackdrop{padding:6px;align-items:end}.requestModalV4{max-height:96vh;border-radius:15px 15px 0 0}.requestModalV4 .requestModalHead h2{font-size:20px}.requestModalV4 .requestModalHead>div>span{display:none}.requestModalV4 .requestStepperV4 button span{display:none}.fastLookupCopy span{display:none}.fastLookupControls{grid-template-columns:minmax(0,1fr) 104px}.fastClientGrid,.requestGrid.four,.bookingGrid,.fastBookingSummary{grid-template-columns:1fr}.vehicleOwnerConflict{align-items:flex-start;flex-direction:column}.vehicleOwnerConflict>div:last-child{justify-content:flex-start}.vehicleFoundCompact{grid-template-columns:auto 1fr}.vehicleFoundCompact>div:last-child{grid-column:1/-1}.requestModalV4 .requestActions{padding:10px 12px}.fastBookButton{min-width:0}}
