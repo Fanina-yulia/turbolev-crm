@@ -73,13 +73,12 @@ export async function POST(request: NextRequest) {
     const name = clean(body.name, 120);
     const uid = normalizeUid(body.uid);
     const username = clean(body.username, 80) || "admin";
-    const password = typeof body.password === "string" ? body.password : "";
+    const password = typeof body.password === "string" ? body.password.slice(0, 256) : "";
     const purposeRaw = clean(body.purpose, 32) as CameraPurposeValue;
     const purpose: CameraPurposeValue = PURPOSES.has(purposeRaw) ? purposeRaw : "TERRITORY";
 
     if (!name) return NextResponse.json({ ok: false, error: "Вкажіть назву камери." }, { status: 400 });
     if (!/^[A-Z0-9]{12,40}$/.test(uid)) return NextResponse.json({ ok: false, error: "Перевірте UID Reolink." }, { status: 400 });
-    if (!password) return NextResponse.json({ ok: false, error: "Введіть пароль користувача камери." }, { status: 400 });
 
     const camera = await prisma.camera.create({
       data: {
