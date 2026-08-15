@@ -12,7 +12,7 @@ type BridgeResult = {
   message?: string;
   model?: string;
   connection?: string;
-  snapshotUrl?: string;
+  snapshotDataUrl?: string;
 };
 
 function bridgeEndpoint() {
@@ -41,7 +41,7 @@ export async function POST(_request: NextRequest, context: RouteContext) {
     const token = process.env.CAMERA_BRIDGE_TOKEN?.trim();
     const password = decryptCameraPassword(camera.encryptedPassword);
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 12_000);
+    const timeout = setTimeout(() => controller.abort(), 26_000);
 
     let response: Response;
     try {
@@ -94,12 +94,12 @@ export async function POST(_request: NextRequest, context: RouteContext) {
       status: updated.status,
       model: updated.model,
       connection: result.connection || "UID_P2P",
-      snapshotUrl: result.snapshotUrl || null,
+      snapshotDataUrl: result.snapshotDataUrl || null,
       message,
     });
   } catch (error) {
     const message = error instanceof Error && error.name === "AbortError"
-      ? "Camera Bridge не відповів за 12 секунд."
+      ? "Camera Bridge не відповів за 26 секунд."
       : "CRM не змогла зв'язатися з Camera Bridge.";
     await prisma.camera.update({
       where: { id },
