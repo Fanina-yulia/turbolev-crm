@@ -1,5 +1,7 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { getPrisma } from "@/src/lib/prisma";
+import { authorize } from "@/src/security/authorize";
+import { PERMISSIONS } from "@/src/security/permissions";
 import { generateCameraIngestToken, hashCameraIngestToken } from "@/src/services/camera-ingest-token.service";
 
 export const runtime = "nodejs";
@@ -7,7 +9,14 @@ export const dynamic = "force-dynamic";
 
 type RouteContext = { params: Promise<{ id: string }> };
 
-export async function POST(_request: Request, context: RouteContext) {
+export async function POST(request: NextRequest, context: RouteContext) {
+  const access = await authorize(PERMISSIONS.SETTINGS_WRITE, {
+    request,
+    strict: true,
+    minimumScope: "ALL",
+  });
+  if (!access.allowed) return access.response!;
+
   const prisma = getPrisma();
   try {
     const { id } = await context.params;
