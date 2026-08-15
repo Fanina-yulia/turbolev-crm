@@ -29,9 +29,14 @@ model ServiceLocation {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  posts        ServicePost[]
-  mechanics    ServiceMechanic[]
-  appointments ServiceAppointment[]
+  posts                   ServicePost[]
+  mechanics               ServiceMechanic[]
+  appointments            ServiceAppointment[]
+  employeeRoleAssignments EmployeeRoleAssignment[]
+  performanceEvents       PerformanceEvent[]
+  roleCapacityStandards   RoleCapacityStandard[]
+  roleDemandSnapshots     RoleDemandSnapshot[]
+  roleEconomicsSnapshots  RoleEconomicsSnapshot[]
 
   @@index([isActive, sortOrder])
 }
