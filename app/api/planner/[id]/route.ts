@@ -6,10 +6,22 @@ import {
   LeadArrivalNotFoundError,
 } from "@/src/services/lead-arrival.service";
 import { arrivePlannerAppointment } from "@/src/services/planner-arrival.service";
-import { parsePlannerStatus, updatePlannerAppointment } from "@/src/services/planner.service";
+import {
+  parsePlannerStatus,
+  updatePlannerAppointment,
+  type PlannerConflict,
+} from "@/src/services/planner.service";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
+
+function conflictMessage(conflict: PlannerConflict) {
+  if (conflict.resourceType === "SCHEDULE") return conflict.message;
+  if (conflict.resourceType === "MECHANIC") {
+    return `Перенесення неможливе: ${conflict.resource} уже зайнятий у цей час.`;
+  }
+  return `Перенесення неможливе: ${conflict.resource} уже зайнятий у цей час.`;
+}
 
 async function observePlannerTransition(id: string, requestedStatus: unknown) {
   const to = parsePlannerStatus(requestedStatus);
@@ -61,9 +73,7 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
     if (!result.ok && "conflict" in result) {
       return NextResponse.json({
         status: "CONFLICT",
-        message: result.conflict.resourceType === "MECHANIC"
-          ? `Перенесення неможливе: ${result.conflict.resource} уже веде 2 автомобілі одночасно. Третє паралельне авто заборонено.`
-          : `Перенесення неможливе: ${result.conflict.resource} уже зайнятий у цей час.`,
+        message: conflictMessage(result.conflict),
         conflict: result.conflict,
         workflowObservation,
       }, { status: 409 });
@@ -99,9 +109,11 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
         ? "Один запис не може тривати більше 24 годин."
         : code === "LOCATION_REQUIRED"
           ? "Оберіть локацію СТО."
-          : code === "INVALID_AMOUNT"
-            ? "Некоректна попередня сума."
-            : "Не вдалося змінити запис.";
+          : code === "LOCATION_NOT_FOUND"
+            ? "Локацію СТО не знайдено або вона неактивна."
+            : code === "INVALID_AMOUNT"
+              ? "Некоректна попередня сума."
+              : "Не вдалося змінити запис.";
     return NextResponse.json({ status: "INVALID_DATA", message }, { status: 400 });
   }
 }
@@ -113,5 +125,9 @@ export async function DELETE(_request: Request, context: { params: Promise<{ id:
   if (!result.ok && "notFound" in result) {
     return NextResponse.json({ status: "NOT_FOUND", message: "Запис не знайдено." }, { status: 404 });
   }
-  return NextResponse.json({ status: "CANCELLED", appointment: result.ok ? result.appointment : null, workflowObservation });
+  return NextResponse.json({
+    status: "CANCELLED",
+    appointment: result.ok ? result.appointment : null,
+    workflowObservation,
+  });
 }
