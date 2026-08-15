@@ -1,7 +1,7 @@
 import "server-only";
 
 import { getAccessContext, hasPermission, type AccessContext } from "@/src/security/access-context";
-import { scopeCovers, type AccessScopeCode, type PermissionCode } from "@/src/security/permissions";
+import { PERMISSIONS, scopeCovers, type AccessScopeCode, type PermissionCode } from "@/src/security/permissions";
 
 type AuthorizationOptions = {
   strict?: boolean;
@@ -22,6 +22,11 @@ export type AuthorizationResult = {
   grantedScope: AccessScopeCode | null;
   response: Response | null;
 };
+
+const ALWAYS_ENFORCED_PERMISSIONS = new Set<string>([
+  PERMISSIONS.SECURITY_ACCESS_MANAGE,
+  PERMISSIONS.PAYROLL_SELF_READ,
+]);
 
 function denialResponse(context: AccessContext, permission: string, requiredScope: AccessScopeCode) {
   if (!context.authenticated) {
@@ -55,7 +60,9 @@ export async function authorize(
     return { allowed: true, wouldAllow: true, shadowBypass: false, context, grantedScope, response: null };
   }
 
-  const mustEnforce = options.strict === true || context.enforcementMode === "ENFORCED";
+  const mustEnforce = options.strict === true
+    || ALWAYS_ENFORCED_PERMISSIONS.has(permission)
+    || context.enforcementMode === "ENFORCED";
   if (mustEnforce) {
     return {
       allowed: false,

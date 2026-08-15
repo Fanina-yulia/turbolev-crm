@@ -28,9 +28,9 @@ function fallbackCatalog(authConfigured = false) {
   };
 }
 
-export async function GET() {
-  const auth = await authorize(PERMISSIONS.SECURITY_ACCESS_MANAGE);
-  if (!auth.allowed && auth.response) return auth.response;
+export async function GET(request: Request) {
+  const auth = await authorize(PERMISSIONS.SECURITY_ACCESS_MANAGE, { strict: true, request });
+  if (!auth.allowed) return auth.response!;
 
   const prisma = getPrisma();
   try {
