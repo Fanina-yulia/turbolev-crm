@@ -10,6 +10,7 @@ enum CameraPurpose {
 }
 
 enum CameraConnectionMode {
+  EMAIL_EVENTS
   UID_P2P
   LOCAL
 }
@@ -28,6 +29,19 @@ enum CameraEventType {
   SNAPSHOT
 }
 
+enum CameraEventSource {
+  GMAIL_EMAIL
+  P2P_BRIDGE
+  LOCAL_STREAM
+}
+
+enum CameraRecognitionStatus {
+  PENDING
+  RECOGNIZED
+  REVIEW_REQUIRED
+  IGNORED
+}
+
 model Camera {
   id                String               @id @default(cuid())
   name              String               @db.VarChar(120)
@@ -35,8 +49,9 @@ model Camera {
   uid               String               @unique @db.VarChar(40)
   username          String               @default("admin") @db.VarChar(80)
   encryptedPassword String               @db.Text
+  ingestTokenHash   String?              @db.VarChar(64)
   purpose           CameraPurpose        @default(TERRITORY)
-  connectionMode    CameraConnectionMode @default(UID_P2P)
+  connectionMode    CameraConnectionMode @default(EMAIL_EVENTS)
   status            CameraStatus         @default(NOT_TESTED)
   model             String?              @db.VarChar(120)
   lastSeenAt        DateTime?
@@ -53,25 +68,33 @@ model Camera {
 }
 
 model CameraEvent {
-  id              String          @id @default(cuid())
-  cameraId        String
-  vehicleId       String?
-  workOrderId     String?
-  eventType       CameraEventType @default(VEHICLE_DETECTED)
-  plateNumber     String?         @db.VarChar(24)
-  plateNormalized String?         @db.VarChar(24)
-  confidence      Int?
-  detectedAt      DateTime        @default(now())
-  snapshotUrl     String?         @db.Text
-  plateCropUrl    String?         @db.Text
-  videoUrl        String?         @db.Text
-  rawPayload      Json?
-  createdAt       DateTime        @default(now())
+  id                String                  @id @default(cuid())
+  cameraId          String
+  vehicleId         String?
+  workOrderId       String?
+  eventType         CameraEventType         @default(VEHICLE_DETECTED)
+  source            CameraEventSource       @default(GMAIL_EMAIL)
+  sourceEventId     String?                 @db.VarChar(180)
+  plateNumber       String?                 @db.VarChar(24)
+  plateNormalized   String?                 @db.VarChar(24)
+  confidence        Int?
+  recognitionStatus CameraRecognitionStatus @default(PENDING)
+  detectedAt        DateTime                @default(now())
+  snapshotUrl       String?                 @db.Text
+  snapshotData      Bytes?
+  snapshotMimeType  String?                 @db.VarChar(80)
+  snapshotSize      Int?
+  plateCropUrl      String?                 @db.Text
+  videoUrl          String?                 @db.Text
+  rawPayload        Json?
+  createdAt         DateTime                @default(now())
 
   camera Camera @relation(fields: [cameraId], references: [id], onDelete: Cascade)
 
+  @@unique([cameraId, sourceEventId])
   @@index([cameraId, detectedAt])
   @@index([vehicleId, detectedAt])
   @@index([plateNormalized, detectedAt])
+  @@index([recognitionStatus, detectedAt])
   @@index([workOrderId])
 }
