@@ -1,4 +1,5 @@
 import { LeadSource, LeadStatus, RejectReason } from "@/src/generated/prisma/client";
+import { getWorkflowStatusLabel, normalizeWorkflowStatus } from "./index";
 
 export const ACTIVE_LEAD_STATUSES: LeadStatus[] = [
   LeadStatus.NEW,
@@ -20,28 +21,12 @@ export const LEAD_BOARD_COLUMNS: Array<{ key: LeadStatus; label: string }> = [
   { key: LeadStatus.LOST, label: "Неуспішні" },
 ];
 
-export const LEAD_STATUS_LABELS: Partial<Record<LeadStatus, string>> = {
-  NEW: "Новий",
-  CONTACTED: "Контакт",
-  QUALIFIED: "Потреба визначена",
-  ESTIMATE: "Прорахунок",
-  WAITING: "Очікує рішення",
-  NO_ANSWER: "Не додзвонились",
-  BOOKED: "Записаний",
-  ARRIVED: "Приїхав",
-  LOST: "Неуспішний",
-  QUALIFYING: "Кваліфікація (legacy)",
-  WARM_LEAD: "Теплий лід (legacy)",
-  REJECTED: "Відхилений (legacy)",
-  SPAM_WRONG: "Спам / помилковий",
-  SUPPLIER_PARTNER: "Постачальник / партнер",
-};
+export const LEAD_STATUS_LABELS = Object.fromEntries(
+  Object.values(LeadStatus).map((status) => [status, getWorkflowStatusLabel("LEAD", status)]),
+) as Partial<Record<LeadStatus, string>>;
 
 export function normalizeLegacyLeadStatus(status: LeadStatus): LeadStatus {
-  if (status === LeadStatus.QUALIFYING) return LeadStatus.CONTACTED;
-  if (status === LeadStatus.WARM_LEAD) return LeadStatus.WAITING;
-  if (status === LeadStatus.REJECTED) return LeadStatus.LOST;
-  return status;
+  return normalizeWorkflowStatus("LEAD", status) as LeadStatus;
 }
 
 export function mapUiSourceToLeadSource(value?: string | null): LeadSource {
