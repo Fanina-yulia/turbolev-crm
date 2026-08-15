@@ -136,17 +136,20 @@ export async function transitionDiagnostic(id: string, input: DiagnosticTransiti
 
   let workOrder = current.workOrder;
   if (input.status === DiagnosticRequestStatus.CONFIRMED) {
+    const hadWorkOrder = Boolean(current.workOrder);
     workOrder = await createWorkOrderFromConfirmedDiagnostic(id);
-    await prisma.auditEvent.create({
-      data: {
-        actorName,
-        entityType: "WorkOrder",
-        entityId: workOrder.id,
-        action: "CREATE_AFTER_CONFIRMED_DIAGNOSTICS",
-        after: jsonSafe(workOrder),
-        metadata: jsonSafe({ diagnosticRequestId: id, hardGate: "WORK_ORDER_AFTER_CONFIRMED_DIAGNOSTICS", passed: true }),
-      },
-    }).catch(() => undefined);
+    if (!hadWorkOrder) {
+      await prisma.auditEvent.create({
+        data: {
+          actorName,
+          entityType: "WorkOrder",
+          entityId: workOrder.id,
+          action: "CREATE_AFTER_CONFIRMED_DIAGNOSTICS",
+          after: jsonSafe(workOrder),
+          metadata: jsonSafe({ diagnosticRequestId: id, hardGate: "WORK_ORDER_AFTER_CONFIRMED_DIAGNOSTICS", passed: true }),
+        },
+      }).catch(() => undefined);
+    }
   }
 
   const diagnostic = await getDiagnostic(id);
