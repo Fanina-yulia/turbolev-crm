@@ -1,0 +1,85 @@
+/* Full-page Settings mode: the CRM sidebar is the only navigation column. */
+html[data-settings-page="true"] .backdrop{
+  position:fixed!important;
+  left:265px!important;
+  right:0!important;
+  top:0!important;
+  bottom:0!important;
+  inset:0 0 0 265px!important;
+  z-index:60!important;
+  display:block!important;
+  padding:0!important;
+  background:var(--bg)!important;
+  backdrop-filter:none!important;
+  overflow:auto!important;
+  overscroll-behavior:contain;
+}
+html[data-settings-page="true"] .modal{
+  width:100%!important;
+  min-height:100%!important;
+  height:auto!important;
+  max-width:none!important;
+  max-height:none!important;
+  margin:0!important;
+  border:0!important;
+  border-radius:0!important;
+  box-shadow:none!important;
+  overflow:visible!important;
+  background:var(--bg)!important;
+  display:block!important;
+}
+html[data-settings-page="true"] .head{
+  position:relative!important;
+  padding:28px 34px 22px!important;
+  border-bottom:1px solid var(--line)!important;
+  background:var(--bg)!important;
+}
+html[data-settings-page="true"] .close{display:none!important}
+html[data-settings-page="true"] .layout{
+  display:block!important;
+  min-height:0!important;
+  background:var(--bg)!important;
+}
+html[data-settings-page="true"] .tabs{
+  display:none!important;
+  width:0!important;
+  min-width:0!important;
+  padding:0!important;
+  margin:0!important;
+  border:0!important;
+}
+html[data-settings-page="true"] .content{
+  width:100%!important;
+  min-width:0!important;
+  min-height:0!important;
+  overflow:visible!important;
+  padding:28px 34px 56px!important;
+  background:var(--bg)!important;
+}
+html[data-settings-page="true"] .sectionHead,
+html[data-settings-page="true"] .schedule,
+html[data-settings-page="true"] .cards,
+html[data-settings-page="true"] .stats,
+html[data-settings-page="true"] .clientRows,
+html[data-settings-page="true"] .markupGrid,
+html[data-settings-page="true"] .integrationGrid,
+html[data-settings-page="true"] .themeGrid,
+html[data-settings-page="true"] .formCard,
+html[data-settings-page="true"] .notice,
+html[data-settings-page="true"] .footerHint,
+html[data-settings-page="true"] .formActions{
+  max-width:1280px!important;
+  margin-left:auto!important;
+  margin-right:auto!important;
+}
+html[data-settings-page="true"] .sectionHead{margin-bottom:22px!important}
+
+@media(max-width:1100px){
+  html[data-settings-page="true"] .backdrop{left:220px!important;inset:0 0 0 220px!important}
+  html[data-settings-page="true"] .content{padding:24px!important}
+}
+@media(max-width:760px){
+  html[data-settings-page="true"] .backdrop{left:0!important;inset:0!important}
+  html[data-settings-page="true"] .head{padding:18px 16px!important}
+  html[data-settings-page="true"] .content{padding:18px 14px 40px!important}
+}
