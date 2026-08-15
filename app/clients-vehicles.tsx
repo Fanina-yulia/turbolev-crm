@@ -21,10 +21,9 @@ type ListResponse = {ok:boolean;total:number;clients:Client[];error?:string};
 type VehicleCard = Vehicle & {
   clientId:string; classificationSource:string|null; classificationConfidence:number|null; lastVehicleLookupAt:string|null;
   client:{id:string;name:string|null;phone:string};
-  registrations:Array<{id:string;countryCode:string;plateNumber:string;source:string|null;isCurrent:boolean;validFrom:string|null;validTo:string|null}>;
   diagnosticRequests:Array<{id:string;status:string;technicalConclusion:string|null;confirmedAt:string|null;createdAt:string;updatedAt:string}>;
   workOrders:Array<{id:string;status:string;createdAt:string;updatedAt:string;closedAt:string|null}>;
-  _count:{workOrders:number;diagnosticRequests:number;registrations:number};
+  _count:{workOrders:number;diagnosticRequests:number};
 };
 
 const VIEW_KEY="turbolev-clients-view";
