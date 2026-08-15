@@ -11,6 +11,13 @@ export interface BinotelApiResponse extends BinotelJson {
 export interface SendCallInput {
   internalNumber: string;
   externalNumber: string;
+  pbxNumber?: string | null;
+  async?: boolean;
+}
+
+export interface HistoryPeriodInput {
+  startTime: number;
+  stopTime: number;
 }
 
 export interface MediaFileLinkResult {
@@ -28,6 +35,7 @@ export type BinotelServiceConfig = {
   wsKey?: string;
   wsSecret?: string;
   wsUrl?: string;
+  outboundPbxNumber?: string;
 };
 
 export class BinotelConfigurationError extends Error {
@@ -59,6 +67,11 @@ function normalizePhone(value: string): string {
   return value.trim().replace(/[^\d+]/g, "");
 }
 
+function positiveUnix(value: number, name: string) {
+  if (!Number.isFinite(value) || value <= 0) throw new TypeError(`${name} must be a unix timestamp`);
+  return Math.floor(value);
+}
+
 function findFirstHttpUrl(value: unknown): string | null {
   if (typeof value === "string" && /^https?:\/\//i.test(value)) return value;
   if (Array.isArray(value)) {
@@ -86,6 +99,7 @@ export class BinotelService {
   private readonly wsKey?: string;
   private readonly wsSecret?: string;
   private readonly wsUrl: string;
+  private readonly outboundPbxNumber?: string;
 
   readonly companyId: string | undefined;
 
@@ -99,6 +113,7 @@ export class BinotelService {
     this.wsKey = config.wsKey?.trim() || undefined;
     this.wsSecret = config.wsSecret?.trim() || undefined;
     this.wsUrl = config.wsUrl?.trim() || process.env.BINOTEL_WS_URL?.trim() || "wss://ws.binotel.com:9002";
+    this.outboundPbxNumber = config.outboundPbxNumber?.trim() || undefined;
   }
 
   private async request<T extends BinotelApiResponse>(method: string, params: BinotelJson = {}): Promise<T> {
@@ -132,14 +147,64 @@ export class BinotelService {
     }
   }
 
-  async sendCall({ internalNumber, externalNumber }: SendCallInput) {
+  async sendCall({ internalNumber, externalNumber, pbxNumber, async = true }: SendCallInput) {
     if (!internalNumber.trim()) throw new TypeError("internalNumber is required");
     const normalizedExternalNumber = normalizePhone(externalNumber);
     if (!normalizedExternalNumber) throw new TypeError("externalNumber is required");
+    const outboundNumber = pbxNumber?.trim() || this.outboundPbxNumber;
     return this.request<BinotelApiResponse>("calls/internal-number-to-external-number", {
       internalNumber: internalNumber.trim(),
       externalNumber: normalizedExternalNumber,
+      ...(outboundNumber ? { pbxNumber: outboundNumber } : {}),
+      async,
     });
+  }
+
+  async hangupCall(generalCallId: string) {
+    const callId = generalCallId.trim();
+    if (!callId) throw new TypeError("generalCallId is required");
+    return this.request<BinotelApiResponse>("calls/hangup-call", { generalCallID: callId });
+  }
+
+  async transferCall(generalCallId: string, targetNumber: string) {
+    const callId = generalCallId.trim();
+    const target = targetNumber.trim().replace(/\D/g, "");
+    if (!callId) throw new TypeError("generalCallId is required");
+    if (!target) throw new TypeError("targetNumber is required");
+    return this.request<BinotelApiResponse>("calls/attended-call-transfer", {
+      generalCallID: callId,
+      externalNumber: target,
+    });
+  }
+
+  async getIncomingCallsForPeriod({ startTime, stopTime }: HistoryPeriodInput) {
+    const start = positiveUnix(startTime, "startTime");
+    const stop = positiveUnix(stopTime, "stopTime");
+    if (stop < start) throw new TypeError("stopTime must be greater than startTime");
+    return this.request<BinotelApiResponse>("stats/incoming-calls-for-period", { startTime: start, stopTime: stop });
+  }
+
+  async getOutgoingCallsForPeriod({ startTime, stopTime }: HistoryPeriodInput) {
+    const start = positiveUnix(startTime, "startTime");
+    const stop = positiveUnix(stopTime, "stopTime");
+    if (stop < start) throw new TypeError("stopTime must be greater than startTime");
+    return this.request<BinotelApiResponse>("stats/outgoing-calls-for-period", { startTime: start, stopTime: stop });
+  }
+
+  async getCallDetails(generalCallIds: string[]) {
+    const ids = [...new Set(generalCallIds.map((item) => item.trim()).filter(Boolean))];
+    if (!ids.length) throw new TypeError("generalCallIds are required");
+    return this.request<BinotelApiResponse>("stats/call-details", { generalCallID: ids });
+  }
+
+  async getHistoryByExternalNumber(externalNumbers: string[]) {
+    const numbers = [...new Set(externalNumbers.map(normalizePhone).filter(Boolean))];
+    if (!numbers.length) throw new TypeError("externalNumbers are required");
+    return this.request<BinotelApiResponse>("stats/history-by-external-number", { externalNumbers: numbers });
+  }
+
+  async getOnlineCalls() {
+    return this.request<BinotelApiResponse>("stats/online-calls", {});
   }
 
   async getMediaFileLink(generalCallId: string): Promise<MediaFileLinkResult> {
@@ -173,12 +238,34 @@ async function configuredService() {
     wsKey: stored?.wsKey || process.env.BINOTEL_WS_KEY,
     wsSecret: stored?.wsSecret || process.env.BINOTEL_WS_SECRET,
     wsUrl: process.env.BINOTEL_WS_URL,
+    outboundPbxNumber: stored?.pbxNumber || process.env.BINOTEL_PBX_NUMBER,
   });
 }
 
 const lazyBinotelService = {
   async sendCall(input: SendCallInput) {
     return (await configuredService()).sendCall(input);
+  },
+  async hangupCall(generalCallId: string) {
+    return (await configuredService()).hangupCall(generalCallId);
+  },
+  async transferCall(generalCallId: string, targetNumber: string) {
+    return (await configuredService()).transferCall(generalCallId, targetNumber);
+  },
+  async getIncomingCallsForPeriod(input: HistoryPeriodInput) {
+    return (await configuredService()).getIncomingCallsForPeriod(input);
+  },
+  async getOutgoingCallsForPeriod(input: HistoryPeriodInput) {
+    return (await configuredService()).getOutgoingCallsForPeriod(input);
+  },
+  async getCallDetails(generalCallIds: string[]) {
+    return (await configuredService()).getCallDetails(generalCallIds);
+  },
+  async getHistoryByExternalNumber(externalNumbers: string[]) {
+    return (await configuredService()).getHistoryByExternalNumber(externalNumbers);
+  },
+  async getOnlineCalls() {
+    return (await configuredService()).getOnlineCalls();
   },
   async getMediaFileLink(generalCallId: string) {
     return (await configuredService()).getMediaFileLink(generalCallId);

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { CallType } from "@/src/generated/prisma/client";
+import { BinotelService } from "@/src/services/binotel.service";
 import { inflateBinotelFormEntries, requiresBinotelSuccessAck } from "@/src/services/binotel-webhook-payload";
 import { parseBinotelWebhook } from "@/src/services/binotel-webhook.service";
 
@@ -39,4 +40,57 @@ assert.equal(hangup.event, "hangupTheCall");
 assert.equal(hangup.callId, "3112425781");
 assert.equal(hangup.terminalHint, "CHANUNAVAIL");
 
-console.log("Binotel webhook contract smoke passed");
+const requests: Array<{ url: string; payload: Record<string, unknown> }> = [];
+const originalFetch = globalThis.fetch;
+globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+  requests.push({
+    url: String(input),
+    payload: JSON.parse(String(init?.body || "{}")) as Record<string, unknown>,
+  });
+  return new Response(JSON.stringify({ status: "success", generalCallID: "9001", callDetails: {} }), {
+    status: 200,
+    headers: { "Content-Type": "application/json" },
+  });
+}) as typeof fetch;
+
+try {
+  const service = new BinotelService({
+    apiKey: "test-key",
+    apiSecret: "test-secret",
+    apiBaseUrl: "https://api.example.test/api",
+    apiVersion: "4.0",
+    outboundPbxNumber: "0440000000",
+  });
+
+  await service.sendCall({ internalNumber: "901", externalNumber: "+38 (067) 123-45-67" });
+  await service.hangupCall("9001");
+  await service.transferCall("9001", "912");
+  await service.getIncomingCallsForPeriod({ startTime: 100, stopTime: 200 });
+  await service.getOutgoingCallsForPeriod({ startTime: 100, stopTime: 200 });
+  await service.getCallDetails(["9001", "9002"]);
+  await service.getHistoryByExternalNumber(["+380671234567"]);
+
+  assert.match(requests[0].url, /calls\/internal-number-to-external-number\.json$/);
+  assert.equal(requests[0].payload.internalNumber, "901");
+  assert.equal(requests[0].payload.externalNumber, "+380671234567");
+  assert.equal(requests[0].payload.pbxNumber, "0440000000");
+  assert.equal(requests[0].payload.async, true);
+
+  assert.match(requests[1].url, /calls\/hangup-call\.json$/);
+  assert.equal(requests[1].payload.generalCallID, "9001");
+
+  assert.match(requests[2].url, /calls\/attended-call-transfer\.json$/);
+  assert.equal(requests[2].payload.generalCallID, "9001");
+  assert.equal(requests[2].payload.externalNumber, "912");
+
+  assert.match(requests[3].url, /stats\/incoming-calls-for-period\.json$/);
+  assert.equal(requests[3].payload.startTime, 100);
+  assert.equal(requests[3].payload.stopTime, 200);
+  assert.match(requests[4].url, /stats\/outgoing-calls-for-period\.json$/);
+  assert.deepEqual(requests[5].payload.generalCallID, ["9001", "9002"]);
+  assert.deepEqual(requests[6].payload.externalNumbers, ["+380671234567"]);
+} finally {
+  globalThis.fetch = originalFetch;
+}
+
+console.log("Binotel webhook and REST contract smoke passed");
