@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { normalizeApprovedEstimateFingerprint } from "@/src/services/work-order-estimate-fingerprint.service";
 import { decideEstimate, WorkOrderCommercialError } from "@/src/services/work-order-commercial.service";
 
 export const runtime = "nodejs";
@@ -15,13 +16,17 @@ export async function POST(request: Request, context: RouteContext) {
     if (rawDecision !== "APPROVE" && rawDecision !== "REJECT") {
       return NextResponse.json({ ok: false, error: "Передайте decision APPROVE або REJECT." }, { status: 400 });
     }
+    const actorName = typeof body.actorName === "string" ? body.actorName : "CRM / Сервіс-менеджер";
     const estimate = await decideEstimate(id, {
       decision: rawDecision,
       approvedByName: typeof body.approvedByName === "string" ? body.approvedByName : undefined,
       source: typeof body.source === "string" ? body.source : undefined,
       note: typeof body.note === "string" ? body.note : undefined,
-    }, typeof body.actorName === "string" ? body.actorName : "CRM / Сервіс-менеджер");
-    return NextResponse.json({ ok: true, estimate });
+    }, actorName);
+    const normalized = rawDecision === "APPROVE"
+      ? await normalizeApprovedEstimateFingerprint(id, estimate.id, actorName)
+      : null;
+    return NextResponse.json({ ok: true, estimate: normalized ?? estimate });
   } catch (error) {
     if (error instanceof WorkOrderCommercialError) {
       return NextResponse.json({ ok: false, code: error.code, error: error.message, details: error.details ?? null }, { status: error.code === "WORK_ORDER_NOT_FOUND" ? 404 : 409 });
