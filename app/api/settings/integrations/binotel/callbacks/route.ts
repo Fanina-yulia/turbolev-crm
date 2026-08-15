@@ -24,18 +24,22 @@ export async function GET(request: NextRequest) {
   const pushBase = `${origin}/api/telephony/binotel-webhook`;
   const settingsBase = `${origin}/api/webhooks/binotel-call-settings`;
   const callback = (event: string) => `${pushBase}?event=${encodeURIComponent(event)}&token=${encodeURIComponent(token)}`;
-  const callSettings = `${settingsBase}?token=${encodeURIComponent(token)}`;
+  const apiPush = `${pushBase}?token=${encodeURIComponent(token)}`;
+  const apiCallCompleted = callback("apiCallCompleted");
+  const apiCallSettings = `${settingsBase}?token=${encodeURIComponent(token)}`;
 
   return NextResponse.json({
     ok: true,
     callbacks: {
+      apiPush,
+      apiCallCompleted,
+      apiCallSettings,
       incomingCall: callback("incomingCall"),
       answeredTheCall: callback("answeredTheCall"),
       hangupTheCall: callback("hangupTheCall"),
-      apiCallCompleted: callback("apiCallCompleted"),
-      apiCallSettings: callSettings,
     },
     providerContract: {
+      apiPushEvents: ["incomingCall", "receivedTheCall", "answeredTheCall", "hangupTheCall"],
       apiPushContentType: "application/x-www-form-urlencoded",
       apiCallCompletedAck: { status: "success" },
       recordingAvailability: "after-call; reconcile if the URL is not ready immediately",
