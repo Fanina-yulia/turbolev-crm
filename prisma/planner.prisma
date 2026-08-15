@@ -64,6 +64,7 @@ model ServiceMechanic {
   id          String   @id @default(cuid())
   locationId  String
   userId      String?  @db.VarChar(64)
+  employeeId  String?  @db.VarChar(64)
   name        String
   sortOrder   Int      @default(100)
   isActive    Boolean  @default(true)
@@ -73,8 +74,10 @@ model ServiceMechanic {
   location     ServiceLocation      @relation(fields: [locationId], references: [id], onDelete: Cascade)
   appointments ServiceAppointment[]
 
+  @@unique([locationId, employeeId])
   @@index([locationId, isActive, sortOrder])
   @@index([userId])
+  @@index([employeeId])
 }
 
 model ServiceAppointment {
