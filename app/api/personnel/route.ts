@@ -4,6 +4,10 @@ import { getPrisma } from "@/src/lib/prisma";
 import { authorize } from "@/src/security/authorize";
 import { PERMISSIONS } from "@/src/security/permissions";
 import { writeAuditEvent } from "@/src/services/audit.service";
+import {
+  deactivateEmployeePlannerResources,
+  syncEmployeeOperationalContext,
+} from "@/src/services/personnel-resource-sync.service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -19,12 +23,18 @@ function n(value: unknown) {
   return Number.isFinite(x) ? x : null;
 }
 
+function text(value: unknown) {
+  if (typeof value !== "string") return null;
+  const next = value.trim();
+  return next || null;
+}
+
 function payload(body: any) {
   return {
     firstName: String(body.firstName || "").trim(),
     lastName: String(body.lastName || "").trim(),
     birthDate: body.birthDate ? new Date(`${body.birthDate}T00:00:00`) : null,
-    email: body.email ? String(body.email).trim() : null,
+    email: body.email ? String(body.email).trim().toLowerCase() : null,
     phone: body.phone ? String(body.phone).trim() : null,
     phoneCountry: body.phoneCountry ? String(body.phoneCountry) : "UA",
     address: body.address ? String(body.address).trim() : null,
@@ -71,6 +81,21 @@ function safePersonnelRow(row: any, canSeeCompensation: boolean) {
   };
 }
 
+function personnelWriteError(error: unknown, fallback: string) {
+  const code = error instanceof Error ? error.message : "UNKNOWN";
+  if (code === "PERSONNEL_LOCATION_REQUIRED") {
+    return NextResponse.json({ ok: false, error: "Для автомеханіка потрібно вказати локацію СТО." }, { status: 400 });
+  }
+  if (code === "PERSONNEL_LOCATION_NOT_FOUND") {
+    return NextResponse.json({ ok: false, error: "Обрана локація СТО не знайдена або неактивна." }, { status: 400 });
+  }
+  if (code === "PERSONNEL_ROLE_NOT_FOUND") {
+    return NextResponse.json({ ok: false, error: "Обрана операційна роль не знайдена або неактивна." }, { status: 400 });
+  }
+  console.error("personnel write failed", error);
+  return NextResponse.json({ ok: false, error: fallback }, { status: 500 });
+}
+
 export async function GET(request: NextRequest) {
   const readAccess = await authorize(PERMISSIONS.PERSONNEL_READ, { request });
   if (!readAccess.allowed) return readAccess.response!;
@@ -79,14 +104,42 @@ export async function GET(request: NextRequest) {
 
   const prisma = getPrisma();
   try {
-    const items = await prisma.employeeProfile.findMany({
-      include: { documents: { orderBy: { name: "asc" } } },
-      orderBy: [{ isActive: "desc" }, { lastName: "asc" }, { firstName: "asc" }],
-    });
+    const now = new Date();
+    const [items, roles, locations] = await Promise.all([
+      prisma.employeeProfile.findMany({
+        include: {
+          documents: { orderBy: { name: "asc" } },
+          roleAssignments: {
+            where: {
+              startsAt: { lte: now },
+              OR: [{ endsAt: null }, { endsAt: { gt: now } }],
+            },
+            include: {
+              role: { select: { code: true, name: true, category: true } },
+              location: { select: { id: true, name: true } },
+            },
+            orderBy: [{ isPrimary: "desc" }, { startsAt: "desc" }],
+          },
+        },
+        orderBy: [{ isActive: "desc" }, { lastName: "asc" }, { firstName: "asc" }],
+      }),
+      prisma.staffRole.findMany({
+        where: { isActive: true },
+        select: { code: true, name: true, category: true, economicsMode: true, sortOrder: true },
+        orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
+      }),
+      prisma.serviceLocation.findMany({
+        where: { isActive: true },
+        select: { id: true, name: true, sortOrder: true },
+        orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
+      }),
+    ]);
+
     return NextResponse.json(
       {
         ok: true,
         items: items.map((item) => safePersonnelRow(item, canSeeCompensation)),
+        meta: { roles, locations },
         security: {
           compensationRestricted: !canSeeCompensation,
           enforcementMode: readAccess.context.enforcementMode,
@@ -97,7 +150,7 @@ export async function GET(request: NextRequest) {
     );
   } catch (error) {
     console.error("personnel GET failed", error);
-    return NextResponse.json({ ok: false, error: "Розділ персоналу очікує активації HR-схеми." }, { status: 503 });
+    return NextResponse.json({ ok: false, error: "Не вдалося завантажити персонал." }, { status: 503 });
   }
 }
 
@@ -115,21 +168,39 @@ export async function POST(request: NextRequest) {
 
     // Legacy compatibility only. Neon Auth is the canonical authentication source.
     const passwordHash = body.password ? hashPassword(String(body.password)) : null;
-    const created = await prisma.employeeProfile.create({
-      data: {
-        id: randomUUID(),
-        ...p,
-        crmPasswordHash: passwordHash,
-        documents: { create: documents(body) },
-      },
-      select: { id: true },
+    const result = await prisma.$transaction(async (tx) => {
+      const employee = await tx.employeeProfile.create({
+        data: {
+          id: randomUUID(),
+          ...p,
+          crmPasswordHash: passwordHash,
+          documents: { create: documents(body) },
+        },
+        select: { id: true, userId: true, firstName: true, lastName: true, position: true, isActive: true },
+      });
+      const operational = await syncEmployeeOperationalContext(tx, {
+        employeeId: employee.id,
+        firstName: employee.firstName,
+        lastName: employee.lastName,
+        position: employee.position,
+        staffRoleCode: text(body.staffRoleCode),
+        locationId: text(body.locationId),
+        userId: employee.userId,
+        isActive: employee.isActive,
+      });
+      return { employee, operational };
     });
-    await writeAuditEvent({ entityType: "EmployeeProfile", entityId: created.id, action: "PERSONNEL_CREATED" });
 
-    return NextResponse.json({ ok: true, id: created.id });
+    await writeAuditEvent({
+      entityType: "EmployeeProfile",
+      entityId: result.employee.id,
+      action: "PERSONNEL_CREATED",
+      after: result.operational,
+    });
+
+    return NextResponse.json({ ok: true, id: result.employee.id, operational: result.operational });
   } catch (error) {
-    console.error("personnel POST failed", error);
-    return NextResponse.json({ ok: false, error: "Не вдалося створити співробітника. Перевірте унікальність e-mail." }, { status: 500 });
+    return personnelWriteError(error, "Не вдалося створити співробітника. Перевірте унікальність e-mail.");
   }
 }
 
@@ -143,31 +214,51 @@ export async function PUT(request: NextRequest) {
     const id = String(body.id || "");
     const p = payload(body);
     if (!id) return NextResponse.json({ ok: false, error: "Не вказано співробітника." }, { status: 400 });
+    if (!p.firstName || !p.lastName) {
+      return NextResponse.json({ ok: false, error: "Вкажіть ім’я та прізвище." }, { status: 400 });
+    }
 
     const before = await prisma.employeeProfile.findUnique({ where: { id } });
+    if (!before) return NextResponse.json({ ok: false, error: "Співробітника не знайдено." }, { status: 404 });
     const passwordHash = body.password ? hashPassword(String(body.password)) : undefined;
-    await prisma.employeeProfile.update({
-      where: { id },
-      data: {
-        ...p,
-        ...(passwordHash ? { crmPasswordHash: passwordHash } : {}),
-        documents: {
-          deleteMany: {},
-          create: documents(body),
+
+    const result = await prisma.$transaction(async (tx) => {
+      const employee = await tx.employeeProfile.update({
+        where: { id },
+        data: {
+          ...p,
+          ...(passwordHash ? { crmPasswordHash: passwordHash } : {}),
+          documents: {
+            deleteMany: {},
+            create: documents(body),
+          },
         },
-      },
+        select: { id: true, userId: true, firstName: true, lastName: true, position: true, isActive: true },
+      });
+      const operational = await syncEmployeeOperationalContext(tx, {
+        employeeId: employee.id,
+        firstName: employee.firstName,
+        lastName: employee.lastName,
+        position: employee.position,
+        staffRoleCode: text(body.staffRoleCode),
+        locationId: text(body.locationId),
+        userId: employee.userId,
+        isActive: employee.isActive,
+      });
+      return { employee, operational };
     });
+
     await writeAuditEvent({
       entityType: "EmployeeProfile",
       entityId: id,
       action: "PERSONNEL_UPDATED",
-      metadata: { hadLegacyCredential: Boolean(before?.crmPasswordHash), legacyCredentialChanged: Boolean(passwordHash) },
+      metadata: { hadLegacyCredential: Boolean(before.crmPasswordHash), legacyCredentialChanged: Boolean(passwordHash) },
+      after: result.operational,
     });
 
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({ ok: true, operational: result.operational });
   } catch (error) {
-    console.error("personnel PUT failed", error);
-    return NextResponse.json({ ok: false, error: "Не вдалося оновити співробітника." }, { status: 500 });
+    return personnelWriteError(error, "Не вдалося оновити співробітника.");
   }
 }
 
@@ -180,7 +271,10 @@ export async function DELETE(request: NextRequest) {
   if (!id) return NextResponse.json({ ok: false, error: "Не вказано співробітника." }, { status: 400 });
 
   try {
-    await prisma.employeeProfile.update({ where: { id }, data: { isActive: false } });
+    await prisma.$transaction(async (tx) => {
+      await tx.employeeProfile.update({ where: { id }, data: { isActive: false } });
+      await deactivateEmployeePlannerResources(tx, id);
+    });
     await writeAuditEvent({ entityType: "EmployeeProfile", entityId: id, action: "PERSONNEL_DEACTIVATED" });
     return NextResponse.json({ ok: true, archived: true });
   } catch (error) {

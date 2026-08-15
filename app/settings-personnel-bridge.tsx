@@ -13,6 +13,13 @@ export function SettingsPersonnelBridge(){
     let settingsMain:HTMLElement|null=null;
     const cleanups:Array<()=>void>=[];
 
+    const normalizeTarget=(node:HTMLElement)=>{
+      node.style.setProperty("position","relative","important");
+      node.style.setProperty("min-height","calc(100vh - 150px)","important");
+      node.style.setProperty("overflow","visible","important");
+      node.style.setProperty("background","var(--bg)","important");
+    };
+
     const wire=()=>{
       cleanups.splice(0).forEach(fn=>fn());
       personnelButton=null; settingsMain=null;
@@ -25,10 +32,10 @@ export function SettingsPersonnelBridge(){
       const tabs=personnelButton.closest("aside");
       settingsMain=tabs?.parentElement?.querySelector<HTMLElement>(":scope > main")||null;
       if(!settingsMain){setActive(false);setTarget(null);return;}
-      settingsMain.style.position="relative";
+      normalizeTarget(settingsMain);
       setTarget(settingsMain);
 
-      const activate=()=>window.setTimeout(()=>setActive(true),0);
+      const activate=()=>window.setTimeout(()=>{if(settingsMain)normalizeTarget(settingsMain);setActive(true)},0);
       personnelButton.addEventListener("click",activate);
       cleanups.push(()=>personnelButton?.removeEventListener("click",activate));
 
@@ -48,7 +55,7 @@ export function SettingsPersonnelBridge(){
 
   if(!active||!target)return null;
   return createPortal(
-    <div style={{position:"absolute",inset:0,zIndex:20,overflow:"auto",background:"var(--surface, #101318)",padding:"20px 24px 40px"}}>
+    <div style={{position:"absolute",inset:"0 0 auto 0",zIndex:20,minHeight:"calc(100vh - 150px)",boxSizing:"border-box",overflow:"visible",background:"var(--bg)",color:"var(--text)",padding:"22px clamp(18px, 2.2vw, 34px) 48px"}}>
       <Personnel />
     </div>,
     target
