@@ -5,6 +5,8 @@ import { SettingsCenter } from "./settings-center";
 import { WorkflowSettingsBridge } from "./workflow-settings-bridge";
 import styles from "./settings-page.module.css";
 
+const SETTINGS_LABELS:Record<string,string>={schedule:"Графік",personnel:"Персонал",clients:"Клієнти",suppliers:"Постачальники",warehouse:"Склад",workPrices:"Прайс робіт",posts:"Пости",markup:"Націнка",cash:"Каса",integrations:"Інтеграції",appearance:"Оформлення"};
+
 export function SettingsPage(){
   const hostRef=useRef<HTMLDivElement|null>(null);
 
@@ -17,22 +19,37 @@ export function SettingsPage(){
       window.scrollTo({top:0,left:0,behavior:"auto"});
       document.documentElement.scrollTop=0;
       document.body.scrollTop=0;
-      hostRef.current?.scrollIntoView({block:"start",inline:"nearest",behavior:"auto"});
+    };
+
+    const selectTab=(id?:string|null)=>{
+      const label=SETTINGS_LABELS[id||""]||"Графік";
+      const candidates=Array.from(document.querySelectorAll<HTMLButtonElement>("button"));
+      const button=candidates.find(node=>node.closest('[class*="settings-center_tabs"]')&&(node.textContent||"").includes(label));
+      button?.click();
     };
 
     const open=()=>{
       const button=hostRef.current?.querySelector<HTMLButtonElement>(".settingsNavButton");
       if(button)button.click();
+      const url=new URL(window.location.href);
+      window.setTimeout(()=>selectTab(url.searchParams.get("settingsTab")),0);
       resetScroll();
     };
+
+    const onTab=(event:Event)=>selectTab((event as CustomEvent<string>).detail);
+    const onPop=()=>selectTab(new URL(window.location.href).searchParams.get("settingsTab"));
 
     resetScroll();
     frame=requestAnimationFrame(open);
     timer=window.setTimeout(open,80);
+    window.addEventListener("turbolev:settings-tab",onTab);
+    window.addEventListener("popstate",onPop);
 
     return()=>{
       cancelAnimationFrame(frame);
       window.clearTimeout(timer);
+      window.removeEventListener("turbolev:settings-tab",onTab);
+      window.removeEventListener("popstate",onPop);
       delete document.documentElement.dataset.settingsPage;
     };
   },[]);
