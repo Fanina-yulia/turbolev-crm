@@ -51,6 +51,10 @@ const RULES: Rule[] = [
     resolve: () => ({ kind: "EXTERNAL_PROVIDER", note: "Binotel callback authenticated with dedicated webhook token/provider contract." }),
   },
   {
+    match: exact("/api/camera-events/email"),
+    resolve: () => ({ kind: "EXTERNAL_PROVIDER", note: "Reolink Gmail bridge callback authenticated by a dedicated per-camera ingest token." }),
+  },
+  {
     match: prefix("/api/security"),
     resolve: () => internal(PERMISSIONS.SECURITY_ACCESS_MANAGE, "ALL", "Security administration is always strict.", true),
   },
