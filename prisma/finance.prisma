@@ -1,0 +1,288 @@
+enum FinancialPnlSection {
+  REVENUE
+  COGS
+  OPEX
+  OTHER_INCOME
+  OTHER_EXPENSE
+  TAX
+}
+
+enum FinancialEventStatus {
+  DRAFT
+  POSTED
+  REVERSED
+}
+
+enum FinancialObligationDirection {
+  RECEIVABLE
+  PAYABLE
+}
+
+enum FinancialObligationStatus {
+  OPEN
+  PARTIALLY_PAID
+  PAID
+  OVERDUE
+  CANCELLED
+}
+
+enum MoneyAccountType {
+  CASH
+  BANK
+  CARD
+  ACQUIRING
+  OTHER
+}
+
+enum CashTransactionKind {
+  INFLOW
+  OUTFLOW
+  TRANSFER
+}
+
+enum CashTransactionStatus {
+  DRAFT
+  POSTED
+  REVERSED
+}
+
+enum CashFlowSection {
+  OPERATING
+  INVESTING
+  FINANCING
+  INTERNAL_TRANSFER
+}
+
+enum FinanceSnapshotKind {
+  PLANNED
+  ACTUAL
+}
+
+model MoneyAccount {
+  id               String           @id @default(cuid())
+  name             String
+  type             MoneyAccountType
+  currency         String           @default("UAH") @db.VarChar(3)
+  openingBalance   Decimal          @default(0) @db.Decimal(14, 2)
+  openingBalanceAt DateTime         @default(now())
+  locationId       String?          @db.VarChar(64)
+  isActive         Boolean          @default(true)
+  sortOrder        Int              @default(100)
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+
+  incomingTransactions CashTransaction[] @relation("CashTransactionToAccount")
+  outgoingTransactions CashTransaction[] @relation("CashTransactionFromAccount")
+
+  @@index([isActive, sortOrder])
+  @@index([locationId])
+  @@index([currency])
+}
+
+model FinancialCategory {
+  id              String               @id @default(cuid())
+  code            String               @unique @db.VarChar(80)
+  name            String
+  pnlSection      FinancialPnlSection?
+  cashFlowSection CashFlowSection?
+  parentId        String?
+  isSystem        Boolean              @default(false)
+  isActive        Boolean              @default(true)
+  sortOrder       Int                  @default(100)
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+
+  parent      FinancialCategory?  @relation("FinancialCategoryTree", fields: [parentId], references: [id], onDelete: SetNull)
+  children    FinancialCategory[] @relation("FinancialCategoryTree")
+  events      FinancialEvent[]
+  obligations FinancialObligation[]
+  cash        CashTransaction[]
+
+  @@index([pnlSection, isActive])
+  @@index([cashFlowSection, isActive])
+  @@index([parentId, sortOrder])
+}
+
+model CostCenter {
+  id         String   @id @default(cuid())
+  code       String   @unique @db.VarChar(80)
+  name       String
+  locationId String?  @db.VarChar(64)
+  isSystem   Boolean  @default(false)
+  isActive   Boolean  @default(true)
+  sortOrder  Int      @default(100)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  events      FinancialEvent[]
+  obligations FinancialObligation[]
+  cash        CashTransaction[]
+
+  @@index([locationId])
+  @@index([isActive, sortOrder])
+}
+
+model FinancialEvent {
+  id             String               @id @default(cuid())
+  status         FinancialEventStatus @default(DRAFT)
+  pnlSection     FinancialPnlSection
+  amount         Decimal              @db.Decimal(14, 2)
+  currency       String               @default("UAH") @db.VarChar(3)
+  recognizedAt   DateTime
+  categoryId     String?
+  costCenterId   String?
+  workOrderId    String?              @db.VarChar(64)
+  clientId       String?              @db.VarChar(64)
+  vehicleId      String?              @db.VarChar(64)
+  supplierId     String?              @db.VarChar(64)
+  employeeId     String?              @db.VarChar(64)
+  locationId     String?              @db.VarChar(64)
+  sourceEntity   String?              @db.VarChar(40)
+  sourceEntityId String?              @db.VarChar(96)
+  description    String?              @db.Text
+  metadata       Json?
+  reversalOfId   String?              @unique
+  createdById    String?              @db.VarChar(64)
+  postedAt       DateTime?
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+
+  category    FinancialCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  costCenter  CostCenter?         @relation(fields: [costCenterId], references: [id], onDelete: SetNull)
+  reversalOf  FinancialEvent?     @relation("FinancialEventReversal", fields: [reversalOfId], references: [id], onDelete: SetNull)
+  reversedBy  FinancialEvent?     @relation("FinancialEventReversal")
+  obligations FinancialObligation[]
+
+  @@index([status, recognizedAt])
+  @@index([pnlSection, recognizedAt])
+  @@index([categoryId, recognizedAt])
+  @@index([costCenterId, recognizedAt])
+  @@index([workOrderId])
+  @@index([clientId])
+  @@index([vehicleId])
+  @@index([supplierId])
+  @@index([locationId])
+  @@index([sourceEntity, sourceEntityId])
+}
+
+model FinancialObligation {
+  id               String                       @id @default(cuid())
+  direction        FinancialObligationDirection
+  status           FinancialObligationStatus    @default(OPEN)
+  amount           Decimal                      @db.Decimal(14, 2)
+  settledAmount    Decimal                      @default(0) @db.Decimal(14, 2)
+  currency         String                       @default("UAH") @db.VarChar(3)
+  issuedAt         DateTime                     @default(now())
+  dueAt            DateTime?
+  settledAt        DateTime?
+  categoryId       String?
+  costCenterId     String?
+  sourceEventId    String?
+  workOrderId      String?                      @db.VarChar(64)
+  clientId         String?                      @db.VarChar(64)
+  supplierId       String?                      @db.VarChar(64)
+  locationId       String?                      @db.VarChar(64)
+  counterpartyName String?
+  sourceEntity     String?                      @db.VarChar(40)
+  sourceEntityId   String?                      @db.VarChar(96)
+  description      String?                      @db.Text
+  metadata         Json?
+  createdAt        DateTime                     @default(now())
+  updatedAt        DateTime                     @updatedAt
+
+  category    FinancialCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  costCenter  CostCenter?         @relation(fields: [costCenterId], references: [id], onDelete: SetNull)
+  sourceEvent FinancialEvent?     @relation(fields: [sourceEventId], references: [id], onDelete: SetNull)
+  cash        CashTransaction[]
+
+  @@index([direction, status, dueAt])
+  @@index([categoryId])
+  @@index([costCenterId])
+  @@index([sourceEventId])
+  @@index([workOrderId])
+  @@index([clientId])
+  @@index([supplierId])
+  @@index([locationId])
+  @@index([sourceEntity, sourceEntityId])
+}
+
+model CashTransaction {
+  id             String                @id @default(cuid())
+  kind           CashTransactionKind
+  status         CashTransactionStatus @default(DRAFT)
+  flowSection    CashFlowSection
+  amount         Decimal               @db.Decimal(14, 2)
+  currency       String                @default("UAH") @db.VarChar(3)
+  occurredAt     DateTime
+  fromAccountId  String?
+  toAccountId    String?
+  categoryId     String?
+  costCenterId   String?
+  obligationId   String?
+  workOrderId    String?               @db.VarChar(64)
+  clientId       String?               @db.VarChar(64)
+  supplierId     String?               @db.VarChar(64)
+  locationId     String?               @db.VarChar(64)
+  sourceEntity   String?               @db.VarChar(40)
+  sourceEntityId String?               @db.VarChar(96)
+  description    String?               @db.Text
+  metadata       Json?
+  reversalOfId   String?               @unique
+  createdById    String?               @db.VarChar(64)
+  postedAt       DateTime?
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
+
+  fromAccount MoneyAccount?        @relation("CashTransactionFromAccount", fields: [fromAccountId], references: [id], onDelete: Restrict)
+  toAccount   MoneyAccount?        @relation("CashTransactionToAccount", fields: [toAccountId], references: [id], onDelete: Restrict)
+  category    FinancialCategory?   @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  costCenter  CostCenter?           @relation(fields: [costCenterId], references: [id], onDelete: SetNull)
+  obligation  FinancialObligation? @relation(fields: [obligationId], references: [id], onDelete: SetNull)
+  reversalOf  CashTransaction?     @relation("CashTransactionReversal", fields: [reversalOfId], references: [id], onDelete: SetNull)
+  reversedBy  CashTransaction?     @relation("CashTransactionReversal")
+
+  @@index([status, occurredAt])
+  @@index([kind, occurredAt])
+  @@index([flowSection, occurredAt])
+  @@index([fromAccountId, occurredAt])
+  @@index([toAccountId, occurredAt])
+  @@index([categoryId])
+  @@index([costCenterId])
+  @@index([obligationId])
+  @@index([workOrderId])
+  @@index([clientId])
+  @@index([supplierId])
+  @@index([locationId])
+  @@index([sourceEntity, sourceEntityId])
+}
+
+model WorkOrderFinanceSnapshot {
+  id                 String              @id @default(cuid())
+  workOrderId        String              @db.VarChar(64)
+  kind               FinanceSnapshotKind
+  currency           String              @default("UAH") @db.VarChar(3)
+  laborRevenue       Decimal             @default(0) @db.Decimal(14, 2)
+  partsRevenue       Decimal             @default(0) @db.Decimal(14, 2)
+  externalRevenue    Decimal             @default(0) @db.Decimal(14, 2)
+  otherRevenue       Decimal             @default(0) @db.Decimal(14, 2)
+  discountAmount     Decimal             @default(0) @db.Decimal(14, 2)
+  refundAmount       Decimal             @default(0) @db.Decimal(14, 2)
+  partsCost          Decimal             @default(0) @db.Decimal(14, 2)
+  laborCost          Decimal             @default(0) @db.Decimal(14, 2)
+  externalCost       Decimal             @default(0) @db.Decimal(14, 2)
+  consumablesCost    Decimal             @default(0) @db.Decimal(14, 2)
+  otherDirectCost    Decimal             @default(0) @db.Decimal(14, 2)
+  grossRevenue       Decimal             @default(0) @db.Decimal(14, 2)
+  directCost         Decimal             @default(0) @db.Decimal(14, 2)
+  grossProfit        Decimal             @default(0) @db.Decimal(14, 2)
+  grossMarginPercent Decimal?            @db.Decimal(7, 2)
+  calculatedAt       DateTime            @default(now())
+  lockedAt           DateTime?
+  metadata           Json?
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+
+  @@unique([workOrderId, kind])
+  @@index([kind, calculatedAt])
+  @@index([workOrderId])
+}
