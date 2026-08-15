@@ -1,0 +1,31 @@
+name: Export Employee Production Migrations
+
+on:
+  push:
+    branches: [agent/employee-performance-core-v1]
+
+permissions:
+  contents: write
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/upload-artifact@v4
+        with:
+          name: employee-production-migrations
+          path: |
+            prisma/migrations/20260815050500_workorder_quality_control/migration.sql
+            prisma/migrations/20260815060000_employee_performance_core/migration.sql
+            prisma/migrations/20260815060500_role_economics_mode_capacity_demand/migration.sql
+          if-no-files-found: error
+      - name: Remove one-time workflow
+        shell: bash
+        run: |
+          rm .github/workflows/export-employee-prod-migrations.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .github/workflows/export-employee-prod-migrations.yml
+          git commit -m "Remove employee migration export helper"
+          git push
