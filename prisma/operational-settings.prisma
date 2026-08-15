@@ -1,0 +1,19 @@
+model CrmSetting {
+  key       String   @id @db.VarChar(64)
+  value     Json
+  updatedAt DateTime @default(now()) @db.Timestamp(3)
+}
+
+model CrmDirectoryItem {
+  id        String   @id
+  category  String   @db.VarChar(32)
+  name      String
+  code      String?  @db.VarChar(64)
+  data      Json     @default("{}")
+  isActive  Boolean  @default(true)
+  sortOrder Int      @default(100)
+  createdAt DateTime @default(now()) @db.Timestamp(3)
+  updatedAt DateTime @default(now()) @db.Timestamp(3)
+
+  @@index([category, isActive, sortOrder])
+}
