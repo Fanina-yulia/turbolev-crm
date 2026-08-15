@@ -4,7 +4,6 @@ on:
   pull_request:
     paths:
       - "services/camera-bridge/**"
-      - "railway.json"
       - ".github/workflows/camera-bridge.yml"
   workflow_dispatch:
 
@@ -13,12 +12,19 @@ permissions:
 
 jobs:
   docker-build:
-    name: Build Camera Bridge image
+    name: Build Camera Bridge (${{ matrix.platform }})
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [linux/amd64, linux/arm64]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -28,11 +34,13 @@ jobs:
         with:
           context: .
           file: ./services/camera-bridge/Dockerfile
+          platforms: ${{ matrix.platform }}
           push: false
-          load: true
+          load: ${{ matrix.platform == 'linux/amd64' }}
           tags: turbolev-camera-bridge:ci
 
-      - name: Validate bridge runtime
+      - name: Validate amd64 bridge runtime
+        if: matrix.platform == 'linux/amd64'
         run: |
           docker run -d --rm \
             --name turbolev-camera-bridge-ci \
