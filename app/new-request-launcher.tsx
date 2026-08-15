@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { NewRequestPricingBridge } from "./new-request-pricing-bridge";
 import { NewRequestWizardV3 } from "./new-request-wizard-v3";
 
 type OpenRequestDetail = { appointmentDate?: string; appointmentTime?: string; source?: string };
@@ -55,5 +56,5 @@ export function NewRequestLauncher() {
     };
   }, []);
 
-  return <div ref={host}><NewRequestWizardV3 /></div>;
+  return <div ref={host}><NewRequestWizardV3 /><NewRequestPricingBridge /></div>;
 }
