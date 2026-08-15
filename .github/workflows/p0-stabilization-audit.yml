@@ -1,0 +1,83 @@
+name: P0 Stabilization Audit
+
+on:
+  push:
+    branches: [agent/p0-stabilization-v2]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: p0-stabilization-audit
+  cancel-in-progress: false
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: turbolev_p0
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d turbolev_p0"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/turbolev_p0
+      DATABASE_URL_UNPOOLED: postgresql://postgres:postgres@localhost:5432/turbolev_p0
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Install dependencies and create lockfile
+        run: npm install --no-audit --no-fund
+      - name: Commit lockfile when missing or changed
+        shell: bash
+        run: |
+          if [ -n "$(git status --porcelain -- package-lock.json)" ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add package-lock.json
+            git commit -m "Lock npm dependencies"
+            git push
+          fi
+      - name: Validate Prisma schema
+        run: npx prisma validate
+      - name: Apply all migrations to clean PostgreSQL 18
+        run: npx prisma migrate deploy
+      - name: Reject Prisma migration drift
+        run: npx prisma migrate diff --exit-code --from-config-datasource --to-schema prisma
+      - name: Export migration ledger
+        shell: bash
+        run: |
+          cat > migration-ledger.sql <<'SQL'
+          CREATE TABLE IF NOT EXISTS "_prisma_migrations" (
+            "id" VARCHAR(36) NOT NULL,
+            "checksum" VARCHAR(64) NOT NULL,
+            "finished_at" TIMESTAMPTZ,
+            "migration_name" VARCHAR(255) NOT NULL,
+            "logs" TEXT,
+            "rolled_back_at" TIMESTAMPTZ,
+            "started_at" TIMESTAMPTZ NOT NULL DEFAULT now(),
+            "applied_steps_count" INTEGER NOT NULL DEFAULT 0,
+            CONSTRAINT "_prisma_migrations_pkey" PRIMARY KEY ("id")
+          );
+          SQL
+          psql "$DATABASE_URL" -Atc "SELECT format('INSERT INTO \"_prisma_migrations\" (\"id\",\"checksum\",\"finished_at\",\"migration_name\",\"logs\",\"rolled_back_at\",\"started_at\",\"applied_steps_count\") VALUES (%L,%L,%L,%L,%L,%L,%L,%s) ON CONFLICT (\"id\") DO NOTHING;', id, checksum, finished_at, migration_name, logs, rolled_back_at, started_at, applied_steps_count) FROM \"_prisma_migrations\" ORDER BY started_at;" >> migration-ledger.sql
+      - name: Export migration names
+        run: psql "$DATABASE_URL" -Atc 'SELECT migration_name FROM "_prisma_migrations" ORDER BY started_at' > migration-names.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: p0-stabilization-audit
+          path: |
+            migration-ledger.sql
+            migration-names.txt
+          if-no-files-found: error
