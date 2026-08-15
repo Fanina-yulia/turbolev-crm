@@ -80,8 +80,8 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       data.purpose = purpose;
     }
     if (Object.prototype.hasOwnProperty.call(body, "password")) {
-      const password = typeof body.password === "string" ? body.password : "";
-      if (password) data.encryptedPassword = encryptCameraPassword(password);
+      const password = typeof body.password === "string" ? body.password.slice(0, 256) : "";
+      data.encryptedPassword = encryptCameraPassword(password);
     }
     if (Object.prototype.hasOwnProperty.call(body, "isActive")) {
       data.isActive = body.isActive === true;
