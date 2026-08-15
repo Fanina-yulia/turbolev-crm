@@ -5,7 +5,20 @@ import { SettingsCenter } from "./settings-center";
 import { WorkflowSettingsBridge } from "./workflow-settings-bridge";
 import styles from "./settings-page.module.css";
 
-const SETTINGS_LABELS:Record<string,string>={schedule:"Графік",personnel:"Персонал",clients:"Клієнти",suppliers:"Постачальники",warehouse:"Склад",workPrices:"Прайс робіт",posts:"Пости",markup:"Націнка",cash:"Каса",integrations:"Інтеграції",appearance:"Оформлення"};
+const SETTINGS_LABELS:Record<string,string>={
+  schedule:"Графік",
+  personnel:"Персонал",
+  clients:"Клієнти",
+  suppliers:"Постачальники",
+  warehouse:"Склад",
+  workPrices:"Прайс робіт",
+  posts:"Пости",
+  markup:"Націнка",
+  cash:"Каса",
+  integrations:"Інтеграції",
+  appearance:"Оформлення",
+  workflow:"Процеси та статуси",
+};
 
 export function SettingsPage(){
   const hostRef=useRef<HTMLDivElement|null>(null);
@@ -14,14 +27,17 @@ export function SettingsPage(){
     document.documentElement.dataset.settingsPage="true";
     let frame=0;
     let timer=0;
+    let retryTimer=0;
     let observer:MutationObserver|null=null;
+    let requestedTab=new URL(window.location.href).searchParams.get("settingsTab")||"schedule";
+    let appliedTab:string|null=null;
 
     const getSettingsShell=()=>{
       const heading=Array.from(document.querySelectorAll<HTMLHeadingElement>("h2")).find(node=>(node.textContent||"").trim()==="Налаштування");
       const modal=heading?.closest<HTMLElement>("section")||null;
       const layout=modal?.querySelector<HTMLElement>('div[class*="layout"]')||null;
-      const tabs=layout?.querySelector<HTMLElement>('aside')||null;
-      const content=layout?.querySelector<HTMLElement>('main')||null;
+      const tabs=layout?.querySelector<HTMLElement>(":scope > aside")||null;
+      const content=layout?.querySelector<HTMLElement>(":scope > main")||null;
       const backdrop=modal?.parentElement as HTMLElement|null;
       return {heading,modal,layout,tabs,content,backdrop};
     };
@@ -84,32 +100,49 @@ export function SettingsPage(){
       if(content)content.scrollTop=0;
     };
 
-    const selectTab=(id?:string|null)=>{
-      const label=SETTINGS_LABELS[id||""]||"Графік";
-      const candidates=Array.from(document.querySelectorAll<HTMLButtonElement>("button"));
-      const button=candidates.find(node=>{
-        const text=(node.textContent||"").trim();
-        return text.includes(label)&&Boolean(node.closest('aside'));
-      });
-      button?.click();
+    const findInternalTab=(id:string)=>{
+      const {tabs}=getSettingsShell();
+      if(!tabs)return null;
+      const label=SETTINGS_LABELS[id]||SETTINGS_LABELS.schedule;
+      return Array.from(tabs.querySelectorAll<HTMLButtonElement>("button")).find(node=>{
+        const text=(node.textContent||"").replace(/\s+/g," ").trim();
+        return text.includes(label);
+      })||null;
+    };
+
+    const applyRequestedTab=(force=false)=>{
+      normalizeLayout();
+      if(!force&&appliedTab===requestedTab)return true;
+      const button=findInternalTab(requestedTab);
+      if(!button)return false;
+      appliedTab=requestedTab;
+      button.click();
       window.requestAnimationFrame(()=>{normalizeLayout();resetScroll();});
+      return true;
+    };
+
+    const requestTab=(id?:string|null)=>{
+      requestedTab=id&&SETTINGS_LABELS[id]?id:"schedule";
+      appliedTab=null;
+      if(applyRequestedTab())return;
+      window.clearTimeout(retryTimer);
+      retryTimer=window.setTimeout(()=>applyRequestedTab(),80);
     };
 
     const open=()=>{
       const button=hostRef.current?.querySelector<HTMLButtonElement>(".settingsNavButton");
       if(button)button.click();
-      const url=new URL(window.location.href);
-      window.setTimeout(()=>{
-        normalizeLayout();
-        selectTab(url.searchParams.get("settingsTab"));
-        resetScroll();
-      },0);
+      requestTab(new URL(window.location.href).searchParams.get("settingsTab"));
+      resetScroll();
     };
 
-    const onTab=(event:Event)=>selectTab((event as CustomEvent<string>).detail);
-    const onPop=()=>selectTab(new URL(window.location.href).searchParams.get("settingsTab"));
+    const onTab=(event:Event)=>requestTab((event as CustomEvent<string>).detail);
+    const onPop=()=>requestTab(new URL(window.location.href).searchParams.get("settingsTab"));
 
-    observer=new MutationObserver(()=>{normalizeLayout();});
+    observer=new MutationObserver(()=>{
+      normalizeLayout();
+      if(appliedTab!==requestedTab)applyRequestedTab();
+    });
     observer.observe(document.body,{childList:true,subtree:true});
 
     resetScroll();
@@ -121,6 +154,7 @@ export function SettingsPage(){
     return()=>{
       cancelAnimationFrame(frame);
       window.clearTimeout(timer);
+      window.clearTimeout(retryTimer);
       observer?.disconnect();
       window.removeEventListener("turbolev:settings-tab",onTab);
       window.removeEventListener("popstate",onPop);
