@@ -18,10 +18,21 @@ import { turboLevLogoDark, turboLevLogoLight } from "@/src/brand/logos";
 import shellStyles from "./crm-shell.module.css";
 
 type NavigateDetail = string | { section: CrmSectionLabel; filter?: string; filterLabel?: string };
-type SettingsTab = "schedule"|"personnel"|"clients"|"suppliers"|"warehouse"|"workPrices"|"posts"|"markup"|"cash"|"integrations"|"appearance";
+type SettingsTab = "schedule"|"personnel"|"clients"|"suppliers"|"warehouse"|"workPrices"|"posts"|"markup"|"cash"|"integrations"|"appearance"|"workflow";
 
 const SETTINGS_SUBMENU:Array<{id:SettingsTab;label:string}>=[
-  {id:"schedule",label:"Графік"},{id:"personnel",label:"Персонал"},{id:"clients",label:"Клієнти"},{id:"suppliers",label:"Постачальники"},{id:"warehouse",label:"Склад"},{id:"workPrices",label:"Прайс робіт"},{id:"posts",label:"Пости"},{id:"markup",label:"Націнка"},{id:"cash",label:"Каса"},{id:"integrations",label:"Інтеграції"},{id:"appearance",label:"Оформлення"},
+  {id:"schedule",label:"Графік"},
+  {id:"personnel",label:"Персонал"},
+  {id:"clients",label:"Клієнти"},
+  {id:"suppliers",label:"Постачальники"},
+  {id:"warehouse",label:"Склад"},
+  {id:"workPrices",label:"Прайс робіт"},
+  {id:"posts",label:"Пости"},
+  {id:"markup",label:"Націнка"},
+  {id:"cash",label:"Каса"},
+  {id:"integrations",label:"Інтеграції"},
+  {id:"appearance",label:"Оформлення"},
+  {id:"workflow",label:"Процеси та статуси"},
 ];
 
 export function CrmShell({ initialSection }: { initialSection?: string }) {
