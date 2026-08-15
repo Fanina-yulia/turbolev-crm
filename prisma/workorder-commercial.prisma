@@ -1,0 +1,112 @@
+enum WorkOrderEstimateStatus {
+  DRAFT
+  SENT
+  APPROVED
+  REJECTED
+  SUPERSEDED
+  CANCELLED
+}
+
+enum PartsRequestStatus {
+  NEW
+  SELECTING
+  SELECTED
+  WAITING_APPROVAL
+  APPROVED
+  ORDER_REQUIRED
+  ORDERED
+  PARTIALLY_RECEIVED
+  RECEIVED
+  INSTALLED
+  RETURNED
+  CANCELLED
+}
+
+model WorkOrderEstimate {
+  id                 String                  @id @default(cuid())
+  workOrderId        String
+  revision           Int
+  status             WorkOrderEstimateStatus @default(DRAFT)
+  currency           String                  @default("UAH") @db.VarChar(3)
+  lineFingerprint    String                  @db.VarChar(64)
+  lineSnapshot       Json
+  subtotal           Decimal                 @default(0) @db.Decimal(14, 2)
+  discountAmount     Decimal                 @default(0) @db.Decimal(14, 2)
+  totalAmount        Decimal                 @default(0) @db.Decimal(14, 2)
+  laborTotal         Decimal                 @default(0) @db.Decimal(14, 2)
+  partsTotal         Decimal                 @default(0) @db.Decimal(14, 2)
+  externalTotal      Decimal                 @default(0) @db.Decimal(14, 2)
+  consumablesTotal   Decimal                 @default(0) @db.Decimal(14, 2)
+  otherTotal         Decimal                 @default(0) @db.Decimal(14, 2)
+  sentAt             DateTime?
+  approvedAt         DateTime?
+  rejectedAt         DateTime?
+  approvedByName     String?                 @db.VarChar(160)
+  approvalSource     String?                 @db.VarChar(40)
+  approvalNote       String?                 @db.Text
+  supersededAt       DateTime?
+  createdAt          DateTime                @default(now())
+  updatedAt          DateTime                @updatedAt
+
+  partsRequests PartsRequest[]
+
+  @@unique([workOrderId, revision])
+  @@index([workOrderId, status, revision])
+  @@index([lineFingerprint])
+  @@index([status, updatedAt])
+}
+
+model PartsRequest {
+  id                 String             @id @default(cuid())
+  workOrderId        String
+  estimateId         String             @unique
+  status             PartsRequestStatus @default(NEW)
+  paymentRequired    Boolean            @default(false)
+  paymentConfirmedAt DateTime?
+  selectedAt         DateTime?
+  approvedAt         DateTime?
+  orderedAt          DateTime?
+  receivedAt         DateTime?
+  installedAt        DateTime?
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+
+  estimate WorkOrderEstimate @relation(fields: [estimateId], references: [id], onDelete: Restrict)
+  items    PartsRequestItem[]
+
+  @@index([workOrderId, status, updatedAt])
+}
+
+model PartsRequestItem {
+  id                String   @id @default(cuid())
+  partsRequestId    String
+  workOrderLineId   String   @db.VarChar(64)
+  description       String   @db.Text
+  article           String?  @db.VarChar(120)
+  brand             String?  @db.VarChar(120)
+  quantity          Decimal  @default(1) @db.Decimal(12, 3)
+  receivedQuantity  Decimal  @default(0) @db.Decimal(12, 3)
+  installedQuantity Decimal  @default(0) @db.Decimal(12, 3)
+  purchasePrice     Decimal? @db.Decimal(14, 2)
+  sellPrice         Decimal? @db.Decimal(14, 2)
+  currency          String   @default("UAH") @db.VarChar(3)
+  requiredForRepair Boolean  @default(true)
+  sourcingMode      String?  @db.VarChar(32)
+  supplierId        String?  @db.VarChar(64)
+  supplierQuoteId   String?  @db.VarChar(64)
+  supplierOrderId   String?  @db.VarChar(64)
+  externalProductId String?  @db.VarChar(160)
+  etaAt             DateTime?
+  note              String?  @db.Text
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  partsRequest PartsRequest @relation(fields: [partsRequestId], references: [id], onDelete: Cascade)
+
+  @@unique([partsRequestId, workOrderLineId])
+  @@index([partsRequestId, requiredForRepair])
+  @@index([supplierId])
+  @@index([supplierQuoteId])
+  @@index([supplierOrderId])
+  @@index([article])
+}
