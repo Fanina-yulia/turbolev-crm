@@ -44,9 +44,6 @@ jobs:
       - name: Install locked dependencies
         run: npm ci --no-audit --no-fund
 
-      - name: Add Neon Auth SDK compatible with Next 15
-        run: npm install '@neondatabase/auth@0.2' --save --no-audit --no-fund
-
       - name: Validate security schema
         run: npx prisma validate
 
@@ -64,16 +61,16 @@ jobs:
           printf '\n' >> "$MIGRATION_DIR/migration.sql"
           cat scripts/auth-rbac-seed.sql >> "$MIGRATION_DIR/migration.sql"
 
-      - name: Commit generated assets
+      - name: Commit generated migration
         shell: bash
         run: |
           set -euo pipefail
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add package.json package-lock.json prisma/migrations
+          git add prisma/migrations
           if git diff --cached --quiet; then
             echo 'Nothing to commit.'
             exit 0
           fi
-          git commit -m 'Generate auth RBAC migration and Neon Auth lockfile'
+          git commit -m 'Generate auth RBAC migration'
           git push origin HEAD:agent/auth-rbac-v1
