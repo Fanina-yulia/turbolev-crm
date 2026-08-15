@@ -69,7 +69,11 @@ function getFreePort() {
   });
 }
 
-function run(command, args, options = {}) {
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function runWithTimeout(command, args, timeoutMs, options = {}) {
   return new Promise((resolve) => {
     const child = spawn(command, args, {
       stdio: ["ignore", "pipe", "pipe"],
@@ -77,16 +81,33 @@ function run(command, args, options = {}) {
     });
     let stdout = "";
     let stderr = "";
+    let settled = false;
     const append = (target, chunk) => `${target}${chunk.toString("utf8")}`.slice(-24000);
+    const finish = (result) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve(result);
+    };
+    const timer = setTimeout(() => {
+      child.kill("SIGKILL");
+      finish({ code: -2, signal: "SIGKILL", stdout, stderr: `${stderr}\nprocess timeout` });
+    }, timeoutMs);
     child.stdout?.on("data", (chunk) => { stdout = append(stdout, chunk); });
     child.stderr?.on("data", (chunk) => { stderr = append(stderr, chunk); });
-    child.on("error", (error) => resolve({ code: -1, stdout, stderr: `${stderr}\n${error.message}` }));
-    child.on("exit", (code, signal) => resolve({ code: code ?? -1, signal, stdout, stderr }));
+    child.on("error", (error) => finish({ code: -1, stdout, stderr: `${stderr}\n${error.message}` }));
+    child.on("exit", (code, signal) => finish({ code: code ?? -1, signal, stdout, stderr }));
   });
 }
 
-function sleep(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+async function stopProcess(child) {
+  if (child.exitCode !== null || child.signalCode !== null) return;
+  child.kill("SIGTERM");
+  await Promise.race([
+    new Promise((resolve) => child.once("exit", resolve)),
+    sleep(1200),
+  ]);
+  if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
 }
 
 async function captureSnapshot(rtspPort, outputPath, deadline) {
@@ -101,17 +122,14 @@ async function captureSnapshot(rtspPort, outputPath, deadline) {
     for (const url of urls) {
       const remaining = deadline - Date.now();
       if (remaining < 1000) break;
-      const result = await Promise.race([
-        run(FFMPEG_BINARY, [
-          "-hide_banner", "-loglevel", "error",
-          "-rtsp_transport", "tcp",
-          "-i", url,
-          "-frames:v", "1",
-          "-q:v", "3",
-          "-y", outputPath,
-        ]),
-        sleep(Math.min(4500, remaining)).then(() => ({ code: -2, stderr: "ffmpeg timeout", stdout: "" })),
-      ]);
+      const result = await runWithTimeout(FFMPEG_BINARY, [
+        "-hide_banner", "-loglevel", "error",
+        "-rtsp_transport", "tcp",
+        "-i", url,
+        "-frames:v", "1",
+        "-q:v", "3",
+        "-y", outputPath,
+      ], Math.min(4500, remaining));
       if (result.code === 0) return { ok: true, url };
       lastError = result.stderr || result.stdout || lastError;
     }
@@ -121,7 +139,9 @@ async function captureSnapshot(rtspPort, outputPath, deadline) {
 }
 
 function safeNeolinkMessage(logs) {
-  const text = logs.replace(/password\s*=\s*[^\s]+/gi, "password=[redacted]");
+  const text = logs
+    .replace(/password\s*=\s*[^\s]+/gi, "password=[redacted]")
+    .replace(/[A-Z0-9]{16}/g, "[uid]");
   const useful = text.split(/\r?\n/).filter((line) => /error|warn|connect|relay|login|auth|camera|uid/i.test(line));
   return useful.slice(-8).join(" | ").slice(-1600);
 }
@@ -178,12 +198,7 @@ async function probeReolink(body) {
       snapshotDataUrl: `data:image/jpeg;base64,${image.toString("base64")}`,
     };
   } finally {
-    if (!child.killed) child.kill("SIGTERM");
-    await Promise.race([
-      new Promise((resolve) => child.once("exit", resolve)),
-      sleep(1200),
-    ]);
-    if (!child.killed) child.kill("SIGKILL");
+    await stopProcess(child);
     await rm(dir, { recursive: true, force: true });
   }
 }
