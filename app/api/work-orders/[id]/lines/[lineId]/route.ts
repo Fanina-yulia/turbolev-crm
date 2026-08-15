@@ -1,0 +1,55 @@
+import { NextResponse } from "next/server";
+import {
+  cancelWorkOrderLine,
+  updateWorkOrderLine,
+  WorkOrderLineError,
+} from "@/src/services/work-order-lines.service";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+function actor(body: Record<string, unknown>) {
+  return typeof body.actorName === "string" && body.actorName.trim()
+    ? body.actorName.trim().slice(0, 120)
+    : "CRM / Сервіс-менеджер";
+}
+
+function errorResponse(error: unknown) {
+  if (error instanceof WorkOrderLineError) {
+    const status = ["WORK_ORDER_NOT_FOUND", "LINE_NOT_FOUND"].includes(error.code)
+      ? 404
+      : ["ACTUAL_ALREADY_LOCKED", "INVALID_STATUS_TRANSITION", "COMPLETED_LINE_PLANNED_LOCKED"].includes(error.code)
+        ? 409
+        : 400;
+    return NextResponse.json({ ok: false, code: error.code, error: error.message }, { status });
+  }
+  console.error("[work-order-line]", error);
+  return NextResponse.json({ ok: false, code: "INTERNAL_ERROR", error: "WorkOrder line operation failed" }, { status: 500 });
+}
+
+export async function PATCH(request: Request, context: { params: Promise<{ id: string; lineId: string }> }) {
+  const { id, lineId } = await context.params;
+  try {
+    const body = (await request.json()) as Record<string, unknown>;
+    const result = await updateWorkOrderLine(id, lineId, body, actor(body));
+    return NextResponse.json({ ok: true, ...result });
+  } catch (error) {
+    return errorResponse(error);
+  }
+}
+
+export async function DELETE(request: Request, context: { params: Promise<{ id: string; lineId: string }> }) {
+  const { id, lineId } = await context.params;
+  try {
+    let body: Record<string, unknown> = {};
+    try {
+      body = (await request.json()) as Record<string, unknown>;
+    } catch {
+      body = {};
+    }
+    const result = await cancelWorkOrderLine(id, lineId, actor(body));
+    return NextResponse.json({ ok: true, ...result });
+  } catch (error) {
+    return errorResponse(error);
+  }
+}
