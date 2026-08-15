@@ -24,49 +24,65 @@ export async function GET(request: NextRequest) {
     const recentFrom = new Date(now - 3 * 60 * 1000);
     const terminalFrom = new Date(now - 75 * 1000);
 
-    const [user, calls] = await Promise.all([
-      prisma.user.findUnique({
-        where: { id: access.context.user.id },
-        select: { id: true, name: true, internalNumber: true },
-      }),
-      prisma.callHistory.findMany({
-        where: {
-          type: CallType.INCOMING,
-          startedAt: { gte: recentFrom },
-          OR: [
-            { endedAt: null },
-            { endedAt: { gte: terminalFrom } },
-          ],
-        },
-        include: {
-          client: {
-            select: {
-              id: true,
-              name: true,
-              vehicles: {
-                select: { id: true, brand: true, model: true, plateNumber: true, vin: true },
-                orderBy: { updatedAt: "desc" },
-                take: 1,
+    const user = await prisma.user.findUnique({
+      where: { id: access.context.user.id },
+      select: { id: true, name: true, internalNumber: true },
+    });
+    const userId = user?.id || access.context.user.id;
+    const internalNumber = user?.internalNumber?.trim() || null;
+
+    const calls = await prisma.callHistory.findMany({
+      where: {
+        startedAt: { gte: recentFrom },
+        AND: [
+          {
+            OR: [
+              { endedAt: null },
+              { endedAt: { gte: terminalFrom } },
+            ],
+          },
+          {
+            OR: [
+              { type: CallType.INCOMING },
+              {
+                type: CallType.OUTGOING,
+                OR: [
+                  { managerId: userId },
+                  ...(internalNumber ? [{ internalNumber }] : []),
+                ],
               },
+            ],
+          },
+        ],
+      },
+      include: {
+        client: {
+          select: {
+            id: true,
+            name: true,
+            vehicles: {
+              select: { id: true, brand: true, model: true, plateNumber: true, vin: true },
+              orderBy: { updatedAt: "desc" },
+              take: 1,
             },
           },
-          lead: { select: { id: true, name: true, carBrand: true, carModel: true, plateNumber: true } },
-          workOrder: { select: { id: true, status: true } },
-          manager: { select: { id: true, name: true } },
         },
-        orderBy: { startedAt: "desc" },
-        take: 10,
-      }),
-    ]);
+        lead: { select: { id: true, name: true, carBrand: true, carModel: true, plateNumber: true } },
+        workOrder: { select: { id: true, status: true } },
+        manager: { select: { id: true, name: true } },
+      },
+      orderBy: { startedAt: "desc" },
+      take: 10,
+    });
 
     return NextResponse.json({
       ok: true,
       checkedAt: new Date().toISOString(),
       currentUser: {
-        id: user?.id || access.context.user.id,
+        id: userId,
         name: user?.name || access.context.user.name,
-        internalNumber: user?.internalNumber || null,
-        clickToCallReady: Boolean(user?.internalNumber),
+        internalNumber,
+        clickToCallReady: Boolean(internalNumber),
       },
       calls: calls.map((call) => {
         const vehicle = call.client?.vehicles[0] || null;
@@ -75,6 +91,7 @@ export async function GET(request: NextRequest) {
           callId: call.binotelCallId,
           phone: call.externalNumber,
           internalNumber: call.internalNumber,
+          type: call.type,
           phase: !call.endedAt ? (call.answeredAt ? "ANSWERED" : "RINGING") : (call.status || "COMPLETED"),
           status: call.status,
           startedAt: call.startedAt,
