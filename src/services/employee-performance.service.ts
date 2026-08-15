@@ -50,6 +50,8 @@ function weightedKpiScore(
 /**
  * Rebuilds one employee-period snapshot from immutable source facts.
  * No salary formula is encoded here: posted SalaryAccrual facts are consumed as-is.
+ * DIRECT_ROI roles receive financial break-even/ROI; managed/support roles are
+ * evaluated through their own role economics mode rather than fake revenue attribution.
  */
 export async function rebuildEmployeeEconomicsSnapshot(args: {
   employeeId: string;
@@ -120,8 +122,10 @@ export async function rebuildEmployeeEconomicsSnapshot(args: {
     }
   }
 
+  const economicsMode = assignment?.role.economicsMode ?? "SUPPORT_CAPACITY";
   const kpiScore = weightedKpiScore(kpiResults, assignment?.role.kpiRules ?? []);
   const economics = calculateEmployeeEconomics({
+    economicsMode,
     fullCost,
     directContribution,
     managedValue,
@@ -130,15 +134,17 @@ export async function rebuildEmployeeEconomicsSnapshot(args: {
     capacityUtilization: null,
   });
 
-  const breakEvenAt = findBreakEvenAt(
-    fullCost,
-    attributionEntries.map((entry) => ({
-      occurredAt: entry.event.occurredAt,
-      attributionType: entry.attributionType,
-      economicValue: asNumber(entry.economicValue),
-      additiveContribution: entry.additiveContribution,
-    })),
-  );
+  const breakEvenAt = economicsMode === "DIRECT_ROI"
+    ? findBreakEvenAt(
+        fullCost,
+        attributionEntries.map((entry) => ({
+          occurredAt: entry.event.occurredAt,
+          attributionType: entry.attributionType,
+          economicValue: asNumber(entry.economicValue),
+          additiveContribution: entry.additiveContribution,
+        })),
+      )
+    : null;
 
   const completeness =
     (assignment ? 25 : 0) +
@@ -159,6 +165,7 @@ export async function rebuildEmployeeEconomicsSnapshot(args: {
       payrollPeriodId: args.payrollPeriodId ?? null,
       periodStart,
       periodEnd,
+      economicsMode,
       fullCost,
       directContribution,
       managedValue,
@@ -174,6 +181,7 @@ export async function rebuildEmployeeEconomicsSnapshot(args: {
     },
     update: {
       payrollPeriodId: args.payrollPeriodId ?? null,
+      economicsMode,
       fullCost,
       directContribution,
       managedValue,
