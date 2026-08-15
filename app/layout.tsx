@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import "./scrollbars.css";
 import "./theme-fixes.css";
 import "./chatgpt-typography.css";
 import "./pipeline-navigation.css";
