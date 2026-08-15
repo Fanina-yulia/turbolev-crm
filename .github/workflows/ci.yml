@@ -67,5 +67,8 @@ jobs:
       - name: RBAC security smoke test
         run: npx --no-install tsx scripts/rbac-smoke.ts
 
+      - name: API security policy coverage
+        run: npx --no-install tsx scripts/api-security-policy-smoke.ts
+
       - name: Production build
         run: npm run build
