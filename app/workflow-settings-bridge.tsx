@@ -13,7 +13,6 @@ export function WorkflowSettingsBridge(){
   useEffect(()=>{
     let host:HTMLDivElement|null=null;
     let tabs:HTMLElement|null=null;
-    let main:HTMLElement|null=null;
 
     const wire=()=>{
       const headings=Array.from(document.querySelectorAll<HTMLHeadingElement>("h2"));
@@ -21,18 +20,18 @@ export function WorkflowSettingsBridge(){
       const modal=heading?.closest<HTMLElement>("section");
       if(!modal)return;
       tabs=modal.querySelector<HTMLElement>("aside");
-      main=tabs?.parentElement?.querySelector<HTMLElement>(":scope > main")||null;
+      const main=tabs?.parentElement?.querySelector<HTMLElement>(":scope > main")||null;
       if(!tabs||!main)return;
       main.style.position="relative";
       host=tabs.querySelector<HTMLDivElement>('[data-workflow-settings-tab="true"]');
       if(!host){host=document.createElement("div");host.dataset.workflowSettingsTab="true";host.style.display="contents";tabs.appendChild(host);}
-      setTabTarget(host);setContentTarget(main);
+      setTabTarget(current=>current===host?current:host);
+      setContentTarget(current=>current===main?current:main);
     };
 
     const handleClick=(event:MouseEvent)=>{
-      if(!active||!tabs)return;
       const target=event.target as Node|null;
-      if(target&&tabs.contains(target)&&!(tabTarget&&tabTarget.contains(target)))setActive(false);
+      if(target&&tabs?.contains(target)&&host&&!host.contains(target))setActive(false);
     };
 
     const observer=new MutationObserver(()=>wire());
@@ -40,7 +39,7 @@ export function WorkflowSettingsBridge(){
     document.addEventListener("click",handleClick,true);
     wire();
     return()=>{observer.disconnect();document.removeEventListener("click",handleClick,true);host?.remove();};
-  },[active,tabTarget]);
+  },[]);
 
   return <>{tabTarget?createPortal(<button type="button" className={`${settingsStyles.tab} ${active?settingsStyles.tabActive:""}`} onClick={()=>setActive(true)}><span className={settingsStyles.tabIcon}>↔</span><span><strong>Процеси та статуси</strong><small>Workflow, Gates, Blockers</small></span></button>,tabTarget):null}{active&&contentTarget?createPortal(<div style={{position:"absolute",inset:0,zIndex:30,overflow:"auto",background:"var(--bg)",padding:"20px 24px 40px"}}><WorkflowSettingsPanel/></div>,contentTarget):null}</>;
 }
