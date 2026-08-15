@@ -15,6 +15,7 @@ import "./leads.css";
 import "./leads-kpi.css";
 import "./lead-details.css";
 import "./communications.css";
+import "./communications-header-polish.css";
 import "./settings-suppliers.css";
 import "./settings-integrations.css";
 import { PhoneInputNormalizer } from "./phone-input-normalizer";
