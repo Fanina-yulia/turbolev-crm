@@ -61,6 +61,11 @@ const strictSources = [
   "app/api/security/users/[id]/roles/route.ts",
   "app/api/security/config/route.ts",
   "app/api/me/compensation/route.ts",
+  "app/api/settings/cameras/route.ts",
+  "app/api/settings/cameras/[id]/route.ts",
+  "app/api/settings/cameras/[id]/events/route.ts",
+  "app/api/settings/cameras/[id]/rotate-ingest-token/route.ts",
+  "app/api/settings/cameras/[id]/test/route.ts",
 ];
 for (const sourcePath of strictSources) {
   const source = await fs.readFile(sourcePath, "utf8");
