@@ -3,6 +3,7 @@
 import { useEffect, useRef } from "react";
 import { SettingsCenter } from "./settings-center";
 import { WorkflowSettingsBridge } from "./workflow-settings-bridge";
+import { SecuritySettingsBridge } from "./security-settings-bridge";
 import styles from "./settings-page.module.css";
 
 const SETTINGS_LABELS:Record<string,string>={
@@ -18,6 +19,7 @@ const SETTINGS_LABELS:Record<string,string>={
   integrations:"Інтеграції",
   appearance:"Оформлення",
   workflow:"Процеси та статуси",
+  security:"Ролі та доступи",
 };
 
 export function SettingsPage(){
@@ -162,5 +164,5 @@ export function SettingsPage(){
     };
   },[]);
 
-  return <div ref={hostRef} className={styles.host}><WorkflowSettingsBridge/><SettingsCenter/></div>;
+  return <div ref={hostRef} className={styles.host}><WorkflowSettingsBridge/><SecuritySettingsBridge/><SettingsCenter/></div>;
 }
