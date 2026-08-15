@@ -20,7 +20,7 @@ export class WorkOrderHardGateError extends Error {
 
 /**
  * The only supported application-level WorkOrder factory.
- * Hard Gate #1 is checked inside the same DB transaction as WorkOrder creation.
+ * Hard Gate #1 is checked inside the same DB transaction as idempotent WorkOrder creation.
  */
 export async function createWorkOrderFromConfirmedDiagnostic(diagnosticRequestId: string) {
   const prisma = getPrisma();
@@ -35,10 +35,6 @@ export async function createWorkOrderFromConfirmedDiagnostic(diagnosticRequestId
       throw new DiagnosticRequestNotFoundError(diagnosticRequestId);
     }
 
-    if (diagnosticRequest.workOrder) {
-      return diagnosticRequest.workOrder;
-    }
-
     if (
       diagnosticRequest.status !== DiagnosticRequestStatus.CONFIRMED ||
       !diagnosticRequest.confirmedAt
@@ -46,8 +42,14 @@ export async function createWorkOrderFromConfirmedDiagnostic(diagnosticRequestId
       throw new WorkOrderHardGateError();
     }
 
-    return tx.workOrder.create({
-      data: {
+    if (diagnosticRequest.workOrder) {
+      return diagnosticRequest.workOrder;
+    }
+
+    return tx.workOrder.upsert({
+      where: { diagnosticRequestId: diagnosticRequest.id },
+      update: {},
+      create: {
         clientId: diagnosticRequest.clientId,
         vehicleId: diagnosticRequest.vehicleId,
         diagnosticRequestId: diagnosticRequest.id,
