@@ -37,11 +37,6 @@ export async function GET(request: NextRequest) {
         createdAt: true,
         updatedAt: true,
         client: { select: { id: true, name: true, phone: true } },
-        registrations: {
-          orderBy: [{ isCurrent: "desc" }, { updatedAt: "desc" }],
-          take: 8,
-          select: { id: true, countryCode: true, plateNumber: true, source: true, isCurrent: true, validFrom: true, validTo: true },
-        },
         diagnosticRequests: {
           orderBy: { createdAt: "desc" },
           take: 10,
@@ -52,7 +47,7 @@ export async function GET(request: NextRequest) {
           take: 10,
           select: { id: true, status: true, createdAt: true, updatedAt: true, closedAt: true },
         },
-        _count: { select: { workOrders: true, diagnosticRequests: true, registrations: true } },
+        _count: { select: { workOrders: true, diagnosticRequests: true } },
       },
     });
 
