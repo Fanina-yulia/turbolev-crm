@@ -16,7 +16,25 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: turbolev_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d turbolev_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/turbolev_ci
+      DATABASE_URL_UNPOOLED: postgresql://postgres:postgres@localhost:5432/turbolev_ci
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -26,15 +44,22 @@ jobs:
         with:
           node-version: 24
           cache: npm
-          cache-dependency-path: package.json
+          cache-dependency-path: package-lock.json
 
-      - name: Install dependencies
-        run: npm install --no-audit --no-fund
+      - name: Install locked dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Validate Prisma schema
+        run: npx prisma validate
+
+      - name: Apply full migration history on clean PostgreSQL 18
+        run: npx prisma migrate deploy
+
+      - name: Reject Prisma / migration schema drift
+        run: npx prisma migrate diff --exit-code --from-config-datasource --to-schema prisma
 
       - name: Vehicle pricing classifier smoke test
         run: npx --no-install tsx scripts/vehicle-classifier-smoke.ts
 
       - name: Production build
-        env:
-          DATABASE_URL: postgresql://build:build@localhost:5432/build
         run: npm run build
