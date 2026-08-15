@@ -65,7 +65,7 @@ export function SettingsPage(){
       content.style.setProperty("max-width","none","important");
       content.style.setProperty("min-width","0","important");
       content.style.setProperty("overflow","visible","important");
-      content.style.setProperty("padding","28px 34px 56px","important");
+      content.style.setProperty("padding","var(--settings-content-padding)","important");
 
       modal.style.setProperty("width","100%","important");
       modal.style.setProperty("max-width","none","important");
@@ -79,7 +79,7 @@ export function SettingsPage(){
 
       if(backdrop){
         backdrop.style.setProperty("display","block","important");
-        backdrop.style.setProperty("left","265px","important");
+        backdrop.style.setProperty("left","var(--crm-sidebar-width)","important");
         backdrop.style.setProperty("right","0","important");
         backdrop.style.setProperty("top","0","important");
         backdrop.style.setProperty("bottom","0","important");
