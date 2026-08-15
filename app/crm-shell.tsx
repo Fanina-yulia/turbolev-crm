@@ -37,16 +37,21 @@ const SETTINGS_SUBMENU:Array<{id:SettingsTab;label:string}>=[
   {id:"security",label:"Ролі та доступи"},
 ];
 
+function groupForSection(section:CrmSectionLabel){
+  return CRM_NAV_GROUPS.find(group=>group.items.some(item=>item.label===section))?.label||null;
+}
+
 export function CrmShell({ initialSection }: { initialSection?: string }) {
-  const [active, setActive] = useState<CrmSectionLabel>(() => sectionFromSlug(initialSection));
+  const initialActive=sectionFromSlug(initialSection);
+  const [active, setActive] = useState<CrmSectionLabel>(initialActive);
   const [workflowFilter, setWorkflowFilter] = useState("");
   const [workflowFilterLabel, setWorkflowFilterLabel] = useState("");
-  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+  const [openGroup,setOpenGroup]=useState<string|null>(()=>groupForSection(initialActive));
   const [settingsTab,setSettingsTab]=useState<SettingsTab>("schedule");
   const access=useCrmAccess();
 
   const navigateTo = useCallback((next: CrmSectionLabel, historyMode: "push" | "replace" = "push", filter = "", filterLabel = "") => {
-    setActive(next); setWorkflowFilter(filter); setWorkflowFilterLabel(filterLabel);
+    setActive(next); setOpenGroup(groupForSection(next)); setWorkflowFilter(filter); setWorkflowFilterLabel(filterLabel);
     const url = new URL(window.location.href); const slug = slugFromSection(next);
     if (slug === "overview") url.searchParams.delete("section"); else url.searchParams.set("section", slug);
     if (filter) url.searchParams.set("filter", filter); else url.searchParams.delete("filter");
@@ -57,7 +62,7 @@ export function CrmShell({ initialSection }: { initialSection?: string }) {
   }, []);
 
   const navigateSettings = useCallback((tab:SettingsTab,historyMode:"push"|"replace"="push")=>{
-    setActive("Налаштування");setWorkflowFilter("");setWorkflowFilterLabel("");setSettingsTab(tab);
+    setActive("Налаштування");setOpenGroup(groupForSection("Налаштування"));setWorkflowFilter("");setWorkflowFilterLabel("");setSettingsTab(tab);
     const url=new URL(window.location.href);url.searchParams.set("section","settings");url.searchParams.set("settingsTab",tab);url.searchParams.delete("filter");url.searchParams.delete("filterLabel");
     const nextUrl=`${url.pathname}${url.search}${url.hash}`;
     if(historyMode==="replace")window.history.replaceState({},"",nextUrl);else window.history.pushState({},"",nextUrl);
@@ -65,7 +70,12 @@ export function CrmShell({ initialSection }: { initialSection?: string }) {
   },[]);
 
   useEffect(() => {
-    const syncFromUrl = () => { const url = new URL(window.location.href); setActive(sectionFromSlug(url.searchParams.get("section"))); setWorkflowFilter(url.searchParams.get("filter") || ""); setWorkflowFilterLabel(url.searchParams.get("filterLabel") || ""); const tab=url.searchParams.get("settingsTab") as SettingsTab|null;if(tab&&SETTINGS_SUBMENU.some(item=>item.id===tab))setSettingsTab(tab); };
+    const syncFromUrl = () => {
+      const url = new URL(window.location.href);
+      const next=sectionFromSlug(url.searchParams.get("section"));
+      setActive(next);setOpenGroup(groupForSection(next));setWorkflowFilter(url.searchParams.get("filter") || "");setWorkflowFilterLabel(url.searchParams.get("filterLabel") || "");
+      const tab=url.searchParams.get("settingsTab") as SettingsTab|null;if(tab&&SETTINGS_SUBMENU.some(item=>item.id===tab))setSettingsTab(tab);
+    };
     const navigate = (event: Event) => { const detail = (event as CustomEvent<NavigateDetail>).detail; if (typeof detail === "string") { if (isCrmSection(detail)) navigateTo(detail); return; } if (detail && isCrmSection(detail.section)) navigateTo(detail.section, "push", detail.filter || "", detail.filterLabel || ""); };
     syncFromUrl(); window.addEventListener("turbolev:navigate", navigate); window.addEventListener("popstate", syncFromUrl);
     return () => { window.removeEventListener("turbolev:navigate", navigate); window.removeEventListener("popstate", syncFromUrl); };
@@ -109,7 +119,16 @@ export function CrmShell({ initialSection }: { initialSection?: string }) {
     <SettingsPersonnelBridge/>
     <aside className="sidebar">
       <div className="brand"><div className="brandLogoWrap" aria-label="Turbo LEV"><img className="brandLogo brandLogoDark" src={turboLevLogoDark} alt="Turbo LEV"/><img className="brandLogo brandLogoLight" src={turboLevLogoLight} alt="Turbo LEV"/></div></div>
-      <nav className="groupedNav">{visibleGroups.map((group)=>{const containsActive=group.items.some((item)=>item.label===active);const hidden=Boolean(collapsed[group.label]&&!containsActive);return <section className="navGroup" key={group.label}><button type="button" className="navGroupHead" onClick={()=>setCollapsed((current)=>({...current,[group.label]:!current[group.label]}))}><span>{group.label}</span><i>{hidden?"+":"−"}</i></button>{!hidden&&<div className="navGroupItems">{group.items.map((item)=><div key={item.slug}><button className={active===item.label?"navActive":""} onClick={()=>item.label==="Налаштування"?navigateSettings(canSettingsTab(settingsTab)?settingsTab:visibleSettingsSubmenu[0]?.id||"schedule"):navigateTo(item.label)}><span className="navDot"/>{item.label}{item.label==="Комунікації"&&<span style={{marginLeft:"auto",fontSize:9,color:"var(--orange)"}}>NEW</span>}</button>{item.label==="Налаштування"&&active==="Налаштування"&&<div className={shellStyles.settingsSubmenu}>{visibleSettingsSubmenu.map(sub=><button type="button" key={sub.id} className={settingsTab===sub.id?shellStyles.settingsSubActive:""} onClick={()=>navigateSettings(sub.id)}><span>{sub.label}</span></button>)}</div>}</div>)}</div>}</section>;})}</nav>
+      <nav className="groupedNav">{visibleGroups.map((group)=>{
+        const containsActive=group.items.some(item=>item.label===active);const isOpen=openGroup===group.label;
+        return <section className={`${shellStyles.navGroup} ${containsActive?shellStyles.navGroupCurrent:""}`} key={group.label}>
+          <button type="button" className={shellStyles.navGroupHead} aria-expanded={isOpen} onClick={()=>setOpenGroup(current=>current===group.label?null:group.label)}><span>{group.label}</span><i className={`${shellStyles.navChevron} ${isOpen?shellStyles.navChevronOpen:""}`}>⌄</i></button>
+          {isOpen&&<div className={shellStyles.navGroupItems}>{group.items.map(item=><div key={item.slug}>
+            <button type="button" aria-current={active===item.label?"page":undefined} className={`${shellStyles.navItem} ${active===item.label?shellStyles.navItemActive:""}`} onClick={()=>item.label==="Налаштування"?navigateSettings(canSettingsTab(settingsTab)?settingsTab:visibleSettingsSubmenu[0]?.id||"schedule"):navigateTo(item.label)}><span className={shellStyles.navDot}/>{item.label}{item.label==="Комунікації"&&<span className={shellStyles.navBadge}>NEW</span>}</button>
+            {item.label==="Налаштування"&&active==="Налаштування"&&<div className={shellStyles.settingsSubmenu}>{visibleSettingsSubmenu.map(sub=><button type="button" key={sub.id} className={settingsTab===sub.id?shellStyles.settingsSubActive:""} onClick={()=>navigateSettings(sub.id)}><span>{sub.label}</span></button>)}</div>}
+          </div>)}</div>}
+        </section>;
+      })}</nav>
       <div className="sidebarFoot"><span className="liveDot"/> {access.enforced?(access.snapshot?.user?.name||"Захищений режим"):"Станція онлайн"}</div>
     </aside>
     <div className={active==="Огляд станції"?shellStyles.globalNewRequest:undefined}><NewRequestLauncher showButton={active==="Огляд станції"&&canCreateRequest}/></div>
