@@ -9,6 +9,11 @@ export function CrmDataBridge() {
     const onNewRequest = async (event: Event) => {
       const detail = (event as CustomEvent<Record<string, unknown>>).detail;
       if (!detail) return;
+      if (detail.serverSaved === true) {
+        setToast({ tone:"ok", text:"Заявку збережено в Neon і додано в Планувальник." });
+        window.setTimeout(()=>setToast(null),3000);
+        return;
+      }
       setToast({ tone:"busy", text:"Зберігаю заявку в Neon…" });
       try {
         const response = await fetch("/api/intake", { method:"POST", headers:{ "Content-Type":"application/json" }, body:JSON.stringify(detail) });

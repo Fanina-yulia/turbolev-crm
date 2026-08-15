@@ -1,0 +1,24 @@
+.requestModalV4{width:min(1220px,calc(100vw - 36px));max-height:94vh;overflow:hidden}
+.requestModalV4 .requestModalHead{flex:0 0 auto;background:var(--panel);z-index:5}
+.requestModalV4 .requestScroll{min-height:0;flex:1;overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain}
+.requestModalV4 .requestStepperV4{position:sticky;top:0;z-index:4;padding:10px 24px;background:color-mix(in srgb,var(--panel-2) 96%,transparent);backdrop-filter:blur(10px)}
+.requestModalV4 .requestStepperV4 button.locked{opacity:.58;cursor:not-allowed}
+.requestModalV4 .quickLookupGridV4{padding:10px 24px;gap:10px;background:var(--panel)}
+.requestModalV4 .phoneQuickLookup,.requestModalV4 .plateQuickLookup{padding:10px 12px;border-radius:12px;min-height:0}
+.requestModalV4 .plateQuickCopy{display:flex;justify-content:space-between;gap:12px;align-items:center;margin:0 0 7px}
+.requestModalV4 .plateQuickCopy b{font-size:10px}.requestModalV4 .plateQuickCopy span{font-size:8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.requestModalV4 .plateQuickControls input{padding:9px 11px}.requestModalV4 .plateQuickControls button{min-width:120px;padding:0 12px;transition:.15s ease}
+.requestModalV4 .plateQuickControls button.lookupState-found{background:#1eaa68;border-color:#1eaa68;color:#fff}
+.requestModalV4 .plateQuickControls button.lookupState-not-found,.requestModalV4 .plateQuickControls button.lookupState-unavailable{background:#b93535;border-color:#b93535;color:#fff}
+.requestModalV4 .plateQuickControls button.lookupState-searching{opacity:.7}
+.requestModalV4 .requestBody{overflow:visible;min-height:0;padding:22px 24px 28px}
+.requestModalV4 .requestActions{flex:0 0 auto;position:relative;z-index:6;background:var(--panel)}
+.clientLookupCompact{margin-top:8px;border:1px solid rgba(43,182,115,.35);background:color-mix(in srgb,#2bb673 7%,var(--panel));border-radius:10px;padding:9px;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center}
+.clientLookupCompact>div:first-child{display:grid;gap:2px}.clientLookupCompact b{font-size:10px}.clientLookupCompact span{font-size:8px;color:var(--muted)}
+.clientLookupCompact>button{border:1px solid #2bb673;background:#2bb673;color:#07110c;border-radius:8px;padding:7px 10px;font-size:9px;font-weight:900;cursor:pointer}
+.clientVehicleCompactList{grid-column:1/-1;display:flex;gap:6px;overflow-x:auto;padding-top:3px}.clientVehicleCompactList button{min-width:150px;text-align:left;border:1px solid var(--line);background:var(--panel-2);color:var(--text);border-radius:8px;padding:7px 9px;display:grid;gap:2px}.clientVehicleCompactList button b{font-size:9px}.clientVehicleCompactList button span{font-size:8px;color:var(--muted)}
+.vehicleOwnerConflict{margin-bottom:14px;border:1px solid rgba(255,86,86,.35);background:rgba(255,70,70,.07);border-radius:12px;padding:12px;display:flex;justify-content:space-between;gap:14px;align-items:center}.vehicleOwnerConflict.confirmed{border-color:rgba(43,182,115,.4);background:rgba(43,182,115,.07)}.vehicleOwnerConflict>div:first-child{display:grid;gap:4px}.vehicleOwnerConflict b{font-size:11px}.vehicleOwnerConflict span{font-size:9px;color:var(--muted)}.vehicleOwnerConflict>div:last-child{display:flex;gap:7px;flex-wrap:wrap;justify-content:flex-end}.vehicleOwnerConflict button{border:1px solid var(--line);background:var(--panel);color:var(--text);border-radius:9px;padding:8px 10px;font-size:9px;font-weight:800}.vehicleOwnerConflict button.danger{border-color:#d94b4b;color:#ff8f8f}.vehicleOwnerConflict.confirmed button.danger{border-color:#2bb673;color:#2bb673}
+.requestModalV4 .vehicleManualHeader{margin-top:16px}
+.requestModalV4 .requestActions .primary:disabled{opacity:.48;cursor:not-allowed}
+@media(max-width:900px){.requestModalV4{width:min(100%,calc(100vw - 14px))}.requestModalV4 .requestStepperV4{padding:8px 12px}.requestModalV4 .quickLookupGridV4{padding:9px 12px}.vehicleOwnerConflict{align-items:flex-start;flex-direction:column}.vehicleOwnerConflict>div:last-child{justify-content:flex-start}}
+@media(max-width:760px){.requestModalV4{max-height:96vh}.requestModalV4 .requestModalHead{padding:14px}.requestModalV4 .requestStepperV4{top:0}.requestModalV4 .quickLookupGridV4{grid-template-columns:1fr}.requestModalV4 .plateQuickCopy span{display:none}.requestModalV4 .plateQuickControls button{min-width:100px}.requestModalV4 .requestBody{padding:16px 12px 22px}.clientLookupCompact{grid-template-columns:1fr}.clientLookupCompact>button{width:100%}}

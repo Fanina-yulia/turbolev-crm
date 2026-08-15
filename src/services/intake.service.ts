@@ -37,6 +37,7 @@ export type IntakeInput = {
   appointmentTime?: string;
   preliminaryAmount?: string | number;
   comment?: string;
+  forceReassignVehicle?: boolean;
 };
 
 function clean(value: unknown, max = 1000) {
@@ -79,7 +80,11 @@ export async function createIntake(input: IntakeInput) {
 
     let vehicle = vin ? await tx.vehicle.findUnique({ where: { vin } }) : null;
     if (!vehicle && plateNormalized) vehicle = await tx.vehicle.findUnique({ where: { plateNormalized } });
-    if (vehicle && vehicle.clientId !== client.id) throw new IntakeConflictError("Цей VIN або держномер уже прив'язаний до іншого клієнта. Потрібна ручна перевірка.");
+    const previousClientId = vehicle?.clientId || null;
+    const needsReassign = Boolean(vehicle && vehicle.clientId !== client.id);
+    if (needsReassign && !input.forceReassignVehicle) {
+      throw new IntakeConflictError("Цей VIN або держномер уже прив'язаний до іншого клієнта. Потрібна ручна перевірка.");
+    }
 
     const vehicleData = {
       brand: clean(input.make, 100), model: clean(input.model, 120), year: toInt(input.year), mileageKm: toInt(input.mileage),
@@ -91,12 +96,23 @@ export async function createIntake(input: IntakeInput) {
     };
 
     if (vehicle) {
-      vehicle = await tx.vehicle.update({ where: { id: vehicle.id }, data: { ...vehicleData, plateNumber: clean(input.plate, 24) || vehicle.plateNumber, plateNormalized: plateNormalized || vehicle.plateNormalized, vin: vin || vehicle.vin } });
+      vehicle = await tx.vehicle.update({
+        where: { id: vehicle.id },
+        data: {
+          ...vehicleData,
+          clientId: needsReassign ? client.id : vehicle.clientId,
+          plateNumber: clean(input.plate, 24) || vehicle.plateNumber,
+          plateNormalized: plateNormalized || vehicle.plateNormalized,
+          vin: vin || vehicle.vin,
+        },
+      });
     } else {
       vehicle = await tx.vehicle.create({ data: { clientId: client.id, ...vehicleData, plateNumber: clean(input.plate, 24), plateNormalized, vin } });
     }
 
-    const assignee = clean(input.responsible, 160) ? await tx.user.findFirst({ where: { isActive: true, name: { equals: clean(input.responsible, 160)!, mode: "insensitive" } } }) : null;
+    const assignee = clean(input.responsible, 160)
+      ? await tx.user.findFirst({ where: { isActive: true, name: { equals: clean(input.responsible, 160)!, mode: "insensitive" } } })
+      : null;
     const need = [clean(input.category, 100), clean(input.complaint, 4000)].filter(Boolean).join(" · ") || null;
     const lead = await tx.lead.create({
       data: {
@@ -122,9 +138,26 @@ export async function createIntake(input: IntakeInput) {
       });
     }
 
-    await tx.auditEvent.create({ data: { actorName: clean(input.responsible, 160) || "CRM", entityType: "Lead", entityId: lead.id, action: "CREATE_FROM_INTAKE", after: json(lead), metadata: json({ clientId: client.id, vehicleId: vehicle.id, appointmentId: appointment?.id || null }) } });
-    if (appointment) await tx.auditEvent.create({ data: { actorName: clean(input.responsible, 160) || "CRM", entityType: "ServiceAppointment", entityId: appointment.id, action: "CREATE_FROM_INTAKE", after: json(appointment), metadata: json({ leadId: lead.id, clientId: client.id, vehicleId: vehicle.id }) } });
+    await tx.auditEvent.create({
+      data: {
+        actorName: clean(input.responsible, 160) || "CRM",
+        entityType: "Lead", entityId: lead.id, action: "CREATE_FROM_INTAKE", after: json(lead),
+        metadata: json({ clientId: client.id, vehicleId: vehicle.id, appointmentId: appointment?.id || null, vehicleReassigned: needsReassign, previousClientId }),
+      },
+    });
+    if (needsReassign) {
+      await tx.auditEvent.create({
+        data: {
+          actorName: clean(input.responsible, 160) || "CRM",
+          entityType: "Vehicle", entityId: vehicle.id, action: "MANUAL_REASSIGN_FROM_INTAKE",
+          metadata: json({ previousClientId, clientId: client.id, plateNumber: vehicle.plateNumber, vin: vehicle.vin }),
+        },
+      });
+    }
+    if (appointment) {
+      await tx.auditEvent.create({ data: { actorName: clean(input.responsible, 160) || "CRM", entityType: "ServiceAppointment", entityId: appointment.id, action: "CREATE_FROM_INTAKE", after: json(appointment), metadata: json({ leadId: lead.id, clientId: client.id, vehicleId: vehicle.id }) } });
+    }
 
-    return { client, vehicle, lead, appointment };
+    return { client, vehicle, lead, appointment, vehicleReassigned: needsReassign };
   });
 }
