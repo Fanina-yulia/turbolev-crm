@@ -5,6 +5,7 @@ import { SettingsCenter } from "./settings-center";
 import { WorkflowSettingsBridge } from "./workflow-settings-bridge";
 import { SecuritySettingsBridge } from "./security-settings-bridge";
 import { CameraSettingsBridge } from "./camera-settings-bridge";
+import { BinotelCallbacksSettings } from "./binotel-callbacks-settings";
 import styles from "./settings-page.module.css";
 
 const SETTINGS_LABELS:Record<string,string>={
@@ -165,5 +166,5 @@ export function SettingsPage(){
     };
   },[]);
 
-  return <div ref={hostRef} className={styles.host}><WorkflowSettingsBridge/><SecuritySettingsBridge/><CameraSettingsBridge/><SettingsCenter/></div>;
+  return <div ref={hostRef} className={styles.host}><WorkflowSettingsBridge/><SecuritySettingsBridge/><CameraSettingsBridge/><BinotelCallbacksSettings/><SettingsCenter/></div>;
 }
