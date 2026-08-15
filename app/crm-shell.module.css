@@ -18,6 +18,37 @@
   padding-top:86px!important;
 }
 
+.settingsSubmenu{
+  display:flex;
+  flex-direction:column;
+  gap:2px;
+  margin:4px 0 8px 18px;
+  padding-left:13px;
+  border-left:1px solid var(--line);
+}
+.settingsSubmenu button{
+  width:100%;
+  min-height:31px;
+  border:0!important;
+  border-radius:7px!important;
+  background:transparent!important;
+  color:var(--muted)!important;
+  padding:6px 9px!important;
+  font-size:12px!important;
+  font-weight:500!important;
+  text-align:left!important;
+  cursor:pointer;
+}
+.settingsSubmenu button:hover{
+  background:var(--panel-2)!important;
+  color:var(--text)!important;
+}
+.settingsSubmenu .settingsSubActive{
+  background:rgba(255,102,0,.10)!important;
+  color:var(--orange)!important;
+  font-weight:700!important;
+}
+
 @media(max-width:760px){
   .globalNewRequest{
     top:10px;
