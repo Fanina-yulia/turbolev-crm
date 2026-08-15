@@ -11,7 +11,7 @@ const NON_DEMO_WORK_ORDER = {
     { workOrderId: null },
     { NOT: { workOrderId: { startsWith: "demo_" } } },
   ],
-} as const;
+};
 
 function kyivParts(date = new Date()) {
   const parts = new Intl.DateTimeFormat("en-CA", {
