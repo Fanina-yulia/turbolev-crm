@@ -8,6 +8,7 @@ import "./dashboard-actions.css";
 import "./sidebar-groups.css";
 import "./crm-core.css";
 import "./new-request-wizard.css";
+import "./new-request-wizard-v4.css";
 import "./vehicle-identification-v3.css";
 import "./vehicle-configuration.css";
 import "./vehicle-lookup.css";
@@ -29,10 +30,11 @@ import { WorkflowFilterEnhancer } from "./workflow-filter-enhancer";
 import { CrmDataBridge } from "./crm-data-bridge";
 import { ClientsVehiclesRichCards } from "./clients-vehicles-rich-cards";
 import { WorkPriceTableEnhancer } from "./work-price-table-enhancer";
+import { NewRequestContextBridge } from "./new-request-context-bridge";
 
 export const metadata: Metadata = { title: "Turbo LEV CRM", description: "Операційна CRM-система СТО Turbo LEV" };
 const themeBootstrap = `(function(){try{var saved=window.localStorage.getItem('turbolev-theme-mode')||window.localStorage.getItem('turbolev-theme')||'auto';if(saved!=='light'&&saved!=='dark'&&saved!=='auto')saved='auto';var resolved=saved==='light'||saved==='dark'?saved:(window.matchMedia('(prefers-color-scheme: light)').matches?'light':'dark');var root=document.documentElement;root.dataset.theme=resolved;root.dataset.themeMode=saved;root.style.colorScheme=resolved;}catch(e){}})();`;
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  return <html lang="uk" suppressHydrationWarning><head><script dangerouslySetInnerHTML={{ __html: themeBootstrap }} /></head><body><PhoneInputNormalizer/><LeadDetailsEnhancer/><VehicleConfigurationEnhancer/><WorkflowFilterEnhancer/><CrmDataBridge/><ClientsVehiclesRichCards/><WorkPriceTableEnhancer/>{children}</body></html>;
+  return <html lang="uk" suppressHydrationWarning><head><script dangerouslySetInnerHTML={{ __html: themeBootstrap }} /></head><body><PhoneInputNormalizer/><LeadDetailsEnhancer/><VehicleConfigurationEnhancer/><WorkflowFilterEnhancer/><CrmDataBridge/><ClientsVehiclesRichCards/><WorkPriceTableEnhancer/><NewRequestContextBridge/>{children}</body></html>;
 }
