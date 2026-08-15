@@ -31,10 +31,9 @@ RUN set -eux; \
   rm -rf /tmp/neolink.zip /tmp/neolink-unpack
 
 WORKDIR /app
-COPY server.mjs /app/server.mjs
+COPY services/camera-bridge/server.mjs /app/server.mjs
 
-ENV PORT=8787 \
-    NEOLINK_BINARY=/usr/local/bin/neolink \
+ENV NEOLINK_BINARY=/usr/local/bin/neolink \
     FFMPEG_BINARY=/usr/bin/ffmpeg \
     CAMERA_TEST_TIMEOUT_MS=20000 \
     RUST_LOG=info
