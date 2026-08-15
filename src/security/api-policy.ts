@@ -67,8 +67,8 @@ const RULES: Rule[] = [
     resolve: () => internal(PERMISSIONS.AUDIT_READ, "ALL", "Audit log is sensitive and never inherits generic analytics access."),
   },
   {
-    match: exact("/api/personnel"),
-    resolve: (method) => readWrite(method, PERMISSIONS.PERSONNEL_READ, PERMISSIONS.PERSONNEL_WRITE, "ALL", "Personnel endpoint; compensation is independently redacted."),
+    match: prefix("/api/personnel"),
+    resolve: (method) => readWrite(method, PERMISSIONS.PERSONNEL_READ, PERMISSIONS.PERSONNEL_WRITE, "LOCATION", "Personnel and delegated cabinet management. Responses and writes must be narrowed server-side to the caller's allowed station unless scope is ALL."),
   },
   {
     match: prefix("/api/finance"),
