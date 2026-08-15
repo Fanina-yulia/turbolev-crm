@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getPrisma } from "@/src/lib/prisma";
-import { calculateLaborPrice, resolveLaborPricing } from "@/src/services/labor-pricing.service";
+import { resolveLaborPricing } from "@/src/services/labor-pricing.service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -23,6 +23,9 @@ function vehicleInput(params: URLSearchParams) {
     vehicleType: text(params.get("vehicleType")),
   };
 }
+function safeBase(value: unknown) { const parsed = Number(value); return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0; }
+function safeQuantity(value: unknown) { const parsed = Number(value); return Number.isFinite(parsed) && parsed > 0 ? parsed : 1; }
+function safeAdjustment(value: unknown) { const parsed = Number(value); return Number.isFinite(parsed) ? parsed : 0; }
 
 export async function GET(request: NextRequest) {
   const prisma = getPrisma();
@@ -35,9 +38,8 @@ export async function GET(request: NextRequest) {
     const input = vehicleInput(params);
     const pricing = await resolveLaborPricing(input);
     const filtered = rows.filter((row) => !q || `${row.code ?? ""} ${row.name} ${String(row.data?.category ?? "")}`.toLocaleLowerCase("uk-UA").includes(q));
-    const items = await Promise.all(filtered.map(async (row) => {
-      const basePrice = Number(row.data?.price ?? 0);
-      const result = await calculateLaborPrice(basePrice, input);
+    const items = filtered.map((row) => {
+      const basePrice = safeBase(row.data?.price ?? 0);
       return {
         id: row.id,
         code: row.code,
@@ -48,10 +50,10 @@ export async function GET(request: NextRequest) {
         complexSurcharge: row.data?.complexSurcharge == null ? null : Number(row.data.complexSurcharge),
         note: row.data?.note ?? "",
         basePrice,
-        coefficient: result.coefficient,
-        adjustedPrice: result.total,
+        coefficient: pricing.coefficient,
+        adjustedPrice: Math.round(basePrice * pricing.coefficient),
       };
-    }));
+    });
     return NextResponse.json({ ok:true, pricing, count:items.length, items }, { headers:{"Cache-Control":"no-store"} });
   } catch (error) {
     console.error("work-prices GET failed", error);
@@ -64,13 +66,26 @@ export async function POST(request: NextRequest) {
     const body = await request.json() as Record<string,unknown>;
     const input = body.vehicle && typeof body.vehicle === "object" ? body.vehicle as Record<string,string> : {};
     const lines = Array.isArray(body.lines) ? body.lines as Array<Record<string,unknown>> : [];
-    const adjustment = Number(body.adjustmentPercent ?? 0);
-    const calculated = await Promise.all(lines.map(async (line) => {
-      const result = await calculateLaborPrice(Number(line.basePrice ?? 0), input, Number(line.quantity ?? 1), adjustment);
-      return { ...line, ...result };
-    }));
+    const adjustment = safeAdjustment(body.adjustmentPercent);
+    const pricing = await resolveLaborPricing(input);
+    const calculated = lines.map((line) => {
+      const basePrice = safeBase(line.basePrice);
+      const quantity = safeQuantity(line.quantity);
+      const rawSubtotal = basePrice * quantity * pricing.coefficient;
+      const subtotal = Math.round(rawSubtotal);
+      const total = Math.round(rawSubtotal * (1 + adjustment / 100));
+      return {
+        ...line,
+        basePrice,
+        quantity,
+        ...pricing,
+        subtotal,
+        manualAdjustmentPercent: adjustment,
+        total,
+      };
+    });
     const total = calculated.reduce((sum, line) => sum + Number(line.total || 0), 0);
-    return NextResponse.json({ ok:true, total, lines:calculated });
+    return NextResponse.json({ ok:true, pricing, total, lines:calculated });
   } catch (error) {
     console.error("work-prices POST failed", error);
     return NextResponse.json({ ok:false, error:"Не вдалося виконати автоматичний розрахунок робіт." }, { status:400 });
