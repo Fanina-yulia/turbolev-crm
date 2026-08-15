@@ -111,6 +111,13 @@ export async function arrivePlannerAppointment(id: string, body: Record<string, 
       return { ok: false as const, workflowBlocked: true as const, workflowDecision };
     }
 
+    const priorAudit = await tx.auditEvent.findFirst({
+      where: { entityType: "ServiceAppointment", entityId: id, action: "ARRIVAL_WORKFLOW" },
+      orderBy: { createdAt: "desc" },
+      select: { metadata: true },
+    });
+    const priorDiagnosticId = diagnosticIdFromMetadata(priorAudit?.metadata);
+
     let clientId = fresh.clientId;
     let vehicleId = fresh.vehicleId;
     let diagnosticRequestId: string | null = null;
@@ -125,12 +132,6 @@ export async function arrivePlannerAppointment(id: string, body: Record<string, 
       leadUpdated = conversion.lead.status === "ARRIVED";
       reusedDiagnostic = conversion.reusedDiagnostic;
     } else if (clientId && vehicleId) {
-      const priorAudit = await tx.auditEvent.findFirst({
-        where: { entityType: "ServiceAppointment", entityId: id, action: "ARRIVAL_WORKFLOW" },
-        orderBy: { createdAt: "desc" },
-        select: { metadata: true },
-      });
-      const priorDiagnosticId = diagnosticIdFromMetadata(priorAudit?.metadata);
       const priorDiagnostic = priorDiagnosticId
         ? await tx.diagnosticRequest.findUnique({ where: { id: priorDiagnosticId } })
         : null;
@@ -171,7 +172,7 @@ export async function arrivePlannerAppointment(id: string, body: Record<string, 
       include: { post: true, mechanic: true },
     });
 
-    if (fresh.status !== "ARRIVED" || !priorArrivalAuditExists(fresh.status, diagnosticRequestId)) {
+    if (fresh.status !== "ARRIVED" || !priorAudit) {
       await tx.auditEvent.create({
         data: {
           actorName: "CRM / Планувальник",
@@ -202,7 +203,7 @@ export async function arrivePlannerAppointment(id: string, body: Record<string, 
       warning: validation.warning,
       workflowDecision,
       workflowAction: {
-        status: "EXECUTED" as const,
+        status: fresh.status === "ARRIVED" ? "REUSED" as const : "EXECUTED" as const,
         actions: workflowDecision.actions,
         leadId: fresh.leadId,
         clientId,
@@ -214,8 +215,4 @@ export async function arrivePlannerAppointment(id: string, body: Record<string, 
       },
     };
   });
-}
-
-function priorArrivalAuditExists(status: unknown, diagnosticRequestId: string | null) {
-  return status === "ARRIVED" && Boolean(diagnosticRequestId);
 }
