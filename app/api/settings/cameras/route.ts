@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getPrisma } from "@/src/lib/prisma";
+import { authorize } from "@/src/security/authorize";
+import { PERMISSIONS } from "@/src/security/permissions";
 import { encryptCameraPassword, maskCameraUid } from "@/src/services/camera-credentials.service";
 import { generateCameraIngestToken, hashCameraIngestToken } from "@/src/services/camera-ingest-token.service";
 
@@ -56,7 +58,14 @@ function publicCamera(camera: {
   };
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const access = await authorize(PERMISSIONS.SETTINGS_READ, {
+    request,
+    strict: true,
+    minimumScope: "ALL",
+  });
+  if (!access.allowed) return access.response!;
+
   const prisma = getPrisma();
   try {
     const cameras = await prisma.camera.findMany({
@@ -70,6 +79,13 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
+  const access = await authorize(PERMISSIONS.SETTINGS_WRITE, {
+    request,
+    strict: true,
+    minimumScope: "ALL",
+  });
+  if (!access.allowed) return access.response!;
+
   const prisma = getPrisma();
   try {
     const body = await request.json() as Record<string, unknown>;
@@ -96,7 +112,7 @@ export async function POST(request: NextRequest) {
         provider: "REOLINK",
         purpose,
         connectionMode,
-        status: connectionMode === "EMAIL_EVENTS" ? "NOT_TESTED" : "NOT_TESTED",
+        status: "NOT_TESTED",
       },
     });
 
