@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getPrisma } from "@/src/lib/prisma";
+import { authorize } from "@/src/security/authorize";
+import { PERMISSIONS } from "@/src/security/permissions";
 import { decryptCameraPassword } from "@/src/services/camera-credentials.service";
 
 export const runtime = "nodejs";
@@ -20,7 +22,14 @@ function bridgeEndpoint() {
   return base ? `${base}/v1/reolink/test` : "";
 }
 
-export async function POST(_request: NextRequest, context: RouteContext) {
+export async function POST(request: NextRequest, context: RouteContext) {
+  const access = await authorize(PERMISSIONS.SETTINGS_WRITE, {
+    request,
+    strict: true,
+    minimumScope: "ALL",
+  });
+  if (!access.allowed) return access.response!;
+
   const prisma = getPrisma();
   const { id } = await context.params;
   const camera = await prisma.camera.findUnique({ where: { id } });
