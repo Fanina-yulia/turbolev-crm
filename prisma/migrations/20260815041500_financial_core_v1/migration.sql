@@ -269,15 +269,7 @@ INSERT INTO "FinancialCategory" ("id","code","name","pnlSection","cashFlowSectio
 ('fcat_other_income','OTHER_INCOME','Інші доходи','OTHER_INCOME','OPERATING',true,310,CURRENT_TIMESTAMP),
 ('fcat_other_expense','OTHER_EXPENSE','Інші витрати','OTHER_EXPENSE','OPERATING',true,320,CURRENT_TIMESTAMP),
 ('fcat_tax','TAX','Податки','TAX','OPERATING',true,330,CURRENT_TIMESTAMP),
-('fcat_capex_equipment','CAPEX_EQUIPMENT','Обладнання та інвестиції','INVESTING'::"CashFlowSection"::text::"CashFlowSection",NULL,true,410,CURRENT_TIMESTAMP)
-ON CONFLICT ("code") DO NOTHING;
-
--- Correct CAPEX row because it intentionally has no P&L section.
-UPDATE "FinancialCategory"
-SET "pnlSection" = NULL, "cashFlowSection" = 'INVESTING'
-WHERE "code" = 'CAPEX_EQUIPMENT';
-
-INSERT INTO "FinancialCategory" ("id","code","name","pnlSection","cashFlowSection","isSystem","sortOrder","updatedAt") VALUES
+('fcat_capex_equipment','CAPEX_EQUIPMENT','Обладнання та інвестиції',NULL,'INVESTING',true,410,CURRENT_TIMESTAMP),
 ('fcat_fin_loan_in','FIN_LOAN_IN','Отримання позики',NULL,'FINANCING',true,420,CURRENT_TIMESTAMP),
 ('fcat_fin_loan_out','FIN_LOAN_OUT','Повернення позики',NULL,'FINANCING',true,430,CURRENT_TIMESTAMP),
 ('fcat_owner_contribution','OWNER_CONTRIBUTION','Внесок власника',NULL,'FINANCING',true,440,CURRENT_TIMESTAMP),
