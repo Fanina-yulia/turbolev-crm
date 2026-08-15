@@ -3,7 +3,6 @@ import {
   createPlannerAppointment,
   getPlannerBoard,
   normalizeAppointmentPayload,
-  type PlannerConflict,
 } from "@/src/services/planner.service";
 
 export const runtime = "nodejs";
@@ -11,14 +10,6 @@ export const maxDuration = 30;
 
 function invalidDate(message: string) {
   return NextResponse.json({ status: "INVALID_RANGE", message }, { status: 400 });
-}
-
-function conflictMessage(conflict: PlannerConflict) {
-  if (conflict.resourceType === "SCHEDULE") return conflict.message;
-  if (conflict.resourceType === "MECHANIC") {
-    return `Механік ${conflict.resource} уже зайнятий у цей час. Оберіть інший час або іншого механіка.`;
-  }
-  return `Конфлікт ресурсу: ${conflict.resource} уже зайнятий у цей час.`;
 }
 
 export async function GET(request: Request) {
@@ -43,15 +34,13 @@ export async function POST(request: Request) {
     if (!result.ok) {
       return NextResponse.json({
         status: "CONFLICT",
-        message: conflictMessage(result.conflict),
+        message: result.conflict.resourceType === "MECHANIC"
+          ? `Механік ${result.conflict.resource} уже веде 2 автомобілі одночасно. Третє паралельне авто заборонено.`
+          : `Конфлікт ресурсу: ${result.conflict.resource} уже зайнятий у цей час.`,
         conflict: result.conflict,
       }, { status: 409 });
     }
-    return NextResponse.json({
-      status: "CREATED",
-      appointment: result.appointment,
-      warning: result.warning ?? null,
-    }, { status: 201 });
+    return NextResponse.json({ status: "CREATED", appointment: result.appointment, warning: result.warning ?? null }, { status: 201 });
   } catch (error) {
     const code = error instanceof Error ? error.message : "UNKNOWN";
     const message = code === "INVALID_TIME_RANGE"
@@ -60,11 +49,9 @@ export async function POST(request: Request) {
         ? "Один запис не може тривати більше 24 годин."
         : code === "LOCATION_REQUIRED"
           ? "Оберіть локацію СТО."
-          : code === "LOCATION_NOT_FOUND"
-            ? "Локацію СТО не знайдено або вона неактивна."
-            : code === "INVALID_AMOUNT"
-              ? "Некоректна попередня сума."
-              : "Не вдалося створити запис.";
+          : code === "INVALID_AMOUNT"
+            ? "Некоректна попередня сума."
+            : "Не вдалося створити запис.";
     return NextResponse.json({ status: "INVALID_DATA", message }, { status: 400 });
   }
 }
