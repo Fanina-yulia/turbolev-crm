@@ -1,21 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
-import { randomBytes, randomUUID, scryptSync } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { getPrisma } from "@/src/lib/prisma";
 import { authorize } from "@/src/security/authorize";
 import { PERMISSIONS } from "@/src/security/permissions";
-import { writeAuditEvent } from "@/src/services/audit.service";
 import {
-  deactivateEmployeePlannerResources,
-  syncEmployeeOperationalContext,
-} from "@/src/services/personnel-resource-sync.service";
+  configureEmployeeAccessTx,
+  deactivateEmployeeAccess,
+  personnelScopeWhere,
+  PersonnelAccessError,
+} from "@/src/services/personnel-access.service";
+import { writeAuditEvent } from "@/src/services/audit.service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-function hashPassword(value: string) {
-  const salt = randomBytes(16).toString("hex");
-  return `${salt}:${scryptSync(value, salt, 64).toString("hex")}`;
-}
 
 function n(value: unknown) {
   if (value === "" || value == null) return null;
@@ -30,18 +27,19 @@ function text(value: unknown) {
 }
 
 function payload(body: any) {
+  const email = body.email ? String(body.email).trim().toLowerCase() : null;
   return {
     firstName: String(body.firstName || "").trim(),
     lastName: String(body.lastName || "").trim(),
     birthDate: body.birthDate ? new Date(`${body.birthDate}T00:00:00`) : null,
-    email: body.email ? String(body.email).trim().toLowerCase() : null,
+    email,
     phone: body.phone ? String(body.phone).trim() : null,
     phoneCountry: body.phoneCountry ? String(body.phoneCountry) : "UA",
     address: body.address ? String(body.address).trim() : null,
     photoUrl: body.photoUrl ? String(body.photoUrl) : null,
     personnelCategory: body.personnelCategory ? String(body.personnelCategory) : null,
     position: body.position ? String(body.position) : null,
-    crmLogin: body.crmLogin ? String(body.crmLogin).trim() : null,
+    crmLogin: email,
     isActive: body.isActive !== false,
     baseSalary: n(body.baseSalary),
     minimumSalary: n(body.minimumSalary),
@@ -64,12 +62,52 @@ function documents(body: any) {
   }));
 }
 
-function safePersonnelRow(row: any, canSeeCompensation: boolean) {
-  // Never serialize legacy credential material, even for OWNER.
-  const { crmPasswordHash: _credential, ...safe } = row;
-  if (canSeeCompensation) return { ...safe, compensationRestricted: false };
-  return {
+function currentAssignment(assignments: any[]) {
+  return assignments.find((assignment) => assignment.isPrimary) || assignments[0] || null;
+}
+
+function canSeeCompensationFor(row: any, access: Awaited<ReturnType<typeof authorize>>) {
+  if (!access.wouldAllow) return false;
+  if (access.grantedScope === "ALL") return true;
+  return access.context.user?.employeeId === row.id;
+}
+
+function safePersonnelRow(
+  row: any,
+  canSeeCompensation: boolean,
+  mechanicByEmployeeId: Map<string, { id: string; name: string; locationId: string; isActive: boolean; userId: string | null }>,
+) {
+  const { crmPasswordHash: _credential, user, ...safe } = row;
+  const assignment = currentAssignment(row.roleAssignments || []);
+  const primaryAccess = user?.accessRoles?.find((item: any) => item.isPrimary && item.isActive)
+    || user?.accessRoles?.find((item: any) => item.isActive)
+    || null;
+  const mechanic = mechanicByEmployeeId.get(row.id) || null;
+  const cabinetStatus = !user
+    ? "NOT_OPENED"
+    : !user.isActive
+      ? "SUSPENDED"
+      : user.authUserId
+        ? "ACTIVE"
+        : "WAITING_ACTIVATION";
+  const base = {
     ...safe,
+    access: {
+      roleCode: assignment?.role?.code || primaryAccess?.role?.code || null,
+      roleName: assignment?.role?.name || primaryAccess?.role?.name || null,
+      location: assignment?.location || primaryAccess?.location || null,
+      cabinetStatus,
+      cabinetEnabled: Boolean(user?.isActive),
+      userId: user?.id ?? null,
+      authLinked: Boolean(user?.authUserId),
+      lastLoginAt: user?.lastLoginAt ?? null,
+      mechanicResource: mechanic,
+    },
+  };
+
+  if (canSeeCompensation) return { ...base, compensationRestricted: false };
+  return {
+    ...base,
     baseSalary: null,
     minimumSalary: null,
     workPercent: null,
@@ -81,32 +119,41 @@ function safePersonnelRow(row: any, canSeeCompensation: boolean) {
   };
 }
 
-function personnelWriteError(error: unknown, fallback: string) {
+function personnelError(error: unknown, fallback: string) {
+  if (error instanceof PersonnelAccessError) {
+    return NextResponse.json({ ok: false, error: error.code, message: error.message }, { status: error.status });
+  }
   const code = error instanceof Error ? error.message : "UNKNOWN";
   if (code === "PERSONNEL_LOCATION_REQUIRED") {
-    return NextResponse.json({ ok: false, error: "Для автомеханіка потрібно вказати локацію СТО." }, { status: 400 });
+    return NextResponse.json({ ok: false, error: code, message: "Для цієї посади потрібно вказати локацію СТО." }, { status: 400 });
   }
   if (code === "PERSONNEL_LOCATION_NOT_FOUND") {
-    return NextResponse.json({ ok: false, error: "Обрана локація СТО не знайдена або неактивна." }, { status: 400 });
+    return NextResponse.json({ ok: false, error: code, message: "Обрана локація СТО не знайдена або неактивна." }, { status: 400 });
   }
   if (code === "PERSONNEL_ROLE_NOT_FOUND") {
-    return NextResponse.json({ ok: false, error: "Обрана операційна роль не знайдена або неактивна." }, { status: 400 });
+    return NextResponse.json({ ok: false, error: code, message: "Обрана операційна роль не знайдена або неактивна." }, { status: 400 });
   }
-  console.error("personnel write failed", error);
+  console.error(fallback, error);
   return NextResponse.json({ ok: false, error: fallback }, { status: 500 });
 }
 
 export async function GET(request: NextRequest) {
-  const readAccess = await authorize(PERMISSIONS.PERSONNEL_READ, { request });
+  const readAccess = await authorize(PERMISSIONS.PERSONNEL_READ, { request, minimumScope: "SELF" });
   if (!readAccess.allowed) return readAccess.response!;
-  const compensationAccess = await authorize(PERMISSIONS.PERSONNEL_COMPENSATION_READ, { request });
-  const canSeeCompensation = compensationAccess.wouldAllow;
+  const compensationAccess = await authorize(PERMISSIONS.PERSONNEL_COMPENSATION_READ, {
+    request,
+    minimumScope: "SELF",
+  });
 
   const prisma = getPrisma();
   try {
     const now = new Date();
+    const locationFilter = !readAccess.shadowBypass && readAccess.grantedScope === "LOCATION"
+      ? { id: { in: readAccess.context.locationIds } }
+      : {};
     const [items, roles, locations] = await Promise.all([
       prisma.employeeProfile.findMany({
+        where: readAccess.shadowBypass ? {} : personnelScopeWhere(readAccess.context, readAccess.grantedScope),
         include: {
           documents: { orderBy: { name: "asc" } },
           roleAssignments: {
@@ -120,6 +167,22 @@ export async function GET(request: NextRequest) {
             },
             orderBy: [{ isPrimary: "desc" }, { startsAt: "desc" }],
           },
+          user: {
+            select: {
+              id: true,
+              isActive: true,
+              authUserId: true,
+              lastLoginAt: true,
+              accessRoles: {
+                where: { isActive: true },
+                include: {
+                  role: { select: { code: true, name: true } },
+                  location: { select: { id: true, name: true } },
+                },
+                orderBy: [{ isPrimary: "desc" }, { createdAt: "asc" }],
+              },
+            },
+          },
         },
         orderBy: [{ isActive: "desc" }, { lastName: "asc" }, { firstName: "asc" }],
       }),
@@ -129,21 +192,36 @@ export async function GET(request: NextRequest) {
         orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
       }),
       prisma.serviceLocation.findMany({
-        where: { isActive: true },
+        where: { isActive: true, ...locationFilter },
         select: { id: true, name: true, sortOrder: true },
         orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
       }),
     ]);
 
+    const employeeIds = items.map((item) => item.id);
+    const mechanics = employeeIds.length
+      ? await prisma.serviceMechanic.findMany({
+          where: { employeeId: { in: employeeIds } },
+          select: { id: true, name: true, locationId: true, isActive: true, userId: true, employeeId: true },
+        })
+      : [];
+    const mechanicByEmployeeId = new Map(
+      mechanics
+        .filter((item) => item.employeeId)
+        .map((item) => [item.employeeId!, { id: item.id, name: item.name, locationId: item.locationId, isActive: item.isActive, userId: item.userId }]),
+    );
+
     return NextResponse.json(
       {
         ok: true,
-        items: items.map((item) => safePersonnelRow(item, canSeeCompensation)),
+        items: items.map((item) => safePersonnelRow(item, canSeeCompensationFor(item, compensationAccess), mechanicByEmployeeId)),
         meta: { roles, locations },
         security: {
-          compensationRestricted: !canSeeCompensation,
+          compensationRestricted: !compensationAccess.wouldAllow,
           enforcementMode: readAccess.context.enforcementMode,
           shadowBypass: readAccess.shadowBypass,
+          grantedScope: readAccess.grantedScope,
+          managerRoles: readAccess.context.roles.map((role) => role.code),
         },
       },
       { headers: { "Cache-Control": "no-store" } },
@@ -155,57 +233,78 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const access = await authorize(PERMISSIONS.PERSONNEL_WRITE, { request });
+  const access = await authorize(PERMISSIONS.PERSONNEL_WRITE, {
+    request,
+    strict: true,
+    minimumScope: "LOCATION",
+  });
   if (!access.allowed) return access.response!;
 
   const prisma = getPrisma();
   try {
     const body = await request.json();
     const p = payload(body);
+    const roleCode = text(body.staffRoleCode || body.roleCode);
     if (!p.firstName || !p.lastName) {
       return NextResponse.json({ ok: false, error: "Вкажіть ім’я та прізвище." }, { status: 400 });
     }
+    if (!roleCode) {
+      return NextResponse.json({ ok: false, error: "ROLE_REQUIRED", message: "Оберіть системну посаду працівника." }, { status: 400 });
+    }
 
-    // Legacy compatibility only. Neon Auth is the canonical authentication source.
-    const passwordHash = body.password ? hashPassword(String(body.password)) : null;
     const result = await prisma.$transaction(async (tx) => {
       const employee = await tx.employeeProfile.create({
         data: {
           id: randomUUID(),
           ...p,
-          crmPasswordHash: passwordHash,
+          crmPasswordHash: null,
           documents: { create: documents(body) },
         },
-        select: { id: true, userId: true, firstName: true, lastName: true, position: true, isActive: true },
+        select: { id: true },
       });
-      const operational = await syncEmployeeOperationalContext(tx, {
+      const configured = await configureEmployeeAccessTx(tx, {
         employeeId: employee.id,
-        firstName: employee.firstName,
-        lastName: employee.lastName,
-        position: employee.position,
-        staffRoleCode: text(body.staffRoleCode),
+        roleCode,
         locationId: text(body.locationId),
-        userId: employee.userId,
-        isActive: employee.isActive,
+        cabinetEnabled: body.cabinetEnabled === true,
+        context: access.context,
+        grantedScope: access.grantedScope,
       });
-      return { employee, operational };
+      return { employee, configured };
     });
 
     await writeAuditEvent({
       entityType: "EmployeeProfile",
       entityId: result.employee.id,
       action: "PERSONNEL_CREATED",
-      after: result.operational,
+      after: {
+        roleCode: result.configured.roleCode,
+        locationId: result.configured.locationId,
+        cabinetEnabled: Boolean(result.configured.user?.isActive),
+      },
     });
 
-    return NextResponse.json({ ok: true, id: result.employee.id, operational: result.operational });
+    return NextResponse.json({
+      ok: true,
+      id: result.employee.id,
+      access: {
+        roleCode: result.configured.roleCode,
+        locationId: result.configured.locationId,
+        cabinetEnabled: Boolean(result.configured.user?.isActive),
+        authLinked: Boolean(result.configured.user?.authUserId),
+      },
+    });
   } catch (error) {
-    return personnelWriteError(error, "Не вдалося створити співробітника. Перевірте унікальність e-mail.");
+    return personnelError(error, "PERSONNEL_CREATE_FAILED");
   }
 }
 
 export async function PUT(request: NextRequest) {
-  const access = await authorize(PERMISSIONS.PERSONNEL_WRITE, { request });
+  const access = await authorize(PERMISSIONS.PERSONNEL_WRITE, {
+    request,
+    strict: true,
+    minimumScope: "LOCATION",
+  });
   if (!access.allowed) return access.response!;
 
   const prisma = getPrisma();
@@ -213,72 +312,79 @@ export async function PUT(request: NextRequest) {
     const body = await request.json();
     const id = String(body.id || "");
     const p = payload(body);
+    const roleCode = text(body.staffRoleCode || body.roleCode);
     if (!id) return NextResponse.json({ ok: false, error: "Не вказано співробітника." }, { status: 400 });
     if (!p.firstName || !p.lastName) {
       return NextResponse.json({ ok: false, error: "Вкажіть ім’я та прізвище." }, { status: 400 });
     }
+    if (!roleCode) {
+      return NextResponse.json({ ok: false, error: "ROLE_REQUIRED", message: "Оберіть системну посаду працівника." }, { status: 400 });
+    }
 
     const before = await prisma.employeeProfile.findUnique({ where: { id } });
     if (!before) return NextResponse.json({ ok: false, error: "Співробітника не знайдено." }, { status: 404 });
-    const passwordHash = body.password ? hashPassword(String(body.password)) : undefined;
 
     const result = await prisma.$transaction(async (tx) => {
-      const employee = await tx.employeeProfile.update({
+      await tx.employeeProfile.update({
         where: { id },
         data: {
           ...p,
-          ...(passwordHash ? { crmPasswordHash: passwordHash } : {}),
-          documents: {
-            deleteMany: {},
-            create: documents(body),
-          },
+          crmPasswordHash: null,
+          documents: { deleteMany: {}, create: documents(body) },
         },
-        select: { id: true, userId: true, firstName: true, lastName: true, position: true, isActive: true },
       });
-      const operational = await syncEmployeeOperationalContext(tx, {
-        employeeId: employee.id,
-        firstName: employee.firstName,
-        lastName: employee.lastName,
-        position: employee.position,
-        staffRoleCode: text(body.staffRoleCode),
+      return configureEmployeeAccessTx(tx, {
+        employeeId: id,
+        roleCode,
         locationId: text(body.locationId),
-        userId: employee.userId,
-        isActive: employee.isActive,
+        cabinetEnabled: body.cabinetEnabled === true,
+        context: access.context,
+        grantedScope: access.grantedScope,
       });
-      return { employee, operational };
     });
 
     await writeAuditEvent({
       entityType: "EmployeeProfile",
       entityId: id,
       action: "PERSONNEL_UPDATED",
-      metadata: { hadLegacyCredential: Boolean(before.crmPasswordHash), legacyCredentialChanged: Boolean(passwordHash) },
-      after: result.operational,
+      before: { email: before.email, position: before.position, isActive: before.isActive },
+      after: {
+        email: p.email,
+        roleCode: result.roleCode,
+        locationId: result.locationId,
+        cabinetEnabled: Boolean(result.user?.isActive),
+      },
     });
 
-    return NextResponse.json({ ok: true, operational: result.operational });
+    return NextResponse.json({
+      ok: true,
+      access: {
+        roleCode: result.roleCode,
+        locationId: result.locationId,
+        cabinetEnabled: Boolean(result.user?.isActive),
+        authLinked: Boolean(result.user?.authUserId),
+      },
+    });
   } catch (error) {
-    return personnelWriteError(error, "Не вдалося оновити співробітника.");
+    return personnelError(error, "PERSONNEL_UPDATE_FAILED");
   }
 }
 
 export async function DELETE(request: NextRequest) {
-  const access = await authorize(PERMISSIONS.PERSONNEL_WRITE, { request });
+  const access = await authorize(PERMISSIONS.PERSONNEL_WRITE, {
+    request,
+    strict: true,
+    minimumScope: "LOCATION",
+  });
   if (!access.allowed) return access.response!;
 
-  const prisma = getPrisma();
   const id = request.nextUrl.searchParams.get("id");
   if (!id) return NextResponse.json({ ok: false, error: "Не вказано співробітника." }, { status: 400 });
 
   try {
-    await prisma.$transaction(async (tx) => {
-      await tx.employeeProfile.update({ where: { id }, data: { isActive: false } });
-      await deactivateEmployeePlannerResources(tx, id);
-    });
-    await writeAuditEvent({ entityType: "EmployeeProfile", entityId: id, action: "PERSONNEL_DEACTIVATED" });
+    await deactivateEmployeeAccess(id, access.context, access.grantedScope);
     return NextResponse.json({ ok: true, archived: true });
   } catch (error) {
-    console.error("personnel DELETE failed", error);
-    return NextResponse.json({ ok: false, error: "Не вдалося деактивувати співробітника." }, { status: 500 });
+    return personnelError(error, "PERSONNEL_DEACTIVATE_FAILED");
   }
 }

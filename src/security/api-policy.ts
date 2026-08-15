@@ -67,8 +67,17 @@ const RULES: Rule[] = [
     resolve: () => internal(PERMISSIONS.AUDIT_READ, "ALL", "Audit log is sensitive and never inherits generic analytics access."),
   },
   {
+    match: (path) => path === "/api/personnel/access-catalog" || /^\/api\/personnel\/[^/]+\/access$/.test(path),
+    resolve: () => internal(PERMISSIONS.PERSONNEL_WRITE, "LOCATION", "Delegated employee/cabinet administration is always authenticated and station-scoped when applicable.", true),
+  },
+  {
     match: exact("/api/personnel"),
-    resolve: (method) => readWrite(method, PERMISSIONS.PERSONNEL_READ, PERMISSIONS.PERSONNEL_WRITE, "ALL", "Personnel endpoint; compensation is independently redacted."),
+    resolve: (method) => {
+      if (method.toUpperCase() === "GET") {
+        return internal(PERMISSIONS.PERSONNEL_READ, "SELF", "Personnel read model applies server-side row scope and independently redacts compensation.");
+      }
+      return internal(PERMISSIONS.PERSONNEL_WRITE, "LOCATION", "Personnel mutations are strict and atomically enforce role delegation, station scope and cabinet access.", true);
+    },
   },
   {
     match: prefix("/api/finance"),
