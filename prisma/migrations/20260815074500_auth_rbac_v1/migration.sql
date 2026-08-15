@@ -1,31 +1,40 @@
--- CreateEnum
-CREATE TYPE "SecurityEnforcementMode" AS ENUM ('SHADOW', 'ENFORCED');
+-- Turbo LEV RBAC migration.
+-- This migration is intentionally replay-safe because production schema may have
+-- been pre-applied during controlled Neon verification before Prisma records it.
 
--- CreateEnum
-CREATE TYPE "AccessScope" AS ENUM ('SELF', 'ASSIGNED', 'TEAM', 'LOCATION', 'ALL');
+-- CreateEnum (PostgreSQL has no CREATE TYPE IF NOT EXISTS for enums)
+DO $$ BEGIN
+  CREATE TYPE "SecurityEnforcementMode" AS ENUM ('SHADOW', 'ENFORCED');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
--- CreateEnum
-CREATE TYPE "PermissionEffect" AS ENUM ('ALLOW', 'DENY');
+DO $$ BEGIN
+  CREATE TYPE "AccessScope" AS ENUM ('SELF', 'ASSIGNED', 'TEAM', 'LOCATION', 'ALL');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  CREATE TYPE "PermissionEffect" AS ENUM ('ALLOW', 'DENY');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
 -- AlterTable
-ALTER TABLE "User" ADD COLUMN     "authUserId" VARCHAR(128),
-ADD COLUMN     "lastLoginAt" TIMESTAMP(3),
-ADD COLUMN     "lastSeenAt" TIMESTAMP(3);
+ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "authUserId" VARCHAR(128);
+ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "lastLoginAt" TIMESTAMP(3);
+ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "lastSeenAt" TIMESTAMP(3);
 
 -- CreateTable
-CREATE TABLE "SecurityConfig" (
+CREATE TABLE IF NOT EXISTS "SecurityConfig" (
     "id" VARCHAR(32) NOT NULL DEFAULT 'default',
     "enforcementMode" "SecurityEnforcementMode" NOT NULL DEFAULT 'SHADOW',
     "bootstrapCompleted" BOOLEAN NOT NULL DEFAULT false,
     "allowSelfRegistration" BOOLEAN NOT NULL DEFAULT false,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
-
     CONSTRAINT "SecurityConfig_pkey" PRIMARY KEY ("id")
 );
 
--- CreateTable
-CREATE TABLE "AccessRole" (
+CREATE TABLE IF NOT EXISTS "AccessRole" (
     "id" TEXT NOT NULL,
     "code" VARCHAR(64) NOT NULL,
     "name" VARCHAR(120) NOT NULL,
@@ -35,12 +44,10 @@ CREATE TABLE "AccessRole" (
     "sortOrder" INTEGER NOT NULL DEFAULT 100,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
-
     CONSTRAINT "AccessRole_pkey" PRIMARY KEY ("id")
 );
 
--- CreateTable
-CREATE TABLE "Permission" (
+CREATE TABLE IF NOT EXISTS "Permission" (
     "id" TEXT NOT NULL,
     "code" VARCHAR(96) NOT NULL,
     "module" VARCHAR(64) NOT NULL,
@@ -49,24 +56,20 @@ CREATE TABLE "Permission" (
     "isSensitive" BOOLEAN NOT NULL DEFAULT false,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
-
     CONSTRAINT "Permission_pkey" PRIMARY KEY ("id")
 );
 
--- CreateTable
-CREATE TABLE "AccessRolePermission" (
+CREATE TABLE IF NOT EXISTS "AccessRolePermission" (
     "id" TEXT NOT NULL,
     "roleId" TEXT NOT NULL,
     "permissionId" TEXT NOT NULL,
     "scope" "AccessScope" NOT NULL DEFAULT 'ALL',
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
-
     CONSTRAINT "AccessRolePermission_pkey" PRIMARY KEY ("id")
 );
 
--- CreateTable
-CREATE TABLE "UserAccessRole" (
+CREATE TABLE IF NOT EXISTS "UserAccessRole" (
     "id" TEXT NOT NULL,
     "userId" TEXT NOT NULL,
     "roleId" TEXT NOT NULL,
@@ -78,12 +81,10 @@ CREATE TABLE "UserAccessRole" (
     "reason" VARCHAR(240),
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
-
     CONSTRAINT "UserAccessRole_pkey" PRIMARY KEY ("id")
 );
 
--- CreateTable
-CREATE TABLE "UserPermissionOverride" (
+CREATE TABLE IF NOT EXISTS "UserPermissionOverride" (
     "id" TEXT NOT NULL,
     "userId" TEXT NOT NULL,
     "permissionId" TEXT NOT NULL,
@@ -96,82 +97,68 @@ CREATE TABLE "UserPermissionOverride" (
     "isActive" BOOLEAN NOT NULL DEFAULT true,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
-
     CONSTRAINT "UserPermissionOverride_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateIndex
-CREATE UNIQUE INDEX "AccessRole_code_key" ON "AccessRole"("code");
+CREATE UNIQUE INDEX IF NOT EXISTS "AccessRole_code_key" ON "AccessRole"("code");
+CREATE INDEX IF NOT EXISTS "AccessRole_isActive_sortOrder_idx" ON "AccessRole"("isActive", "sortOrder");
+CREATE UNIQUE INDEX IF NOT EXISTS "Permission_code_key" ON "Permission"("code");
+CREATE INDEX IF NOT EXISTS "Permission_module_action_idx" ON "Permission"("module", "action");
+CREATE INDEX IF NOT EXISTS "Permission_isSensitive_idx" ON "Permission"("isSensitive");
+CREATE INDEX IF NOT EXISTS "AccessRolePermission_permissionId_roleId_idx" ON "AccessRolePermission"("permissionId", "roleId");
+CREATE UNIQUE INDEX IF NOT EXISTS "AccessRolePermission_roleId_permissionId_key" ON "AccessRolePermission"("roleId", "permissionId");
+CREATE INDEX IF NOT EXISTS "UserAccessRole_userId_isActive_startsAt_endsAt_idx" ON "UserAccessRole"("userId", "isActive", "startsAt", "endsAt");
+CREATE INDEX IF NOT EXISTS "UserAccessRole_roleId_isActive_idx" ON "UserAccessRole"("roleId", "isActive");
+CREATE INDEX IF NOT EXISTS "UserAccessRole_locationId_isActive_idx" ON "UserAccessRole"("locationId", "isActive");
+CREATE UNIQUE INDEX IF NOT EXISTS "UserAccessRole_userId_roleId_locationId_key" ON "UserAccessRole"("userId", "roleId", "locationId");
+CREATE INDEX IF NOT EXISTS "UserPermissionOverride_userId_isActive_startsAt_expiresAt_idx" ON "UserPermissionOverride"("userId", "isActive", "startsAt", "expiresAt");
+CREATE INDEX IF NOT EXISTS "UserPermissionOverride_permissionId_effect_idx" ON "UserPermissionOverride"("permissionId", "effect");
+CREATE INDEX IF NOT EXISTS "UserPermissionOverride_locationId_isActive_idx" ON "UserPermissionOverride"("locationId", "isActive");
+CREATE UNIQUE INDEX IF NOT EXISTS "User_authUserId_key" ON "User"("authUserId");
+CREATE INDEX IF NOT EXISTS "User_authUserId_isActive_idx" ON "User"("authUserId", "isActive");
 
--- CreateIndex
-CREATE INDEX "AccessRole_isActive_sortOrder_idx" ON "AccessRole"("isActive", "sortOrder");
-
--- CreateIndex
-CREATE UNIQUE INDEX "Permission_code_key" ON "Permission"("code");
-
--- CreateIndex
-CREATE INDEX "Permission_module_action_idx" ON "Permission"("module", "action");
-
--- CreateIndex
-CREATE INDEX "Permission_isSensitive_idx" ON "Permission"("isSensitive");
-
--- CreateIndex
-CREATE INDEX "AccessRolePermission_permissionId_roleId_idx" ON "AccessRolePermission"("permissionId", "roleId");
-
--- CreateIndex
-CREATE UNIQUE INDEX "AccessRolePermission_roleId_permissionId_key" ON "AccessRolePermission"("roleId", "permissionId");
-
--- CreateIndex
-CREATE INDEX "UserAccessRole_userId_isActive_startsAt_endsAt_idx" ON "UserAccessRole"("userId", "isActive", "startsAt", "endsAt");
-
--- CreateIndex
-CREATE INDEX "UserAccessRole_roleId_isActive_idx" ON "UserAccessRole"("roleId", "isActive");
-
--- CreateIndex
-CREATE INDEX "UserAccessRole_locationId_isActive_idx" ON "UserAccessRole"("locationId", "isActive");
-
--- CreateIndex
-CREATE UNIQUE INDEX "UserAccessRole_userId_roleId_locationId_key" ON "UserAccessRole"("userId", "roleId", "locationId");
-
--- CreateIndex
-CREATE INDEX "UserPermissionOverride_userId_isActive_startsAt_expiresAt_idx" ON "UserPermissionOverride"("userId", "isActive", "startsAt", "expiresAt");
-
--- CreateIndex
-CREATE INDEX "UserPermissionOverride_permissionId_effect_idx" ON "UserPermissionOverride"("permissionId", "effect");
-
--- CreateIndex
-CREATE INDEX "UserPermissionOverride_locationId_isActive_idx" ON "UserPermissionOverride"("locationId", "isActive");
-
--- CreateIndex
-CREATE UNIQUE INDEX "User_authUserId_key" ON "User"("authUserId");
-
--- CreateIndex
-CREATE INDEX "User_authUserId_isActive_idx" ON "User"("authUserId", "isActive");
-
--- AddForeignKey
-ALTER TABLE "AccessRolePermission" ADD CONSTRAINT "AccessRolePermission_roleId_fkey" FOREIGN KEY ("roleId") REFERENCES "AccessRole"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "AccessRolePermission" ADD CONSTRAINT "AccessRolePermission_permissionId_fkey" FOREIGN KEY ("permissionId") REFERENCES "Permission"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "UserAccessRole" ADD CONSTRAINT "UserAccessRole_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "UserAccessRole" ADD CONSTRAINT "UserAccessRole_roleId_fkey" FOREIGN KEY ("roleId") REFERENCES "AccessRole"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "UserAccessRole" ADD CONSTRAINT "UserAccessRole_locationId_fkey" FOREIGN KEY ("locationId") REFERENCES "ServiceLocation"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "UserPermissionOverride" ADD CONSTRAINT "UserPermissionOverride_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "UserPermissionOverride" ADD CONSTRAINT "UserPermissionOverride_permissionId_fkey" FOREIGN KEY ("permissionId") REFERENCES "Permission"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "UserPermissionOverride" ADD CONSTRAINT "UserPermissionOverride_locationId_fkey" FOREIGN KEY ("locationId") REFERENCES "ServiceLocation"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
+-- AddForeignKey. Constraint names are stable, so guard each one explicitly.
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='AccessRolePermission_roleId_fkey') THEN
+    ALTER TABLE "AccessRolePermission" ADD CONSTRAINT "AccessRolePermission_roleId_fkey" FOREIGN KEY ("roleId") REFERENCES "AccessRole"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+  END IF;
+END $$;
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='AccessRolePermission_permissionId_fkey') THEN
+    ALTER TABLE "AccessRolePermission" ADD CONSTRAINT "AccessRolePermission_permissionId_fkey" FOREIGN KEY ("permissionId") REFERENCES "Permission"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+  END IF;
+END $$;
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='UserAccessRole_userId_fkey') THEN
+    ALTER TABLE "UserAccessRole" ADD CONSTRAINT "UserAccessRole_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+  END IF;
+END $$;
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='UserAccessRole_roleId_fkey') THEN
+    ALTER TABLE "UserAccessRole" ADD CONSTRAINT "UserAccessRole_roleId_fkey" FOREIGN KEY ("roleId") REFERENCES "AccessRole"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+  END IF;
+END $$;
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='UserAccessRole_locationId_fkey') THEN
+    ALTER TABLE "UserAccessRole" ADD CONSTRAINT "UserAccessRole_locationId_fkey" FOREIGN KEY ("locationId") REFERENCES "ServiceLocation"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+  END IF;
+END $$;
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='UserPermissionOverride_userId_fkey') THEN
+    ALTER TABLE "UserPermissionOverride" ADD CONSTRAINT "UserPermissionOverride_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+  END IF;
+END $$;
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='UserPermissionOverride_permissionId_fkey') THEN
+    ALTER TABLE "UserPermissionOverride" ADD CONSTRAINT "UserPermissionOverride_permissionId_fkey" FOREIGN KEY ("permissionId") REFERENCES "Permission"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+  END IF;
+END $$;
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='UserPermissionOverride_locationId_fkey') THEN
+    ALTER TABLE "UserPermissionOverride" ADD CONSTRAINT "UserPermissionOverride_locationId_fkey" FOREIGN KEY ("locationId") REFERENCES "ServiceLocation"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+  END IF;
+END $$;
 
 -- Turbo LEV security bootstrap. Enforcement intentionally starts in SHADOW mode.
 INSERT INTO "SecurityConfig" ("id", "enforcementMode", "bootstrapCompleted", "allowSelfRegistration", "createdAt", "updatedAt")
