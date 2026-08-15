@@ -41,10 +41,30 @@ function validateAttributions(items: AttributionInput[]) {
     if (item.additiveContribution && item.attributionType !== "DIRECT") {
       throw new Error("Only DIRECT attribution may be additive employee contribution.");
     }
+    if (item.additiveContribution && (item.economicValue == null || !Number.isFinite(item.economicValue))) {
+      throw new Error("Additive DIRECT attribution requires a finite economicValue.");
+    }
     if (item.share != null && (!Number.isFinite(item.share) || item.share < 0 || item.share > 1)) {
       throw new Error("Attribution share must be between 0 and 1.");
     }
     if (!item.metricCode.trim()) throw new Error("Attribution metricCode is required.");
+  }
+
+  const additive = items.filter((item) => item.additiveContribution === true);
+  const additiveMetricCodes = [...new Set(additive.map((item) => item.metricCode.trim()))];
+  if (additiveMetricCodes.length > 1) {
+    throw new Error("One performance event may contain only one additive economic metric. Split different economic facts into separate events.");
+  }
+  if (additive.length > 1) {
+    if (additive.some((item) => item.share == null)) {
+      throw new Error("Shared additive contribution requires an explicit share for every participant.");
+    }
+    const totalShare = additive.reduce((sum, item) => sum + Number(item.share ?? 0), 0);
+    if (Math.abs(totalShare - 1) > 0.0001) {
+      throw new Error("Shared additive contribution must allocate exactly 100% across participants.");
+    }
+    const currencies = new Set(additive.map((item) => item.currency ?? "UAH"));
+    if (currencies.size > 1) throw new Error("Shared additive contribution must use one currency.");
   }
 
   const shareBuckets = new Map<string, number>();
