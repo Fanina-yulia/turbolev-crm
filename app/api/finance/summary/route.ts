@@ -6,6 +6,12 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const KYIV_TZ = "Europe/Kyiv";
+const NON_DEMO_WORK_ORDER = {
+  OR: [
+    { workOrderId: null },
+    { NOT: { workOrderId: { startsWith: "demo_" } } },
+  ],
+} as const;
 
 function kyivParts(date = new Date()) {
   const parts = new Intl.DateTimeFormat("en-CA", {
@@ -82,19 +88,19 @@ export async function GET(request: NextRequest) {
   const [pnlGroups, cashPeriodGroups, cashAllTimeGroups, accounts, obligations, eventCount, cashCount] = await Promise.all([
     prisma.financialEvent.groupBy({
       by: ["pnlSection"],
-      where: { status: "POSTED", currency, recognizedAt: { gte: from, lt: to } },
+      where: { status: "POSTED", currency, recognizedAt: { gte: from, lt: to }, ...NON_DEMO_WORK_ORDER },
       _sum: { amount: true },
       _count: { _all: true },
     }),
     prisma.cashTransaction.groupBy({
       by: ["kind", "flowSection"],
-      where: { status: "POSTED", currency, occurredAt: { gte: from, lt: to } },
+      where: { status: "POSTED", currency, occurredAt: { gte: from, lt: to }, ...NON_DEMO_WORK_ORDER },
       _sum: { amount: true },
       _count: { _all: true },
     }),
     prisma.cashTransaction.groupBy({
       by: ["kind"],
-      where: { status: "POSTED", currency },
+      where: { status: "POSTED", currency, ...NON_DEMO_WORK_ORDER },
       _sum: { amount: true },
     }),
     prisma.moneyAccount.findMany({
@@ -103,11 +109,11 @@ export async function GET(request: NextRequest) {
       orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
     }),
     prisma.financialObligation.findMany({
-      where: { status: { in: ["OPEN", "PARTIALLY_PAID", "OVERDUE"] }, currency },
+      where: { status: { in: ["OPEN", "PARTIALLY_PAID", "OVERDUE"] }, currency, ...NON_DEMO_WORK_ORDER },
       select: { direction: true, amount: true, settledAmount: true, dueAt: true, status: true },
     }),
-    prisma.financialEvent.count({ where: { status: "POSTED", currency } }),
-    prisma.cashTransaction.count({ where: { status: "POSTED", currency } }),
+    prisma.financialEvent.count({ where: { status: "POSTED", currency, ...NON_DEMO_WORK_ORDER } }),
+    prisma.cashTransaction.count({ where: { status: "POSTED", currency, ...NON_DEMO_WORK_ORDER } }),
   ]);
 
   const pnlBySection = Object.fromEntries(
