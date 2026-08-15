@@ -1,0 +1,82 @@
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+import styles from "./clients-vehicles.module.css";
+import { VehicleBrandLogo } from "./vehicle-brand-logo";
+
+type ViewMode = "cards" | "rows";
+type Vehicle = {
+  id:string; plateNumber:string|null; vin:string|null; brand:string|null; model:string|null; year:number|null; mileageKm:number|null;
+  engineName:string|null; engineVolumeCm3:number|null; fuelType:string|null; bodyType:string|null; driveType:string|null; vehicleType:string|null;
+  turboLevClass:string|null; priceCoefficient:string|number; vehicleDataSource:string|null; vehicleDataConfidence:number|null; createdAt:string; updatedAt:string;
+  _count:{workOrders:number; diagnosticRequests:number};
+};
+type Client = {
+  id:string; name:string|null; phone:string; createdAt:string; updatedAt:string;
+  _count:{vehicles:number; workOrders:number; diagnosticRequests:number};
+  workOrders:Array<{id:string;status:string;createdAt:string;updatedAt:string;closedAt:string|null}>;
+  vehicles:Vehicle[];
+};
+type ListResponse = {ok:boolean;total:number;clients:Client[];error?:string};
+type VehicleCard = Vehicle & {
+  clientId:string; classificationSource:string|null; classificationConfidence:number|null; lastVehicleLookupAt:string|null;
+  client:{id:string;name:string|null;phone:string};
+  registrations:Array<{id:string;countryCode:string;plateNumber:string;source:string|null;isCurrent:boolean;validFrom:string|null;validTo:string|null}>;
+  diagnosticRequests:Array<{id:string;status:string;technicalConclusion:string|null;confirmedAt:string|null;createdAt:string;updatedAt:string}>;
+  workOrders:Array<{id:string;status:string;createdAt:string;updatedAt:string;closedAt:string|null}>;
+  _count:{workOrders:number;diagnosticRequests:number;registrations:number};
+};
+
+const VIEW_KEY="turbolev-clients-view";
+
+function initials(name:string|null){const source=(name||"Клієнт").trim();return source.split(/\s+/).map(p=>p[0]).join("").slice(0,2).toUpperCase();}
+function displayName(client:Client){return client.name?.trim()||"Клієнт без імені";}
+function vehicleTitle(v:Vehicle|VehicleCard){return [v.brand,v.model,v.year].filter(Boolean).join(" ")||"Автомобіль";}
+function dateText(value:string|null|undefined){if(!value)return"—";const d=new Date(value);return Number.isNaN(d.getTime())?"—":new Intl.DateTimeFormat("uk-UA",{day:"2-digit",month:"2-digit",year:"numeric"}).format(d);}
+function lastVisit(client:Client){const row=client.workOrders[0];return row?dateText(row.closedAt||row.updatedAt||row.createdAt):"—";}
+function engineText(v:Vehicle|VehicleCard){if(v.engineName)return v.engineName;if(v.engineVolumeCm3)return `${(v.engineVolumeCm3/1000).toFixed(1)} л`;return"—";}
+function moneyCoefficient(value:string|number){const n=Number(value);return Number.isFinite(n)?`×${n.toFixed(2)}`:"×1.00";}
+
+export function ClientsVehicles(){
+  const [view,setView]=useState<ViewMode>("cards");
+  const [query,setQuery]=useState("");
+  const [clients,setClients]=useState<Client[]>([]);
+  const [total,setTotal]=useState(0);
+  const [loading,setLoading]=useState(true);
+  const [error,setError]=useState("");
+  const [clientCard,setClientCard]=useState<Client|null>(null);
+  const [vehicleId,setVehicleId]=useState<string|null>(null);
+  const [vehicleCard,setVehicleCard]=useState<VehicleCard|null>(null);
+  const [vehicleLoading,setVehicleLoading]=useState(false);
+
+  useEffect(()=>{const saved=window.localStorage.getItem(VIEW_KEY);if(saved==="cards"||saved==="rows")setView(saved);},[]);
+  useEffect(()=>{const controller=new AbortController();const timer=window.setTimeout(async()=>{setLoading(true);setError("");try{const params=new URLSearchParams({limit:"100"});if(query.trim())params.set("q",query.trim());const response=await fetch(`/api/clients-vehicles?${params}`,{cache:"no-store",signal:controller.signal});const data=await response.json() as ListResponse;if(!response.ok||!data.ok)throw new Error(data.error||"Не вдалося завантажити клієнтів");setClients(data.clients||[]);setTotal(data.total||0);}catch(e){if((e as Error).name!=="AbortError")setError(e instanceof Error?e.message:"Помилка завантаження");}finally{if(!controller.signal.aborted)setLoading(false);}},220);return()=>{controller.abort();window.clearTimeout(timer);};},[query]);
+  useEffect(()=>{if(!vehicleId){setVehicleCard(null);return;}const controller=new AbortController();setVehicleLoading(true);void(async()=>{try{const response=await fetch(`/api/vehicles/card?id=${encodeURIComponent(vehicleId)}`,{cache:"no-store",signal:controller.signal});const data=await response.json() as {ok?:boolean;vehicle?:VehicleCard;error?:string};if(!response.ok||!data.ok||!data.vehicle)throw new Error(data.error||"Не вдалося відкрити автомобіль");setVehicleCard(data.vehicle);}catch(e){if((e as Error).name!=="AbortError")setError(e instanceof Error?e.message:"Помилка картки авто");}finally{if(!controller.signal.aborted)setVehicleLoading(false);}})();return()=>controller.abort();},[vehicleId]);
+
+  const vehicleCount=useMemo(()=>clients.reduce((sum,c)=>sum+c.vehicles.length,0),[clients]);
+  function changeView(next:ViewMode){setView(next);window.localStorage.setItem(VIEW_KEY,next);}
+  function openVehicle(v:Vehicle){setClientCard(null);setVehicleCard(null);setVehicleId(v.id);}
+  function openClientById(id:string){const client=clients.find(c=>c.id===id);if(client){setVehicleId(null);setVehicleCard(null);setClientCard(client);}}
+  function openNewRequest(){window.dispatchEvent(new CustomEvent("turbolev:open-new-request",{detail:{source:"CLIENTS"}}));}
+
+  return <div className={styles.page}>
+    <header className={styles.header}><div><p className={styles.eyebrow}>TURBO LEV · CRM-КЛІЄНТІВ</p><h1>Клієнти та авто</h1><span className={styles.headerText}>Клієнтська база, автомобілі, історія звернень та сервісу</span></div><div className={styles.headerActions}><button className={styles.primary} onClick={openNewRequest}>+ Додати клієнта</button></div></header>
+    <div className={styles.toolbar}><label className={styles.search}><span>⌕</span><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Пошук за ПІБ, телефоном, номером авто, VIN, маркою або моделлю..."/><button type="button" onClick={()=>setQuery("")} aria-label="Очистити">{query?"×":""}</button></label><div className={styles.viewSwitch}><button className={view==="cards"?styles.active:""} onClick={()=>changeView("cards")}>▦ Картки</button><button className={view==="rows"?styles.active:""} onClick={()=>changeView("rows")}>☷ Рядки</button></div></div>
+    <div className={styles.summary}><span>Знайдено клієнтів: <b>{total}</b></span><span>Автомобілів у поточній вибірці: <b>{vehicleCount}</b></span></div>
+    {error&&<div className={styles.error}>{error}</div>}
+    {loading?<div className={styles.loading}>Завантажую клієнтів та автомобілі…</div>:!clients.length?<div className={styles.empty}>Нічого не знайдено.</div>:view==="cards"?<div className={styles.cards}>{clients.map(client=><ClientCardView key={client.id} client={client} onClient={()=>setClientCard(client)} onVehicle={openVehicle}/>)}</div>:<RowsView clients={clients} onClient={setClientCard} onVehicle={openVehicle}/>} 
+    {clientCard&&<ClientDrawer client={clientCard} onClose={()=>setClientCard(null)} onVehicle={openVehicle} onNewRequest={openNewRequest}/>} 
+    {vehicleId&&<VehicleDrawer vehicle={vehicleCard} loading={vehicleLoading} onClose={()=>{setVehicleId(null);setVehicleCard(null)}} onClient={openClientById} onNewRequest={openNewRequest}/>} 
+  </div>;
+}
+
+function ClientCardView({client,onClient,onVehicle}:{client:Client;onClient:()=>void;onVehicle:(v:Vehicle)=>void}){return <article className={styles.clientCard}><button className={styles.clientIdentity} onClick={onClient}><span className={styles.avatar}>{initials(client.name)}</span><span><strong>{displayName(client)}</strong><small>{client.phone}</small></span><span className={styles.chevron}>›</span></button><div className={styles.vehicleStack}>{client.vehicles.length?client.vehicles.map(v=><button className={styles.vehicleButton} key={v.id} onClick={()=>onVehicle(v)}><VehicleBrandLogo brand={v.brand} size={34}/><span><strong>{vehicleTitle(v)}</strong><small>{v.plateNumber||"Без держномера"}{v.vin?` · ${v.vin}`:""}</small></span><em>›</em></button>):<div className={styles.emptyVehicle}>Авто ще не додано</div>}</div><footer className={styles.cardFooter}><div><span>Замовлень</span><b>{client._count.workOrders}</b></div><div><span>Останній візит</span><b>{lastVisit(client)}</b></div><div><span>Авто</span><b>{client._count.vehicles}</b></div></footer></article>}
+
+function RowsView({clients,onClient,onVehicle}:{clients:Client[];onClient:(c:Client)=>void;onVehicle:(v:Vehicle)=>void}){return <div className={styles.tableWrap}><div className={styles.table}><div className={styles.tableHead}><span>Клієнт</span><span>Телефон</span><span>Автомобілі</span><span>Наряди</span><span>Останній візит</span></div>{clients.map(client=><div className={styles.row} key={client.id}><button className={styles.rowClient} onClick={()=>onClient(client)}><span className={styles.avatar}>{initials(client.name)}</span><span><strong>{displayName(client)}</strong><small>Картка клієнта ›</small></span></button><span className={styles.rowPhone}>{client.phone}</span><div className={styles.rowVehicles}>{client.vehicles.length?client.vehicles.map(v=><button className={styles.rowVehicle} key={v.id} onClick={()=>onVehicle(v)}><VehicleBrandLogo brand={v.brand} size={27}/><span><strong>{[v.brand,v.model].filter(Boolean).join(" ")||"Авто"}</strong><small>{v.plateNumber||v.vin||"Без номера"}</small></span></button>):<span className={styles.emptyVehicle}>Немає авто</span>}</div><span className={styles.rowStat}>{client._count.workOrders}</span><span className={styles.rowStat}>{lastVisit(client)}</span></div>)}</div></div>}
+
+function ClientDrawer({client,onClose,onVehicle,onNewRequest}:{client:Client;onClose:()=>void;onVehicle:(v:Vehicle)=>void;onNewRequest:()=>void}){return <div className={styles.drawerBackdrop} onMouseDown={e=>{if(e.target===e.currentTarget)onClose()}}><aside className={styles.drawer}><header className={styles.drawerHead}><div className={styles.drawerTitle}><span className={styles.avatar}>{initials(client.name)}</span><div><p>КАРТКА КЛІЄНТА</p><h2>{displayName(client)}</h2><span>{client.phone}</span></div></div><button className={styles.close} onClick={onClose}>×</button></header><div className={styles.drawerBody}><section className={styles.block}><div className={styles.stats}><Stat label="Автомобілі" value={client._count.vehicles}/><Stat label="Замовлення" value={client._count.workOrders}/><Stat label="Діагностики" value={client._count.diagnosticRequests}/></div></section><section className={styles.block}><div className={styles.blockTitle}><strong>Автомобілі клієнта</strong><span>Натисни для картки авто</span></div>{client.vehicles.length?client.vehicles.map(v=><button className={styles.drawerVehicle} key={v.id} onClick={()=>onVehicle(v)}><VehicleBrandLogo brand={v.brand} size={34}/><span><strong>{vehicleTitle(v)}</strong><small>{v.plateNumber||"Без номера"}{v.vin?` · VIN ${v.vin}`:""}</small></span><span>›</span></button>):<div className={styles.emptyVehicle}>Автомобілі ще не додані.</div>}</section><section className={styles.block}><div className={styles.blockTitle}><strong>Клієнт у CRM</strong><span>основні дані</span></div><div className={styles.factGrid}><Fact label="Телефон" value={client.phone}/><Fact label="Створено" value={dateText(client.createdAt)}/><Fact label="Остання активність" value={dateText(client.updatedAt)}/><Fact label="Останній візит" value={lastVisit(client)}/></div></section></div><footer className={styles.drawerActions}><button className={styles.primary} onClick={onNewRequest}>+ Нова заявка</button><button className={styles.secondary} onClick={()=>window.dispatchEvent(new CustomEvent("turbolev:navigate",{detail:"Комунікації"}))}>Комунікації</button></footer></aside></div>}
+
+function VehicleDrawer({vehicle,loading,onClose,onClient,onNewRequest}:{vehicle:VehicleCard|null;loading:boolean;onClose:()=>void;onClient:(id:string)=>void;onNewRequest:()=>void}){return <div className={styles.drawerBackdrop} onMouseDown={e=>{if(e.target===e.currentTarget)onClose()}}><aside className={styles.drawer}>{loading||!vehicle?<><header className={styles.drawerHead}><div><p>КАРТКА АВТО</p><h2>Завантаження…</h2></div><button className={styles.close} onClick={onClose}>×</button></header><div className={styles.drawerBody}><div className={styles.loading}>Завантажую дані автомобіля…</div></div></>:<><header className={styles.drawerHead}><div className={styles.drawerTitle}><VehicleBrandLogo brand={vehicle.brand} size={48}/><div><p>КАРТКА АВТОМОБІЛЯ</p><h2>{vehicleTitle(vehicle)}</h2><span>{vehicle.plateNumber||"Без держномера"}{vehicle.vin?` · VIN ${vehicle.vin}`:""}</span></div></div><button className={styles.close} onClick={onClose}>×</button></header><div className={styles.drawerBody}><section className={styles.block}><div className={styles.blockTitle}><strong>Власник</strong><span>відкрити картку клієнта</span></div><button className={styles.ownerButton} onClick={()=>onClient(vehicle.client.id)}><span><strong>{vehicle.client.name||"Клієнт без імені"}</strong><small>{vehicle.client.phone}</small></span><span>›</span></button></section><section className={styles.block}><div className={styles.blockTitle}><strong>Технічні дані</strong><span>{vehicle.vehicleDataSource||"CRM"}{vehicle.vehicleDataConfidence?` · ${vehicle.vehicleDataConfidence}%`:""}</span></div><div className={styles.factGrid}><Fact label="Марка" value={vehicle.brand||"—"}/><Fact label="Модель" value={vehicle.model||"—"}/><Fact label="Рік" value={vehicle.year||"—"}/><Fact label="Пробіг" value={vehicle.mileageKm?`${vehicle.mileageKm.toLocaleString("uk-UA")} км`:"—"}/><Fact label="Двигун" value={engineText(vehicle)}/><Fact label="Паливо" value={vehicle.fuelType||"—"}/><Fact label="Привід" value={vehicle.driveType||"—"}/><Fact label="Кузов" value={vehicle.bodyType||vehicle.vehicleType||"—"}/><Fact label="Клас Turbo LEV" value={vehicle.turboLevClass||"—"}/><Fact label="Коефіцієнт ціни" value={moneyCoefficient(vehicle.priceCoefficient)}/><Fact label="Держномер" value={vehicle.plateNumber||"—"}/><Fact label="VIN" value={vehicle.vin||"—"}/></div></section><section className={styles.block}><div className={styles.blockTitle}><strong>Історія сервісу</strong><span>{vehicle._count.workOrders} нарядів</span></div><div className={styles.history}>{vehicle.workOrders.length?vehicle.workOrders.map(order=><div className={styles.historyItem} key={order.id}><strong>{order.id}</strong><span>{order.status}</span><small>{dateText(order.closedAt||order.updatedAt)}</small></div>):<div className={styles.emptyVehicle}>Замовлень-нарядів ще немає.</div>}</div></section><section className={styles.block}><div className={styles.blockTitle}><strong>Діагностики</strong><span>{vehicle._count.diagnosticRequests}</span></div><div className={styles.history}>{vehicle.diagnosticRequests.length?vehicle.diagnosticRequests.map(item=><div className={styles.historyItem} key={item.id}><strong>{item.id}</strong><span>{item.status}</span><small>{item.technicalConclusion||dateText(item.confirmedAt||item.updatedAt)}</small></div>):<div className={styles.emptyVehicle}>Діагностик ще немає.</div>}</div></section></div><footer className={styles.drawerActions}><button className={styles.primary} onClick={onNewRequest}>+ Нова заявка</button><button className={styles.secondary} onClick={()=>window.dispatchEvent(new CustomEvent("turbolev:navigate",{detail:"Планувальник"}))}>Планувальник</button></footer></>}</aside></div>}
+
+function Stat({label,value}:{label:string;value:string|number}){return <div className={styles.stat}><span>{label}</span><b>{value}</b></div>}
+function Fact({label,value}:{label:string;value:string|number}){return <div className={styles.fact}><span>{label}</span><b>{value}</b></div>}
