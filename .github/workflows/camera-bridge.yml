@@ -1,0 +1,59 @@
+name: Camera Bridge
+
+on:
+  pull_request:
+    paths:
+      - "services/camera-bridge/**"
+      - ".github/workflows/camera-bridge.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  docker-build:
+    name: Build Camera Bridge (${{ matrix.platform }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [linux/amd64, linux/arm64]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build bridge image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./services/camera-bridge/Dockerfile
+          platforms: ${{ matrix.platform }}
+          push: false
+          load: ${{ matrix.platform == 'linux/amd64' }}
+          tags: turbolev-camera-bridge:ci
+
+      - name: Validate amd64 bridge runtime
+        if: matrix.platform == 'linux/amd64'
+        run: |
+          docker run -d --rm \
+            --name turbolev-camera-bridge-ci \
+            -p 8787:8787 \
+            -e PORT=8787 \
+            -e CAMERA_BRIDGE_TOKEN=test-only-ci-token \
+            turbolev-camera-bridge:ci
+          for attempt in $(seq 1 20); do
+            if curl --fail --silent http://127.0.0.1:8787/health; then
+              echo
+              exit 0
+            fi
+            sleep 1
+          done
+          docker logs turbolev-camera-bridge-ci || true
+          exit 1

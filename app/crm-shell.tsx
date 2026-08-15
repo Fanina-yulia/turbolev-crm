@@ -20,7 +20,7 @@ import { turboLevLogoDark, turboLevLogoLight } from "@/src/brand/logos";
 import shellStyles from "./crm-shell.module.css";
 
 type NavigateDetail = string | { section: CrmSectionLabel; filter?: string; filterLabel?: string };
-type SettingsTab = "schedule"|"personnel"|"suppliers"|"warehouse"|"workPrices"|"posts"|"markup"|"cash"|"integrations"|"appearance"|"workflow"|"security";
+type SettingsTab = "schedule"|"personnel"|"suppliers"|"warehouse"|"workPrices"|"posts"|"markup"|"cash"|"integrations"|"cameras"|"appearance"|"workflow"|"security";
 
 const SETTINGS_SUBMENU:Array<{id:SettingsTab;label:string}>=[
   {id:"schedule",label:"Графік"},
@@ -32,6 +32,7 @@ const SETTINGS_SUBMENU:Array<{id:SettingsTab;label:string}>=[
   {id:"markup",label:"Націнка"},
   {id:"cash",label:"Каса"},
   {id:"integrations",label:"Інтеграції"},
+  {id:"cameras",label:"Камери"},
   {id:"appearance",label:"Оформлення"},
   {id:"workflow",label:"Процеси та статуси"},
   {id:"security",label:"Ролі та доступи"},
