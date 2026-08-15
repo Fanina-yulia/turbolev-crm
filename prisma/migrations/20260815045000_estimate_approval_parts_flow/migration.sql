@@ -1,20 +1,31 @@
 -- Commercial workflow v3: estimate approval snapshots + parts requests.
 -- Must run after 20260815044500_workorder_line_items_v3.
--- Additive migration. Existing WorkOrders are not backfilled.
+-- Additive and idempotent: production commercial objects may already exist from a verified Neon migration.
+-- Existing WorkOrders are not backfilled.
 
 ALTER TABLE "WorkOrderLine"
-  ADD COLUMN "requiredForRepair" BOOLEAN NOT NULL DEFAULT true;
+  ADD COLUMN IF NOT EXISTS "requiredForRepair" BOOLEAN NOT NULL DEFAULT true;
 
-CREATE TYPE "WorkOrderEstimateStatus" AS ENUM (
-  'DRAFT','SENT','APPROVED','REJECTED','SUPERSEDED','CANCELLED'
-);
+DO $$
+BEGIN
+  CREATE TYPE "WorkOrderEstimateStatus" AS ENUM (
+    'DRAFT','SENT','APPROVED','REJECTED','SUPERSEDED','CANCELLED'
+  );
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END $$;
 
-CREATE TYPE "PartsRequestStatus" AS ENUM (
-  'NEW','SELECTING','SELECTED','WAITING_APPROVAL','APPROVED','ORDER_REQUIRED','ORDERED',
-  'PARTIALLY_RECEIVED','RECEIVED','INSTALLED','RETURNED','CANCELLED'
-);
+DO $$
+BEGIN
+  CREATE TYPE "PartsRequestStatus" AS ENUM (
+    'NEW','SELECTING','SELECTED','WAITING_APPROVAL','APPROVED','ORDER_REQUIRED','ORDERED',
+    'PARTIALLY_RECEIVED','RECEIVED','INSTALLED','RETURNED','CANCELLED'
+  );
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END $$;
 
-CREATE TABLE "WorkOrderEstimate" (
+CREATE TABLE IF NOT EXISTS "WorkOrderEstimate" (
   "id" TEXT NOT NULL,
   "workOrderId" TEXT NOT NULL,
   "revision" INTEGER NOT NULL,
@@ -42,7 +53,7 @@ CREATE TABLE "WorkOrderEstimate" (
   CONSTRAINT "WorkOrderEstimate_pkey" PRIMARY KEY ("id")
 );
 
-CREATE TABLE "PartsRequest" (
+CREATE TABLE IF NOT EXISTS "PartsRequest" (
   "id" TEXT NOT NULL,
   "workOrderId" TEXT NOT NULL,
   "estimateId" TEXT NOT NULL,
@@ -59,7 +70,7 @@ CREATE TABLE "PartsRequest" (
   CONSTRAINT "PartsRequest_pkey" PRIMARY KEY ("id")
 );
 
-CREATE TABLE "PartsRequestItem" (
+CREATE TABLE IF NOT EXISTS "PartsRequestItem" (
   "id" TEXT NOT NULL,
   "partsRequestId" TEXT NOT NULL,
   "workOrderLineId" VARCHAR(64) NOT NULL,
@@ -90,40 +101,60 @@ CREATE TABLE "PartsRequestItem" (
   CONSTRAINT "PartsRequestItem_installed_lte_received" CHECK ("installedQuantity" <= "receivedQuantity")
 );
 
-CREATE UNIQUE INDEX "WorkOrderEstimate_workOrderId_revision_key"
+CREATE UNIQUE INDEX IF NOT EXISTS "WorkOrderEstimate_workOrderId_revision_key"
   ON "WorkOrderEstimate"("workOrderId","revision");
-CREATE INDEX "WorkOrderEstimate_workOrderId_status_revision_idx"
+CREATE INDEX IF NOT EXISTS "WorkOrderEstimate_workOrderId_status_revision_idx"
   ON "WorkOrderEstimate"("workOrderId","status","revision");
-CREATE INDEX "WorkOrderEstimate_lineFingerprint_idx"
+CREATE INDEX IF NOT EXISTS "WorkOrderEstimate_lineFingerprint_idx"
   ON "WorkOrderEstimate"("lineFingerprint");
-CREATE INDEX "WorkOrderEstimate_status_updatedAt_idx"
+CREATE INDEX IF NOT EXISTS "WorkOrderEstimate_status_updatedAt_idx"
   ON "WorkOrderEstimate"("status","updatedAt");
 
-CREATE UNIQUE INDEX "PartsRequest_estimateId_key" ON "PartsRequest"("estimateId");
-CREATE INDEX "PartsRequest_workOrderId_status_updatedAt_idx"
+CREATE UNIQUE INDEX IF NOT EXISTS "PartsRequest_estimateId_key" ON "PartsRequest"("estimateId");
+CREATE INDEX IF NOT EXISTS "PartsRequest_workOrderId_status_updatedAt_idx"
   ON "PartsRequest"("workOrderId","status","updatedAt");
 
-CREATE UNIQUE INDEX "PartsRequestItem_partsRequestId_workOrderLineId_key"
+CREATE UNIQUE INDEX IF NOT EXISTS "PartsRequestItem_partsRequestId_workOrderLineId_key"
   ON "PartsRequestItem"("partsRequestId","workOrderLineId");
-CREATE INDEX "PartsRequestItem_partsRequestId_requiredForRepair_idx"
+CREATE INDEX IF NOT EXISTS "PartsRequestItem_partsRequestId_requiredForRepair_idx"
   ON "PartsRequestItem"("partsRequestId","requiredForRepair");
-CREATE INDEX "PartsRequestItem_supplierId_idx" ON "PartsRequestItem"("supplierId");
-CREATE INDEX "PartsRequestItem_supplierQuoteId_idx" ON "PartsRequestItem"("supplierQuoteId");
-CREATE INDEX "PartsRequestItem_supplierOrderId_idx" ON "PartsRequestItem"("supplierOrderId");
-CREATE INDEX "PartsRequestItem_article_idx" ON "PartsRequestItem"("article");
+CREATE INDEX IF NOT EXISTS "PartsRequestItem_supplierId_idx" ON "PartsRequestItem"("supplierId");
+CREATE INDEX IF NOT EXISTS "PartsRequestItem_supplierQuoteId_idx" ON "PartsRequestItem"("supplierQuoteId");
+CREATE INDEX IF NOT EXISTS "PartsRequestItem_supplierOrderId_idx" ON "PartsRequestItem"("supplierOrderId");
+CREATE INDEX IF NOT EXISTS "PartsRequestItem_article_idx" ON "PartsRequestItem"("article");
 
-ALTER TABLE "WorkOrderEstimate"
-  ADD CONSTRAINT "WorkOrderEstimate_workOrderId_fkey"
-  FOREIGN KEY ("workOrderId") REFERENCES "WorkOrder"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+DO $$
+BEGIN
+  ALTER TABLE "WorkOrderEstimate"
+    ADD CONSTRAINT "WorkOrderEstimate_workOrderId_fkey"
+    FOREIGN KEY ("workOrderId") REFERENCES "WorkOrder"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END $$;
 
-ALTER TABLE "PartsRequest"
-  ADD CONSTRAINT "PartsRequest_workOrderId_fkey"
-  FOREIGN KEY ("workOrderId") REFERENCES "WorkOrder"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+DO $$
+BEGIN
+  ALTER TABLE "PartsRequest"
+    ADD CONSTRAINT "PartsRequest_workOrderId_fkey"
+    FOREIGN KEY ("workOrderId") REFERENCES "WorkOrder"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END $$;
 
-ALTER TABLE "PartsRequest"
-  ADD CONSTRAINT "PartsRequest_estimateId_fkey"
-  FOREIGN KEY ("estimateId") REFERENCES "WorkOrderEstimate"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+DO $$
+BEGIN
+  ALTER TABLE "PartsRequest"
+    ADD CONSTRAINT "PartsRequest_estimateId_fkey"
+    FOREIGN KEY ("estimateId") REFERENCES "WorkOrderEstimate"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END $$;
 
-ALTER TABLE "PartsRequestItem"
-  ADD CONSTRAINT "PartsRequestItem_partsRequestId_fkey"
-  FOREIGN KEY ("partsRequestId") REFERENCES "PartsRequest"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+DO $$
+BEGIN
+  ALTER TABLE "PartsRequestItem"
+    ADD CONSTRAINT "PartsRequestItem_partsRequestId_fkey"
+    FOREIGN KEY ("partsRequestId") REFERENCES "PartsRequest"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END $$;
