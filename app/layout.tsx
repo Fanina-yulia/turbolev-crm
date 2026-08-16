@@ -25,6 +25,7 @@ import "./settings-integrations.css";
 import "./settings-page-layout-fix.css";
 import "./ui-readability.css";
 import "./layout-stability.css";
+import "./typography-final.css";
 import { PhoneInputNormalizer } from "./phone-input-normalizer";
 import { LeadDetailsEnhancer } from "./lead-details-enhancer";
 import { VehicleConfigurationEnhancer } from "./vehicle-configuration-enhancer";
