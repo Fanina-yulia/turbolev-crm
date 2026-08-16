@@ -148,13 +148,36 @@ export async function PUT(request: NextRequest) {
     if (Object.prototype.hasOwnProperty.call(body, "additionalPhone")) {
       if (additionalNormalized) {
         const additionalDisplay = displayPhone(additionalNormalized);
-        await db.query(
-          `INSERT INTO "ClientPhone" ("id","clientId","phone","phoneNormalized","label","isPrimary","createdAt","updatedAt")
-           VALUES ($1,$2,$3,$4,'Додатковий',false,NOW(),NOW())
-           ON CONFLICT ("phoneNormalized") DO UPDATE SET
-             "phone"=EXCLUDED."phone","label"='Додатковий',"isPrimary"=false,"updatedAt"=NOW()`,
-          [additionalPhoneId || `cp_${randomUUID()}`, clientId, additionalDisplay, additionalNormalized],
-        );
+        if (additionalPhoneId) {
+          const editable = await db.query(
+            `SELECT "id" FROM "ClientPhone" WHERE "id"=$1 AND "clientId"=$2 AND "isPrimary"=false LIMIT 1`,
+            [additionalPhoneId, clientId],
+          );
+          if (editable.rows[0]) {
+            await db.query(
+              `UPDATE "ClientPhone"
+               SET "phone"=$3,"phoneNormalized"=$4,"label"='Додатковий',"isPrimary"=false,"updatedAt"=NOW()
+               WHERE "id"=$1 AND "clientId"=$2 AND "isPrimary"=false`,
+              [additionalPhoneId, clientId, additionalDisplay, additionalNormalized],
+            );
+          } else {
+            await db.query(
+              `INSERT INTO "ClientPhone" ("id","clientId","phone","phoneNormalized","label","isPrimary","createdAt","updatedAt")
+               VALUES ($1,$2,$3,$4,'Додатковий',false,NOW(),NOW())
+               ON CONFLICT ("phoneNormalized") DO UPDATE SET
+                 "phone"=EXCLUDED."phone","label"='Додатковий',"isPrimary"=false,"updatedAt"=NOW()`,
+              [`cp_${randomUUID()}`, clientId, additionalDisplay, additionalNormalized],
+            );
+          }
+        } else {
+          await db.query(
+            `INSERT INTO "ClientPhone" ("id","clientId","phone","phoneNormalized","label","isPrimary","createdAt","updatedAt")
+             VALUES ($1,$2,$3,$4,'Додатковий',false,NOW(),NOW())
+             ON CONFLICT ("phoneNormalized") DO UPDATE SET
+               "phone"=EXCLUDED."phone","label"='Додатковий',"isPrimary"=false,"updatedAt"=NOW()`,
+            [`cp_${randomUUID()}`, clientId, additionalDisplay, additionalNormalized],
+          );
+        }
       } else if (additionalPhoneId) {
         await db.query(`DELETE FROM "ClientPhone" WHERE "id"=$1 AND "clientId"=$2 AND "isPrimary"=false`, [additionalPhoneId, clientId]);
       }
