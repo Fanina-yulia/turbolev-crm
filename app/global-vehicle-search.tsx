@@ -75,6 +75,7 @@ export function GlobalVehicleSearch() {
         setVin(data.vehicle.vin ?? "");
         setSource(data.lookupLevel ?? data.vehicle.vehicleDataSource ?? "CRM");
         setConfidence(data.vehicle.vehicleDataConfidence ?? null);
+        setAskVin(false);
       } else {
         setAskVin(true);
         setMessage("Номер не знайдено в українській базі. Для іноземного або невідомого номера введіть VIN.");
@@ -128,7 +129,7 @@ export function GlobalVehicleSearch() {
         <div className={styles.head}><div><p>TURBO LEV · VEHICLE ID</p><h2>Ідентифікація автомобіля</h2></div><button className={styles.close} onClick={close}>×</button></div>
         <div className={styles.body}>
           <label className={styles.label}><span>Державний номер</span><div className={styles.row}><input value={plate} onChange={(e) => setPlate(normalizePlate(e.target.value))} placeholder="AA1234BB / AB1234" /><button type="button" onClick={lookupPlate} disabled={busy}>{busy ? "Шукаю…" : "Знайти"}</button></div></label>
-          {(askVin || vin) && <div className={styles.askVin}><b>Не український номер або авто не знайдено?</b><span>Введіть VIN. Для Turbo LEV VIN є головним ідентифікатором автомобіля, а номер — лише способом його знайти.</span></div>}
+          {askVin && !result && <div className={styles.askVin}><b>Авто не знайдено за держномером</b><span>Введіть VIN, щоб продовжити ідентифікацію автомобіля.</span></div>}
           <label className={styles.label}><span>VIN</span><div className={styles.row}><input value={vin} onChange={(e) => setVin(normalizeVin(e.target.value))} placeholder="17 символів" /><button type="button" onClick={lookupVin} disabled={busy}>{busy ? "Декодую…" : "Декодувати VIN"}</button></div></label>
 
           {validation && <div className={styles.validation}>
