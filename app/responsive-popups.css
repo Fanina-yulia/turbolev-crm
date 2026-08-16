@@ -1,0 +1,99 @@
+/* Global viewport guard for CRM popups/modals.
+   Keeps existing component sizing on large screens, but never allows a popup
+   to escape the visible browser viewport on smaller/shorter monitors. */
+
+:root{
+  --crm-popup-edge-gap:clamp(10px,1.6vw,24px);
+}
+
+/* Semantic dialogs and modal/popup class patterns (including CSS-module names). */
+html:not([data-settings-page="true"]) :is(
+  [role="dialog"],
+  [aria-modal="true"],
+  [class*="modal" i],
+  [class*="dialog" i],
+  [class*="popup" i]
+){
+  box-sizing:border-box!important;
+  min-width:0!important;
+  min-height:0!important;
+  max-width:calc(100vw - var(--crm-popup-edge-gap) - var(--crm-popup-edge-gap))!important;
+  max-height:calc(100vh - var(--crm-popup-edge-gap) - var(--crm-popup-edge-gap))!important;
+  max-height:calc(100dvh - var(--crm-popup-edge-gap) - var(--crm-popup-edge-gap))!important;
+}
+
+/* Backdrops that actually contain a popup get their own viewport scrolling.
+   This prevents a tall dialog from making the whole CRM page jump/overflow. */
+html:not([data-settings-page="true"]) :is(
+  [class*="backdrop" i],
+  [class*="overlay" i]
+):has(> :is(
+  [role="dialog"],
+  [aria-modal="true"],
+  [class*="modal" i],
+  [class*="dialog" i],
+  [class*="popup" i],
+  section
+)){
+  box-sizing:border-box!important;
+  max-width:100vw!important;
+  max-height:100vh!important;
+  max-height:100dvh!important;
+  overflow-x:hidden!important;
+  overflow-y:auto!important;
+  overscroll-behavior:contain;
+  padding:var(--crm-popup-edge-gap)!important;
+}
+
+/* A few legacy planner/settings popups use a generic <section> inside a
+   backdrop instead of a modal-named class. Make those sections self-scroll. */
+html:not([data-settings-page="true"]) :is(
+  [class*="backdrop" i],
+  [class*="overlay" i]
+) > section{
+  box-sizing:border-box!important;
+  min-width:0!important;
+  min-height:0!important;
+  max-width:calc(100vw - var(--crm-popup-edge-gap) - var(--crm-popup-edge-gap))!important;
+  max-height:calc(100vh - var(--crm-popup-edge-gap) - var(--crm-popup-edge-gap))!important;
+  max-height:calc(100dvh - var(--crm-popup-edge-gap) - var(--crm-popup-edge-gap))!important;
+  overflow-y:auto!important;
+  overscroll-behavior:contain;
+}
+
+/* Media and embedded content must never force a dialog wider than its viewport. */
+html:not([data-settings-page="true"]) :is(
+  [role="dialog"],
+  [aria-modal="true"],
+  [class*="modal" i],
+  [class*="dialog" i],
+  [class*="popup" i]
+) :is(img,video,canvas,iframe){
+  max-width:100%!important;
+}
+
+/* Short laptop/monitor heights (e.g. 768px) need tighter vertical margins. */
+@media(max-height:820px){
+  :root{--crm-popup-edge-gap:10px}
+}
+
+@media(max-height:680px){
+  :root{--crm-popup-edge-gap:6px}
+}
+
+/* Narrow screens: use almost the full viewport while preserving a safe edge. */
+@media(max-width:760px){
+  :root{--crm-popup-edge-gap:6px}
+
+  html:not([data-settings-page="true"]) :is(
+    [role="dialog"],
+    [aria-modal="true"],
+    [class*="modal" i],
+    [class*="dialog" i],
+    [class*="popup" i]
+  ){
+    max-width:calc(100vw - 12px)!important;
+    max-height:calc(100vh - 12px)!important;
+    max-height:calc(100dvh - 12px)!important;
+  }
+}
