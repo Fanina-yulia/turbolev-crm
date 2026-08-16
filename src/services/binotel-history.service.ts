@@ -23,6 +23,11 @@ export type BinotelHistorySummary = {
   pbxNumber: string | null;
 };
 
+const BINOTEL_HEAVY_SLOT_ID = "rest-heavy-api-slot";
+const BINOTEL_HEAVY_SLOT_EVENT = "restHeavyApiSlot";
+const BINOTEL_RECONCILIATION_EVENT = "restHistoryReconciliation";
+const BINOTEL_HEAVY_MIN_INTERVAL_MS = 11_000;
+
 function record(value: unknown): JsonRecord | null {
   return value && typeof value === "object" && !Array.isArray(value) ? value as JsonRecord : null;
 }
@@ -44,6 +49,16 @@ function integer(obj: JsonRecord | null, key: string): number | null {
 
 function toJson(value: JsonRecord): Prisma.InputJsonValue {
   return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
+}
+
+function prismaErrorCode(error: unknown): string {
+  return error && typeof error === "object" && "code" in error
+    ? String((error as { code?: unknown }).code || "")
+    : "";
+}
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 export function extractBinotelCallDetails(response: BinotelApiResponse): JsonRecord[] {
@@ -103,27 +118,113 @@ export async function getBinotelHistoryForPhone(phone: string) {
     .filter(Boolean) as BinotelHistorySummary[];
 }
 
+export async function claimBinotelHeavyApiSlot(minIntervalMs = BINOTEL_HEAVY_MIN_INTERVAL_MS) {
+  const prisma = getPrisma();
+  const safeInterval = Math.max(5_000, Math.floor(minIntervalMs));
+  const now = new Date();
+  const cutoff = new Date(now.getTime() - safeInterval);
+  const payload = toJson({ claimedAt: now.toISOString(), minIntervalMs: safeInterval });
+
+  const updated = await prisma.webhookEvent.updateMany({
+    where: {
+      channel: CommunicationChannel.BINOTEL,
+      externalEventId: BINOTEL_HEAVY_SLOT_ID,
+      OR: [
+        { processedAt: null },
+        { processedAt: { lte: cutoff } },
+      ],
+    },
+    data: {
+      eventType: BINOTEL_HEAVY_SLOT_EVENT,
+      payload,
+      status: "PROCESSED",
+      processedAt: now,
+      error: null,
+    },
+  });
+  if (updated.count > 0) return true;
+
+  try {
+    await prisma.webhookEvent.create({
+      data: {
+        id: randomUUID(),
+        channel: CommunicationChannel.BINOTEL,
+        externalEventId: BINOTEL_HEAVY_SLOT_ID,
+        eventType: BINOTEL_HEAVY_SLOT_EVENT,
+        payload,
+        status: "PROCESSED",
+        processedAt: now,
+      },
+    });
+    return true;
+  } catch (error) {
+    if (prismaErrorCode(error) === "P2002") return false;
+    throw error;
+  }
+}
+
+export async function waitForBinotelHeavyApiSlot(
+  minIntervalMs = BINOTEL_HEAVY_MIN_INTERVAL_MS,
+  timeoutMs = 30_000,
+) {
+  const deadline = Date.now() + Math.max(minIntervalMs, timeoutMs);
+  while (Date.now() <= deadline) {
+    if (await claimBinotelHeavyApiSlot(minIntervalMs)) return;
+    await sleep(500);
+  }
+  throw new Error("BINOTEL_HEAVY_API_SLOT_TIMEOUT");
+}
+
+export async function isBinotelReconciliationInProgress() {
+  const recent = new Date(Date.now() - 2 * 60_000);
+  const event = await getPrisma().webhookEvent.findFirst({
+    where: {
+      channel: CommunicationChannel.BINOTEL,
+      eventType: BINOTEL_RECONCILIATION_EVENT,
+      status: "RECEIVED",
+      createdAt: { gte: recent },
+    },
+    select: { id: true },
+  });
+  return Boolean(event);
+}
+
 export async function claimBinotelReconciliationBucket(bucketMinutes = 30) {
   const now = new Date();
   const bucketMs = bucketMinutes * 60_000;
   const bucket = new Date(Math.floor(now.getTime() / bucketMs) * bucketMs).toISOString();
   const externalEventId = `rest-reconcile:${bucket}`;
+  const payload = toJson({ bucket, bucketMinutes });
   try {
     await getPrisma().webhookEvent.create({
       data: {
         id: randomUUID(),
         channel: CommunicationChannel.BINOTEL,
         externalEventId,
-        eventType: "restHistoryReconciliation",
-        payload: toJson({ bucket, bucketMinutes }),
+        eventType: BINOTEL_RECONCILIATION_EVENT,
+        payload,
         status: "RECEIVED",
       },
     });
     return { claimed: true, externalEventId };
   } catch (error) {
-    const code = error && typeof error === "object" && "code" in error ? String((error as { code?: unknown }).code || "") : "";
-    if (code === "P2002") return { claimed: false, externalEventId };
-    throw error;
+    if (prismaErrorCode(error) !== "P2002") throw error;
+
+    const reclaimed = await getPrisma().webhookEvent.updateMany({
+      where: {
+        channel: CommunicationChannel.BINOTEL,
+        externalEventId,
+        status: "ERROR",
+      },
+      data: {
+        eventType: BINOTEL_RECONCILIATION_EVENT,
+        payload,
+        status: "RECEIVED",
+        processedAt: null,
+        error: null,
+      },
+    });
+    return { claimed: reclaimed.count > 0, externalEventId };
   }
 }
 
@@ -150,10 +251,11 @@ export async function reconcileRecentBinotelHistory(lookbackMinutes = 90) {
   const startTime = stopTime - boundedLookback * 60;
   const service = getBinotelService();
 
-  const [incoming, outgoing] = await Promise.all([
-    service.getIncomingCallsForPeriod({ startTime, stopTime }),
-    service.getOutgoingCallsForPeriod({ startTime, stopTime }),
-  ]);
+  await waitForBinotelHeavyApiSlot();
+  const incoming = await service.getIncomingCallsForPeriod({ startTime, stopTime });
+
+  await waitForBinotelHeavyApiSlot();
+  const outgoing = await service.getOutgoingCallsForPeriod({ startTime, stopTime });
 
   const details = [
     ...extractBinotelCallDetails(incoming),
