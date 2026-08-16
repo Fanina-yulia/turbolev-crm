@@ -1,0 +1,27 @@
+/* Final typography layer for UI rendered outside the main workspace or with local tiny styles. */
+
+/* Sidebar secondary controls. */
+.sidebar [class*="navBadge"]{font-size:12px!important;line-height:1.3!important}
+.sidebar [class*="settingsSubmenu"] button{font-size:14px!important;line-height:1.4!important}
+
+/* Vehicle logo text fallback. */
+[class*="vehicle-brand-logo_logo"] b{font-family:var(--ui-font)!important;font-size:12px!important;line-height:1.2!important}
+
+/* Binotel / telephony portals live outside .workspace. */
+.tlCallPopup,.tlDockPanel{font-family:var(--ui-font)!important;font-size:15px!important;line-height:1.5!important}
+.tlCallPopup :where(button,input,select,textarea),.tlDockPanel :where(button,input,select,textarea){font-family:var(--ui-font)!important;font-size:14px!important;line-height:1.4!important}
+.tlCallTop small,.tlDockHead small,.tlTransferBox>small,.tlTransferBox>span,.tlTransferList span,.tlLinkBox p,.tlLinkBox>span,.tlEmployeeList span,.tlEmployeeList em,.tlMessage{font-size:12px!important;line-height:1.4!important}
+.tlContext{font-size:13px!important;line-height:1.4!important}
+.tlEmployeeList b{font-size:14px!important;line-height:1.4!important}
+
+/* Communications composer attachment chips. */
+.communicationsFileChips>span{font-family:var(--ui-font)!important;font-size:12px!important;line-height:1.4!important}
+
+/* Camera module text that had explicit 10–11px declarations. */
+[class*="camera-settings_summary"] span,[class*="camera-settings_hint"],[class*="camera-settings_snapshot"] span,[class*="camera-settings_details"] small,[class*="camera-settings_badge"]{font-size:12px!important;line-height:1.4!important}
+[class*="camera-settings_primary"],[class*="camera-settings_secondary"],[class*="camera-settings_danger"],[class*="camera-settings_small"],[class*="camera-settings_formGrid"] input,[class*="camera-settings_formGrid"] select{font-family:var(--ui-font)!important;font-size:14px!important;line-height:1.4!important}
+
+/* Intentional typography exceptions: Ukrainian plate artwork and technical identifiers. */
+.uaPlateText{font-family:"Arial Narrow","Roboto Condensed","Bahnschrift SemiCondensed","Segoe UI",Arial,sans-serif!important}
+.uaPlateCountry small{font-size:6px!important;line-height:1!important}
+code,pre,.vehicleVin{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace}
