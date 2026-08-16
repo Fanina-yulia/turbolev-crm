@@ -57,7 +57,7 @@ async function cleanup() {
   await prisma.callHistory.deleteMany({ where: { binotelCallId: { in: callIds } } }).catch(() => undefined);
   await prisma.user.deleteMany({ where: { email: TEST_USER_EMAIL } }).catch(() => undefined);
   const clients = await prisma.client.findMany({
-    where: { phoneNormalized: { in: [PRIMARY_PHONE, SECONDARY_PHONE] } },
+    where: { phoneNormalized: { in: [UNKNOWN_PHONE, MISSED_PHONE, PRIMARY_PHONE, SECONDARY_PHONE] } },
     select: { id: true },
   }).catch(() => []);
   if (clients.length) {
@@ -99,9 +99,15 @@ async function main() {
     assert.equal(await prisma.lead.count({ where: { phoneNormalized: UNKNOWN_PHONE } }), 0, "Unknown call created a Lead");
     assert.equal(await inquiryCount(UNKNOWN_CALL_ID), 1, "Unknown call was not mirrored into Inbox");
 
+    const autoClient = await prisma.client.findUnique({ where: { phoneNormalized: UNKNOWN_PHONE }, include: { phones: true } });
+    assert(autoClient, "Unknown Binotel caller must create a lightweight Client card");
+    assert.equal(autoClient.name, "Smoke Unknown Caller");
+    assert(autoClient.phones.some((item) => item.phoneNormalized === UNKNOWN_PHONE && item.isPrimary), "Binotel phone must be saved as primary ClientPhone");
+
     const callAfterIncoming = await prisma.callHistory.findUnique({ where: { binotelCallId: UNKNOWN_CALL_ID } });
     assert(callAfterIncoming, "CallHistory was not created");
     assert.equal(callAfterIncoming.externalNumber, UNKNOWN_PHONE);
+    assert.equal(callAfterIncoming.clientId, autoClient.id, "CallHistory must link to the auto-created client");
     assert.equal(callAfterIncoming.internalNumber, INTERNAL_NUMBER);
     assert(callAfterIncoming.managerId, "Manager was not linked from Binotel extension/e-mail");
 
@@ -157,6 +163,7 @@ async function main() {
     const secondaryCall = await prisma.callHistory.findUnique({ where: { binotelCallId: SECONDARY_CALL_ID } });
     assert.equal(secondaryCall?.clientId, client.id, "Secondary ClientPhone was not resolved to Client");
     assert.equal(secondaryCall?.leadId, null, "Client call should not attach an unrelated Lead");
+    assert.equal((await prisma.client.findUnique({ where: { id: client.id } }))?.phoneNormalized, PRIMARY_PHONE, "Calling an existing secondary number must not silently replace the user-selected primary phone");
 
     await invokeWebhook("hangupTheCall", {
       eventName: "hangupTheCall",
@@ -173,9 +180,13 @@ async function main() {
     assert.equal(missed?.status, "MISSED", "Unanswered terminal call must be MISSED");
     assert.equal(await inquiryCount(MISSED_CALL_ID), 1, "Missed call must remain in Inbox");
     assert.equal(await prisma.lead.count({ where: { phoneNormalized: MISSED_PHONE } }), 0, "Missed call auto-created a Lead");
+    const missedClient = await prisma.client.findUnique({ where: { phoneNormalized: MISSED_PHONE }, include: { phones: true } });
+    assert(missedClient, "Missed Binotel call must still create a Client card");
+    assert(missedClient.phones.some((item) => item.isPrimary && item.phoneNormalized === MISSED_PHONE), "Missed caller phone must be primary");
 
     console.log("TELEPHONY_SMOKE_OK", {
-      unknownCall: "inquiry_without_auto_lead",
+      unknownCall: "auto_client_without_auto_lead",
+      binotelPrimaryPhone: true,
       nestedCallDetails: true,
       internalAdditionalData: true,
       secondaryClientPhone: true,
