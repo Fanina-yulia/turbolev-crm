@@ -40,24 +40,30 @@ export async function POST(request: NextRequest) {
   });
   if (!access.allowed) return access.response!;
 
-  const claim = await claimBinotelReconciliationBucket(30);
+  const body = await request.json().catch(() => ({}));
+  const manual = body?.manual === true;
+  const claim = await claimBinotelReconciliationBucket(manual ? 5 : 30);
   if (!claim.claimed) {
-    return NextResponse.json({ ok: true, skipped: true, reason: "RECENTLY_RECONCILED" });
+    return NextResponse.json({
+      ok: true,
+      skipped: true,
+      reason: "RECENTLY_RECONCILED",
+      manual,
+    });
   }
 
   try {
-    const body = await request.json().catch(() => ({}));
     const lookbackMinutes = Number(body?.lookbackMinutes || 90);
     const result = await reconcileRecentBinotelHistory(lookbackMinutes);
     await finishBinotelReconciliationBucket(claim.externalEventId, "PROCESSED", {
       ...result,
-      source: "REST_RECONCILIATION",
+      source: manual ? "REST_RECONCILIATION_MANUAL" : "REST_RECONCILIATION",
       securityMode: access.shadowBypass ? "SHADOW" : "AUTHENTICATED",
     });
-    return NextResponse.json({ ok: true, skipped: false, ...result });
+    return NextResponse.json({ ok: true, skipped: false, manual, ...result });
   } catch (error) {
     const message = error instanceof Error ? error.message : "unknown error";
-    await finishBinotelReconciliationBucket(claim.externalEventId, "ERROR", { error: message });
+    await finishBinotelReconciliationBucket(claim.externalEventId, "ERROR", { error: message, manual });
     console.error("POST /api/communications/binotel-history failed", error);
     return NextResponse.json({ ok: false, error: "BINOTEL_RECONCILIATION_FAILED" }, { status: 502 });
   }
