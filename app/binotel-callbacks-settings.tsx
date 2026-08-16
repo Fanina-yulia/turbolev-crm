@@ -15,6 +15,18 @@ type CallbackPayload = {
   error?: string;
 };
 
+type SyncPayload = {
+  ok?: boolean;
+  skipped?: boolean;
+  reason?: string;
+  providerCalls?: number;
+  alreadyComplete?: number;
+  restored?: number;
+  refreshed?: number;
+  failed?: Array<{ callId: string; error: string }>;
+  error?: string;
+};
+
 const ITEMS = [
   { key: "apiPush" as const, title: "API PUSH", detail: "incomingCall / receivedTheCall · answeredTheCall · hangupTheCall" },
   { key: "apiCallCompleted" as const, title: "API CALL COMPLETED", detail: "Повна інформація після завершення дзвінка" },
@@ -27,6 +39,8 @@ export function BinotelCallbacksSettings() {
   const [loading, setLoading] = useState(false);
   const [revealed, setRevealed] = useState<Record<string, boolean>>({});
   const [copied, setCopied] = useState<string | null>(null);
+  const [syncing, setSyncing] = useState(false);
+  const [syncResult, setSyncResult] = useState<SyncPayload | null>(null);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -39,6 +53,26 @@ export function BinotelCallbacksSettings() {
       setData({ ok: false, error: error instanceof Error ? error.message : "Не вдалося отримати callback URL" });
     } finally {
       setLoading(false);
+    }
+  }, []);
+
+  const syncCalls = useCallback(async () => {
+    setSyncing(true);
+    setSyncResult(null);
+    try {
+      const response = await fetch("/api/communications/binotel-history", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ lookbackMinutes: 90, manual: true }),
+        cache: "no-store",
+      });
+      const payload = (await response.json()) as SyncPayload;
+      if (!response.ok || !payload.ok) throw new Error(payload.error || "Не вдалося синхронізувати дзвінки");
+      setSyncResult(payload);
+    } catch (error) {
+      setSyncResult({ ok: false, error: error instanceof Error ? error.message : "Не вдалося синхронізувати дзвінки" });
+    } finally {
+      setSyncing(false);
     }
   }, []);
 
@@ -84,6 +118,20 @@ export function BinotelCallbacksSettings() {
     window.setTimeout(() => setCopied(null), 1800);
   }
 
+  const syncMessage = useMemo(() => {
+    if (!syncResult) return null;
+    if (syncResult.error) return { kind: "error" as const, text: syncResult.error };
+    if (syncResult.skipped) return { kind: "info" as const, text: "Синхронізація вже виконувалась нещодавно. Повторити можна за кілька хвилин." };
+    const provider = syncResult.providerCalls ?? 0;
+    const restored = syncResult.restored ?? 0;
+    const refreshed = syncResult.refreshed ?? 0;
+    const failed = syncResult.failed?.length ?? 0;
+    return {
+      kind: failed ? "warning" as const : "success" as const,
+      text: `Binotel повернув дзвінків: ${provider}. Додано в CRM: ${restored}. Оновлено: ${refreshed}.${failed ? ` Помилок: ${failed}.` : ""}`,
+    };
+  }, [syncResult]);
+
   if (!target) return null;
 
   return createPortal(
@@ -121,6 +169,17 @@ export function BinotelCallbacksSettings() {
           ))}
         </div>
       )}
+
+      <div className={styles.syncBox}>
+        <div>
+          <strong>Історія дзвінків Binotel</strong>
+          <p>Примусово перевіряє останні 90 хвилин через REST API та додає в CRM дзвінки, які не прийшли webhook-ом.</p>
+        </div>
+        <button type="button" className={styles.syncButton} disabled={syncing} onClick={() => void syncCalls()}>
+          {syncing ? "Синхронізація…" : "Синхронізувати дзвінки зараз"}
+        </button>
+      </div>
+      {syncMessage ? <div className={`${styles.syncMessage} ${styles[syncMessage.kind]}`}>{syncMessage.text}</div> : null}
 
       <div className={styles.warning}>URL містять секретний webhook token. Передавайте їх тільки Binotel. Сам token окремо в інтерфейсі не показується.</div>
     </section>,
