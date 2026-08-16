@@ -5,13 +5,22 @@ import { isStandardUkrainianPlate, normalizeUkrainianPlate } from "./ukrainian-l
 
 const CANDIDATE_SELECTOR = "span,strong,b,small,p,div,td,th,a,button";
 const SKIP_SELECTOR = "input,textarea,select,option,script,style,[contenteditable='true'],[data-ua-license-plate='true']";
+const LABELED_PLATE = /^(?:держзнак|держномер|державний\s+номер|номер\s+авто)\s*[:№-]?\s*(.+)$/iu;
+
+function extractPlate(text: string) {
+  const trimmed = text.trim();
+  if (isStandardUkrainianPlate(trimmed)) return normalizeUkrainianPlate(trimmed);
+  const labeled = trimmed.match(LABELED_PLATE)?.[1] || "";
+  return isStandardUkrainianPlate(labeled) ? normalizeUkrainianPlate(labeled) : "";
+}
 
 function decorateElement(element: Element) {
   if (!(element instanceof HTMLElement)) return;
   if (element.matches(SKIP_SELECTOR) || element.closest("input,textarea,select,option,script,style,[contenteditable='true']")) return;
   if (element.children.length) return;
   const text = element.textContent?.trim() || "";
-  if (!isStandardUkrainianPlate(text)) {
+  const plate = extractPlate(text);
+  if (!plate) {
     if (element.classList.contains("uaLicensePlateAuto")) {
       element.classList.remove("uaLicensePlate", "uaLicensePlateAuto");
       delete element.dataset.uaLicensePlate;
@@ -22,9 +31,9 @@ function decorateElement(element: Element) {
   }
   element.classList.add("uaLicensePlate", "uaLicensePlateAuto");
   element.dataset.uaLicensePlate = "true";
-  element.dataset.plateText = normalizeUkrainianPlate(text);
+  element.dataset.plateText = plate;
   element.dataset.plateSize = "sm";
-  if (!element.getAttribute("aria-label")) element.setAttribute("aria-label", `Державний номер ${element.dataset.plateText}`);
+  if (!element.getAttribute("aria-label")) element.setAttribute("aria-label", `Державний номер ${plate}`);
 }
 
 function decorateTree(root: ParentNode) {
