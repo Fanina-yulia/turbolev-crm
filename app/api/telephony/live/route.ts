@@ -3,7 +3,12 @@ import { CallType } from "@/src/generated/prisma/client";
 import { getPrisma } from "@/src/lib/prisma";
 import { authorize } from "@/src/security/authorize";
 import { PERMISSIONS } from "@/src/security/permissions";
-import { extractBinotelCallDetails, summarizeBinotelCall } from "@/src/services/binotel-history.service";
+import {
+  claimBinotelHeavyApiSlot,
+  extractBinotelCallDetails,
+  isBinotelReconciliationInProgress,
+  summarizeBinotelCall,
+} from "@/src/services/binotel-history.service";
 import { getBinotelService } from "@/src/services/binotel.service";
 import { processBinotelWebhook } from "@/src/services/binotel-webhook.service";
 
@@ -32,9 +37,23 @@ async function syncOnlineIncomingCalls() {
   if (state.promise) return state.promise;
   if (now < state.expiresAt) return;
 
-  state.expiresAt = now + 5_000;
+  // Local debounce avoids needless Neon lock checks inside one warm instance.
+  // The provider-safe gate itself is stored in Neon and therefore coordinates
+  // all Vercel serverless instances and browser tabs.
+  state.expiresAt = now + 4_000;
   state.promise = (async () => {
     try {
+      if (await isBinotelReconciliationInProgress()) {
+        state.expiresAt = Date.now() + 5_000;
+        return;
+      }
+
+      const providerSlot = await claimBinotelHeavyApiSlot();
+      if (!providerSlot) {
+        state.expiresAt = Date.now() + 3_000;
+        return;
+      }
+
       const response = await getBinotelService().getOnlineCalls();
       const details = extractBinotelCallDetails(response);
 
@@ -61,7 +80,7 @@ async function syncOnlineIncomingCalls() {
       console.warn("Binotel online-calls fallback unavailable", {
         error: error instanceof Error ? error.message : "unknown error",
       });
-      state.expiresAt = Date.now() + 10_000;
+      state.expiresAt = Date.now() + 12_000;
     }
   })().finally(() => {
     state.promise = null;
@@ -87,7 +106,7 @@ export async function GET(request: NextRequest) {
 
   try {
     // Binotel PUSH is the primary realtime source. Until provider delivery is reliable,
-    // mirror active incoming calls from stats/online-calls at a provider-safe cadence.
+    // mirror active incoming calls from stats/online-calls through a distributed REST gate.
     await syncOnlineIncomingCalls();
 
     const prisma = getPrisma();
