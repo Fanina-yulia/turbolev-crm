@@ -50,7 +50,7 @@ assert.equal(phoneConversation.actionState, "MISSED");
 assert.equal(phoneConversation.timeline.length, 3);
 
 const handled = buildCommunicationConversations([
-  ...phoneConversation.inquiries,
+  ...phoneConversation.inquiries.map((item) => ({ ...item, unread: false })),
   {
     id: "reply-context",
     channel: "BINOTEL",
