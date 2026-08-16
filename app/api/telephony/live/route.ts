@@ -10,11 +10,15 @@ export const dynamic = "force-dynamic";
 export async function GET(request: NextRequest) {
   const access = await authorize(PERMISSIONS.COMMUNICATIONS_READ, {
     request,
-    strict: true,
     minimumScope: "TEAM",
   });
   if (!access.allowed) return access.response!;
-  if (!access.context.user) {
+
+  const shadowAnonymous = !access.context.user
+    && access.shadowBypass
+    && access.context.enforcementMode === "SHADOW";
+
+  if (!access.context.user && !shadowAnonymous) {
     return NextResponse.json({ ok: false, error: "CRM_USER_REQUIRED" }, { status: 403 });
   }
 
@@ -24,12 +28,29 @@ export async function GET(request: NextRequest) {
     const recentFrom = new Date(now - 3 * 60 * 1000);
     const terminalFrom = new Date(now - 75 * 1000);
 
-    const user = await prisma.user.findUnique({
-      where: { id: access.context.user.id },
-      select: { id: true, name: true, internalNumber: true },
-    });
-    const userId = user?.id || access.context.user.id;
+    const user = access.context.user
+      ? await prisma.user.findUnique({
+          where: { id: access.context.user.id },
+          select: { id: true, name: true, internalNumber: true },
+        })
+      : null;
+    const userId = user?.id || access.context.user?.id || null;
     const internalNumber = user?.internalNumber?.trim() || null;
+
+    const visibilityFilter = userId
+      ? {
+          OR: [
+            { type: CallType.INCOMING },
+            {
+              type: CallType.OUTGOING,
+              OR: [
+                { managerId: userId },
+                ...(internalNumber ? [{ internalNumber }] : []),
+              ],
+            },
+          ],
+        }
+      : { type: CallType.INCOMING };
 
     const calls = await prisma.callHistory.findMany({
       where: {
@@ -41,18 +62,7 @@ export async function GET(request: NextRequest) {
               { endedAt: { gte: terminalFrom } },
             ],
           },
-          {
-            OR: [
-              { type: CallType.INCOMING },
-              {
-                type: CallType.OUTGOING,
-                OR: [
-                  { managerId: userId },
-                  ...(internalNumber ? [{ internalNumber }] : []),
-                ],
-              },
-            ],
-          },
+          visibilityFilter,
         ],
       },
       include: {
@@ -78,12 +88,13 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       ok: true,
       checkedAt: new Date().toISOString(),
-      currentUser: {
+      authMode: shadowAnonymous ? "SHADOW_INBOUND_ONLY" : "AUTHENTICATED",
+      currentUser: userId ? {
         id: userId,
-        name: user?.name || access.context.user.name,
+        name: user?.name || access.context.user?.name || "CRM user",
         internalNumber,
         clickToCallReady: Boolean(internalNumber),
-      },
+      } : null,
       calls: calls.map((call) => {
         const vehicle = call.client?.vehicles[0] || null;
         return {
