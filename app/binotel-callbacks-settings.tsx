@@ -135,7 +135,18 @@ export function BinotelCallbacksSettings() {
   if (!target) return null;
 
   return createPortal(
-    <section className={styles.panel} aria-label="Webhook URL Binotel">
+    <section className={styles.panel} aria-label="Binotel — синхронізація та webhook">
+      <div className={styles.syncBox}>
+        <div>
+          <strong>Синхронізація дзвінків Binotel</strong>
+          <p>Перевіряє останні 90 хвилин через REST API та додає дзвінки, які не прийшли webhook-ом.</p>
+        </div>
+        <button type="button" className={styles.syncButton} disabled={syncing} onClick={() => void syncCalls()}>
+          {syncing ? "Синхронізація…" : "Синхронізувати дзвінки зараз"}
+        </button>
+      </div>
+      {syncMessage ? <div className={`${styles.syncMessage} ${styles[syncMessage.kind]}`}>{syncMessage.text}</div> : null}
+
       <div className={styles.head}>
         <div>
           <strong>Webhook URL для Binotel</strong>
@@ -147,7 +158,7 @@ export function BinotelCallbacksSettings() {
       </div>
 
       {data?.error ? (
-        <div className={styles.error}>Не вдалося сформувати URL: {data.error}</div>
+        <div className={styles.error}>Захищені callback URL недоступні в поточній сесії. Синхронізація дзвінків вище продовжує працювати.</div>
       ) : (
         <div className={styles.list}>
           {rows.map((row) => (
@@ -169,17 +180,6 @@ export function BinotelCallbacksSettings() {
           ))}
         </div>
       )}
-
-      <div className={styles.syncBox}>
-        <div>
-          <strong>Історія дзвінків Binotel</strong>
-          <p>Примусово перевіряє останні 90 хвилин через REST API та додає в CRM дзвінки, які не прийшли webhook-ом.</p>
-        </div>
-        <button type="button" className={styles.syncButton} disabled={syncing} onClick={() => void syncCalls()}>
-          {syncing ? "Синхронізація…" : "Синхронізувати дзвінки зараз"}
-        </button>
-      </div>
-      {syncMessage ? <div className={`${styles.syncMessage} ${styles[syncMessage.kind]}`}>{syncMessage.text}</div> : null}
 
       <div className={styles.warning}>URL містять секретний webhook token. Передавайте їх тільки Binotel. Сам token окремо в інтерфейсі не показується.</div>
     </section>,
