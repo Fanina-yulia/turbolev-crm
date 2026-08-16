@@ -81,7 +81,7 @@ export function getCommunicationConversationKey(inquiry: CommunicationInquiry) {
 }
 
 function metadataCallStatus(metadata: unknown): string | null {
-  if (!isObject(metadata)) return null;
+  if (!isObject(value)) return null;
   const direct = metadata.callStatus;
   if (typeof direct === "string") return direct.toUpperCase();
   const nested = metadata.metadata;
@@ -103,9 +103,11 @@ function isGenericName(value?: string | null) {
 
 function chooseDisplayName(inquiries: CommunicationInquiry[]) {
   for (const inquiry of inquiries) {
+    if (!isGenericName(inquiry.name)) return inquiry.name.trim();
+  }
+  for (const inquiry of inquiries) {
     const leadName = inquiry.duplicateLead?.name?.trim();
     if (leadName && !isGenericName(leadName)) return leadName;
-    if (!isGenericName(inquiry.name)) return inquiry.name.trim();
   }
   return inquiries[0]?.name?.trim() || "Без імені";
 }
