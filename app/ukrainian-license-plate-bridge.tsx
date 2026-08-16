@@ -5,6 +5,7 @@ import { isStandardUkrainianPlate, normalizeUkrainianPlate } from "./ukrainian-l
 
 const CANDIDATE_SELECTOR = "span,strong,b,small,p,em,i";
 const SKIP_SELECTOR = "input,textarea,select,option,script,style,[contenteditable='true'],[data-ua-license-plate='true']";
+const SKIP_ANCESTOR_SELECTOR = "input,textarea,select,option,script,style,[contenteditable='true'],.uaPlate";
 const LABELED_PREFIX = /^(?:держзнак|держномер|державний\s+номер|номер\s+авто)\s*[:№-]?$/iu;
 const TRAILING_PLATE = /([A-ZА-ЯІЇЄ]{2}[\s-]*\d{4}[\s-]*[A-ZА-ЯІЇЄ]{2})\s*$/u;
 const LEADING_PLATE = /^([A-ZА-ЯІЇЄ]{2}[\s-]*\d{4}[\s-]*[A-ZА-ЯІЇЄ]{2})(?:\s*[·|—–-]\s*)?(.+)$/u;
@@ -57,7 +58,7 @@ function clearDecoration(element: HTMLElement) {
 
 function decorateElement(element: Element) {
   if (!(element instanceof HTMLElement)) return;
-  if (element.matches(SKIP_SELECTOR) || element.closest("input,textarea,select,option,script,style,[contenteditable='true']")) return;
+  if (element.matches(SKIP_SELECTOR) || element.closest(SKIP_ANCESTOR_SELECTOR)) return;
   if (element.children.length) return;
 
   const parts = extractPlate(element.textContent || "");
