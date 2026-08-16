@@ -103,9 +103,11 @@ function isGenericName(value?: string | null) {
 
 function chooseDisplayName(inquiries: CommunicationInquiry[]) {
   for (const inquiry of inquiries) {
+    if (!isGenericName(inquiry.name)) return inquiry.name.trim();
+  }
+  for (const inquiry of inquiries) {
     const leadName = inquiry.duplicateLead?.name?.trim();
     if (leadName && !isGenericName(leadName)) return leadName;
-    if (!isGenericName(inquiry.name)) return inquiry.name.trim();
   }
   return inquiries[0]?.name?.trim() || "Без імені";
 }

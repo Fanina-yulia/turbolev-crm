@@ -97,8 +97,26 @@ export async function listCommunicationInquiries(input?: { channel?: string; unr
   }
 
   const phones = [...new Set(rows.map((row) => row.phoneNormalized).filter(Boolean))];
+  const clientMap = new Map<string, { id: string; name: string | null }>();
   const duplicateMap = new Map<string, { id: string; name: string | null }>();
   if (phones.length) {
+    const clientResult = await pool.query(
+      `SELECT DISTINCT ON ("phoneNormalized") "phoneNormalized","id","name"
+       FROM (
+         SELECT c."phoneNormalized" AS "phoneNormalized", c."id", c."name", c."updatedAt"
+         FROM "Client" c
+         WHERE c."phoneNormalized" = ANY($1::text[])
+         UNION ALL
+         SELECT cp."phoneNormalized" AS "phoneNormalized", c."id", c."name", c."updatedAt"
+         FROM "ClientPhone" cp
+         JOIN "Client" c ON c."id" = cp."clientId"
+         WHERE cp."phoneNormalized" = ANY($1::text[])
+       ) matched
+       ORDER BY "phoneNormalized", "updatedAt" DESC`,
+      [phones],
+    );
+    for (const client of clientResult.rows) clientMap.set(client.phoneNormalized, { id: client.id, name: client.name });
+
     const leadResult = await pool.query(
       `SELECT DISTINCT ON ("phoneNormalized") "id","name","phoneNormalized" FROM "Lead" WHERE "phoneNormalized" = ANY($1::text[]) ORDER BY "phoneNormalized","updatedAt" DESC`,
       [phones],
@@ -107,29 +125,32 @@ export async function listCommunicationInquiries(input?: { channel?: string; unr
   }
 
   return {
-    items: rows.map((row) => ({
-      id: row.id,
-      channel: row.channel,
-      state: row.state,
-      name: row.name || "Невідомий контакт",
-      phone: row.phone || undefined,
-      handle: row.handle || undefined,
-      subject: row.subject,
-      preview: row.preview,
-      vehicle: row.vehicle || undefined,
-      plate: row.plate || undefined,
-      unread: row.unread,
-      answered: row.answered,
-      receivedAt: row.receivedAt,
-      sourceDetail: row.sourceDetail || undefined,
-      campaign: row.campaign || undefined,
-      utm: row.utm || undefined,
-      existingLeadId: row.leadId || undefined,
-      assignedUserId: row.assignedUserId || undefined,
-      metadata: row.metadata || undefined,
-      messages: messagesByInquiry.get(row.id) || [],
-      duplicateLead: !row.leadId && row.phoneNormalized ? duplicateMap.get(row.phoneNormalized) || null : null,
-    })),
+    items: rows.map((row) => {
+      const client = row.phoneNormalized ? clientMap.get(row.phoneNormalized) : null;
+      return {
+        id: row.id,
+        channel: row.channel,
+        state: row.state,
+        name: client?.name?.trim() || row.name || "Без імені",
+        phone: row.phone || undefined,
+        handle: row.handle || undefined,
+        subject: row.subject,
+        preview: row.preview,
+        vehicle: row.vehicle || undefined,
+        plate: row.plate || undefined,
+        unread: row.unread,
+        answered: row.answered,
+        receivedAt: row.receivedAt,
+        sourceDetail: row.sourceDetail || undefined,
+        campaign: row.campaign || undefined,
+        utm: row.utm || undefined,
+        existingLeadId: row.leadId || undefined,
+        assignedUserId: row.assignedUserId || undefined,
+        metadata: row.metadata || undefined,
+        messages: messagesByInquiry.get(row.id) || [],
+        duplicateLead: !row.leadId && row.phoneNormalized ? duplicateMap.get(row.phoneNormalized) || null : null,
+      };
+    }),
   };
 }
 
