@@ -14,6 +14,19 @@ function normalizePhone(value: string) {
   return digits.slice(0, 12);
 }
 
+function displayPhone(normalized: string) {
+  if (normalized.length !== 12 || !normalized.startsWith("380")) return normalized;
+  return `+${normalized}`;
+}
+
+function cleanClientName(value: unknown) {
+  const name = String(value || "").trim();
+  if (!name) return null;
+  const normalized = name.toLocaleLowerCase("uk-UA").replace(/\s+/g, " ");
+  if (["без імені", "без имени", "невідомий номер", "неизвестный номер", "unknown", "unknown number"].includes(normalized)) return null;
+  return name.slice(0, 160);
+}
+
 async function readClient(phoneNormalized: string) {
   const pool = getSqlPool();
   const result = await pool.query(
@@ -38,9 +51,25 @@ async function readClient(phoneNormalized: string) {
            'engineName', v."engineName", 'fuelType', v."fuelType", 'driveType', v."driveType", 'vehicleDataSource', v."vehicleDataSource", 'vehicleDataConfidence', v."vehicleDataConfidence"
          ) ORDER BY v."updatedAt" DESC)
          FROM "Vehicle" v WHERE v."clientId" = c."id"
-       ), '[]'::jsonb) AS vehicles
+       ), '[]'::jsonb) AS vehicles,
+       COALESCE((
+         SELECT jsonb_agg(jsonb_build_object(
+           'id', wo."id", 'vehicleId', wo."vehicleId", 'status', wo."status", 'createdAt', wo."createdAt", 'updatedAt', wo."updatedAt", 'closedAt', wo."closedAt"
+         ) ORDER BY wo."updatedAt" DESC)
+         FROM "WorkOrder" wo WHERE wo."clientId" = c."id"
+       ), '[]'::jsonb) AS "serviceHistory"
      FROM "Client" c JOIN target t ON t."id" = c."id"`, [phoneNormalized]);
   return result.rows[0] || null;
+}
+
+async function findClientIdByPhone(db: { query: (text: string, params?: unknown[]) => Promise<{ rows: Array<{ id: string }> }> }, phoneNormalized: string) {
+  const result = await db.query(
+    `SELECT DISTINCT c."id"
+     FROM "Client" c
+     LEFT JOIN "ClientPhone" cp ON cp."clientId"=c."id"
+     WHERE c."phoneNormalized"=$1 OR cp."phoneNormalized"=$1
+     LIMIT 1`, [phoneNormalized]);
+  return result.rows[0]?.id || null;
 }
 
 export async function GET(request: NextRequest) {
@@ -49,10 +78,104 @@ export async function GET(request: NextRequest) {
   return NextResponse.json({ client: await readClient(phoneNormalized) });
 }
 
+export async function PUT(request: NextRequest) {
+  const body = await request.json().catch(() => ({}));
+  const clientIdInput = String(body.clientId || "").trim() || null;
+  const primaryNormalized = normalizePhone(String(body.primaryPhone || body.phone || ""));
+  const additionalRaw = String(body.additionalPhone || "").trim();
+  const additionalNormalized = additionalRaw ? normalizePhone(additionalRaw) : "";
+  const additionalPhoneId = String(body.additionalPhoneId || "").trim() || null;
+  const name = cleanClientName(body.name);
+
+  if (primaryNormalized.length !== 12 || !primaryNormalized.startsWith("380")) {
+    return NextResponse.json({ error: "Вкажіть коректний основний номер телефону" }, { status: 400 });
+  }
+  if (additionalRaw && (additionalNormalized.length !== 12 || !additionalNormalized.startsWith("380"))) {
+    return NextResponse.json({ error: "Вкажіть коректний додатковий номер телефону" }, { status: 400 });
+  }
+  if (additionalNormalized && additionalNormalized === primaryNormalized) {
+    return NextResponse.json({ error: "Основний і додатковий номери мають відрізнятися" }, { status: 400 });
+  }
+
+  const pool = getSqlPool();
+  const db = await pool.connect();
+  try {
+    await db.query("BEGIN");
+
+    let clientId = clientIdInput;
+    if (clientId) {
+      const existing = await db.query(`SELECT "id" FROM "Client" WHERE "id"=$1 LIMIT 1`, [clientId]);
+      if (!existing.rows[0]) clientId = null;
+    }
+    if (!clientId) clientId = await findClientIdByPhone(db, primaryNormalized);
+
+    const primaryOwner = await findClientIdByPhone(db, primaryNormalized);
+    if (primaryOwner && clientId && primaryOwner !== clientId) {
+      await db.query("ROLLBACK");
+      return NextResponse.json({ error: "Цей основний номер уже належить іншому клієнту" }, { status: 409 });
+    }
+    if (additionalNormalized) {
+      const additionalOwner = await findClientIdByPhone(db, additionalNormalized);
+      if (additionalOwner && clientId && additionalOwner !== clientId) {
+        await db.query("ROLLBACK");
+        return NextResponse.json({ error: "Цей додатковий номер уже належить іншому клієнту" }, { status: 409 });
+      }
+    }
+
+    const primaryDisplay = displayPhone(primaryNormalized);
+    if (!clientId) {
+      clientId = `client_${randomUUID()}`;
+      await db.query(
+        `INSERT INTO "Client" ("id","name","phone","phoneNormalized","createdAt","updatedAt") VALUES ($1,$2,$3,$4,NOW(),NOW())`,
+        [clientId, name, primaryDisplay, primaryNormalized],
+      );
+    } else {
+      await db.query(
+        `UPDATE "Client" SET "name"=COALESCE($2,"name"),"phone"=$3,"phoneNormalized"=$4,"updatedAt"=NOW() WHERE "id"=$1`,
+        [clientId, name, primaryDisplay, primaryNormalized],
+      );
+    }
+
+    await db.query(`UPDATE "ClientPhone" SET "isPrimary"=false,"updatedAt"=NOW() WHERE "clientId"=$1`, [clientId]);
+    await db.query(
+      `INSERT INTO "ClientPhone" ("id","clientId","phone","phoneNormalized","label","isPrimary","createdAt","updatedAt")
+       VALUES ($1,$2,$3,$4,'Основний',true,NOW(),NOW())
+       ON CONFLICT ("phoneNormalized") DO UPDATE SET
+         "phone"=EXCLUDED."phone","label"='Основний',"isPrimary"=true,"updatedAt"=NOW()`,
+      [`cp_${randomUUID()}`, clientId, primaryDisplay, primaryNormalized],
+    );
+
+    if (Object.prototype.hasOwnProperty.call(body, "additionalPhone")) {
+      if (additionalNormalized) {
+        const additionalDisplay = displayPhone(additionalNormalized);
+        await db.query(
+          `INSERT INTO "ClientPhone" ("id","clientId","phone","phoneNormalized","label","isPrimary","createdAt","updatedAt")
+           VALUES ($1,$2,$3,$4,'Додатковий',false,NOW(),NOW())
+           ON CONFLICT ("phoneNormalized") DO UPDATE SET
+             "phone"=EXCLUDED."phone","label"='Додатковий',"isPrimary"=false,"updatedAt"=NOW()`,
+          [additionalPhoneId || `cp_${randomUUID()}`, clientId, additionalDisplay, additionalNormalized],
+        );
+      } else if (additionalPhoneId) {
+        await db.query(`DELETE FROM "ClientPhone" WHERE "id"=$1 AND "clientId"=$2 AND "isPrimary"=false`, [additionalPhoneId, clientId]);
+      }
+    }
+
+    await db.query("COMMIT");
+    const client = await readClient(primaryNormalized);
+    return NextResponse.json({ ok: true, client });
+  } catch (error) {
+    await db.query("ROLLBACK").catch(() => {});
+    console.error("client contact save failed", error);
+    return NextResponse.json({ error: "Не вдалося зберегти дані клієнта" }, { status: 500 });
+  } finally {
+    db.release();
+  }
+}
+
 export async function POST(request: NextRequest) {
   const body = await request.json().catch(() => ({}));
-  const name = String(body.name || "").trim() || null;
-  const phone = String(body.phone || "").trim();
+  const name = cleanClientName(body.name);
+  const phone = String(body.phone || body.primaryPhone || "").trim();
   const phoneNormalized = normalizePhone(phone);
   const plate = normalizeRegistrationPlate(String(body.plate || ""));
   const vinRaw = String(body.vin || "").trim().toUpperCase();
@@ -68,11 +191,12 @@ export async function POST(request: NextRequest) {
        WHERE c."phoneNormalized"=$1 OR cp."phoneNormalized"=$1 LIMIT 1`, [phoneNormalized]);
     const clientId = existingClient.rows[0]?.id || `client_${randomUUID()}`;
     if (!existingClient.rows[0]) {
-      await db.query(`INSERT INTO "Client" ("id","name","phone","phoneNormalized","createdAt","updatedAt") VALUES ($1,$2,$3,$4,NOW(),NOW())`, [clientId, name, phone || `+${phoneNormalized}`, phoneNormalized]);
-      await db.query(`INSERT INTO "ClientPhone" ("id","clientId","phone","phoneNormalized","label","isPrimary","createdAt","updatedAt") VALUES ($1,$2,$3,$4,'Основний',true,NOW(),NOW()) ON CONFLICT ("phoneNormalized") DO NOTHING`, [`cp_${randomUUID()}`, clientId, phone || `+${phoneNormalized}`, phoneNormalized]);
+      const display = phone || displayPhone(phoneNormalized);
+      await db.query(`INSERT INTO "Client" ("id","name","phone","phoneNormalized","createdAt","updatedAt") VALUES ($1,$2,$3,$4,NOW(),NOW())`, [clientId, name, display, phoneNormalized]);
+      await db.query(`INSERT INTO "ClientPhone" ("id","clientId","phone","phoneNormalized","label","isPrimary","createdAt","updatedAt") VALUES ($1,$2,$3,$4,'Основний',true,NOW(),NOW()) ON CONFLICT ("phoneNormalized") DO NOTHING`, [`cp_${randomUUID()}`, clientId, display, phoneNormalized]);
     } else {
       if (name && name !== existingClient.rows[0].name) await db.query(`UPDATE "Client" SET "name"=$2,"updatedAt"=NOW() WHERE "id"=$1`, [clientId, name]);
-      await db.query(`INSERT INTO "ClientPhone" ("id","clientId","phone","phoneNormalized","label","isPrimary","createdAt","updatedAt") VALUES ($1,$2,$3,$4,$5,$6,NOW(),NOW()) ON CONFLICT ("phoneNormalized") DO NOTHING`, [`cp_${randomUUID()}`, clientId, phone || `+${phoneNormalized}`, phoneNormalized, existingClient.rows[0].phoneNormalized === phoneNormalized ? "Основний" : "Додатковий", existingClient.rows[0].phoneNormalized === phoneNormalized]);
+      await db.query(`INSERT INTO "ClientPhone" ("id","clientId","phone","phoneNormalized","label","isPrimary","createdAt","updatedAt") VALUES ($1,$2,$3,$4,$5,$6,NOW(),NOW()) ON CONFLICT ("phoneNormalized") DO NOTHING`, [`cp_${randomUUID()}`, clientId, phone || displayPhone(phoneNormalized), phoneNormalized, existingClient.rows[0].phoneNormalized === phoneNormalized ? "Основний" : "Додатковий", existingClient.rows[0].phoneNormalized === phoneNormalized]);
     }
 
     let data: Record<string, unknown> = {};
