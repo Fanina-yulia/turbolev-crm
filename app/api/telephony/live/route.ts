@@ -3,9 +3,72 @@ import { CallType } from "@/src/generated/prisma/client";
 import { getPrisma } from "@/src/lib/prisma";
 import { authorize } from "@/src/security/authorize";
 import { PERMISSIONS } from "@/src/security/permissions";
+import { extractBinotelCallDetails, summarizeBinotelCall } from "@/src/services/binotel-history.service";
+import { getBinotelService } from "@/src/services/binotel.service";
+import { processBinotelWebhook } from "@/src/services/binotel-webhook.service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+type OnlineSyncState = {
+  expiresAt: number;
+  promise: Promise<void> | null;
+};
+
+const globalOnlineSync = globalThis as typeof globalThis & {
+  __turboLevBinotelOnlineSync?: OnlineSyncState;
+};
+
+function onlineSyncState(): OnlineSyncState {
+  if (!globalOnlineSync.__turboLevBinotelOnlineSync) {
+    globalOnlineSync.__turboLevBinotelOnlineSync = { expiresAt: 0, promise: null };
+  }
+  return globalOnlineSync.__turboLevBinotelOnlineSync;
+}
+
+async function syncOnlineIncomingCalls() {
+  const state = onlineSyncState();
+  const now = Date.now();
+  if (state.promise) return state.promise;
+  if (now < state.expiresAt) return;
+
+  state.expiresAt = now + 5_000;
+  state.promise = (async () => {
+    try {
+      const response = await getBinotelService().getOnlineCalls();
+      const details = extractBinotelCallDetails(response);
+
+      for (const detail of details) {
+        const summary = summarizeBinotelCall(detail);
+        if (!summary || summary.callType !== 0 || !summary.externalNumber) continue;
+
+        const disposition = (summary.disposition || "").toUpperCase();
+        const answered = summary.billsec > 0 || disposition === "ANSWER" || disposition === "TRANSFER";
+
+        await processBinotelWebhook({
+          requestType: answered ? "answeredTheCall" : "incomingCall",
+          callDetails: detail,
+        }).catch((error) => {
+          console.warn("Binotel online call could not be mirrored into live feed", {
+            callId: summary.callId,
+            error: error instanceof Error ? error.message : "unknown error",
+          });
+        });
+      }
+    } catch (error) {
+      // Webhook remains the primary realtime channel. Online REST is only a fallback,
+      // so a provider/rate-limit failure must never take the CRM live endpoint down.
+      console.warn("Binotel online-calls fallback unavailable", {
+        error: error instanceof Error ? error.message : "unknown error",
+      });
+      state.expiresAt = Date.now() + 10_000;
+    }
+  })().finally(() => {
+    state.promise = null;
+  });
+
+  return state.promise;
+}
 
 export async function GET(request: NextRequest) {
   const access = await authorize(PERMISSIONS.COMMUNICATIONS_READ, {
@@ -23,6 +86,10 @@ export async function GET(request: NextRequest) {
   }
 
   try {
+    // Binotel PUSH is the primary realtime source. Until provider delivery is reliable,
+    // mirror active incoming calls from stats/online-calls at a provider-safe cadence.
+    await syncOnlineIncomingCalls();
+
     const prisma = getPrisma();
     const now = Date.now();
     const recentFrom = new Date(now - 3 * 60 * 1000);
@@ -89,6 +156,7 @@ export async function GET(request: NextRequest) {
       ok: true,
       checkedAt: new Date().toISOString(),
       authMode: shadowAnonymous ? "SHADOW_INBOUND_ONLY" : "AUTHENTICATED",
+      realtimeSources: ["WEBHOOK", "ONLINE_CALLS_FALLBACK"],
       currentUser: userId ? {
         id: userId,
         name: user?.name || access.context.user?.name || "CRM user",
