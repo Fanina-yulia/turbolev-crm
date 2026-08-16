@@ -14,7 +14,10 @@
   border:0!important;
   box-shadow:none!important;
   padding:0!important;
+  overflow:visible!important;
+  text-overflow:clip!important;
 }
+.uaLicensePlate> b,.uaLicensePlate>strong{color:transparent!important;font-size:0!important;line-height:0!important;margin:0!important;padding:0!important}
 .uaLicensePlate:not([data-plate-placement="leading"])::before,
 .uaLicensePlate[data-plate-placement="leading"]::after{
   display:inline!important;
