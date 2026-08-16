@@ -1,0 +1,94 @@
+.uaLicensePlate {
+  display: inline-flex;
+  align-items: stretch;
+  min-height: 28px;
+  margin: 0 0.16em;
+  overflow: hidden;
+  vertical-align: middle;
+  white-space: nowrap;
+  color: #111827 !important;
+  background: #ffffff !important;
+  border: 1px solid #8b96a3;
+  border-radius: 6px;
+  box-shadow: 0 1px 4px rgba(15, 23, 42, 0.22);
+  font-family: Arial, Helvetica, sans-serif !important;
+  font-weight: 700 !important;
+  line-height: 1 !important;
+  letter-spacing: 0.035em;
+  box-sizing: border-box;
+  transform: translateY(-0.02em);
+}
+
+.uaLicensePlate__band {
+  width: 22px;
+  min-width: 22px;
+  padding: 3px 2px 2px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  color: #ffffff !important;
+  background: #0756a5 !important;
+  box-sizing: border-box;
+}
+
+.uaLicensePlate__flag {
+  display: block;
+  width: 12px;
+  height: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.8);
+  border-radius: 1px;
+  background: linear-gradient(to bottom, #0057b8 0 50%, #ffd700 50% 100%);
+  box-sizing: border-box;
+}
+
+.uaLicensePlate__country {
+  color: #ffffff !important;
+  font-size: 7px !important;
+  font-weight: 800 !important;
+  line-height: 1 !important;
+  letter-spacing: 0 !important;
+}
+
+.uaLicensePlate__number {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 78px;
+  padding: 0 9px;
+  color: #111827 !important;
+  background: #ffffff !important;
+  font-size: 13px !important;
+  font-weight: 700 !important;
+  line-height: 1 !important;
+  letter-spacing: 0.055em !important;
+  box-sizing: border-box;
+}
+
+button .uaLicensePlate,
+a .uaLicensePlate {
+  pointer-events: none;
+}
+
+[data-theme="dark"] .uaLicensePlate {
+  color: #111827 !important;
+  background: #ffffff !important;
+  border-color: #75808d;
+  box-shadow: 0 1px 5px rgba(0, 0, 0, 0.42);
+}
+
+@media (max-width: 760px) {
+  .uaLicensePlate {
+    min-height: 26px;
+  }
+  .uaLicensePlate__band {
+    width: 20px;
+    min-width: 20px;
+  }
+  .uaLicensePlate__number {
+    min-width: 72px;
+    padding-inline: 7px;
+    font-size: 12px !important;
+  }
+}
