@@ -31,9 +31,11 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  // Reconciliation is a bounded, rate-limited provider read + internal recovery write.
+  // In SHADOW mode it may run before Neon Auth provisioning is complete so inbound
+  // calls are not lost during the RBAC rollout. ENFORCED mode remains protected.
   const access = await authorize(PERMISSIONS.COMMUNICATIONS_WRITE, {
     request,
-    strict: true,
     minimumScope: "TEAM",
   });
   if (!access.allowed) return access.response!;
@@ -50,6 +52,7 @@ export async function POST(request: NextRequest) {
     await finishBinotelReconciliationBucket(claim.externalEventId, "PROCESSED", {
       ...result,
       source: "REST_RECONCILIATION",
+      securityMode: access.shadowBypass ? "SHADOW" : "AUTHENTICATED",
     });
     return NextResponse.json({ ok: true, skipped: false, ...result });
   } catch (error) {
