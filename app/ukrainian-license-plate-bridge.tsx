@@ -3,7 +3,7 @@
 import { useEffect } from "react";
 import { isStandardUkrainianPlate, normalizeUkrainianPlate } from "./ukrainian-license-plate";
 
-const CANDIDATE_SELECTOR = "span,strong,b,small,p,em,i";
+const CANDIDATE_SELECTOR = "span,strong,b,small,p,em,i,div,td,th";
 const SKIP_SELECTOR = "input,textarea,select,option,script,style,[contenteditable='true'],[data-ua-license-plate='true']";
 const SKIP_ANCESTOR_SELECTOR = "input,textarea,select,option,script,style,[contenteditable='true'],.uaPlate";
 const LABELED_PREFIX = /^(?:держзнак|держномер|державний\s+номер|номер\s+авто)\s*[:№-]?$/iu;
@@ -59,7 +59,9 @@ function clearDecoration(element: HTMLElement) {
 function decorateElement(element: Element) {
   if (!(element instanceof HTMLElement)) return;
   if (element.matches(SKIP_SELECTOR) || element.closest(SKIP_ANCESTOR_SELECTOR)) return;
-  if (element.children.length) return;
+  const childElements = Array.from(element.children);
+  const simpleLabelChild = childElements.length === 1 && ["B", "STRONG"].includes(childElements[0].tagName);
+  if (childElements.length && !simpleLabelChild) return;
 
   const parts = extractPlate(element.textContent || "");
   if (!parts) return clearDecoration(element);
