@@ -76,5 +76,8 @@ jobs:
       - name: API security policy coverage
         run: npx --no-install tsx scripts/api-security-policy-smoke.ts
 
+      - name: Communications contact inbox smoke test
+        run: npx --no-install tsx scripts/communications-inbox-smoke.ts
+
       - name: Production build
         run: npm run build

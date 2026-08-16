@@ -2,34 +2,73 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ClientCardDrawer } from "./client-card-drawer";
+import styles from "./communications-contact-inbox.module.css";
+import {
+  buildCommunicationConversations,
+  type CommunicationChannel as Channel,
+  type CommunicationConversation,
+  type CommunicationInquiry as Inquiry,
+  type CommunicationMessage as Message,
+} from "@/src/domain/communications-inbox";
 
-type Channel = "FACEBOOK" | "INSTAGRAM" | "TIKTOK" | "BINOTEL" | "OLX" | "WEBSITE";
-type Filter = "ALL" | "UNREAD" | "NO_REPLY" | Channel;
-type InquiryState = "NEW" | "IN_WORK" | "CONVERTED" | "LINKED" | "SPAM";
-type Message = { id: string; direction: "in" | "out" | "system"; text: string; at: string; metadata?: unknown };
-type Inquiry = { id: string; channel: Channel; state: InquiryState; name: string; phone?: string; handle?: string; subject: string; preview: string; vehicle?: string; plate?: string; unread: boolean; answered: boolean; receivedAt: string; sourceDetail?: string; campaign?: string; utm?: string; existingLeadId?: string; duplicateLead?: { id: string; name?: string | null } | null; messages: Message[] };
+type Filter = "ALL" | "NEW" | "NEEDS_REPLY" | "MISSED" | "MESSAGES" | Channel;
 type BinotelHealth = { ok: boolean; databaseConfigured: boolean; restConfigured: boolean; webhookTokenConfigured: boolean; websocketConfigured: boolean; companyIdConfigured: boolean; webhookPath: string; missing: string[]; optionalMissing: string[] };
 
 const LOCAL_KEY = "turbolev-communications-v1";
 const channels: Channel[] = ["INSTAGRAM", "FACEBOOK", "TIKTOK", "BINOTEL", "OLX", "WEBSITE"];
-const channelMeta: Record<Channel, { label: string; short: string; tone: string }> = {
-  FACEBOOK: { label: "Facebook", short: "f", tone: "#1877f2" }, INSTAGRAM: { label: "Instagram", short: "◎", tone: "#e1306c" }, TIKTOK: { label: "TikTok", short: "♪", tone: "#25f4ee" }, BINOTEL: { label: "Binotel", short: "☎", tone: "#ff7a00" }, OLX: { label: "OLX", short: "O", tone: "#23e5db" }, WEBSITE: { label: "Сайт", short: "W", tone: "#7c8cff" },
-};
 const emojis = ["😀","😊","👍","❤️","🔥","✅","🙏","😉","😂","🚗","🔧","📍","☎️","💬","👌","🎯"];
+const channelMeta: Record<Channel, { label: string; short: string; tone: string }> = {
+  FACEBOOK: { label: "Facebook", short: "f", tone: "#1877f2" },
+  INSTAGRAM: { label: "Instagram", short: "◎", tone: "#e1306c" },
+  TIKTOK: { label: "TikTok", short: "♪", tone: "#111827" },
+  BINOTEL: { label: "Binotel", short: "☎", tone: "#ff7a00" },
+  OLX: { label: "OLX", short: "O", tone: "#23a6a0" },
+  WEBSITE: { label: "Сайт", short: "W", tone: "#6366f1" },
+};
 const integrations = [
   { key: "META", title: "Facebook + Instagram", endpoint: "/api/webhooks/meta", text: "Messenger, Instagram та Meta lead forms" },
-  { key: "BINOTEL", title: "Binotel", endpoint: "/api/telephony/binotel-webhook", text: "Вхідні та пропущені дзвінки, CallHistory, записи розмов" },
+  { key: "BINOTEL", title: "Binotel", endpoint: "/api/telephony/binotel-webhook", text: "Вхідні, пропущені дзвінки, CallHistory та записи розмов" },
   { key: "WEBSITE", title: "Сайт / Lead Forms", endpoint: "/api/webhooks/website", text: "Форми сайту та landing pages" },
   { key: "TIKTOK", title: "TikTok", endpoint: "/api/webhooks/tiktok", text: "Lead forms та повідомлення" },
   { key: "OLX", title: "OLX", endpoint: "/api/webhooks/olx", text: "Діалоги та прив'язка до оголошень" },
 ];
 
-function fmt(value: string) { const date = new Date(value); if (Number.isNaN(date.getTime())) return "—"; const today = new Date(); return new Intl.DateTimeFormat("uk-UA", date.toDateString() === today.toDateString() ? { hour: "2-digit", minute: "2-digit" } : { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }).format(date); }
-function stateLabel(state: InquiryState) { return state === "NEW" ? "Нове" : state === "IN_WORK" ? "В роботі" : state === "CONVERTED" ? "Лід створено" : state === "LINKED" ? "Прив'язано" : "Спам"; }
+function fmt(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "—";
+  const today = new Date();
+  const dayFormatter = new Intl.DateTimeFormat("en-CA", { year: "numeric", month: "2-digit", day: "2-digit" });
+  const sameDay = dayFormatter.format(date) === dayFormatter.format(today);
+  return new Intl.DateTimeFormat("uk-UA", sameDay ? { hour: "2-digit", minute: "2-digit" } : { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }).format(date);
+}
+function fmtLong(value: string) {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "—" : new Intl.DateTimeFormat("uk-UA", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }).format(date);
+}
+function actionLabel(state: CommunicationConversation["actionState"]) {
+  return state === "MISSED" ? "Потрібно передзвонити" : state === "NEW" ? "Нове" : state === "NEEDS_REPLY" ? "Потрібна відповідь" : "Опрацьовано";
+}
+function messageIsMissed(message: Message) {
+  const metadata = message.metadata && typeof message.metadata === "object" ? message.metadata as Record<string, unknown> : null;
+  const direct = typeof metadata?.callStatus === "string" ? metadata.callStatus.toUpperCase() : "";
+  const nested = metadata?.metadata && typeof metadata.metadata === "object" ? metadata.metadata as Record<string, unknown> : null;
+  const nestedStatus = typeof nested?.callStatus === "string" ? nested.callStatus.toUpperCase() : "";
+  return direct === "MISSED" || nestedStatus === "MISSED" || message.text.toLocaleLowerCase("uk-UA").includes("пропущен");
+}
+function searchText(conversation: CommunicationConversation) {
+  return [
+    conversation.displayName,
+    conversation.phone,
+    conversation.handle,
+    conversation.representative.subject,
+    conversation.representative.preview,
+    ...conversation.inquiries.flatMap((item) => [item.name, item.phone, item.handle, item.vehicle, item.plate, item.subject, item.preview]),
+  ].filter(Boolean).join(" ").toLocaleLowerCase("uk-UA");
+}
 
 export function CommunicationsHub() {
   const [items, setItems] = useState<Inquiry[]>([]);
-  const [selectedId, setSelectedId] = useState("");
+  const [selectedKey, setSelectedKey] = useState("");
   const [filter, setFilter] = useState<Filter>("ALL");
   const [query, setQuery] = useState("");
   const [tab, setTab] = useState<"inbox" | "integrations">("inbox");
@@ -48,63 +87,193 @@ export function CommunicationsHub() {
   const notify = (message: string) => { setToast(message); window.setTimeout(() => setToast(""), 3200); };
   const load = useCallback(async () => {
     setLoading(true);
-    try { const response = await fetch("/api/communications", { cache: "no-store" }); if (!response.ok) throw new Error(); const data = await response.json(); const next = (data.items || []) as Inquiry[]; setItems(next); setServerMode(true); setSelectedId((current) => next.some((x) => x.id === current) ? current : next[0]?.id || ""); }
-    catch { setServerMode(false); try { const local = JSON.parse(window.localStorage.getItem(LOCAL_KEY) || "[]") as Inquiry[]; setItems(local); setSelectedId((current) => local.some((x) => x.id === current) ? current : local[0]?.id || ""); } catch { setItems([]); } }
-    finally { setLoading(false); }
+    try {
+      const response = await fetch("/api/communications", { cache: "no-store" });
+      if (!response.ok) throw new Error();
+      const data = await response.json();
+      setItems((data.items || []) as Inquiry[]);
+      setServerMode(true);
+    } catch {
+      setServerMode(false);
+      try { setItems(JSON.parse(window.localStorage.getItem(LOCAL_KEY) || "[]") as Inquiry[]); }
+      catch { setItems([]); }
+    } finally { setLoading(false); }
   }, []);
-  const loadBinotelHealth = useCallback(async () => { try { const r = await fetch("/api/telephony/binotel-health", { cache: "no-store" }); setBinotelHealth(await r.json()); } catch { setBinotelHealth(null); } }, []);
+  const loadBinotelHealth = useCallback(async () => {
+    try {
+      const response = await fetch("/api/telephony/binotel-health", { cache: "no-store" });
+      setBinotelHealth(await response.json());
+    } catch { setBinotelHealth(null); }
+  }, []);
 
   useEffect(() => { void load(); void loadBinotelHealth(); }, [load, loadBinotelHealth]);
   useEffect(() => { if (!serverMode) try { window.localStorage.setItem(LOCAL_KEY, JSON.stringify(items)); } catch {} }, [items, serverMode]);
-  useEffect(() => { messageEndRef.current?.scrollIntoView({ block: "end" }); }, [selectedId, items]);
 
-  const selected = items.find((x) => x.id === selectedId);
-  const counts = useMemo(() => ({ ALL: items.filter((x) => x.state !== "SPAM").length, UNREAD: items.filter((x) => x.unread && x.state !== "SPAM").length, NO_REPLY: items.filter((x) => !x.answered && x.state !== "SPAM").length }), [items]);
-  const visible = useMemo(() => items.filter((item) => {
-    if (item.state === "SPAM") return false;
-    if (filter === "UNREAD" && !item.unread) return false;
-    if (filter === "NO_REPLY" && item.answered) return false;
-    if (!(["ALL","UNREAD","NO_REPLY"] as string[]).includes(filter) && item.channel !== filter) return false;
-    return `${item.name} ${item.phone || ""} ${item.handle || ""} ${item.subject} ${item.vehicle || ""} ${item.plate || ""}`.toLowerCase().includes(query.trim().toLowerCase());
-  }).sort((a,b) => +new Date(b.receivedAt) - +new Date(a.receivedAt)), [items, filter, query]);
+  const conversations = useMemo(() => buildCommunicationConversations(items), [items]);
+  const selected = useMemo(() => conversations.find((item) => item.key === selectedKey) || null, [conversations, selectedKey]);
+
+  useEffect(() => {
+    if (!conversations.length) { if (selectedKey) setSelectedKey(""); return; }
+    if (!conversations.some((item) => item.key === selectedKey)) setSelectedKey(conversations[0].key);
+  }, [conversations, selectedKey]);
+  useEffect(() => { messageEndRef.current?.scrollIntoView({ block: "end" }); }, [selectedKey, items]);
+
+  const counts = useMemo(() => ({
+    ALL: conversations.length,
+    NEW: conversations.filter((item) => item.unreadCount > 0).length,
+    NEEDS_REPLY: conversations.filter((item) => item.actionState === "MISSED" || item.actionState === "NEEDS_REPLY").length,
+    MISSED: conversations.filter((item) => item.unresolvedMissedCount > 0).length,
+    MESSAGES: conversations.filter((item) => item.hasMessages).length,
+  }), [conversations]);
+  const visible = useMemo(() => conversations.filter((conversation) => {
+    if (filter === "NEW" && conversation.unreadCount === 0) return false;
+    if (filter === "NEEDS_REPLY" && conversation.actionState !== "MISSED" && conversation.actionState !== "NEEDS_REPLY") return false;
+    if (filter === "MISSED" && conversation.unresolvedMissedCount === 0) return false;
+    if (filter === "MESSAGES" && !conversation.hasMessages) return false;
+    if (!(["ALL", "NEW", "NEEDS_REPLY", "MISSED", "MESSAGES"] as string[]).includes(filter) && !conversation.channels.includes(filter as Channel)) return false;
+    const needle = query.trim().toLocaleLowerCase("uk-UA");
+    return !needle || searchText(conversation).includes(needle);
+  }), [conversations, filter, query]);
   const displayed = visible.slice(0, pageSize);
 
-  async function patch(id: string, data: Partial<Pick<Inquiry,"unread"|"answered"|"state">>) { setItems((current) => current.map((x) => x.id === id ? { ...x, ...data } : x)); if (!serverMode) return; try { await fetch(`/api/communications/${id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(data) }); } catch { notify("Не вдалося зберегти зміну"); } }
-  function openInquiry(id: string) { setSelectedId(id); setFiles([]); setEmojiOpen(false); void patch(id, { unread: false }); }
+  async function patchOne(id: string, data: Partial<Pick<Inquiry, "unread" | "answered" | "state">>) {
+    setItems((current) => current.map((item) => item.id === id ? { ...item, ...data } : item));
+    if (!serverMode) return true;
+    try {
+      const response = await fetch(`/api/communications/${id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(data) });
+      return response.ok;
+    } catch { return false; }
+  }
+  async function openConversation(conversation: CommunicationConversation) {
+    setSelectedKey(conversation.key);
+    setClientCardOpen(false);
+    setFiles([]);
+    setEmojiOpen(false);
+    if (!conversation.unreadInquiryIds.length) return;
+    const results = await Promise.all(conversation.unreadInquiryIds.map((id) => patchOne(id, { unread: false })));
+    if (results.some((ok) => !ok)) notify("Не всі позначки прочитання вдалося синхронізувати");
+  }
   async function sendReply() {
     if (!selected || (!reply.trim() && files.length === 0)) return;
-    const attachmentText = files.length ? `\n${files.map((f) => `📎 ${f.name}`).join("\n")}` : ""; const finalText = `${reply.trim()}${attachmentText}`.trim();
-    if (!serverMode) { const message: Message = { id: `local-${Date.now()}`, direction: "out", text: finalText, at: new Date().toISOString(), metadata: { attachments: files.map((f) => ({ name: f.name, type: f.type, size: f.size })) } }; setItems((current) => current.map((x) => x.id === selected.id ? { ...x, messages: [...x.messages, message], answered: true, state: x.state === "NEW" ? "IN_WORK" : x.state } : x)); setReply(""); setFiles([]); return; }
-    try { const response = await fetch(`/api/communications/${selected.id}/messages`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text: finalText, attachments: files.map((f) => ({ name: f.name, type: f.type, size: f.size })) }) }); if (!response.ok) throw new Error(); setReply(""); setFiles([]); setEmojiOpen(false); await load(); notify("Повідомлення збережено. Фактична доставка запрацює після підключення API каналу."); } catch { notify("Не вдалося зберегти повідомлення"); }
+    const inquiry = selected.representative;
+    const attachmentText = files.length ? `\n${files.map((file) => `📎 ${file.name}`).join("\n")}` : "";
+    const finalText = `${reply.trim()}${attachmentText}`.trim();
+    const attachments = files.map((file) => ({ name: file.name, type: file.type, size: file.size }));
+    if (!serverMode) {
+      const message: Message = { id: `local-${Date.now()}`, direction: "out", text: finalText, at: new Date().toISOString(), metadata: { attachments } };
+      setItems((current) => current.map((item) => item.id === inquiry.id ? { ...item, messages: [...item.messages, message], answered: true, unread: false, state: item.state === "NEW" ? "IN_WORK" : item.state } : item));
+      setReply(""); setFiles([]); setEmojiOpen(false);
+      return;
+    }
+    try {
+      const response = await fetch(`/api/communications/${inquiry.id}/messages`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text: finalText, attachments }) });
+      if (!response.ok) throw new Error();
+      setReply(""); setFiles([]); setEmojiOpen(false);
+      await load();
+      notify(inquiry.channel === "BINOTEL" ? "Відповідь збережено в історії контакту." : "Повідомлення збережено. Доставка залежить від API каналу.");
+    } catch { notify("Не вдалося зберегти повідомлення"); }
   }
-  async function convertToLead() { if (!selected || !serverMode) return notify("Для створення ліда потрібне серверне з'єднання"); try { const r = await fetch(`/api/communications/${selected.id}/convert`, { method: "POST" }); const data = await r.json(); if (!r.ok) throw new Error(data.error || "Помилка"); notify(data.linkedExisting ? "Звернення прив'язано до існуючого ліда" : "Лід створено"); await load(); } catch (e) { notify(e instanceof Error ? e.message : "Не вдалося створити лід"); } }
+  async function convertToLead() {
+    if (!selected || !serverMode) return notify("Для створення ліда потрібне серверне з'єднання");
+    try {
+      const response = await fetch(`/api/communications/${selected.representative.id}/convert`, { method: "POST" });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Помилка");
+      notify(data.linkedExisting ? "Контакт прив'язано до існуючого ліда" : "Лід створено");
+      await load();
+    } catch (error) { notify(error instanceof Error ? error.message : "Не вдалося створити лід"); }
+  }
+  function openLead() {
+    if (!selected?.existingLeadId) return;
+    window.dispatchEvent(new CustomEvent("turbolev:navigate", { detail: { section: "Ліди", filter: selected.existingLeadId, filterLabel: `Лід ${selected.existingLeadId}` } }));
+  }
+  async function copyPhone() {
+    if (!selected?.phone) return;
+    try { await navigator.clipboard.writeText(selected.phone); notify("Номер скопійовано"); }
+    catch { notify("Не вдалося скопіювати номер"); }
+  }
 
-  const filterPills: { key: Filter; label: string; count: number }[] = [ { key: "ALL", label: "Усі", count: counts.ALL }, { key: "UNREAD", label: "Непрочитані", count: counts.UNREAD }, { key: "NO_REPLY", label: "Без відповіді", count: counts.NO_REPLY }, ...channels.map((key) => ({ key, label: channelMeta[key].label, count: items.filter((x) => x.channel === key && x.state !== "SPAM").length })) ];
+  const filterPills: { key: Filter; label: string; count: number }[] = [
+    { key: "ALL", label: "Усі", count: counts.ALL },
+    { key: "NEW", label: "Нові", count: counts.NEW },
+    { key: "NEEDS_REPLY", label: "Потрібна відповідь", count: counts.NEEDS_REPLY },
+    { key: "MISSED", label: "Пропущені", count: counts.MISSED },
+    { key: "MESSAGES", label: "Повідомлення", count: counts.MESSAGES },
+    ...channels.map((key) => ({ key, label: channelMeta[key].label, count: conversations.filter((item) => item.channels.includes(key)).length })),
+  ];
 
-  return <div className="msgPage">
-    {toast && <div className="msgToast">{toast}</div>}
-    <header className="msgHeader"><div><p className="eyebrow">OMNICHANNEL · ЄДИНА ТОЧКА ВХОДУ</p><h1>Комунікації</h1><p>Всі діалоги, дзвінки та звернення в одному робочому вікні.</p></div><div className="msgHeaderRight"><span className={`serverBadge ${serverMode ? "ok" : "local"}`}>{serverMode ? "NEON SERVER" : "LOCAL FALLBACK"}</span><div className="msgTabs"><button className={tab === "inbox" ? "active" : ""} onClick={() => setTab("inbox")}>Inbox</button><button className={tab === "integrations" ? "active" : ""} onClick={() => setTab("integrations")}>Інтеграції</button></div></div></header>
+  return <div className={styles.page}>
+    {toast && <div className={styles.toast}>{toast}</div>}
+    <header className={styles.header}>
+      <div><p className={styles.eyebrow}>OMNICHANNEL · CONTACT INBOX</p><h1>Комунікації</h1><p className={styles.subtitle}>Один клієнт — один діалог. Дзвінки та повідомлення зберігаються єдиною хронологією.</p></div>
+      <div className={styles.headerRight}><span className={styles.serverBadge} data-ok={serverMode}>{serverMode ? "NEON SERVER" : "LOCAL FALLBACK"}</span><div className={styles.tabs}><button className={tab === "inbox" ? styles.active : ""} onClick={() => setTab("inbox")}>Inbox</button><button className={tab === "integrations" ? styles.active : ""} onClick={() => setTab("integrations")}>Інтеграції</button></div></div>
+    </header>
 
-    {tab === "integrations" ? <section className="integrationPage"><div className="integrationTitle"><div><p className="eyebrow">КАНАЛИ</p><h2>Інтеграції комунікацій</h2></div><span>Підключення каналів керується централізовано.</span></div><div className="integrationGrid">{integrations.map((item) => <article key={item.key}><div className="intIcon">{item.key === "BINOTEL" ? "☎" : item.key[0]}</div><div><strong>{item.title}</strong><p>{item.text}</p><code>{item.endpoint}</code></div><span className={`intState ${item.key === "BINOTEL" && binotelHealth?.ok ? "ready" : ""}`}>{item.key === "BINOTEL" && binotelHealth?.ok ? "Підключено" : item.key === "WEBSITE" ? "Endpoint готовий" : "Потрібен доступ"}</span></article>)}</div></section> : <>
-      <div className="sourceToolbar"><div className="sourceTitle"><b>Фільтр джерел</b><span>Оберіть канал або стан звернень</span></div><div className="sourcePills">{filterPills.map((f) => <button key={f.key} className={filter === f.key ? "active" : ""} onClick={() => setFilter(f.key)}>{f.label}<span>{f.count}</span></button>)}</div><label className="pageSize">Показувати<select value={pageSize} onChange={(e) => setPageSize(Number(e.target.value) as 20 | 50 | 100)}><option value={20}>20</option><option value={50}>50</option><option value={100}>100</option></select></label></div>
+    {tab === "integrations" ? <section className={styles.integrations}>
+      <div className={styles.integrationHead}><div><p className={styles.eyebrow}>КАНАЛИ</p><h2>Інтеграції комунікацій</h2></div><span>Підключення каналів керується централізовано.</span></div>
+      <div className={styles.integrationGrid}>{integrations.map((item) => <article className={styles.integrationCard} key={item.key}><div className={styles.integrationIcon}>{item.key === "BINOTEL" ? "☎" : item.key[0]}</div><div><strong>{item.title}</strong><p>{item.text}</p><code>{item.endpoint}</code></div><span className={`${styles.integrationState} ${item.key === "BINOTEL" && binotelHealth?.ok ? styles.ready : ""}`}>{item.key === "BINOTEL" && binotelHealth?.ok ? "Підключено" : item.key === "WEBSITE" ? "Endpoint готовий" : "Потрібен доступ"}</span></article>)}</div>
+    </section> : <>
+      <nav className={styles.filters} aria-label="Фільтри комунікацій">{filterPills.map((item) => <button key={item.key} className={`${styles.filterButton} ${filter === item.key ? styles.active : ""}`} onClick={() => setFilter(item.key)}>{item.label}<span>{item.count}</span></button>)}</nav>
+      <section className={styles.shell}>
+        <aside className={styles.left}>
+          <div className={styles.search}><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Пошук: клієнт, телефон, авто, номер..."/><button onClick={() => void load()} aria-label="Оновити">↻</button></div>
+          <div className={styles.listMeta}><span>Показано {displayed.length} із {visible.length} контактів</span><label>по <select value={pageSize} onChange={(event) => setPageSize(Number(event.target.value) as 20 | 50 | 100)}><option value={20}>20</option><option value={50}>50</option><option value={100}>100</option></select></label></div>
+          <div className={styles.list}>{loading ? <div className={styles.empty}>Завантаження…</div> : displayed.length === 0 ? <div className={styles.empty}>Немає контактів за цим фільтром.</div> : displayed.map((conversation) => {
+            const latestChannel = conversation.representative.channel;
+            const selectedRow = selectedKey === conversation.key;
+            return <button key={conversation.key} className={`${styles.row} ${selectedRow ? styles.selected : ""} ${conversation.unreadCount ? styles.unread : ""} ${conversation.actionState === "MISSED" ? styles.missed : ""}`} onClick={() => void openConversation(conversation)}>
+              <span className={styles.avatar} style={{ background: channelMeta[latestChannel].tone }}>{channelMeta[latestChannel].short}</span>
+              <span className={styles.rowMain}>
+                <span className={styles.rowTop}><strong>{conversation.displayName}</strong><time>{fmt(conversation.receivedAt)}</time></span>
+                <span className={styles.identity}>{conversation.phone || conversation.handle || "Контакт без номера"}</span>
+                <em className={styles.source}>{conversation.channels.map((channel) => channelMeta[channel].label).join(" · ")}</em>
+                <span className={styles.preview}>{conversation.preview}</span>
+                <span className={styles.badges}>
+                  {conversation.missedCount > 0 && <span className={`${styles.badge} ${conversation.unresolvedMissedCount ? styles.badgeMissed : ""}`}>☎ {conversation.missedCount} пропущ.</span>}
+                  {conversation.unreadCount > 0 && <span className={`${styles.badge} ${styles.badgeUnread}`}>● {conversation.unreadCount} нов.</span>}
+                  {conversation.inquiryCount > 1 && <span className={styles.badge}>{conversation.inquiryCount} подій</span>}
+                  {conversation.existingLeadId && <span className={styles.badge}>Лід</span>}
+                </span>
+              </span>
+              {(conversation.actionState !== "HANDLED" || conversation.unreadCount > 0) && <i className={styles.attention} aria-label={actionLabel(conversation.actionState)}/>} 
+            </button>;
+          })}</div>
+        </aside>
 
-      <section className="messengerShell">
-        <div className="conversationList"><div className="searchRow"><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Пошук: клієнт, телефон, авто..."/><button onClick={() => void load()} aria-label="Оновити">↻</button></div><div className="listMeta">Показано {displayed.length} із {visible.length}</div><div className="listScroll">{loading ? <div className="empty">Завантаження…</div> : displayed.length === 0 ? <div className="empty">Немає звернень за цим фільтром.</div> : displayed.map((item) => <button key={item.id} className={`dialogRow ${selectedId === item.id ? "selected" : ""} ${item.unread ? "unread" : ""}`} onClick={() => openInquiry(item.id)}><span className="channelAvatar" style={{ background: channelMeta[item.channel].tone }}>{channelMeta[item.channel].short}</span><span className="dialogMain"><span className="dialogTop"><span className="clientNameLink" onClick={(e) => { e.stopPropagation(); setSelectedId(item.id); setClientCardOpen(true); }}>{item.name}</span><small>{fmt(item.receivedAt)}</small></span><em>{channelMeta[item.channel].label}</em><span className="preview">{item.preview}</span>{item.existingLeadId && <span className="leadTag">Лід {item.existingLeadId}</span>}</span>{item.unread && <i className="unreadDot" aria-label="Непрочитане" />}</button>)}</div></div>
-
-        <div className="chatPane">{!selected ? <div className="empty big">Оберіть звернення</div> : <><div className="chatHead"><span className="channelAvatar" style={{ background: channelMeta[selected.channel].tone }}>{channelMeta[selected.channel].short}</span><button className="clientHeadButton" onClick={() => setClientCardOpen(true)}><b>{selected.name}</b><span>{selected.phone || selected.handle || channelMeta[selected.channel].label}</span></button><div className="chatHeadActions">{selected.existingLeadId ? <button onClick={() => window.dispatchEvent(new CustomEvent("turbolev:navigate", { detail: "Ліди" }))}>Лід</button> : <button onClick={() => void convertToLead()}>+ Лід</button>}<span className="stateChip">{stateLabel(selected.state)}</span></div></div><div className="messageScroll">{selected.messages.length === 0 ? <div className="empty big">Історія повідомлень порожня.</div> : selected.messages.map((m) => <div key={m.id} className={`bubbleWrap ${m.direction}`}><div className={`bubble ${m.direction}`}><p>{m.text}</p><small>{fmt(m.at)}</small></div></div>)}<div ref={messageEndRef}/></div><div className="composer">{files.length > 0 && <div className="fileChips">{files.map((f, index) => <span key={`${f.name}-${index}`}>📎 {f.name}<button onClick={() => setFiles((current) => current.filter((_, i) => i !== index))}>×</button></span>)}</div>}{emojiOpen && <div className="emojiPicker">{emojis.map((emoji) => <button key={emoji} onClick={() => { setReply((v) => v + emoji); setEmojiOpen(false); }}>{emoji}</button>)}</div>}<div className="composeRow"><input ref={fileInputRef} type="file" multiple hidden onChange={(e) => setFiles((current) => [...current, ...Array.from(e.target.files || [])].slice(0, 8))}/><button className="toolBtn paperclip" onClick={() => fileInputRef.current?.click()} title="Додати файл">⌕</button><textarea value={reply} onChange={(e) => setReply(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void sendReply(); } }} placeholder="Повідомлення" rows={1}/><button className="toolBtn" onClick={() => setEmojiOpen((v) => !v)} title="Emoji">☺</button><button className="micBtn" onClick={() => notify("Голосові повідомлення підключимо разом з API каналів")} title="Голосове повідомлення">🎙</button><button className="sendBtn" onClick={() => void sendReply()} disabled={!reply.trim() && files.length === 0}>➤</button></div></div></>}</div>
+        <section className={styles.right}>{!selected ? <div className={styles.noSelection}>Оберіть контакт</div> : <>
+          <header className={styles.chatHead}>
+            <span className={styles.avatar} style={{ background: channelMeta[selected.representative.channel].tone }}>{channelMeta[selected.representative.channel].short}</span>
+            <div className={styles.chatIdentity}><h2>{selected.displayName}</h2><p>{selected.phone || selected.handle || "Контакт без номера"} · {selected.inquiryCount} {selected.inquiryCount === 1 ? "подія" : "подій"}</p><div className={styles.channelChips}>{selected.channels.map((channel) => <span className={styles.channelChip} style={{ background: channelMeta[channel].tone }} key={channel}>{channelMeta[channel].label}</span>)}</div><span className={styles.actionState} data-state={selected.actionState}>{actionLabel(selected.actionState)}{selected.actionState === "MISSED" && selected.unresolvedMissedCount > 1 ? ` · ${selected.unresolvedMissedCount}` : ""}</span></div>
+            <div className={styles.chatActions}>{selected.phone && <button onClick={() => void copyPhone()}>Копіювати номер</button>}{selected.phone && <button onClick={() => setClientCardOpen(true)}>Картка клієнта</button>}{selected.existingLeadId ? <button className={styles.primaryAction} onClick={openLead}>Відкрити лід</button> : <button className={styles.primaryAction} onClick={() => void convertToLead()}>Створити лід</button>}</div>
+          </header>
+          <div className={styles.timeline}>
+            {selected.inquiryCount > 1 && <div className={styles.conversationSummary}>Об'єднано {selected.inquiryCount} звернень цього контакту · історія не видаляється</div>}
+            {selected.timeline.length === 0 ? <div className={styles.empty}>{selected.preview}</div> : selected.timeline.map((message) => <article key={`${message.inquiryId}:${message.id}`} className={`${styles.event} ${styles[message.direction]} ${messageIsMissed(message) ? styles.missedEvent : ""}`}><p>{message.text}</p><footer><span>{channelMeta[message.channel].label}</span><time>{fmtLong(message.at)}</time></footer></article>)}
+            <div ref={messageEndRef}/>
+          </div>
+          <div className={`${styles.composer} communicationsComposer`}>
+            {files.length > 0 && <div className="communicationsFileChips">{files.map((file, index) => <span key={`${file.name}-${index}`}>📎 {file.name}<button type="button" onClick={() => setFiles((current) => current.filter((_, itemIndex) => itemIndex !== index))}>×</button></span>)}</div>}
+            {emojiOpen && <div className="communicationsEmojiPicker">{emojis.map((emoji) => <button type="button" key={emoji} onClick={() => { setReply((current) => current + emoji); setEmojiOpen(false); }}>{emoji}</button>)}</div>}
+            <div className="communicationsComposeRow">
+              <input ref={fileInputRef} type="file" multiple hidden onChange={(event) => { setFiles((current) => [...current, ...Array.from(event.target.files || [])].slice(0, 8)); event.currentTarget.value = ""; }}/>
+              <button type="button" className="communicationsToolButton" onClick={() => fileInputRef.current?.click()} title="Додати файл">📎</button>
+              <textarea value={reply} onChange={(event) => setReply(event.target.value)} placeholder="Повідомлення або внутрішня відповідь по контакту..." onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); void sendReply(); } }}/>
+              <button type="button" className="communicationsToolButton" onClick={() => setEmojiOpen((current) => !current)} title="Emoji">☺</button>
+              <button type="button" className="communicationsToolButton" onClick={() => notify("Голосові повідомлення підключимо разом з API каналу") } title="Голосове повідомлення">🎙</button>
+              <button type="button" className="communicationsSendButton" disabled={!reply.trim() && files.length === 0} onClick={() => void sendReply()}>➤</button>
+            </div>
+            <span className={styles.composerHint}>Enter — надіслати · Shift+Enter — новий рядок. Відповідь додається до останнього звернення контакту; фактична доставка залежить від API каналу.</span>
+          </div>
+        </>}</section>
       </section>
     </>}
 
-    {selected && <ClientCardDrawer open={clientCardOpen} name={selected.name} phone={selected.phone} existingLeadId={selected.existingLeadId} onClose={() => setClientCardOpen(false)} onCreateLead={() => { setClientCardOpen(false); void convertToLead(); }} />}
-
+    {selected && <ClientCardDrawer open={clientCardOpen} name={selected.displayName} phone={selected.phone} existingLeadId={selected.existingLeadId} onClose={() => setClientCardOpen(false)} onCreateLead={() => { setClientCardOpen(false); void convertToLead(); }}/>} 
     <style jsx global>{`
-      .msgPage{padding:0;min-width:0;height:calc(100vh - 32px);display:flex;flex-direction:column}.msgHeader{display:flex;justify-content:space-between;gap:24px;align-items:flex-start;margin:0 0 16px;flex:0 0 auto}.msgHeader h1{font-size:44px;line-height:1;margin:4px 0 12px}.msgHeader p{color:var(--muted);margin:0}.msgHeaderRight{display:flex;gap:14px;align-items:center}.serverBadge{font-size:11px;font-weight:800;letter-spacing:.08em;border-radius:999px;padding:9px 14px;border:1px solid var(--line)}.serverBadge.ok{color:#21c887;border-color:#1b674a;background:#0d2b20}.serverBadge.local{color:#ff8c42}.msgTabs{display:flex;border:1px solid var(--line);border-radius:14px;overflow:hidden}.msgTabs button{border:0;background:transparent;padding:14px 22px;color:var(--muted);font-size:16px}.msgTabs button.active{background:var(--orange);color:#111;font-weight:800}
-      .sourceToolbar{display:flex;align-items:center;gap:14px;padding:10px 14px;border:1px solid var(--line);border-radius:16px 16px 0 0;background:var(--panel);overflow:hidden;flex:0 0 auto}.sourceTitle{min-width:135px;display:flex;flex-direction:column}.sourceTitle b{font-size:13px}.sourceTitle span{font-size:10px;color:var(--muted)}.sourcePills{display:flex;gap:7px;overflow-x:auto;padding:1px;flex:1}.sourcePills button{white-space:nowrap;border:1px solid var(--line);background:var(--surface);color:var(--text);border-radius:999px;padding:8px 11px;display:flex;gap:7px;align-items:center;font-size:12px}.sourcePills button span{min-width:19px;height:19px;border-radius:99px;background:var(--panel);display:grid;place-items:center;font-size:10px}.sourcePills button.active{background:var(--orange);border-color:var(--orange);color:#111;font-weight:800}.sourcePills button.active span{background:rgba(0,0,0,.15)}.pageSize{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--muted);white-space:nowrap}.pageSize select{border:1px solid var(--line);background:var(--surface);color:var(--text);border-radius:9px;padding:7px 9px;font-weight:700}
-      .messengerShell{display:grid;grid-template-columns:365px minmax(0,1fr);min-height:0;flex:1;border:1px solid var(--line);border-top:0;border-radius:0 0 18px 18px;overflow:hidden;background:var(--surface)}.conversationList{border-right:1px solid var(--line);min-width:0;min-height:0;display:flex;flex-direction:column}.searchRow{display:flex;gap:8px;padding:12px;border-bottom:1px solid var(--line)}.searchRow input{flex:1;min-width:0;border:1px solid var(--line);background:var(--panel);color:var(--text);border-radius:12px;padding:10px 13px}.searchRow button{width:42px;border:1px solid var(--line);border-radius:12px;background:var(--panel);color:var(--text);font-size:20px}.listMeta{padding:6px 13px;border-bottom:1px solid var(--line);font-size:10px;color:var(--muted)}.listScroll{overflow:auto;flex:1;min-height:0}.dialogRow{position:relative;width:100%;display:grid;grid-template-columns:42px 1fr;gap:11px;text-align:left;padding:12px 14px;border:0;border-bottom:1px solid var(--line);background:transparent;color:var(--text)}.dialogRow:hover{background:var(--panel)}.dialogRow.selected{background:color-mix(in srgb,var(--orange) 10%,var(--surface));box-shadow:inset 3px 0 0 var(--orange)}.dialogRow.unread{background:color-mix(in srgb,var(--orange) 16%,var(--surface))}.dialogRow.unread .clientNameLink,.dialogRow.unread .preview{font-weight:800;color:var(--text)}.channelAvatar{width:40px;height:40px;border-radius:11px;display:grid;place-items:center;color:#071014;font-weight:900}.dialogMain{min-width:0;display:flex;flex-direction:column}.dialogTop{display:flex;justify-content:space-between;gap:8px}.clientNameLink{font-size:14px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.clientNameLink:hover{text-decoration:underline;color:var(--orange)}.dialogTop small{font-size:10px;color:var(--muted)}.dialogMain em{font-style:normal;color:var(--orange);font-weight:700;font-size:10px;margin:3px 0}.preview{font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.leadTag{font-size:10px;color:#2bb673;margin-top:4px}.unreadDot{position:absolute;right:9px;bottom:10px;width:8px;height:8px;background:var(--orange);border-radius:50%}
-      .chatPane{min-width:0;min-height:0;display:flex;flex-direction:column;background:color-mix(in srgb,var(--panel) 25%,var(--surface))}.chatHead{height:64px;flex:0 0 64px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:12px;padding:0 18px;background:var(--surface)}.clientHeadButton{border:0;background:transparent;color:var(--text);display:flex;flex-direction:column;align-items:flex-start;min-width:0;padding:5px 8px;border-radius:10px}.clientHeadButton:hover{background:var(--panel)}.clientHeadButton b{font-size:14px}.clientHeadButton span{font-size:11px;color:var(--muted)}.chatHeadActions{margin-left:auto;display:flex;align-items:center;gap:8px}.chatHeadActions>button{border:1px solid var(--line);background:var(--panel);color:var(--text);border-radius:9px;padding:7px 10px;font-weight:700}.stateChip{border:1px solid color-mix(in srgb,var(--orange) 45%,var(--line));padding:6px 9px;border-radius:999px;color:var(--orange);font-size:11px}.messageScroll{flex:1;min-height:0;overflow:auto;padding:22px 28px 18px}.bubbleWrap{display:flex;margin:0 0 10px}.bubbleWrap.out{justify-content:flex-end}.bubbleWrap.system{justify-content:center}.bubble{max-width:68%;border:1px solid var(--line);border-radius:17px;padding:10px 13px;background:var(--surface)}.bubble.out{background:color-mix(in srgb,var(--orange) 18%,var(--surface));border-color:color-mix(in srgb,var(--orange) 35%,var(--line))}.bubble.system{background:transparent;border-style:dashed;color:var(--muted);font-size:11px}.bubble p{white-space:pre-wrap;margin:0;font-size:13px;line-height:1.45}.bubble small{display:block;text-align:right;color:var(--muted);font-size:9px;margin-top:5px}
-      .composer{position:sticky;bottom:0;z-index:4;flex:0 0 auto;border-top:1px solid var(--line);background:var(--surface);padding:10px 14px 12px}.composeRow{display:flex;align-items:center;gap:7px;background:var(--panel);border:1px solid var(--line);border-radius:24px;padding:5px 6px}.composeRow textarea{flex:1;resize:none;min-height:38px;max-height:120px;border:0;outline:0;background:transparent;color:var(--text);padding:9px 7px;font:inherit}.toolBtn,.micBtn{width:38px;height:38px;border-radius:50%;border:0;background:transparent;color:var(--muted);font-size:20px;display:grid;place-items:center}.toolBtn:hover,.micBtn:hover{background:var(--surface);color:var(--text)}.paperclip{font-size:24px;transform:rotate(-35deg)}.sendBtn{width:40px;height:40px;border:0;border-radius:50%;background:var(--orange);color:#111;font-size:18px;font-weight:900}.sendBtn:disabled{opacity:.28}.fileChips{display:flex;gap:6px;overflow-x:auto;padding:0 4px 8px}.fileChips span{display:flex;align-items:center;gap:5px;border:1px solid var(--line);background:var(--panel);border-radius:9px;padding:5px 7px;font-size:10px;white-space:nowrap}.fileChips button{border:0;background:none;color:var(--muted)}.emojiPicker{position:absolute;right:92px;bottom:68px;display:grid;grid-template-columns:repeat(8,34px);gap:3px;padding:8px;background:var(--surface);border:1px solid var(--line);border-radius:13px;box-shadow:0 15px 45px rgba(0,0,0,.22);z-index:5}.emojiPicker button{width:34px;height:34px;border:0;background:transparent;font-size:19px;border-radius:7px}.emojiPicker button:hover{background:var(--panel)}
-      .empty{padding:30px;text-align:center;color:var(--muted);font-size:12px}.empty.big{margin:auto}.msgToast{position:fixed;right:24px;bottom:24px;z-index:1300;background:#111;color:#fff;border:1px solid #333;border-radius:12px;padding:12px 16px;box-shadow:0 12px 40px rgba(0,0,0,.3)}.integrationPage{border:1px solid var(--line);border-radius:18px;padding:20px;background:var(--surface);overflow:auto}.integrationTitle{display:flex;justify-content:space-between;gap:20px;align-items:flex-end;margin-bottom:16px}.integrationTitle h2{margin:4px 0}.integrationTitle>span{color:var(--muted);font-size:12px}.integrationGrid{display:grid;gap:10px}.integrationGrid article{display:grid;grid-template-columns:48px 1fr auto;gap:13px;align-items:center;border:1px solid var(--line);border-radius:14px;padding:13px;background:var(--panel)}.intIcon{width:46px;height:46px;border-radius:12px;background:var(--surface);display:grid;place-items:center;font-weight:900}.integrationGrid p{font-size:11px;color:var(--muted);margin:4px 0}.integrationGrid code{font-size:10px}.intState{font-size:10px;border:1px solid var(--line);padding:7px 9px;border-radius:999px;color:var(--muted)}.intState.ready{color:#21c887;border-color:#267855}
-      @media(max-width:900px){.msgHeader{flex-direction:column}.msgHeader h1{font-size:34px}.sourceToolbar{align-items:flex-start;flex-wrap:wrap}.sourcePills{order:3;width:100%}.messengerShell{grid-template-columns:1fr}.conversationList{max-height:300px;border-right:0;border-bottom:1px solid var(--line)}.chatPane{min-height:500px}}
+      .communicationsComposer{display:block!important;position:relative}
+      .communicationsFileChips{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 8px}.communicationsFileChips>span{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:999px;background:var(--surface);padding:5px 8px;color:var(--muted);font-size:8px}.communicationsFileChips button{width:18px!important;height:18px!important;padding:0!important;border:0!important;border-radius:50%!important;background:transparent!important;color:var(--muted)!important}
+      .communicationsEmojiPicker{position:absolute;left:12px;bottom:76px;z-index:5;width:220px;display:grid;grid-template-columns:repeat(8,1fr);gap:3px;border:1px solid var(--line);border-radius:12px;background:var(--panel);padding:8px;box-shadow:0 14px 34px rgba(0,0,0,.16)}.communicationsEmojiPicker button{width:25px!important;height:25px!important;padding:0!important;border:0!important;background:transparent!important;color:var(--text)!important;font-size:15px!important}
+      .communicationsComposeRow{display:grid;grid-template-columns:36px minmax(0,1fr) 36px 36px 44px;gap:7px;align-items:end}.communicationsComposeRow textarea{min-height:42px!important;max-height:100px}.communicationsComposeRow button{height:42px!important;padding:0!important}.communicationsToolButton{border:1px solid var(--line)!important;background:var(--surface)!important;color:var(--text)!important;border-radius:10px!important;font-size:15px!important}.communicationsSendButton{border:0!important;background:var(--orange)!important;color:#fff!important;border-radius:10px!important;font-size:15px!important}.communicationsSendButton:disabled{opacity:.4}
     `}</style>
   </div>;
 }
