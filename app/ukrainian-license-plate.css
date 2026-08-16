@@ -15,8 +15,8 @@
   box-shadow:none!important;
   padding:0!important;
 }
-.uaLicensePlate::before{
-  content:attr(data-plate-prefix)!important;
+.uaLicensePlate:not([data-plate-placement="leading"])::before,
+.uaLicensePlate[data-plate-placement="leading"]::after{
   display:inline!important;
   color:var(--text,#111827)!important;
   font-family:var(--font-sans,Arial,"Helvetica Neue",sans-serif)!important;
@@ -27,8 +27,12 @@
   white-space:pre!important;
   vertical-align:middle!important;
 }
+.uaLicensePlate:not([data-plate-placement="leading"])::before{content:attr(data-plate-prefix)!important}
+.uaLicensePlate[data-plate-placement="leading"]::after{content:attr(data-plate-suffix)!important}
 .uaLicensePlate[data-plate-prefix]:not([data-plate-prefix=""])::before{margin-right:6px!important}
-.uaLicensePlate::after{
+.uaLicensePlate[data-plate-placement="leading"][data-plate-suffix]:not([data-plate-suffix=""])::after{margin-left:6px!important}
+.uaLicensePlate:not([data-plate-placement="leading"])::after,
+.uaLicensePlate[data-plate-placement="leading"]::before{
   content:attr(data-plate-text)!important;
   box-sizing:border-box!important;
   display:inline-flex!important;
@@ -54,7 +58,9 @@
 }
 .uaLicensePlate[data-plate-size="md"]{--ua-plate-h:42px;--ua-plate-blue-w:29px;--ua-plate-number-size:17px;--ua-plate-min-w:142px}
 .uaLicensePlate[data-plate-size="lg"]{--ua-plate-h:54px;--ua-plate-blue-w:31px;--ua-plate-number-size:20px;--ua-plate-min-w:170px}
-.uaLicensePlate[data-plate-size="lg"]::after{border-radius:7px!important}
+.uaLicensePlate[data-plate-size="lg"]:not([data-plate-placement="leading"])::after,
+.uaLicensePlate[data-plate-size="lg"][data-plate-placement="leading"]::before{border-radius:7px!important}
 .uaLicensePlateAuto{--ua-plate-h:30px;--ua-plate-blue-w:23px;--ua-plate-number-size:13px;--ua-plate-min-w:104px}
-.uaLicensePlateAuto::before{font-size:10px!important}
+.uaLicensePlateAuto:not([data-plate-placement="leading"])::before,
+.uaLicensePlateAuto[data-plate-placement="leading"]::after{font-size:10px!important}
 @media(max-width:760px){.uaLicensePlate[data-plate-size="lg"]{--ua-plate-h:46px;--ua-plate-blue-w:28px;--ua-plate-number-size:17px;--ua-plate-min-w:148px}}
