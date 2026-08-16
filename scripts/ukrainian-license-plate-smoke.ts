@@ -15,6 +15,9 @@ assert.deepEqual(parseUkrainianPlateDisplay("AX7756KI"), {
 assert.deepEqual(parseUkrainianPlateDisplay("ДержЗнак: AX7756KI"), {
   plate: "AX7756KI", prefix: "", suffix: "", placement: "trailing",
 });
+assert.deepEqual(parseUkrainianPlateDisplay("ДержЗнак: AX7756KI · VIN WVWZZZ1JZXW000001"), {
+  plate: "AX7756KI", prefix: "", suffix: "VIN WVWZZZ1JZXW000001", placement: "leading",
+});
 assert.deepEqual(parseUkrainianPlateDisplay("2020 · AX7756KI"), {
   plate: "AX7756KI", prefix: "2020 ·", suffix: "", placement: "trailing",
 });
