@@ -115,6 +115,20 @@ function toMillis(value: string) {
   return Number.isFinite(time) ? time : 0;
 }
 
+function latestHandledAt(inquiries: CommunicationInquiry[]) {
+  let latest = 0;
+  for (const inquiry of inquiries) {
+    for (const message of inquiry.messages) {
+      if (message.direction === "out") latest = Math.max(latest, toMillis(message.at));
+    }
+    if (inquiry.answered && !isMissedCommunicationInquiry(inquiry)) latest = Math.max(latest, toMillis(inquiry.receivedAt));
+    if (inquiry.answered && isMissedCommunicationInquiry(inquiry) && inquiry.messages.some((message) => message.direction === "out")) {
+      latest = Math.max(latest, ...inquiry.messages.filter((message) => message.direction === "out").map((message) => toMillis(message.at)));
+    }
+  }
+  return latest;
+}
+
 export function buildCommunicationConversations(source: CommunicationInquiry[]) {
   const groups = new Map<string, CommunicationInquiry[]>();
   for (const inquiry of source) {
@@ -128,10 +142,14 @@ export function buildCommunicationConversations(source: CommunicationInquiry[]) 
   return Array.from(groups.entries()).map(([key, raw]) => {
     const inquiries = [...raw].sort((a, b) => toMillis(b.receivedAt) - toMillis(a.receivedAt));
     const representative = inquiries[0];
+    const handledAt = latestHandledAt(inquiries);
     const missed = inquiries.filter(isMissedCommunicationInquiry);
     const unreadInquiryIds = inquiries.filter((item) => item.unread).map((item) => item.id);
-    const unanswered = inquiries.filter((item) => !item.answered && (item.messages.some((message) => message.direction === "in") || isMissedCommunicationInquiry(item)));
-    const unresolvedMissed = missed.filter((item) => !item.answered);
+    const unresolvedMissed = missed.filter((item) => !item.answered && toMillis(item.receivedAt) > handledAt);
+    const unanswered = inquiries.filter((item) => {
+      if (item.answered || toMillis(item.receivedAt) <= handledAt) return false;
+      return item.messages.some((message) => message.direction === "in") || isMissedCommunicationInquiry(item);
+    });
     const timeline = inquiries
       .flatMap((inquiry) => inquiry.messages.map((message) => ({ ...message, inquiryId: inquiry.id, channel: inquiry.channel })))
       .filter((message, index, items) => items.findIndex((candidate) => candidate.id === message.id) === index)
