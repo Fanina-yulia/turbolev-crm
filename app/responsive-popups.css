@@ -1,6 +1,6 @@
 /* Global viewport guard for CRM popups/modals.
-   Central dialogs and edge drawers use different geometry: dialogs get safe
-   viewport gaps, while drawers remain attached to the screen edge. */
+   Central dialogs, edge drawers and floating utility panels use different
+   geometry so each stays responsive without changing its intended behavior. */
 
 :root{
   --crm-popup-edge-gap:clamp(10px,1.6vw,24px);
@@ -113,12 +113,32 @@ html:not([data-settings-page="true"]) :is(
   max-height:100dvh!important;
 }
 
+/* Floating utility popups do not have a backdrop. Binotel call and dialer
+   panels are fixed to a screen corner, so constrain their height directly and
+   make the panel itself scroll on short monitors. */
+html:not([data-settings-page="true"]) :is(.tlCallPopup,.tlDockPanel){
+  box-sizing:border-box!important;
+  min-width:0!important;
+  max-width:calc(100vw - 24px)!important;
+  max-height:calc(100vh - 24px)!important;
+  max-height:calc(100dvh - 24px)!important;
+  overflow:auto!important;
+  overscroll-behavior:contain;
+}
+
+html:not([data-settings-page="true"]) .tlCallPopup :is(p,span,strong,b,small,code),
+html:not([data-settings-page="true"]) .tlDockPanel :is(p,span,strong,b,small,code){
+  overflow-wrap:anywhere;
+}
+
 /* Media and embedded content must never force a popup/drawer wider than the viewport. */
 html:not([data-settings-page="true"]) :is(
   [role="dialog"],
   [aria-modal="true"],
   .settingsModal,
   .requestModalV4,
+  .tlCallPopup,
+  .tlDockPanel,
   [class*="backdrop" i] > :is(
     section,
     [class*="modal" i],
@@ -196,5 +216,10 @@ html:not([data-settings-page="true"]) :is(
     max-width:calc(100vw - 12px)!important;
     max-height:calc(100vh - 12px)!important;
     max-height:calc(100dvh - 12px)!important;
+  }
+
+  html:not([data-settings-page="true"]) :is(.tlCallPopup,.tlDockPanel){
+    max-width:calc(100vw - 24px)!important;
+    max-height:calc(100dvh - 24px)!important;
   }
 }
