@@ -116,11 +116,15 @@ export function CommunicationsHub() {
   }, []);
 
   useEffect(() => { void load(); void loadBinotelHealth(); }, [load, loadBinotelHealth]);
+  useEffect(() => {
+    const refresh = () => { void load(); };
+    window.addEventListener("turbolev:data-changed", refresh);
+    return () => window.removeEventListener("turbolev:data-changed", refresh);
+  }, [load]);
   useEffect(() => { if (!serverMode) try { window.localStorage.setItem(LOCAL_KEY, JSON.stringify(items)); } catch {} }, [items, serverMode]);
 
   const conversations = useMemo(() => buildCommunicationConversations(items), [items]);
   const selected = useMemo(() => conversations.find((item) => item.key === selectedKey) || null, [conversations, selectedKey]);
-  const linkedVehicle = linkedClient?.vehicles?.[0] || null;
 
   useEffect(() => {
     if (!conversations.length) { if (selectedKey) setSelectedKey(""); return; }
@@ -205,14 +209,14 @@ export function CommunicationsHub() {
     } catch { notify("Не вдалося зберегти повідомлення"); }
   }
   async function convertToLead() {
-    if (!selected || !serverMode) return notify("Для створення ліда потрібне серверне з'єднання");
+    if (!selected || !serverMode) return notify("Для додавання в Активні потрібне серверне з'єднання");
     try {
       const response = await fetch(`/api/communications/${selected.representative.id}/convert`, { method: "POST" });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Помилка");
-      notify(data.linkedExisting ? "Контакт прив'язано до існуючого ліда" : "Лід створено");
+      notify(data.linkedExisting ? "Контакт уже є в Активних" : "Контакт додано в Активні");
       await load();
-    } catch (error) { notify(error instanceof Error ? error.message : "Не вдалося створити лід"); }
+    } catch (error) { notify(error instanceof Error ? error.message : "Не вдалося додати контакт в Активні"); }
   }
 
   const filterPills: { key: Filter; label: string; count: number }[] = [
@@ -253,8 +257,6 @@ export function CommunicationsHub() {
                 <span className={styles.badges}>
                   {conversation.missedCount > 0 && <span className={`${styles.badge} ${conversation.unresolvedMissedCount ? styles.badgeMissed : ""}`}>☎ {conversation.missedCount} пропущ.</span>}
                   {conversation.unreadCount > 0 && <span className={`${styles.badge} ${styles.badgeUnread}`}>● {conversation.unreadCount} нов.</span>}
-                  {conversation.inquiryCount > 1 && <span className={styles.badge}>{conversation.inquiryCount} подій</span>}
-                  {conversation.existingLeadId && <span className={styles.badge}>Лід</span>}
                 </span>
               </span>
               {(conversation.actionState !== "HANDLED" || conversation.unreadCount > 0) && <i className={styles.attention} aria-label={actionLabel(conversation.actionState)}/>} 
@@ -269,13 +271,13 @@ export function CommunicationsHub() {
               <span className={styles.contactText}><strong>{linkedClient?.name?.trim() || selected.displayName}</strong><small>{selected.phone || selected.handle || "Контакт без номера"}</small></span>
               {selected.phone && <span className={styles.openHint}>Картка ›</span>}
             </button>
-            <div className={styles.contactChannels}><span className={styles.metaLabel}>Канал зв’язку</span><div className={styles.channelChips}>{selected.channels.map((channel) => <span className={styles.channelChip} style={{ background: channelMeta[channel].tone }} key={channel}>{channelMeta[channel].label}</span>)}</div></div>
-            {linkedVehicle && <button type="button" className={styles.vehicleSummary} onClick={() => setVehicleCardId(linkedVehicle.id)} title="Відкрити картку автомобіля">
-              <VehicleBrandLogo brand={linkedVehicle.brand} size={38}/>
-              <span className={styles.vehicleText}><strong>{vehicleTitle(linkedVehicle)}</strong><small>{linkedVehicle.plateNumber || linkedVehicle.vin || "Без держномера"}</small></span>
-              {linkedClient && linkedClient.vehicles.length > 1 && <em>+{linkedClient.vehicles.length - 1}</em>}
-              <i>›</i>
-            </button>}
+            {linkedClient?.vehicles?.length ? <div className={styles.vehicleSummaries} aria-label="Автомобілі клієнта">
+              {linkedClient.vehicles.map((vehicle) => <button type="button" className={styles.vehicleSummary} key={vehicle.id} onClick={() => setVehicleCardId(vehicle.id)} title="Відкрити картку автомобіля">
+                <VehicleBrandLogo brand={vehicle.brand} size={38}/>
+                <span className={styles.vehicleText}><strong>{vehicleTitle(vehicle)}</strong><small><b>ДержЗнак:</b> {vehicle.plateNumber || "не вказано"}</small></span>
+                <i>›</i>
+              </button>)}
+            </div> : null}
           </header>
           <div className={styles.timeline}>
             {selected.inquiryCount > 1 && <div className={styles.conversationSummary}>Об'єднано {selected.inquiryCount} звернень цього контакту · історія не видаляється</div>}
@@ -283,7 +285,7 @@ export function CommunicationsHub() {
             <div ref={messageEndRef}/>
           </div>
           <div className={`${styles.composer} communicationsComposer`}>
-            {files.length > 0 && <div className="communicationsFileChips">{files.map((file, index) => <span key={`${file.name}-${index}`}>📎 {file.name}<button type="button" onClick={() => setFiles((current) => current.filter((_, itemIndex) => itemIndex !== index))}>×</button></span>)}</div>}
+            {files.length > 0 && <div className="communicationsFileChips">{files.map((file, index) => <span key={`${file.name}-${index}`}>📎 ${file.name}<button type="button" onClick={() => setFiles((current) => current.filter((_, itemIndex) => itemIndex !== index))}>×</button></span>)}</div>}
             {emojiOpen && <div className="communicationsEmojiPicker">{emojis.map((emoji) => <button type="button" key={emoji} onClick={() => { setReply((current) => current + emoji); setEmojiOpen(false); }}>{emoji}</button>)}</div>}
             <div className="communicationsComposeRow">
               <input ref={fileInputRef} type="file" multiple hidden onChange={(event) => { setFiles((current) => [...current, ...Array.from(event.target.files || [])].slice(0, 8)); event.currentTarget.value = ""; }}/>
