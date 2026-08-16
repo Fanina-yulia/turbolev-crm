@@ -2,19 +2,19 @@
 :root{
   --crm-sidebar-width:265px;
   --settings-content-padding:28px 34px 56px;
-  --crm-body-size:16px;
+  --crm-body-size:15px;
   --crm-control-size:14px;
   --crm-meta-size:12px;
-  --ui-font:"Segoe UI Variable Text","Segoe UI",ui-sans-serif,-apple-system,BlinkMacSystemFont,Roboto,Helvetica,Arial,sans-serif;
-  --ui-size:16px;
+  --ui-font:"OpenAI Sans","Inter","Segoe UI Variable Text","Segoe UI",ui-sans-serif,-apple-system,BlinkMacSystemFont,Roboto,Helvetica,Arial,sans-serif;
+  --ui-size:15px;
   --ui-small:13px;
   --ui-label:12px;
 }
 
 html,body,button,input,textarea,select{font-family:var(--ui-font)!important}
-body{font-size:var(--crm-body-size)!important;line-height:1.55}
+body{font-size:var(--crm-body-size)!important;line-height:1.5}
 .shell{width:100%;max-width:100%;min-width:0;grid-template-columns:var(--crm-sidebar-width) minmax(0,1fr)!important}
-.workspace{width:100%;max-width:100%;min-width:0;font-size:var(--crm-body-size)}
+.workspace{width:100%;max-width:100%;min-width:0;font-size:var(--crm-body-size);line-height:1.5}
 .workspace>*{min-width:0;max-width:100%}
 
 /* Shared readable floor for operational UI. */
@@ -22,9 +22,9 @@ body{font-size:var(--crm-body-size)!important;line-height:1.55}
 .workspace label{font-size:13px!important;line-height:1.4!important}
 .workspace label>span{font-size:var(--crm-meta-size)!important;line-height:1.35!important}
 .workspace input,.workspace textarea,.workspace select{font-size:var(--crm-control-size)!important;line-height:1.4!important}
-.workspace button:not(.settingsClose):not([class*="close"]):not([class*="Close"]){font-size:13px!important;line-height:1.35!important}
+.workspace button:not(.settingsClose):not([class*="close"]):not([class*="Close"]){font-size:var(--crm-control-size)!important;line-height:1.4!important}
 .workspace table th{font-size:12px!important;line-height:1.35!important}
-.workspace table td{font-size:13px!important;line-height:1.45!important}
+.workspace table td{font-size:14px!important;line-height:1.45!important}
 
 .workspace [class*="eyebrow"],.workspace [class*="Eyebrow"],
 .workspace [class*="badge"],.workspace [class*="Badge"],
@@ -43,40 +43,40 @@ body{font-size:var(--crm-body-size)!important;line-height:1.55}
 
 .sidebar .navGroupHead{font-size:12px!important;line-height:1.3!important}
 .sidebar .navGroupItems button,.sidebar .settingsNavButton{font-size:15px!important;line-height:1.4!important}
-.sidebar nav button span:not(.navDot){font-size:12px!important}
-.sidebarFoot{font-size:13px!important}
+.sidebar nav button span:not(.navDot){font-size:15px!important;line-height:1.4!important}
+.sidebarFoot{font-size:13px!important;line-height:1.4!important}
 
-/* Clients & vehicles used 6.5-10px text in cards, table and drawer. */
+/* Clients & vehicles. */
 [class*="clients-vehicles_page"] :where(span,small,label){font-size:12px!important;line-height:1.4!important}
 [class*="clients-vehicles_page"] :where(button,input,select,textarea){font-size:14px!important;line-height:1.4!important}
-[class*="clients-vehicles_headerText"]{font-size:14px!important;line-height:1.5!important}
+[class*="clients-vehicles_headerText"]{font-size:14px!important;line-height:1.45!important}
 [class*="clients-vehicles_clientIdentity"] strong,[class*="clients-vehicles_rowClient"] strong{font-size:14px!important}
 [class*="clients-vehicles_vehicleButton"] strong{font-size:13px!important}
-[class*="clients-vehicles_rowVehicle"] strong{font-size:12px!important}
+[class*="clients-vehicles_rowVehicle"] strong{font-size:13px!important}
 [class*="clients-vehicles_cardFooter"] b,[class*="clients-vehicles_fact"] b{font-size:13px!important}
 [class*="clients-vehicles_stat"] b{font-size:16px!important}
 [class*="clients-vehicles_search"]>span,[class*="clients-vehicles_chevron"]{font-size:16px!important}
 [class*="clients-vehicles_close"]{font-size:21px!important}
 [class*="clients-vehicles_drawerHead"] h2{font-size:21px!important}
 
-/* Planner keeps seven columns but no longer renders labels at 6.5-10px. */
+/* Planner. */
 [class*="planner-v2_page"] :where(span,small,label){font-size:12px!important;line-height:1.4!important}
-[class*="planner-v2_page"] :where(button,input,select,textarea){font-size:13px!important;line-height:1.4!important}
+[class*="planner-v2_page"] :where(button,input,select,textarea){font-size:14px!important;line-height:1.4!important}
 [class*="planner-v2_dayHead"] b{font-size:13px!important}
 [class*="planner-v2_dayHead"]>strong{font-size:21px!important}
 [class*="planner-v2_workCard"]>strong{font-size:14px!important}
-[class*="planner-v2_badge"]{font-size:11px!important}
+[class*="planner-v2_badge"]{font-size:12px!important}
 [class*="planner-v2_modalHead"] h2{font-size:20px!important}
 [class*="planner-v2_weekBoard"]{min-width:0!important;max-width:100%;overflow-x:auto!important}
 
 /* Diagnostics and work orders. */
 [class*="diagnostics_page"] :where(span,small,label,time){font-size:12px!important;line-height:1.4!important}
-[class*="diagnostics_page"] :where(button,input,select,textarea){font-size:13px!important;line-height:1.4!important}
+[class*="diagnostics_page"] :where(button,input,select,textarea){font-size:14px!important;line-height:1.4!important}
 [class*="diagnostics_infoGrid"] strong{font-size:13px!important}
 [class*="diagnostics_row"]>strong{font-size:14px!important}
 [class*="diagnostics_kpis"] strong{font-size:23px!important}
 [class*="work-orders_page"] :where(span,small,label){font-size:12px!important;line-height:1.4!important}
-[class*="work-orders_page"] :where(button,input,select,textarea){font-size:13px!important;line-height:1.4!important}
+[class*="work-orders_page"] :where(button,input,select,textarea){font-size:14px!important;line-height:1.4!important}
 [class*="work-orders_rowTitle"] strong{font-size:15px!important}
 [class*="work-orders_field"] strong,[class*="work-orders_transition"] strong{font-size:14px!important}
 [class*="work-orders_id"]{font-size:12px!important;line-height:1.4!important}
@@ -91,16 +91,17 @@ body{font-size:var(--crm-body-size)!important;line-height:1.55}
 [class*="settings-center_sectionHead"] p{font-size:13px!important;line-height:1.5!important}
 [class*="settings-center_cardTitle"] strong,[class*="settings-center_integrationTop"] strong,[class*="settings-center_tab"] strong{font-size:13px!important}
 
-/* Leads and communications use global class names. */
+/* Leads / Active and communications. */
 .leadsPage :where(span,small,label){font-size:12px!important;line-height:1.4!important}
-.leadsPage :where(button,input,select,textarea){font-size:13px!important;line-height:1.4!important}
+.leadsPage :where(button,input,select,textarea){font-size:14px!important;line-height:1.4!important}
 .leadsPage .leadName{font-size:14px!important}
 .leadsPage .leadModal>header button{font-size:28px!important}
 .commsPage :where(span,small,em,code,label){font-size:12px!important;line-height:1.4!important}
-.commsPage :where(button,input,select,textarea){font-size:13px!important;line-height:1.4!important}
-.commsPage .commsTop h1{font-size:32px!important}
-.commsPage .commsNameLine strong,.commsPage .commsThread>header strong,.commsPage .contextGrid strong{font-size:13px!important}
-.commsPage .threadBubble p{font-size:13px!important;line-height:1.5!important}
+.commsPage :where(button,input,select,textarea){font-size:14px!important;line-height:1.4!important}
+.commsPage .commsTop h1{font-size:30px!important}
+.commsPage .commsNameLine strong,.commsPage .commsThread>header strong,.commsPage .contextGrid strong{font-size:14px!important}
+.commsPage .threadBubble p{font-size:15px!important;line-height:1.5!important}
+.communicationsFileChips>span{font-size:12px!important;line-height:1.4!important}
 
 /* Request and secondary operational panels. */
 .requestModalV4 :where(span,small,label){font-size:12px!important;line-height:1.4!important}
@@ -108,8 +109,34 @@ body{font-size:var(--crm-body-size)!important;line-height:1.55}
 [class*="parts-catalog_"] small,[class*="parts-suppliers_"] small,[class*="work-order-commercial-panel_"] small,
 [class*="work-price-table-enhancer_"] small,[class*="workflow-settings-panel_"] small,[class*="global-vehicle-search_"] small,[class*="new-request-pricing-bridge_"] small{font-size:12px!important;line-height:1.4!important}
 
-/* Tiny UA mark is plate artwork, not interface copy. */
+/* Camera settings: CSS-module declarations previously kept 10–11px copy. */
+[class*="camera-settings_summary"] span,[class*="camera-settings_hint"],[class*="camera-settings_snapshot"] span,[class*="camera-settings_details"] small,[class*="camera-settings_badge"]{font-size:12px!important;line-height:1.4!important}
+[class*="camera-settings_primary"],[class*="camera-settings_secondary"],[class*="camera-settings_danger"],[class*="camera-settings_small"],[class*="camera-settings_formGrid"] input,[class*="camera-settings_formGrid"] select{font-size:14px!important;line-height:1.4!important}
+
+/* Portals rendered outside .workspace must follow the same scale explicitly. */
+.clientDrawer,.plannerEditEnhancerModal,.communicationVehicleDrawer{font-family:var(--ui-font)!important;font-size:15px!important;line-height:1.5!important}
+.clientDrawer :where(input,textarea,select,button),.plannerEditEnhancerModal :where(input,textarea,select,button),.communicationVehicleDrawer :where(input,textarea,select,button){font-family:var(--ui-font)!important;font-size:14px!important;line-height:1.4!important}
+.clientDrawer :where(label),.plannerEditEnhancerModal :where(label),.communicationVehicleDrawer :where(label){font-size:13px!important;line-height:1.4!important}
+.clientDrawer :where(small),.plannerEditEnhancerModal :where(small),.communicationVehicleDrawer :where(small){font-size:12px!important;line-height:1.4!important}
+
+.clientDrawerHead p,.clientBlockTitle span,.twoPhones label>span,.clientMessage,.clientEmpty,.vehicleChoiceMain small,.vehicleVin,.vehicleFacts,.vehicleHistoryCount,.vehicleAddCompact small,.activeVehicleSummary span,.activeVehicleSummary small,.inlineHistory>div,.inlineHistory p,.gateHint{font-size:12px!important;line-height:1.4!important}
+.clientDrawerHead span{font-size:13px!important;line-height:1.4!important}
+.clientBlockTitle b,.vehicleChoiceMain strong,.activeVehicleSummary strong{font-size:14px!important;line-height:1.4!important}
+.addVehicleToggle,.vehicleAddCompact button,.inlineHistory button,.nextAction,.actionGrid button,.saveContact{font-size:14px!important;line-height:1.4!important}
+
+.plannerEditEnhancerHead p,.plannerEditVehicleMain>div span,.plannerEditVehicleState span,.plannerEditVehicleState strong,.plannerEditSectionTitle small,.plannerEditSectionTitle>span,.plannerEditGrid label>span,.plannerEditTextSection label>span,.plannerEditTextSection label>small,.plannerEditConflict>div span,.plannerEditConflict small,.plannerEditConflict p,.plannerEditChanges b,.plannerEditChanges span{font-size:12px!important;line-height:1.4!important}
+.plannerEditEnhancerHead span,.plannerEditVehicleMain p,.plannerEditNotice,.plannerEditSuccess,.plannerEditError{font-size:13px!important;line-height:1.45!important}
+.plannerEditVehicleMain>div button,.plannerEditGrid input,.plannerEditGrid select,.plannerEditTextSection textarea,.plannerEditConflict>div b,.plannerEditEnhancerFoot button{font-size:14px!important;line-height:1.4!important}
+.plannerEditSectionTitle h3{font-size:18px!important;line-height:1.3!important}
+
+.communicationVehicleTitle p,.communicationVehicleBlockTitle span,.communicationVehicleOwner span,.communicationVehicleFact span{font-size:12px!important;line-height:1.4!important}
+.communicationVehicleTitle span,.communicationVehicleState,.communicationVehicleError{font-size:13px!important;line-height:1.45!important}
+.communicationVehicleBlockTitle strong,.communicationVehicleOwner strong,.communicationVehicleFact strong{font-size:14px!important;line-height:1.4!important}
+.communicationVehicleActions button{font-size:14px!important;line-height:1.4!important}
+
+/* Tiny UA mark is plate artwork, not interface copy. Number plates intentionally keep a condensed face. */
 .uaPlateCountry small{font-size:6px!important;line-height:1!important}
+.uaPlateText{font-family:"Arial Narrow","Roboto Condensed","Bahnschrift SemiCondensed","Segoe UI",Arial,sans-serif!important}
 
 @media(max-width:1100px){:root{--crm-sidebar-width:215px;--settings-content-padding:24px}}
 @media(max-width:760px){
