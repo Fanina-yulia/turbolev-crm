@@ -20,6 +20,15 @@ function missed(id: string, phone: string, at: string, unread = false): Communic
 assert.equal(normalizeCommunicationPhone("067 329 24 56"), "380673292456");
 assert.equal(normalizeCommunicationPhone("+380673292456"), "380673292456");
 
+const authoritativeName = buildCommunicationConversations([
+  {
+    ...missed("named-call", "+380673292456", "2026-08-16T08:20:00.000Z"),
+    name: "Юрій Власник",
+    duplicateLead: { id: "old-record", name: "Старе ім’я" },
+  },
+]);
+assert.equal(authoritativeName[0]?.displayName, "Юрій Власник", "current client name must win over stale secondary identity data");
+
 const grouped = buildCommunicationConversations([
   missed("call-1", "067 329 24 56", "2026-08-16T08:22:23.000Z"),
   missed("call-2", "+380673292456", "2026-08-16T08:25:25.000Z"),
