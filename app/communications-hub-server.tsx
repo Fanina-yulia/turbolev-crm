@@ -8,7 +8,6 @@ import {
   type CommunicationChannel as Channel,
   type CommunicationConversation,
   type CommunicationInquiry as Inquiry,
-  type CommunicationInquiryState as InquiryState,
   type CommunicationMessage as Message,
 } from "@/src/domain/communications-inbox";
 
@@ -17,6 +16,7 @@ type BinotelHealth = { ok: boolean; databaseConfigured: boolean; restConfigured:
 
 const LOCAL_KEY = "turbolev-communications-v1";
 const channels: Channel[] = ["INSTAGRAM", "FACEBOOK", "TIKTOK", "BINOTEL", "OLX", "WEBSITE"];
+const emojis = ["😀","😊","👍","❤️","🔥","✅","🙏","😉","😂","🚗","🔧","📍","☎️","💬","👌","🎯"];
 const channelMeta: Record<Channel, { label: string; short: string; tone: string }> = {
   FACEBOOK: { label: "Facebook", short: "f", tone: "#1877f2" },
   INSTAGRAM: { label: "Instagram", short: "◎", tone: "#e1306c" },
@@ -37,7 +37,8 @@ function fmt(value: string) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "—";
   const today = new Date();
-  const sameDay = new Intl.DateTimeFormat("en-CA", { year: "numeric", month: "2-digit", day: "2-digit" }).format(date) === new Intl.DateTimeFormat("en-CA", { year: "numeric", month: "2-digit", day: "2-digit" }).format(today);
+  const dayFormatter = new Intl.DateTimeFormat("en-CA", { year: "numeric", month: "2-digit", day: "2-digit" });
+  const sameDay = dayFormatter.format(date) === dayFormatter.format(today);
   return new Intl.DateTimeFormat("uk-UA", sameDay ? { hour: "2-digit", minute: "2-digit" } : { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }).format(date);
 }
 function fmtLong(value: string) {
@@ -72,12 +73,15 @@ export function CommunicationsHub() {
   const [query, setQuery] = useState("");
   const [tab, setTab] = useState<"inbox" | "integrations">("inbox");
   const [reply, setReply] = useState("");
+  const [files, setFiles] = useState<File[]>([]);
+  const [emojiOpen, setEmojiOpen] = useState(false);
   const [toast, setToast] = useState("");
   const [serverMode, setServerMode] = useState(false);
   const [loading, setLoading] = useState(true);
   const [pageSize, setPageSize] = useState<20 | 50 | 100>(20);
   const [binotelHealth, setBinotelHealth] = useState<BinotelHealth | null>(null);
   const [clientCardOpen, setClientCardOpen] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const messageEndRef = useRef<HTMLDivElement | null>(null);
 
   const notify = (message: string) => { setToast(message); window.setTimeout(() => setToast(""), 3200); };
@@ -123,7 +127,7 @@ export function CommunicationsHub() {
   }), [conversations]);
   const visible = useMemo(() => conversations.filter((conversation) => {
     if (filter === "NEW" && conversation.unreadCount === 0) return false;
-    if (filter === "NEEDS_REPLY" && !(["MISSED", "NEEDS_REPLY"] as const).includes(conversation.actionState as "MISSED" | "NEEDS_REPLY")) return false;
+    if (filter === "NEEDS_REPLY" && conversation.actionState !== "MISSED" && conversation.actionState !== "NEEDS_REPLY") return false;
     if (filter === "MISSED" && conversation.unresolvedMissedCount === 0) return false;
     if (filter === "MESSAGES" && !conversation.hasMessages) return false;
     if (!(["ALL", "NEW", "NEEDS_REPLY", "MISSED", "MESSAGES"] as string[]).includes(filter) && !conversation.channels.includes(filter as Channel)) return false;
@@ -143,24 +147,28 @@ export function CommunicationsHub() {
   async function openConversation(conversation: CommunicationConversation) {
     setSelectedKey(conversation.key);
     setClientCardOpen(false);
+    setFiles([]);
+    setEmojiOpen(false);
     if (!conversation.unreadInquiryIds.length) return;
     const results = await Promise.all(conversation.unreadInquiryIds.map((id) => patchOne(id, { unread: false })));
     if (results.some((ok) => !ok)) notify("Не всі позначки прочитання вдалося синхронізувати");
   }
   async function sendReply() {
-    if (!selected || !reply.trim()) return;
+    if (!selected || (!reply.trim() && files.length === 0)) return;
     const inquiry = selected.representative;
-    const finalText = reply.trim();
+    const attachmentText = files.length ? `\n${files.map((file) => `📎 ${file.name}`).join("\n")}` : "";
+    const finalText = `${reply.trim()}${attachmentText}`.trim();
+    const attachments = files.map((file) => ({ name: file.name, type: file.type, size: file.size }));
     if (!serverMode) {
-      const message: Message = { id: `local-${Date.now()}`, direction: "out", text: finalText, at: new Date().toISOString() };
+      const message: Message = { id: `local-${Date.now()}`, direction: "out", text: finalText, at: new Date().toISOString(), metadata: { attachments } };
       setItems((current) => current.map((item) => item.id === inquiry.id ? { ...item, messages: [...item.messages, message], answered: true, unread: false, state: item.state === "NEW" ? "IN_WORK" : item.state } : item));
-      setReply("");
+      setReply(""); setFiles([]); setEmojiOpen(false);
       return;
     }
     try {
-      const response = await fetch(`/api/communications/${inquiry.id}/messages`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text: finalText }) });
+      const response = await fetch(`/api/communications/${inquiry.id}/messages`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text: finalText, attachments }) });
       if (!response.ok) throw new Error();
-      setReply("");
+      setReply(""); setFiles([]); setEmojiOpen(false);
       await load();
       notify(inquiry.channel === "BINOTEL" ? "Відповідь збережено в історії контакту." : "Повідомлення збережено. Доставка залежить від API каналу.");
     } catch { notify("Не вдалося зберегти повідомлення"); }
@@ -243,11 +251,29 @@ export function CommunicationsHub() {
             {selected.timeline.length === 0 ? <div className={styles.empty}>{selected.preview}</div> : selected.timeline.map((message) => <article key={`${message.inquiryId}:${message.id}`} className={`${styles.event} ${styles[message.direction]} ${messageIsMissed(message) ? styles.missedEvent : ""}`}><p>{message.text}</p><footer><span>{channelMeta[message.channel].label}</span><time>{fmtLong(message.at)}</time></footer></article>)}
             <div ref={messageEndRef}/>
           </div>
-          <div className={styles.composer}><textarea value={reply} onChange={(event) => setReply(event.target.value)} placeholder="Повідомлення або внутрішня відповідь по контакту..." onKeyDown={(event) => { if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) void sendReply(); }}/><button disabled={!reply.trim()} onClick={() => void sendReply()}>Надіслати</button><span className={styles.composerHint}>Ctrl/⌘ + Enter · відповідь додається до останнього звернення контакту. Фактична доставка залежить від підключеного API каналу.</span></div>
+          <div className={`${styles.composer} communicationsComposer`}>
+            {files.length > 0 && <div className="communicationsFileChips">{files.map((file, index) => <span key={`${file.name}-${index}`}>📎 {file.name}<button type="button" onClick={() => setFiles((current) => current.filter((_, itemIndex) => itemIndex !== index))}>×</button></span>)}</div>}
+            {emojiOpen && <div className="communicationsEmojiPicker">{emojis.map((emoji) => <button type="button" key={emoji} onClick={() => { setReply((current) => current + emoji); setEmojiOpen(false); }}>{emoji}</button>)}</div>}
+            <div className="communicationsComposeRow">
+              <input ref={fileInputRef} type="file" multiple hidden onChange={(event) => { setFiles((current) => [...current, ...Array.from(event.target.files || [])].slice(0, 8)); event.currentTarget.value = ""; }}/>
+              <button type="button" className="communicationsToolButton" onClick={() => fileInputRef.current?.click()} title="Додати файл">📎</button>
+              <textarea value={reply} onChange={(event) => setReply(event.target.value)} placeholder="Повідомлення або внутрішня відповідь по контакту..." onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); void sendReply(); } }}/>
+              <button type="button" className="communicationsToolButton" onClick={() => setEmojiOpen((current) => !current)} title="Emoji">☺</button>
+              <button type="button" className="communicationsToolButton" onClick={() => notify("Голосові повідомлення підключимо разом з API каналу") } title="Голосове повідомлення">🎙</button>
+              <button type="button" className="communicationsSendButton" disabled={!reply.trim() && files.length === 0} onClick={() => void sendReply()}>➤</button>
+            </div>
+            <span className={styles.composerHint}>Enter — надіслати · Shift+Enter — новий рядок. Відповідь додається до останнього звернення контакту; фактична доставка залежить від API каналу.</span>
+          </div>
         </>}</section>
       </section>
     </>}
 
     {selected && <ClientCardDrawer open={clientCardOpen} name={selected.displayName} phone={selected.phone} existingLeadId={selected.existingLeadId} onClose={() => setClientCardOpen(false)} onCreateLead={() => { setClientCardOpen(false); void convertToLead(); }}/>} 
+    <style jsx global>{`
+      .communicationsComposer{display:block!important;position:relative}
+      .communicationsFileChips{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 8px}.communicationsFileChips>span{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:999px;background:var(--surface);padding:5px 8px;color:var(--muted);font-size:8px}.communicationsFileChips button{width:18px!important;height:18px!important;padding:0!important;border:0!important;border-radius:50%!important;background:transparent!important;color:var(--muted)!important}
+      .communicationsEmojiPicker{position:absolute;left:12px;bottom:76px;z-index:5;width:220px;display:grid;grid-template-columns:repeat(8,1fr);gap:3px;border:1px solid var(--line);border-radius:12px;background:var(--panel);padding:8px;box-shadow:0 14px 34px rgba(0,0,0,.16)}.communicationsEmojiPicker button{width:25px!important;height:25px!important;padding:0!important;border:0!important;background:transparent!important;color:var(--text)!important;font-size:15px!important}
+      .communicationsComposeRow{display:grid;grid-template-columns:36px minmax(0,1fr) 36px 36px 44px;gap:7px;align-items:end}.communicationsComposeRow textarea{min-height:42px!important;max-height:100px}.communicationsComposeRow button{height:42px!important;padding:0!important}.communicationsToolButton{border:1px solid var(--line)!important;background:var(--surface)!important;color:var(--text)!important;border-radius:10px!important;font-size:15px!important}.communicationsSendButton{border:0!important;background:var(--orange)!important;color:#fff!important;border-radius:10px!important;font-size:15px!important}.communicationsSendButton:disabled{opacity:.4}
+    `}</style>
   </div>;
 }
