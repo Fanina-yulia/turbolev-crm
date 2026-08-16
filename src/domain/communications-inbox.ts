@@ -81,7 +81,7 @@ export function getCommunicationConversationKey(inquiry: CommunicationInquiry) {
 }
 
 function metadataCallStatus(metadata: unknown): string | null {
-  if (!isObject(value)) return null;
+  if (!isObject(metadata)) return null;
   const direct = metadata.callStatus;
   if (typeof direct === "string") return direct.toUpperCase();
   const nested = metadata.metadata;
