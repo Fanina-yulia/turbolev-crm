@@ -92,7 +92,7 @@ export function CommunicationsVehicleCardDrawer({ vehicleId, onClose }: Props) {
           <div>
             <p>КАРТКА АВТОМОБІЛЯ</p>
             <h2>{loading ? "Завантаження…" : vehicle ? vehicleTitle(vehicle) : "Автомобіль"}</h2>
-            {vehicle && <span>{vehicle.plateNumber || "Без держномера"}{vehicle.vin ? ` · VIN ${vehicle.vin}` : ""}</span>}
+            {vehicle && <span>{vehicle.plateNumber ? `ДержЗнак: ${vehicle.plateNumber}` : "ДержЗнак не вказано"}{vehicle.vin ? ` · VIN ${vehicle.vin}` : ""}</span>}
           </div>
         </div>
         <button type="button" className="communicationVehicleClose" onClick={onClose} aria-label="Закрити">×</button>
@@ -107,7 +107,7 @@ export function CommunicationsVehicleCardDrawer({ vehicleId, onClose }: Props) {
           <section className="communicationVehicleBlock">
             <div className="communicationVehicleBlockTitle"><strong>Технічні дані</strong><span>{vehicle.vehicleDataSource || "CRM"}{vehicle.vehicleDataConfidence ? ` · ${vehicle.vehicleDataConfidence}%` : ""}</span></div>
             <div className="communicationVehicleFacts">
-              <Fact label="Держномер" value={vehicle.plateNumber || "—"}/>
+              <Fact label="ДержЗнак" value={vehicle.plateNumber || "—"}/>
               <Fact label="VIN" value={vehicle.vin || "—"}/>
               <Fact label="Двигун" value={engineText(vehicle)}/>
               <Fact label="Паливо" value={vehicle.fuelType || "—"}/>
