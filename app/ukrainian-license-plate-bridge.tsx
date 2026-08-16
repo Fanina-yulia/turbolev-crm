@@ -7,22 +7,41 @@ const CANDIDATE_SELECTOR = "span,strong,b,small,p,em,i";
 const SKIP_SELECTOR = "input,textarea,select,option,script,style,[contenteditable='true'],[data-ua-license-plate='true']";
 const LABELED_PREFIX = /^(?:держзнак|держномер|державний\s+номер|номер\s+авто)\s*[:№-]?$/iu;
 const TRAILING_PLATE = /([A-ZА-ЯІЇЄ]{2}[\s-]*\d{4}[\s-]*[A-ZА-ЯІЇЄ]{2})\s*$/u;
+const LEADING_PLATE = /^([A-ZА-ЯІЇЄ]{2}[\s-]*\d{4}[\s-]*[A-ZА-ЯІЇЄ]{2})(?:\s*[·|—–-]\s*)?(.+)$/u;
 
-type PlateParts = { plate: string; prefix: string };
+type PlateParts = { plate: string; prefix: string; suffix: string; placement: "leading" | "trailing" };
 
 function extractPlate(text: string): PlateParts | null {
   const trimmed = text.trim();
   if (!trimmed || trimmed.length > 64) return null;
-  if (isStandardUkrainianPlate(trimmed)) return { plate: normalizeUkrainianPlate(trimmed), prefix: "" };
+  if (isStandardUkrainianPlate(trimmed)) return { plate: normalizeUkrainianPlate(trimmed), prefix: "", suffix: "", placement: "trailing" };
 
-  const match = trimmed.match(TRAILING_PLATE);
-  if (!match || match.index == null || !isStandardUkrainianPlate(match[1])) return null;
-  const rawPrefix = trimmed.slice(0, match.index).trim();
-  if (rawPrefix.length > 34) return null;
-  return {
-    plate: normalizeUkrainianPlate(match[1]),
-    prefix: LABELED_PREFIX.test(rawPrefix) ? "" : rawPrefix,
-  };
+  const trailing = trimmed.match(TRAILING_PLATE);
+  if (trailing && trailing.index != null && isStandardUkrainianPlate(trailing[1])) {
+    const rawPrefix = trimmed.slice(0, trailing.index).trim();
+    if (rawPrefix.length <= 34) {
+      return {
+        plate: normalizeUkrainianPlate(trailing[1]),
+        prefix: LABELED_PREFIX.test(rawPrefix) ? "" : rawPrefix,
+        suffix: "",
+        placement: "trailing",
+      };
+    }
+  }
+
+  const leading = trimmed.match(LEADING_PLATE);
+  if (leading && isStandardUkrainianPlate(leading[1])) {
+    const suffix = leading[2].trim();
+    if (suffix.length <= 34) {
+      return {
+        plate: normalizeUkrainianPlate(leading[1]),
+        prefix: "",
+        suffix,
+        placement: "leading",
+      };
+    }
+  }
+  return null;
 }
 
 function clearDecoration(element: HTMLElement) {
@@ -31,6 +50,8 @@ function clearDecoration(element: HTMLElement) {
   delete element.dataset.uaLicensePlate;
   delete element.dataset.plateText;
   delete element.dataset.platePrefix;
+  delete element.dataset.plateSuffix;
+  delete element.dataset.platePlacement;
   delete element.dataset.plateSize;
 }
 
@@ -46,8 +67,13 @@ function decorateElement(element: Element) {
   element.dataset.uaLicensePlate = "true";
   element.dataset.plateText = parts.plate;
   element.dataset.platePrefix = parts.prefix;
+  element.dataset.plateSuffix = parts.suffix;
+  element.dataset.platePlacement = parts.placement;
   element.dataset.plateSize = "sm";
-  if (!element.getAttribute("aria-label")) element.setAttribute("aria-label", `${parts.prefix ? `${parts.prefix} ` : ""}Державний номер ${parts.plate}`);
+  if (!element.getAttribute("aria-label")) {
+    const context = parts.prefix || parts.suffix;
+    element.setAttribute("aria-label", `${context ? `${context} ` : ""}Державний номер ${parts.plate}`);
+  }
 }
 
 function decorateTree(root: ParentNode) {
