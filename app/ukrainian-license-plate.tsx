@@ -1,9 +1,12 @@
 import type { HTMLAttributes } from "react";
 
 const UKRAINIAN_STANDARD_PLATE = /^[A-ZА-ЯІЇЄ]{2}\d{4}[A-ZА-ЯІЇЄ]{2}$/u;
-const LABELED_PREFIX = /^(?:держзнак|держномер|державний\s+номер|номер\s+авто)\s*[:№-]?$/iu;
-const TRAILING_PLATE = /([A-ZА-ЯІЇЄ]{2}[\s-]*\d{4}[\s-]*[A-ZА-ЯІЇЄ]{2})\s*$/u;
-const LEADING_PLATE = /^([A-ZА-ЯІЇЄ]{2}[\s-]*\d{4}[\s-]*[A-ZА-ЯІЇЄ]{2})(?:\s*[·|—–-]\s*)?(.+)$/u;
+const PLATE_FRAGMENT = "[A-ZА-ЯІЇЄ]{2}[\\s-]*\\d{4}[\\s-]*[A-ZА-ЯІЇЄ]{2}";
+const LABEL_FRAGMENT = "(?:держзнак|держномер|державний\\s+номер|номер\\s+авто)";
+const LABELED_PREFIX = new RegExp(`^${LABEL_FRAGMENT}\\s*[:№-]?$`, "iu");
+const LABELED_PLATE = new RegExp(`^${LABEL_FRAGMENT}\\s*[:№-]?\\s*(${PLATE_FRAGMENT})(?:\\s*[·|—–-]\\s*(.+))?$`, "iu");
+const TRAILING_PLATE = new RegExp(`(${PLATE_FRAGMENT})\\s*$`, "u");
+const LEADING_PLATE = new RegExp(`^(${PLATE_FRAGMENT})(?:\\s*[·|—–-]\\s*)?(.+)$`, "u");
 
 export type UkrainianPlateDisplayParts = {
   plate: string;
@@ -25,6 +28,19 @@ export function parseUkrainianPlateDisplay(value?: string | null): UkrainianPlat
   if (!trimmed || trimmed.length > 64) return null;
   if (isStandardUkrainianPlate(trimmed)) {
     return { plate: normalizeUkrainianPlate(trimmed), prefix: "", suffix: "", placement: "trailing" };
+  }
+
+  const labeled = trimmed.match(LABELED_PLATE);
+  if (labeled && isStandardUkrainianPlate(labeled[1])) {
+    const suffix = String(labeled[2] || "").trim();
+    if (suffix.length <= 34) {
+      return {
+        plate: normalizeUkrainianPlate(labeled[1]),
+        prefix: "",
+        suffix,
+        placement: suffix ? "leading" : "trailing",
+      };
+    }
   }
 
   const trailing = trimmed.match(TRAILING_PLATE);
