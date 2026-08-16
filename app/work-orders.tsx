@@ -98,11 +98,20 @@ function transitionReason(item: Transition) {
   return "Перехід дозволено системними правилами.";
 }
 
+function matchesContext(row: WorkOrderRow, contextFilter: string) {
+  if (!contextFilter) return true;
+  const normalized = contextFilter.trim().toUpperCase().replace(/\s/g, "");
+  return row.id === contextFilter || row.vehicle.id === contextFilter || row.client.id === contextFilter ||
+    (row.vehicle.plateNumber || "").toUpperCase().replace(/\s/g, "") === normalized ||
+    (row.vehicle.vin || "").toUpperCase() === normalized;
+}
+
 export function WorkOrders() {
   const [rows, setRows] = useState<WorkOrderRow[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [detail, setDetail] = useState<WorkOrderDetail | null>(null);
   const [filter, setFilter] = useState("ALL");
+  const [contextFilter, setContextFilter] = useState("");
   const [loading, setLoading] = useState(true);
   const [detailLoading, setDetailLoading] = useState(false);
   const [busyTransition, setBusyTransition] = useState<string | null>(null);
@@ -114,9 +123,12 @@ export function WorkOrders() {
       const response = await fetch("/api/work-orders", { cache: "no-store" });
       const payload = await response.json();
       if (!response.ok || !payload.ok) throw new Error(payload.error || "Не вдалося завантажити замовлення-наряди.");
-      const nextRows = Array.isArray(payload.workOrders) ? payload.workOrders : [];
+      const nextRows = Array.isArray(payload.workOrders) ? payload.workOrders as WorkOrderRow[] : [];
       setRows(nextRows);
-      setSelectedId((current) => current && nextRows.some((row: WorkOrderRow) => row.id === current) ? current : nextRows[0]?.id ?? null);
+      const urlFilter = typeof window !== "undefined" ? new URL(window.location.href).searchParams.get("filter") || "" : "";
+      if (urlFilter) setContextFilter(urlFilter);
+      const contextual = urlFilter ? nextRows.find((row) => matchesContext(row, urlFilter)) : null;
+      setSelectedId((current) => contextual?.id || (current && nextRows.some((row) => row.id === current) ? current : nextRows[0]?.id ?? null));
     } catch (error) {
       setMessage({ kind: "error", text: error instanceof Error ? error.message : "Помилка завантаження." });
     } finally {
@@ -141,8 +153,22 @@ export function WorkOrders() {
 
   useEffect(() => { void loadRows(); }, [loadRows]);
   useEffect(() => { if (selectedId) void loadDetail(selectedId); else setDetail(null); }, [selectedId, loadDetail]);
+  useEffect(() => {
+    const sync = () => {
+      const next = new URL(window.location.href).searchParams.get("filter") || "";
+      setContextFilter(next);
+      if (next) {
+        setFilter("ALL");
+        const match = rows.find((row) => matchesContext(row, next));
+        if (match) setSelectedId(match.id);
+      }
+    };
+    window.addEventListener("popstate", sync);
+    window.addEventListener("turbolev:navigate", sync);
+    return () => { window.removeEventListener("popstate", sync); window.removeEventListener("turbolev:navigate", sync); };
+  }, [rows]);
 
-  const filtered = useMemo(() => filter === "ALL" ? rows : rows.filter((row) => row.status === filter), [rows, filter]);
+  const filtered = useMemo(() => rows.filter((row) => (filter === "ALL" || row.status === filter) && matchesContext(row, contextFilter)), [rows, filter, contextFilter]);
   const counts = useMemo(() => ({
     active: rows.filter((row) => !["CLOSED", "CANCELLED"].includes(row.status)).length,
     repair: rows.filter((row) => row.status === "IN_REPAIR").length,
@@ -202,7 +228,7 @@ export function WorkOrders() {
 
     <div className={styles.layout}>
       <section className={styles.list}>
-        {loading && !rows.length ? <div className={styles.empty}>Завантажую замовлення-наряди…</div> : !filtered.length ? <div className={styles.empty}>У цьому статусі нарядів немає.</div> : filtered.map((item) => <button type="button" key={item.id} className={`${styles.row} ${selectedId === item.id ? styles.rowActive : ""}`} onClick={() => setSelectedId(item.id)}>
+        {loading && !rows.length ? <div className={styles.empty}>Завантажую замовлення-наряди…</div> : !filtered.length ? <div className={styles.empty}>За вибраним клієнтом або автомобілем історії нарядів немає.</div> : filtered.map((item) => <button type="button" key={item.id} className={`${styles.row} ${selectedId === item.id ? styles.rowActive : ""}`} onClick={() => setSelectedId(item.id)}>
           <div>
             <div className={styles.rowTitle}><strong>{vehicleName(item)}</strong>{item.vehicle.plateNumber && <span className={styles.plate}>{item.vehicle.plateNumber}</span>}</div>
             <div className={styles.rowMeta}>{item.client.name || "Клієнт без імені"} · {item.client.phone}<br/>Оновлено {formatDate(item.updatedAt)}</div>
