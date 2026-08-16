@@ -1,49 +1,11 @@
 "use client";
 
 import { useEffect } from "react";
-import { isStandardUkrainianPlate, normalizeUkrainianPlate } from "./ukrainian-license-plate";
+import { parseUkrainianPlateDisplay } from "./ukrainian-license-plate";
 
 const CANDIDATE_SELECTOR = "span,strong,b,small,p,em,i,div,td,th";
-const SKIP_SELECTOR = "input,textarea,select,option,script,style,[contenteditable='true'],[data-ua-license-plate='true']";
+const SKIP_SELECTOR = "input,textarea,select,option,script,style,[contenteditable='true']";
 const SKIP_ANCESTOR_SELECTOR = "input,textarea,select,option,script,style,[contenteditable='true'],.uaPlate";
-const LABELED_PREFIX = /^(?:держзнак|держномер|державний\s+номер|номер\s+авто)\s*[:№-]?$/iu;
-const TRAILING_PLATE = /([A-ZА-ЯІЇЄ]{2}[\s-]*\d{4}[\s-]*[A-ZА-ЯІЇЄ]{2})\s*$/u;
-const LEADING_PLATE = /^([A-ZА-ЯІЇЄ]{2}[\s-]*\d{4}[\s-]*[A-ZА-ЯІЇЄ]{2})(?:\s*[·|—–-]\s*)?(.+)$/u;
-
-type PlateParts = { plate: string; prefix: string; suffix: string; placement: "leading" | "trailing" };
-
-function extractPlate(text: string): PlateParts | null {
-  const trimmed = text.trim();
-  if (!trimmed || trimmed.length > 64) return null;
-  if (isStandardUkrainianPlate(trimmed)) return { plate: normalizeUkrainianPlate(trimmed), prefix: "", suffix: "", placement: "trailing" };
-
-  const trailing = trimmed.match(TRAILING_PLATE);
-  if (trailing && trailing.index != null && isStandardUkrainianPlate(trailing[1])) {
-    const rawPrefix = trimmed.slice(0, trailing.index).trim();
-    if (rawPrefix.length <= 34) {
-      return {
-        plate: normalizeUkrainianPlate(trailing[1]),
-        prefix: LABELED_PREFIX.test(rawPrefix) ? "" : rawPrefix,
-        suffix: "",
-        placement: "trailing",
-      };
-    }
-  }
-
-  const leading = trimmed.match(LEADING_PLATE);
-  if (leading && isStandardUkrainianPlate(leading[1])) {
-    const suffix = leading[2].trim();
-    if (suffix.length <= 34) {
-      return {
-        plate: normalizeUkrainianPlate(leading[1]),
-        prefix: "",
-        suffix,
-        placement: "leading",
-      };
-    }
-  }
-  return null;
-}
 
 function clearDecoration(element: HTMLElement) {
   if (!element.classList.contains("uaLicensePlateAuto")) return;
@@ -54,16 +16,20 @@ function clearDecoration(element: HTMLElement) {
   delete element.dataset.plateSuffix;
   delete element.dataset.platePlacement;
   delete element.dataset.plateSize;
+  if (element.dataset.plateAria === "auto") element.removeAttribute("aria-label");
+  delete element.dataset.plateAria;
 }
 
 function decorateElement(element: Element) {
   if (!(element instanceof HTMLElement)) return;
   if (element.matches(SKIP_SELECTOR) || element.closest(SKIP_ANCESTOR_SELECTOR)) return;
+  if (element.classList.contains("uaLicensePlate") && !element.classList.contains("uaLicensePlateAuto")) return;
+
   const childElements = Array.from(element.children);
   const simpleLabelChild = childElements.length === 1 && ["B", "STRONG"].includes(childElements[0].tagName);
-  if (childElements.length && !simpleLabelChild) return;
+  if (childElements.length && !simpleLabelChild) return clearDecoration(element);
 
-  const parts = extractPlate(element.textContent || "");
+  const parts = parseUkrainianPlateDisplay(element.textContent || "");
   if (!parts) return clearDecoration(element);
 
   element.classList.add("uaLicensePlate", "uaLicensePlateAuto");
@@ -73,9 +39,11 @@ function decorateElement(element: Element) {
   element.dataset.plateSuffix = parts.suffix;
   element.dataset.platePlacement = parts.placement;
   element.dataset.plateSize = "sm";
-  if (!element.getAttribute("aria-label")) {
-    const context = parts.prefix || parts.suffix;
-    element.setAttribute("aria-label", `${context ? `${context} ` : ""}Державний номер ${parts.plate}`);
+  const context = parts.prefix || parts.suffix;
+  const label = `${context ? `${context} ` : ""}Державний номер ${parts.plate}`;
+  if (!element.getAttribute("aria-label") || element.dataset.plateAria === "auto") {
+    element.setAttribute("aria-label", label);
+    element.dataset.plateAria = "auto";
   }
 }
 
