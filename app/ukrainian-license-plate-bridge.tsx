@@ -84,18 +84,23 @@ function decorateTree(root: ParentNode) {
 
 export function UkrainianLicensePlateBridge() {
   useEffect(() => {
-    let frame = 0;
-    const schedule = () => {
-      if (frame) cancelAnimationFrame(frame);
-      frame = requestAnimationFrame(() => decorateTree(document.body));
-    };
-    schedule();
-    const observer = new MutationObserver(schedule);
+    decorateTree(document.body);
+    const observer = new MutationObserver((records) => {
+      const roots = new Set<ParentNode>();
+      for (const record of records) {
+        if (record.type === "characterData") {
+          if (record.target.parentElement) roots.add(record.target.parentElement);
+          continue;
+        }
+        record.addedNodes.forEach((node) => {
+          if (node instanceof Element || node instanceof DocumentFragment) roots.add(node);
+          else if (node.parentElement) roots.add(node.parentElement);
+        });
+      }
+      roots.forEach(decorateTree);
+    });
     observer.observe(document.body, { subtree: true, childList: true, characterData: true });
-    return () => {
-      observer.disconnect();
-      if (frame) cancelAnimationFrame(frame);
-    };
+    return () => observer.disconnect();
   }, []);
   return null;
 }
