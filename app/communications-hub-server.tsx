@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ClientCardDrawer } from "./client-card-drawer";
+import { CommunicationsVehicleCardDrawer } from "./communications-vehicle-card-drawer";
+import { VehicleBrandLogo } from "./vehicle-brand-logo";
 import styles from "./communications-contact-inbox.module.css";
 import {
   buildCommunicationConversations,
@@ -13,6 +15,8 @@ import {
 
 type Filter = "ALL" | "NEW" | "NEEDS_REPLY" | "MISSED" | "MESSAGES" | Channel;
 type BinotelHealth = { ok: boolean; databaseConfigured: boolean; restConfigured: boolean; webhookTokenConfigured: boolean; websocketConfigured: boolean; companyIdConfigured: boolean; webhookPath: string; missing: string[]; optionalMissing: string[] };
+type LinkedVehicle = { id: string; plateNumber?: string | null; vin?: string | null; brand?: string | null; model?: string | null; year?: number | null };
+type LinkedClientCard = { id: string; name?: string | null; phone: string; vehicles: LinkedVehicle[] };
 
 const LOCAL_KEY = "turbolev-communications-v1";
 const channels: Channel[] = ["INSTAGRAM", "FACEBOOK", "TIKTOK", "BINOTEL", "OLX", "WEBSITE"];
@@ -65,6 +69,9 @@ function searchText(conversation: CommunicationConversation) {
     ...conversation.inquiries.flatMap((item) => [item.name, item.phone, item.handle, item.vehicle, item.plate, item.subject, item.preview]),
   ].filter(Boolean).join(" ").toLocaleLowerCase("uk-UA");
 }
+function vehicleTitle(vehicle: LinkedVehicle) {
+  return [vehicle.brand, vehicle.model].filter(Boolean).join(" ") || "Автомобіль";
+}
 
 export function CommunicationsHub() {
   const [items, setItems] = useState<Inquiry[]>([]);
@@ -81,6 +88,8 @@ export function CommunicationsHub() {
   const [pageSize, setPageSize] = useState<20 | 50 | 100>(20);
   const [binotelHealth, setBinotelHealth] = useState<BinotelHealth | null>(null);
   const [clientCardOpen, setClientCardOpen] = useState(false);
+  const [linkedClient, setLinkedClient] = useState<LinkedClientCard | null>(null);
+  const [vehicleCardId, setVehicleCardId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const messageEndRef = useRef<HTMLDivElement | null>(null);
 
@@ -111,12 +120,33 @@ export function CommunicationsHub() {
 
   const conversations = useMemo(() => buildCommunicationConversations(items), [items]);
   const selected = useMemo(() => conversations.find((item) => item.key === selectedKey) || null, [conversations, selectedKey]);
+  const linkedVehicle = linkedClient?.vehicles?.[0] || null;
 
   useEffect(() => {
     if (!conversations.length) { if (selectedKey) setSelectedKey(""); return; }
     if (!conversations.some((item) => item.key === selectedKey)) setSelectedKey(conversations[0].key);
   }, [conversations, selectedKey]);
   useEffect(() => { messageEndRef.current?.scrollIntoView({ block: "end" }); }, [selectedKey, items]);
+  useEffect(() => {
+    const phone = selected?.phone;
+    setLinkedClient(null);
+    if (!phone) return;
+    let active = true;
+    const loadCard = async () => {
+      try {
+        const response = await fetch(`/api/client-card?phone=${encodeURIComponent(phone)}`, { cache: "no-store" });
+        if (!response.ok) return;
+        const data = await response.json() as { client?: LinkedClientCard | null };
+        if (active) setLinkedClient(data.client || null);
+      } catch {
+        if (active) setLinkedClient(null);
+      }
+    };
+    const refresh = () => { void loadCard(); };
+    void loadCard();
+    window.addEventListener("turbolev:data-changed", refresh);
+    return () => { active = false; window.removeEventListener("turbolev:data-changed", refresh); };
+  }, [selected?.phone]);
 
   const counts = useMemo(() => ({
     ALL: conversations.length,
@@ -147,6 +177,7 @@ export function CommunicationsHub() {
   async function openConversation(conversation: CommunicationConversation) {
     setSelectedKey(conversation.key);
     setClientCardOpen(false);
+    setVehicleCardId(null);
     setFiles([]);
     setEmojiOpen(false);
     if (!conversation.unreadInquiryIds.length) return;
@@ -182,15 +213,6 @@ export function CommunicationsHub() {
       notify(data.linkedExisting ? "Контакт прив'язано до існуючого ліда" : "Лід створено");
       await load();
     } catch (error) { notify(error instanceof Error ? error.message : "Не вдалося створити лід"); }
-  }
-  function openLead() {
-    if (!selected?.existingLeadId) return;
-    window.dispatchEvent(new CustomEvent("turbolev:navigate", { detail: { section: "Ліди", filter: selected.existingLeadId, filterLabel: `Лід ${selected.existingLeadId}` } }));
-  }
-  async function copyPhone() {
-    if (!selected?.phone) return;
-    try { await navigator.clipboard.writeText(selected.phone); notify("Номер скопійовано"); }
-    catch { notify("Не вдалося скопіювати номер"); }
   }
 
   const filterPills: { key: Filter; label: string; count: number }[] = [
@@ -242,9 +264,18 @@ export function CommunicationsHub() {
 
         <section className={styles.right}>{!selected ? <div className={styles.noSelection}>Оберіть контакт</div> : <>
           <header className={styles.chatHead}>
-            <span className={styles.avatar} style={{ background: channelMeta[selected.representative.channel].tone }}>{channelMeta[selected.representative.channel].short}</span>
-            <div className={styles.chatIdentity}><h2>{selected.displayName}</h2><p>{selected.phone || selected.handle || "Контакт без номера"} · {selected.inquiryCount} {selected.inquiryCount === 1 ? "подія" : "подій"}</p><div className={styles.channelChips}>{selected.channels.map((channel) => <span className={styles.channelChip} style={{ background: channelMeta[channel].tone }} key={channel}>{channelMeta[channel].label}</span>)}</div><span className={styles.actionState} data-state={selected.actionState}>{actionLabel(selected.actionState)}{selected.actionState === "MISSED" && selected.unresolvedMissedCount > 1 ? ` · ${selected.unresolvedMissedCount}` : ""}</span></div>
-            <div className={styles.chatActions}>{selected.phone && <button onClick={() => void copyPhone()}>Копіювати номер</button>}{selected.phone && <button onClick={() => setClientCardOpen(true)}>Картка клієнта</button>}{selected.existingLeadId ? <button className={styles.primaryAction} onClick={openLead}>Відкрити лід</button> : <button className={styles.primaryAction} onClick={() => void convertToLead()}>Створити лід</button>}</div>
+            <button type="button" className={styles.contactSummary} disabled={!selected.phone} onClick={() => selected.phone && setClientCardOpen(true)} title={selected.phone ? "Відкрити картку контакту" : undefined}>
+              <span className={styles.avatar} style={{ background: channelMeta[selected.representative.channel].tone }}>{channelMeta[selected.representative.channel].short}</span>
+              <span className={styles.contactText}><strong>{linkedClient?.name?.trim() || selected.displayName}</strong><small>{selected.phone || selected.handle || "Контакт без номера"}</small></span>
+              {selected.phone && <span className={styles.openHint}>Картка ›</span>}
+            </button>
+            <div className={styles.contactChannels}><span className={styles.metaLabel}>Канал зв’язку</span><div className={styles.channelChips}>{selected.channels.map((channel) => <span className={styles.channelChip} style={{ background: channelMeta[channel].tone }} key={channel}>{channelMeta[channel].label}</span>)}</div></div>
+            {linkedVehicle && <button type="button" className={styles.vehicleSummary} onClick={() => setVehicleCardId(linkedVehicle.id)} title="Відкрити картку автомобіля">
+              <VehicleBrandLogo brand={linkedVehicle.brand} size={38}/>
+              <span className={styles.vehicleText}><strong>{vehicleTitle(linkedVehicle)}</strong><small>{linkedVehicle.plateNumber || linkedVehicle.vin || "Без держномера"}</small></span>
+              {linkedClient && linkedClient.vehicles.length > 1 && <em>+{linkedClient.vehicles.length - 1}</em>}
+              <i>›</i>
+            </button>}
           </header>
           <div className={styles.timeline}>
             {selected.inquiryCount > 1 && <div className={styles.conversationSummary}>Об'єднано {selected.inquiryCount} звернень цього контакту · історія не видаляється</div>}
@@ -268,7 +299,8 @@ export function CommunicationsHub() {
       </section>
     </>}
 
-    {selected && <ClientCardDrawer open={clientCardOpen} name={selected.displayName} phone={selected.phone} existingLeadId={selected.existingLeadId} onClose={() => setClientCardOpen(false)} onCreateLead={() => { setClientCardOpen(false); void convertToLead(); }}/>} 
+    {selected && <ClientCardDrawer open={clientCardOpen} name={linkedClient?.name?.trim() || selected.displayName} phone={selected.phone} existingLeadId={selected.existingLeadId} onClose={() => setClientCardOpen(false)} onCreateLead={() => { setClientCardOpen(false); void convertToLead(); }}/>} 
+    <CommunicationsVehicleCardDrawer vehicleId={vehicleCardId} onClose={() => setVehicleCardId(null)}/>
     <style jsx global>{`
       .communicationsComposer{display:block!important;position:relative}
       .communicationsFileChips{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 8px}.communicationsFileChips>span{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:999px;background:var(--surface);padding:5px 8px;color:var(--muted);font-size:8px}.communicationsFileChips button{width:18px!important;height:18px!important;padding:0!important;border:0!important;border-radius:50%!important;background:transparent!important;color:var(--muted)!important}
