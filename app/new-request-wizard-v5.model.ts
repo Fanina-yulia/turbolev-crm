@@ -6,6 +6,7 @@ import {
 } from "@/src/domain/vehicle-intelligence";
 import type {
   ClientLookup,
+  ClientVehicle,
   MakeOption,
   ModelOption,
   PlannerLocation,
@@ -265,16 +266,51 @@ export function parsePlannerLocations(value: unknown): PlannerLocation[] {
   return value.map(parsePlannerLocation).filter((item): item is PlannerLocation => item !== null);
 }
 
+function parseClientVehicle(value: unknown): ClientVehicle | null {
+  if (!isRecord(value)) return null;
+  const id = stringValue(value.id).trim();
+  if (!id) return null;
+  const priceCoefficient = typeof value.priceCoefficient === "string" || typeof value.priceCoefficient === "number"
+    ? value.priceCoefficient
+    : null;
+  return {
+    id,
+    plateNumber: nullableString(value.plateNumber),
+    vin: nullableString(value.vin),
+    brand: nullableString(value.brand),
+    model: nullableString(value.model),
+    year: finiteNumber(value.year),
+    mileageKm: finiteNumber(value.mileageKm),
+    engineName: nullableString(value.engineName),
+    engineVolumeCm3: finiteNumber(value.engineVolumeCm3),
+    fuelType: nullableString(value.fuelType),
+    bodyType: nullableString(value.bodyType),
+    grossWeightKg: finiteNumber(value.grossWeightKg),
+    driveType: nullableString(value.driveType),
+    vehicleType: nullableString(value.vehicleType),
+    turboLevClass: nullableString(value.turboLevClass),
+    priceCoefficient,
+    classificationSource: nullableString(value.classificationSource),
+    classificationConfidence: finiteNumber(value.classificationConfidence),
+    manualClassOverride: typeof value.manualClassOverride === "boolean" ? value.manualClassOverride : null,
+    vehicleDataSource: nullableString(value.vehicleDataSource),
+    vehicleDataConfidence: finiteNumber(value.vehicleDataConfidence),
+  };
+}
+
 export function parseClientLookup(value: unknown): ClientLookup | null {
   if (!isRecord(value)) return null;
   const id = stringValue(value.id).trim();
   const phone = stringValue(value.phone).trim();
   if (!id || !phone) return null;
+  const vehicles = Array.isArray(value.vehicles)
+    ? value.vehicles.map(parseClientVehicle).filter((item): item is ClientVehicle => item !== null)
+    : [];
   return {
     id,
     name: nullableString(value.name),
     phone,
-    vehicles: [],
+    vehicles,
   };
 }
 
