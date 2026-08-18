@@ -1,5 +1,5 @@
-import { Prisma } from "@/src/generated/prisma/client";
 import { getPrisma } from "@/src/lib/prisma";
+import { toPrismaJson } from "@/src/lib/prisma-json";
 
 export type AttributionInput = {
   employeeId: string;
@@ -29,10 +29,6 @@ export type PerformanceEventInput = {
   payload?: Record<string, unknown>;
   attributions: AttributionInput[];
 };
-
-function jsonSafe(value: Record<string, unknown> | undefined): Prisma.InputJsonValue {
-  return JSON.parse(JSON.stringify(value ?? {})) as Prisma.InputJsonValue;
-}
 
 function validateAttributions(items: AttributionInput[]) {
   if (!items.length) throw new Error("Performance event requires at least one attribution entry.");
@@ -92,7 +88,11 @@ export async function postPerformanceEvent(input: PerformanceEventInput) {
   });
   if (existing) return existing;
 
-  const payrollPeriodIds = [...new Set(input.attributions.map((item) => item.payrollPeriodId).filter(Boolean) as string[])];
+  const payrollPeriodIds = [...new Set(
+    input.attributions
+      .map((item) => item.payrollPeriodId)
+      .filter((periodId): periodId is string => Boolean(periodId)),
+  )];
   if (payrollPeriodIds.length) {
     const closed = await prisma.payrollPeriod.findFirst({
       where: { id: { in: payrollPeriodIds }, status: "CLOSED" },
@@ -111,7 +111,7 @@ export async function postPerformanceEvent(input: PerformanceEventInput) {
       workOrderId: input.workOrderId ?? null,
       leadId: input.leadId ?? null,
       locationId: input.locationId ?? null,
-      payload: jsonSafe(input.payload),
+      payload: toPrismaJson(input.payload ?? {}),
       attributions: {
         create: input.attributions.map((item) => ({
           employeeId: item.employeeId,
@@ -126,7 +126,7 @@ export async function postPerformanceEvent(input: PerformanceEventInput) {
           additiveContribution: item.additiveContribution ?? false,
           reason: item.reason ?? null,
           payrollPeriodId: item.payrollPeriodId ?? null,
-          metadata: jsonSafe(item.metadata),
+          metadata: toPrismaJson(item.metadata ?? {}),
         })),
       },
     },
