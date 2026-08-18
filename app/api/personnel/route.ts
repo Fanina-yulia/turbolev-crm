@@ -1,5 +1,6 @@
-import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "node:crypto";
+import { NextRequest, NextResponse } from "next/server";
+import { Prisma } from "@/src/generated/prisma/client";
 import { getPrisma } from "@/src/lib/prisma";
 import { authorize } from "@/src/security/authorize";
 import { PERMISSIONS } from "@/src/security/permissions";
@@ -14,6 +15,15 @@ import { writeAuditEvent } from "@/src/services/audit.service";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+type JsonObject = Record<string, unknown>;
+type MechanicSummary = { id: string; name: string; locationId: string; isActive: boolean; userId: string | null };
+
+function asRecord(value: unknown): JsonObject | null {
+  return value !== null && typeof value === "object" && !Array.isArray(value)
+    ? value as JsonObject
+    : null;
+}
+
 function n(value: unknown) {
   if (value === "" || value == null) return null;
   const x = Number(value);
@@ -26,19 +36,25 @@ function text(value: unknown) {
   return next || null;
 }
 
-function payload(body: any) {
-  const email = body.email ? String(body.email).trim().toLowerCase() : null;
+function payload(body: JsonObject) {
+  const email = text(body.email)?.toLowerCase() || null;
+  const birthDateText = text(body.birthDate);
+  const birthDate = birthDateText ? new Date(`${birthDateText}T00:00:00`) : null;
+  if (birthDate && Number.isNaN(birthDate.getTime())) {
+    throw new PersonnelAccessError("INVALID_BIRTH_DATE", "Вкажіть коректну дату народження.", 400);
+  }
+
   return {
-    firstName: String(body.firstName || "").trim(),
-    lastName: String(body.lastName || "").trim(),
-    birthDate: body.birthDate ? new Date(`${body.birthDate}T00:00:00`) : null,
+    firstName: text(body.firstName) || "",
+    lastName: text(body.lastName) || "",
+    birthDate,
     email,
-    phone: body.phone ? String(body.phone).trim() : null,
-    phoneCountry: body.phoneCountry ? String(body.phoneCountry) : "UA",
-    address: body.address ? String(body.address).trim() : null,
-    photoUrl: body.photoUrl ? String(body.photoUrl) : null,
-    personnelCategory: body.personnelCategory ? String(body.personnelCategory) : null,
-    position: body.position ? String(body.position) : null,
+    phone: text(body.phone),
+    phoneCountry: text(body.phoneCountry) || "UA",
+    address: text(body.address),
+    photoUrl: text(body.photoUrl),
+    personnelCategory: text(body.personnelCategory),
+    position: text(body.position),
     crmLogin: email,
     isActive: body.isActive !== false,
     baseSalary: n(body.baseSalary),
@@ -47,40 +63,80 @@ function payload(body: any) {
     partsSalesPercent: n(body.partsSalesPercent),
     partsMarginPercent: n(body.partsMarginPercent),
     netProfitPercent: n(body.netProfitPercent),
-    payrollRuleNote: body.payrollRuleNote ? String(body.payrollRuleNote) : null,
+    payrollRuleNote: text(body.payrollRuleNote),
   };
 }
 
-function documents(body: any) {
-  return (Array.isArray(body.documents) ? body.documents : []).map((d: any) => ({
-    id: d.id ? String(d.id) : randomUUID(),
-    type: String(d.type || "OTHER"),
-    name: String(d.name || "Документ"),
-    status: String(d.status || "MISSING"),
-    fileUrl: d.fileUrl ? String(d.fileUrl) : null,
-    uploadedAt: d.status === "UPLOADED" ? new Date() : null,
-  }));
+function documents(body: JsonObject) {
+  const items = Array.isArray(body.documents) ? body.documents : [];
+  return items.map((item) => {
+    const document = asRecord(item) || {};
+    const status = text(document.status) || "MISSING";
+    return {
+      id: text(document.id) || randomUUID(),
+      type: text(document.type) || "OTHER",
+      name: text(document.name) || "Документ",
+      status,
+      fileUrl: text(document.fileUrl),
+      uploadedAt: status === "UPLOADED" ? new Date() : null,
+    };
+  });
 }
 
-function currentAssignment(assignments: any[]) {
+function buildPersonnelInclude(now: Date) {
+  return {
+    documents: { orderBy: { name: "asc" as const } },
+    roleAssignments: {
+      where: {
+        startsAt: { lte: now },
+        OR: [{ endsAt: null }, { endsAt: { gt: now } }],
+      },
+      include: {
+        role: { select: { code: true, name: true, category: true } },
+        location: { select: { id: true, name: true } },
+      },
+      orderBy: [{ isPrimary: "desc" as const }, { startsAt: "desc" as const }],
+    },
+    user: {
+      select: {
+        id: true,
+        isActive: true,
+        authUserId: true,
+        lastLoginAt: true,
+        accessRoles: {
+          where: { isActive: true },
+          include: {
+            role: { select: { code: true, name: true } },
+            location: { select: { id: true, name: true } },
+          },
+          orderBy: [{ isPrimary: "desc" as const }, { createdAt: "asc" as const }],
+        },
+      },
+    },
+  } satisfies Prisma.EmployeeProfileInclude;
+}
+
+type PersonnelRow = Prisma.EmployeeProfileGetPayload<{ include: ReturnType<typeof buildPersonnelInclude> }>;
+
+function currentAssignment(assignments: PersonnelRow["roleAssignments"]) {
   return assignments.find((assignment) => assignment.isPrimary) || assignments[0] || null;
 }
 
-function canSeeCompensationFor(row: any, access: Awaited<ReturnType<typeof authorize>>) {
+function canSeeCompensationFor(row: Pick<PersonnelRow, "id">, access: Awaited<ReturnType<typeof authorize>>) {
   if (!access.wouldAllow) return false;
   if (access.grantedScope === "ALL") return true;
   return access.context.user?.employeeId === row.id;
 }
 
 function safePersonnelRow(
-  row: any,
+  row: PersonnelRow,
   canSeeCompensation: boolean,
-  mechanicByEmployeeId: Map<string, { id: string; name: string; locationId: string; isActive: boolean; userId: string | null }>,
+  mechanicByEmployeeId: Map<string, MechanicSummary>,
 ) {
   const { crmPasswordHash: _credential, user, ...safe } = row;
-  const assignment = currentAssignment(row.roleAssignments || []);
-  const primaryAccess = user?.accessRoles?.find((item: any) => item.isPrimary && item.isActive)
-    || user?.accessRoles?.find((item: any) => item.isActive)
+  const assignment = currentAssignment(row.roleAssignments);
+  const primaryAccess = user?.accessRoles.find((item) => item.isPrimary && item.isActive)
+    || user?.accessRoles.find((item) => item.isActive)
     || null;
   const mechanic = mechanicByEmployeeId.get(row.id) || null;
   const cabinetStatus = !user
@@ -154,36 +210,7 @@ export async function GET(request: NextRequest) {
     const [items, roles, locations] = await Promise.all([
       prisma.employeeProfile.findMany({
         where: readAccess.shadowBypass ? {} : personnelScopeWhere(readAccess.context, readAccess.grantedScope),
-        include: {
-          documents: { orderBy: { name: "asc" } },
-          roleAssignments: {
-            where: {
-              startsAt: { lte: now },
-              OR: [{ endsAt: null }, { endsAt: { gt: now } }],
-            },
-            include: {
-              role: { select: { code: true, name: true, category: true } },
-              location: { select: { id: true, name: true } },
-            },
-            orderBy: [{ isPrimary: "desc" }, { startsAt: "desc" }],
-          },
-          user: {
-            select: {
-              id: true,
-              isActive: true,
-              authUserId: true,
-              lastLoginAt: true,
-              accessRoles: {
-                where: { isActive: true },
-                include: {
-                  role: { select: { code: true, name: true } },
-                  location: { select: { id: true, name: true } },
-                },
-                orderBy: [{ isPrimary: "desc" }, { createdAt: "asc" }],
-              },
-            },
-          },
-        },
+        include: buildPersonnelInclude(now),
         orderBy: [{ isActive: "desc" }, { lastName: "asc" }, { firstName: "asc" }],
       }),
       prisma.staffRole.findMany({
@@ -205,10 +232,13 @@ export async function GET(request: NextRequest) {
           select: { id: true, name: true, locationId: true, isActive: true, userId: true, employeeId: true },
         })
       : [];
-    const mechanicByEmployeeId = new Map(
+    const mechanicByEmployeeId = new Map<string, MechanicSummary>(
       mechanics
         .filter((item) => item.employeeId)
-        .map((item) => [item.employeeId!, { id: item.id, name: item.name, locationId: item.locationId, isActive: item.isActive, userId: item.userId }]),
+        .map((item) => [
+          item.employeeId!,
+          { id: item.id, name: item.name, locationId: item.locationId, isActive: item.isActive, userId: item.userId },
+        ]),
     );
 
     return NextResponse.json(
@@ -242,9 +272,12 @@ export async function POST(request: NextRequest) {
 
   const prisma = getPrisma();
   try {
-    const body = await request.json();
+    const body = asRecord(await request.json().catch(() => null));
+    if (!body) {
+      return NextResponse.json({ ok: false, error: "INVALID_JSON_BODY", message: "Тіло запиту має бути JSON-об’єктом." }, { status: 400 });
+    }
     const p = payload(body);
-    const roleCode = text(body.staffRoleCode || body.roleCode);
+    const roleCode = text(body.staffRoleCode) || text(body.roleCode);
     if (!p.firstName || !p.lastName) {
       return NextResponse.json({ ok: false, error: "Вкажіть ім’я та прізвище." }, { status: 400 });
     }
@@ -309,10 +342,13 @@ export async function PUT(request: NextRequest) {
 
   const prisma = getPrisma();
   try {
-    const body = await request.json();
-    const id = String(body.id || "");
+    const body = asRecord(await request.json().catch(() => null));
+    if (!body) {
+      return NextResponse.json({ ok: false, error: "INVALID_JSON_BODY", message: "Тіло запиту має бути JSON-об’єктом." }, { status: 400 });
+    }
+    const id = text(body.id) || "";
     const p = payload(body);
-    const roleCode = text(body.staffRoleCode || body.roleCode);
+    const roleCode = text(body.staffRoleCode) || text(body.roleCode);
     if (!id) return NextResponse.json({ ok: false, error: "Не вказано співробітника." }, { status: 400 });
     if (!p.firstName || !p.lastName) {
       return NextResponse.json({ ok: false, error: "Вкажіть ім’я та прізвище." }, { status: 400 });
