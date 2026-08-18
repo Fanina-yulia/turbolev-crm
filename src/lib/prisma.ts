@@ -1,18 +1,13 @@
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@/src/generated/prisma/client";
+import { requireDatabaseUrl } from "@/src/lib/database-url";
 
 const globalForPrisma = globalThis as unknown as {
   turboLevPrisma?: PrismaClient;
 };
 
 function createPrismaClient(): PrismaClient {
-  const connectionString = process.env.DATABASE_URL?.trim();
-
-  if (!connectionString) {
-    throw new Error("DATABASE_URL is not configured");
-  }
-
-  const adapter = new PrismaPg({ connectionString });
+  const adapter = new PrismaPg({ connectionString: requireDatabaseUrl() });
   return new PrismaClient({ adapter });
 }
 
