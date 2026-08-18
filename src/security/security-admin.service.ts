@@ -1,5 +1,6 @@
 import "server-only";
 
+import type { Prisma } from "@/src/generated/prisma/client";
 import { getPrisma } from "@/src/lib/prisma";
 import { writeAuditEvent } from "@/src/services/audit.service";
 
@@ -214,7 +215,11 @@ export async function provisionAccessUser(args: {
   return result;
 }
 
-async function assertAtLeastOneActiveOwnerAfterChange(tx: any, userId: string, nextRoleCodes: string[]) {
+async function assertAtLeastOneActiveOwnerAfterChange(
+  tx: Prisma.TransactionClient,
+  userId: string,
+  nextRoleCodes: string[],
+) {
   const ownerRole = await tx.accessRole.findUnique({ where: { code: "OWNER" }, select: { id: true } });
   if (!ownerRole) throw new SecurityAdminError("OWNER_ROLE_MISSING", "Системна роль OWNER відсутня.", 500);
 
