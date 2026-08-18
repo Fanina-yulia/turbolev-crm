@@ -2,6 +2,7 @@ import { DiagnosticRequestStatus, LeadStatus, Prisma } from "@/src/generated/pri
 import type { LeadPatchDto, LeadQuickFilter } from "@/src/dto/leads";
 import { normalizeLegacyLeadStatus } from "@/src/domain/workflow/lead";
 import { getPrisma } from "@/src/lib/prisma";
+import { toPrismaJson } from "@/src/lib/prisma-json";
 
 export class LeadNotFoundError extends Error {
   constructor(id: string) { super(`Lead not found: ${id}`); this.name = "LeadNotFoundError"; }
@@ -87,7 +88,7 @@ function endOfTodayKyiv(now: Date): Date {
   return new Date(tomorrowStart.getTime() - 1);
 }
 
-function jsonSafe(value: unknown): Prisma.InputJsonValue { return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue; }
+function jsonSafe(value: unknown): Prisma.InputJsonValue { return toPrismaJson(value); }
 function normalizeLead<T extends { status: LeadStatus }>(lead: T) { return { ...lead, status: normalizeLegacyLeadStatus(lead.status) }; }
 
 export async function listLeads(input: ListLeadsInput) {
