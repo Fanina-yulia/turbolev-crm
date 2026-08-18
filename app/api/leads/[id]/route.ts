@@ -14,8 +14,8 @@ export const dynamic = "force-dynamic";
 type RouteContext = { params: Promise<{ id: string }> };
 
 export async function PATCH(request: NextRequest, context: RouteContext) {
-  const access = await authorize(PERMISSIONS.LEADS_WRITE, request, { minimumScope: "TEAM" });
-  if (!access.ok) return access.response;
+  const access = await authorize(PERMISSIONS.LEADS_WRITE, { request, minimumScope: "TEAM" });
+  if (!access.allowed) return access.response!;
 
   try {
     const { id } = await context.params;
