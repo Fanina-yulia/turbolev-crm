@@ -5,7 +5,18 @@ import { getPrisma } from "@/src/lib/prisma";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const ACCOUNT_TYPES = new Set(["CASH", "BANK", "CARD", "ACQUIRING", "OTHER"]);
+type MoneyAccountType = "CASH" | "BANK" | "CARD" | "ACQUIRING" | "OTHER";
+const ACCOUNT_TYPES = new Set<MoneyAccountType>(["CASH", "BANK", "CARD", "ACQUIRING", "OTHER"]);
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value !== null && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
+}
+
+function isAccountType(value: string): value is MoneyAccountType {
+  return ACCOUNT_TYPES.has(value as MoneyAccountType);
+}
 
 function parseOpeningBalance(value: unknown) {
   if (value == null || value === "") return new Prisma.Decimal(0);
@@ -34,7 +45,11 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    const body = (await request.json()) as Record<string, unknown>;
+    const body = asRecord(await request.json().catch(() => null));
+    if (!body) {
+      return NextResponse.json({ ok: false, error: "INVALID_JSON_BODY" }, { status: 400 });
+    }
+
     const name = typeof body.name === "string" ? body.name.trim() : "";
     const type = typeof body.type === "string" ? body.type.trim().toUpperCase() : "";
     const currency = typeof body.currency === "string" && body.currency.trim()
@@ -47,7 +62,7 @@ export async function POST(request: Request) {
       : new Date();
 
     if (!name) return NextResponse.json({ ok: false, error: "NAME_REQUIRED" }, { status: 400 });
-    if (!ACCOUNT_TYPES.has(type)) return NextResponse.json({ ok: false, error: "INVALID_ACCOUNT_TYPE" }, { status: 400 });
+    if (!isAccountType(type)) return NextResponse.json({ ok: false, error: "INVALID_ACCOUNT_TYPE" }, { status: 400 });
     if (!/^[A-Z]{3}$/.test(currency)) return NextResponse.json({ ok: false, error: "INVALID_CURRENCY" }, { status: 400 });
     if (Number.isNaN(openingBalanceAt.getTime())) return NextResponse.json({ ok: false, error: "INVALID_OPENING_DATE" }, { status: 400 });
 
@@ -60,7 +75,7 @@ export async function POST(request: Request) {
     const account = await prisma.moneyAccount.create({
       data: {
         name: name.slice(0, 160),
-        type: type as "CASH" | "BANK" | "CARD" | "ACQUIRING" | "OTHER",
+        type,
         currency,
         openingBalance,
         openingBalanceAt,
@@ -74,7 +89,15 @@ export async function POST(request: Request) {
         entityType: "MoneyAccount",
         entityId: account.id,
         action: "MONEY_ACCOUNT_CREATED",
-        after: JSON.parse(JSON.stringify(account)) as Prisma.InputJsonValue,
+        after: {
+          id: account.id,
+          name: account.name,
+          type: account.type,
+          currency: account.currency,
+          openingBalance: account.openingBalance.toString(),
+          openingBalanceAt: account.openingBalanceAt.toISOString(),
+          locationId: account.locationId,
+        },
       },
     });
 
