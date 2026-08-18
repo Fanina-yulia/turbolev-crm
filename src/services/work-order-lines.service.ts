@@ -4,24 +4,28 @@ import {
   normalizeFinanceCurrency,
   type WorkOrderFinanceInput,
 } from "@/src/domain/work-order-finance";
+import { getPrisma } from "@/src/lib/prisma";
+import { toPrismaJson } from "@/src/lib/prisma-json";
 import {
   finalizeWorkOrderFinance,
   WorkOrderFinanceError,
 } from "@/src/services/work-order-finance.service";
-import { getPrisma } from "@/src/lib/prisma";
 
 const LINE_TYPES = ["LABOR", "PART", "EXTERNAL", "CONSUMABLE", "OTHER"] as const;
 const LINE_STATUSES = ["DRAFT", "APPROVED", "IN_PROGRESS", "COMPLETED", "CANCELLED"] as const;
+const LINE_TYPE_SET = new Set<string>(LINE_TYPES);
+const LINE_STATUS_SET = new Set<string>(LINE_STATUSES);
 
 type LineType = (typeof LINE_TYPES)[number];
 type LineStatus = (typeof LINE_STATUSES)[number];
 type FinanceMode = "PLANNED" | "ACTUAL";
+type WorkOrderLineRecord = Prisma.WorkOrderLineGetPayload<{}>;
 
 type CatalogWorkRow = {
   id: string;
   name: string;
   code: string | null;
-  data: Record<string, unknown> | null;
+  data: unknown;
 };
 
 export class WorkOrderLineError extends Error {
@@ -38,6 +42,10 @@ function hasOwn(source: Record<string, unknown>, key: string) {
   return Object.prototype.hasOwnProperty.call(source, key);
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
 function clean(value: unknown, max = 240) {
   return typeof value === "string" ? value.trim().slice(0, max) : "";
 }
@@ -45,10 +53,6 @@ function clean(value: unknown, max = 240) {
 function optionalString(value: unknown, max = 160) {
   const result = clean(value, max);
   return result || null;
-}
-
-function jsonSafe(value: unknown): Prisma.InputJsonValue {
-  return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
 }
 
 function decimal(value: unknown, field: string, fallback: string | number = 0) {
@@ -81,22 +85,30 @@ function positive(value: Prisma.Decimal, field: string) {
   return value;
 }
 
+function isLineType(value: string): value is LineType {
+  return LINE_TYPE_SET.has(value);
+}
+
+function isLineStatus(value: string): value is LineStatus {
+  return LINE_STATUS_SET.has(value);
+}
+
 function normalizeType(value: unknown, fallback: LineType = "OTHER"): LineType {
   const type = clean(value, 32).toUpperCase();
   if (!type) return fallback;
-  if (!LINE_TYPES.includes(type as LineType)) {
+  if (!isLineType(type)) {
     throw new WorkOrderLineError("INVALID_LINE_TYPE", `Unsupported line type: ${type}`);
   }
-  return type as LineType;
+  return type;
 }
 
 function normalizeStatus(value: unknown, fallback: LineStatus = "DRAFT"): LineStatus {
   const status = clean(value, 32).toUpperCase();
   if (!status) return fallback;
-  if (!LINE_STATUSES.includes(status as LineStatus)) {
+  if (!isLineStatus(status)) {
     throw new WorkOrderLineError("INVALID_LINE_STATUS", `Unsupported line status: ${status}`);
   }
-  return status as LineStatus;
+  return status;
 }
 
 function validateTransition(from: LineStatus, to: LineStatus) {
@@ -195,7 +207,7 @@ async function deriveCreateInput(tx: Prisma.TransactionClient, body: Record<stri
 
   if (catalogItemId) {
     const item = await loadCatalogWork(tx, catalogItemId);
-    const data = item.data ?? {};
+    const data = isRecord(item.data) ? item.data : {};
     derived = {
       type: "LABOR",
       description: item.name,
@@ -273,9 +285,7 @@ async function deriveCreateInput(tx: Prisma.TransactionClient, body: Record<stri
 
   const status = normalizeStatus(value("status"), "DRAFT");
   const now = new Date();
-  const bodyMetadata = body.metadata && typeof body.metadata === "object" && !Array.isArray(body.metadata)
-    ? body.metadata as Record<string, unknown>
-    : {};
+  const bodyMetadata = isRecord(body.metadata) ? body.metadata : {};
 
   return {
     type,
@@ -306,24 +316,11 @@ async function deriveCreateInput(tx: Prisma.TransactionClient, body: Record<stri
     startedAt: status === "IN_PROGRESS" || status === "COMPLETED" ? now : null,
     completedAt: status === "COMPLETED" ? now : null,
     cancelledAt: status === "CANCELLED" ? now : null,
-    metadata: jsonSafe({ ...derivedMetadata, ...bodyMetadata }),
+    metadata: toPrismaJson({ ...derivedMetadata, ...bodyMetadata }),
   };
 }
 
-function summarizeLines(lines: Array<{
-  id: string;
-  type: LineType;
-  status: LineStatus;
-  currency: string;
-  plannedQuantity: Prisma.Decimal;
-  plannedUnitPrice: Prisma.Decimal;
-  plannedUnitCost: Prisma.Decimal;
-  plannedDiscount: Prisma.Decimal;
-  actualQuantity: Prisma.Decimal | null;
-  actualUnitPrice: Prisma.Decimal | null;
-  actualUnitCost: Prisma.Decimal | null;
-  actualDiscount: Prisma.Decimal | null;
-}>, mode: FinanceMode, strictActual = true) {
+function summarizeLines(lines: readonly WorkOrderLineRecord[], mode: FinanceMode, strictActual = true) {
   if (mode === "ACTUAL" && strictActual) {
     const unfinished = lines.filter((line) => !["COMPLETED", "CANCELLED"].includes(line.status));
     if (unfinished.length) {
@@ -408,10 +405,10 @@ async function syncPlannedSnapshotTx(
     where: { workOrderId },
     orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
   });
-  const summary = summarizeLines(lines as Parameters<typeof summarizeLines>[0], "PLANNED");
+  const summary = summarizeLines(lines, "PLANNED");
   const calculation = summary.calculation;
   const now = new Date();
-  const metadata = jsonSafe({
+  const metadata = toPrismaJson({
     version: 3,
     source: "WORK_ORDER_LINES",
     fingerprint: calculation.fingerprint,
@@ -482,8 +479,8 @@ export async function getWorkOrderLines(workOrderId: string) {
     where: { workOrderId },
     orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
   });
-  const planned = summarizeLines(lines as Parameters<typeof summarizeLines>[0], "PLANNED");
-  const actualPreview = summarizeLines(lines as Parameters<typeof summarizeLines>[0], "ACTUAL", false);
+  const planned = summarizeLines(lines, "PLANNED");
+  const actualPreview = summarizeLines(lines, "ACTUAL", false);
   const actualReady = lines.length > 0 && lines.every((line) => ["COMPLETED", "CANCELLED"].includes(line.status));
   const statusCounts = Object.fromEntries(LINE_STATUSES.map((status) => [status, lines.filter((line) => line.status === status).length]));
 
@@ -514,8 +511,8 @@ export async function rebuildPlannedSnapshotFromLines(
         entityType: "WorkOrder",
         entityId: workOrderId,
         action: "FINANCE_PLAN_REBUILT_FROM_LINES",
-        after: jsonSafe(result.snapshot),
-        metadata: jsonSafe({ source: "WORK_ORDER_LINES", lineCount: result.summary.includedLineCount }),
+        after: toPrismaJson(result.snapshot),
+        metadata: toPrismaJson({ source: "WORK_ORDER_LINES", lineCount: result.summary.includedLineCount }),
       },
     });
     return result;
@@ -549,8 +546,8 @@ export async function createWorkOrderLine(
         entityType: "WorkOrderLine",
         entityId: line.id,
         action: "WORK_ORDER_LINE_CREATED",
-        after: jsonSafe(line),
-        metadata: jsonSafe({ workOrderId, financeFingerprint: finance.summary.calculation.fingerprint }),
+        after: toPrismaJson(line),
+        metadata: toPrismaJson({ workOrderId, financeFingerprint: finance.summary.calculation.fingerprint }),
       },
     });
     return { line, planned: finance.summary.calculation, snapshot: finance.snapshot };
@@ -571,8 +568,8 @@ export async function updateWorkOrderLine(
     const current = await tx.workOrderLine.findFirst({ where: { id: lineId, workOrderId } });
     if (!current) throw new WorkOrderLineError("LINE_NOT_FOUND", "WorkOrder line not found");
 
-    const status = hasOwn(body, "status") ? normalizeStatus(body.status, current.status as LineStatus) : current.status as LineStatus;
-    validateTransition(current.status as LineStatus, status);
+    const status = hasOwn(body, "status") ? normalizeStatus(body.status, current.status) : current.status;
+    validateTransition(current.status, status);
     const plannedQuantity = hasOwn(body, "plannedQuantity") ? decimal(body.plannedQuantity, "plannedQuantity") : current.plannedQuantity;
     const plannedUnitPrice = hasOwn(body, "plannedUnitPrice") ? decimal(body.plannedUnitPrice, "plannedUnitPrice") : current.plannedUnitPrice;
     const plannedUnitCost = hasOwn(body, "plannedUnitCost") ? decimal(body.plannedUnitCost, "plannedUnitCost") : current.plannedUnitCost;
@@ -601,7 +598,7 @@ export async function updateWorkOrderLine(
 
     const now = new Date();
     const data: Prisma.WorkOrderLineUncheckedUpdateInput = {
-      type: hasOwn(body, "type") ? normalizeType(body.type, current.type as LineType) : current.type,
+      type: hasOwn(body, "type") ? normalizeType(body.type, current.type) : current.type,
       status,
       description: hasOwn(body, "description") ? clean(body.description, 500) : current.description,
       code: hasOwn(body, "code") ? optionalString(body.code, 120) : current.code,
@@ -630,8 +627,8 @@ export async function updateWorkOrderLine(
       startedAt: status === "IN_PROGRESS" && !current.startedAt ? now : current.startedAt,
       completedAt: status === "COMPLETED" && !current.completedAt ? now : current.completedAt,
       cancelledAt: status === "CANCELLED" && !current.cancelledAt ? now : current.cancelledAt,
-      metadata: hasOwn(body, "metadata") && body.metadata && typeof body.metadata === "object" && !Array.isArray(body.metadata)
-        ? jsonSafe(body.metadata)
+      metadata: hasOwn(body, "metadata") && isRecord(body.metadata)
+        ? toPrismaJson(body.metadata)
         : current.metadata === null ? Prisma.JsonNull : current.metadata,
     };
     if (!String(data.description ?? "").trim()) throw new WorkOrderLineError("DESCRIPTION_REQUIRED", "WorkOrder line description is required");
@@ -644,9 +641,9 @@ export async function updateWorkOrderLine(
         entityType: "WorkOrderLine",
         entityId: line.id,
         action: "WORK_ORDER_LINE_UPDATED",
-        before: jsonSafe(current),
-        after: jsonSafe(line),
-        metadata: jsonSafe({ workOrderId, financeFingerprint: finance.summary.calculation.fingerprint }),
+        before: toPrismaJson(current),
+        after: toPrismaJson(line),
+        metadata: toPrismaJson({ workOrderId, financeFingerprint: finance.summary.calculation.fingerprint }),
       },
     });
     return { line, planned: finance.summary.calculation, snapshot: finance.snapshot };
@@ -675,15 +672,13 @@ export async function finalizeWorkOrderFinanceFromLines(
       orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
     });
     if (!lines.length) throw new WorkOrderLineError("NO_LINE_ITEMS", "WorkOrder has no canonical line items to finalize");
-    const summary = summarizeLines(lines as Parameters<typeof summarizeLines>[0], "ACTUAL", true);
+    const summary = summarizeLines(lines, "ACTUAL", true);
     const calculation = summary.calculation;
     const existing = await tx.workOrderFinanceSnapshot.findUnique({
       where: { workOrderId_kind: { workOrderId, kind: "ACTUAL" } },
     });
     if (existing?.lockedAt) {
-      const fingerprint = existing.metadata && typeof existing.metadata === "object" && !Array.isArray(existing.metadata)
-        ? (existing.metadata as Record<string, unknown>).fingerprint
-        : null;
+      const fingerprint = isRecord(existing.metadata) ? existing.metadata.fingerprint : null;
       if (fingerprint !== calculation.fingerprint) {
         throw new WorkOrderLineError(
           "ACTUAL_ALREADY_LOCKED",
@@ -694,7 +689,7 @@ export async function finalizeWorkOrderFinanceFromLines(
     }
 
     const now = new Date();
-    const metadata = jsonSafe({
+    const metadata = toPrismaJson({
       version: 3,
       source: "WORK_ORDER_LINES",
       fingerprint: calculation.fingerprint,
@@ -754,8 +749,8 @@ export async function finalizeWorkOrderFinanceFromLines(
         entityType: "WorkOrder",
         entityId: workOrderId,
         action: "FINANCE_ACTUAL_LOCKED_FROM_LINES",
-        after: jsonSafe(snapshot),
-        metadata: jsonSafe({ lineCount: summary.includedLineCount, fingerprint: calculation.fingerprint }),
+        after: toPrismaJson(snapshot),
+        metadata: toPrismaJson({ lineCount: summary.includedLineCount, fingerprint: calculation.fingerprint }),
       },
     });
     return { summary, snapshot, alreadyLocked: false };
