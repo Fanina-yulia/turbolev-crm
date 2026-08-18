@@ -18,6 +18,64 @@
   padding-top:86px!important;
 }
 
+.mobileNavToggle{
+  display:none;
+}
+
+.sectionLoading{
+  display:grid;
+  gap:16px;
+  min-height:320px;
+  padding:4px 0;
+}
+
+.sectionLoadingTitle,
+.sectionLoadingGrid > div{
+  background:linear-gradient(90deg,var(--panel) 20%,var(--panel-2) 45%,var(--panel) 70%);
+  background-size:220% 100%;
+  border:1px solid var(--line);
+  animation:sectionLoadingPulse 1.25s ease-in-out infinite;
+}
+
+.sectionLoadingTitle{
+  width:min(360px,70%);
+  height:38px;
+  border-radius:10px;
+}
+
+.sectionLoadingGrid{
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:12px;
+}
+
+.sectionLoadingGrid > div{
+  min-height:190px;
+  border-radius:14px;
+}
+
+.srOnly{
+  position:absolute;
+  width:1px;
+  height:1px;
+  padding:0;
+  margin:-1px;
+  overflow:hidden;
+  clip:rect(0,0,0,0);
+  white-space:nowrap;
+  border:0;
+}
+
+@keyframes sectionLoadingPulse{
+  0%{background-position:100% 0}
+  100%{background-position:-100% 0}
+}
+
+@media(prefers-reduced-motion:reduce){
+  .sectionLoadingTitle,
+  .sectionLoadingGrid > div{animation:none}
+}
+
 /* Sidebar navigation: group state and active page state are intentionally different. */
 .navGroup{
   display:flex;
@@ -180,5 +238,54 @@
   }
   .workspaceWithFloatingAction{
     padding-top:72px!important;
+  }
+  .mobileNavToggle{
+    position:absolute;
+    top:18px;
+    right:16px;
+    z-index:2;
+    display:grid;
+    width:44px;
+    height:44px;
+    place-items:center;
+    padding:0;
+    border:1px solid var(--line);
+    border-radius:11px;
+    background:var(--panel-2);
+    color:var(--text);
+    font-size:24px;
+    line-height:1;
+    cursor:pointer;
+    touch-action:manipulation;
+  }
+  .mobileNavToggle:focus{outline:none}
+  .mobileNavToggle:focus-visible{box-shadow:0 0 0 3px rgba(255,102,0,.22)}
+  .mobileNavOpen{
+    display:flex!important;
+    margin-top:4px;
+    padding-top:8px;
+    border-top:1px solid var(--line);
+  }
+  .navGroupHead{
+    min-height:44px!important;
+    padding:10px 12px!important;
+    font-size:12px!important;
+    touch-action:manipulation;
+  }
+  .navItem{
+    min-height:46px;
+    font-size:15px!important;
+    touch-action:manipulation;
+  }
+  .settingsSubmenu button{
+    min-height:44px;
+    font-size:13px!important;
+    touch-action:manipulation;
+  }
+  .sectionLoadingGrid{
+    grid-template-columns:1fr;
+  }
+  .sectionLoadingGrid > div{
+    min-height:120px;
   }
 }

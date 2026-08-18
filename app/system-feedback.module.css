@@ -1,0 +1,146 @@
+.screen{
+  min-height:100dvh;
+  display:grid;
+  place-items:center;
+  padding:24px;
+  background:var(--bg);
+  color:var(--text);
+}
+
+.card{
+  width:min(560px,100%);
+  padding:28px;
+  border:1px solid var(--line);
+  border-radius:18px;
+  background:var(--panel);
+  box-shadow:0 24px 70px rgba(0,0,0,.22);
+}
+
+.eyebrow{
+  margin:0 0 8px;
+  color:var(--orange);
+  font-size:11px;
+  font-weight:750;
+  letter-spacing:.12em;
+  text-transform:uppercase;
+}
+
+.title{
+  margin:0;
+  font-size:clamp(26px,5vw,38px);
+  line-height:1.1;
+  letter-spacing:-.03em;
+}
+
+.copy{
+  margin:14px 0 0;
+  color:var(--soft-text);
+  font-size:15px;
+  line-height:1.6;
+}
+
+.actions{
+  display:flex;
+  flex-wrap:wrap;
+  gap:10px;
+  margin-top:22px;
+}
+
+.primary,
+.secondary{
+  min-height:44px;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  padding:10px 16px;
+  border-radius:10px;
+  border:1px solid var(--line);
+  font-weight:700;
+  text-decoration:none;
+  cursor:pointer;
+  touch-action:manipulation;
+}
+
+.primary{
+  border-color:var(--orange);
+  background:var(--orange);
+  color:#111;
+}
+
+.secondary{
+  background:var(--button-bg);
+  color:var(--button-text);
+}
+
+.primary:focus-visible,
+.secondary:focus-visible{
+  outline:none;
+  box-shadow:0 0 0 3px rgba(255,102,0,.24);
+}
+
+.digest{
+  margin:14px 0 0;
+  color:var(--soft-text-2);
+  font-size:11px;
+  font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+}
+
+.loadingCard{
+  width:min(980px,100%);
+  display:grid;
+  gap:16px;
+}
+
+.loadingTitle,
+.loadingBlock{
+  border:1px solid var(--line);
+  background:linear-gradient(90deg,var(--panel) 20%,var(--panel-2) 45%,var(--panel) 70%);
+  background-size:220% 100%;
+  animation:pulse 1.25s ease-in-out infinite;
+}
+
+.loadingTitle{
+  width:min(360px,65%);
+  height:40px;
+  border-radius:10px;
+}
+
+.loadingGrid{
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:12px;
+}
+
+.loadingBlock{
+  min-height:180px;
+  border-radius:14px;
+}
+
+.srOnly{
+  position:absolute;
+  width:1px;
+  height:1px;
+  padding:0;
+  margin:-1px;
+  overflow:hidden;
+  clip:rect(0,0,0,0);
+  white-space:nowrap;
+  border:0;
+}
+
+@keyframes pulse{
+  0%{background-position:100% 0}
+  100%{background-position:-100% 0}
+}
+
+@media(max-width:760px){
+  .card{padding:22px}
+  .actions{flex-direction:column}
+  .primary,.secondary{width:100%}
+  .loadingGrid{grid-template-columns:1fr}
+  .loadingBlock{min-height:120px}
+}
+
+@media(prefers-reduced-motion:reduce){
+  .loadingTitle,.loadingBlock{animation:none}
+}

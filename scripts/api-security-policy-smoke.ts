@@ -81,9 +81,20 @@ for (const sourcePath of shadowAwareSources) {
   assert.doesNotMatch(source, /strict:\s*true/, `${sourcePath} must follow the global SHADOW/ENFORCED mode`);
 }
 
-for (const sourcePath of ["app/api/personnel/route.ts", "app/api/audit/route.ts"]) {
+const rbacAwareSources = [
+  "app/api/personnel/route.ts",
+  "app/api/audit/route.ts",
+  "app/api/intake/route.ts",
+  "app/api/leads/route.ts",
+  "app/api/leads/[id]/route.ts",
+  "app/api/leads/[id]/attempt/route.ts",
+  "app/api/leads/[id]/book/route.ts",
+  "app/api/leads/[id]/convert/route.ts",
+  "app/api/telephony/call/route.ts",
+];
+for (const sourcePath of rbacAwareSources) {
   const source = await fs.readFile(sourcePath, "utf8");
-  assert.match(source, /authorize\(/, `${sourcePath} must be RBAC-aware before P0.2-A ships`);
+  assert.match(source, /authorize\(/, `${sourcePath} must remain RBAC-aware`);
 }
 
 const authProxy = await fs.readFile("app/api/auth/[...path]/route.ts", "utf8");
