@@ -42,6 +42,7 @@ export type IntakeInput = {
   complaint?: string;
   appointmentDate?: string;
   appointmentTime?: string;
+  appointmentDurationMinutes?: string | number;
   preliminaryAmount?: string | number;
   preliminaryWorks?: IntakePreliminaryWork[];
   comment?: string;
@@ -70,6 +71,15 @@ function normalizePlate(value: unknown) { return String(value || "").toUpperCase
 function toInt(value: unknown) { if (value === null || value === undefined || value === "") return null; const n = Number(value); return Number.isFinite(n) ? Math.round(n) : null; }
 function toDecimal(value: unknown) { if (value === null || value === undefined || value === "") return null; const n = Number(String(value).replace(",", ".")); return Number.isFinite(n) && n >= 0 ? n : null; }
 function json(value: unknown): Prisma.InputJsonValue { return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue; }
+function timeToMinute(value: string | null) {
+  if (!value) return null;
+  const match = /^(\d{1,2}):(\d{2})/.exec(value);
+  if (!match) return null;
+  const hour = Number(match[1]);
+  const minute = Number(match[2]);
+  if (!Number.isInteger(hour) || !Number.isInteger(minute) || hour < 0 || hour > 23 || minute < 0 || minute > 59) return null;
+  return hour * 60 + minute;
+}
 
 function normalizePreliminaryWorks(value: unknown) {
   if (!Array.isArray(value)) return [] as Array<{ name:string; quantity:number; total:number; manual:boolean }>;
@@ -107,7 +117,11 @@ export async function createIntake(input: IntakeInput) {
   const hasAppointment = Boolean(appointmentDate && appointmentTime);
   const appointmentStart = hasAppointment ? new Date(`${appointmentDate}T${appointmentTime}:00`) : null;
   if (appointmentStart && Number.isNaN(appointmentStart.getTime())) throw new IntakeValidationError("Некоректна дата або час запису.");
-  const appointmentEnd = appointmentStart ? new Date(appointmentStart.getTime() + 60 * 60_000) : null;
+  const appointmentDurationMinutes = toInt(input.appointmentDurationMinutes) ?? 60;
+  if (appointmentDurationMinutes < 30 || appointmentDurationMinutes > 24 * 60 || appointmentDurationMinutes % 30 !== 0) {
+    throw new IntakeValidationError("Тривалість запису має бути кратною 30 хвилинам і не перевищувати 24 години.");
+  }
+  const appointmentEnd = appointmentStart ? new Date(appointmentStart.getTime() + appointmentDurationMinutes * 60_000) : null;
 
   const preliminaryWorks = normalizePreliminaryWorks(input.preliminaryWorks);
   const preliminaryWorksText = worksSummary(preliminaryWorks);
@@ -211,6 +225,16 @@ export async function createIntake(input: IntakeInput) {
         : await tx.serviceLocation.findFirst({ where: { isActive: true }, orderBy: [{ sortOrder: "asc" }, { name: "asc" }] });
       if (!location) throw new IntakeValidationError("У CRM немає активної локації СТО для запису.");
 
+      const startMinute = timeToMinute(appointmentTime);
+      const locationOpenMinute = Number.isFinite(location.openMinute) ? location.openMinute : FALLBACK_OPEN_MINUTE;
+      const locationCloseMinute = Number.isFinite(location.closeMinute) ? location.closeMinute : FALLBACK_CLOSE_MINUTE;
+      if (startMinute === null || startMinute % 30 !== 0) {
+        throw new IntakeValidationError("Час запису має бути кратним 30 хвилинам.");
+      }
+      if (startMinute < locationOpenMinute || startMinute + appointmentDurationMinutes > locationCloseMinute) {
+        throw new IntakeValidationError(`Запис має бути в межах робочого графіка ${minuteLabel(locationOpenMinute)}–${minuteLabel(locationCloseMinute)}.`);
+      }
+
       const postId = clean(input.postId, 80);
       const mechanicId = clean(input.mechanicId, 80);
       if (!postId) throw new IntakeValidationError("Оберіть пост СТО.");
@@ -289,7 +313,7 @@ export async function createIntake(input: IntakeInput) {
         entityId: lead.id,
         action: "CREATE_FROM_INTAKE",
         after: json(lead),
-        metadata: json({ clientId: client.id, vehicleId: vehicle.id, appointmentId: appointment?.id || null, vehicleReassigned: needsReassign, previousClientId, contactPhone: displayPhone(phoneNormalized), preliminaryWorksCount: preliminaryWorks.length, postId: post?.id || null, mechanicId: mechanic?.id || null }),
+        metadata: json({ clientId: client.id, vehicleId: vehicle.id, appointmentId: appointment?.id || null, vehicleReassigned: needsReassign, previousClientId, contactPhone: displayPhone(phoneNormalized), preliminaryWorksCount: preliminaryWorks.length, postId: post?.id || null, mechanicId: mechanic?.id || null, appointmentDurationMinutes }),
       },
     });
     if (needsReassign) {
@@ -311,11 +335,17 @@ export async function createIntake(input: IntakeInput) {
           entityId: appointment.id,
           action: "CREATE_FROM_INTAKE",
           after: json(appointment),
-          metadata: json({ leadId: lead.id, clientId: client.id, vehicleId: vehicle.id, postId: post?.id || null, mechanicId: mechanic?.id || null }),
+          metadata: json({ leadId: lead.id, clientId: client.id, vehicleId: vehicle.id, postId: post?.id || null, mechanicId: mechanic?.id || null, appointmentDurationMinutes }),
         },
       });
     }
 
     return { client, vehicle, lead, appointment, vehicleReassigned: needsReassign, preliminaryWorks };
   });
+}
+
+const FALLBACK_OPEN_MINUTE = 9 * 60;
+const FALLBACK_CLOSE_MINUTE = 21 * 60;
+function minuteLabel(value: number) {
+  return `${String(Math.floor(value / 60)).padStart(2, "0")}:${String(value % 60).padStart(2, "0")}`;
 }
