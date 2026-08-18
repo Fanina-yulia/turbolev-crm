@@ -7,6 +7,7 @@ import {
   type WorkOrderFinanceInput,
 } from "@/src/domain/work-order-finance";
 import { getPrisma } from "@/src/lib/prisma";
+import { toPrismaJson } from "@/src/lib/prisma-json";
 
 const SOURCE_FINALIZATION = "WORK_ORDER_FINANCE";
 const SOURCE_PAYMENT = "WORK_ORDER_PAYMENT";
@@ -22,7 +23,11 @@ export class WorkOrderFinanceError extends Error {
 }
 
 function jsonSafe(value: unknown): Prisma.InputJsonValue {
-  return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
+  return toPrismaJson(value);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
 function toDecimal(value: unknown) {
@@ -269,9 +274,7 @@ export async function finalizeWorkOrderFinance(
     });
 
     if (existingActual?.lockedAt) {
-      const fingerprint = existingActual.metadata && typeof existingActual.metadata === "object" && !Array.isArray(existingActual.metadata)
-        ? (existingActual.metadata as Record<string, unknown>).fingerprint
-        : null;
+      const fingerprint = isRecord(existingActual.metadata) ? existingActual.metadata.fingerprint : null;
       if (fingerprint !== calculation.fingerprint) {
         throw new WorkOrderFinanceError(
           "ACTUAL_ALREADY_LOCKED",
