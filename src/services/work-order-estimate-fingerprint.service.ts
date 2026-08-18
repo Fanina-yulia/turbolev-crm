@@ -1,10 +1,6 @@
-import { Prisma } from "@/src/generated/prisma/client";
 import { getPrisma } from "@/src/lib/prisma";
+import { toPrismaJson } from "@/src/lib/prisma-json";
 import { getWorkOrderEstimateApprovalStateTx } from "@/src/services/work-order-estimate-approval-scope.service";
-
-function jsonSafe(value: unknown): Prisma.InputJsonValue {
-  return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
-}
 
 export async function normalizeApprovedEstimateFingerprint(
   workOrderId: string,
@@ -34,9 +30,9 @@ export async function normalizeApprovedEstimateFingerprint(
         entityType: "WorkOrderEstimate",
         entityId: estimate.id,
         action: "ESTIMATE_APPROVAL_FINGERPRINT_NORMALIZED",
-        before: jsonSafe({ lineFingerprint: estimate.lineFingerprint }),
-        after: jsonSafe({ lineFingerprint }),
-        metadata: jsonSafe({ workOrderId, lineCount: approval.lineCount, scope: "CLIENT_APPROVAL" }),
+        before: toPrismaJson({ lineFingerprint: estimate.lineFingerprint }),
+        after: toPrismaJson({ lineFingerprint }),
+        metadata: toPrismaJson({ workOrderId, lineCount: approval.lineCount, scope: "CLIENT_APPROVAL" }),
       },
     });
     return updated;

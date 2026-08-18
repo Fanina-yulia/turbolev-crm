@@ -14,6 +14,8 @@ import {
   type WorkflowGateState,
   type WorkflowTransitionDecision,
 } from "@/src/domain/workflow";
+import { getPrisma } from "@/src/lib/prisma";
+import { toPrismaJson } from "@/src/lib/prisma-json";
 import {
   ensureEstimateSnapshotTx,
   ensurePartsRequestTx,
@@ -24,7 +26,7 @@ import {
 } from "@/src/services/work-order-cycle.service";
 import { ensureQualityControlTaskTx } from "@/src/services/work-order-qc.service";
 import { finalizeWorkOrderFinanceFromLines } from "@/src/services/work-order-lines.service";
-import { getPrisma } from "@/src/lib/prisma";
+import type { PlannerStatus } from "@/src/services/planner.service";
 
 export class DiagnosticRequestNotFoundError extends Error {
   constructor(id: string) {
@@ -59,10 +61,6 @@ export class WorkOrderTransitionError extends Error {
   }
 }
 
-function jsonSafe(value: unknown): Prisma.InputJsonValue {
-  return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
-}
-
 const IMPLEMENTED_WORK_ORDER_ACTIONS = new Set<WorkflowActionCode>([
   "CREATE_ESTIMATE",
   "OPEN_PARTS_REQUEST",
@@ -77,7 +75,7 @@ function unsupportedActions(actions: readonly WorkflowActionCode[]) {
 }
 
 function uniqueGates(values: readonly HardGateCode[]) {
-  return [...new Set(values)] as HardGateCode[];
+  return [...new Set(values)];
 }
 
 function evaluateWorkOrderTransition(from: string, to: string, gates: WorkflowGateState = {}) {
@@ -266,8 +264,8 @@ async function executeWorkOrderActions(
   return results;
 }
 
-function plannerStatusForWorkOrder(status: string) {
-  const mapping: Record<string, string> = {
+function plannerStatusForWorkOrder(status: string): PlannerStatus | null {
+  const mapping: Record<string, PlannerStatus> = {
     PARTS_REVIEW: "WAITING_CALCULATION",
     WAITING_APPROVAL: "WAITING_APPROVAL",
     WAITING_PARTS: "WAITING_PARTS",
@@ -281,7 +279,7 @@ function plannerStatusForWorkOrder(status: string) {
     CLOSED: "COMPLETED",
     CANCELLED: "CANCELLED",
   };
-  return mapping[status] ?? "";
+  return mapping[status] ?? null;
 }
 
 export async function transitionWorkOrder(id: string, toStatus: string, actorName = "CRM") {
@@ -332,7 +330,7 @@ export async function transitionWorkOrder(id: string, toStatus: string, actorNam
       await tx.serviceAppointment.updateMany({
         where: { workOrderId: id },
         data: {
-          status: plannerStatus as never,
+          status: plannerStatus,
           actualStartAt: decision.normalizedTo === "IN_REPAIR" ? now : undefined,
           actualEndAt: decision.normalizedTo === "CLOSED" ? now : undefined,
         },
@@ -345,9 +343,9 @@ export async function transitionWorkOrder(id: string, toStatus: string, actorNam
         entityType: "WorkOrder",
         entityId: id,
         action: `STATUS_${decision.normalizedFrom}_TO_${decision.normalizedTo}`,
-        before: jsonSafe(current),
-        after: jsonSafe(updated),
-        metadata: jsonSafe({
+        before: toPrismaJson(current),
+        after: toPrismaJson(updated),
+        metadata: toPrismaJson({
           workflowCode: decision.code,
           requiredGates: decision.requiredGates,
           satisfiedGates: decision.satisfiedGates,

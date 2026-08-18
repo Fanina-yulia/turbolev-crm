@@ -1,5 +1,6 @@
 import { Prisma } from "@/src/generated/prisma/client";
 import { getPrisma } from "@/src/lib/prisma";
+import { toPrismaJson } from "@/src/lib/prisma-json";
 
 type Tx = Prisma.TransactionClient;
 
@@ -10,10 +11,6 @@ export class WorkOrderQualityError extends Error {
     this.name = "WorkOrderQualityError";
     this.code = code;
   }
-}
-
-function jsonSafe(value: unknown): Prisma.InputJsonValue {
-  return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
 }
 
 async function ensureWorkOrder(tx: Tx, workOrderId: string) {
@@ -65,8 +62,8 @@ export async function ensureQualityControlTaskTx(
       entityType: "WorkOrderQualityControl",
       entityId: task.id,
       action: "QC_TASK_CREATED",
-      after: jsonSafe(task),
-      metadata: jsonSafe({ workOrderId, attempt: task.attempt }),
+      after: toPrismaJson(task),
+      metadata: toPrismaJson({ workOrderId, attempt: task.attempt }),
     },
   });
   return task;
@@ -119,7 +116,7 @@ export async function updateQualityControl(
         },
       });
       await tx.auditEvent.create({
-        data: { actorName, entityType: "WorkOrderQualityControl", entityId: task.id, action: "QC_RECHECK_CREATED", after: jsonSafe(task), metadata: jsonSafe({ workOrderId, attempt: task.attempt }) },
+        data: { actorName, entityType: "WorkOrderQualityControl", entityId: task.id, action: "QC_RECHECK_CREATED", after: toPrismaJson(task), metadata: toPrismaJson({ workOrderId, attempt: task.attempt }) },
       });
       return getQualityControlStateTx(tx, workOrderId);
     } else {
@@ -128,7 +125,7 @@ export async function updateQualityControl(
 
     const before = latest;
     const checklist = Object.prototype.hasOwnProperty.call(input, "checklist")
-      ? input.checklist == null ? Prisma.JsonNull : jsonSafe(input.checklist)
+      ? input.checklist == null ? Prisma.JsonNull : toPrismaJson(input.checklist)
       : latest.checklist === null ? Prisma.JsonNull : latest.checklist;
     const updated = await tx.workOrderQualityControl.update({
       where: { id: latest.id },
@@ -147,9 +144,9 @@ export async function updateQualityControl(
         entityType: "WorkOrderQualityControl",
         entityId: updated.id,
         action: `QC_${action}`,
-        before: jsonSafe(before),
-        after: jsonSafe(updated),
-        metadata: jsonSafe({ workOrderId, attempt: updated.attempt }),
+        before: toPrismaJson(before),
+        after: toPrismaJson(updated),
+        metadata: toPrismaJson({ workOrderId, attempt: updated.attempt }),
       },
     });
     return getQualityControlStateTx(tx, workOrderId);
