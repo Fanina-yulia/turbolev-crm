@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import type { QueryResultRow } from "pg";
 import { getSqlPool } from "@/src/lib/sql";
 
 export type CommunicationChannel = "FACEBOOK" | "INSTAGRAM" | "TIKTOK" | "BINOTEL" | "OLX" | "WEBSITE";
@@ -23,6 +24,58 @@ export type InquiryInput = {
   assignedUserId?: string;
   metadata?: unknown;
 };
+
+type CommunicationMessageView = {
+  id: string;
+  direction: "in" | "out" | "system";
+  text: string;
+  at: Date;
+  metadata: unknown;
+};
+
+interface CommunicationInquiryRow extends QueryResultRow {
+  id: string;
+  channel: CommunicationChannel;
+  state: InquiryState;
+  name: string | null;
+  phone: string | null;
+  phoneNormalized: string | null;
+  handle: string | null;
+  subject: string;
+  preview: string | null;
+  vehicle: string | null;
+  plate: string | null;
+  unread: boolean;
+  answered: boolean;
+  receivedAt: Date;
+  sourceDetail: string | null;
+  campaign: string | null;
+  utm: string | null;
+  leadId: string | null;
+  assignedUserId: string | null;
+  metadata: unknown;
+}
+
+interface CommunicationMessageRow extends QueryResultRow {
+  id: string;
+  inquiryId: string;
+  direction: "IN" | "OUT" | "SYSTEM" | string;
+  text: string;
+  sentAt: Date;
+  metadata: unknown;
+}
+
+interface ClientMatchRow extends QueryResultRow {
+  phoneNormalized: string;
+  id: string;
+  name: string | null;
+}
+
+interface LeadRow extends QueryResultRow {
+  id: string;
+  name: string | null;
+  phoneNormalized: string;
+}
 
 export function normalizePhone(value?: string | null) {
   const digits = String(value || "").replace(/\D/g, "");
@@ -71,7 +124,7 @@ export async function listCommunicationInquiries(input?: { channel?: string; unr
     where.push(`LOWER(COALESCE(i."name",'') || ' ' || COALESCE(i."phone",'') || ' ' || COALESCE(i."handle",'') || ' ' || i."subject" || ' ' || COALESCE(i."vehicle",'') || ' ' || COALESCE(i."plate",'')) LIKE $${values.length}`);
   }
 
-  const inquiryResult = await pool.query(
+  const inquiryResult = await pool.query<CommunicationInquiryRow>(
     `SELECT i.* FROM "CommunicationInquiry" i WHERE ${where.join(" AND ")} ORDER BY i."receivedAt" DESC LIMIT 250`,
     values,
   );
@@ -79,11 +132,11 @@ export async function listCommunicationInquiries(input?: { channel?: string; unr
   if (!rows.length) return { items: [] };
 
   const ids = rows.map((row) => row.id);
-  const messageResult = await pool.query(
+  const messageResult = await pool.query<CommunicationMessageRow>(
     `SELECT * FROM "CommunicationMessage" WHERE "inquiryId" = ANY($1::text[]) ORDER BY "sentAt" ASC`,
     [ids],
   );
-  const messagesByInquiry = new Map<string, any[]>();
+  const messagesByInquiry = new Map<string, CommunicationMessageView[]>();
   for (const message of messageResult.rows) {
     const list = messagesByInquiry.get(message.inquiryId) || [];
     list.push({
@@ -91,16 +144,18 @@ export async function listCommunicationInquiries(input?: { channel?: string; unr
       direction: message.direction === "OUT" ? "out" : message.direction === "SYSTEM" ? "system" : "in",
       text: message.text,
       at: message.sentAt,
-      metadata: message.metadata || null,
+      metadata: message.metadata ?? null,
     });
     messagesByInquiry.set(message.inquiryId, list);
   }
 
-  const phones = [...new Set(rows.map((row) => row.phoneNormalized).filter(Boolean))];
+  const phones = [...new Set(
+    rows.map((row) => row.phoneNormalized).filter((phone): phone is string => Boolean(phone)),
+  )];
   const clientMap = new Map<string, { id: string; name: string | null }>();
   const duplicateMap = new Map<string, { id: string; name: string | null }>();
   if (phones.length) {
-    const clientResult = await pool.query(
+    const clientResult = await pool.query<ClientMatchRow>(
       `SELECT DISTINCT ON ("phoneNormalized") "phoneNormalized","id","name"
        FROM (
          SELECT c."phoneNormalized" AS "phoneNormalized", c."id", c."name", c."updatedAt"
@@ -115,13 +170,17 @@ export async function listCommunicationInquiries(input?: { channel?: string; unr
        ORDER BY "phoneNormalized", "updatedAt" DESC`,
       [phones],
     );
-    for (const client of clientResult.rows) clientMap.set(client.phoneNormalized, { id: client.id, name: client.name });
+    for (const client of clientResult.rows) {
+      clientMap.set(client.phoneNormalized, { id: client.id, name: client.name });
+    }
 
-    const leadResult = await pool.query(
+    const leadResult = await pool.query<LeadRow>(
       `SELECT DISTINCT ON ("phoneNormalized") "id","name","phoneNormalized" FROM "Lead" WHERE "phoneNormalized" = ANY($1::text[]) ORDER BY "phoneNormalized","updatedAt" DESC`,
       [phones],
     );
-    for (const lead of leadResult.rows) duplicateMap.set(lead.phoneNormalized, { id: lead.id, name: lead.name });
+    for (const lead of leadResult.rows) {
+      duplicateMap.set(lead.phoneNormalized, { id: lead.id, name: lead.name });
+    }
   }
 
   return {
@@ -166,7 +225,7 @@ export async function ingestCommunicationInquiry(input: InquiryInput) {
 
   try {
     await client.query("BEGIN");
-    const inquiryResult = await client.query(
+    const inquiryResult = await client.query<CommunicationInquiryRow>(
       `INSERT INTO "CommunicationInquiry" ("id","externalId","channel","state","name","phone","phoneNormalized","handle","subject","preview","vehicle","plate","plateNormalized","unread","answered","receivedAt","sourceDetail","campaign","utm","assignedUserId","metadata")
        VALUES ($1,$2,$3,'NEW',$4,$5,$6,$7,$8,$9,$10,$11,$12,TRUE,FALSE,$13,$14,$15,$16,$17,$18::jsonb)
        ON CONFLICT ("channel","externalId") DO UPDATE SET
@@ -222,7 +281,10 @@ export async function patchCommunicationInquiry(id: string, patch: { unread?: bo
   }
   if (!sets.length) throw new Error("No changes supplied");
   values.push(id);
-  const result = await pool.query(`UPDATE "CommunicationInquiry" SET ${sets.join(", ")}, "updatedAt"=CURRENT_TIMESTAMP WHERE "id"=$${values.length} RETURNING *`, values);
+  const result = await pool.query<CommunicationInquiryRow>(
+    `UPDATE "CommunicationInquiry" SET ${sets.join(", ")}, "updatedAt"=CURRENT_TIMESTAMP WHERE "id"=$${values.length} RETURNING *`,
+    values,
+  );
   if (!result.rowCount) throw new Error("Inquiry not found");
   return result.rows[0];
 }
@@ -232,9 +294,12 @@ export async function addCommunicationMessage(id: string, text: string) {
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
-    const inquiryResult = await client.query(`SELECT * FROM "CommunicationInquiry" WHERE "id"=$1 FOR UPDATE`, [id]);
+    const inquiryResult = await client.query<CommunicationInquiryRow>(
+      `SELECT * FROM "CommunicationInquiry" WHERE "id"=$1 FOR UPDATE`,
+      [id],
+    );
     if (!inquiryResult.rowCount) throw new Error("Inquiry not found");
-    const message = await client.query(
+    const message = await client.query<CommunicationMessageRow>(
       `INSERT INTO "CommunicationMessage" ("id","inquiryId","direction","text","sentAt","metadata") VALUES ($1,$2,'OUT',$3,CURRENT_TIMESTAMP,$4::jsonb) RETURNING *`,
       [makeId("msg"), id, text.trim(), JSON.stringify({ delivery: "CRM_ONLY" })],
     );
@@ -257,23 +322,29 @@ export async function convertInquiryToLead(id: string) {
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
-    const inquiryResult = await client.query(`SELECT * FROM "CommunicationInquiry" WHERE "id"=$1 FOR UPDATE`, [id]);
+    const inquiryResult = await client.query<CommunicationInquiryRow>(
+      `SELECT * FROM "CommunicationInquiry" WHERE "id"=$1 FOR UPDATE`,
+      [id],
+    );
     if (!inquiryResult.rowCount) throw new Error("Inquiry not found");
     const inquiry = inquiryResult.rows[0];
     if (inquiry.leadId) {
-      const lead = await client.query(`SELECT * FROM "Lead" WHERE "id"=$1`, [inquiry.leadId]);
+      const lead = await client.query<LeadRow>(`SELECT * FROM "Lead" WHERE "id"=$1`, [inquiry.leadId]);
       await client.query("COMMIT");
       return { lead: lead.rows[0], linkedExisting: inquiry.state === "LINKED" };
     }
     if (!inquiry.phoneNormalized) throw new Error("PHONE_REQUIRED");
 
-    const existing = await client.query(
+    const existing = await client.query<LeadRow>(
       `SELECT * FROM "Lead" WHERE "phoneNormalized"=$1 ORDER BY "updatedAt" DESC LIMIT 1`,
       [inquiry.phoneNormalized],
     );
     if (existing.rowCount) {
       const lead = existing.rows[0];
-      await client.query(`UPDATE "CommunicationInquiry" SET "leadId"=$1,"state"='LINKED',"unread"=FALSE,"updatedAt"=CURRENT_TIMESTAMP WHERE "id"=$2`, [lead.id, id]);
+      await client.query(
+        `UPDATE "CommunicationInquiry" SET "leadId"=$1,"state"='LINKED',"unread"=FALSE,"updatedAt"=CURRENT_TIMESTAMP WHERE "id"=$2`,
+        [lead.id, id],
+      );
       await client.query("COMMIT");
       return { lead, linkedExisting: true };
     }
@@ -288,11 +359,14 @@ export async function convertInquiryToLead(id: string) {
       inquiry.plate ? `Номер: ${inquiry.plate}` : null,
     ].filter(Boolean).join("\n");
     const nextContact = new Date(Date.now() + 2 * 60 * 60 * 1000);
-    const leadResult = await client.query(
+    const leadResult = await client.query<LeadRow>(
       `INSERT INTO "Lead" ("id","name","phone","phoneNormalized","status","source","comment","nextContactAt","assignedUserId") VALUES ($1,$2,$3,$4,'NEW',$5,$6,$7,$8) RETURNING *`,
       [leadId, inquiry.name || null, inquiry.phone, inquiry.phoneNormalized, leadSource(inquiry.channel), detail, nextContact, inquiry.assignedUserId || null],
     );
-    await client.query(`UPDATE "CommunicationInquiry" SET "leadId"=$1,"state"='CONVERTED',"unread"=FALSE,"updatedAt"=CURRENT_TIMESTAMP WHERE "id"=$2`, [leadId, id]);
+    await client.query(
+      `UPDATE "CommunicationInquiry" SET "leadId"=$1,"state"='CONVERTED',"unread"=FALSE,"updatedAt"=CURRENT_TIMESTAMP WHERE "id"=$2`,
+      [leadId, id],
+    );
     await client.query("COMMIT");
     return { lead: leadResult.rows[0], linkedExisting: false };
   } catch (error) {
