@@ -5,11 +5,16 @@ import {
   parseStatusFilter,
 } from "@/src/dto/leads";
 import { listLeads } from "@/src/services/leads.service";
+import { authorize } from "@/src/security/authorize";
+import { PERMISSIONS } from "@/src/security/permissions";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET(request: NextRequest) {
+  const access = await authorize(PERMISSIONS.LEADS_READ, request, { minimumScope: "TEAM" });
+  if (!access.ok) return access.response;
+
   try {
     const params = request.nextUrl.searchParams;
     const assignedUserId = params.get("assignedUserId")?.trim() || undefined;
