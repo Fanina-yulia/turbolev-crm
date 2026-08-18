@@ -1,5 +1,5 @@
 .plateQuickLookup{padding:16px 25px;border-bottom:1px solid var(--line);background:linear-gradient(180deg,rgba(255,106,0,.045),transparent)}
-.plateQuickCopy{display:flex;justify-content:space-between;gap:18px;align-items:end;margin-bottom:10px}
+.plateQuickCopy{display:flex;justify-content:space-between;gap:18px;align-items:flex-end;margin-bottom:10px}
 .plateQuickCopy b{font-size:12px}
 .plateQuickCopy span{font-size:9px;color:var(--muted);text-align:right}
 .plateQuickControls{display:grid;grid-template-columns:minmax(180px,300px) auto;gap:8px;align-items:center}
