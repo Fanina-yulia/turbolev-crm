@@ -2,39 +2,18 @@ import { createHash } from "node:crypto";
 import { Prisma } from "@/src/generated/prisma/client";
 import { evaluateWorkflowTransition, type WorkflowGateState } from "@/src/domain/workflow";
 import { getPrisma } from "@/src/lib/prisma";
+import { toPrismaJson } from "@/src/lib/prisma-json";
 
 const ACTIVE_LINE_STATUSES = ["DRAFT", "APPROVED", "IN_PROGRESS", "COMPLETED"] as const;
 const PARTS_STATUSES = [
   "NEW", "SELECTING", "SELECTED", "WAITING_APPROVAL", "APPROVED", "ORDER_REQUIRED", "ORDERED",
   "PARTIALLY_RECEIVED", "RECEIVED", "INSTALLED", "RETURNED", "CANCELLED",
 ] as const;
+const PARTS_STATUS_SET = new Set<string>(PARTS_STATUSES);
 
 type Tx = Prisma.TransactionClient;
 type PartsStatus = (typeof PARTS_STATUSES)[number];
-
-type CommercialLine = {
-  id: string;
-  type: string;
-  status: string;
-  description: string;
-  code: string | null;
-  article: string | null;
-  brand: string | null;
-  unit: string;
-  currency: string;
-  requiredForRepair: boolean;
-  plannedQuantity: Prisma.Decimal;
-  plannedUnitPrice: Prisma.Decimal;
-  plannedUnitCost: Prisma.Decimal;
-  plannedDiscount: Prisma.Decimal;
-  laborHours: Prisma.Decimal | null;
-  mechanicId: string | null;
-  supplierId: string | null;
-  supplierQuoteId: string | null;
-  supplierOrderId: string | null;
-  catalogItemId: string | null;
-  sortOrder: number;
-};
+type CommercialLine = Prisma.WorkOrderLineGetPayload<{}>;
 
 export class WorkOrderCommercialError extends Error {
   readonly code: string;
@@ -49,7 +28,11 @@ export class WorkOrderCommercialError extends Error {
 }
 
 function jsonSafe(value: unknown): Prisma.InputJsonValue {
-  return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
+  return toPrismaJson(value);
+}
+
+function isPartsStatus(value: string): value is PartsStatus {
+  return PARTS_STATUS_SET.has(value);
 }
 
 function text(value: unknown, max = 240) {
@@ -109,7 +92,7 @@ async function activeLines(tx: Tx, workOrderId: string) {
   return tx.workOrderLine.findMany({
     where: { workOrderId, status: { in: [...ACTIVE_LINE_STATUSES] } },
     orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }, { id: "asc" }],
-  }) as Promise<CommercialLine[]>;
+  });
 }
 
 function buildSnapshot(lines: CommercialLine[]) {
@@ -440,7 +423,7 @@ export async function transitionPartsRequest(
     const request = await tx.partsRequest.findUnique({ where: { id: partsRequestId }, include: { items: true, estimate: true } });
     if (!request) throw new WorkOrderCommercialError("PARTS_REQUEST_NOT_FOUND", "PartsRequest not found");
     const target = text(toStatus, 40).toUpperCase();
-    if (!PARTS_STATUSES.includes(target as PartsStatus)) {
+    if (!isPartsStatus(target)) {
       throw new WorkOrderCommercialError("INVALID_PARTS_STATUS", "Unknown PartsRequest status");
     }
     const gates: WorkflowGateState = {
@@ -454,16 +437,20 @@ export async function transitionPartsRequest(
       });
     }
     if (decision.code === "NOOP") return request;
+    if (!isPartsStatus(decision.normalizedTo)) {
+      throw new WorkOrderCommercialError("INVALID_PARTS_STATUS", "Workflow returned an unsupported PartsRequest status");
+    }
+    const normalizedStatus = decision.normalizedTo;
     const now = new Date();
     const updated = await tx.partsRequest.update({
       where: { id: request.id },
       data: {
-        status: decision.normalizedTo as PartsStatus,
-        selectedAt: decision.normalizedTo === "SELECTED" ? request.selectedAt ?? now : request.selectedAt,
-        approvedAt: decision.normalizedTo === "APPROVED" ? request.approvedAt ?? now : request.approvedAt,
-        orderedAt: decision.normalizedTo === "ORDERED" ? request.orderedAt ?? now : request.orderedAt,
-        receivedAt: decision.normalizedTo === "RECEIVED" ? request.receivedAt ?? now : request.receivedAt,
-        installedAt: decision.normalizedTo === "INSTALLED" ? request.installedAt ?? now : request.installedAt,
+        status: normalizedStatus,
+        selectedAt: normalizedStatus === "SELECTED" ? request.selectedAt ?? now : request.selectedAt,
+        approvedAt: normalizedStatus === "APPROVED" ? request.approvedAt ?? now : request.approvedAt,
+        orderedAt: normalizedStatus === "ORDERED" ? request.orderedAt ?? now : request.orderedAt,
+        receivedAt: normalizedStatus === "RECEIVED" ? request.receivedAt ?? now : request.receivedAt,
+        installedAt: normalizedStatus === "INSTALLED" ? request.installedAt ?? now : request.installedAt,
       },
       include: { items: true, estimate: true },
     });
@@ -543,7 +530,10 @@ export async function updatePartsRequestItem(
     const allInstalled = allItems.length > 0 && allItems.every((item) => item.installedQuantity.greaterThanOrEqualTo(item.quantity));
     const request = await tx.partsRequest.findUnique({ where: { id: partsRequestId } });
     if (!request) throw new WorkOrderCommercialError("PARTS_REQUEST_NOT_FOUND", "PartsRequest not found");
-    const derivedStatus: PartsStatus = allInstalled ? "INSTALLED" : allReceived ? "RECEIVED" : anyReceived ? "PARTIALLY_RECEIVED" : request.status as PartsStatus;
+    if (!isPartsStatus(request.status)) {
+      throw new WorkOrderCommercialError("INVALID_PARTS_STATUS", "Stored PartsRequest status is unsupported");
+    }
+    const derivedStatus: PartsStatus = allInstalled ? "INSTALLED" : allReceived ? "RECEIVED" : anyReceived ? "PARTIALLY_RECEIVED" : request.status;
     const now = new Date();
     const updatedRequest = derivedStatus !== request.status
       ? await tx.partsRequest.update({
