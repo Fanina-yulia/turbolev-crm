@@ -238,12 +238,13 @@ export async function createIntake(input: IntakeInput) {
       const postId = clean(input.postId, 80);
       const mechanicId = clean(input.mechanicId, 80);
       if (!postId) throw new IntakeValidationError("Оберіть пост СТО.");
-      if (!mechanicId) throw new IntakeValidationError("Закріпіть майстра.");
 
       post = await tx.servicePost.findFirst({ where: { id: postId, locationId: location.id, isActive: true } });
-      mechanic = await tx.serviceMechanic.findFirst({ where: { id: mechanicId, locationId: location.id, isActive: true } });
+      mechanic = mechanicId
+        ? await tx.serviceMechanic.findFirst({ where: { id: mechanicId, locationId: location.id, isActive: true } })
+        : null;
       if (!post) throw new IntakeValidationError("Обраний пост недоступний.");
-      if (!mechanic) throw new IntakeValidationError("Обраний майстер недоступний.");
+      if (mechanicId && !mechanic) throw new IntakeValidationError("Обраний майстер недоступний.");
 
       if (appointmentStart && appointmentEnd) {
         const nonBlocking = [PlannerAppointmentStatus.COMPLETED, PlannerAppointmentStatus.NO_SHOW, PlannerAppointmentStatus.CANCELLED];
@@ -255,8 +256,10 @@ export async function createIntake(input: IntakeInput) {
         };
         const postConflict = await tx.serviceAppointment.findFirst({ where: { ...overlap, postId: post.id }, select: { id: true } });
         if (postConflict) throw new IntakeConflictError(`Пост «${post.name}» уже зайнятий у цей час. Оберіть інший пост або час.`);
-        const mechanicParallel = await tx.serviceAppointment.count({ where: { ...overlap, mechanicId: mechanic.id } });
-        if (mechanicParallel >= 2) throw new IntakeConflictError(`${mechanic.name} уже веде 2 автомобілі одночасно. Оберіть іншого майстра або час.`);
+        if (mechanic) {
+          const mechanicParallel = await tx.serviceAppointment.count({ where: { ...overlap, mechanicId: mechanic.id } });
+          if (mechanicParallel >= 2) throw new IntakeConflictError(`${mechanic.name} уже веде 2 автомобілі одночасно. Оберіть іншого майстра або час.`);
+        }
       }
     }
 
@@ -282,12 +285,12 @@ export async function createIntake(input: IntakeInput) {
     });
 
     let appointment = null;
-    if (appointmentStart && appointmentEnd && location && post && mechanic) {
+    if (appointmentStart && appointmentEnd && location && post) {
       appointment = await tx.serviceAppointment.create({
         data: {
           locationId: location.id,
           postId: post.id,
-          mechanicId: mechanic.id,
+          mechanicId: mechanic?.id || null,
           leadId: lead.id,
           clientId: client.id,
           vehicleId: vehicle.id,

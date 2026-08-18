@@ -8,6 +8,7 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 30;
 
 const DURATION_COOKIE = "turbolev_booking_duration_minutes";
+const UNASSIGNED_MECHANIC = "__UNASSIGNED__";
 
 function cookieValue(request: Request, name: string) {
   const cookies = request.headers.get("cookie") || "";
@@ -33,6 +34,7 @@ export async function POST(request: Request) {
     }
 
     const input = { ...(body as IntakeInput) };
+    if (input.mechanicId === UNASSIGNED_MECHANIC) input.mechanicId = undefined;
     if (input.appointmentDurationMinutes === undefined || input.appointmentDurationMinutes === null || input.appointmentDurationMinutes === "") {
       const durationFromScheduler = Number(cookieValue(request, DURATION_COOKIE));
       if (Number.isFinite(durationFromScheduler) && durationFromScheduler >= 30) {
