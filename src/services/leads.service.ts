@@ -15,11 +15,78 @@ export class LeadBusinessRuleError extends Error {
 
 export type ListLeadsInput = { statuses?: LeadStatus[]; assignedUserId?: string; quickFilter?: LeadQuickFilter };
 
+type ZonedParts = { year: number; month: number; day: number; hour: number; minute: number; second: number };
+const LEAD_TIME_ZONE = "Europe/Kyiv";
+const kyivFormatter = new Intl.DateTimeFormat("en-CA", {
+  timeZone: LEAD_TIME_ZONE,
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+  hour: "2-digit",
+  minute: "2-digit",
+  second: "2-digit",
+  hourCycle: "h23",
+});
+
 function leadSlaMinutes(): number {
   const value = Number(process.env.LEAD_SLA_MINUTES || 120);
   return Number.isFinite(value) && value > 0 ? value : 120;
 }
-function endOfTodayUtc(now: Date): Date { const end = new Date(now); end.setUTCHours(23, 59, 59, 999); return end; }
+
+function zonedParts(date: Date): ZonedParts {
+  const values = Object.fromEntries(
+    kyivFormatter
+      .formatToParts(date)
+      .filter((part) => part.type !== "literal")
+      .map((part) => [part.type, Number(part.value)]),
+  ) as Record<string, number>;
+  return {
+    year: values.year,
+    month: values.month,
+    day: values.day,
+    hour: values.hour,
+    minute: values.minute,
+    second: values.second,
+  };
+}
+
+function zonedWallTimeToUtc(parts: ZonedParts, millisecond = 0): Date {
+  const target = Date.UTC(parts.year, parts.month - 1, parts.day, parts.hour, parts.minute, parts.second, millisecond);
+  let candidate = new Date(target);
+
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const represented = zonedParts(candidate);
+    const representedUtc = Date.UTC(
+      represented.year,
+      represented.month - 1,
+      represented.day,
+      represented.hour,
+      represented.minute,
+      represented.second,
+      millisecond,
+    );
+    const correction = target - representedUtc;
+    if (correction === 0) break;
+    candidate = new Date(candidate.getTime() + correction);
+  }
+
+  return candidate;
+}
+
+function endOfTodayKyiv(now: Date): Date {
+  const today = zonedParts(now);
+  const normalizedTomorrow = new Date(Date.UTC(today.year, today.month - 1, today.day + 1));
+  const tomorrowStart = zonedWallTimeToUtc({
+    year: normalizedTomorrow.getUTCFullYear(),
+    month: normalizedTomorrow.getUTCMonth() + 1,
+    day: normalizedTomorrow.getUTCDate(),
+    hour: 0,
+    minute: 0,
+    second: 0,
+  });
+  return new Date(tomorrowStart.getTime() - 1);
+}
+
 function jsonSafe(value: unknown): Prisma.InputJsonValue { return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue; }
 function normalizeLead<T extends { status: LeadStatus }>(lead: T) { return { ...lead, status: normalizeLegacyLeadStatus(lead.status) }; }
 
@@ -33,7 +100,7 @@ export async function listLeads(input: ListLeadsInput) {
     const threshold = new Date(now.getTime() - leadSlaMinutes() * 60_000);
     and.push({ status: { in: [LeadStatus.NEW, LeadStatus.NO_ANSWER] }, lastActivityAt: { lte: threshold } });
   }
-  if (input.quickFilter === "follow_up_today") and.push({ nextContactAt: { lte: endOfTodayUtc(now) } });
+  if (input.quickFilter === "follow_up_today") and.push({ nextContactAt: { lte: endOfTodayKyiv(now) } });
   if (input.quickFilter === "junk") and.push({ status: { in: [LeadStatus.SPAM_WRONG, LeadStatus.SUPPLIER_PARTNER, LeadStatus.REJECTED, LeadStatus.LOST] } });
 
   const [leads, users] = await Promise.all([
@@ -90,9 +157,11 @@ export async function incrementLeadAttempt(id: string, actorName = "CRM") {
 }
 
 /** ARRIVED conversion obeys Hard Gate #1: Lead -> Client + Vehicle + DiagnosticRequest. WorkOrder is NOT created here. */
-export async function convertLead(id: string) {
+export async function convertLead(id: string, actorName = "CRM") {
   const prisma = getPrisma();
   return prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`lead-convert:${id}`}))`;
+
     const lead = await tx.lead.findUnique({ where: { id } });
     if (!lead) throw new LeadNotFoundError(id);
     if (lead.status === LeadStatus.ARRIVED) throw new LeadConflictError("Lead is already converted/arrived");
@@ -141,7 +210,7 @@ export async function convertLead(id: string) {
     const diagnosticRequest = await tx.diagnosticRequest.create({ data: { clientId: client.id, vehicleId: vehicle.id, leadId: lead.id, status: DiagnosticRequestStatus.PENDING } });
     const movedCalls = await tx.callHistory.updateMany({ where: { leadId: lead.id }, data: { leadId: null, clientId: client.id, workOrderId: null } });
     const updatedLead = await tx.lead.update({ where: { id: lead.id }, data: { status: LeadStatus.ARRIVED, nextContactAt: null, nextAction: "Провести діагностику", lastActivityAt: new Date() } });
-    await tx.auditEvent.create({ data: { actorName: "CRM", entityType: "Lead", entityId: lead.id, action: "ARRIVED_CONVERSION", before: jsonSafe(lead), after: jsonSafe(updatedLead), metadata: jsonSafe({ clientId: client.id, vehicleId: vehicle.id, diagnosticRequestId: diagnosticRequest.id, matchedByAnyPhone: true }) } });
+    await tx.auditEvent.create({ data: { actorName, entityType: "Lead", entityId: lead.id, action: "ARRIVED_CONVERSION", before: jsonSafe(lead), after: jsonSafe(updatedLead), metadata: jsonSafe({ clientId: client.id, vehicleId: vehicle.id, diagnosticRequestId: diagnosticRequest.id, matchedByAnyPhone: true }) } });
 
     return { lead: updatedLead, client, vehicle, diagnosticRequest, workOrder: null, movedCallCount: movedCalls.count, hardGate: { code: "WORK_ORDER_AFTER_CONFIRMED_DIAGNOSTICS", passed: false, nextRequiredStatus: DiagnosticRequestStatus.CONFIRMED } };
   });
