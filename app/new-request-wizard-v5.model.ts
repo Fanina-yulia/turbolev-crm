@@ -354,4 +354,37 @@ export function parseVehicleCandidate(value: unknown): VehicleCandidate | null {
   };
 }
 
+export function parsePlateLookupCandidate(payload: unknown, plate: string): VehicleCandidate | null {
+  const vehicle = readPayloadField(payload, "vehicle");
+  if (!isRecord(vehicle)) return null;
+  return {
+    id: nullableString(vehicle.id),
+    clientId: nullableString(vehicle.clientId),
+    clientName: nullableString(vehicle.clientName),
+    clientPhone: nullableString(vehicle.clientPhone),
+    plate,
+    vin: stringValue(vehicle.vin),
+    make: stringValue(vehicle.make),
+    model: stringValue(vehicle.model),
+    year: finiteNumber(vehicle.year) == null ? "" : String(finiteNumber(vehicle.year)),
+    mileage: finiteNumber(vehicle.mileageKm) == null ? "" : String(finiteNumber(vehicle.mileageKm)),
+    engine: stringValue(vehicle.engine),
+    engineVolume: finiteNumber(vehicle.engineVolumeL) == null ? "" : String(finiteNumber(vehicle.engineVolumeL)),
+    fuelType: stringValue(vehicle.fuelType),
+    bodyType: stringValue(vehicle.bodyType),
+    grossWeight: finiteNumber(vehicle.grossWeightKg) == null ? "" : String(finiteNumber(vehicle.grossWeightKg)),
+    driveType: stringValue(vehicle.driveType),
+    vehicleType: resolveVehicleType(vehicle.vehicleType, "UNKNOWN"),
+    turboLevClass: resolveTurboLevClass(vehicle.turboLevClass, "UNKNOWN"),
+    priceCoefficient: (finiteNumber(vehicle.priceCoefficient) ?? 1).toFixed(2),
+    classificationSource: stringValue(vehicle.classificationSource, "CRM"),
+    classificationConfidence: String(finiteNumber(vehicle.classificationConfidence) ?? 100),
+    classificationReason: stringValue(vehicle.classificationReason, "Дані автомобіля знайдено"),
+    manualClassOverride: Boolean(vehicle.manualClassOverride),
+    vehicleDataSource: stringValue(vehicle.vehicleDataSource) || stringValue(readPayloadField(payload, "lookupLevel"), "CRM"),
+    vehicleDataConfidence: String(finiteNumber(vehicle.vehicleDataConfidence) ?? 100),
+    vehicleDataStatus: "AUTO",
+  };
+}
+
 export { inferEngineVolume };
