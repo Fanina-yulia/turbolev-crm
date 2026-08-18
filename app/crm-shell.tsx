@@ -1,18 +1,9 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { useCallback, useEffect, useState } from "react";
 import { NewRequestLauncher } from "./new-request-launcher";
-import { SettingsPage } from "./settings-page";
 import { SettingsPersonnelBridge } from "./settings-personnel-bridge";
-import { LeadsBoardV2 } from "./leads-board-v2";
-import { CommunicationsHub } from "./communications-hub-server";
-import { ClientsVehicles } from "./clients-vehicles";
-import { PartsCatalog } from "./parts-catalog";
-import { PlannerV2 } from "./planner-v2";
-import { Diagnostics } from "./diagnostics";
-import { WorkOrders } from "./work-orders";
-import { RoleAwareOverview } from "./role-cabinet";
-import { FinancialCenter } from "./financial-center";
 import { useCrmAccess } from "./use-crm-access";
 import { CRM_NAV_GROUPS, isCrmSection, sectionFromSlug, slugFromSection, type CrmSectionLabel } from "./crm-navigation";
 import { PERMISSIONS } from "@/src/security/permissions";
@@ -21,6 +12,27 @@ import shellStyles from "./crm-shell.module.css";
 
 type NavigateDetail = string | { section: CrmSectionLabel; filter?: string; filterLabel?: string };
 type SettingsTab = "schedule"|"personnel"|"suppliers"|"warehouse"|"workPrices"|"posts"|"markup"|"cash"|"integrations"|"cameras"|"appearance"|"workflow"|"security";
+
+function SectionLoading() {
+  return <div className={shellStyles.sectionLoading} role="status" aria-live="polite" aria-label="Завантаження розділу">
+    <div className={shellStyles.sectionLoadingTitle}/>
+    <div className={shellStyles.sectionLoadingGrid}>
+      <div/><div/><div/>
+    </div>
+    <span className={shellStyles.srOnly}>Завантаження розділу…</span>
+  </div>;
+}
+
+const SettingsPage = dynamic(() => import("./settings-page").then((mod) => mod.SettingsPage), { loading: SectionLoading });
+const LeadsBoardV2 = dynamic(() => import("./leads-board-v2").then((mod) => mod.LeadsBoardV2), { loading: SectionLoading });
+const CommunicationsHub = dynamic(() => import("./communications-hub-server").then((mod) => mod.CommunicationsHub), { loading: SectionLoading });
+const ClientsVehicles = dynamic(() => import("./clients-vehicles").then((mod) => mod.ClientsVehicles), { loading: SectionLoading });
+const PartsCatalog = dynamic(() => import("./parts-catalog").then((mod) => mod.PartsCatalog), { loading: SectionLoading });
+const PlannerV2 = dynamic(() => import("./planner-v2").then((mod) => mod.PlannerV2), { loading: SectionLoading });
+const Diagnostics = dynamic(() => import("./diagnostics").then((mod) => mod.Diagnostics), { loading: SectionLoading });
+const WorkOrders = dynamic(() => import("./work-orders").then((mod) => mod.WorkOrders), { loading: SectionLoading });
+const RoleAwareOverview = dynamic(() => import("./role-cabinet").then((mod) => mod.RoleAwareOverview), { loading: SectionLoading });
+const FinancialCenter = dynamic(() => import("./financial-center").then((mod) => mod.FinancialCenter), { loading: SectionLoading });
 
 const SETTINGS_SUBMENU:Array<{id:SettingsTab;label:string}>=[
   {id:"schedule",label:"Графік"},
@@ -49,10 +61,11 @@ export function CrmShell({ initialSection }: { initialSection?: string }) {
   const [workflowFilterLabel, setWorkflowFilterLabel] = useState("");
   const [openGroup,setOpenGroup]=useState<string|null>(()=>groupForSection(initialActive));
   const [settingsTab,setSettingsTab]=useState<SettingsTab>("schedule");
+  const [mobileNavOpen,setMobileNavOpen]=useState(false);
   const access=useCrmAccess();
 
   const navigateTo = useCallback((next: CrmSectionLabel, historyMode: "push" | "replace" = "push", filter = "", filterLabel = "") => {
-    setActive(next); setOpenGroup(groupForSection(next)); setWorkflowFilter(filter); setWorkflowFilterLabel(filterLabel);
+    setActive(next); setOpenGroup(groupForSection(next)); setWorkflowFilter(filter); setWorkflowFilterLabel(filterLabel); setMobileNavOpen(false);
     const url = new URL(window.location.href); const slug = slugFromSection(next);
     if (slug === "overview") url.searchParams.delete("section"); else url.searchParams.set("section", slug);
     if (filter) url.searchParams.set("filter", filter); else url.searchParams.delete("filter");
@@ -63,7 +76,7 @@ export function CrmShell({ initialSection }: { initialSection?: string }) {
   }, []);
 
   const navigateSettings = useCallback((tab:SettingsTab,historyMode:"push"|"replace"="push")=>{
-    setActive("Налаштування");setOpenGroup(groupForSection("Налаштування"));setWorkflowFilter("");setWorkflowFilterLabel("");setSettingsTab(tab);
+    setActive("Налаштування");setOpenGroup(groupForSection("Налаштування"));setWorkflowFilter("");setWorkflowFilterLabel("");setSettingsTab(tab);setMobileNavOpen(false);
     const url=new URL(window.location.href);url.searchParams.set("section","settings");url.searchParams.set("settingsTab",tab);url.searchParams.delete("filter");url.searchParams.delete("filterLabel");
     const nextUrl=`${url.pathname}${url.search}${url.hash}`;
     if(historyMode==="replace")window.history.replaceState({},"",nextUrl);else window.history.pushState({},"",nextUrl);
@@ -74,13 +87,20 @@ export function CrmShell({ initialSection }: { initialSection?: string }) {
     const syncFromUrl = () => {
       const url = new URL(window.location.href);
       const next=sectionFromSlug(url.searchParams.get("section"));
-      setActive(next);setOpenGroup(groupForSection(next));setWorkflowFilter(url.searchParams.get("filter") || "");setWorkflowFilterLabel(url.searchParams.get("filterLabel") || "");
+      setActive(next);setOpenGroup(groupForSection(next));setWorkflowFilter(url.searchParams.get("filter") || "");setWorkflowFilterLabel(url.searchParams.get("filterLabel") || "");setMobileNavOpen(false);
       const tab=url.searchParams.get("settingsTab") as SettingsTab|null;if(tab&&SETTINGS_SUBMENU.some(item=>item.id===tab))setSettingsTab(tab);
     };
     const navigate = (event: Event) => { const detail = (event as CustomEvent<NavigateDetail>).detail; if (typeof detail === "string") { if (isCrmSection(detail)) navigateTo(detail); return; } if (detail && isCrmSection(detail.section)) navigateTo(detail.section, "push", detail.filter || "", detail.filterLabel || ""); };
     syncFromUrl(); window.addEventListener("turbolev:navigate", navigate); window.addEventListener("popstate", syncFromUrl);
     return () => { window.removeEventListener("turbolev:navigate", navigate); window.removeEventListener("popstate", syncFromUrl); };
   }, [navigateTo]);
+
+  useEffect(()=>{
+    if(!mobileNavOpen)return;
+    const closeOnEscape=(event:KeyboardEvent)=>{if(event.key==="Escape")setMobileNavOpen(false);};
+    window.addEventListener("keydown",closeOnEscape);
+    return()=>window.removeEventListener("keydown",closeOnEscape);
+  },[mobileNavOpen]);
 
   const canSettingsTab=(tab:SettingsTab)=>{
     if(!access.enforced)return true;
@@ -120,7 +140,15 @@ export function CrmShell({ initialSection }: { initialSection?: string }) {
     <SettingsPersonnelBridge/>
     <aside className="sidebar">
       <div className="brand"><div className="brandLogoWrap" aria-label="Turbo LEV"><img className="brandLogo brandLogoDark" src={turboLevLogoDark} alt="Turbo LEV"/><img className="brandLogo brandLogoLight" src={turboLevLogoLight} alt="Turbo LEV"/></div></div>
-      <nav className="groupedNav">{visibleGroups.map((group)=>{
+      <button
+        type="button"
+        className={shellStyles.mobileNavToggle}
+        aria-label={mobileNavOpen?"Закрити меню CRM":"Відкрити меню CRM"}
+        aria-expanded={mobileNavOpen}
+        aria-controls="crm-primary-navigation"
+        onClick={()=>setMobileNavOpen(open=>!open)}
+      ><span aria-hidden="true">{mobileNavOpen?"×":"☰"}</span></button>
+      <nav id="crm-primary-navigation" className={`groupedNav ${mobileNavOpen?shellStyles.mobileNavOpen:""}`}>{visibleGroups.map((group)=>{
         const containsActive=group.items.some(item=>item.label===active);const isOpen=openGroup===group.label;
         return <section className={`${shellStyles.navGroup} ${containsActive?shellStyles.navGroupCurrent:""}`} key={group.label}>
           <button type="button" className={shellStyles.navGroupHead} aria-expanded={isOpen} onClick={()=>setOpenGroup(current=>current===group.label?null:group.label)}><span>{group.label}</span><i className={`${shellStyles.navChevron} ${isOpen?shellStyles.navChevronOpen:""}`}>⌄</i></button>
