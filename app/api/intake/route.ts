@@ -8,8 +8,8 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 30;
 
 export async function POST(request: Request) {
-  const access = await authorize(PERMISSIONS.LEADS_WRITE, request, { minimumScope: "TEAM" });
-  if (!access.ok) return access.response;
+  const access = await authorize(PERMISSIONS.LEADS_WRITE, { request, minimumScope: "TEAM" });
+  if (!access.allowed) return access.response!;
 
   try {
     const body: unknown = await request.json();
