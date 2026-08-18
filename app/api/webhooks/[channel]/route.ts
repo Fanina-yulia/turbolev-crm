@@ -5,16 +5,35 @@ import { getIntegrationCredential } from "@/src/services/integration-credentials
 
 export const runtime = "nodejs";
 
-function resolveChannel(slug: string, body?: any): CommunicationChannel | null {
+type JsonObject = Record<string, unknown>;
+
+function asRecord(value: unknown): JsonObject | null {
+  return value !== null && typeof value === "object" && !Array.isArray(value)
+    ? value as JsonObject
+    : null;
+}
+
+function optionalString(value: unknown) {
+  if (value === undefined || value === null || value === "") return undefined;
+  return typeof value === "string" ? value : String(value);
+}
+
+function resolveChannel(slug: string, body?: JsonObject): CommunicationChannel | null {
   if (slug === "website") return "WEBSITE";
   if (slug === "tiktok") return "TIKTOK";
   if (slug === "olx") return "OLX";
-  if (slug === "meta") return String(body?.object || body?.channel || "").toLowerCase().includes("instagram") ? "INSTAGRAM" : "FACEBOOK";
+  if (slug === "meta") {
+    const object = optionalString(body?.object) || optionalString(body?.channel) || "";
+    return object.toLowerCase().includes("instagram") ? "INSTAGRAM" : "FACEBOOK";
+  }
   return null;
 }
 
-function pick(body: any, keys: string[]) {
-  for (const key of keys) if (body?.[key] !== undefined && body?.[key] !== null && body?.[key] !== "") return body[key];
+function pick(body: JsonObject, keys: readonly string[]): unknown {
+  for (const key of keys) {
+    const value = body[key];
+    if (value !== undefined && value !== null && value !== "") return value;
+  }
   return undefined;
 }
 
@@ -47,9 +66,14 @@ export async function POST(request: NextRequest, context: { params: Promise<{ ch
     }
 
     const rawBody = await request.text();
-    let body: any;
-    try { body = rawBody ? JSON.parse(rawBody) : {}; }
-    catch { return NextResponse.json({ ok: false, error: "Invalid JSON" }, { status: 400 }); }
+    let parsed: unknown;
+    try {
+      parsed = rawBody ? JSON.parse(rawBody) : {};
+    } catch {
+      return NextResponse.json({ ok: false, error: "Invalid JSON" }, { status: 400 });
+    }
+    const body = asRecord(parsed);
+    if (!body) return NextResponse.json({ ok: false, error: "JSON body must be an object" }, { status: 400 });
 
     if (slug === "meta") {
       const meta = await getIntegrationCredential("META").catch(() => null);
@@ -66,30 +90,33 @@ export async function POST(request: NextRequest, context: { params: Promise<{ ch
     const channel = resolveChannel(slug, body);
     if (!channel) return NextResponse.json({ ok: false, error: "Unsupported webhook" }, { status: 404 });
 
-    const externalEventId = String(pick(body, ["event_id","eventId","call_id","callId","id","request_id","requestId"]) || `${slug}-${randomUUID()}`);
-    await recordWebhookEvent(channel, externalEventId, String(pick(body, ["event_type","eventType","type","status"]) || "event"), body);
+    const externalEventId = optionalString(pick(body, ["event_id", "eventId", "call_id", "callId", "id", "request_id", "requestId"]))
+      || `${slug}-${randomUUID()}`;
+    const eventType = optionalString(pick(body, ["event_type", "eventType", "type", "status"])) || "event";
+    await recordWebhookEvent(channel, externalEventId, eventType, body);
 
-    const normalized = body.normalized && typeof body.normalized === "object" ? body.normalized : body;
-    const message = pick(normalized, ["message","text","comment","description"]);
-    const phone = pick(normalized, ["phone","phoneNumber","phone_number"]);
-    const subject = pick(normalized, ["subject","service","need","title"]) || (message ? "Нове звернення" : undefined);
+    const normalized = asRecord(body.normalized) || body;
+    const message = optionalString(pick(normalized, ["message", "text", "comment", "description"]));
+    const phone = optionalString(pick(normalized, ["phone", "phoneNumber", "phone_number"]));
+    const subject = optionalString(pick(normalized, ["subject", "service", "need", "title"]))
+      || (message ? "Нове звернення" : undefined);
     if (!message && !phone && !subject) return NextResponse.json({ ok: true, accepted: true, normalized: false });
 
     const inquiry = await ingestCommunicationInquiry({
       channel,
-      externalId: String(pick(normalized, ["conversationId","conversation_id","leadId","lead_id","id"]) || externalEventId),
-      externalMessageId: String(pick(normalized, ["messageId","message_id","event_id"]) || `${externalEventId}:message`),
-      name: pick(normalized, ["name","customerName","customer_name","senderName","sender_name"]),
+      externalId: optionalString(pick(normalized, ["conversationId", "conversation_id", "leadId", "lead_id", "id"])) || externalEventId,
+      externalMessageId: optionalString(pick(normalized, ["messageId", "message_id", "event_id"])) || `${externalEventId}:message`,
+      name: optionalString(pick(normalized, ["name", "customerName", "customer_name", "senderName", "sender_name"])),
       phone,
-      handle: pick(normalized, ["handle","username","senderUsername","sender_username"]),
-      subject: String(subject || "Нове звернення"),
-      preview: String(message || subject || "Нове звернення"),
-      message: message ? String(message) : undefined,
-      vehicle: pick(normalized, ["vehicle","car"]),
-      plate: pick(normalized, ["plate","plateNumber","plate_number"]),
-      sourceDetail: pick(normalized, ["sourceDetail","source_detail","adName","ad_name"]),
-      campaign: pick(normalized, ["campaign","campaignName","campaign_name"]),
-      utm: pick(normalized, ["utm","utm_source"]),
+      handle: optionalString(pick(normalized, ["handle", "username", "senderUsername", "sender_username"])),
+      subject: subject || "Нове звернення",
+      preview: message || subject || "Нове звернення",
+      message,
+      vehicle: optionalString(pick(normalized, ["vehicle", "car"])),
+      plate: optionalString(pick(normalized, ["plate", "plateNumber", "plate_number"])),
+      sourceDetail: optionalString(pick(normalized, ["sourceDetail", "source_detail", "adName", "ad_name"])),
+      campaign: optionalString(pick(normalized, ["campaign", "campaignName", "campaign_name"])),
+      utm: optionalString(pick(normalized, ["utm", "utm_source"])),
       metadata: body,
     });
 
