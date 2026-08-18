@@ -9,6 +9,12 @@ import {
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value !== null && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
+}
+
 function actor(body: Record<string, unknown>) {
   return typeof body.actorName === "string" && body.actorName.trim()
     ? body.actorName.trim().slice(0, 120)
@@ -44,7 +50,10 @@ export async function GET(_request: Request, context: { params: Promise<{ id: st
 export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
   const { id } = await context.params;
   try {
-    const body = (await request.json()) as Record<string, unknown>;
+    const body = asRecord(await request.json().catch(() => null));
+    if (!body) {
+      return NextResponse.json({ ok: false, code: "INVALID_JSON_BODY", error: "Request body must be a JSON object" }, { status: 400 });
+    }
     const result = await createWorkOrderLine(id, body, actor(body));
     return NextResponse.json({ ok: true, ...result }, { status: 201 });
   } catch (error) {
