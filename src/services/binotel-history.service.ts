@@ -1,8 +1,9 @@
 import "server-only";
 
 import { randomUUID } from "node:crypto";
-import { CommunicationChannel, Prisma } from "@/src/generated/prisma/client";
+import { CommunicationChannel } from "@/src/generated/prisma/client";
 import { getPrisma } from "@/src/lib/prisma";
+import { toPrismaJson } from "@/src/lib/prisma-json";
 import { normalizePhone } from "@/src/lib/phone";
 import { getBinotelService, type BinotelApiResponse } from "@/src/services/binotel.service";
 import { processBinotelWebhook } from "@/src/services/binotel-webhook.service";
@@ -27,6 +28,10 @@ function record(value: unknown): JsonRecord | null {
   return value && typeof value === "object" && !Array.isArray(value) ? value as JsonRecord : null;
 }
 
+function isJsonRecord(value: JsonRecord | null): value is JsonRecord {
+  return value !== null;
+}
+
 function text(obj: JsonRecord | null, key: string): string | null {
   if (!obj) return null;
   const value = obj[key];
@@ -42,20 +47,16 @@ function integer(obj: JsonRecord | null, key: string): number | null {
   return Number.isFinite(number) ? Math.floor(number) : null;
 }
 
-function toJson(value: JsonRecord): Prisma.InputJsonValue {
-  return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
-}
-
 export function extractBinotelCallDetails(response: BinotelApiResponse): JsonRecord[] {
   const source = response.callDetails;
-  if (Array.isArray(source)) return source.map(record).filter(Boolean) as JsonRecord[];
+  if (Array.isArray(source)) return source.map(record).filter(isJsonRecord);
   const object = record(source);
   if (!object) return [];
 
   const directCall = text(object, "generalCallID") || text(object, "callID");
   if (directCall) return [object];
 
-  return Object.values(object).map(record).filter(Boolean) as JsonRecord[];
+  return Object.values(object).map(record).filter(isJsonRecord);
 }
 
 export function buildBinotelCompletedPayload(detail: JsonRecord): JsonRecord {
@@ -100,7 +101,7 @@ export async function getBinotelHistoryForPhone(phone: string) {
   const response = await getBinotelService().getHistoryByExternalNumber([normalized]);
   return extractBinotelCallDetails(response)
     .map(summarizeBinotelCall)
-    .filter(Boolean) as BinotelHistorySummary[];
+    .filter((item): item is BinotelHistorySummary => item !== null);
 }
 
 export async function claimBinotelReconciliationBucket(bucketMinutes = 30) {
@@ -115,7 +116,7 @@ export async function claimBinotelReconciliationBucket(bucketMinutes = 30) {
         channel: CommunicationChannel.BINOTEL,
         externalEventId,
         eventType: "restHistoryReconciliation",
-        payload: toJson({ bucket, bucketMinutes }),
+        payload: toPrismaJson({ bucket, bucketMinutes }),
         status: "RECEIVED",
       },
     });
@@ -137,7 +138,7 @@ export async function finishBinotelReconciliationBucket(externalEventId: string,
     },
     data: {
       status,
-      payload: toJson(payload),
+      payload: toPrismaJson(payload),
       processedAt: status === "PROCESSED" ? new Date() : null,
       error: status === "ERROR" ? String(payload.error || "REST reconciliation failed") : null,
     },
