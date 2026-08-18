@@ -2,234 +2,49 @@
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import {
-  classifyVehicle,
+  classificationPatch,
+  formatPhone,
   inferEngineVolume,
-  type TurboLevClass,
-  type VehicleType,
-} from "@/src/domain/vehicle-intelligence";
+  initialRequestForm,
+  MANAGER_KEY,
+  normalizePhone,
+  normalizePlate,
+  normalizeVin,
+  parseClientLookup,
+  parseMakeOptions,
+  parseModelOptions,
+  parsePlannerLocations,
+  parsePlateLookupCandidate,
+  parseUserOptions,
+  parseVinResponse,
+  payloadMessage,
+  readPayloadField,
+  requestCategories,
+  requestSources,
+  requestYears,
+  resolveTurboLevClass,
+  resolveVehicleType,
+  STORAGE_KEY,
+  vehicleTitle,
+} from "./new-request-wizard-v5.model";
+import type {
+  ClientLookup,
+  LookupState,
+  MakeOption,
+  ModelOption,
+  NewRequestWizardProps,
+  OpenRequestDetail,
+  PlannerLocation,
+  PreliminaryWork,
+  RequestForm,
+  UserOption,
+  VehicleCandidate,
+} from "./new-request-wizard-v5.types";
 
-type LookupState = "idle" | "searching" | "found" | "not-found" | "unavailable";
-type VehicleDataStatus = "UNKNOWN" | "AUTO" | "MANUAL" | "CONFIRMED";
-type PreliminaryWork = { id?:string; name:string; quantity?:number; total?:number; manual?:boolean };
-
-type RequestForm = {
-  customerName:string;
-  phone:string;
-  source:string;
-  responsible:string;
-  plate:string;
-  vin:string;
-  make:string;
-  model:string;
-  year:string;
-  mileage:string;
-  engine:string;
-  engineVolume:string;
-  fuelType:string;
-  bodyType:string;
-  grossWeight:string;
-  driveType:string;
-  vehicleType:VehicleType;
-  turboLevClass:TurboLevClass;
-  priceCoefficient:string;
-  classificationSource:string;
-  classificationConfidence:string;
-  classificationReason:string;
-  manualClassOverride:boolean;
-  vehicleDataSource:string;
-  vehicleDataConfidence:string;
-  vehicleDataStatus:VehicleDataStatus;
-  category:string;
-  complaint:string;
-  appointmentDate:string;
-  appointmentTime:string;
-  preliminaryAmount:string;
-  comment:string;
-  locationId:string;
-  postId:string;
-  mechanicId:string;
-};
-
-type VehicleCandidate = Partial<RequestForm> & {
-  id?:string|null;
-  clientId?:string|null;
-  clientName?:string|null;
-  clientPhone?:string|null;
-};
-
-type ClientVehicle = {
-  id:string;
-  plateNumber?:string|null;
-  vin?:string|null;
-  brand?:string|null;
-  model?:string|null;
-  year?:number|null;
-  mileageKm?:number|null;
-  engineName?:string|null;
-  engineVolumeCm3?:number|null;
-  fuelType?:string|null;
-  bodyType?:string|null;
-  grossWeightKg?:number|null;
-  driveType?:string|null;
-  vehicleType?:string|null;
-  turboLevClass?:string|null;
-  priceCoefficient?:number|string|null;
-  classificationSource?:string|null;
-  classificationConfidence?:number|null;
-  manualClassOverride?:boolean|null;
-  vehicleDataSource?:string|null;
-  vehicleDataConfidence?:number|null;
-};
-
-type ClientLookup = {
-  id:string;
-  name?:string|null;
-  phone:string;
-  vehicles:ClientVehicle[];
-};
-
-type MakeOption = { id:number|null; name:string };
-type ModelOption = { id:number|null; name:string; makeName:string };
-type OpenRequestDetail = {
-  name?:string;
-  phone?:string;
-  source?:string;
-  responsible?:string;
-  plate?:string;
-  vin?:string;
-  appointmentDate?:string;
-  appointmentTime?:string;
-  inquiryId?:string;
-};
-type UserOption = { id:string; name:string };
-type PlannerResource = { id:string; name:string };
-type PlannerLocation = {
-  id:string;
-  name:string;
-  posts:PlannerResource[];
-  mechanics:PlannerResource[];
-};
-type VinApiResponse = {
-  status:"FOUND"|"NOT_FOUND"|"INVALID_VIN"|"LOOKUP_UNAVAILABLE";
-  source?:string;
-  sourceDetail?:string;
-  confidence?:number;
-  warning?:string|null;
-  message?:string;
-  vehicle?:{
-    make?:string|null;
-    model?:string|null;
-    year?:number|null;
-    trim?:string|null;
-    series?:string|null;
-    bodyType?:string|null;
-    vehicleType?:string|null;
-    engine?:string|null;
-    engineVolumeL?:number|null;
-    fuelType?:string|null;
-    secondaryFuelType?:string|null;
-    driveType?:string|null;
-    transmission?:string|null;
-  }|null;
-};
-
-type Props = { showButton?:boolean };
-
-const STORAGE_KEY = "turbolev-manual-requests-v1";
-const MANAGER_KEY = "turbolev-current-manager";
-const categories = ["Ходова","Гальма","Двигун","Електрика","ТО / мастило","Комп. діагностика","Кондиціонер","Інше"];
-const sources = ["Інше","Телефон","Binotel","Instagram","Facebook","TikTok","OLX","Сайт","Google Maps","Viber","WhatsApp","Рекомендація","Заїхав без запису"];
-const years = Array.from({length:new Date().getFullYear()-1979+2},(_,i)=>String(new Date().getFullYear()+1-i));
-
-const initialForm:RequestForm = {
-  customerName:"",
-  phone:"",
-  source:"Інше",
-  responsible:"",
-  plate:"",
-  vin:"",
-  make:"",
-  model:"",
-  year:"",
-  mileage:"",
-  engine:"",
-  engineVolume:"",
-  fuelType:"",
-  bodyType:"",
-  grossWeight:"",
-  driveType:"",
-  vehicleType:"UNKNOWN",
-  turboLevClass:"UNKNOWN",
-  priceCoefficient:"1.00",
-  classificationSource:"UNKNOWN",
-  classificationConfidence:"0",
-  classificationReason:"Очікуємо дані автомобіля",
-  manualClassOverride:false,
-  vehicleDataSource:"UNKNOWN",
-  vehicleDataConfidence:"0",
-  vehicleDataStatus:"UNKNOWN",
-  category:"",
-  complaint:"",
-  appointmentDate:"",
-  appointmentTime:"",
-  preliminaryAmount:"",
-  comment:"",
-  locationId:"",
-  postId:"",
-  mechanicId:"",
-};
-
-function normalizePlate(value:string){
-  return value.toUpperCase().replace(/[^A-ZА-ЯІЇЄ0-9]/g,"").slice(0,10);
-}
-function normalizeVin(value:string){
-  return value.toUpperCase().replace(/[^A-HJ-NPR-Z0-9]/g,"").slice(0,17);
-}
-function normalizePhone(value:string){
-  let digits=value.replace(/\D/g,"");
-  if(!digits)return "";
-  if(digits.startsWith("380"))return digits.slice(0,12);
-  if(digits.startsWith("0"))return `38${digits}`.slice(0,12);
-  if(digits.length<=9)return `380${digits}`.slice(0,12);
-  return digits.slice(0,12);
-}
-function formatPhone(value:string){
-  const digits=normalizePhone(value);
-  if(!digits)return "";
-  const local=digits.startsWith("380")?digits.slice(3,12):digits;
-  const parts=[local.slice(0,2),local.slice(2,5),local.slice(5,7),local.slice(7,9)].filter(Boolean);
-  return `+380 ${parts.join(" ")}`.trim();
-}
-function classificationPatch(input:Partial<RequestForm>){
-  const result=classifyVehicle({
-    make:input.make,
-    model:input.model,
-    year:input.year,
-    engine:input.engine,
-    engineVolume:input.engineVolume||inferEngineVolume(input.engine),
-    fuelType:input.fuelType,
-    bodyType:input.bodyType,
-    grossWeight:input.grossWeight,
-    driveType:input.driveType,
-    vehicleType:input.vehicleType,
-  });
-  return {
-    vehicleType:result.vehicleType,
-    turboLevClass:result.turboLevClass,
-    priceCoefficient:result.priceCoefficient.toFixed(2),
-    classificationSource:result.source,
-    classificationConfidence:String(result.confidence),
-    classificationReason:result.reason,
-  };
-}
-function vehicleTitle(form:RequestForm){
-  return [form.make,form.model,form.year].filter(Boolean).join(" ") || form.plate || form.vin || "Автомобіль";
-}
-
-export function NewRequestWizardV5({showButton=true}:Props){
+export function NewRequestWizardV5({showButton=true}:NewRequestWizardProps){
   const [open,setOpen]=useState(false);
   const [step,setStep]=useState(1);
-  const [form,setForm]=useState<RequestForm>(initialForm);
+  const [form,setForm]=useState<RequestForm>(initialRequestForm);
   const [error,setError]=useState("");
   const [success,setSuccess]=useState("");
   const [saving,setSaving]=useState(false);
@@ -317,8 +132,8 @@ export function NewRequestWizardV5({showButton=true}:Props){
         bodyType:candidate.bodyType||current.bodyType,
         grossWeight:candidate.grossWeight||current.grossWeight,
         driveType:candidate.driveType||current.driveType,
-        vehicleType:(candidate.vehicleType as VehicleType)||current.vehicleType,
-        turboLevClass:(candidate.turboLevClass as TurboLevClass)||current.turboLevClass,
+        vehicleType:resolveVehicleType(candidate.vehicleType,current.vehicleType),
+        turboLevClass:resolveTurboLevClass(candidate.turboLevClass,current.turboLevClass),
         priceCoefficient:candidate.priceCoefficient||current.priceCoefficient,
         classificationSource:candidate.classificationSource||current.classificationSource,
         classificationConfidence:candidate.classificationConfidence||current.classificationConfidence,
@@ -353,8 +168,9 @@ export function NewRequestWizardV5({showButton=true}:Props){
   async function loadUsers(){
     try{
       const response=await fetch("/api/users/active",{cache:"no-store"});
-      const data=await response.json();
-      const items=Array.isArray(data.items)?data.items as UserOption[]:[];
+      const payload:unknown=await response.json();
+      if(!response.ok)throw new Error(payloadMessage(payload,"Не вдалося завантажити користувачів"));
+      const items=parseUserOptions(readPayloadField(payload,"items"));
       setUsers(items);
       setForm(current=>{
         if(current.responsible)return current;
@@ -372,8 +188,9 @@ export function NewRequestWizardV5({showButton=true}:Props){
     setCatalogLoading(true);
     try{
       const response=await fetch("/api/vehicles/catalog",{cache:"force-cache"});
-      const data=await response.json();
-      setMakes(Array.isArray(data.items)?data.items:[]);
+      const payload:unknown=await response.json();
+      if(!response.ok)throw new Error(payloadMessage(payload,"Не вдалося завантажити марки"));
+      setMakes(parseMakeOptions(readPayloadField(payload,"items")));
     }catch{
       setMakes([]);
     }finally{
@@ -387,8 +204,9 @@ export function NewRequestWizardV5({showButton=true}:Props){
     setCatalogLoading(true);
     try{
       const response=await fetch(`/api/vehicles/catalog?make=${encodeURIComponent(value)}`,{cache:"force-cache"});
-      const data=await response.json();
-      setModels(Array.isArray(data.items)?data.items:[]);
+      const payload:unknown=await response.json();
+      if(!response.ok)throw new Error(payloadMessage(payload,"Не вдалося завантажити моделі"));
+      setModels(parseModelOptions(readPayloadField(payload,"items")));
     }catch{
       setModels([]);
     }finally{
@@ -403,9 +221,9 @@ export function NewRequestWizardV5({showButton=true}:Props){
       from.setHours(0,0,0,0);
       const to=new Date(from.getTime()+7*24*60*60*1000);
       const response=await fetch(`/api/planner?from=${encodeURIComponent(from.toISOString())}&to=${encodeURIComponent(to.toISOString())}`,{cache:"no-store"});
-      const data=await response.json();
-      if(!response.ok||data.status!=="OK")throw new Error(data.message||"Не вдалося завантажити ресурси");
-      const nextLocations=Array.isArray(data.locations)?data.locations as PlannerLocation[]:[];
+      const payload:unknown=await response.json();
+      if(!response.ok||readPayloadField(payload,"status")!=="OK")throw new Error(payloadMessage(payload,"Не вдалося завантажити ресурси"));
+      const nextLocations=parsePlannerLocations(readPayloadField(payload,"locations"));
       setLocations(nextLocations);
       setForm(current=>{
         const location=nextLocations.find(item=>item.id===current.locationId)||nextLocations[0];
@@ -428,7 +246,7 @@ export function NewRequestWizardV5({showButton=true}:Props){
   function openWith(detail:OpenRequestDetail={}){
     const stored=typeof window!=="undefined"?window.localStorage.getItem(MANAGER_KEY)||"":"";
     setForm({
-      ...initialForm,
+      ...initialRequestForm,
       customerName:detail.name?.trim()||"",
       phone:detail.phone?formatPhone(detail.phone):"",
       source:detail.source?.trim()||"Інше",
@@ -499,12 +317,13 @@ export function NewRequestWizardV5({showButton=true}:Props){
     setPhoneLookupState("searching");
     try{
       const response=await fetch(`/api/client-card?phone=${encodeURIComponent(formatPhone(phone))}`,{cache:"no-store"});
-      const data=await response.json();
-      if(!response.ok||!data.client){
+      const payload:unknown=await response.json();
+      const client=parseClientLookup(readPayloadField(payload,"client"));
+      if(!response.ok||!client){
         setPhoneLookupState("not-found");
         return;
       }
-      setFoundClient(data.client as ClientLookup);
+      setFoundClient(client);
       setPhoneLookupState("found");
     }catch{
       setPhoneLookupState("unavailable");
@@ -535,40 +354,12 @@ export function NewRequestWizardV5({showButton=true}:Props){
     setAllowReassign(false);
     try{
       const response=await fetch(`/api/vehicles/lookup?plate=${encodeURIComponent(plate)}`,{cache:"no-store"});
-      const data=await response.json();
-      if(!response.ok||data.status!=="FOUND"||!data.vehicle){
+      const payload:unknown=await response.json();
+      const candidate=parsePlateLookupCandidate(payload,plate);
+      if(!response.ok||readPayloadField(payload,"status")!=="FOUND"||!candidate){
         setPlateLookupState("not-found");
         return;
       }
-      const v=data.vehicle;
-      const candidate:VehicleCandidate={
-        id:v.id,
-        clientId:v.clientId,
-        clientName:v.clientName,
-        clientPhone:v.clientPhone,
-        plate,
-        vin:v.vin||"",
-        make:v.make||"",
-        model:v.model||"",
-        year:v.year?String(v.year):"",
-        mileage:v.mileageKm?String(v.mileageKm):"",
-        engine:v.engine||"",
-        engineVolume:v.engineVolumeL?String(v.engineVolumeL):"",
-        fuelType:v.fuelType||"",
-        bodyType:v.bodyType||"",
-        grossWeight:v.grossWeightKg?String(v.grossWeightKg):"",
-        driveType:v.driveType||"",
-        vehicleType:v.vehicleType||"UNKNOWN",
-        turboLevClass:v.turboLevClass||"UNKNOWN",
-        priceCoefficient:Number(v.priceCoefficient||1).toFixed(2),
-        classificationSource:v.classificationSource||"CRM",
-        classificationConfidence:String(v.classificationConfidence??100),
-        classificationReason:v.classificationReason||"Дані автомобіля знайдено",
-        manualClassOverride:Boolean(v.manualClassOverride),
-        vehicleDataSource:v.vehicleDataSource||data.lookupLevel||"CRM",
-        vehicleDataConfidence:String(v.vehicleDataConfidence??100),
-        vehicleDataStatus:"AUTO",
-      };
       applyVehicle(candidate);
       applyVehicleOwner(candidate);
       setPlateLookupState("found");
@@ -588,10 +379,11 @@ export function NewRequestWizardV5({showButton=true}:Props){
     setFoundVehicle(null);
     try{
       const response=await fetch(`/api/vehicles/vin?vin=${encodeURIComponent(vin)}`,{cache:"no-store"});
-      const data=await response.json() as VinApiResponse;
-      if(!response.ok||data.status!=="FOUND"||!data.vehicle){
+      const payload:unknown=await response.json();
+      const data=parseVinResponse(payload);
+      if(!response.ok||!data||data.status!=="FOUND"||!data.vehicle){
         setVinLookupState("not-found");
-        setVinMessage(data.message||"VIN не знайдено. Авто можна записати та уточнити дані пізніше.");
+        setVinMessage(data?.message||"VIN не знайдено. Авто можна записати та уточнити дані пізніше.");
         return;
       }
       const v=data.vehicle;
@@ -679,8 +471,12 @@ export function NewRequestWizardV5({showButton=true}:Props){
         headers:{"content-type":"application/json"},
         body:JSON.stringify(payload),
       });
-      const data=await response.json();
-      if(!response.ok)throw new Error(data.error||"Не вдалося створити запис");
+      const serverPayload:unknown=await response.json();
+      if(!response.ok)throw new Error(payloadMessage(serverPayload,"Не вдалося створити запис"));
+      const clientId=readPayloadField(readPayloadField(serverPayload,"client"),"id");
+      const vehicleId=readPayloadField(readPayloadField(serverPayload,"vehicle"),"id");
+      const leadId=readPayloadField(readPayloadField(serverPayload,"lead"),"id");
+      const appointmentId=readPayloadField(readPayloadField(serverPayload,"appointment"),"id");
       const request={
         ...payload,
         id:`REQ-${Date.now()}`,
@@ -688,18 +484,21 @@ export function NewRequestWizardV5({showButton=true}:Props){
         status:"BOOKED",
         serverSaved:true,
         serverResult:{
-          clientId:data.client?.id,
-          vehicleId:data.vehicle?.id,
-          leadId:data.lead?.id,
-          appointmentId:data.appointment?.id,
+          clientId:typeof clientId==="string"?clientId:undefined,
+          vehicleId:typeof vehicleId==="string"?vehicleId:undefined,
+          leadId:typeof leadId==="string"?leadId:undefined,
+          appointmentId:typeof appointmentId==="string"?appointmentId:undefined,
         },
       };
       try{
-        const list=JSON.parse(window.localStorage.getItem(STORAGE_KEY)||"[]");
-        window.localStorage.setItem(STORAGE_KEY,JSON.stringify([request,...(Array.isArray(list)?list:[])]));
+        const parsed:unknown=JSON.parse(window.localStorage.getItem(STORAGE_KEY)||"[]");
+        window.localStorage.setItem(STORAGE_KEY,JSON.stringify([request,...(Array.isArray(parsed)?parsed:[])]));
       }catch{}
+      const safePayload=(typeof serverPayload==="object"&&serverPayload!==null&&!Array.isArray(serverPayload))
+        ?serverPayload as Record<string,unknown>
+        :{};
       window.dispatchEvent(new CustomEvent("turbolev:new-request",{detail:request}));
-      window.dispatchEvent(new CustomEvent("turbolev:data-changed",{detail:{entity:"intake",...data}}));
+      window.dispatchEvent(new CustomEvent("turbolev:data-changed",{detail:{entity:"intake",...safePayload}}));
       setSuccess("Клієнта записано на діагностику. Запис уже в Планувальнику.");
       window.setTimeout(()=>close(),1100);
     }catch(reason){
@@ -813,7 +612,7 @@ export function NewRequestWizardV5({showButton=true}:Props){
                     <label>
                       <span>Рік</span>
                       <select value={form.year} onChange={event=>markManual("year",event.target.value)}>
-                        <option value="">—</option>{years.map(year=><option key={year}>{year}</option>)}
+                        <option value="">—</option>{requestYears.map(year=><option key={year}>{year}</option>)}
                       </select>
                     </label>
                     <label><span>Пробіг, км</span><input value={form.mileage} onChange={event=>update("mileage",event.target.value.replace(/\D/g,""))}/></label>
@@ -855,7 +654,7 @@ export function NewRequestWizardV5({showButton=true}:Props){
                 <label>
                   <span>Джерело</span>
                   <select value={form.source} onChange={event=>update("source",event.target.value)}>
-                    {sources.map(item=><option key={item}>{item}</option>)}
+                    {requestSources.map(item=><option key={item}>{item}</option>)}
                   </select>
                 </label>
                 <label>
@@ -911,7 +710,7 @@ export function NewRequestWizardV5({showButton=true}:Props){
                 <textarea value={form.complaint} onChange={event=>update("complaint",event.target.value)} placeholder="Напр.: щось стукає спереду, перевірити ходову…"/>
               </label>
               <div className="requestTags fastCategoryTags">
-                {categories.map(item=><button type="button" key={item} className={form.category===item?"selected":""} onClick={()=>update("category",form.category===item?"":item)}>{item}</button>)}
+                {requestCategories.map(item=><button type="button" key={item} className={form.category===item?"selected":""} onClick={()=>update("category",form.category===item?"":item)}>{item}</button>)}
               </div>
             </section>}
 
