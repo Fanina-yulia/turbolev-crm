@@ -1,6 +1,7 @@
 import { LeadStatus, PlannerAppointmentStatus, Prisma } from "@/src/generated/prisma/client";
 import { mapUiSourceToLeadSource } from "@/src/domain/workflow/lead";
 import { getPrisma } from "@/src/lib/prisma";
+import { toPrismaJson } from "@/src/lib/prisma-json";
 
 export class IntakeValidationError extends Error {}
 export class IntakeConflictError extends Error {}
@@ -12,6 +13,8 @@ export type IntakePreliminaryWork = {
   total?: number;
   manual?: boolean;
 };
+
+type NormalizedPreliminaryWork = { name: string; quantity: number; total: number; manual: boolean };
 
 export type IntakeInput = {
   customerName?: string;
@@ -52,6 +55,10 @@ export type IntakeInput = {
   forceReassignVehicle?: boolean;
 };
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
 function clean(value: unknown, max = 1000) {
   if (typeof value !== "string") return null;
   const trimmed = value.trim();
@@ -70,7 +77,6 @@ function normalizeVin(value: unknown) { return String(value || "").toUpperCase()
 function normalizePlate(value: unknown) { return String(value || "").toUpperCase().replace(/[^A-ZА-ЯІЇЄ0-9]/gi, "").slice(0, 24); }
 function toInt(value: unknown) { if (value === null || value === undefined || value === "") return null; const n = Number(value); return Number.isFinite(n) ? Math.round(n) : null; }
 function toDecimal(value: unknown) { if (value === null || value === undefined || value === "") return null; const n = Number(String(value).replace(",", ".")); return Number.isFinite(n) && n >= 0 ? n : null; }
-function json(value: unknown): Prisma.InputJsonValue { return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue; }
 function timeToMinute(value: string | null) {
   if (!value) return null;
   const match = /^(\d{1,2}):(\d{2})/.exec(value);
@@ -81,20 +87,19 @@ function timeToMinute(value: string | null) {
   return hour * 60 + minute;
 }
 
-function normalizePreliminaryWorks(value: unknown) {
-  if (!Array.isArray(value)) return [] as Array<{ name:string; quantity:number; total:number; manual:boolean }>;
-  return value.slice(0, 40).flatMap((item) => {
-    if (!item || typeof item !== "object") return [];
-    const record = item as Record<string, unknown>;
-    const name = clean(record.name, 240);
+function normalizePreliminaryWorks(value: unknown): NormalizedPreliminaryWork[] {
+  if (!Array.isArray(value)) return [];
+  return value.slice(0, 40).flatMap((item): NormalizedPreliminaryWork[] => {
+    if (!isRecord(item)) return [];
+    const name = clean(item.name, 240);
     if (!name) return [];
-    const quantity = Math.max(1, Math.min(99, toInt(record.quantity) ?? 1));
-    const total = Math.max(0, toDecimal(record.total) ?? 0);
-    return [{ name, quantity, total, manual: Boolean(record.manual) }];
+    const quantity = Math.max(1, Math.min(99, toInt(item.quantity) ?? 1));
+    const total = Math.max(0, toDecimal(item.total) ?? 0);
+    return [{ name, quantity, total, manual: Boolean(item.manual) }];
   });
 }
 
-function worksSummary(works: Array<{ name:string; quantity:number; total:number; manual:boolean }>) {
+function worksSummary(works: NormalizedPreliminaryWork[]) {
   if (!works.length) return null;
   const lines = works.map((work) => {
     const quantity = work.quantity > 1 ? ` ×${work.quantity}` : "";
@@ -312,8 +317,8 @@ export async function createIntake(input: IntakeInput) {
         entityType: "Lead",
         entityId: lead.id,
         action: "CREATE_FROM_INTAKE",
-        after: json(lead),
-        metadata: json({ clientId: client.id, vehicleId: vehicle.id, appointmentId: appointment?.id || null, vehicleReassigned: needsReassign, previousClientId, contactPhone: displayPhone(phoneNormalized), preliminaryWorksCount: preliminaryWorks.length, postId: post?.id || null, mechanicId: mechanic?.id || null, appointmentDurationMinutes }),
+        after: toPrismaJson(lead),
+        metadata: toPrismaJson({ clientId: client.id, vehicleId: vehicle.id, appointmentId: appointment?.id || null, vehicleReassigned: needsReassign, previousClientId, contactPhone: displayPhone(phoneNormalized), preliminaryWorksCount: preliminaryWorks.length, postId: post?.id || null, mechanicId: mechanic?.id || null, appointmentDurationMinutes }),
       },
     });
     if (needsReassign) {
@@ -323,7 +328,7 @@ export async function createIntake(input: IntakeInput) {
           entityType: "Vehicle",
           entityId: vehicle.id,
           action: "MANUAL_REASSIGN_FROM_INTAKE",
-          metadata: json({ previousClientId, clientId: client.id, plateNumber: vehicle.plateNumber, vin: vehicle.vin }),
+          metadata: toPrismaJson({ previousClientId, clientId: client.id, plateNumber: vehicle.plateNumber, vin: vehicle.vin }),
         },
       });
     }
@@ -334,8 +339,8 @@ export async function createIntake(input: IntakeInput) {
           entityType: "ServiceAppointment",
           entityId: appointment.id,
           action: "CREATE_FROM_INTAKE",
-          after: json(appointment),
-          metadata: json({ leadId: lead.id, clientId: client.id, vehicleId: vehicle.id, postId: post?.id || null, mechanicId: mechanic?.id || null, appointmentDurationMinutes }),
+          after: toPrismaJson(appointment),
+          metadata: toPrismaJson({ leadId: lead.id, clientId: client.id, vehicleId: vehicle.id, postId: post?.id || null, mechanicId: mechanic?.id || null, appointmentDurationMinutes }),
         },
       });
     }
