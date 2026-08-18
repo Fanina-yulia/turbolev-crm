@@ -1,16 +1,17 @@
-import { DiagnosticRequestStatus, Prisma } from "@/src/generated/prisma/client";
+import { DiagnosticRequestStatus } from "@/src/generated/prisma/client";
 import { evaluateWorkflowTransition } from "@/src/domain/workflow";
 import { getPrisma } from "@/src/lib/prisma";
+import { toPrismaJson } from "@/src/lib/prisma-json";
 import { ensureLeadArrivalInTransaction } from "@/src/services/lead-arrival.service";
 import {
   normalizeAppointmentPayload,
+  parsePlannerStatus,
   type AppointmentWrite,
-  type PlannerStatus,
   validatePlannerResources,
 } from "@/src/services/planner.service";
 
-function jsonSafe(value: unknown): Prisma.InputJsonValue {
-  return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
 function toAppointmentWrite(existing: {
@@ -21,7 +22,7 @@ function toAppointmentWrite(existing: {
   clientId: string | null;
   vehicleId: string | null;
   workOrderId: string | null;
-  status: unknown;
+  status: string;
   customerName: string | null;
   phone: string | null;
   vehicleLabel: string | null;
@@ -40,6 +41,8 @@ function toAppointmentWrite(existing: {
   noShowAt: Date | null;
   createdById: string | null;
 }): AppointmentWrite {
+  const status = parsePlannerStatus(existing.status);
+  if (!status) throw new Error(`INVALID_APPOINTMENT_STATUS:${existing.status}`);
   return {
     locationId: existing.locationId,
     postId: existing.postId,
@@ -48,7 +51,7 @@ function toAppointmentWrite(existing: {
     clientId: existing.clientId,
     vehicleId: existing.vehicleId,
     workOrderId: existing.workOrderId,
-    status: existing.status as PlannerStatus,
+    status,
     customerName: existing.customerName,
     phone: existing.phone,
     vehicleLabel: existing.vehicleLabel,
@@ -70,8 +73,8 @@ function toAppointmentWrite(existing: {
 }
 
 function diagnosticIdFromMetadata(metadata: unknown) {
-  if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) return null;
-  const value = (metadata as Record<string, unknown>).diagnosticRequestId;
+  if (!isRecord(metadata)) return null;
+  const value = metadata.diagnosticRequestId;
   return typeof value === "string" && value ? value : null;
 }
 
@@ -179,9 +182,9 @@ export async function arrivePlannerAppointment(id: string, body: Record<string, 
           entityType: "ServiceAppointment",
           entityId: id,
           action: "ARRIVAL_WORKFLOW",
-          before: jsonSafe(before),
-          after: jsonSafe(appointment),
-          metadata: jsonSafe({
+          before: toPrismaJson(before),
+          after: toPrismaJson(appointment),
+          metadata: toPrismaJson({
             workflowCode: workflowDecision.code,
             actions: workflowDecision.actions,
             leadId: fresh.leadId,

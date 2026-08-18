@@ -1,4 +1,5 @@
 import { DiagnosticRequestStatus, LeadStatus, Prisma } from "@/src/generated/prisma/client";
+import { toPrismaJson } from "@/src/lib/prisma-json";
 
 export class LeadArrivalNotFoundError extends Error {
   constructor(id: string) {
@@ -12,10 +13,6 @@ export class LeadArrivalConflictError extends Error {
     super(message);
     this.name = "LeadArrivalConflictError";
   }
-}
-
-function jsonSafe(value: unknown): Prisma.InputJsonValue {
-  return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
 }
 
 function normalizePlate(value: string | null) {
@@ -67,9 +64,9 @@ export async function ensureLeadArrivalInTransaction(
           entityType: "Lead",
           entityId: leadId,
           action: "ARRIVED_CONVERSION_REUSED_DIAGNOSTIC",
-          before: jsonSafe(lead),
-          after: jsonSafe(updatedLead),
-          metadata: jsonSafe({
+          before: toPrismaJson(lead),
+          after: toPrismaJson(updatedLead),
+          metadata: toPrismaJson({
             clientId: existingDiagnostic.clientId,
             vehicleId: existingDiagnostic.vehicleId,
             diagnosticRequestId: existingDiagnostic.id,
@@ -167,9 +164,9 @@ export async function ensureLeadArrivalInTransaction(
       entityType: "Lead",
       entityId: leadId,
       action: "ARRIVED_CONVERSION",
-      before: jsonSafe(lead),
-      after: jsonSafe(updatedLead),
-      metadata: jsonSafe({ clientId: client.id, vehicleId: vehicle.id, diagnosticRequestId: diagnosticRequest.id }),
+      before: toPrismaJson(lead),
+      after: toPrismaJson(updatedLead),
+      metadata: toPrismaJson({ clientId: client.id, vehicleId: vehicle.id, diagnosticRequestId: diagnosticRequest.id }),
     },
   });
 

@@ -1,6 +1,7 @@
-import { DiagnosticRequestStatus, Prisma } from "@/src/generated/prisma/client";
+import { DiagnosticRequestStatus } from "@/src/generated/prisma/client";
 import { evaluateWorkflowTransition, type WorkflowTransitionDecision } from "@/src/domain/workflow";
 import { getPrisma } from "@/src/lib/prisma";
+import { toPrismaJson } from "@/src/lib/prisma-json";
 import { createWorkOrderFromConfirmedDiagnostic } from "@/src/services/work-orders.service";
 
 export class DiagnosticNotFoundError extends Error {
@@ -30,16 +31,10 @@ function clean(value: unknown, max = 10000) {
   return next ? next.slice(0, max) : null;
 }
 
-function jsonSafe(value: unknown): Prisma.InputJsonValue {
-  return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
-}
-
 export function parseDiagnosticStatus(value: unknown): DiagnosticRequestStatus | null {
   if (typeof value !== "string") return null;
   const normalized = value.trim().toUpperCase();
-  return Object.values(DiagnosticRequestStatus).includes(normalized as DiagnosticRequestStatus)
-    ? normalized as DiagnosticRequestStatus
-    : null;
+  return Object.values(DiagnosticRequestStatus).find((status) => status === normalized) ?? null;
 }
 
 export async function listDiagnostics(input?: { status?: DiagnosticRequestStatus | null; limit?: number }) {
@@ -108,9 +103,9 @@ export async function transitionDiagnostic(id: string, input: DiagnosticTransiti
           entityType: "DiagnosticRequest",
           entityId: id,
           action: `STATUS_${before.status}_TO_${after.status}`,
-          before: jsonSafe(before),
-          after: jsonSafe(after),
-          metadata: jsonSafe({
+          before: toPrismaJson(before),
+          after: toPrismaJson(after),
+          metadata: toPrismaJson({
             workflowDecision: freshDecision.code,
             actions: freshDecision.actions,
             hardGate: "WORK_ORDER_AFTER_CONFIRMED_DIAGNOSTICS",
@@ -127,8 +122,8 @@ export async function transitionDiagnostic(id: string, input: DiagnosticTransiti
           entityType: "DiagnosticRequest",
           entityId: id,
           action: "UPDATE_TECHNICAL_CONCLUSION",
-          before: jsonSafe(current),
-          after: jsonSafe(after),
+          before: toPrismaJson(current),
+          after: toPrismaJson(after),
         },
       });
     });
@@ -145,8 +140,8 @@ export async function transitionDiagnostic(id: string, input: DiagnosticTransiti
           entityType: "WorkOrder",
           entityId: workOrder.id,
           action: "CREATE_AFTER_CONFIRMED_DIAGNOSTICS",
-          after: jsonSafe(workOrder),
-          metadata: jsonSafe({ diagnosticRequestId: id, hardGate: "WORK_ORDER_AFTER_CONFIRMED_DIAGNOSTICS", passed: true }),
+          after: toPrismaJson(workOrder),
+          metadata: toPrismaJson({ diagnosticRequestId: id, hardGate: "WORK_ORDER_AFTER_CONFIRMED_DIAGNOSTICS", passed: true }),
         },
       }).catch(() => undefined);
     }
