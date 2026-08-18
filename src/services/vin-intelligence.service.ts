@@ -1,5 +1,6 @@
-import { getPrisma } from "@/src/lib/prisma";
 import { validateVin, type VinRegion } from "@/src/domain/vin";
+import { getPrisma } from "@/src/lib/prisma";
+import { toPrismaJson } from "@/src/lib/prisma-json";
 
 export type VinVehicle = {
   vin: string;
@@ -42,8 +43,18 @@ export type VinIntelligence = {
 const VPIC_API = "https://vpic.nhtsa.dot.gov/api/vehicles/DecodeVinValues";
 const CACHE_TTL_MS = 365 * 24 * 60 * 60 * 1000;
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
 function text(value: unknown) {
   const result = String(value ?? "").trim();
+  return result || null;
+}
+
+function strictText(value: unknown) {
+  if (typeof value !== "string") return null;
+  const result = value.trim();
   return result || null;
 }
 
@@ -52,6 +63,12 @@ function numberOrNull(value: unknown) {
   if (!normalized) return null;
   const parsed = Number(normalized);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
+function confidenceOr(value: unknown, fallback: number) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.max(0, Math.min(100, Math.round(parsed)));
 }
 
 function getCaseInsensitive(row: Record<string, unknown>, ...names: string[]) {
@@ -123,6 +140,59 @@ function normalizeFlatVehicle(vin: string, row: Record<string, unknown>, validat
   };
 }
 
+function parseCachedVehicle(value: unknown, vin: string, validation: ReturnType<typeof validateVin>): VinVehicle | null {
+  if (!isRecord(value)) return null;
+  return {
+    vin,
+    wmi: strictText(value.wmi) ?? validation.wmi,
+    region: validation.region,
+    make: strictText(value.make),
+    model: strictText(value.model),
+    year: numberOrNull(value.year),
+    trim: strictText(value.trim),
+    series: strictText(value.series),
+    bodyType: strictText(value.bodyType),
+    vehicleType: strictText(value.vehicleType),
+    engine: strictText(value.engine),
+    engineVolumeL: numberOrNull(value.engineVolumeL),
+    cylinders: numberOrNull(value.cylinders),
+    fuelType: strictText(value.fuelType),
+    secondaryFuelType: strictText(value.secondaryFuelType),
+    driveType: strictText(value.driveType),
+    transmission: strictText(value.transmission),
+    plantCountry: strictText(value.plantCountry),
+    plantCompany: strictText(value.plantCompany),
+    manufacturer: strictText(value.manufacturer),
+  };
+}
+
+function parseCachedFieldConfidence(value: unknown, vehicle: VinVehicle): FieldConfidence {
+  const fallback = baseConfidence(vehicle);
+  if (!isRecord(value)) return fallback;
+  return {
+    vin: confidenceOr(value.vin, fallback.vin),
+    wmi: confidenceOr(value.wmi, fallback.wmi),
+    region: confidenceOr(value.region, fallback.region),
+    make: confidenceOr(value.make, fallback.make),
+    model: confidenceOr(value.model, fallback.model),
+    year: confidenceOr(value.year, fallback.year),
+    trim: confidenceOr(value.trim, fallback.trim),
+    series: confidenceOr(value.series, fallback.series),
+    bodyType: confidenceOr(value.bodyType, fallback.bodyType),
+    vehicleType: confidenceOr(value.vehicleType, fallback.vehicleType),
+    engine: confidenceOr(value.engine, fallback.engine),
+    engineVolumeL: confidenceOr(value.engineVolumeL, fallback.engineVolumeL),
+    cylinders: confidenceOr(value.cylinders, fallback.cylinders),
+    fuelType: confidenceOr(value.fuelType, fallback.fuelType),
+    secondaryFuelType: confidenceOr(value.secondaryFuelType, fallback.secondaryFuelType),
+    driveType: confidenceOr(value.driveType, fallback.driveType),
+    transmission: confidenceOr(value.transmission, fallback.transmission),
+    plantCountry: confidenceOr(value.plantCountry, fallback.plantCountry),
+    plantCompany: confidenceOr(value.plantCompany, fallback.plantCompany),
+    manufacturer: confidenceOr(value.manufacturer, fallback.manufacturer),
+  };
+}
+
 function normalizeLocalRows(vin: string, rows: Record<string, unknown>[], validation: ReturnType<typeof validateVin>) {
   if (!rows.length) return null;
   if (getCaseInsensitive(rows[0], "Make", "Model", "ModelYear") !== undefined) {
@@ -138,7 +208,7 @@ function normalizeLocalRows(vin: string, rows: Record<string, unknown>[], valida
   return Object.keys(flat).length ? normalizeFlatVehicle(vin, flat, validation) : null;
 }
 
-function useful(vehicle: VinVehicle | null) {
+function useful(vehicle: VinVehicle | null): vehicle is VinVehicle {
   return Boolean(vehicle && (vehicle.make || vehicle.model || vehicle.year || vehicle.manufacturer));
 }
 
@@ -148,16 +218,22 @@ async function readCache(vin: string): Promise<VinIntelligence | null> {
     const cached = await prisma.vinDecodeCache.findUnique({ where: { vin } });
     if (!cached) return null;
     if (cached.expiresAt && cached.expiresAt.getTime() < Date.now()) return null;
+
+    const validation = validateVin(vin);
+    const vehicle = parseCachedVehicle(cached.vehicle, vin, validation);
+    if (!useful(vehicle)) return null;
+    const fieldConfidence = parseCachedFieldConfidence(cached.fieldConfidence, vehicle);
+
     return {
       status: "FOUND",
       vin,
       source: "CACHE",
       sourceDetail: cached.source,
       confidence: cached.confidence,
-      fieldConfidence: cached.fieldConfidence as unknown as FieldConfidence,
-      validation: cached.validation as unknown as ReturnType<typeof validateVin>,
+      fieldConfidence,
+      validation,
       warning: cached.lastError,
-      vehicle: cached.vehicle as unknown as VinVehicle,
+      vehicle,
       cached: true,
     };
   } catch (error) {
@@ -170,31 +246,21 @@ async function writeCache(result: VinIntelligence) {
   if (!result.vehicle || result.status !== "FOUND") return;
   try {
     const prisma = getPrisma();
+    const data = {
+      source: result.sourceDetail,
+      providerVersion: process.env.VPIC_PROVIDER_VERSION?.trim() || null,
+      confidence: result.confidence,
+      vehicle: toPrismaJson(result.vehicle),
+      fieldConfidence: toPrismaJson(result.fieldConfidence),
+      validation: toPrismaJson(result.validation),
+      decodedAt: new Date(),
+      expiresAt: new Date(Date.now() + CACHE_TTL_MS),
+      lastError: result.warning,
+    };
     await prisma.vinDecodeCache.upsert({
       where: { vin: result.vin },
-      create: {
-        vin: result.vin,
-        source: result.sourceDetail,
-        providerVersion: process.env.VPIC_PROVIDER_VERSION?.trim() || null,
-        confidence: result.confidence,
-        vehicle: result.vehicle as never,
-        fieldConfidence: result.fieldConfidence as never,
-        validation: result.validation as never,
-        decodedAt: new Date(),
-        expiresAt: new Date(Date.now() + CACHE_TTL_MS),
-        lastError: result.warning,
-      },
-      update: {
-        source: result.sourceDetail,
-        providerVersion: process.env.VPIC_PROVIDER_VERSION?.trim() || null,
-        confidence: result.confidence,
-        vehicle: result.vehicle as never,
-        fieldConfidence: result.fieldConfidence as never,
-        validation: result.validation as never,
-        decodedAt: new Date(),
-        expiresAt: new Date(Date.now() + CACHE_TTL_MS),
-        lastError: result.warning,
-      },
+      create: { vin: result.vin, ...data },
+      update: data,
     });
   } catch (error) {
     console.warn("VIN cache write skipped", error);
@@ -205,10 +271,11 @@ async function decodeLocal(vin: string, validation: ReturnType<typeof validateVi
   if (process.env.VPIC_LOCAL_ENABLED === "false") return null;
   try {
     const prisma = getPrisma();
-    const rows = await prisma.$queryRawUnsafe<Record<string, unknown>[]>("SELECT * FROM vpic.spVinDecode($1)", vin);
+    const rawRows = await prisma.$queryRawUnsafe<unknown[]>("SELECT * FROM vpic.spVinDecode($1)", vin);
+    const rows = rawRows.filter(isRecord);
     const vehicle = normalizeLocalRows(vin, rows, validation);
     if (!useful(vehicle)) return null;
-    const fieldConfidence = baseConfidence(vehicle!);
+    const fieldConfidence = baseConfidence(vehicle);
     return {
       status: "FOUND",
       vin,
@@ -234,10 +301,43 @@ async function decodeApi(vin: string, validation: ReturnType<typeof validateVin>
     signal: AbortSignal.timeout(12000),
   });
   if (!response.ok) throw new Error(`vPIC HTTP ${response.status}`);
-  const payload = await response.json();
-  const row = Array.isArray(payload?.Results) ? payload.Results[0] as Record<string, unknown> | undefined : undefined;
+  const payload: unknown = await response.json();
+  const results = isRecord(payload) ? payload.Results : undefined;
+  const row = Array.isArray(results) && isRecord(results[0]) ? results[0] : null;
   if (!row) {
-    return { status: "NOT_FOUND", vin, source: "NHTSA_VPIC_API", sourceDetail: "NHTSA_VPIC_API", confidence: 0, fieldConfidence: baseConfidence({ vin, wmi: validation.wmi, region: validation.region, make: null, model: null, year: null, trim: null, series: null, bodyType: null, vehicleType: null, engine: null, engineVolumeL: null, cylinders: null, fuelType: null, secondaryFuelType: null, driveType: null, transmission: null, plantCountry: null, plantCompany: null, manufacturer: null }), validation, warning: null, vehicle: null, cached: false };
+    return {
+      status: "NOT_FOUND",
+      vin,
+      source: "NHTSA_VPIC_API",
+      sourceDetail: "NHTSA_VPIC_API",
+      confidence: 0,
+      fieldConfidence: baseConfidence({
+        vin,
+        wmi: validation.wmi,
+        region: validation.region,
+        make: null,
+        model: null,
+        year: null,
+        trim: null,
+        series: null,
+        bodyType: null,
+        vehicleType: null,
+        engine: null,
+        engineVolumeL: null,
+        cylinders: null,
+        fuelType: null,
+        secondaryFuelType: null,
+        driveType: null,
+        transmission: null,
+        plantCountry: null,
+        plantCompany: null,
+        manufacturer: null,
+      }),
+      validation,
+      warning: null,
+      vehicle: null,
+      cached: false,
+    };
   }
 
   const vehicle = normalizeFlatVehicle(vin, row, validation);
