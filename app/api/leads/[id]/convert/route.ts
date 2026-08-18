@@ -4,16 +4,21 @@ import {
   LeadConflictError,
   LeadNotFoundError,
 } from "@/src/services/leads.service";
+import { authorize } from "@/src/security/authorize";
+import { PERMISSIONS } from "@/src/security/permissions";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 type RouteContext = { params: Promise<{ id: string }> };
 
-export async function POST(_request: Request, context: RouteContext) {
+export async function POST(request: Request, context: RouteContext) {
+  const access = await authorize(PERMISSIONS.LEADS_WRITE, request, { minimumScope: "TEAM" });
+  if (!access.ok) return access.response;
+
   try {
     const { id } = await context.params;
-    const result = await convertLead(id);
+    const result = await convertLead(id, access.context.user?.name || "CRM");
     return NextResponse.json({ ok: true, ...result }, { status: 201 });
   } catch (error) {
     if (error instanceof LeadNotFoundError) {
