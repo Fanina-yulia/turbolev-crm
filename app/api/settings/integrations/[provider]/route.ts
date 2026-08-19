@@ -4,6 +4,8 @@ import {
   isKnownIntegrationProvider,
   saveIntegrationCredential,
 } from "@/src/services/integration-credentials.service";
+import { authorize } from "@/src/security/authorize";
+import { PERMISSIONS } from "@/src/security/permissions";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -20,6 +22,8 @@ function sameOrigin(request: NextRequest) {
 }
 
 export async function PUT(request: NextRequest, context: { params: Promise<{ provider: string }> }) {
+  const access = await authorize(PERMISSIONS.SETTINGS_INTEGRATIONS, { strict: true, request });
+  if (!access.allowed) return access.response!;
   if (!sameOrigin(request)) {
     return NextResponse.json({ ok: false, error: "Forbidden" }, { status: 403 });
   }
@@ -44,6 +48,8 @@ export async function PUT(request: NextRequest, context: { params: Promise<{ pro
 }
 
 export async function DELETE(request: NextRequest, context: { params: Promise<{ provider: string }> }) {
+  const access = await authorize(PERMISSIONS.SETTINGS_INTEGRATIONS, { strict: true, request });
+  if (!access.allowed) return access.response!;
   if (!sameOrigin(request)) {
     return NextResponse.json({ ok: false, error: "Forbidden" }, { status: 403 });
   }

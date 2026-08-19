@@ -4,6 +4,8 @@ import {
   generateVehicleImageForVehicle,
   getVehicleImageLibraryState,
 } from "@/src/services/vehicle-images/openai-library.service";
+import { authorize } from "@/src/security/authorize";
+import { PERMISSIONS } from "@/src/security/permissions";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -51,6 +53,8 @@ export async function GET(request: NextRequest, context: { params: Promise<{ id:
 }
 
 export async function POST(request: NextRequest, context: { params: Promise<{ id: string }> }) {
+  const access = await authorize(PERMISSIONS.CLIENTS_WRITE, { strict: true, request });
+  if (!access.allowed) return access.response!;
   if (!sameOrigin(request)) return NextResponse.json({ ok: false, error: "Forbidden" }, { status: 403 });
   const { id } = await context.params;
   const body = await request.json().catch(() => ({})) as { themePaint?: string; force?: boolean };
