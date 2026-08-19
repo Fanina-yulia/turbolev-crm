@@ -2,7 +2,7 @@ import "server-only";
 
 import { getPrisma } from "@/src/lib/prisma";
 import { getSqlPool } from "@/src/lib/sql";
-import { generateVehicleImageForVehicle } from "./openai-library.service";
+import { generateVehicleImageInBackground } from "./vehicle-image-background.service";
 
 const MAX_IMAGE_BYTES = 12 * 1024 * 1024;
 
@@ -141,5 +141,5 @@ export async function regenerateVehicleImageLibraryAsset(assetId: string) {
     [assetId],
   );
 
-  return generateVehicleImageForVehicle(vehicle.id, { themePaint: asset.theme, force: true });
+  return generateVehicleImageInBackground(vehicle.id, { themePaint: asset.theme, force: true });
 }
