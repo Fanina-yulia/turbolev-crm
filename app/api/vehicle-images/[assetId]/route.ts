@@ -25,7 +25,7 @@ export async function GET(_request: Request, context: { params: Promise<{ assetI
 
   const libraryAsset = await getVehicleLibraryAsset(assetId);
   if (libraryAsset) {
-    return new NextResponse(libraryAsset.bytes, {
+    return new NextResponse(new Uint8Array(libraryAsset.bytes), {
       status: 200,
       headers: {
         "Content-Type": libraryAsset.mimeType,
