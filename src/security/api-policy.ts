@@ -88,6 +88,7 @@ const RULES: Rule[] = [
   { match: prefix("/api/leads"), resolve: (method) => readWrite(method, PERMISSIONS.LEADS_READ, PERMISSIONS.LEADS_WRITE, "TEAM", "Sales lead workflow.") },
   { match: exact("/api/intake"), resolve: () => internal(PERMISSIONS.LEADS_WRITE, "TEAM", "New request intake creates/updates sales pipeline facts.") },
   { match: exact("/api/dashboard"), resolve: () => internal(PERMISSIONS.OVERVIEW_READ, "LOCATION", "Operational station overview.") },
+  { match: prefix("/api/vehicle-images/library"), resolve: () => internal(PERMISSIONS.SETTINGS_INTEGRATIONS, "ALL", "Vehicle image library review, paid regeneration and manual replacement.", true) },
   {
     match: (path) => prefix("/api/client-card")(path) || prefix("/api/clients")(path) || path === "/api/clients-vehicles" || prefix("/api/vehicles")(path) || prefix("/api/vehicle-images")(path),
     resolve: (method) => readWrite(method, PERMISSIONS.CLIENTS_READ, PERMISSIONS.CLIENTS_WRITE, "TEAM", "Client and vehicle intelligence/read models, including protected vehicle render proxies."),
