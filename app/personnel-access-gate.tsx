@@ -20,6 +20,8 @@ const PERSONNEL_RETURN_PATH = "/?section=settings&settingsTab=personnel";
 
 export function PersonnelAccessGate({ children }: { children: ReactNode }) {
   const [state, setState] = useState<AccessState>({ kind: "checking" });
+  const [authBusy, setAuthBusy] = useState(false);
+  const [authError, setAuthError] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -67,14 +69,47 @@ export function PersonnelAccessGate({ children }: { children: ReactNode }) {
 
   if (state.kind === "ready") return <>{children}</>;
 
-  const signIn = () => {
+  async function continueWithGoogle() {
+    if (authBusy) return;
+    setAuthBusy(true);
+    setAuthError("");
+    try {
+      const response = await fetch("/api/auth/sign-in/social", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify({ provider: "google", callbackURL: PERSONNEL_RETURN_PATH }),
+      });
+      const result = await response.json().catch(() => null);
+      if (!response.ok) {
+        setAuthError(result?.message || result?.error || "Не вдалося розпочати вхід через Google.");
+        return;
+      }
+      const target = typeof result?.url === "string"
+        ? result.url
+        : typeof result?.redirect === "string"
+          ? result.redirect
+          : null;
+      if (!target) {
+        setAuthError("Google не повернув адресу авторизації. Спробуйте ще раз.");
+        return;
+      }
+      window.location.assign(target);
+    } catch {
+      setAuthError("Сервіс Google-входу тимчасово недоступний. Спробуйте ще раз.");
+    } finally {
+      setAuthBusy(false);
+    }
+  }
+
+  const signInWithEmail = () => {
     window.location.assign(`/auth/sign-in?next=${encodeURIComponent(PERSONNEL_RETURN_PATH)}`);
   };
 
   const title = state.kind === "checking"
     ? "Перевіряю доступ…"
     : state.kind === "unauthenticated"
-      ? "Потрібен вхід до CRM"
+      ? "Підтвердіть вхід один раз"
       : state.kind === "unprovisioned"
         ? "Доступ ще не призначено"
         : state.kind === "inactive"
@@ -84,7 +119,7 @@ export function PersonnelAccessGate({ children }: { children: ReactNode }) {
   const text = state.kind === "checking"
     ? "Зачекайте кілька секунд."
     : state.kind === "unauthenticated"
-      ? "Сесія у цьому браузері відсутня або завершилась. Увійдіть, після чого CRM поверне Вас одразу до розділу «Персонал»."
+      ? "Натисніть «Продовжити через Google». Після підтвердження CRM автоматично поверне Вас сюди і відкриє розділ «Персонал»."
       : state.kind === "unprovisioned"
         ? "Обліковий запис підтверджено, але адміністратор ще не призначив йому роль у Turbo LEV."
         : state.kind === "inactive"
@@ -113,24 +148,49 @@ export function PersonnelAccessGate({ children }: { children: ReactNode }) {
       </div>
       <h2 style={{ margin: "8px 0", fontSize: 26 }}>{title}</h2>
       <p style={{ margin: 0, color: "var(--muted)", lineHeight: 1.55 }}>{text}</p>
+
       {state.kind === "unauthenticated" ? (
-        <button
-          type="button"
-          onClick={signIn}
-          style={{
-            marginTop: 18,
-            minHeight: 44,
-            padding: "0 18px",
-            border: "1px solid var(--orange)",
-            borderRadius: 10,
-            background: "var(--orange)",
-            color: "#fff",
-            fontWeight: 800,
-            cursor: "pointer",
-          }}
-        >
-          Увійти та додати працівника
-        </button>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginTop: 18 }}>
+          <button
+            type="button"
+            onClick={() => void continueWithGoogle()}
+            disabled={authBusy}
+            style={{
+              minHeight: 44,
+              padding: "0 18px",
+              border: "1px solid var(--orange)",
+              borderRadius: 10,
+              background: "var(--orange)",
+              color: "#fff",
+              fontWeight: 800,
+              cursor: authBusy ? "wait" : "pointer",
+              opacity: authBusy ? 0.7 : 1,
+            }}
+          >
+            {authBusy ? "Відкриваю Google…" : "Продовжити через Google"}
+          </button>
+          <button
+            type="button"
+            onClick={signInWithEmail}
+            disabled={authBusy}
+            style={{
+              minHeight: 44,
+              padding: "0 18px",
+              border: "1px solid var(--line)",
+              borderRadius: 10,
+              background: "transparent",
+              color: "var(--text)",
+              fontWeight: 700,
+              cursor: authBusy ? "default" : "pointer",
+            }}
+          >
+            Увійти email і паролем
+          </button>
+        </div>
+      ) : null}
+
+      {authError ? (
+        <div style={{ marginTop: 12, color: "#b42318", fontWeight: 700 }}>{authError}</div>
       ) : null}
     </section>
   );
