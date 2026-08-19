@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { navigateCrm, readCrmRoute } from "./crm-route";
 import { VehicleBrandLogo } from "./vehicle-brand-logo";
 import styles from "./directory-pages.module.css";
 
@@ -98,6 +99,13 @@ export function VehiclesDirectory() {
   }, [query]);
 
   useEffect(() => {
+    const syncFromRoute = () => setVehicleId(readCrmRoute().vehicleId || null);
+    syncFromRoute();
+    window.addEventListener("popstate", syncFromRoute);
+    return () => window.removeEventListener("popstate", syncFromRoute);
+  }, []);
+
+  useEffect(() => {
     if (!vehicleId) {
       setVehicleCard(null);
       return;
@@ -125,6 +133,14 @@ export function VehiclesDirectory() {
     window.dispatchEvent(new CustomEvent("turbolev:open-new-request", { detail: { source: "CLIENTS" } }));
   }
 
+  function openVehicle(id: string) {
+    navigateCrm("Авто", { vehicleId: id });
+  }
+
+  function closeVehicle() {
+    navigateCrm("Авто");
+  }
+
   return <div className={styles.page}>
     <header className={styles.header}>
       <div>
@@ -146,7 +162,7 @@ export function VehiclesDirectory() {
     <div className={styles.summary}>Знайдено автомобілів: <b>{vehicles.length}</b></div>
     {error && <div className={styles.error}>{error}</div>}
     {loading ? <div className={styles.state}>Завантажую автомобілі…</div> : !vehicles.length ? <div className={styles.state}>Нічого не знайдено.</div> : <div className={styles.grid}>
-      {vehicles.map((vehicle) => <button key={vehicle.id} className={styles.card} onClick={() => setVehicleId(vehicle.id)}>
+      {vehicles.map((vehicle) => <button key={vehicle.id} className={styles.card} onClick={() => openVehicle(vehicle.id)}>
         <div className={styles.vehicleIdentity}>
           <VehicleBrandLogo brand={vehicle.brand} size={42} />
           <span className={styles.identityText}>
@@ -167,7 +183,7 @@ export function VehiclesDirectory() {
       </button>)}
     </div>}
 
-    {vehicleId && <div className={styles.backdrop} onMouseDown={(event) => { if (event.target === event.currentTarget) setVehicleId(null); }}>
+    {vehicleId && <div className={styles.backdrop} onMouseDown={(event) => { if (event.target === event.currentTarget) closeVehicle(); }}>
       <aside className={styles.drawer}>
         {vehicleLoading || !vehicleCard ? <div className={styles.state}>Завантажую картку автомобіля…</div> : <>
           <header className={styles.drawerHeader}>
@@ -175,12 +191,12 @@ export function VehiclesDirectory() {
               <VehicleBrandLogo brand={vehicleCard.brand} size={48} />
               <span className={styles.identityText}><small>КАРТКА АВТОМОБІЛЯ</small><strong>{vehicleTitle(vehicleCard)}</strong><span>{vehicleCard.plateNumber || "Без держномера"}</span></span>
             </div>
-            <button className={styles.close} onClick={() => setVehicleId(null)}>×</button>
+            <button className={styles.close} onClick={closeVehicle}>×</button>
           </header>
           <div className={styles.drawerBody}>
             <section className={styles.panel}>
               <h3>Власник</h3>
-              <button className={styles.ownerButton} onClick={() => window.dispatchEvent(new CustomEvent("turbolev:navigate", { detail: "Клієнти" }))}>
+              <button className={styles.ownerButton} onClick={() => navigateCrm("Клієнти", { clientId: vehicleCard.client.id })}>
                 <span><strong>{vehicleCard.client.name || "Клієнт без імені"}</strong><small>{vehicleCard.client.phone}</small></span><span>›</span>
               </button>
             </section>
@@ -205,6 +221,11 @@ export function VehiclesDirectory() {
                 <span><small>Створено</small><b>{dateText(vehicleCard.createdAt)}</b></span>
                 <span><small>Оновлено</small><b>{dateText(vehicleCard.updatedAt)}</b></span>
               </div>
+              {vehicleCard.workOrders.length ? <div className={styles.relatedList}>{vehicleCard.workOrders.map((workOrder) => <button key={workOrder.id} onClick={() => navigateCrm("Замовлення-наряди", { workOrderId: workOrder.id })}>
+                <strong>{workOrder.status}</strong>
+                <small>{dateText(workOrder.closedAt || workOrder.updatedAt || workOrder.createdAt)}</small>
+                <span>›</span>
+              </button>)}</div> : null}
             </section>
           </div>
           <footer className={styles.drawerFooter}><button className={styles.primary} onClick={openNewRequest}>+ Нова заявка</button></footer>
