@@ -31,7 +31,6 @@ type Appointment = {
 };
 type AvailabilitySlot = { time: string; posts: Array<{ id: string; available: boolean }> };
 type AvailabilityResponse = { status: string; slots?: AvailabilitySlot[]; message?: string };
-
 type Row = { id: string; name: string; type: string; reception?: boolean };
 
 const SLOT = 30;
@@ -67,7 +66,7 @@ export function PlannerDayView({ day, location, appointments, onOpen, onCreate }
   day: string;
   location: Location;
   appointments: Appointment[];
-  onOpen: (appointment: Appointment) => void;
+  onOpen: (appointmentId: string) => void;
   onCreate: (day: string, time: string, postId: string) => void;
 }) {
   const [availability, setAvailability] = useState<AvailabilityResponse | null>(null);
@@ -175,7 +174,7 @@ export function PlannerDayView({ day, location, appointments, onOpen, onCreate }
             key={item.id}
             className={`${styles.event} ${done ? styles.eventDone : ""}`}
             style={{ gridColumn: `${startIndex + 2} / span ${span}`, gridRow: rowIndex + 2 }}
-            onClick={() => onOpen(item)}
+            onClick={() => onOpen(item.id)}
             title={`${item.plateNumber || "Без номера"} · ${minuteLabel(start)}–${minuteLabel(end)}`}
           >
             <b>{item.plateNumber || "БЕЗ НОМЕРА"}</b>
