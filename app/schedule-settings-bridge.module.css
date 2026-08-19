@@ -1,6 +1,5 @@
 .portalHost{width:100%;min-width:0}
-:global(main[data-turbolev-schedule-enhanced="true"]>:not([data-turbolev-schedule-root])){display:none!important}
-:global([data-turbolev-schedule-hidden="true"]){display:none!important}
+:global(main[data-turbolev-schedule-enhanced="true"])>:not(.portalHost){display:none!important}
 .page{width:100%;max-width:1380px;margin:0 auto;padding:0 0 28px;color:var(--text)}
 .breadcrumbRow{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:14px}
 .breadcrumb{display:flex;align-items:center;gap:10px;color:var(--muted);font-size:11px}.breadcrumbIcon{color:var(--orange);font-size:15px}.breadcrumb b{color:var(--soft-text-2);font-weight:500}.breadcrumb strong{color:var(--text);font-weight:600}
