@@ -70,6 +70,7 @@ export const NAV_PERMISSION: Record<string, PermissionCode> = {
   communications: PERMISSIONS.COMMUNICATIONS_READ,
   leads: PERMISSIONS.LEADS_READ,
   clients: PERMISSIONS.CLIENTS_READ,
+  vehicles: PERMISSIONS.CLIENTS_READ,
   planner: PERMISSIONS.PLANNER_READ,
   diagnostics: PERMISSIONS.DIAGNOSTICS_READ,
   "work-orders": PERMISSIONS.WORK_ORDERS_READ,
