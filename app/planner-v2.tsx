@@ -7,7 +7,7 @@ import { navigateCrm, readCrmRoute } from "./crm-route";
 import { PlannerDayView } from "./planner-day-view";
 import styles from "./planner-v2.module.css";
 
-type Status = "BOOKED"|"ARRIVED"|"DIAGNOSTICS"|"WAITING_PARTS_SELECTION"|"WAITING_CALCULATION"|"WAITING_APPROVAL"|"WAITING_PARTS"|"READY_FOR_REPAIR"|"IN_REPAIR"|"WAITING_QC"|"READY_FOR_PICKUP"|"COMPLETED"|"WARRANTY"|"PAUSED"|"NO_SHOW"|"CANCELLED"|"RESERVE";
+type Status = "BOOKED"|"ARRIVED"|"DIAGNOSTICS"|"WAITING_PARTS_SELECTION"|"WAITING_CALCULATION"|"WAITING_APPROVAL"|"WAITING_PARTS"|"READY_FOR_REPAIR"|"IN_REPAIR"|"WAITING_QC"|"WAITING_PAYMENT"|"READY_FOR_PICKUP"|"COMPLETED"|"WARRANTY"|"PAUSED"|"NO_SHOW"|"CANCELLED"|"RESERVE";
 type ViewMode="day"|"week";
 type Post={id:string;name:string;sortOrder:number;capabilities:string[]};
 type Mechanic={id:string;name:string;sortOrder:number};
@@ -17,7 +17,7 @@ type BoardResponse={status:string;locations:Location[];activeLocationId:string|n
 type EditState={id:string;date:string;status:Status;postId:string;mechanicId:string;start:string;duration:string};
 
 const KYIV_TZ="Europe/Kyiv";
-const STATUS_META:Record<Status,{label:string;tone:string}>={BOOKED:{label:"Записаний",tone:"blue"},ARRIVED:{label:"Приїхав",tone:"green"},DIAGNOSTICS:{label:"Діагностика",tone:"violet"},WAITING_PARTS_SELECTION:{label:"Підбір деталей",tone:"amber"},WAITING_CALCULATION:{label:"Калькуляція",tone:"amber"},WAITING_APPROVAL:{label:"Погодження",tone:"orange"},WAITING_PARTS:{label:"Очікує деталі",tone:"amber"},READY_FOR_REPAIR:{label:"Готовий до ремонту",tone:"green"},IN_REPAIR:{label:"У ремонті",tone:"orange"},WAITING_QC:{label:"Контроль якості",tone:"cyan"},READY_FOR_PICKUP:{label:"Готовий до видачі",tone:"green"},COMPLETED:{label:"Виданий",tone:"gray"},WARRANTY:{label:"Гарантія",tone:"pink"},PAUSED:{label:"Пауза",tone:"gray"},NO_SHOW:{label:"No-show",tone:"red"},CANCELLED:{label:"Скасований",tone:"gray"},RESERVE:{label:"Резерв",tone:"gray"}};
+const STATUS_META:Record<Status,{label:string;tone:string}>={BOOKED:{label:"Записаний",tone:"blue"},ARRIVED:{label:"Приїхав",tone:"green"},DIAGNOSTICS:{label:"Діагностика",tone:"violet"},WAITING_PARTS_SELECTION:{label:"Підбір деталей",tone:"amber"},WAITING_CALCULATION:{label:"Калькуляція",tone:"amber"},WAITING_APPROVAL:{label:"Погодження",tone:"orange"},WAITING_PARTS:{label:"Очікує деталі",tone:"amber"},READY_FOR_REPAIR:{label:"Готовий до ремонту",tone:"green"},IN_REPAIR:{label:"У ремонті",tone:"orange"},WAITING_QC:{label:"Контроль якості",tone:"cyan"},WAITING_PAYMENT:{label:"Очікує оплату",tone:"amber"},READY_FOR_PICKUP:{label:"Готовий до видачі",tone:"green"},COMPLETED:{label:"Виданий",tone:"gray"},WARRANTY:{label:"Гарантія",tone:"pink"},PAUSED:{label:"Пауза",tone:"gray"},NO_SHOW:{label:"No-show",tone:"red"},CANCELLED:{label:"Скасований",tone:"gray"},RESERVE:{label:"Резерв",tone:"gray"}};
 const STATUS_OPTIONS=Object.keys(STATUS_META) as Status[];
 const FALLBACK_COLORS=["#FF5A1F","#2F80ED","#7C3AED","#16A34A","#D97706","#0891B2","#DB2777"];
 const pad=(n:number)=>String(n).padStart(2,"0");
