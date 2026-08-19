@@ -1,6 +1,7 @@
 import "server-only";
 
 import { getPrisma } from "@/src/lib/prisma";
+import { getLocalSessionUserId } from "@/src/security/local-credentials";
 import { getNeonAuthSdkSession } from "@/src/security/neon-auth-server";
 import { getNeonAuthSession, isNeonAuthConfigured, type NeonAuthSession } from "@/src/security/neon-auth-transport";
 import { computeEffectivePermissions } from "@/src/security/rbac-engine";
@@ -109,19 +110,44 @@ export async function getAccessContext(input?: Request | Headers): Promise<Acces
   const [enforcementMode, requestHeaders] = await Promise.all([getSecurityMode(), resolveRequestHeaders(input)]);
   const authConfigured = isNeonAuthConfigured();
   const anonymous = emptyContext(enforcementMode, authConfigured);
-  if (!authConfigured) return anonymous;
 
-  const session = (await getNeonAuthSdkSession()) ?? (await getNeonAuthSession(requestHeaders));
-  if (!session) return anonymous;
+  const session = authConfigured
+    ? (await getNeonAuthSdkSession()) ?? (await getNeonAuthSession(requestHeaders))
+    : null;
 
-  const appUser = await findOrClaimAppUser(session);
+  const prisma = getPrisma();
+  let appUser = session ? await findOrClaimAppUser(session) : null;
+  let authIdentity: NeonAuthSession["user"] | null = session?.user ?? null;
+
   if (!appUser) {
-    return {
-      ...anonymous,
-      authenticated: true,
-      provisioningState: "AUTHENTICATED_UNPROVISIONED",
-      authIdentity: session.user,
-    };
+    const localUserId = await getLocalSessionUserId(requestHeaders);
+    if (localUserId) {
+      appUser = await prisma.user.findUnique({
+        where: { id: localUserId },
+        include: { employeeProfile: true },
+      });
+      if (appUser) {
+        await prisma.user.update({ where: { id: appUser.id }, data: { lastSeenAt: new Date() } }).catch(() => undefined);
+        authIdentity = {
+          id: `local:${appUser.id}`,
+          email: appUser.email,
+          name: appUser.name,
+          emailVerified: true,
+        };
+      }
+    }
+  }
+
+  if (!appUser) {
+    if (session) {
+      return {
+        ...anonymous,
+        authenticated: true,
+        provisioningState: "AUTHENTICATED_UNPROVISIONED",
+        authIdentity: session.user,
+      };
+    }
+    return anonymous;
   }
 
   const employeeName = appUser.employeeProfile
@@ -140,13 +166,12 @@ export async function getAccessContext(input?: Request | Headers): Promise<Acces
       ...anonymous,
       authenticated: true,
       provisioningState: "INACTIVE",
-      authIdentity: session.user,
+      authIdentity,
       user: safeUser,
     };
   }
 
   const now = new Date();
-  const prisma = getPrisma();
   const [roleAssignments, overrides] = await Promise.all([
     prisma.userAccessRole.findMany({
       where: {
@@ -202,7 +227,7 @@ export async function getAccessContext(input?: Request | Headers): Promise<Acces
     authConfigured,
     authenticated: true,
     provisioningState: "ACTIVE",
-    authIdentity: session.user,
+    authIdentity,
     user: safeUser,
     roles: roleAssignments.map((assignment) => ({
       code: assignment.role.code,
