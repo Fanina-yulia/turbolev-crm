@@ -1,6 +1,9 @@
 import sharp from "sharp";
 import { getSqlPool } from "@/src/lib/sql";
-import { generateVehicleImageForVehicle } from "./openai-library.service";
+import {
+  generateVehicleImageForVehicle,
+  getVehicleImageLibraryState,
+} from "./openai-library.service";
 
 const TARGET_IMAGE_BYTES = 100 * 1024;
 
@@ -133,15 +136,39 @@ export async function optimizeVehicleImageAsset(assetId: string) {
 }
 
 export async function generateVehicleImageInBackground(vehicleId: string, options?: BackgroundOptions) {
-  const generation = await generateVehicleImageForVehicle(vehicleId, {
-    themePaint: options?.themePaint,
-    force: options?.force === true,
-  });
+  const pool = getSqlPool();
+  const client = await pool.connect();
+  const lockName = `vehicle-image:${vehicleId}:${options?.themePaint || "default"}`;
 
-  if (generation.state !== "READY" || !generation.assetId) return generation;
+  try {
+    const lockResult = await client.query<{ locked: boolean }>(
+      "SELECT pg_try_advisory_lock(hashtext($1)) AS locked",
+      [lockName],
+    );
 
-  const optimization = await optimizeVehicleImageAsset(generation.assetId);
-  return { ...generation, optimization };
+    if (!lockResult.rows[0]?.locked) {
+      const state = await getVehicleImageLibraryState(vehicleId, options?.themePaint);
+      return {
+        state: "GENERATING" as const,
+        assetId: state.assetId,
+        libraryKey: state.libraryKey,
+        deduplicated: true,
+      };
+    }
+
+    const generation = await generateVehicleImageForVehicle(vehicleId, {
+      themePaint: options?.themePaint,
+      force: options?.force === true,
+    });
+
+    if (generation.state !== "READY" || !generation.assetId) return generation;
+
+    const optimization = await optimizeVehicleImageAsset(generation.assetId);
+    return { ...generation, optimization };
+  } finally {
+    await client.query("SELECT pg_advisory_unlock(hashtext($1))", [lockName]).catch(() => undefined);
+    client.release();
+  }
 }
 
 export async function ensureExistingVehicleImageUnderLimit(assetId: string | null | undefined) {
