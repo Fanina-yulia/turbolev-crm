@@ -101,16 +101,6 @@ function time(value?: string | null) {
   }).format(new Date(value));
 }
 
-function dateLong(value: string | Date) {
-  const date = typeof value === "string" ? new Date(value) : value;
-  return new Intl.DateTimeFormat("uk-UA", {
-    timeZone: "Europe/Kyiv",
-    weekday: "long",
-    day: "numeric",
-    month: "long",
-  }).format(date);
-}
-
 function duration(start?: string | null, end?: string | null) {
   if (!start || !end) return "—";
   const minutes = Math.max(0, Math.round((new Date(end).getTime() - new Date(start).getTime()) / 60000));
@@ -330,7 +320,7 @@ export function MechanicMobileCabinet({ data, userName }: { data: MechanicPayloa
         <main className={styles.content}>
           <div className={styles.pageIntro}><h1>Мої діагностики</h1><p>Черга авто, призначених саме на вас.</p></div>
           {queueLoading && <div className={styles.emptyCard}>Завантажую діагностики…</div>}
-          {!queueLoading && <div className={styles.cardList}>{queue.map((item) => <button type="button" key={item.id} className={styles.diagnosticCard} onClick={() => navigateCrm("Діагностика", { diagnosticId: item.id })}><div><time>{time(item.plannedStartAt)}</time><strong>{item.vehicle.label}</strong><b>{item.vehicle.plateNumber || "Без номера"}</b></div><p>{item.problem || "Планова діагностика"}</p><small>{item.client.name || item.client.phone}{item.post ? ` · ${item.post}` : ""}</small><span className={`${styles.statusPill} ${statusClass(item.workflowState)}`}>{diagnosticStatusLabel[item.workflowState] || item.workflowState}</span></button>)}</div>}
+          {!queueLoading && <div className={styles.cardList}>{queue.map((item) => <button type="button" key={item.id} className={styles.diagnosticCard} onClick={() => navigateCrm("Діагностика")}><div><time>{time(item.plannedStartAt)}</time><strong>{item.vehicle.label}</strong><b>{item.vehicle.plateNumber || "Без номера"}</b></div><p>{item.problem || "Планова діагностика"}</p><small>{item.client.name || item.client.phone}{item.post ? ` · ${item.post}` : ""}</small><span className={`${styles.statusPill} ${statusClass(item.workflowState)}`}>{diagnosticStatusLabel[item.workflowState] || item.workflowState}</span></button>)}</div>}
           {!queueLoading && !queue.length && <div className={styles.emptyCard}>Призначених діагностик немає.</div>}
           <button type="button" className={styles.primaryButton} onClick={() => navigateCrm("Діагностика")}>Відкрити повну діагностику →</button>
         </main>
@@ -340,7 +330,7 @@ export function MechanicMobileCabinet({ data, userName }: { data: MechanicPayloa
         <TopBar title="Мій графік" onBack={() => setScreen("HOME")} />
         <main className={styles.content}>
           <div className={styles.pageIntro}><h1>Записи та роботи</h1><p>Ваше персональне завантаження за планувальником СТО.</p></div>
-          <div className={styles.scheduleList}>{appointments.sort((a, b) => new Date(a.plannedStartAt).getTime() - new Date(b.plannedStartAt).getTime()).map((item) => <article key={item.id}><div className={styles.scheduleDate}><b>{new Intl.DateTimeFormat("uk-UA", { timeZone: "Europe/Kyiv", day: "2-digit" }).format(new Date(item.plannedStartAt))}</b><span>{new Intl.DateTimeFormat("uk-UA", { timeZone: "Europe/Kyiv", month: "short" }).format(new Date(item.plannedStartAt))}</span></div><div><strong>{item.vehicle}</strong><p>{item.plate || "Без номера"} · {item.problem || "Запис на СТО"}</p><small>{time(item.plannedStartAt)}–{time(item.plannedEndAt)}{item.post ? ` · ${item.post}` : ""}</small></div></article>)}</div>
+          <div className={styles.scheduleList}>{[...appointments].sort((a, b) => new Date(a.plannedStartAt).getTime() - new Date(b.plannedStartAt).getTime()).map((item) => <article key={item.id}><div className={styles.scheduleDate}><b>{new Intl.DateTimeFormat("uk-UA", { timeZone: "Europe/Kyiv", day: "2-digit" }).format(new Date(item.plannedStartAt))}</b><span>{new Intl.DateTimeFormat("uk-UA", { timeZone: "Europe/Kyiv", month: "short" }).format(new Date(item.plannedStartAt))}</span></div><div><strong>{item.vehicle}</strong><p>{item.plate || "Без номера"} · {item.problem || "Запис на СТО"}</p><small>{time(item.plannedStartAt)}–{time(item.plannedEndAt)}{item.post ? ` · ${item.post}` : ""}</small></div></article>)}</div>
           {!appointments.length && <div className={styles.emptyCard}>Запланованих робіт немає.</div>}
           <button type="button" className={styles.secondaryButton} onClick={() => navigateCrm("Планувальник")}>Відкрити планувальник →</button>
         </main>
