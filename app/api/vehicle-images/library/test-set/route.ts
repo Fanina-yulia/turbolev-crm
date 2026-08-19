@@ -2,10 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { getPrisma } from "@/src/lib/prisma";
 import { authorize } from "@/src/security/authorize";
 import { PERMISSIONS } from "@/src/security/permissions";
-import {
-  generateVehicleImageForVehicle,
-  getVehicleImageLibraryState,
-} from "@/src/services/vehicle-images/openai-library.service";
+import { getVehicleImageLibraryState } from "@/src/services/vehicle-images/openai-library.service";
+import { generateVehicleImageInBackground } from "@/src/services/vehicle-images/vehicle-image-background.service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -95,7 +93,11 @@ export async function POST(request: NextRequest) {
     const candidate = candidates.find((item) => item.id === vehicleId);
     if (!candidate) return NextResponse.json({ ok: false, error: "Автомобіль не входить до поточного контрольного набору." }, { status: 409 });
 
-    const generation = await generateVehicleImageForVehicle(vehicleId, { force: false });
+    // The control test is an explicit paid regeneration. Force a fresh request so an
+    // old transparent-background compatibility error cannot block the retry window.
+    // The background service contains the model-compatibility fallback and final
+    // alpha/WebP optimization used by production vehicle cards.
+    const generation = await generateVehicleImageInBackground(vehicleId, { force: true });
     const library = await getVehicleImageLibraryState(vehicleId);
     return NextResponse.json(
       { ok: true, vehicle: candidate, generation, library },
