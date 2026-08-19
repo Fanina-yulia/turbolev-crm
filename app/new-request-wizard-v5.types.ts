@@ -42,6 +42,7 @@ export type RequestForm = {
   complaint: string;
   appointmentDate: string;
   appointmentTime: string;
+  appointmentDurationMinutes: string;
   preliminaryAmount: string;
   comment: string;
   locationId: string;
