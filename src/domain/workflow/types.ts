@@ -35,13 +35,26 @@ export type WorkflowStage =
 
 export type WorkflowTone = "neutral" | "info" | "accent" | "warning" | "success" | "danger";
 
+/**
+ * Workflow presentation uses the same role codes as RBAC.
+ * Legacy role aliases stay in the union only so saved presentation settings from
+ * older deployments can still be parsed and ignored/migrated safely.
+ */
 export type WorkflowRole =
   | "OWNER"
   | "EXECUTIVE_DIRECTOR"
+  | "HEAD_OF_SALES"
   | "SALES"
+  | "SERVICE_ADVISOR"
+  | "PARTS_SPECIALIST"
+  | "STATION_MANAGER"
+  | "SHIFT_MASTER"
+  | "MECHANIC"
+  | "ACCOUNTANT"
+  | "ADMINISTRATOR"
+  // legacy presentation role codes
   | "SERVICE_MANAGER"
   | "PARTS_MANAGER"
-  | "MECHANIC"
   | "QUALITY_CONTROLLER"
   | "CASHIER_ACCOUNTING"
   | "ADMIN";

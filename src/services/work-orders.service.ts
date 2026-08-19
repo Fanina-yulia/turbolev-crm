@@ -274,8 +274,8 @@ function plannerStatusForWorkOrder(status: string): PlannerStatus | null {
     REWORK: "IN_REPAIR",
     PAUSED: "PAUSED",
     WAITING_QC: "WAITING_QC",
+    WAITING_PAYMENT: "WAITING_PAYMENT" as PlannerStatus,
     READY_FOR_PICKUP: "READY_FOR_PICKUP",
-    WAITING_PAYMENT: "READY_FOR_PICKUP",
     CLOSED: "COMPLETED",
     CANCELLED: "CANCELLED",
   };
@@ -295,10 +295,10 @@ export async function transitionWorkOrder(id: string, toStatus: string, actorNam
   if (!preflight) throw new WorkOrderNotFoundError(id);
   const normalizedFrom = normalizeWorkflowStatus("WORK_ORDER", preflight.status);
 
-  // Revenue/COGS and the receivable become factual only after QC passed and the car is being marked ready.
-  // This deliberately happens before the status transition so a finance-finalization error cannot leave
-  // the WorkOrder in READY_FOR_PICKUP without its receivable.
-  if (normalizedFrom === "WAITING_QC" && requested === "READY_FOR_PICKUP") {
+  // After QC passes, make the final invoice/receivable factual before the car enters payment queue.
+  // This happens before the status transition so finance errors cannot leave a WO waiting for payment
+  // without an actual receivable to settle.
+  if (normalizedFrom === "WAITING_QC" && requested === "WAITING_PAYMENT") {
     const preGates = (await getWorkOrderCycleState(id)).gates;
     const preDecision = evaluateWorkOrderTransition(normalizedFrom, requested, preGates);
     if (!preDecision.allowed) throw new WorkOrderTransitionError(preDecision, unsupportedActions(preDecision.actions));

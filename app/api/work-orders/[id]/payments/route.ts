@@ -4,6 +4,11 @@ import {
   recordWorkOrderPayment,
   WorkOrderFinanceError,
 } from "@/src/services/work-order-finance.service";
+import {
+  transitionWorkOrder,
+  WorkOrderNotFoundError,
+  WorkOrderTransitionError,
+} from "@/src/services/work-orders.service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -28,7 +33,29 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       ? body.actorName.trim().slice(0, 120)
       : "CRM / Каса";
     const result = await recordWorkOrderPayment(id, body, actorName);
-    return NextResponse.json({ ok: true, ...result });
+
+    let workOrder = null;
+    let transitionWarning = null;
+    if (result.obligation?.status === "PAID") {
+      try {
+        workOrder = await transitionWorkOrder(id, "READY_FOR_PICKUP", actorName);
+      } catch (error) {
+        if (error instanceof WorkOrderTransitionError || error instanceof WorkOrderNotFoundError) {
+          transitionWarning = {
+            code: error instanceof WorkOrderTransitionError ? error.decision.code : "WORK_ORDER_NOT_FOUND",
+            message: "Оплату збережено, але ЗН не вдалося автоматично перевести у «Готовий до видачі».",
+          };
+        } else {
+          console.error("[work-order-payment-ready-transition]", error);
+          transitionWarning = {
+            code: "READY_TRANSITION_FAILED",
+            message: "Оплату збережено, але статус готовності до видачі потрібно перевірити вручну.",
+          };
+        }
+      }
+    }
+
+    return NextResponse.json({ ok: true, ...result, workOrder, transitionWarning });
   } catch (error) {
     return errorResponse(error);
   }
