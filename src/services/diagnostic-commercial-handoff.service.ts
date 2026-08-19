@@ -57,7 +57,7 @@ async function buildSuggestions(diagnosticRequestId: string) {
     if (finding.suggestedWorkName?.trim()) rows.push({ ...common, key: `${finding.id}:LABOR`, kind: "LABOR", description: finding.suggestedWorkName.trim() });
     if (finding.suggestedPartName?.trim()) rows.push({ ...common, key: `${finding.id}:PART`, kind: "PART", description: finding.suggestedPartName.trim() });
     return rows;
-  }))));
+  })));
 
   const keys = candidates.map((item) => item.key);
   const existing = keys.length ? await prisma.workOrderLine.findMany({
