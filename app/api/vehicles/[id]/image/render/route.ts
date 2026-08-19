@@ -70,7 +70,7 @@ export async function GET(request: NextRequest, context: { params: Promise<{ id:
   const themePaint = request.nextUrl.searchParams.get("theme");
   const fallbackVehicle = await getPrisma().vehicle.findUnique({ where: { id }, select: { brand: true, model: true, bodyType: true } });
   if (!fallbackVehicle) return NextResponse.json({ ok: false, error: "Автомобіль не знайдено." }, { status: 404 });
-  const fallback = () => svgResponse(fallbackSvg({ ...fallbackVehicle, themePaint }));
+  const fallback = () => svgResponse(fallbackSvg({ make: fallbackVehicle.brand, model: fallbackVehicle.model, bodyType: fallbackVehicle.bodyType, themePaint }));
 
   try {
     const image = await resolveVehicleImage(id, { themePaint });
