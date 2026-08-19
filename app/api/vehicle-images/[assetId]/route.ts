@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getVehicleImageAsset, markVehicleImageFailure } from "@/src/services/vehicle-images/vehicle-image.service";
+import { getVehicleLibraryAsset } from "@/src/services/vehicle-images/openai-library.service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -21,6 +22,21 @@ async function fetchWithTimeout(url: string) {
 
 export async function GET(_request: Request, context: { params: Promise<{ assetId: string }> }) {
   const { assetId } = await context.params;
+
+  const libraryAsset = await getVehicleLibraryAsset(assetId);
+  if (libraryAsset) {
+    return new NextResponse(libraryAsset.bytes, {
+      status: 200,
+      headers: {
+        "Content-Type": libraryAsset.mimeType,
+        "Content-Length": String(libraryAsset.sizeBytes),
+        "Cache-Control": "public, max-age=604800, s-maxage=604800, stale-while-revalidate=2592000",
+        "X-Vehicle-Image-Provider": "OPENAI",
+        "X-Vehicle-Image-Library": "1",
+      },
+    });
+  }
+
   const asset = await getVehicleImageAsset(assetId);
   if (!asset?.sourceUrl || (asset.status !== "READY" && asset.status !== "MANUAL")) {
     return NextResponse.json({ ok: false, error: "Зображення не знайдено." }, { status: 404 });
