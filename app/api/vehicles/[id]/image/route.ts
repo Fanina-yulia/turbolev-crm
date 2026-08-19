@@ -1,7 +1,9 @@
 import { after, NextRequest, NextResponse } from "next/server";
 import { resolveVehicleImage } from "@/src/services/vehicle-images/vehicle-image.service";
-import { getVehicleImageLibraryState } from "@/src/services/vehicle-images/openai-library.service";
-import { generateVehicleImageInBackground } from "@/src/services/vehicle-images/vehicle-image-background.service";
+import {
+  generateVehicleImageInBackground,
+  getVehicleImageDeliveryState,
+} from "@/src/services/vehicle-images/vehicle-image-background.service";
 import { authorize } from "@/src/security/authorize";
 import { PERMISSIONS } from "@/src/security/permissions";
 
@@ -30,14 +32,32 @@ function sameOrigin(request: NextRequest) {
   try { return new URL(origin).host === host; } catch { return false; }
 }
 
+function scheduleBackground(vehicleId: string, themePaint: string | null, force = false) {
+  after(async () => {
+    try {
+      await generateVehicleImageInBackground(vehicleId, { themePaint, force });
+    } catch (error) {
+      console.error("background vehicle image generation failed", {
+        vehicleId,
+        message: error instanceof Error ? error.message : "unknown error",
+      });
+    }
+  });
+}
+
 export async function GET(request: NextRequest, context: { params: Promise<{ id: string }> }) {
   const { id } = await context.params;
   const themePaint = request.nextUrl.searchParams.get("theme");
   try {
     const [image, library] = await Promise.all([
       resolveVehicleImage(id, { themePaint }),
-      getVehicleImageLibraryState(id, themePaint),
+      getVehicleImageDeliveryState(id, themePaint),
     ]);
+
+    if (library.state === "GENERATING" && library.needsOptimization) {
+      scheduleBackground(id, themePaint);
+    }
+
     return NextResponse.json(
       image
         ? { ok: true, image: publicImage(image), fallback: false, library }
@@ -63,7 +83,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
   try {
     const [image, library] = await Promise.all([
       resolveVehicleImage(id, { themePaint }),
-      getVehicleImageLibraryState(id, themePaint),
+      getVehicleImageDeliveryState(id, themePaint),
     ]);
 
     if (library.state === "READY" && image && !force) {
@@ -74,6 +94,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
     }
 
     if (library.state === "GENERATING" && !force) {
+      if (library.needsOptimization) scheduleBackground(id, themePaint);
       return NextResponse.json(
         { ok: true, generation: { state: "GENERATING", assetId: library.assetId, libraryKey: library.libraryKey }, image: publicImage(image), fallback: !image, library },
         { status: 202, headers: { "Cache-Control": "no-store" } },
@@ -94,16 +115,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
       );
     }
 
-    after(async () => {
-      try {
-        await generateVehicleImageInBackground(id, { themePaint, force });
-      } catch (error) {
-        console.error("background vehicle image generation failed", {
-          vehicleId: id,
-          message: error instanceof Error ? error.message : "unknown error",
-        });
-      }
-    });
+    scheduleBackground(id, themePaint, force);
 
     return NextResponse.json(
       {
