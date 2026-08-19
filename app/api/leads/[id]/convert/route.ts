@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 import {
   convertLead,
   LeadConflictError,
@@ -6,9 +6,11 @@ import {
 } from "@/src/services/leads.service";
 import { authorize } from "@/src/security/authorize";
 import { PERMISSIONS } from "@/src/security/permissions";
+import { generateVehicleImageInBackground } from "@/src/services/vehicle-images/vehicle-image-background.service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+export const maxDuration = 100;
 
 type RouteContext = { params: Promise<{ id: string }> };
 
@@ -19,6 +21,20 @@ export async function POST(request: Request, context: RouteContext) {
   try {
     const { id } = await context.params;
     const result = await convertLead(id, access.context.user?.name || "CRM");
+
+    if (result.vehicle.brand && result.vehicle.model) {
+      after(async () => {
+        try {
+          await generateVehicleImageInBackground(result.vehicle.id);
+        } catch (error) {
+          console.error("background vehicle image generation after lead conversion failed", {
+            vehicleId: result.vehicle.id,
+            message: error instanceof Error ? error.message : "unknown error",
+          });
+        }
+      });
+    }
+
     return NextResponse.json({ ok: true, ...result }, { status: 201 });
   } catch (error) {
     if (error instanceof LeadNotFoundError) {
