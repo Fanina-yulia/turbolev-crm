@@ -7,6 +7,9 @@ import { VehicleBrandLogo } from "./vehicle-brand-logo";
 import styles from "./communications-contact-inbox.module.css";
 import {
   buildCommunicationConversations,
+  getCommunicationReplyInquiries,
+  getDefaultCommunicationReplyInquiry,
+  isLiveReplyChannel,
   type CommunicationChannel as Channel,
   type CommunicationConversation,
   type CommunicationInquiry as Inquiry,
@@ -17,6 +20,7 @@ type Filter = "ALL" | "NEW" | "NEEDS_REPLY" | "MISSED" | "MESSAGES" | Channel;
 type BinotelHealth = { ok: boolean; databaseConfigured: boolean; restConfigured: boolean; webhookTokenConfigured: boolean; websocketConfigured: boolean; companyIdConfigured: boolean; webhookPath: string; missing: string[]; optionalMissing: string[] };
 type LinkedVehicle = { id: string; plateNumber?: string | null; vin?: string | null; brand?: string | null; model?: string | null; year?: number | null };
 type LinkedClientCard = { id: string; name?: string | null; phone: string; vehicles: LinkedVehicle[] };
+type ClientSearchItem = { id: string; name?: string | null; phone: string; vehicles?: LinkedVehicle[] };
 type CommunicationIntegrationStatus = {
   ok: boolean;
   meta?: {
@@ -119,6 +123,20 @@ function integrationStateText(key: typeof integrations[number]["key"], status: C
   if (key === "OLX" && status?.olx?.configured) return status.olx.status === "ERROR" ? "Помилка синхронізації" : "Потрібна OAuth-авторизація";
   return "Потрібен доступ";
 }
+function metaReplyDeadline(inquiry: Inquiry | null) {
+  if (!inquiry || (inquiry.channel !== "FACEBOOK" && inquiry.channel !== "INSTAGRAM")) return null;
+  if (inquiry.replyAllowedUntil) {
+    const explicit = new Date(inquiry.replyAllowedUntil);
+    if (!Number.isNaN(explicit.getTime())) return explicit;
+  }
+  const inboundTimes = inquiry.messages
+    .filter((message) => message.direction === "in")
+    .map((message) => new Date(message.at).getTime())
+    .filter(Number.isFinite);
+  const latestInbound = inboundTimes.length ? Math.max(...inboundTimes) : new Date(inquiry.receivedAt).getTime();
+  if (!Number.isFinite(latestInbound)) return null;
+  return new Date(latestInbound + 24 * 60 * 60 * 1000);
+}
 
 export function CommunicationsHub() {
   const [items, setItems] = useState<Inquiry[]>([]);
@@ -127,12 +145,14 @@ export function CommunicationsHub() {
   const [query, setQuery] = useState("");
   const [tab, setTab] = useState<"inbox" | "integrations">("inbox");
   const [reply, setReply] = useState("");
+  const [replyInquiryId, setReplyInquiryId] = useState("");
   const [files, setFiles] = useState<File[]>([]);
   const [emojiOpen, setEmojiOpen] = useState(false);
   const [toast, setToast] = useState("");
   const [serverMode, setServerMode] = useState(false);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
+  const [retryingMessageId, setRetryingMessageId] = useState("");
   const [syncingOlx, setSyncingOlx] = useState(false);
   const [pageSize, setPageSize] = useState<20 | 50 | 100>(20);
   const [binotelHealth, setBinotelHealth] = useState<BinotelHealth | null>(null);
@@ -140,6 +160,11 @@ export function CommunicationsHub() {
   const [clientCardOpen, setClientCardOpen] = useState(false);
   const [linkedClient, setLinkedClient] = useState<LinkedClientCard | null>(null);
   const [vehicleCardId, setVehicleCardId] = useState<string | null>(null);
+  const [linkingOpen, setLinkingOpen] = useState(false);
+  const [clientSearch, setClientSearch] = useState("");
+  const [clientResults, setClientResults] = useState<ClientSearchItem[]>([]);
+  const [clientSearching, setClientSearching] = useState(false);
+  const [linkingClientId, setLinkingClientId] = useState("");
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const messageEndRef = useRef<HTMLDivElement | null>(null);
 
@@ -206,12 +231,29 @@ export function CommunicationsHub() {
 
   const conversations = useMemo(() => buildCommunicationConversations(items), [items]);
   const selected = useMemo(() => conversations.find((item) => item.key === selectedKey) || null, [conversations, selectedKey]);
+  const replyCandidates = useMemo(() => selected ? getCommunicationReplyInquiries(selected) : [], [selected]);
+  const replyInquiry = useMemo(() => {
+    if (!selected) return null;
+    return replyCandidates.find((item) => item.id === replyInquiryId) || getDefaultCommunicationReplyInquiry(selected);
+  }, [selected, replyCandidates, replyInquiryId]);
+  const replyDeadline = useMemo(() => metaReplyDeadline(replyInquiry), [replyInquiry]);
+  const metaReplyExpired = Boolean(replyDeadline && replyDeadline.getTime() < Date.now());
+  const externalLinkInquiry = useMemo(() => selected?.inquiries.find((item) => (item.channel === "FACEBOOK" || item.channel === "INSTAGRAM" || item.channel === "OLX")) || null, [selected]);
+  const canLinkExternalClient = Boolean(serverMode && selected && !selected.phone && externalLinkInquiry);
 
   useEffect(() => {
     if (!conversations.length) { if (selectedKey) setSelectedKey(""); return; }
     if (!conversations.some((item) => item.key === selectedKey)) setSelectedKey(conversations[0].key);
   }, [conversations, selectedKey]);
   useEffect(() => { messageEndRef.current?.scrollIntoView({ block: "end" }); }, [selectedKey, items]);
+  useEffect(() => {
+    if (!selected) { setReplyInquiryId(""); return; }
+    setReplyInquiryId(getDefaultCommunicationReplyInquiry(selected).id);
+    setFiles([]);
+    setLinkingOpen(false);
+    setClientSearch("");
+    setClientResults([]);
+  }, [selectedKey]);
   useEffect(() => {
     const phone = selected?.phone;
     setLinkedClient(null);
@@ -265,13 +307,18 @@ export function CommunicationsHub() {
     setVehicleCardId(null);
     setFiles([]);
     setEmojiOpen(false);
+    setReplyInquiryId(getDefaultCommunicationReplyInquiry(conversation).id);
     if (!conversation.unreadInquiryIds.length) return;
     const results = await Promise.all(conversation.unreadInquiryIds.map((id) => patchOne(id, { unread: false })));
     if (results.some((ok) => !ok)) notify("Не всі позначки прочитання вдалося синхронізувати");
   }
   async function sendReply() {
-    if (!selected || (!reply.trim() && files.length === 0) || sending) return;
-    const inquiry = selected.representative;
+    if (!selected || !replyInquiry || (!reply.trim() && files.length === 0) || sending || metaReplyExpired) return;
+    const inquiry = replyInquiry;
+    if (isLiveReplyChannel(inquiry.channel) && files.length > 0) {
+      notify("Файли для Facebook, Instagram та OLX ще не відправляються назовні. Надішліть текст окремо; модуль вкладень готується наступним етапом.");
+      return;
+    }
     const attachmentText = files.length ? `\n${files.map((file) => `📎 ${file.name}`).join("\n")}` : "";
     const finalText = `${reply.trim()}${attachmentText}`.trim();
     const attachments = files.map((file) => ({ name: file.name, type: file.type, size: file.size }));
@@ -296,6 +343,20 @@ export function CommunicationsHub() {
       notify(error instanceof Error ? error.message : "Не вдалося доставити повідомлення");
     } finally { setSending(false); }
   }
+  async function retryMessage(inquiryId: string, messageId: string) {
+    if (!serverMode || retryingMessageId) return;
+    setRetryingMessageId(messageId);
+    try {
+      const response = await fetch(`/api/communications/${encodeURIComponent(inquiryId)}/messages/${encodeURIComponent(messageId)}/retry`, { method: "POST" });
+      const data = await response.json().catch(() => ({})) as { ok?: boolean; error?: string; delivery?: string };
+      if (!response.ok || !data.ok) throw new Error(data.error || "Не вдалося повторити відправлення");
+      await load(true);
+      notify("Повідомлення повторно надіслано.");
+    } catch (error) {
+      await load(true);
+      notify(error instanceof Error ? error.message : "Не вдалося повторити відправлення");
+    } finally { setRetryingMessageId(""); }
+  }
   async function convertToLead() {
     if (!selected || !serverMode) return notify("Для додавання в Активні потрібне серверне з'єднання");
     try {
@@ -305,6 +366,40 @@ export function CommunicationsHub() {
       notify(data.linkedExisting ? "Контакт уже є в Активних" : "Контакт додано в Активні");
       await load(true);
     } catch (error) { notify(error instanceof Error ? error.message : "Не вдалося додати контакт в Активні"); }
+  }
+  async function searchClients() {
+    const needle = clientSearch.trim();
+    if (needle.length < 2) { setClientResults([]); return; }
+    setClientSearching(true);
+    try {
+      const response = await fetch(`/api/clients-vehicles?q=${encodeURIComponent(needle)}&limit=12`, { cache: "no-store" });
+      const data = await response.json().catch(() => ({})) as { clients?: ClientSearchItem[]; error?: string };
+      if (!response.ok) throw new Error(data.error || "Не вдалося знайти клієнтів");
+      setClientResults(data.clients || []);
+    } catch (error) {
+      setClientResults([]);
+      notify(error instanceof Error ? error.message : "Не вдалося знайти клієнтів");
+    } finally { setClientSearching(false); }
+  }
+  async function linkExistingClient(clientId: string) {
+    if (!externalLinkInquiry || linkingClientId) return;
+    setLinkingClientId(clientId);
+    try {
+      const response = await fetch(`/api/communications/${encodeURIComponent(externalLinkInquiry.id)}/link-client`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ clientId }),
+      });
+      const data = await response.json().catch(() => ({})) as { ok?: boolean; error?: string };
+      if (!response.ok || !data.ok) throw new Error(data.error || "Не вдалося прив'язати клієнта");
+      setLinkingOpen(false);
+      setClientSearch("");
+      setClientResults([]);
+      await load(true);
+      window.dispatchEvent(new CustomEvent("turbolev:data-changed"));
+      notify("Зовнішній контакт прив'язано до клієнта CRM.");
+    } catch (error) { notify(error instanceof Error ? error.message : "Не вдалося прив'язати клієнта"); }
+    finally { setLinkingClientId(""); }
   }
   async function syncOlxNow() {
     if (syncingOlx) return;
@@ -388,6 +483,7 @@ export function CommunicationsHub() {
               <span className={styles.contactText}><strong>{linkedClient?.name?.trim() || selected.displayName}</strong><small>{selected.phone || selected.handle || "Контакт без номера"}</small></span>
               {selected.phone && <span className={styles.openHint}>Картка ›</span>}
             </button>
+            {canLinkExternalClient && <button type="button" className="communicationsLinkClientButton" onClick={() => setLinkingOpen((current) => !current)}>Прив'язати клієнта</button>}
             {linkedClient?.vehicles?.length ? <div className={styles.vehicleSummaries} aria-label="Автомобілі клієнта">
               {linkedClient.vehicles.map((vehicle) => <button type="button" className={styles.vehicleSummary} key={vehicle.id} onClick={() => setVehicleCardId(vehicle.id)} title="Відкрити картку автомобіля">
                 <VehicleBrandLogo brand={vehicle.brand} size={38}/>
@@ -396,26 +492,35 @@ export function CommunicationsHub() {
               </button>)}
             </div> : null}
           </header>
+          {linkingOpen && <div className="communicationsLinkPanel">
+            <div><strong>Прив'язати зовнішній контакт до клієнта CRM</strong><span>Після прив'язки наступні повідомлення цього Instagram / Facebook / OLX користувача відкриватимуть правильну картку клієнта.</span></div>
+            <div className="communicationsClientSearch"><input value={clientSearch} onChange={(event) => setClientSearch(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); void searchClients(); } }} placeholder="ПІБ, телефон, номер авто або VIN"/><button type="button" onClick={() => void searchClients()} disabled={clientSearching}>{clientSearching ? "…" : "Знайти"}</button><button type="button" onClick={() => setLinkingOpen(false)}>×</button></div>
+            {clientResults.length > 0 && <div className="communicationsClientResults">{clientResults.map((client) => <button type="button" key={client.id} disabled={Boolean(linkingClientId)} onClick={() => void linkExistingClient(client.id)}><strong>{client.name?.trim() || "Клієнт без імені"}</strong><span>{client.phone}</span><small>{client.vehicles?.length ? client.vehicles.map((vehicle) => [vehicle.brand, vehicle.model, vehicle.plateNumber].filter(Boolean).join(" ")).join(" · ") : "Без авто"}</small>{linkingClientId === client.id && <i>Прив'язую…</i>}</button>)}</div>}
+          </div>}
           <div className={styles.timeline}>
             {selected.inquiryCount > 1 && <div className={styles.conversationSummary}>Об'єднано {selected.inquiryCount} звернень цього контакту · історія не видаляється</div>}
             {selected.timeline.length === 0 ? <div className={styles.empty}>{selected.preview}</div> : selected.timeline.map((message) => {
               const delivery = messageDelivery(message);
-              return <article key={`${message.inquiryId}:${message.id}`} className={`${styles.event} ${styles[message.direction]} ${messageIsMissed(message) ? styles.missedEvent : ""}`}><p>{message.text}</p><footer><span>{channelMeta[message.channel].label}{delivery ? <em className={delivery.failed ? "communicationsDeliveryFailed" : "communicationsDeliveryState"}> · {delivery.text}</em> : null}</span><time>{fmtLong(message.at)}</time></footer></article>;
+              return <article key={`${message.inquiryId}:${message.id}`} className={`${styles.event} ${styles[message.direction]} ${messageIsMissed(message) ? styles.missedEvent : ""}`}><p>{message.text}</p><footer><span>{channelMeta[message.channel].label}{delivery ? <em className={delivery.failed ? "communicationsDeliveryFailed" : "communicationsDeliveryState"}> · {delivery.text}</em> : null}{delivery?.failed && isLiveReplyChannel(message.channel) ? <button className="communicationsRetryButton" type="button" disabled={Boolean(retryingMessageId)} onClick={() => void retryMessage(message.inquiryId, message.id)}>{retryingMessageId === message.id ? "Повторюю…" : "Повторити"}</button> : null}</span><time>{fmtLong(message.at)}</time></footer></article>;
             })}
             <div ref={messageEndRef}/>
           </div>
           <div className={`${styles.composer} communicationsComposer`}>
+            <div className="communicationsReplyMeta">
+              <label>Відповісти через <select value={replyInquiry?.id || ""} onChange={(event) => { setReplyInquiryId(event.target.value); setFiles([]); }}>{replyCandidates.map((candidate) => <option key={candidate.id} value={candidate.id}>{channelMeta[candidate.channel].label}</option>)}</select></label>
+              {replyDeadline && <span className={metaReplyExpired ? "expired" : ""}>{metaReplyExpired ? "Стандартне вікно Meta завершилося" : `Meta: відповідь дозволена до ${fmtLong(replyDeadline.toISOString())}`}</span>}
+            </div>
             {files.length > 0 && <div className="communicationsFileChips">{files.map((file, index) => <span key={`${file.name}-${index}`}>📎 ${file.name}<button type="button" onClick={() => setFiles((current) => current.filter((_, itemIndex) => itemIndex !== index))}>×</button></span>)}</div>}
             {emojiOpen && <div className="communicationsEmojiPicker">{emojis.map((emoji) => <button type="button" key={emoji} onClick={() => { setReply((current) => current + emoji); setEmojiOpen(false); }}>{emoji}</button>)}</div>}
             <div className="communicationsComposeRow">
               <input ref={fileInputRef} type="file" multiple hidden onChange={(event) => { setFiles((current) => [...current, ...Array.from(event.target.files || [])].slice(0, 8)); event.currentTarget.value = ""; }}/>
-              <button type="button" className="communicationsToolButton" onClick={() => fileInputRef.current?.click()} title="Додати файл">📎</button>
-              <textarea value={reply} onChange={(event) => setReply(event.target.value)} placeholder="Повідомлення або внутрішня відповідь по контакту..." onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); void sendReply(); } }}/>
+              <button type="button" className="communicationsToolButton" onClick={() => { if (replyInquiry && isLiveReplyChannel(replyInquiry.channel)) notify("Реальну відправку фото та файлів через API каналів додаємо наступним етапом. Зараз вкладення не буде маскуватися як відправлене."); else fileInputRef.current?.click(); }} title={replyInquiry && isLiveReplyChannel(replyInquiry.channel) ? "Вкладення для live-каналів ще не активовані" : "Додати файл"}>📎</button>
+              <textarea value={reply} onChange={(event) => setReply(event.target.value)} placeholder={metaReplyExpired ? "Стандартне вікно відповіді Meta завершилося" : "Повідомлення або внутрішня відповідь по контакту..."} disabled={metaReplyExpired} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); void sendReply(); } }}/>
               <button type="button" className="communicationsToolButton" onClick={() => setEmojiOpen((current) => !current)} title="Emoji">☺</button>
               <button type="button" className="communicationsToolButton" onClick={() => notify("Голосові повідомлення підключимо разом з API каналу") } title="Голосове повідомлення">🎙</button>
-              <button type="button" className="communicationsSendButton" disabled={sending || (!reply.trim() && files.length === 0)} onClick={() => void sendReply()}>{sending ? "…" : "➤"}</button>
+              <button type="button" className="communicationsSendButton" disabled={sending || metaReplyExpired || (!reply.trim() && files.length === 0)} onClick={() => void sendReply()}>{sending ? "…" : "➤"}</button>
             </div>
-            <span className={styles.composerHint}>Enter — надіслати · Shift+Enter — новий рядок. Facebook, Instagram та OLX відправляються через API каналу; для інших каналів відповідь зберігається в CRM.</span>
+            <span className={styles.composerHint}>Enter — надіслати · Shift+Enter — новий рядок. Facebook, Instagram та OLX відправляються через API обраного каналу; для інших каналів відповідь зберігається в CRM.</span>
           </div>
         </>}</section>
       </section>
@@ -425,11 +530,14 @@ export function CommunicationsHub() {
     <CommunicationsVehicleCardDrawer vehicleId={vehicleCardId} onClose={() => setVehicleCardId(null)}/>
     <style jsx global>{`
       .communicationsComposer{display:block!important;position:relative}
+      .communicationsReplyMeta{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:0 0 8px;color:var(--muted);font-size:9px}.communicationsReplyMeta label{display:flex;align-items:center;gap:6px}.communicationsReplyMeta select{border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--text);padding:5px 8px;font:inherit}.communicationsReplyMeta span{padding:5px 8px;border-radius:999px;background:var(--surface);border:1px solid var(--line)}.communicationsReplyMeta span.expired{color:#ef4444;border-color:rgba(239,68,68,.35);background:rgba(239,68,68,.07)}
       .communicationsFileChips{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 8px}.communicationsFileChips>span{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:999px;background:var(--surface);padding:5px 8px;color:var(--muted);font-size:8px}.communicationsFileChips button{width:18px!important;height:18px!important;padding:0!important;border:0!important;border-radius:50%!important;background:transparent!important;color:var(--muted)!important}
       .communicationsEmojiPicker{position:absolute;left:12px;bottom:76px;z-index:5;width:220px;display:grid;grid-template-columns:repeat(8,1fr);gap:3px;border:1px solid var(--line);border-radius:12px;background:var(--panel);padding:8px;box-shadow:0 14px 34px rgba(0,0,0,.16)}.communicationsEmojiPicker button{width:25px!important;height:25px!important;padding:0!important;border:0!important;background:transparent!important;color:var(--text)!important;font-size:15px!important}
       .communicationsComposeRow{display:grid;grid-template-columns:36px minmax(0,1fr) 36px 36px 44px;gap:7px;align-items:end}.communicationsComposeRow textarea{min-height:42px!important;max-height:100px}.communicationsComposeRow button{height:42px!important;padding:0!important}.communicationsToolButton{border:1px solid var(--line)!important;background:var(--surface)!important;color:var(--text)!important;border-radius:10px!important;font-size:15px!important}.communicationsSendButton{border:0!important;background:var(--orange)!important;color:#fff!important;border-radius:10px!important;font-size:15px!important}.communicationsSendButton:disabled{opacity:.4}
-      .communicationsDeliveryState{font-style:normal;color:var(--muted);font-size:8px}.communicationsDeliveryFailed{font-style:normal;color:#ef4444;font-size:8px}
+      .communicationsDeliveryState{font-style:normal;color:var(--muted);font-size:8px}.communicationsDeliveryFailed{font-style:normal;color:#ef4444;font-size:8px}.communicationsRetryButton{margin-left:6px;border:1px solid rgba(239,68,68,.35);border-radius:999px;background:rgba(239,68,68,.07);color:#ef4444;padding:3px 7px;font:inherit;font-size:8px;cursor:pointer}.communicationsRetryButton:disabled{opacity:.5;cursor:wait}
+      .communicationsLinkClientButton{margin-left:auto;border:1px solid var(--orange);border-radius:9px;background:transparent;color:var(--orange);padding:7px 10px;font:inherit;font-size:9px;cursor:pointer}.communicationsLinkPanel{border-bottom:1px solid var(--line);background:var(--surface);padding:12px 14px;display:grid;gap:9px}.communicationsLinkPanel>div:first-child{display:grid;gap:3px}.communicationsLinkPanel strong{font-size:10px}.communicationsLinkPanel span{font-size:8px;color:var(--muted)}.communicationsClientSearch{display:grid!important;grid-template-columns:minmax(0,1fr) auto auto;gap:6px!important}.communicationsClientSearch input{min-width:0;border:1px solid var(--line);border-radius:9px;background:var(--panel);color:var(--text);padding:8px 10px;font:inherit;font-size:9px}.communicationsClientSearch button{border:1px solid var(--line);border-radius:9px;background:var(--panel);color:var(--text);padding:7px 10px;font:inherit;font-size:9px;cursor:pointer}.communicationsClientResults{display:grid!important;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:6px!important}.communicationsClientResults>button{display:grid;text-align:left;gap:2px;border:1px solid var(--line);border-radius:10px;background:var(--panel);color:var(--text);padding:9px 10px;cursor:pointer}.communicationsClientResults>button:hover{border-color:var(--orange)}.communicationsClientResults small{font-size:8px;color:var(--muted)}.communicationsClientResults i{font-size:8px;color:var(--orange);font-style:normal}
       .communicationsIntegrationActions{display:flex;gap:7px;flex-wrap:wrap;margin-top:10px}.communicationsIntegrationActions button{border:1px solid var(--line);border-radius:9px;background:var(--surface);color:var(--text);padding:7px 10px;font:inherit;font-size:9px;cursor:pointer}.communicationsIntegrationActions button:disabled{opacity:.45;cursor:not-allowed}.communicationsIntegrationMeta{display:block;margin-top:7px;color:var(--muted);font-size:8px}
+      @media (max-width:900px){.communicationsReplyMeta{align-items:flex-start;flex-direction:column}.communicationsClientResults{grid-template-columns:1fr!important}.communicationsLinkClientButton{margin-left:0}}
     `}</style>
   </div>;
 }
