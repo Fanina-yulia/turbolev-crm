@@ -1,17 +1,43 @@
+import { redirect } from "next/navigation";
+import { getAccessContext } from "@/src/security/access-context";
 import { SignInForm } from "./sign-in-form";
 import styles from "./sign-in.module.css";
 
 export const dynamic = "force-dynamic";
 
-export default function SignInPage() {
+type SignInPageProps = {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+};
+
+function safeNextPath(value: string | string[] | undefined) {
+  const selected = Array.isArray(value) ? value[0] : value;
+  if (!selected || !selected.startsWith("/") || selected.startsWith("//")) return "/";
+  return selected;
+}
+
+export default async function SignInPage({ searchParams }: SignInPageProps) {
+  const params = await searchParams;
+  const nextPath = safeNextPath(params.next);
+  const access = await getAccessContext();
+
+  if (access.provisioningState === "ACTIVE") redirect(nextPath);
+
   return (
     <main className={styles.page}>
       <section className={styles.card}>
-        <div className={styles.brand}>TURBO LEV</div>
-        <p className={styles.eyebrow}>ЗАХИЩЕНИЙ ДОСТУП ДО CRM</p>
-        <h1>Вхід до системи</h1>
-        <p className={styles.lead}>Увійдіть робочим обліковим записом. Доступ до модулів визначається вашими ролями та повноваженнями Turbo LEV.</p>
+        <header className={styles.header}>
+          <div className={styles.brandMark} aria-hidden="true">TL</div>
+          <div>
+            <div className={styles.brand}>TURBO LEV</div>
+            <p className={styles.eyebrow}>СИСТЕМА УПРАВЛІННЯ СТО</p>
+          </div>
+        </header>
+        <div className={styles.intro}>
+          <h1>Вхід до кабінету</h1>
+          <p className={styles.lead}>Увійдіть під своїм робочим обліковим записом.</p>
+        </div>
         <SignInForm />
+        <footer className={styles.footer}>Захищений доступ · Turbo LEV CRM</footer>
       </section>
     </main>
   );
