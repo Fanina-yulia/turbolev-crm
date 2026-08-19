@@ -85,5 +85,8 @@ jobs:
       - name: Communication inbound media view smoke test
         run: npx --no-install tsx scripts/communication-message-view-smoke.ts
 
+      - name: Communication activation diagnostics smoke test
+        run: npx --no-install tsx scripts/communication-activation-diagnostics-smoke.ts
+
       - name: Production build
         run: npm run build
