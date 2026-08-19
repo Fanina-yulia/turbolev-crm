@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { GlobalSmartSearch } from "./global-smart-search";
+import { RouteTimelinePanel } from "./route-timeline-panel";
 
 export function SettingsPersonnelBridge(){
   const [searchTarget,setSearchTarget]=useState<HTMLElement|null>(null);
@@ -20,5 +21,5 @@ export function SettingsPersonnelBridge(){
     return()=>{setSearchTarget(null);host.remove();};
   },[]);
 
-  return searchTarget?createPortal(<GlobalSmartSearch/>,searchTarget):null;
+  return <>{searchTarget?createPortal(<GlobalSmartSearch/>,searchTarget):null}<RouteTimelinePanel/></>;
 }
