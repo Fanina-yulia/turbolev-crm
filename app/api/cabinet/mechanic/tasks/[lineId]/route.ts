@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { Prisma } from "@/src/generated/prisma/client";
 import { authorize } from "@/src/security/authorize";
 import { PERMISSIONS } from "@/src/security/permissions";
 import { getPrisma } from "@/src/lib/prisma";
@@ -160,15 +161,25 @@ export async function PATCH(request: Request, context: { params: Promise<{ lineI
 
     let workOrder: unknown = null;
     if (target) {
+      const resumeAppointments = action === "RESUME" ? await prisma.serviceAppointment.findMany({
+        where: { workOrderId: mutation.line.workOrderId, actualStartAt: { not: null } },
+        select: { id: true, actualStartAt: true },
+      }) : [];
       try {
         const actorName = access.context.user.employeeName || access.context.user.name || mechanic.name || "Автомеханік";
         workOrder = await transitionWorkOrder(mutation.line.workOrderId, target, actorName);
+        if (action === "RESUME" && resumeAppointments.length) {
+          await Promise.all(resumeAppointments.map((appointment) => prisma.serviceAppointment.update({
+            where: { id: appointment.id },
+            data: { actualStartAt: appointment.actualStartAt },
+          })));
+        }
       } catch (cause) {
         await prisma.workOrderLine.update({
           where: { id: mutation.line.id },
           data: {
             status: mutation.previous.status,
-            metadata: mutation.previous.metadata === null ? undefined : mutation.previous.metadata,
+            metadata: mutation.previous.metadata === null ? Prisma.DbNull : toPrismaJson(mutation.previous.metadata),
             startedAt: mutation.previous.startedAt,
             completedAt: mutation.previous.completedAt,
           },
