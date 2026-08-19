@@ -15,6 +15,8 @@ export async function GET(request: NextRequest) {
   const state = request.nextUrl.searchParams.get("state") || "";
   const error = request.nextUrl.searchParams.get("error") || "";
   const target = new URL("/", request.nextUrl.origin);
+  target.searchParams.set("section", "settings");
+  target.searchParams.set("settingsTab", "integrations");
   target.searchParams.set("integration", "olx");
 
   if (error) {
