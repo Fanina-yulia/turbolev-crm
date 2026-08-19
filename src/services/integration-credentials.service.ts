@@ -6,12 +6,13 @@ export type IntegrationProvider =
   | "META"
   | "TIKTOK"
   | "OLX"
+  | "VEHICLE_IMAGES"
   | "BM_PARTS"
   | "UNIQUE_TRADE"
   | "AUTONOVA_D"
   | "ATL";
 
-export type IntegrationCategory = "COMMUNICATIONS" | "SUPPLIERS";
+export type IntegrationCategory = "COMMUNICATIONS" | "SUPPLIERS" | "VEHICLES";
 
 type FieldSpec = {
   key: string;
@@ -103,6 +104,30 @@ export const integrationProviderSpecs: ProviderSpec[] = [
       clientSecret: "OLX_CLIENT_SECRET",
       accessToken: "OLX_ACCESS_TOKEN",
       refreshToken: "OLX_REFRESH_TOKEN",
+    },
+  },
+  {
+    provider: "VEHICLE_IMAGES",
+    category: "VEHICLES",
+    title: "Vehicle Images · IMAGIN.studio",
+    description: "Реалістичні зображення авто за маркою, моделлю, роком, ракурсом і кольором для карток CRM.",
+    fields: [
+      { key: "customerId", label: "IMAGIN customer ID", secret: true, required: true },
+      { key: "baseUrl", label: "CDN URL", secret: false, placeholder: "https://cdn.imagin.studio" },
+      { key: "angle", label: "Ракурс", secret: false, placeholder: "23" },
+      { key: "width", label: "Ширина render, px", secret: false, placeholder: "400" },
+      { key: "fileType", label: "Формат", secret: false, placeholder: "webp" },
+      { key: "colorMode", label: "Колір: AUTO / REAL / THEME", secret: false, placeholder: "AUTO" },
+      { key: "fallbackPaint", label: "Колір теми за замовчуванням", secret: false, placeholder: "Imagin-orange" },
+    ],
+    envFallback: {
+      customerId: "IMAGIN_CUSTOMER_ID",
+      baseUrl: "IMAGIN_BASE_URL",
+      angle: "VEHICLE_IMAGE_ANGLE",
+      width: "VEHICLE_IMAGE_WIDTH",
+      fileType: "VEHICLE_IMAGE_FILE_TYPE",
+      colorMode: "VEHICLE_IMAGE_COLOR_MODE",
+      fallbackPaint: "VEHICLE_IMAGE_FALLBACK_PAINT",
     },
   },
   {
