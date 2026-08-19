@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { resolveApiSecurityPolicy } from "../src/security/api-policy";
+import { PERMISSIONS } from "../src/security/permissions";
 
 const API_ROOT = path.resolve("app/api");
 const METHOD_RE = /export\s+(?:async\s+function|const)\s+(GET|POST|PUT|PATCH|DELETE)\b/g;
@@ -55,17 +56,30 @@ for (const file of files.sort()) {
 assert.deepEqual(unclassified, [], `Unclassified API routes:\n${unclassified.join("\n")}`);
 assert.deepEqual(methodless, [], `API route files without explicit HTTP exports:\n${methodless.join("\n")}`);
 
+const publicReportPolicy = resolveApiSecurityPolicy("/api/public/diagnostic-report/[token]/request-pricing", "POST");
+assert.equal(publicReportPolicy?.kind, "PUBLIC_TOKEN", "Public diagnostic report actions must remain token-authenticated, not anonymously allowlisted");
+const publicMediaPolicy = resolveApiSecurityPolicy("/api/public/diagnostic-report/[token]/media/[mediaId]", "GET");
+assert.equal(publicMediaPolicy?.kind, "PUBLIC_TOKEN", "Public diagnostic media must remain protected by the report token");
+const reportCreatePolicy = resolveApiSecurityPolicy("/api/diagnostics/[id]/report", "POST");
+assert.equal(reportCreatePolicy?.permission, PERMISSIONS.DIAGNOSTICS_CONFIRM, "Creating client report links requires diagnostics confirmation authority");
+assert.equal(reportCreatePolicy?.strict, true, "Creating client report links must remain strict during RBAC SHADOW mode");
+const handoffPolicy = resolveApiSecurityPolicy("/api/diagnostics/[id]/commercial-handoff", "POST");
+assert.equal(handoffPolicy?.permission, PERMISSIONS.WORK_ORDERS_ESTIMATE, "Commercial handoff requires estimate authority");
+assert.equal(handoffPolicy?.strict, true, "Commercial handoff must remain strict during RBAC SHADOW mode");
+
 const strictSources = [
   "app/api/security/access-catalog/route.ts",
   "app/api/security/provision/route.ts",
   "app/api/security/users/[id]/roles/route.ts",
   "app/api/security/config/route.ts",
   "app/api/me/compensation/route.ts",
+  "app/api/diagnostics/[id]/report/route.ts",
+  "app/api/diagnostics/[id]/commercial-handoff/route.ts",
 ];
 for (const sourcePath of strictSources) {
   const source = await fs.readFile(sourcePath, "utf8");
   assert.match(source, /authorize\(/, `${sourcePath} must call authorize()`);
-  assert.match(source, /strict:\s*true/, `${sourcePath} must enforce even while global mode is SHADOW`);
+  assert.match(source, /strict:\s*(?:write|true)/, `${sourcePath} must enforce privileged writes even while global mode is SHADOW`);
 }
 
 const shadowAwareSources = [
