@@ -106,6 +106,7 @@ function normalize(value: string | null | undefined) {
 }
 
 function matchesRoute(row: WorkOrderRow, route: CrmRouteParams) {
+  if (route.scope === "qc" && !["WAITING_QC", "READY_FOR_PICKUP"].includes(row.status)) return false;
   if (route.workOrderId && row.id !== route.workOrderId) return false;
   if (route.vehicleId && row.vehicle.id !== route.vehicleId) return false;
   if (route.clientId && row.client.id !== route.clientId) return false;
