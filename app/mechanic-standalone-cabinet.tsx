@@ -25,6 +25,7 @@ type Appointment = {
   id: string;
   workOrderId: string | null;
   status: string;
+  workOrderStatus: string | null;
   plannedStartAt: string;
   plannedEndAt: string;
   plate: string;
@@ -108,6 +109,8 @@ type WorkAction = "START" | "PAUSE" | "RESUME" | "COMPLETE";
 type ThemeChoice = "system" | "light" | "dark";
 type SupportKind = "QUESTION" | "PART_REQUEST";
 type FindingUrgency = "INFO" | "SOON" | "CRITICAL";
+type WorksFilter = "ALL" | "IN_PROGRESS" | "WAITING_PARTS";
+type ScheduleFilter = "ALL" | "TODAY";
 
 const statusLabel: Record<string, string> = {
   BOOKED: "Заплановано",
@@ -118,10 +121,13 @@ const statusLabel: Record<string, string> = {
   PENDING: "Заплановано",
   READY: "Готово до роботи",
   IN_PROGRESS: "В роботі",
+  IN_REPAIR: "В роботі",
+  REWORK: "Доопрацювання",
   PAUSED: "Пауза",
   COMPLETED: "Завершено",
   DONE: "Завершено",
   WAITING_PARTS: "Очікує запчастини",
+  WAITING_PARTS_SELECTION: "Очікує підбору деталей",
   WAITING_APPROVAL: "Очікує погодження",
   CANCELLED: "Скасовано",
   SUBMITTED: "Передано менеджеру",
@@ -177,10 +183,37 @@ function isDone(status: string) {
 
 function statusTone(status: string) {
   if (isDone(status) || status === "CONFIRMED") return styles.good;
-  if (status === "IN_PROGRESS") return styles.info;
-  if (["PAUSED", "WAITING_PARTS", "WAITING_APPROVAL", "RETURNED"].includes(status)) return styles.warn;
+  if (status === "IN_PROGRESS" || status === "IN_REPAIR") return styles.info;
+  if (["PAUSED", "REWORK", "WAITING_PARTS", "WAITING_PARTS_SELECTION", "WAITING_APPROVAL", "RETURNED"].includes(status)) return styles.warn;
   if (status === "CANCELLED") return styles.mutedPill;
   return styles.accentPill;
+}
+
+function appointmentStatus(item: Appointment) {
+  return item.workOrderStatus || item.status;
+}
+
+function matchesWorksFilter(item: Appointment | MechanicTask, filter: WorksFilter) {
+  if (filter === "ALL") return true;
+  const effectiveStatus = "plannedStartAt" in item ? appointmentStatus(item) : item.workOrderStatus || item.status;
+  if (filter === "WAITING_PARTS") {
+    return effectiveStatus === "WAITING_PARTS" || effectiveStatus === "WAITING_PARTS_SELECTION";
+  }
+  return effectiveStatus === "IN_REPAIR"
+    || effectiveStatus === "REWORK"
+    || effectiveStatus === "PAUSED"
+    || (!("plannedStartAt" in item) && (item.status === "IN_PROGRESS" || item.status === "PAUSED"));
+}
+
+function kyivDateKey(value: string | Date) {
+  const parts = new Intl.DateTimeFormat("uk-UA", {
+    timeZone: "Europe/Kyiv",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date(value));
+  const part = (type: "year" | "month" | "day") => parts.find((item) => item.type === type)?.value || "";
+  return `${part("year")}-${part("month")}-${part("day")}`;
 }
 
 function BottomNav({ screen, notificationCount, onChange }: { screen: Screen; notificationCount: number; onChange: (screen: Screen) => void }) {
@@ -211,6 +244,9 @@ export function MechanicStandaloneCabinet({ userName }: { userName?: string | nu
   const [clarifications, setClarifications] = useState<Clarification[]>([]);
   const [notificationFeed, setNotificationFeed] = useState<NotificationFeed | null>(null);
   const [screen, setScreen] = useState<Screen>("HOME");
+  const [worksFilter, setWorksFilter] = useState<WorksFilter>("ALL");
+  const [scheduleFilter, setScheduleFilter] = useState<ScheduleFilter>("ALL");
+  const [scheduleBackScreen, setScheduleBackScreen] = useState<Screen>("PROFILE");
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [themeChoice, setThemeChoice] = useState<ThemeChoice>("system");
   const [busy, setBusy] = useState("");
@@ -299,12 +335,42 @@ export function MechanicStandaloneCabinet({ userName }: { userName?: string | nu
   const completed = taskKpis?.completedToday ?? tasks.filter((item) => isDone(item.status)).length;
   const notificationCount = notificationFeed?.unreadCount ?? 0;
   const mechanicName = userName || home?.mechanic?.name || "Автомеханік";
+  const visibleWorkAppointments = scheduledAppointments.filter((item) => matchesWorksFilter(item, worksFilter));
+  const visibleWorkTasks = tasks.filter((item) => matchesWorksFilter(item, worksFilter));
+  const todayKyivKey = kyivDateKey(new Date());
+  const visibleScheduleAppointments = scheduleFilter === "TODAY"
+    ? appointments.filter((item) => kyivDateKey(item.plannedStartAt) === todayKyivKey)
+    : appointments;
+
+  const worksHeading = worksFilter === "IN_PROGRESS"
+    ? { title: "В роботі", description: "Активні та призупинені операції й автомобілі в ремонті.", empty: "Робіт у процесі немає." }
+    : worksFilter === "WAITING_PARTS"
+      ? { title: "Очікують деталей", description: "Роботи й автомобілі, для яких очікуються деталі.", empty: "Робіт, що очікують деталей, немає." }
+      : { title: "Призначені роботи", description: "Усі активні записи, замовлення-наряди та операції.", empty: "Призначених робіт немає." };
+  const scheduleHeading = scheduleFilter === "TODAY"
+    ? { title: "Заплановано на сьогодні", description: "Ваші закріплення на поточний день за київським часом.", empty: "На сьогодні закріплень немає." }
+    : { title: "Активні закріплення", description: "Авто залишаються тут до завершення сервісного випадку.", empty: "Активних закріплень немає." };
 
   const todayLabel = useMemo(() => new Intl.DateTimeFormat("uk-UA", { timeZone: "Europe/Kyiv", day: "numeric", month: "long" }).format(new Date()), []);
 
   function changeTheme(next: ThemeChoice) {
     setThemeChoice(next);
     window.localStorage.setItem("turbolev:mechanic-theme", next);
+  }
+
+  function openWorks(filter: WorksFilter) {
+    setWorksFilter(filter);
+    setScreen("WORKS");
+    setError("");
+    setMessage("");
+  }
+
+  function openSchedule(filter: ScheduleFilter, backScreen: Screen) {
+    setScheduleFilter(filter);
+    setScheduleBackScreen(backScreen);
+    setScreen("SCHEDULE");
+    setError("");
+    setMessage("");
   }
 
   function openTask(task: MechanicTask) {
@@ -422,7 +488,10 @@ export function MechanicStandaloneCabinet({ userName }: { userName?: string | nu
 
   async function openNotification(item: MechanicNotification) {
     if (!item.readAt) await markNotification(item.id).catch((cause) => setError(cause instanceof Error ? cause.message : "Не вдалося оновити сповіщення"));
-    if (item.type !== "UNASSIGNED") setScreen(item.appointmentId ? "SCHEDULE" : "WORKS");
+    if (item.type !== "UNASSIGNED") {
+      if (item.appointmentId) openSchedule("ALL", "NOTIFICATIONS");
+      else openWorks("ALL");
+    }
   }
 
   async function replyClarification(item: Clarification) {
@@ -467,18 +536,18 @@ export function MechanicStandaloneCabinet({ userName }: { userName?: string | nu
           <section className={styles.card}>
             <div className={styles.sectionHead}><div><h2>Сьогодні, {todayLabel}</h2><p>Закріплено — до фактичної видачі; на сьогодні — план поточного дня.</p></div></div>
             <div className={styles.metrics}>
-              <div><b>{assignedCases}</b><span>Закріплено</span></div>
-              <div><b>{scheduledToday}</b><span>На сьогодні</span></div>
-              <div><b>{inProgress}</b><span>В роботі</span></div>
-              <div><b>{home.kpis?.waitingParts ?? 0}</b><span>Очікує деталей</span></div>
+              <button type="button" className={styles.metricButton} onClick={() => openSchedule("ALL", "HOME")} aria-label={`Закріплено ${assignedCases}. Відкрити всі активні закріплення`}><b>{assignedCases}</b><span>Закріплено</span></button>
+              <button type="button" className={styles.metricButton} onClick={() => openSchedule("TODAY", "HOME")} aria-label={`На сьогодні ${scheduledToday}. Відкрити закріплення на сьогодні`}><b>{scheduledToday}</b><span>На сьогодні</span></button>
+              <button type="button" className={styles.metricButton} onClick={() => openWorks("IN_PROGRESS")} aria-label={`В роботі ${inProgress}. Відкрити роботи в процесі`}><b>{inProgress}</b><span>В роботі</span></button>
+              <button type="button" className={styles.metricButton} onClick={() => openWorks("WAITING_PARTS")} aria-label={`Очікує деталей ${home.kpis?.waitingParts ?? 0}. Відкрити роботи, що очікують деталей`}><b>{home.kpis?.waitingParts ?? 0}</b><span>Очікує деталей</span></button>
             </div>
           </section>
-          <section><div className={styles.sectionHead}><div><h2>{activeTask?.status === "IN_PROGRESS" ? "Поточна робота" : activeTask?.status === "PAUSED" ? "Робота на паузі" : "Наступна робота"}</h2><p>Найближче завдання</p></div></div>{activeTask ? <article className={styles.taskHero}><div className={styles.taskTop}><div className={styles.carIcon}>🚗</div><div><h3>{activeTask.vehicle}</h3><p>{activeTask.plate}</p></div><span className={`${styles.pill} ${statusTone(activeTask.status)}`}>{statusLabel[activeTask.status] || activeTask.status}</span></div><strong>🔧 {activeTask.description}</strong><div className={styles.meta}><span>Пост <b>{appointments.find((item) => item.plate === activeTask.plate)?.post || "—"}</b></span><span>Час <b>{time(appointments.find((item) => item.plate === activeTask.plate)?.plannedStartAt)}</b></span></div><button type="button" className={styles.primary} onClick={() => openTask(activeTask)}>Відкрити роботу →</button></article> : nextScheduledAppointment ? <article className={styles.taskHero}><div className={styles.taskTop}><div className={styles.carIcon}>🚗</div><div><h3>{nextScheduledAppointment.vehicle}</h3><p>{nextScheduledAppointment.plate}</p></div><span className={`${styles.pill} ${styles.accentPill}`}>Заплановано</span></div><strong>🔧 {nextScheduledAppointment.problem || "Запис на СТО"}</strong><div className={styles.meta}><span>Пост <b>{nextScheduledAppointment.post || "—"}</b></span><span>Час <b>{time(nextScheduledAppointment.plannedStartAt)}</b></span></div><p className={styles.subtle}>Замовлення-наряд та операції з’являться після оформлення автомобіля.</p><button type="button" className={styles.primary} onClick={() => setScreen("SCHEDULE")}>Відкрити графік →</button></article> : <div className={styles.empty}>Активних робіт немає.</div>}</section>
-          <section className={styles.card}><div className={styles.sectionHead}><div><h2>Мої роботи</h2><p>Сьогодні та активні</p></div><button type="button" className={styles.textButton} onClick={() => setScreen("WORKS")}>Всі ›</button></div><div className={styles.compactList}>{scheduledAppointments.slice(0, Math.max(0, 4 - tasks.length)).map((item) => <button type="button" key={`appointment:${item.id}`} onClick={() => setScreen("SCHEDULE")}><div><strong>{item.vehicle}</strong><small>{notificationTime(item.plannedStartAt)} · {item.problem || "Запис на СТО"}</small></div><span className={`${styles.pill} ${styles.accentPill}`}>Заплановано</span></button>)}{tasks.slice(0, 4).map((task) => <button type="button" key={task.id} onClick={() => openTask(task)}><div><strong>{task.vehicle}</strong><small>{task.description}</small></div><span className={`${styles.pill} ${statusTone(task.status)}`}>{statusLabel[task.status] || task.status}</span></button>)}</div>{!tasks.length && !scheduledAppointments.length && <div className={styles.emptyInline}>Робіт немає.</div>}</section>
+          <section><div className={styles.sectionHead}><div><h2>{activeTask?.status === "IN_PROGRESS" ? "Поточна робота" : activeTask?.status === "PAUSED" ? "Робота на паузі" : "Наступна робота"}</h2><p>Найближче завдання</p></div></div>{activeTask ? <article className={styles.taskHero}><div className={styles.taskTop}><div className={styles.carIcon}>🚗</div><div><h3>{activeTask.vehicle}</h3><p>{activeTask.plate}</p></div><span className={`${styles.pill} ${statusTone(activeTask.status)}`}>{statusLabel[activeTask.status] || activeTask.status}</span></div><strong>🔧 {activeTask.description}</strong><div className={styles.meta}><span>Пост <b>{appointments.find((item) => item.plate === activeTask.plate)?.post || "—"}</b></span><span>Час <b>{time(appointments.find((item) => item.plate === activeTask.plate)?.plannedStartAt)}</b></span></div><button type="button" className={styles.primary} onClick={() => openTask(activeTask)}>Відкрити роботу →</button></article> : nextScheduledAppointment ? <article className={styles.taskHero}><div className={styles.taskTop}><div className={styles.carIcon}>🚗</div><div><h3>{nextScheduledAppointment.vehicle}</h3><p>{nextScheduledAppointment.plate}</p></div><span className={`${styles.pill} ${styles.accentPill}`}>Заплановано</span></div><strong>🔧 {nextScheduledAppointment.problem || "Запис на СТО"}</strong><div className={styles.meta}><span>Пост <b>{nextScheduledAppointment.post || "—"}</b></span><span>Час <b>{time(nextScheduledAppointment.plannedStartAt)}</b></span></div><p className={styles.subtle}>Замовлення-наряд та операції з’являться після оформлення автомобіля.</p><button type="button" className={styles.primary} onClick={() => openSchedule("ALL", "HOME")}>Відкрити графік →</button></article> : <div className={styles.empty}>Активних робіт немає.</div>}</section>
+          <section className={styles.card}><div className={styles.sectionHead}><div><h2>Мої роботи</h2><p>Сьогодні та активні</p></div><button type="button" className={styles.textButton} onClick={() => openWorks("ALL")}>Всі ›</button></div><div className={styles.compactList}>{scheduledAppointments.slice(0, Math.max(0, 4 - tasks.length)).map((item) => <button type="button" key={`appointment:${item.id}`} onClick={() => openSchedule("ALL", "HOME")}><div><strong>{item.vehicle}</strong><small>{notificationTime(item.plannedStartAt)} · {item.problem || "Запис на СТО"}</small></div><span className={`${styles.pill} ${styles.accentPill}`}>Заплановано</span></button>)}{tasks.slice(0, 4).map((task) => <button type="button" key={task.id} onClick={() => openTask(task)}><div><strong>{task.vehicle}</strong><small>{task.description}</small></div><span className={`${styles.pill} ${statusTone(task.status)}`}>{statusLabel[task.status] || task.status}</span></button>)}</div>{!tasks.length && !scheduledAppointments.length && <div className={styles.emptyInline}>Робіт немає.</div>}</section>
         </main>
       </>}
 
-      {screen === "WORKS" && <><TopBar title="Мої роботи" onBack={() => setScreen("HOME")} /><main className={styles.content}><div className={styles.pageTitle}><h1>Призначені роботи</h1><p>Усі активні записи, замовлення-наряди та операції.</p></div><div className={styles.stack}>{scheduledAppointments.map((item) => <button type="button" className={styles.listCard} key={`appointment:${item.id}`} onClick={() => setScreen("SCHEDULE")}><div><h3>{item.vehicle}</h3><b>{item.plate}</b></div><p>{item.problem || "Запис на СТО"}</p><div className={styles.meta}><span>Час <b>{notificationTime(item.plannedStartAt)}</b></span><span>Пост <b>{item.post || "—"}</b></span></div><small className={styles.subtle}>Наряд ще не оформлено</small><span className={`${styles.pill} ${styles.accentPill}`}>Заплановано</span></button>)}{tasks.map((task) => <button type="button" className={styles.listCard} key={task.id} onClick={() => openTask(task)}><div><h3>{task.vehicle}</h3><b>{task.plate}</b></div><p>{task.description}</p><span className={`${styles.pill} ${statusTone(task.status)}`}>{statusLabel[task.status] || task.status}</span></button>)}</div>{!tasks.length && !scheduledAppointments.length && <div className={styles.empty}>Призначених робіт немає.</div>}</main></>}
+      {screen === "WORKS" && <><TopBar title="Мої роботи" onBack={() => setScreen("HOME")} /><main className={styles.content}><div className={styles.pageTitle}><h1>{worksHeading.title}</h1><p>{worksHeading.description}</p></div><div className={styles.filterBar} role="group" aria-label="Фільтр робіт"><button type="button" className={worksFilter === "ALL" ? styles.filterActive : ""} aria-pressed={worksFilter === "ALL"} onClick={() => setWorksFilter("ALL")}>Усі</button><button type="button" className={worksFilter === "IN_PROGRESS" ? styles.filterActive : ""} aria-pressed={worksFilter === "IN_PROGRESS"} onClick={() => setWorksFilter("IN_PROGRESS")}>В роботі</button><button type="button" className={worksFilter === "WAITING_PARTS" ? styles.filterActive : ""} aria-pressed={worksFilter === "WAITING_PARTS"} onClick={() => setWorksFilter("WAITING_PARTS")}>Очікує деталей</button></div><div className={styles.stack}>{visibleWorkAppointments.map((item) => { const itemStatus = appointmentStatus(item); return <button type="button" className={styles.listCard} key={`appointment:${item.id}`} onClick={() => openSchedule("ALL", "WORKS")}><div><h3>{item.vehicle}</h3><b>{item.plate}</b></div><p>{item.problem || "Запис на СТО"}</p><div className={styles.meta}><span>Час <b>{notificationTime(item.plannedStartAt)}</b></span><span>Пост <b>{item.post || "—"}</b></span></div><small className={styles.subtle}>Наряд ще не оформлено</small><span className={`${styles.pill} ${statusTone(itemStatus)}`}>{statusLabel[itemStatus] || itemStatus}</span></button>; })}{visibleWorkTasks.map((task) => { const itemStatus = worksFilter === "ALL" ? task.status : task.workOrderStatus || task.status; return <button type="button" className={styles.listCard} key={task.id} onClick={() => openTask(task)}><div><h3>{task.vehicle}</h3><b>{task.plate}</b></div><p>{task.description}</p><span className={`${styles.pill} ${statusTone(itemStatus)}`}>{statusLabel[itemStatus] || itemStatus}</span></button>; })}</div>{!visibleWorkTasks.length && !visibleWorkAppointments.length && <div className={styles.empty}>{worksHeading.empty}</div>}</main></>}
 
       {screen === "WORK_DETAIL" && selectedTask && <><TopBar title="Робота" onBack={() => setScreen("WORKS")} /><main className={styles.content}><section className={styles.card}><div className={styles.taskTop}><div className={styles.carIcon}>🚗</div><div><h2>{selectedTask.vehicle}</h2><p>{selectedTask.plate}</p></div><span className={`${styles.pill} ${statusTone(selectedTask.status)}`}>{statusLabel[selectedTask.status] || selectedTask.status}</span></div><div className={styles.metaGrid}><span>Пост<b>{selectedAppointment?.post || "—"}</b></span><span>Початок<b>{time(selectedTask.startedAt || selectedAppointment?.plannedStartAt)}</b></span><span>Тривалість<b>{duration(selectedAppointment?.plannedStartAt, selectedAppointment?.plannedEndAt)}</b></span></div></section><section className={styles.card}><div className={styles.sectionHead}><div><h2>Роботи за нарядом</h2><p>{selectedOrderTasks.filter((item) => isDone(item.status)).length} з {selectedOrderTasks.length} виконано</p></div></div><div className={styles.orderLines}>{selectedOrderTasks.map((item) => <div key={item.id}><i className={statusTone(item.status)}>●</i><div><strong>{item.description}</strong><small>{item.laborHours ? `${item.laborHours} нормо-год` : item.type}</small></div><span>{statusLabel[item.status] || item.status}</span></div>)}</div></section><section className={styles.card}><div className={styles.sectionHead}><div><h2>Керування роботою</h2><p>Фіксується в історії замовлення</p></div></div>{selectedTask.status === "APPROVED" && <button className={styles.primary} disabled={Boolean(busy)} onClick={() => void runAction("START")}>▶ Почати роботу</button>}{selectedTask.status === "IN_PROGRESS" && <div className={styles.twoButtons}><button className={styles.secondary} disabled={Boolean(busy)} onClick={() => void runAction("PAUSE")}>Ⅱ Пауза</button><button className={styles.successButton} disabled={Boolean(busy)} onClick={() => void runAction("COMPLETE")}>✓ Завершити</button></div>}{selectedTask.status === "PAUSED" && <div className={styles.twoButtons}><button className={styles.primary} disabled={Boolean(busy)} onClick={() => void runAction("RESUME")}>▶ Продовжити</button><button className={styles.successButton} disabled={Boolean(busy)} onClick={() => void runAction("COMPLETE")}>✓ Завершити</button></div>}{isDone(selectedTask.status) && <div className={styles.doneBox}>✓ Роботу завершено</div>}<div className={styles.actionList}><button type="button" onClick={() => setScreen("FINDING")}>📷 Додати фото / виявлений дефект <span>›</span></button><button type="button" onClick={() => { setSupportKind("PART_REQUEST"); setSupportText(""); setScreen("SUPPORT"); }}>⚙ Запросити запчастину <span>›</span></button><button type="button" onClick={() => { setSupportKind("QUESTION"); setSupportText(""); setScreen("SUPPORT"); }}>💬 Поставити питання менеджеру <span>›</span></button></div></section></main></>}
 
@@ -520,15 +589,15 @@ export function MechanicStandaloneCabinet({ userName }: { userName?: string | nu
         </main>
       </>}
 
-      {screen === "PROFILE" && <><TopBar title="Профіль" onBack={() => setScreen("HOME")} /><main className={styles.content}><section className={styles.profileLarge}><div className={styles.avatar}>{firstName(mechanicName).slice(0, 1).toUpperCase()}</div><div><h1>{mechanicName}</h1><p>Автомеханік</p><span>{home.mechanic.station.name} · {currentPost || "пост не призначено"}</span></div></section><section className={styles.card}><div className={styles.sectionHead}><div><h2>Оформлення</h2><p>Тема цього мобільного кабінету</p></div></div><div className={styles.themePicker}><button type="button" className={themeChoice === "system" ? styles.themeActive : ""} onClick={() => changeTheme("system")}>Як у системі</button><button type="button" className={themeChoice === "light" ? styles.themeActive : ""} onClick={() => changeTheme("light")}>Світла</button><button type="button" className={themeChoice === "dark" ? styles.themeActive : ""} onClick={() => changeTheme("dark")}>Темна</button></div></section><section className={styles.card}><div className={styles.actionList}><button type="button" onClick={() => setScreen("SCHEDULE")}>▣ Мій графік <span>›</span></button><button type="button" onClick={() => void openPayroll()}>₴ Моя зарплата <span>›</span></button></div></section></main></>}
+      {screen === "PROFILE" && <><TopBar title="Профіль" onBack={() => setScreen("HOME")} /><main className={styles.content}><section className={styles.profileLarge}><div className={styles.avatar}>{firstName(mechanicName).slice(0, 1).toUpperCase()}</div><div><h1>{mechanicName}</h1><p>Автомеханік</p><span>{home.mechanic.station.name} · {currentPost || "пост не призначено"}</span></div></section><section className={styles.card}><div className={styles.sectionHead}><div><h2>Оформлення</h2><p>Тема цього мобільного кабінету</p></div></div><div className={styles.themePicker}><button type="button" className={themeChoice === "system" ? styles.themeActive : ""} onClick={() => changeTheme("system")}>Як у системі</button><button type="button" className={themeChoice === "light" ? styles.themeActive : ""} onClick={() => changeTheme("light")}>Світла</button><button type="button" className={themeChoice === "dark" ? styles.themeActive : ""} onClick={() => changeTheme("dark")}>Темна</button></div></section><section className={styles.card}><div className={styles.actionList}><button type="button" onClick={() => openSchedule("ALL", "PROFILE")}>▣ Мій графік <span>›</span></button><button type="button" onClick={() => void openPayroll()}>₴ Моя зарплата <span>›</span></button></div></section></main></>}
 
-      {screen === "SCHEDULE" && <><TopBar title="Мій графік" onBack={() => setScreen("PROFILE")} /><main className={styles.content}><div className={styles.pageTitle}><h1>Активні закріплення</h1><p>Авто залишаються тут до завершення сервісного випадку.</p></div><div className={styles.stack}>{appointments.map((item) => <article className={styles.scheduleCard} key={item.id}><time>{notificationTime(item.plannedStartAt)}–{time(item.plannedEndAt)}</time><div><strong>{item.vehicle}</strong><p>{item.plate} · {item.problem || "Запис на СТО"}</p><small>{item.post || "Пост не призначено"}</small></div></article>)}</div>{!appointments.length && <div className={styles.empty}>Активних закріплень немає.</div>}</main></>}
+      {screen === "SCHEDULE" && <><TopBar title="Мій графік" onBack={() => setScreen(scheduleBackScreen)} /><main className={styles.content}><div className={styles.pageTitle}><h1>{scheduleHeading.title}</h1><p>{scheduleHeading.description}</p></div><div className={`${styles.filterBar} ${styles.filterBarTwo}`} role="group" aria-label="Фільтр графіка"><button type="button" className={scheduleFilter === "ALL" ? styles.filterActive : ""} aria-pressed={scheduleFilter === "ALL"} onClick={() => setScheduleFilter("ALL")}>Усі закріплення</button><button type="button" className={scheduleFilter === "TODAY" ? styles.filterActive : ""} aria-pressed={scheduleFilter === "TODAY"} onClick={() => setScheduleFilter("TODAY")}>На сьогодні</button></div><div className={styles.stack}>{visibleScheduleAppointments.map((item) => { const itemStatus = appointmentStatus(item); return <article className={styles.scheduleCard} key={item.id}><time>{notificationTime(item.plannedStartAt)}–{time(item.plannedEndAt)}</time><div><strong>{item.vehicle}</strong><p>{item.plate} · {item.problem || "Запис на СТО"}</p><small>{item.post || "Пост не призначено"} · {statusLabel[itemStatus] || itemStatus}</small></div></article>; })}</div>{!visibleScheduleAppointments.length && <div className={styles.empty}>{scheduleHeading.empty}</div>}</main></>}
 
       {screen === "PAYROLL" && <><TopBar title="Моя зарплата" onBack={() => setScreen("PROFILE")} /><main className={styles.content}><section className={styles.payHero}><span>Прогноз за місяць</span><strong>{money(payroll?.projection?.total)}</strong><small>{payroll?.projection?.month || "Поточний місяць"}</small></section><section className={styles.card}><div className={styles.metrics}><div><b>{assignedCases}</b><span>Закріплено</span></div><div><b>{inProgress}</b><span>В роботі</span></div><div><b>{completed}</b><span>Завершено</span></div><div><b>{home.kpis?.waitingParts ?? 0}</b><span>Очікує деталей</span></div></div></section></main></>}
 
       {message && <div className={styles.toastGood}><span>{message}</span><button type="button" onClick={() => setMessage("")}>×</button></div>}
       {error && <div className={styles.toastBad}><span>{error}</span><button type="button" onClick={() => setError("")}>×</button></div>}
-      <BottomNav screen={screen} notificationCount={notificationCount} onChange={(next) => { setScreen(next); setError(""); setMessage(""); }} />
+      <BottomNav screen={screen} notificationCount={notificationCount} onChange={(next) => { if (next === "WORKS") setWorksFilter("ALL"); setScreen(next); setError(""); setMessage(""); }} />
     </div>
   </div>;
 }

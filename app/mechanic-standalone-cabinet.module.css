@@ -133,7 +133,12 @@
 .sectionHead p{margin:4px 0 0;color:var(--m-muted);font-size:12px;line-height:1.4}
 .textButton{border:0;background:transparent;color:var(--m-orange);font-weight:850;cursor:pointer;min-height:38px}
 .metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
-.metrics>div{min-width:0;padding:11px 5px;text-align:center;border:1px solid var(--m-border);border-radius:13px;background:var(--m-surface-2)}
+.metrics>div,.metricButton{min-width:0;padding:11px 5px;text-align:center;border:1px solid var(--m-border);border-radius:13px;background:var(--m-surface-2)}
+.metricButton{position:relative;appearance:none;color:var(--m-text);cursor:pointer;touch-action:manipulation;transition:transform .15s ease,border-color .15s ease,box-shadow .15s ease}
+.metricButton::after{content:"›";position:absolute;right:8px;top:5px;color:var(--m-orange);font-size:17px;font-weight:900;line-height:1}
+.metricButton:hover{border-color:color-mix(in srgb,var(--m-orange) 48%,var(--m-border));box-shadow:0 7px 18px color-mix(in srgb,var(--m-orange) 9%,transparent)}
+.metricButton:active{transform:scale(.98)}
+.metricButton:focus-visible{outline:3px solid color-mix(in srgb,var(--m-orange) 32%,transparent);outline-offset:2px}
 .metrics b{display:grid;place-items:center;width:34px;height:34px;margin:0 auto 6px;border-radius:50%;background:var(--m-orange-soft);color:var(--m-orange);font-size:17px}
 .metrics span{display:block;color:var(--m-muted);font-size:10px;line-height:1.2}
 .taskHero{padding:16px}
@@ -168,6 +173,12 @@
 .empty,.emptyInline{padding:24px;text-align:center;color:var(--m-muted)}
 .emptyInline{padding:16px 0}
 .pageTitle{padding:2px 2px 4px}.pageTitle h1{margin:0;font-size:23px}.pageTitle p{margin:5px 0 0;color:var(--m-muted);font-size:13px}
+.filterBar{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px}
+.filterBarTwo{grid-template-columns:repeat(2,minmax(0,1fr))}
+.filterBar button{min-height:44px;padding:8px;border:1px solid var(--m-border);border-radius:11px;background:var(--m-surface);color:var(--m-muted);font-size:11px;font-weight:800;cursor:pointer;touch-action:manipulation}
+.filterBar button:hover{border-color:color-mix(in srgb,var(--m-orange) 40%,var(--m-border));color:var(--m-text)}
+.filterBar .filterActive{border-color:var(--m-orange);background:var(--m-orange-soft);color:var(--m-orange);box-shadow:0 0 0 2px color-mix(in srgb,var(--m-orange) 9%,transparent)}
+.filterBar button:focus-visible{outline:3px solid color-mix(in srgb,var(--m-orange) 30%,transparent);outline-offset:2px}
 .stack{display:grid;gap:10px}
 .listCard{width:100%;padding:15px;text-align:left;cursor:pointer}
 button.listCard{appearance:none}
@@ -232,7 +243,7 @@ button.listCard{appearance:none}
   .content{padding:13px 12px 20px;gap:12px}
   .profileCard,.profileLarge,.card,.taskHero,.formCard,.noticeCard{border-radius:16px}
   .profileCard{padding:14px}.avatar{width:50px;height:50px;font-size:21px}.profileCard h1{font-size:18px}
-  .metrics{grid-template-columns:1fr 1fr}.metrics>div{min-height:80px;padding:10px 6px}.metrics span{font-size:11px}
+  .metrics{grid-template-columns:1fr 1fr}.metrics>div,.metricButton{min-height:80px;padding:10px 6px}.metrics span{font-size:11px}
   .taskTop{align-items:flex-start}.taskTop .pill{max-width:105px}.taskTop h2,.taskTop h3{font-size:16px}
   .metaGrid{grid-template-columns:1fr 1fr}.metaGrid span:last-child{grid-column:1/-1}
   .orderLines>div{grid-template-columns:18px minmax(0,1fr)}.orderLines>div>span{grid-column:2;text-align:left}
