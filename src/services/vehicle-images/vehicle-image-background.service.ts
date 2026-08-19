@@ -50,6 +50,27 @@ async function loadAsset(assetId: string): Promise<ImageRow | null> {
   return result.rowCount ? result.rows[0] as ImageRow : null;
 }
 
+function assetIsDeliveryReady(asset: ImageRow | null) {
+  if (!asset || asset.status !== "READY" || !asset.imageData?.length) return false;
+  const sizeBytes = asset.imageSizeBytes ?? asset.imageData.length;
+  return asset.imageMimeType === "image/webp" && sizeBytes <= TARGET_IMAGE_BYTES && isWebp(Buffer.from(asset.imageData));
+}
+
+export async function getVehicleImageDeliveryState(vehicleId: string, themePaint?: string | null) {
+  const state = await getVehicleImageLibraryState(vehicleId, themePaint);
+  if (state.state !== "READY" || !state.assetId) return { ...state, needsOptimization: false };
+
+  const asset = await loadAsset(state.assetId);
+  if (assetIsDeliveryReady(asset)) return { ...state, needsOptimization: false };
+
+  return {
+    ...state,
+    state: "GENERATING" as const,
+    needsOptimization: Boolean(asset?.imageData?.length),
+    error: null,
+  };
+}
+
 async function rejectOverweightAsset(assetId: string, message: string) {
   await getSqlPool().query(
     `UPDATE public."VehicleImageLibraryAsset"
@@ -70,7 +91,7 @@ export async function optimizeVehicleImageAsset(assetId: string) {
   }
 
   const source = Buffer.from(asset.imageData);
-  if (isWebp(source) && source.length <= TARGET_IMAGE_BYTES) {
+  if (assetIsDeliveryReady(asset)) {
     return { optimized: false, sizeBytes: source.length, reason: "ALREADY_WITHIN_LIMIT" as const };
   }
 
@@ -137,10 +158,6 @@ export async function optimizeVehicleImageAsset(assetId: string) {
 
 export async function generateVehicleImageInBackground(vehicleId: string, options?: BackgroundOptions) {
   const initialState = await getVehicleImageLibraryState(vehicleId, options?.themePaint);
-  if (initialState.state === "READY" && initialState.assetId && !options?.force) {
-    const optimization = await optimizeVehicleImageAsset(initialState.assetId);
-    return { state: "READY" as const, assetId: initialState.assetId, libraryKey: initialState.libraryKey, optimization };
-  }
   if (!initialState.libraryKey) {
     return {
       state: initialState.state,
@@ -163,7 +180,7 @@ export async function generateVehicleImageInBackground(vehicleId: string, option
     locked = Boolean(lockResult.rows[0]?.locked);
 
     if (!locked) {
-      const state = await getVehicleImageLibraryState(vehicleId, options?.themePaint);
+      const state = await getVehicleImageDeliveryState(vehicleId, options?.themePaint);
       return {
         state: "GENERATING" as const,
         assetId: state.assetId,
