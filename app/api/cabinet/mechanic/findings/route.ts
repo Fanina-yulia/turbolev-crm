@@ -158,6 +158,14 @@ export async function PATCH(request: Request) {
           metadata: toPrismaJson({ workOrderId: finding.workOrderId }),
         },
       });
+      await tx.mechanicNotification.updateMany({
+        where: {
+          mechanicId: mechanic.id,
+          findingId: finding.id,
+          readAt: null,
+        },
+        data: { readAt: now },
+      });
       return row;
     });
 

@@ -1,0 +1,24 @@
+model MechanicNotification {
+  id              String    @id @db.VarChar(64)
+  eventKey        String    @unique @db.VarChar(220)
+  mechanicId      String    @db.VarChar(64)
+  recipientUserId String?   @db.VarChar(64)
+  appointmentId   String?   @db.VarChar(64)
+  workOrderId     String?   @db.VarChar(64)
+  findingId       String?   @db.VarChar(64)
+  type            String    @db.VarChar(48)
+  title           String    @db.VarChar(240)
+  body            String?   @db.Text
+  vehicleLabel    String?
+  plateNumber     String?   @db.VarChar(24)
+  payload         Json?
+  readAt          DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @default(now()) @updatedAt
+
+  @@index([mechanicId, readAt, createdAt])
+  @@index([recipientUserId, readAt, createdAt])
+  @@index([appointmentId, createdAt])
+  @@index([workOrderId, createdAt])
+  @@index([findingId, createdAt])
+}
