@@ -5,7 +5,7 @@ import { CommunicationChannel } from "@/src/generated/prisma/client";
 import { getPrisma } from "@/src/lib/prisma";
 import { toPrismaJson } from "@/src/lib/prisma-json";
 import { normalizePhone } from "@/src/lib/phone";
-import { getBinotelService, type BinotelApiResponse } from "@/src/services/binotel.service";
+import { BinotelApiError, getBinotelService, type BinotelApiResponse } from "@/src/services/binotel.service";
 import { processBinotelWebhook } from "@/src/services/binotel-webhook.service";
 
 type JsonRecord = Record<string, unknown>;
@@ -45,6 +45,32 @@ function integer(obj: JsonRecord | null, key: string): number | null {
   if (value == null) return null;
   const number = Number(value);
   return Number.isFinite(number) ? Math.floor(number) : null;
+}
+
+function sleep(ms: number) {
+  return new Promise<void>((resolve) => setTimeout(resolve, ms));
+}
+
+function isRetryableBinotelRead(error: unknown) {
+  if (!(error instanceof BinotelApiError)) return false;
+  if ([429, 502, 503, 504].includes(error.statusCode)) return true;
+  const providerText = `${error.message} ${JSON.stringify(error.response ?? "")}`;
+  return /rate.?limit|too many requests|request limit|temporar|try again/i.test(providerText);
+}
+
+async function withBinotelReadRetry<T>(read: () => Promise<T>) {
+  const delays = [350, 900];
+  let lastError: unknown;
+  for (let attempt = 0; attempt <= delays.length; attempt += 1) {
+    try {
+      return await read();
+    } catch (error) {
+      lastError = error;
+      if (!isRetryableBinotelRead(error) || attempt === delays.length) throw error;
+      await sleep(delays[attempt]);
+    }
+  }
+  throw lastError;
 }
 
 export function extractBinotelCallDetails(response: BinotelApiResponse): JsonRecord[] {
@@ -98,7 +124,8 @@ export function summarizeBinotelCall(detail: JsonRecord): BinotelHistorySummary 
 export async function getBinotelHistoryForPhone(phone: string) {
   const normalized = normalizePhone(phone);
   if (!normalized) throw new TypeError("PHONE_REQUIRED");
-  const response = await getBinotelService().getHistoryByExternalNumber([normalized]);
+  const service = getBinotelService();
+  const response = await withBinotelReadRetry(() => service.getHistoryByExternalNumber([normalized]));
   return extractBinotelCallDetails(response)
     .map(summarizeBinotelCall)
     .filter((item): item is BinotelHistorySummary => item !== null);
@@ -151,10 +178,11 @@ export async function reconcileRecentBinotelHistory(lookbackMinutes = 90) {
   const startTime = stopTime - boundedLookback * 60;
   const service = getBinotelService();
 
-  const [incoming, outgoing] = await Promise.all([
-    service.getIncomingCallsForPeriod({ startTime, stopTime }),
-    service.getOutgoingCallsForPeriod({ startTime, stopTime }),
-  ]);
+  // Binotel statistics endpoints are rate-sensitive. Read them sequentially and
+  // retry only safe provider reads; never apply this retry policy to call actions.
+  const incoming = await withBinotelReadRetry(() => service.getIncomingCallsForPeriod({ startTime, stopTime }));
+  await sleep(250);
+  const outgoing = await withBinotelReadRetry(() => service.getOutgoingCallsForPeriod({ startTime, stopTime }));
 
   const details = [
     ...extractBinotelCallDetails(incoming),
