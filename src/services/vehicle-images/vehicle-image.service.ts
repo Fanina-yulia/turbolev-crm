@@ -1,9 +1,7 @@
 import { getPrisma } from "@/src/lib/prisma";
 import type { ResolvedVehicleImage } from "./types";
-import {
-  getVehicleImageLibraryState,
-  testOpenAIVehicleImageConnection,
-} from "./openai-library.service";
+import { testOpenAIVehicleImageConnection } from "./openai-library.service";
+import { getVehicleImageDeliveryState } from "./vehicle-image-background.service";
 
 function asManualResolved(asset: {
   id: string;
@@ -57,7 +55,7 @@ export async function resolveVehicleImage(vehicleId: string, options?: { themePa
   const manual = vehicle.vehicleImages[0];
   if (manual) return asManualResolved(manual);
 
-  const state = await getVehicleImageLibraryState(vehicleId, options?.themePaint);
+  const state = await getVehicleImageDeliveryState(vehicleId, options?.themePaint);
   if (state.state !== "READY" || !state.assetId) return null;
   const proxyUrl = `/api/vehicle-images/${encodeURIComponent(state.assetId)}`;
   return {
