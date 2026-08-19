@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import type { Prisma } from "@/src/generated/prisma/client";
 import { getPrisma } from "@/src/lib/prisma";
 import type { AccessContext } from "@/src/security/access-context";
+import { hashCrmPassword, normalizeCrmLogin, validCrmLogin } from "@/src/security/local-credentials";
 import type { AccessScopeCode } from "@/src/security/permissions";
 import { writeAuditEvent } from "@/src/services/audit.service";
 
@@ -30,6 +31,8 @@ type ProfileInput = {
   photoUrl?: string | null;
   personnelCategory?: string | null;
   position?: string | null;
+  crmLogin?: string | null;
+  crmPassword?: string | null;
   isActive?: boolean;
   baseSalary?: string | number | null;
   minimumSalary?: string | number | null;
@@ -86,6 +89,9 @@ function roleSet(context: AccessContext) {
 }
 function isSystemRole(value: string): value is SystemRole {
   return (SYSTEM_ROLES as readonly string[]).includes(value);
+}
+function validEmail(value: string) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 }
 export function delegatablePersonnelV2Roles(context: AccessContext): SystemRole[] {
   const roles = roleSet(context);
@@ -186,18 +192,16 @@ async function ensureUser(tx: Tx, employee: { id: string; userId: string | null;
     await tx.userAccessRole.updateMany({ where: { userId: employee.userId, isActive: true }, data: { isActive: false, isPrimary: false, endsAt: new Date() } });
     return tx.user.findUnique({ where: { id: employee.userId } });
   }
-  const email = String(employee.email || "").trim().toLowerCase();
-  if (!email || !email.includes("@")) throw new PersonnelV2Error("EMAIL_REQUIRED_FOR_CABINET", "Для CRM-кабінету потрібен коректний e-mail.");
+  const email = String(employee.email || "").trim().toLowerCase() || null;
   const name = `${employee.firstName} ${employee.lastName}`.trim();
   let user = employee.userId ? await tx.user.findUnique({ where: { id: employee.userId }, include: { employeeProfile: true } }) : null;
-  if (!user) user = await tx.user.findFirst({ where: { email: { equals: email, mode: "insensitive" } }, include: { employeeProfile: true } });
+  if (!user && email) user = await tx.user.findFirst({ where: { email: { equals: email, mode: "insensitive" } }, include: { employeeProfile: true } });
   if (user?.employeeProfile && user.employeeProfile.id !== employee.id) throw new PersonnelV2Error("EMAIL_ALREADY_USED", "Цей e-mail уже належить іншому працівнику.", 409);
   if (!user) user = await tx.user.create({ data: { name, email, isActive: true }, include: { employeeProfile: true } });
   else {
-    const emailChanged = String(user.email || "").trim().toLowerCase() !== email;
     user = await tx.user.update({
       where: { id: user.id },
-      data: { name, email, isActive: true, ...(emailChanged && user.authUserId ? { authUserId: null, lastLoginAt: null, lastSeenAt: null } : {}) },
+      data: { name, email, isActive: true },
       include: { employeeProfile: true },
     });
   }
@@ -303,11 +307,44 @@ export async function savePersonnelV2(input: ProfileInput, context: AccessContex
   const primary = assignments.find((item) => item.isPrimary)!;
   const cabinetEnabled = input.cabinetEnabled === true;
   const isActive = input.isActive !== false;
+  const email = clean(input.email, 240)?.toLowerCase() || null;
+  if (email && !validEmail(email)) throw new PersonnelV2Error("INVALID_EMAIL", "Вкажіть коректний e-mail або залиште поле порожнім.");
+  const crmLogin = normalizeCrmLogin(input.crmLogin);
+  const crmPassword = typeof input.crmPassword === "string" ? input.crmPassword : "";
+  if (cabinetEnabled && !validCrmLogin(crmLogin)) {
+    throw new PersonnelV2Error("INVALID_CRM_LOGIN", "Логін має містити 3–64 символи: латинські літери, цифри, крапку, дефіс або підкреслення.");
+  }
+  if (crmPassword && crmPassword.length < 8) {
+    throw new PersonnelV2Error("WEAK_CRM_PASSWORD", "Пароль має містити щонайменше 8 символів.");
+  }
 
   const result = await prisma.$transaction(async (tx) => {
     const roleMaps = await validateAssignments(tx, assignments, context, scope);
     if (input.id) await assertTargetScope(tx, input.id, context, scope);
     if (input.id) await assertOwnerSafety(tx, input.id, assignments, cabinetEnabled && isActive);
+    const existingProfile = input.id
+      ? await tx.employeeProfile.findUnique({ where: { id: input.id }, select: { crmPasswordHash: true } })
+      : null;
+    if (input.id && !existingProfile) throw new PersonnelV2Error("EMPLOYEE_NOT_FOUND", "Працівника не знайдено.", 404);
+
+    if (crmLogin) {
+      const duplicate = await tx.employeeProfile.findFirst({
+        where: {
+          crmLogin: { equals: crmLogin, mode: "insensitive" },
+          ...(input.id ? { id: { not: input.id } } : {}),
+        },
+        select: { id: true },
+      });
+      if (duplicate) throw new PersonnelV2Error("CRM_LOGIN_ALREADY_USED", "Такий логін уже використовується іншим працівником.", 409);
+    }
+
+    const crmPasswordHash = crmPassword
+      ? hashCrmPassword(crmPassword)
+      : existingProfile?.crmPasswordHash || null;
+    if (cabinetEnabled && !crmPasswordHash) {
+      throw new PersonnelV2Error("CRM_PASSWORD_REQUIRED", "Для нового CRM-кабінету задайте пароль щонайменше з 8 символів.");
+    }
+
     const primaryStaff = roleMaps.staffByCode.get(primary.roleCode)!;
     const data = {
       firstName,
@@ -316,15 +353,15 @@ export async function savePersonnelV2(input: ProfileInput, context: AccessContex
       birthDate,
       hireDate,
       employmentType,
-      email: clean(input.email, 240)?.toLowerCase() || null,
+      email,
       phone: clean(input.phone, 80),
       phoneCountry: clean(input.phoneCountry, 8) || "UA",
       address: clean(input.address, 500),
       photoUrl: clean(input.photoUrl, 2000),
       personnelCategory: clean(input.personnelCategory, 120) || primaryStaff.category,
       position: clean(input.position, 160) || primaryStaff.name,
-      crmLogin: clean(input.email, 240)?.toLowerCase() || null,
-      crmPasswordHash: null,
+      crmLogin: crmLogin || null,
+      crmPasswordHash,
       isActive,
       baseSalary: numberOrNull(input.baseSalary),
       minimumSalary: numberOrNull(input.minimumSalary),
@@ -351,7 +388,14 @@ export async function savePersonnelV2(input: ProfileInput, context: AccessContex
     entityType: "EmployeeProfile",
     entityId: result.employee.id,
     action: input.id ? "PERSONNEL_V2_UPDATED" : "PERSONNEL_V2_CREATED",
-    after: { roles: result.assignments, cabinetEnabled, active: isActive, employmentType, userId: result.user?.id || null },
+    after: {
+      roles: result.assignments,
+      cabinetEnabled,
+      active: isActive,
+      employmentType,
+      userId: result.user?.id || null,
+      localLoginConfigured: Boolean(result.employee.crmLogin && result.employee.crmPasswordHash),
+    },
   });
   return result;
 }
