@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { buildServiceDisplayName } from "@/src/services/service-catalog-name-builder.service";
 import styles from "./price-catalog-settings-panel.module.css";
 
 type Source = "TURBO_LEV_LEGACY" | "MS_MASTER" | "MANUAL";
@@ -14,6 +15,10 @@ type CatalogItem = {
   code: string | null;
   internalName: string;
   displayName: string;
+  namePart: string | null;
+  namePosition: string | null;
+  nameSide: string | null;
+  nameOperation: string | null;
   categoryId: string | null;
   category: Category | null;
   sourceCategory: string | null;
@@ -68,6 +73,10 @@ type ImportPreview = {
 type EditDraft = {
   displayName: string;
   internalName: string;
+  namePart: string;
+  namePosition: string;
+  nameSide: string;
+  nameOperation: string;
   basePrice: string;
   normMinutes: string;
   categoryId: string;
@@ -80,6 +89,7 @@ type EditDraft = {
   isActive: boolean;
   showToClient: boolean;
 };
+type NameDraftPatch = Partial<Pick<EditDraft, "namePart" | "namePosition" | "nameSide" | "nameOperation">>;
 
 const SOURCE_LABEL: Record<Source, string> = { TURBO_LEV_LEGACY: "Turbo LEV", MS_MASTER: "МС Мастер", MANUAL: "Ручний" };
 const STATUS_LABEL: Record<ReviewStatus, string> = { READY: "READY", NEEDS_REVIEW: "Перевірити", QUARANTINED: "Карантин" };
@@ -87,7 +97,8 @@ const TYPE_LABEL: Record<ItemType, string> = { LABOR: "Робота", DIAGNOSTIC
 
 function money(value: string | null) { const n = Number(value); return value == null || !Number.isFinite(n) ? "—" : `${new Intl.NumberFormat("uk-UA", { maximumFractionDigits: 2 }).format(n)} грн`; }
 function dateText(value: string) { const d = new Date(value); return Number.isNaN(d.getTime()) ? "—" : new Intl.DateTimeFormat("uk-UA", { timeZone: "Europe/Kyiv", day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }).format(d); }
-function draftFrom(item: CatalogItem): EditDraft { return { displayName: item.displayName, internalName: item.internalName, basePrice: item.basePrice ?? "", normMinutes: item.normMinutes == null ? "" : String(item.normMinutes), categoryId: item.categoryId ?? "", itemType: item.itemType, warrantyKm: item.warrantyKm == null ? "" : String(item.warrantyKm), warrantyDays: item.warrantyDays == null ? "" : String(item.warrantyDays), reviewStatus: item.reviewStatus, reviewReason: item.reviewReason ?? "", vehicleCoefficientEnabled: item.vehicleCoefficientEnabled, isActive: item.isActive, showToClient: item.showToClient } }
+function draftFrom(item: CatalogItem): EditDraft { return { displayName: item.displayName, internalName: item.internalName, namePart: item.namePart ?? "", namePosition: item.namePosition ?? "", nameSide: item.nameSide ?? "", nameOperation: item.nameOperation ?? "", basePrice: item.basePrice ?? "", normMinutes: item.normMinutes == null ? "" : String(item.normMinutes), categoryId: item.categoryId ?? "", itemType: item.itemType, warrantyKm: item.warrantyKm == null ? "" : String(item.warrantyKm), warrantyDays: item.warrantyDays == null ? "" : String(item.warrantyDays), reviewStatus: item.reviewStatus, reviewReason: item.reviewReason ?? "", vehicleCoefficientEnabled: item.vehicleCoefficientEnabled, isActive: item.isActive, showToClient: item.showToClient }; }
+function generatedName(draft: EditDraft | null) { return draft ? buildServiceDisplayName({ part: draft.namePart, position: draft.namePosition, side: draft.nameSide, operation: draft.nameOperation }) : ""; }
 
 export function PriceCatalogSettingsPanel() {
   const [data, setData] = useState<CatalogResponse | null>(null);
@@ -132,6 +143,8 @@ export function PriceCatalogSettingsPanel() {
   const canActivateReady = counts.ready > counts.active && counts.msMaster > 0;
   const latest = data?.latestBatch;
   const items = data?.items || [];
+  const namePreview = useMemo(() => generatedName(draft), [draft]);
+  const structuredNameActive = Boolean(draft && (draft.namePart.trim() || draft.namePosition.trim() || draft.nameSide.trim() || draft.nameOperation.trim()));
 
   async function importFile(mode: "preview" | "import") {
     if (!file) { setError("Оберіть XLSX-файл."); return; }
@@ -160,6 +173,17 @@ export function PriceCatalogSettingsPanel() {
   }
 
   function openEdit(item: CatalogItem) { setEditing(item); setDraft(draftFrom(item)); setError(""); }
+  function updateNameDraft(patch: NameDraftPatch) {
+    setDraft((current) => {
+      if (!current) return current;
+      const next = { ...current, ...patch };
+      const name = generatedName(next);
+      return name ? { ...next, displayName: name } : next;
+    });
+  }
+  function clearNameBuilder() {
+    setDraft((current) => current ? { ...current, namePart: "", namePosition: "", nameSide: "", nameOperation: "" } : current);
+  }
   async function saveEdit(event: React.FormEvent) {
     event.preventDefault();
     if (!editing || !draft) return;
@@ -196,7 +220,7 @@ export function PriceCatalogSettingsPanel() {
     {message && <div className={styles.message}>{message}</div>}{error && <div className={styles.error}>{error}</div>}
 
     <section className={styles.toolbar}>
-      <label className={styles.search}><span>⌕</span><input value={query} onChange={(event) => { setQuery(event.target.value); setPage(1); }} placeholder="ID, код, назва, категорія, кузовна деталь…"/></label>
+      <label className={styles.search}><span>⌕</span><input value={query} onChange={(event) => { setQuery(event.target.value); setPage(1); }} placeholder="ID, код, назва, деталь, сторона, операція…"/></label>
       <select value={source} onChange={(event) => setSource(event.target.value)}><option value="">Усі джерела</option><option value="TURBO_LEV_LEGACY">Turbo LEV</option><option value="MS_MASTER">МС Мастер</option><option value="MANUAL">Ручні</option></select>
       <select value={status} onChange={(event) => setStatus(event.target.value)}><option value="">Усі статуси</option><option value="READY">READY</option><option value="NEEDS_REVIEW">Перевірити</option><option value="QUARANTINED">Карантин</option></select>
       <select value={active} onChange={(event) => setActive(event.target.value)}><option value="">Активні + staging</option><option value="true">Тільки активні</option><option value="false">Тільки неактивні</option></select>
@@ -210,7 +234,7 @@ export function PriceCatalogSettingsPanel() {
         <div className={styles.service}><strong>{item.displayName}</strong>{item.internalName !== item.displayName && <small>Внутрішня: {item.internalName}</small>}<small>{SOURCE_LABEL[item.source]} · ID {item.externalServiceId || "—"}{item.sourceRow ? ` · рядок ${item.sourceRow}` : ""}</small></div>
         <div><strong>{item.category?.name || "Без категорії"}</strong><small>{TYPE_LABEL[item.itemType]}{item.sourceCategory && item.sourceCategory !== item.category?.name ? ` · джерело: ${item.sourceCategory}` : ""}</small></div>
         <div><strong>{money(item.basePrice)}</strong><small>{item.normMinutes == null ? "Норма не вказана" : `${item.normMinutes} хв`}{item.vehicleCoefficientEnabled ? " · коеф. авто ✓" : " · без коеф. авто"}</small></div>
-        <div className={styles.meta}>{(item.warrantyKm != null || item.warrantyDays != null) && <small>Гарантія: {item.warrantyKm != null ? `${item.warrantyKm} км` : "—"} / {item.warrantyDays != null ? `${item.warrantyDays} дн` : "—"}</small>}{item.payrollType !== "NONE" && <small>ЗП: {item.payrollType}</small>}{item.bodyPart && <small>Кузов: {item.bodyPart}{item.bodySide ? ` · ${item.bodySide}` : ""}{item.calculatorOperation ? ` · ${item.calculatorOperation}` : ""}</small>}{!item.warrantyKm && !item.warrantyDays && item.payrollType === "NONE" && !item.bodyPart && <small>—</small>}</div>
+        <div className={styles.meta}>{(item.namePart || item.nameOperation) && <small>Назва: {[item.namePart, item.namePosition, item.nameSide].filter(Boolean).join(" ")}{item.nameOperation ? ` → ${item.nameOperation}` : ""}</small>}{(item.warrantyKm != null || item.warrantyDays != null) && <small>Гарантія: {item.warrantyKm != null ? `${item.warrantyKm} км` : "—"} / {item.warrantyDays != null ? `${item.warrantyDays} дн` : "—"}</small>}{item.payrollType !== "NONE" && <small>ЗП: {item.payrollType}</small>}{item.bodyPart && <small>Кузов: {item.bodyPart}{item.bodySide ? ` · ${item.bodySide}` : ""}{item.calculatorOperation ? ` · ${item.calculatorOperation}` : ""}</small>}{!item.namePart && !item.nameOperation && !item.warrantyKm && !item.warrantyDays && item.payrollType === "NONE" && !item.bodyPart && <small>—</small>}</div>
         <div className={styles.stateCell}><Status value={item.reviewStatus}/><span className={item.isActive ? styles.live : styles.staging}>{item.isActive ? "Активна" : "Staging"}</span>{item.reviewReason && <small title={item.reviewReason}>{item.reviewReason}</small>}</div>
         <button type="button" className={styles.edit} onClick={() => openEdit(item)}>Редагувати</button>
       </article>)}
@@ -221,7 +245,17 @@ export function PriceCatalogSettingsPanel() {
     {editing && draft && <div className={styles.backdrop} onMouseDown={(event) => { if (event.target === event.currentTarget && !saving) { setEditing(null); setDraft(null); } }}><form className={styles.modal} onSubmit={saveEdit}>
       <header><div><small>{SOURCE_LABEL[editing.source]} · ID {editing.externalServiceId || "—"}</small><h2>Картка послуги</h2></div><button type="button" onClick={() => { if (!saving) { setEditing(null); setDraft(null); } }}>×</button></header>
       <div className={styles.formGrid}>
-        <label className={styles.full}><span>Назва для оператора / клієнта</span><input value={draft.displayName} onChange={(event) => setDraft({ ...draft, displayName: event.target.value })}/></label>
+        <div style={{ gridColumn: "1 / -1", display: "grid", gap: 12, padding: 14, border: "1px solid var(--line)", borderRadius: 12, background: "var(--panel-2)" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}><div><strong style={{ display: "block", fontSize: 13 }}>Конструктор назви</strong><small style={{ color: "var(--muted)" }}>Деталь + де/яка + сторона + операція. Назва і пошукові aliases формуються автоматично.</small></div>{structuredNameActive && <button type="button" className={styles.edit} onClick={clearNameBuilder}>Очистити конструктор</button>}</div>
+          <div className={styles.formGrid}>
+            <label><span>Деталь / вузол</span><input value={draft.namePart} placeholder="Важіль" onChange={(event) => updateNameDraft({ namePart: event.target.value })}/></label>
+            <label><span>Де / яка</span><input value={draft.namePosition} placeholder="передній нижній" onChange={(event) => updateNameDraft({ namePosition: event.target.value })}/></label>
+            <label><span>Сторона</span><select value={draft.nameSide} onChange={(event) => updateNameDraft({ nameSide: event.target.value })}><option value="">Не вказана</option><option value="лівий">лівий</option><option value="правий">правий</option></select></label>
+            <label><span>Операція</span><input value={draft.nameOperation} placeholder="заміна" onChange={(event) => updateNameDraft({ nameOperation: event.target.value })}/></label>
+          </div>
+          <div style={{ padding: "10px 12px", borderRadius: 10, background: "var(--panel)", border: "1px solid var(--line)" }}><small style={{ display: "block", color: "var(--muted)", marginBottom: 4 }}>Буде збережено як</small><strong>{namePreview || draft.displayName || "Заповніть конструктор або введіть назву вручну"}</strong></div>
+        </div>
+        <label className={styles.full}><span>Назва для оператора / клієнта</span><input value={namePreview || draft.displayName} readOnly={structuredNameActive} onChange={(event) => setDraft({ ...draft, displayName: event.target.value })}/><small>{structuredNameActive ? "Керується конструктором назви." : "Ручний режим — можна редагувати напряму."}</small></label>
         <label className={styles.full}><span>Внутрішня назва</span><input value={draft.internalName} onChange={(event) => setDraft({ ...draft, internalName: event.target.value })}/></label>
         <label><span>Базова ціна, грн</span><input inputMode="decimal" value={draft.basePrice} onChange={(event) => setDraft({ ...draft, basePrice: event.target.value })}/></label>
         <label><span>Норма, хв</span><input inputMode="numeric" value={draft.normMinutes} onChange={(event) => setDraft({ ...draft, normMinutes: event.target.value })}/></label>

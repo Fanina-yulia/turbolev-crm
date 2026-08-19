@@ -11,6 +11,7 @@ import { getPrisma } from "@/src/lib/prisma";
 import { toPrismaJson } from "@/src/lib/prisma-json";
 import { applyDuplicateNameReview } from "@/src/services/service-catalog-duplicate-review.service";
 import { parseServiceCatalogWorkbook, type ParsedCatalogRow } from "@/src/services/service-catalog-import.service";
+import { bodySideLabel, buildServiceSearchAliases, calculatorOperationLabel } from "@/src/services/service-catalog-name-builder.service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -25,6 +26,24 @@ function payrollEnum(value: ParsedCatalogRow["payrollType"]) { return ServiceCat
 function sideEnum(value: ParsedCatalogRow["bodySide"]) { return value ? ServiceCatalogBodySide[value] : null; }
 function operationEnum(value: ParsedCatalogRow["calculatorOperation"]) { return value ? ServiceCatalogCalculatorOperation[value] : null; }
 function chunks<T>(rows: T[], size = 100) { const result: T[][] = []; for (let i = 0; i < rows.length; i += size) result.push(rows.slice(i, i + size)); return result; }
+function naming(row: ParsedCatalogRow) {
+  const namePart = row.bodyPart || null;
+  const namePosition = null;
+  const nameSide = bodySideLabel(row.bodySide) || null;
+  const nameOperation = calculatorOperationLabel(row.calculatorOperation) || null;
+  const searchAliases = buildServiceSearchAliases({
+    part: namePart,
+    position: namePosition,
+    side: nameSide,
+    operation: nameOperation,
+    displayName: row.displayName,
+    internalName: row.internalName,
+    code: row.code,
+    externalServiceId: row.externalServiceId,
+    existing: row.searchAliases,
+  });
+  return { namePart, namePosition, nameSide, nameOperation, searchAliases };
+}
 
 function sampleRow(row: ParsedCatalogRow) {
   return {
@@ -103,44 +122,51 @@ export async function POST(request: Request) {
     const newRows = parsed.rows.filter((row) => !byExternalId.has(row.externalServiceId));
     if (newRows.length) {
       await prisma.serviceCatalogItem.createMany({
-        data: newRows.map((row) => ({
-          source,
-          externalServiceId: row.externalServiceId,
-          code: row.code,
-          internalName: row.internalName,
-          displayName: row.displayName,
-          searchAliases: row.searchAliases,
-          categoryId: row.categoryId,
-          sourceCategory: row.sourceCategory || null,
-          itemType: itemTypeEnum(row.itemType),
-          basePrice: row.basePrice,
-          currency: "UAH",
-          unit: row.unit,
-          defaultQuantity: row.defaultQuantity,
-          normMinutes: row.normMinutes,
-          complexSurcharge: row.complexSurcharge,
-          vehicleCoefficientEnabled: row.vehicleCoefficientEnabled,
-          warrantyKm: row.warrantyKm,
-          warrantyDays: row.warrantyDays,
-          payrollCategory: row.payrollCategory,
-          payrollType: payrollEnum(row.payrollType),
-          mechanicPercent: row.mechanicPercent,
-          mechanicFixedAmount: row.mechanicFixedAmount,
-          bodyPart: row.bodyPart,
-          bodySide: sideEnum(row.bodySide),
-          calculatorOperation: operationEnum(row.calculatorOperation),
-          isActive: false,
-          showToOperator: false,
-          showToClient: false,
-          showOnLanding: false,
-          reviewStatus: reviewEnum(row.reviewStatus),
-          reviewReason: row.reviewReason,
-          sourceRow: row.sourceRow,
-          sourceVersion,
-          originalData: toPrismaJson(row.originalData),
-          importBatchId: batch.id,
-          importedAt: now,
-        })),
+        data: newRows.map((row) => {
+          const name = naming(row);
+          return {
+            source,
+            externalServiceId: row.externalServiceId,
+            code: row.code,
+            internalName: row.internalName,
+            displayName: row.displayName,
+            searchAliases: name.searchAliases,
+            namePart: name.namePart,
+            namePosition: name.namePosition,
+            nameSide: name.nameSide,
+            nameOperation: name.nameOperation,
+            categoryId: row.categoryId,
+            sourceCategory: row.sourceCategory || null,
+            itemType: itemTypeEnum(row.itemType),
+            basePrice: row.basePrice,
+            currency: "UAH",
+            unit: row.unit,
+            defaultQuantity: row.defaultQuantity,
+            normMinutes: row.normMinutes,
+            complexSurcharge: row.complexSurcharge,
+            vehicleCoefficientEnabled: row.vehicleCoefficientEnabled,
+            warrantyKm: row.warrantyKm,
+            warrantyDays: row.warrantyDays,
+            payrollCategory: row.payrollCategory,
+            payrollType: payrollEnum(row.payrollType),
+            mechanicPercent: row.mechanicPercent,
+            mechanicFixedAmount: row.mechanicFixedAmount,
+            bodyPart: row.bodyPart,
+            bodySide: sideEnum(row.bodySide),
+            calculatorOperation: operationEnum(row.calculatorOperation),
+            isActive: false,
+            showToOperator: false,
+            showToClient: false,
+            showOnLanding: false,
+            reviewStatus: reviewEnum(row.reviewStatus),
+            reviewReason: row.reviewReason,
+            sourceRow: row.sourceRow,
+            sourceVersion,
+            originalData: toPrismaJson(row.originalData),
+            importBatchId: batch.id,
+            importedAt: now,
+          };
+        }),
       });
     }
 
@@ -149,13 +175,18 @@ export async function POST(request: Request) {
       await prisma.$transaction(group.map((row) => {
         const current = byExternalId.get(row.externalServiceId)!;
         const unsafe = row.reviewStatus !== "READY";
+        const name = naming(row);
         return prisma.serviceCatalogItem.update({
           where: { id: current.id },
           data: {
             code: row.code,
             internalName: row.internalName,
             displayName: row.displayName,
-            searchAliases: row.searchAliases,
+            searchAliases: name.searchAliases,
+            namePart: name.namePart,
+            namePosition: name.namePosition,
+            nameSide: name.nameSide,
+            nameOperation: name.nameOperation,
             categoryId: row.categoryId,
             sourceCategory: row.sourceCategory || null,
             itemType: itemTypeEnum(row.itemType),
