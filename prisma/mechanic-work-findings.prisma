@@ -1,0 +1,44 @@
+enum MechanicWorkFindingStatus {
+  SUBMITTED
+  REVIEWED
+  RESOLVED
+  REJECTED
+}
+
+model MechanicWorkFinding {
+  id                 String                    @id @default(cuid())
+  workOrderId        String                    @db.VarChar(64)
+  workOrderLineId    String                    @db.VarChar(64)
+  mechanicUserId     String                    @db.VarChar(64)
+  mechanicResourceId String?                   @db.VarChar(64)
+  findingText        String                    @db.Text
+  recommendation     String?                   @db.Text
+  urgency            DiagnosticUrgency         @default(INFO)
+  status             MechanicWorkFindingStatus @default(SUBMITTED)
+  submittedAt        DateTime                  @default(now())
+  reviewedAt         DateTime?
+  reviewedByUserId   String?                   @db.VarChar(64)
+  managerComment     String?                   @db.Text
+  createdAt          DateTime                  @default(now())
+  updatedAt          DateTime                  @updatedAt
+
+  media MechanicWorkFindingMedia[]
+
+  @@index([workOrderId, status, createdAt])
+  @@index([workOrderLineId, createdAt])
+  @@index([mechanicUserId, createdAt])
+}
+
+model MechanicWorkFindingMedia {
+  id        String              @id @default(cuid())
+  findingId String
+  fileName  String
+  mimeType  String              @db.VarChar(160)
+  fileSize  Int
+  fileData  Bytes
+  createdAt DateTime            @default(now())
+
+  finding MechanicWorkFinding @relation(fields: [findingId], references: [id], onDelete: Cascade)
+
+  @@index([findingId, createdAt])
+}
