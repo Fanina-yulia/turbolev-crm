@@ -6,10 +6,11 @@ import { normalizeThemePaint } from "./vehicle-color.service";
 
 const OPENAI_IMAGES_URL = "https://api.openai.com/v1/images/generations";
 const OPENAI_MODELS_URL = "https://api.openai.com/v1/models";
-const PROMPT_VERSION = "vehicle-card-v1";
+const PROMPT_VERSION = "vehicle-card-v2-transparent-webp";
 const GENERATION_LOCK_MS = 10 * 60 * 1000;
 const ERROR_RETRY_MS = 30 * 60 * 1000;
-const MAX_IMAGE_BYTES = 12 * 1024 * 1024;
+const MAX_IMAGE_BYTES = 2 * 1024 * 1024;
+const OUTPUT_COMPRESSION = 68;
 
 type ImageQuality = "low" | "medium" | "high" | "auto";
 
@@ -139,15 +140,17 @@ function masterPrompt(vehicle: VehicleDescriptor, theme: string) {
   const year = vehicle.year ? String(vehicle.year) : "model year not provided";
   const body = vehicle.bodyType ? ` Body type: ${vehicle.bodyType}.` : "";
   return [
-    "Create one production-quality vehicle cutout for an automotive service CRM card.",
+    "Create exactly one production-quality vehicle cutout for an automotive service CRM card and shared vehicle image library.",
     `Vehicle: ${vehicle.make} ${vehicle.model}, ${year}.${body}`,
-    "The vehicle must visually match the real production make, model and model-year/generation as closely as possible: preserve the generation-specific silhouette, body proportions, roofline, glazing, lights, grille, bumpers, wheel arches and door layout.",
-    "Do not substitute a generic car, a different generation, a different body style or a visually similar model.",
+    "The vehicle must visually match the real production make, model and model-year/generation as closely as possible. Preserve the generation-specific silhouette, body proportions, roofline, glazing, lights, grille, bumpers, wheel arches and door layout.",
+    "Do not substitute a generic car, a different generation, a different body style or a visually similar model. If the model-year is supplied, prioritize generation accuracy over decorative styling.",
     "Composition standard for the whole library: full vehicle visible, facing right, clean front three-quarter side view, camera near belt-line height, natural realistic proportions, centered horizontally, tires fully visible, no cropping.",
     `Paint the vehicle in ${themeDescription(theme)} so it harmonizes with the CRM theme while keeping realistic automotive reflections.`,
-    "Transparent background only. No road, no scenery, no studio wall, no people, no text, no captions, no watermark, no license-plate text. A very subtle soft contact shadow directly below the tires is allowed, but the surrounding canvas must remain transparent.",
-    "Style: photorealistic premium automotive catalog render, consistent neutral lighting, restrained reflections, no exaggerated wide-angle distortion.",
-    "Output must be a PNG with transparency and must contain exactly one car.",
+    "The background must be fully transparent alpha. Every pixel outside the vehicle must remain transparent: no white, grey or colored backdrop, no road, no scenery, no studio wall, no floor, no gradient panel and no environmental reflections that imply a background.",
+    "No people, no text, no captions, no watermark and no readable license-plate text. Use a blank neutral plate area if a plate holder is visible.",
+    "Avoid large cast shadows. At most, use a tiny soft contact shadow immediately beneath the tires; never create a visible studio floor or a shadow field around the vehicle.",
+    "Style: photorealistic automotive catalog cutout, consistent neutral lighting, restrained reflections, clean edges, no exaggerated wide-angle distortion. Keep visual noise and unnecessary micro-detail low so the image remains clear when displayed as a small CRM card.",
+    "The final asset must contain exactly one car on transparency and be suitable for efficient WebP delivery in a web application.",
   ].join(" ");
 }
 
@@ -230,7 +233,7 @@ async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs: numbe
   }
 }
 
-async function generatePng(config: VehicleImageConfig, prompt: string) {
+async function generateWebp(config: VehicleImageConfig, prompt: string) {
   const response = await fetchWithTimeout(
     OPENAI_IMAGES_URL,
     {
@@ -247,7 +250,8 @@ async function generatePng(config: VehicleImageConfig, prompt: string) {
         size: "1536x1024",
         quality: config.quality,
         background: "transparent",
-        output_format: "png",
+        output_format: "webp",
+        output_compression: OUTPUT_COMPRESSION,
       }),
     },
     90_000,
@@ -259,14 +263,16 @@ async function generatePng(config: VehicleImageConfig, prompt: string) {
   let bytes: Buffer | null = null;
   if (item?.b64_json) bytes = Buffer.from(item.b64_json, "base64");
   else if (item?.url) {
-    const imageResponse = await fetchWithTimeout(item.url, { headers: { Accept: "image/png,image/*" } }, 30_000);
-    if (!imageResponse.ok) throw new Error(`Не вдалося завантажити згенерований PNG: HTTP ${imageResponse.status}`);
+    const imageResponse = await fetchWithTimeout(item.url, { headers: { Accept: "image/webp,image/*" } }, 30_000);
+    if (!imageResponse.ok) throw new Error(`Не вдалося завантажити згенерований WebP: HTTP ${imageResponse.status}`);
     bytes = Buffer.from(await imageResponse.arrayBuffer());
   }
   if (!bytes?.length) throw new Error("OpenAI не повернув байти зображення.");
-  if (bytes.length > MAX_IMAGE_BYTES) throw new Error(`PNG завеликий: ${Math.round(bytes.length / 1024 / 1024)} MB.`);
-  const isPng = bytes.length >= 8 && bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47;
-  if (!isPng) throw new Error("OpenAI повернув файл, який не є PNG.");
+  if (bytes.length > MAX_IMAGE_BYTES) throw new Error(`WebP завеликий для CRM: ${Math.round(bytes.length / 1024)} KB.`);
+  const isWebp = bytes.length >= 12
+    && bytes.toString("ascii", 0, 4) === "RIFF"
+    && bytes.toString("ascii", 8, 12) === "WEBP";
+  if (!isWebp) throw new Error("OpenAI повернув файл, який не є WebP.");
   return bytes;
 }
 
@@ -329,13 +335,13 @@ export async function generateVehicleImageForVehicle(vehicleId: string, options?
   const jobId = await createJob(libraryKey, vehicleId, claimed.id);
 
   try {
-    const png = await generatePng(config, prompt);
+    const webp = await generateWebp(config, prompt);
     await pool.query(
       `UPDATE public."VehicleImageLibraryAsset" SET
-         "provider"='OPENAI',"providerModel"=$2,"status"='READY',"imageMimeType"='image/png',"imageData"=$3,
+         "provider"='OPENAI',"providerModel"=$2,"status"='READY',"imageMimeType"='image/webp',"imageData"=$3,
          "imageSizeBytes"=$4,"lastError"=NULL,"generatedAt"=CURRENT_TIMESTAMP,"updatedAt"=CURRENT_TIMESTAMP
        WHERE "id"=$1`,
-      [claimed.id, config.model, png, png.length],
+      [claimed.id, config.model, webp, webp.length],
     );
     await finishJob(jobId, "DONE");
     return { state: "READY" as const, assetId: claimed.id, libraryKey };
