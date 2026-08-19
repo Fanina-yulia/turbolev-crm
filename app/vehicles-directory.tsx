@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { navigateCrm, readCrmRoute } from "./crm-route";
 import { VehicleBrandLogo } from "./vehicle-brand-logo";
 import styles from "./directory-pages.module.css";
 
 type Vehicle = {
   id: string;
+  clientId: string;
   plateNumber: string | null;
   vin: string | null;
   brand: string | null;
@@ -25,30 +26,23 @@ type Vehicle = {
   vehicleDataConfidence: number | null;
   createdAt: string;
   updatedAt: string;
+  client: { id: string; name: string | null; phone: string };
   _count: { workOrders: number; diagnosticRequests: number };
 };
 
-type Client = {
-  id: string;
-  name: string | null;
-  phone: string;
-  vehicles: Vehicle[];
-};
-
-type VehicleListItem = Vehicle & { client: { id: string; name: string | null; phone: string } };
-type ListResponse = { ok: boolean; clients: Client[]; error?: string };
-type VehicleCard = Vehicle & {
-  clientId: string;
+type ListResponse = { ok: boolean; total: number; page: number; limit: number; pages: number; vehicles: Vehicle[]; error?: string };
+type VehicleCard = Omit<Vehicle, "client"> & {
   classificationSource: string | null;
   classificationConfidence: number | null;
   lastVehicleLookupAt: string | null;
   client: { id: string; name: string | null; phone: string };
   diagnosticRequests: Array<{ id: string; status: string; technicalConclusion: string | null; confirmedAt: string | null; createdAt: string; updatedAt: string }>;
   workOrders: Array<{ id: string; status: string; createdAt: string; updatedAt: string; closedAt: string | null }>;
-  _count: { workOrders: number; diagnosticRequests: number };
 };
 
-function vehicleTitle(vehicle: Vehicle) {
+const PAGE_SIZE = 24;
+
+function vehicleTitle(vehicle: Vehicle | VehicleCard) {
   return [vehicle.brand, vehicle.model, vehicle.year].filter(Boolean).join(" ") || "Автомобіль";
 }
 
@@ -59,7 +53,7 @@ function dateText(value: string | null | undefined) {
   return new Intl.DateTimeFormat("uk-UA", { day: "2-digit", month: "2-digit", year: "numeric" }).format(date);
 }
 
-function engineText(vehicle: Vehicle) {
+function engineText(vehicle: Vehicle | VehicleCard) {
   if (vehicle.engineName) return vehicle.engineName;
   if (vehicle.engineVolumeCm3) return `${(vehicle.engineVolumeCm3 / 1000).toFixed(1)} л`;
   return "—";
@@ -67,7 +61,10 @@ function engineText(vehicle: Vehicle) {
 
 export function VehiclesDirectory() {
   const [query, setQuery] = useState("");
-  const [clients, setClients] = useState<Client[]>([]);
+  const [page, setPage] = useState(1);
+  const [pages, setPages] = useState(1);
+  const [vehicles, setVehicles] = useState<Vehicle[]>([]);
+  const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [vehicleId, setVehicleId] = useState<string | null>(null);
@@ -80,14 +77,17 @@ export function VehiclesDirectory() {
       setLoading(true);
       setError("");
       try {
-        const params = new URLSearchParams({ limit: "100" });
+        const params = new URLSearchParams({ page: String(page), limit: String(PAGE_SIZE) });
         if (query.trim()) params.set("q", query.trim());
-        const response = await fetch(`/api/clients-vehicles?${params}`, { cache: "no-store", signal: controller.signal });
+        const response = await fetch(`/api/vehicles?${params}`, { cache: "no-store", signal: controller.signal });
         const data = await response.json() as ListResponse;
         if (!response.ok || !data.ok) throw new Error(data.error || "Не вдалося завантажити автомобілі");
-        setClients(data.clients || []);
-      } catch (e) {
-        if ((e as Error).name !== "AbortError") setError(e instanceof Error ? e.message : "Помилка завантаження");
+        setVehicles(data.vehicles || []);
+        setTotal(data.total || 0);
+        setPages(data.pages || 1);
+        if (data.page !== page) setPage(data.page);
+      } catch (cause) {
+        if ((cause as Error).name !== "AbortError") setError(cause instanceof Error ? cause.message : "Помилка завантаження");
       } finally {
         if (!controller.signal.aborted) setLoading(false);
       }
@@ -96,7 +96,7 @@ export function VehiclesDirectory() {
       controller.abort();
       window.clearTimeout(timer);
     };
-  }, [query]);
+  }, [query, page]);
 
   useEffect(() => {
     const syncFromRoute = () => setVehicleId(readCrmRoute().vehicleId || null);
@@ -118,8 +118,8 @@ export function VehiclesDirectory() {
         const data = await response.json() as { ok?: boolean; vehicle?: VehicleCard; error?: string };
         if (!response.ok || !data.ok || !data.vehicle) throw new Error(data.error || "Не вдалося відкрити автомобіль");
         setVehicleCard(data.vehicle);
-      } catch (e) {
-        if ((e as Error).name !== "AbortError") setError(e instanceof Error ? e.message : "Помилка картки авто");
+      } catch (cause) {
+        if ((cause as Error).name !== "AbortError") setError(cause instanceof Error ? cause.message : "Помилка картки авто");
       } finally {
         if (!controller.signal.aborted) setVehicleLoading(false);
       }
@@ -127,7 +127,10 @@ export function VehiclesDirectory() {
     return () => controller.abort();
   }, [vehicleId]);
 
-  const vehicles = useMemo<VehicleListItem[]>(() => clients.flatMap((client) => client.vehicles.map((vehicle) => ({ ...vehicle, client: { id: client.id, name: client.name, phone: client.phone } }))), [clients]);
+  function changeQuery(value: string) {
+    setQuery(value);
+    setPage(1);
+  }
 
   function openNewRequest() {
     window.dispatchEvent(new CustomEvent("turbolev:open-new-request", { detail: { source: "CLIENTS" } }));
@@ -154,12 +157,12 @@ export function VehiclesDirectory() {
     <div className={styles.toolbar}>
       <label className={styles.search}>
         <span>⌕</span>
-        <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Пошук за номером авто, VIN, маркою, моделлю або власником..." />
-        {query && <button type="button" onClick={() => setQuery("")} aria-label="Очистити пошук">×</button>}
+        <input value={query} onChange={(event) => changeQuery(event.target.value)} placeholder="Пошук за номером авто, VIN, маркою, моделлю або власником..." />
+        {query && <button type="button" onClick={() => changeQuery("")} aria-label="Очистити пошук">×</button>}
       </label>
     </div>
 
-    <div className={styles.summary}>Знайдено автомобілів: <b>{vehicles.length}</b></div>
+    <div className={styles.summary}>Знайдено автомобілів: <b>{total}</b>{total > 0 && <span> · сторінка {page} з {pages}</span>}</div>
     {error && <div className={styles.error}>{error}</div>}
     {loading ? <div className={styles.state}>Завантажую автомобілі…</div> : !vehicles.length ? <div className={styles.state}>Нічого не знайдено.</div> : <div className={styles.grid}>
       {vehicles.map((vehicle) => <button key={vehicle.id} className={styles.card} onClick={() => openVehicle(vehicle.id)}>
@@ -182,6 +185,12 @@ export function VehiclesDirectory() {
         </div>
       </button>)}
     </div>}
+
+    {!loading && total > PAGE_SIZE && <nav className={styles.pagination} aria-label="Сторінки автомобілів">
+      <button type="button" disabled={page <= 1} onClick={() => setPage((current) => Math.max(1, current - 1))}>← Назад</button>
+      <span>Сторінка <b>{page}</b> з <b>{pages}</b></span>
+      <button type="button" disabled={page >= pages} onClick={() => setPage((current) => Math.min(pages, current + 1))}>Далі →</button>
+    </nav>}
 
     {vehicleId && <div className={styles.backdrop} onMouseDown={(event) => { if (event.target === event.currentTarget) closeVehicle(); }}>
       <aside className={styles.drawer}>
