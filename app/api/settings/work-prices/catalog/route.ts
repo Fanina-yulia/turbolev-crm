@@ -6,6 +6,7 @@ import {
 } from "@/src/generated/prisma/client";
 import { getPrisma } from "@/src/lib/prisma";
 import { toPrismaJson } from "@/src/lib/prisma-json";
+import { buildServiceDisplayName, buildServiceSearchAliases } from "@/src/services/service-catalog-name-builder.service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -14,6 +15,7 @@ export const maxDuration = 30;
 const SOURCES = new Set(Object.values(ServiceCatalogSource));
 const STATUSES = new Set(Object.values(ServiceCatalogReviewStatus));
 const TYPES = new Set(Object.values(ServiceCatalogItemType));
+const NAME_FIELDS = ["namePart", "namePosition", "nameSide", "nameOperation"] as const;
 
 function text(value: unknown, max = 2000) { return typeof value === "string" ? value.trim().slice(0, max) : ""; }
 function numberOrNull(value: unknown) {
@@ -24,6 +26,10 @@ function numberOrNull(value: unknown) {
 function integerOrNull(value: unknown) { const n = numberOrNull(value); return n == null ? null : Math.max(0, Math.round(n)); }
 function booleanParam(value: string | null) { return value === "true" ? true : value === "false" ? false : null; }
 function pageInt(value: string | null, fallback: number, max: number) { const n = Number(value); return Number.isFinite(n) ? Math.min(max, Math.max(1, Math.floor(n))) : fallback; }
+function has(body: Record<string, unknown>, field: string) { return Object.prototype.hasOwnProperty.call(body, field); }
+function optionalText(body: Record<string, unknown>, field: string, current: string | null, max: number) {
+  return has(body, field) ? text(body[field], max) || null : current;
+}
 
 export async function GET(request: NextRequest) {
   const prisma = getPrisma();
@@ -52,6 +58,11 @@ export async function GET(request: NextRequest) {
         { externalServiceId: { contains: q, mode: "insensitive" as const } },
         { internalName: { contains: q, mode: "insensitive" as const } },
         { displayName: { contains: q, mode: "insensitive" as const } },
+        { searchAliases: { has: q } },
+        { namePart: { contains: q, mode: "insensitive" as const } },
+        { namePosition: { contains: q, mode: "insensitive" as const } },
+        { nameSide: { contains: q, mode: "insensitive" as const } },
+        { nameOperation: { contains: q, mode: "insensitive" as const } },
         { sourceCategory: { contains: q, mode: "insensitive" as const } },
         { bodyPart: { contains: q, mode: "insensitive" as const } },
         { category: { is: { name: { contains: q, mode: "insensitive" as const } } } },
@@ -116,11 +127,18 @@ export async function PATCH(request: NextRequest) {
     const nextStatusRaw = text(body.reviewStatus, 40);
     const nextType = nextTypeRaw && TYPES.has(nextTypeRaw as ServiceCatalogItemType) ? nextTypeRaw as ServiceCatalogItemType : before.itemType;
     const nextStatus = nextStatusRaw && STATUSES.has(nextStatusRaw as ServiceCatalogReviewStatus) ? nextStatusRaw as ServiceCatalogReviewStatus : before.reviewStatus;
-    const nextDisplayName = Object.prototype.hasOwnProperty.call(body, "displayName") ? text(body.displayName, 1000) : before.displayName;
-    const nextInternalName = Object.prototype.hasOwnProperty.call(body, "internalName") ? text(body.internalName, 1000) : before.internalName;
-    const nextPrice = Object.prototype.hasOwnProperty.call(body, "basePrice") ? numberOrNull(body.basePrice) : before.basePrice == null ? null : Number(before.basePrice);
-    const nextCategoryId = Object.prototype.hasOwnProperty.call(body, "categoryId") ? text(body.categoryId, 80) || null : before.categoryId;
-    const wantsActive = Object.prototype.hasOwnProperty.call(body, "isActive") ? Boolean(body.isActive) : before.isActive;
+    const nextInternalName = has(body, "internalName") ? text(body.internalName, 1000) : before.internalName;
+    const namePart = optionalText(body, "namePart", before.namePart, 180);
+    const namePosition = optionalText(body, "namePosition", before.namePosition, 180);
+    const nameSide = optionalText(body, "nameSide", before.nameSide, 40);
+    const nameOperation = optionalText(body, "nameOperation", before.nameOperation, 180);
+    const builderTouched = NAME_FIELDS.some((field) => has(body, field));
+    const generatedDisplayName = buildServiceDisplayName({ part: namePart, position: namePosition, side: nameSide, operation: nameOperation });
+    const explicitDisplayName = has(body, "displayName") ? text(body.displayName, 1000) : before.displayName;
+    const nextDisplayName = builderTouched && generatedDisplayName ? generatedDisplayName : explicitDisplayName;
+    const nextPrice = has(body, "basePrice") ? numberOrNull(body.basePrice) : before.basePrice == null ? null : Number(before.basePrice);
+    const nextCategoryId = has(body, "categoryId") ? text(body.categoryId, 80) || null : before.categoryId;
+    const wantsActive = has(body, "isActive") ? Boolean(body.isActive) : before.isActive;
 
     if (!nextDisplayName || !nextInternalName) return NextResponse.json({ ok: false, error: "Назва позиції не може бути порожньою." }, { status: 400 });
     if (wantsActive) {
@@ -129,20 +147,33 @@ export async function PATCH(request: NextRequest) {
       if (nextType !== ServiceCatalogItemType.INFORMATION && nextType !== ServiceCatalogItemType.CHECKLIST && nextPrice == null) return NextResponse.json({ ok: false, error: "Перед активацією вкажіть базову ціну." }, { status: 409 });
     }
 
+    const namingChanged = builderTouched || has(body, "displayName") || has(body, "internalName");
+    const searchAliases = namingChanged ? buildServiceSearchAliases({
+      part: namePart,
+      position: namePosition,
+      side: nameSide,
+      operation: nameOperation,
+      displayName: nextDisplayName,
+      internalName: nextInternalName,
+      code: before.code,
+      externalServiceId: before.externalServiceId,
+      existing: before.searchAliases,
+    }) : before.searchAliases;
+
     const data = {
-      ...(Object.prototype.hasOwnProperty.call(body, "displayName") ? { displayName: nextDisplayName } : {}),
-      ...(Object.prototype.hasOwnProperty.call(body, "internalName") ? { internalName: nextInternalName } : {}),
-      ...(Object.prototype.hasOwnProperty.call(body, "basePrice") ? { basePrice: nextPrice } : {}),
-      ...(Object.prototype.hasOwnProperty.call(body, "normMinutes") ? { normMinutes: integerOrNull(body.normMinutes) } : {}),
-      ...(Object.prototype.hasOwnProperty.call(body, "categoryId") ? { categoryId: nextCategoryId } : {}),
-      ...(Object.prototype.hasOwnProperty.call(body, "itemType") ? { itemType: nextType } : {}),
-      ...(Object.prototype.hasOwnProperty.call(body, "warrantyKm") ? { warrantyKm: integerOrNull(body.warrantyKm) } : {}),
-      ...(Object.prototype.hasOwnProperty.call(body, "warrantyDays") ? { warrantyDays: integerOrNull(body.warrantyDays) } : {}),
-      ...(Object.prototype.hasOwnProperty.call(body, "reviewStatus") ? { reviewStatus: nextStatus } : {}),
-      ...(Object.prototype.hasOwnProperty.call(body, "reviewReason") ? { reviewReason: text(body.reviewReason, 2000) || null } : {}),
-      ...(Object.prototype.hasOwnProperty.call(body, "isActive") ? { isActive: wantsActive, showToOperator: wantsActive } : {}),
-      ...(Object.prototype.hasOwnProperty.call(body, "showToClient") ? { showToClient: Boolean(body.showToClient) && wantsActive } : {}),
-      ...(Object.prototype.hasOwnProperty.call(body, "vehicleCoefficientEnabled") ? { vehicleCoefficientEnabled: Boolean(body.vehicleCoefficientEnabled) } : {}),
+      ...(namingChanged ? { displayName: nextDisplayName, internalName: nextInternalName, searchAliases } : {}),
+      ...(builderTouched ? { namePart, namePosition, nameSide, nameOperation } : {}),
+      ...(has(body, "basePrice") ? { basePrice: nextPrice } : {}),
+      ...(has(body, "normMinutes") ? { normMinutes: integerOrNull(body.normMinutes) } : {}),
+      ...(has(body, "categoryId") ? { categoryId: nextCategoryId } : {}),
+      ...(has(body, "itemType") ? { itemType: nextType } : {}),
+      ...(has(body, "warrantyKm") ? { warrantyKm: integerOrNull(body.warrantyKm) } : {}),
+      ...(has(body, "warrantyDays") ? { warrantyDays: integerOrNull(body.warrantyDays) } : {}),
+      ...(has(body, "reviewStatus") ? { reviewStatus: nextStatus } : {}),
+      ...(has(body, "reviewReason") ? { reviewReason: text(body.reviewReason, 2000) || null } : {}),
+      ...(has(body, "isActive") ? { isActive: wantsActive, showToOperator: wantsActive } : {}),
+      ...(has(body, "showToClient") ? { showToClient: Boolean(body.showToClient) && wantsActive } : {}),
+      ...(has(body, "vehicleCoefficientEnabled") ? { vehicleCoefficientEnabled: Boolean(body.vehicleCoefficientEnabled) } : {}),
     };
 
     const after = await prisma.serviceCatalogItem.update({ where: { id }, data, include: { category: true } });
