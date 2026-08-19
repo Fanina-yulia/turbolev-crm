@@ -14,7 +14,7 @@ export type CrmRouteParams = {
   scope?: string;
 };
 
-const ROUTE_KEYS: Array<keyof CrmRouteParams> = [
+export const CRM_ROUTE_KEYS: Array<keyof CrmRouteParams> = [
   "status",
   "clientId",
   "vehicleId",
@@ -30,7 +30,7 @@ export function readCrmRoute(): CrmRouteParams {
   if (typeof window === "undefined") return {};
   const params = new URL(window.location.href).searchParams;
   const result: CrmRouteParams = {};
-  for (const key of ROUTE_KEYS) {
+  for (const key of CRM_ROUTE_KEYS) {
     const value = params.get(key);
     if (value) result[key] = value;
   }
@@ -47,7 +47,7 @@ export function navigateCrm(section: CrmSectionLabel, params: CrmRouteParams = {
 
   url.searchParams.delete("filter");
   url.searchParams.delete("filterLabel");
-  for (const key of ROUTE_KEYS) url.searchParams.delete(key);
+  for (const key of CRM_ROUTE_KEYS) url.searchParams.delete(key);
 
   for (const [key, raw] of Object.entries(params)) {
     const value = typeof raw === "string" ? raw.trim() : "";
