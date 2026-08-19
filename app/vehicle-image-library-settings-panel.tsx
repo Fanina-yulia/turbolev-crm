@@ -26,7 +26,24 @@ type Asset = {
   updatedAt: string;
 };
 
+type TestVehicle = {
+  id: string;
+  make: string;
+  model: string;
+  year: number | null;
+  bodyType: string | null;
+  plateNumber: string | null;
+};
+
 type Filter = "all" | "pending" | "approved" | "generating" | "error";
+
+type TestRunState = {
+  running: boolean;
+  completed: number;
+  total: number;
+  current: string;
+  failures: number;
+};
 
 function dateText(value: string | null) {
   if (!value) return "—";
@@ -61,6 +78,9 @@ export function VehicleImageLibrarySettingsPanel() {
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<Filter>("all");
   const [busy, setBusy] = useState<Record<string, string>>({});
+  const [testVehicles, setTestVehicles] = useState<TestVehicle[]>([]);
+  const [testSetLoading, setTestSetLoading] = useState(true);
+  const [testRun, setTestRun] = useState<TestRunState>({ running: false, completed: 0, total: 0, current: "", failures: 0 });
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -77,7 +97,24 @@ export function VehicleImageLibrarySettingsPanel() {
     }
   }, []);
 
-  useEffect(() => { void load(); }, [load]);
+  const loadTestSet = useCallback(async () => {
+    setTestSetLoading(true);
+    try {
+      const response = await fetch("/api/vehicle-images/library/test-set", { cache: "no-store" });
+      const payload = await response.json().catch(() => null) as { ok?: boolean; vehicles?: TestVehicle[]; error?: string } | null;
+      if (!response.ok || !payload?.ok) throw new Error(payload?.error || "Не вдалося підготувати контрольний набір.");
+      setTestVehicles(payload.vehicles || []);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Не вдалося підготувати контрольний набір.");
+    } finally {
+      setTestSetLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void load();
+    void loadTestSet();
+  }, [load, loadTestSet]);
 
   const stats = useMemo(() => ({
     all: assets.length,
@@ -100,6 +137,69 @@ export function VehicleImageLibrarySettingsPanel() {
       return true;
     });
   }, [assets, filter, search]);
+
+  const runTestSet = async () => {
+    if (!testVehicles.length || testRun.running) return;
+    setError("");
+    setNotice("");
+    setTestRun({ running: true, completed: 0, total: testVehicles.length, current: "Перевіряю підключення OpenAI…", failures: 0 });
+
+    try {
+      const testResponse = await fetch("/api/settings/integrations/VEHICLE_IMAGES/test", { method: "POST" });
+      const testPayload = await testResponse.json().catch(() => null) as { ok?: boolean; message?: string; error?: string } | null;
+      if (!testResponse.ok || !testPayload?.ok) {
+        throw new Error(testPayload?.message || testPayload?.error || "OpenAI API для зображень ще не налаштовано.");
+      }
+
+      const list = testVehicles.map((vehicle) => `• ${vehicle.make} ${vehicle.model}${vehicle.year ? ` ${vehicle.year}` : ""}`).join("\n");
+      const confirmed = window.confirm(
+        `Запустити контрольну генерацію ${testVehicles.length} автомобілів?\n\n${list}\n\nКожне відсутнє зображення створює окремий платний OpenAI API-запит. Уже готові зображення повторно не генеруються.`,
+      );
+      if (!confirmed) return;
+
+      let cursor = 0;
+      let completed = 0;
+      const failures: string[] = [];
+
+      const worker = async () => {
+        while (true) {
+          const index = cursor++;
+          if (index >= testVehicles.length) return;
+          const vehicle = testVehicles[index];
+          const title = `${vehicle.make} ${vehicle.model}${vehicle.year ? ` ${vehicle.year}` : ""}`;
+          setTestRun((current) => ({ ...current, current: `Генерую ${title}…` }));
+
+          try {
+            const response = await fetch("/api/vehicle-images/library/test-set", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ vehicleId: vehicle.id }),
+            });
+            const payload = await response.json().catch(() => null) as { ok?: boolean; error?: string } | null;
+            if (!response.ok || !payload?.ok) throw new Error(payload?.error || "Помилка генерації.");
+          } catch (reason) {
+            failures.push(`${title}: ${reason instanceof Error ? reason.message : "помилка"}`);
+          } finally {
+            completed += 1;
+            setTestRun((current) => ({ ...current, completed, failures: failures.length }));
+          }
+        }
+      };
+
+      await Promise.all(Array.from({ length: Math.min(2, testVehicles.length) }, () => worker()));
+      await load();
+
+      if (failures.length) {
+        setError(`Контрольний тест завершено: ${completed - failures.length}/${completed} успішно. ${failures.join(" · ")}`);
+      } else {
+        setNotice(`Контрольний тест завершено: усі ${completed} зображень готові. Перевірте відповідність моделей і натисніть «Затвердити» для коректних.`);
+      }
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Не вдалося запустити контрольний тест.");
+    } finally {
+      setTestRun((current) => ({ ...current, running: false, current: "" }));
+    }
+  };
 
   const patch = async (asset: Asset, action: "approve" | "regenerate") => {
     setBusy((current) => ({ ...current, [asset.id]: action }));
@@ -159,8 +259,27 @@ export function VehicleImageLibrarySettingsPanel() {
         <h2>Бібліотека зображень авто</h2>
         <p>Перевіряйте згенеровані моделі, затверджуйте вдалі, перегенеровуйте неточні або замінюйте їх власним PNG.</p>
       </div>
-      <button className={styles.refresh} type="button" onClick={() => void load()} disabled={loading}>↻ Оновити</button>
+      <button className={styles.refresh} type="button" onClick={() => { void load(); void loadTestSet(); }} disabled={loading || testSetLoading}>↻ Оновити</button>
     </header>
+
+    <div className={styles.testPanel}>
+      <div className={styles.testCopy}>
+        <span className={styles.testEyebrow}>Контроль якості перед масовим запуском</span>
+        <h3>Тестовий набір із реальних авто CRM</h3>
+        <p>CRM бере шість останніх реальних автомобілів із заповненими маркою та моделлю. Це дозволяє перевірити різні кузови, роки й покоління до масштабного наповнення бібліотеки.</p>
+        <div className={styles.testVehicles}>
+          {testVehicles.map((vehicle) => <span key={vehicle.id}>{vehicle.make} {vehicle.model}{vehicle.year ? ` · ${vehicle.year}` : ""}</span>)}
+          {!testSetLoading && !testVehicles.length ? <span>Немає достатньо автомобілів для тесту</span> : null}
+        </div>
+      </div>
+      <div className={styles.testAction}>
+        <button type="button" onClick={() => void runTestSet()} disabled={testSetLoading || testRun.running || !testVehicles.length}>
+          {testRun.running ? `Генерація ${testRun.completed}/${testRun.total}` : testSetLoading ? "Готую набір…" : `Згенерувати ${testVehicles.length} тестових авто`}
+        </button>
+        <small>Спочатку CRM перевіряє OpenAI. Платні запити стартують тільки після вашого підтвердження.</small>
+        {testRun.running ? <div className={styles.testProgress}><span style={{ width: `${testRun.total ? Math.round(testRun.completed / testRun.total * 100) : 0}%` }}/><b>{testRun.current}</b></div> : null}
+      </div>
+    </div>
 
     <div className={styles.stats}>
       <button type="button" className={filter === "all" ? styles.statActive : ""} onClick={() => setFilter("all")}><b>{stats.all}</b><span>Усього</span></button>
@@ -179,7 +298,7 @@ export function VehicleImageLibrarySettingsPanel() {
     {notice ? <div className={styles.notice}>{notice}</div> : null}
 
     {loading ? <div className={styles.empty}>Завантажую бібліотеку…</div> : null}
-    {!loading && !assets.length ? <div className={styles.empty}><b>Бібліотека поки порожня.</b><span>Після першої генерації зображення авто воно з’явиться тут для перевірки.</span></div> : null}
+    {!loading && !assets.length ? <div className={styles.empty}><b>Бібліотека поки порожня.</b><span>Запустіть контрольний набір вище або згенеруйте зображення з картки автомобіля.</span></div> : null}
     {!loading && assets.length > 0 && !visible.length ? <div className={styles.empty}>За цим фільтром нічого не знайдено.</div> : null}
 
     <div className={styles.grid}>
