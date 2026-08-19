@@ -9,7 +9,7 @@ export type CrmAccessSnapshot = {
   provisioningState:"ANONYMOUS"|"AUTHENTICATED_UNPROVISIONED"|"ACTIVE"|"INACTIVE";
   enforcementMode:"SHADOW"|"ENFORCED";
   user:{id:string;name:string|null;employeeId:string|null}|null;
-  roles:Array<{code?:string;name?:string}>;
+  roles:Array<{code:string;name:string;locationId:string|null;isPrimary:boolean}>;
   permissions:Record<string,string>;
   locations:string[];
 };
@@ -35,11 +35,7 @@ export function useCrmAccess(){
     if(!activeUser)return false;
     return Boolean(snapshot?.permissions?.[permission]);
   }),[enforced,activeUser,snapshot]);
-
-  const canOpenCabinet=(slug:string)=>{
-    const permission=NAV_PERMISSION[slug];
-    return permission?can(permission):true;
-  };
-
-  return {snapshot,loaded,enforced:Boolean(enforced),activeUser:Boolean(activeUser),can,canOpenCabinet};
+  const canOpenCabinet=(slug:string)=>{const permission=NAV_PERMISSION[slug];return permission?can(permission):true;};
+  const primaryRole=snapshot?.roles.find(role=>role.isPrimary)||snapshot?.roles[0]||null;
+  return {snapshot,loaded,enforced:Boolean(enforced),activeUser:Boolean(activeUser),primaryRole,can,canOpenCabinet};
 }
