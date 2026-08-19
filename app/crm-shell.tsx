@@ -114,13 +114,14 @@ function legacyRoute(section:CrmSectionLabel,filter:string):LegacyRoute|null{
   return null;
 }
 
-export function CrmShell({ initialSection }: { initialSection?: string }) {
+export function CrmShell({ initialSection, initialSettingsTab }: { initialSection?: string; initialSettingsTab?: string }) {
   const initialActive=sectionFromSlug(initialSection);
+  const initialTab=(SETTINGS_SUBMENU.some(item=>item.id===initialSettingsTab)?initialSettingsTab:"schedule") as SettingsTab;
   const [active, setActive] = useState<CrmSectionLabel>(initialActive);
   const [workflowFilter, setWorkflowFilter] = useState("");
   const [workflowFilterLabel, setWorkflowFilterLabel] = useState("");
   const [openGroup,setOpenGroup]=useState<string|null>(()=>groupForSection(initialActive));
-  const [settingsTab,setSettingsTab]=useState<SettingsTab>("schedule");
+  const [settingsTab,setSettingsTab]=useState<SettingsTab>(initialTab);
   const [mobileNavOpen,setMobileNavOpen]=useState(false);
   const access=useCrmAccess();
 
@@ -150,7 +151,7 @@ export function CrmShell({ initialSection }: { initialSection?: string }) {
       const url = new URL(window.location.href);
       const next=sectionFromSlug(url.searchParams.get("section"));
       setActive(next);setOpenGroup(groupForSection(next));setWorkflowFilter(url.searchParams.get("filter") || "");setWorkflowFilterLabel(url.searchParams.get("filterLabel") || "");setMobileNavOpen(false);
-      const tab=url.searchParams.get("settingsTab") as SettingsTab|null;if(tab&&SETTINGS_SUBMENU.some(item=>item.id===tab))setSettingsTab(tab);
+      const tab=url.searchParams.get("settingsTab") as SettingsTab|null;setSettingsTab(tab&&SETTINGS_SUBMENU.some(item=>item.id===tab)?tab:"schedule");
     };
     const navigate = (event: Event) => {
       const detail = (event as CustomEvent<NavigateDetail>).detail;
