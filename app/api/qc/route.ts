@@ -9,7 +9,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
 
-const ACTIVE_WORK_ORDER_STATUSES = ["WAITING_QC", "REWORK", "READY_FOR_PICKUP", "WAITING_PAYMENT", "CLOSED"] as const;
+const ACTIVE_WORK_ORDER_STATUSES = ["WAITING_QC", "REWORK", "WAITING_PAYMENT", "READY_FOR_PICKUP", "CLOSED"] as const;
 
 function scopeRank(scope: AccessScopeCode | undefined) {
   return scope === "ALL" ? 5 : scope === "LOCATION" ? 4 : scope === "TEAM" ? 3 : scope === "ASSIGNED" ? 2 : scope === "SELF" ? 1 : 0;
@@ -208,7 +208,7 @@ export async function POST(request: Request) {
     let warning = null;
     if (action === "PASS" || action === "FAIL") {
       try {
-        workOrder = await transitionWorkOrder(workOrderId, action === "PASS" ? "READY_FOR_PICKUP" : "REWORK", actorName);
+        workOrder = await transitionWorkOrder(workOrderId, action === "PASS" ? "WAITING_PAYMENT" : "REWORK", actorName);
       } catch (error) {
         warning = transitionWarning(error);
       }
