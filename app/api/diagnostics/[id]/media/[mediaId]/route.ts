@@ -36,7 +36,7 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
     }
     const media = await mediaBelongsToDiagnostic(mediaId, id);
     if (!media) return NextResponse.json({ ok: false, error: "MEDIA_NOT_FOUND" }, { status: 404 });
-    return new Response(Buffer.from(media.fileData), {
+    return new Response(media.fileData, {
       status: 200,
       headers: {
         "Content-Type": media.mimeType,
