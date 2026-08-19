@@ -1,0 +1,160 @@
+/* Personnel v2 wizard production polish.
+   CSS-module class names keep the local token (e.g. wizardCard), so substring
+   selectors let us add cross-cutting responsive/accessibility guards globally. */
+
+[class*="personnel-v2_wizardPage"] {
+  width: 100%;
+  min-width: 0;
+}
+
+[class*="personnel-v2_wizardCard"],
+[class*="personnel-v2_basicFields"],
+[class*="personnel-v2_roleRow"],
+[class*="personnel-v2_doc"] {
+  min-width: 0;
+}
+
+[class*="personnel-v2_wizardPage"] input,
+[class*="personnel-v2_wizardPage"] select,
+[class*="personnel-v2_wizardPage"] textarea,
+[class*="personnel-v2_wizardPage"] button,
+[class*="personnel-v2_wizardPage"] a {
+  -webkit-tap-highlight-color: transparent;
+}
+
+[class*="personnel-v2_wizardPage"] button:focus-visible,
+[class*="personnel-v2_wizardPage"] a:focus-visible,
+[class*="personnel-v2_wizardPage"] input:focus-visible,
+[class*="personnel-v2_wizardPage"] select:focus-visible,
+[class*="personnel-v2_wizardPage"] textarea:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 72%, white);
+  outline-offset: 2px;
+}
+
+[class*="personnel-v2_stepper"] {
+  overscroll-behavior-x: contain;
+  scroll-behavior: smooth;
+}
+
+[class*="personnel-v2_stepItem"]:disabled {
+  opacity: .62;
+}
+
+[class*="personnel-v2_doc"] b,
+[class*="personnel-v2_doc"] small,
+[class*="personnel-v2_roleRow"] small,
+[class*="personnel-v2_reviewCard"] strong {
+  overflow-wrap: anywhere;
+}
+
+[class*="personnel-v2_wizardFooter"] {
+  padding-bottom: max(8px, env(safe-area-inset-bottom));
+}
+
+@media (max-width: 820px) {
+  [class*="personnel-v2_wizardHeader"] {
+    position: relative;
+  }
+
+  [class*="personnel-v2_stepper"] {
+    margin-inline: -2px;
+    padding-bottom: 18px;
+  }
+
+  [class*="personnel-v2_wizardCard"] {
+    max-width: 100%;
+  }
+
+  [class*="personnel-v2_roleRow"] select,
+  [class*="personnel-v2_field"] input,
+  [class*="personnel-v2_field"] select,
+  [class*="personnel-v2_field"] textarea {
+    min-height: 44px;
+  }
+}
+
+@media (max-width: 620px) {
+  /* Prevent iOS Safari from zooming the page when a field receives focus. */
+  [class*="personnel-v2_wizardPage"] input,
+  [class*="personnel-v2_wizardPage"] select,
+  [class*="personnel-v2_wizardPage"] textarea {
+    font-size: 16px;
+  }
+
+  [class*="personnel-v2_wizardHeader"] {
+    gap: 10px;
+  }
+
+  [class*="personnel-v2_breadcrumbs"] {
+    font-size: 11px;
+  }
+
+  [class*="personnel-v2_stepper"] {
+    scrollbar-width: none;
+  }
+
+  [class*="personnel-v2_stepper"]::-webkit-scrollbar {
+    display: none;
+  }
+
+  [class*="personnel-v2_photoColumn"] {
+    width: min(190px, 100%);
+  }
+
+  [class*="personnel-v2_docActions"] button,
+  [class*="personnel-v2_docActions"] a {
+    min-height: 40px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  [class*="personnel-v2_wizardFooter"] {
+    margin-inline: -1px;
+    padding-top: 12px;
+    background: color-mix(in srgb, var(--bg) 94%, transparent);
+    backdrop-filter: blur(10px);
+  }
+}
+
+@media (max-width: 420px) {
+  [class*="personnel-v2_wizardCard"] {
+    padding-inline: 12px;
+  }
+
+  [class*="personnel-v2_reviewCard"] {
+    grid-template-columns: 1fr;
+  }
+
+  [class*="personnel-v2_accessCard"] {
+    padding: 15px;
+  }
+
+  [class*="personnel-v2_wizardFooter"] [class*="personnel-v2_primary"],
+  [class*="personnel-v2_wizardFooter"] [class*="personnel-v2_secondary"] {
+    min-width: 96px;
+    padding-inline: 12px;
+  }
+}
+
+@media (max-height: 700px) and (min-width: 621px) {
+  [class*="personnel-v2_wizardCard"] {
+    min-height: 300px;
+  }
+
+  [class*="personnel-v2_stepper"] {
+    padding-top: 12px;
+    padding-bottom: 12px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [class*="personnel-v2_wizardPage"] *,
+  [class*="personnel-v2_wizardPage"] *::before,
+  [class*="personnel-v2_wizardPage"] *::after {
+    scroll-behavior: auto !important;
+    transition-duration: .01ms !important;
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}
