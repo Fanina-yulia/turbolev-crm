@@ -36,20 +36,26 @@ export async function POST(request: Request, context: Context) {
   if (!gate.allowed) return gate.response;
   const form = await request.formData();
   const file = form.get("file");
+  const docName = String(form.get("name") || "Документ").trim().slice(0, 160) || "Документ";
+  const docType = String(form.get("type") || "OTHER").trim().slice(0, 120) || "OTHER";
   if (!(file instanceof File)) return NextResponse.json({ ok: false, error: "FILE_REQUIRED", message: "Оберіть файл." }, { status: 400 });
   if (!ALLOWED.has(file.type)) return NextResponse.json({ ok: false, error: "FILE_TYPE_NOT_ALLOWED", message: "Дозволені PDF, JPG, PNG або WEBP." }, { status: 415 });
   if (file.size > MAX_BYTES) return NextResponse.json({ ok: false, error: "FILE_TOO_LARGE", message: "Максимальний розмір документа — 10 МБ." }, { status: 413 });
 
   const prisma = getPrisma();
+  const employee = await prisma.employeeProfile.findUnique({ where: { id }, select: { id: true } });
+  if (!employee) return NextResponse.json({ ok: false, error: "EMPLOYEE_NOT_FOUND" }, { status: 404 });
   const existing = await prisma.employeeDocument.findFirst({ where: { id: documentId, employeeId: id }, select: { id: true } });
-  if (!existing) return NextResponse.json({ ok: false, error: "DOCUMENT_NOT_FOUND" }, { status: 404 });
+  if (!existing) {
+    await prisma.employeeDocument.create({ data: { id: documentId, employeeId: id, type: docType, name: docName, status: "MISSING" } });
+  }
   const bytes = Buffer.from(await file.arrayBuffer());
   const url = `/api/personnel/${encodeURIComponent(id)}/documents/${encodeURIComponent(documentId)}`;
   await prisma.$executeRawUnsafe(
-    `UPDATE "EmployeeDocument" SET "fileName"=$1,"mimeType"=$2,"fileSize"=$3,"fileData"=$4,"fileUrl"=$5,"status"='UPLOADED',"uploadedAt"=CURRENT_TIMESTAMP,"updatedAt"=CURRENT_TIMESTAMP WHERE "id"=$6 AND "employeeId"=$7`,
-    file.name.slice(0, 240), file.type, file.size, bytes, url, documentId, id,
+    `UPDATE "EmployeeDocument" SET "name"=$1,"type"=$2,"fileName"=$3,"mimeType"=$4,"fileSize"=$5,"fileData"=$6,"fileUrl"=$7,"status"='UPLOADED',"uploadedAt"=CURRENT_TIMESTAMP,"updatedAt"=CURRENT_TIMESTAMP WHERE "id"=$8 AND "employeeId"=$9`,
+    docName, docType, file.name.slice(0, 240), file.type, file.size, bytes, url, documentId, id,
   );
-  return NextResponse.json({ ok: true, document: { id: documentId, fileName: file.name, mimeType: file.type, fileSize: file.size, fileUrl: url, status: "UPLOADED" } });
+  return NextResponse.json({ ok: true, document: { id: documentId, name: docName, type: docType, fileName: file.name, mimeType: file.type, fileSize: file.size, fileUrl: url, status: "UPLOADED" } });
 }
 
 export async function GET(request: Request, context: Context) {
