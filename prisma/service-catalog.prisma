@@ -87,6 +87,10 @@ model ServiceCatalogItem {
   internalName              String                            @db.Text
   displayName               String                            @db.Text
   searchAliases             String[]                          @default([])
+  namePart                  String?                           @db.VarChar(180)
+  namePosition              String?                           @db.VarChar(180)
+  nameSide                  String?                           @db.VarChar(40)
+  nameOperation             String?                           @db.VarChar(180)
   categoryId                String?
   sourceCategory            String?                           @db.VarChar(180)
   itemType                  ServiceCatalogItemType            @default(LABOR)
