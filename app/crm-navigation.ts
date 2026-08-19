@@ -33,13 +33,13 @@ const IMPLEMENTED_SLUGS = new Set<CrmSectionSlug>([
   "planner",
   "diagnostics",
   "work-orders",
+  "production",
   "parts",
   "finance",
   "settings",
 ]);
 
 const SECTION_FALLBACKS: Partial<Record<CrmSectionLabel, CrmSectionLabel>> = {
-  "Виробництво": "Замовлення-наряди",
   "Контроль якості": "Замовлення-наряди",
   "Закупівлі та склад": "Підбір запчастин",
   "Оплати": "Фінансовий центр",
@@ -58,7 +58,7 @@ function navItems(...slugs: CrmSectionSlug[]): CrmNavItem[] {
 export const CRM_NAV_GROUPS: readonly CrmNavGroup[] = [
   { label: "Головне", items: navItems("overview") },
   { label: "Клієнти", items: navItems("communications", "leads", "clients", "vehicles") },
-  { label: "Сервіс", items: navItems("planner", "diagnostics", "work-orders") },
+  { label: "Сервіс", items: navItems("planner", "diagnostics", "work-orders", "production") },
   { label: "Запчастини", items: navItems("parts") },
   { label: "Фінанси", items: navItems("finance") },
   { label: "Управління", items: navItems("settings") },
