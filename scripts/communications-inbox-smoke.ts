@@ -1,5 +1,11 @@
 import assert from "node:assert/strict";
-import { buildCommunicationConversations, normalizeCommunicationPhone, type CommunicationInquiry } from "../src/domain/communications-inbox";
+import {
+  buildCommunicationConversations,
+  getCommunicationReplyInquiries,
+  getDefaultCommunicationReplyInquiry,
+  normalizeCommunicationPhone,
+  type CommunicationInquiry,
+} from "../src/domain/communications-inbox";
 
 function missed(id: string, phone: string, at: string, unread = false): CommunicationInquiry {
   return {
@@ -78,5 +84,39 @@ const handledPhone = handled.find((item) => item.key === "phone:380673292456");
 assert.ok(handledPhone);
 assert.equal(handledPhone.unresolvedMissedCount, 0, "a later response resolves earlier missed calls for the grouped contact");
 assert.equal(handledPhone.actionState, "HANDLED");
+
+const omnichannel = buildCommunicationConversations([
+  {
+    id: "binotel-latest",
+    channel: "BINOTEL",
+    state: "NEW",
+    name: "Клієнт",
+    phone: "+380671112233",
+    subject: "Вхідний дзвінок",
+    preview: "Розмова завершена",
+    unread: false,
+    answered: true,
+    receivedAt: "2026-08-19T12:30:00.000Z",
+    messages: [{ id: "call", direction: "system", text: "Розмова завершена", at: "2026-08-19T12:30:00.000Z" }],
+  },
+  {
+    id: "instagram-earlier",
+    channel: "INSTAGRAM",
+    state: "NEW",
+    name: "Клієнт",
+    phone: "+380671112233",
+    subject: "Instagram Direct",
+    preview: "Запишіть мене на завтра",
+    unread: false,
+    answered: false,
+    receivedAt: "2026-08-19T12:20:00.000Z",
+    messages: [{ id: "ig-in", direction: "in", text: "Запишіть мене на завтра", at: "2026-08-19T12:20:00.000Z" }],
+  },
+]);
+assert.equal(omnichannel.length, 1);
+const replyConversation = omnichannel[0];
+assert.equal(replyConversation.representative.channel, "BINOTEL", "latest event can still be a phone call");
+assert.equal(getDefaultCommunicationReplyInquiry(replyConversation).channel, "INSTAGRAM", "live messaging channel must be preferred for the composer");
+assert.deepEqual(getCommunicationReplyInquiries(replyConversation).map((item) => item.channel), ["INSTAGRAM", "BINOTEL"]);
 
 console.log("communications-inbox-smoke: ok");

@@ -26,6 +26,10 @@ export type CommunicationInquiry = {
   utm?: string;
   existingLeadId?: string;
   duplicateLead?: { id: string; name?: string | null } | null;
+  externalParticipantId?: string;
+  replyAllowedUntil?: string;
+  lastInboundAt?: string;
+  lastOutboundAt?: string;
   messages: CommunicationMessage[];
 };
 
@@ -78,6 +82,27 @@ export function getCommunicationConversationKey(inquiry: CommunicationInquiry) {
   if (handle) return `handle:${inquiry.channel}:${handle}`;
   if (inquiry.existingLeadId) return `lead:${inquiry.existingLeadId}`;
   return `inquiry:${inquiry.id}`;
+}
+
+export function isLiveReplyChannel(channel: CommunicationChannel) {
+  return channel === "FACEBOOK" || channel === "INSTAGRAM" || channel === "OLX";
+}
+
+export function getCommunicationReplyInquiries(conversation: CommunicationConversation) {
+  const byChannel = new Map<CommunicationChannel, CommunicationInquiry>();
+  for (const inquiry of conversation.inquiries) {
+    if (!byChannel.has(inquiry.channel)) byChannel.set(inquiry.channel, inquiry);
+  }
+  const items = Array.from(byChannel.values());
+  return items.sort((left, right) => {
+    const liveDelta = Number(isLiveReplyChannel(right.channel)) - Number(isLiveReplyChannel(left.channel));
+    if (liveDelta) return liveDelta;
+    return new Date(right.receivedAt).getTime() - new Date(left.receivedAt).getTime();
+  });
+}
+
+export function getDefaultCommunicationReplyInquiry(conversation: CommunicationConversation) {
+  return getCommunicationReplyInquiries(conversation)[0] || conversation.representative;
 }
 
 function metadataCallStatus(metadata: unknown): string | null {
