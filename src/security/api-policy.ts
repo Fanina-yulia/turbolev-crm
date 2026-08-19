@@ -47,6 +47,22 @@ const RULES: Rule[] = [
     resolve: () => ({ kind: "EXTERNAL_PROVIDER", note: "Inbound provider callback authenticated by provider/webhook controls, not employee session." }),
   },
   {
+    match: exact("/api/integrations/olx/callback"),
+    resolve: () => ({ kind: "EXTERNAL_PROVIDER", note: "OLX OAuth callback authenticated with signed short-lived state and provider authorization code." }),
+  },
+  {
+    match: exact("/api/integrations/olx/connect"),
+    resolve: () => internal(PERMISSIONS.SETTINGS_INTEGRATIONS, "ALL", "Starting OLX OAuth changes integration credentials and requires integration administration.", true),
+  },
+  {
+    match: (path) => path === "/api/integrations/olx/sync" || path === "/api/integrations/olx/poll",
+    resolve: () => internal(PERMISSIONS.COMMUNICATIONS_WRITE, "TEAM", "OLX synchronization imports communication facts into the omnichannel inbox.", true),
+  },
+  {
+    match: exact("/api/integrations/communications/status"),
+    resolve: () => internal(PERMISSIONS.COMMUNICATIONS_READ, "TEAM", "Communication integration health is visible to authorized inbox operators without returning secrets.", true),
+  },
+  {
     match: exact("/api/telephony/binotel-webhook"),
     resolve: () => ({ kind: "EXTERNAL_PROVIDER", note: "Binotel callback authenticated with dedicated webhook token/provider contract." }),
   },
