@@ -137,6 +137,10 @@ const RULES: Rule[] = [
     resolve: (method) => readWrite(method, PERMISSIONS.FINANCE_READ, PERMISSIONS.FINANCE_WRITE, "ALL", "Financial center and accounts."),
   },
   {
+    match: prefix("/api/production"),
+    resolve: (method) => readWrite(method, PERMISSIONS.PRODUCTION_READ, PERMISSIONS.PRODUCTION_WRITE, "LOCATION", "Production board is station-scoped; mechanics are further narrowed to assigned appointments or WorkOrder lines."),
+  },
+  {
     match: (path) => /^\/api\/work-orders\/[^/]+\/payments(?:\/|$)/.test(path),
     resolve: (method) => readWrite(method, PERMISSIONS.PAYMENTS_READ, PERMISSIONS.PAYMENTS_WRITE, "ALL", "WorkOrder payment operations."),
   },
