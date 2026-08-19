@@ -208,6 +208,7 @@ export async function GET(request: Request) {
         })),
         appointments: appointments.map((item) => ({
           id: item.id,
+          workOrderId: item.workOrderId,
           status: item.status,
           plannedStartAt: item.plannedStartAt,
           plannedEndAt: item.plannedEndAt,
