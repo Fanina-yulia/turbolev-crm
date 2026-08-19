@@ -147,16 +147,22 @@ async function upsertMetaIdentity(input: {
   );
 }
 
-async function updateDeliveryStatus(messageIds: string[], status: "SENT" | "DELIVERED") {
+async function updateDeliveryStatus(messageIds: string[], status: "SENT" | "DELIVERED" | "READ") {
   if (!messageIds.length) return;
   const pool = getSqlPool();
   await pool.query(
     `UPDATE "CommunicationMessage"
      SET "deliveryStatus"=$2,
-         "providerPayload"=COALESCE("providerPayload", '{}'::jsonb) || $3::jsonb
+         "metadata"=COALESCE("metadata", '{}'::jsonb) || $3::jsonb,
+         "providerPayload"=COALESCE("providerPayload", '{}'::jsonb) || $4::jsonb
      WHERE ("providerMessageId" = ANY($1::text[]) OR "externalId" = ANY($1::text[]))
        AND "direction"='OUT'`,
-    [messageIds, status, JSON.stringify({ metaStatusAt: new Date().toISOString() })],
+    [
+      messageIds,
+      status,
+      JSON.stringify({ delivery: status }),
+      JSON.stringify({ metaStatusAt: new Date().toISOString(), deliveryStatus: status }),
+    ],
   );
 }
 
@@ -171,9 +177,15 @@ async function updateReadStatus(channel: CommunicationChannel, threadExternalId:
   await pool.query(
     `UPDATE "CommunicationMessage"
      SET "deliveryStatus"='READ',
-         "providerPayload"=COALESCE("providerPayload", '{}'::jsonb) || $3::jsonb
+         "metadata"=COALESCE("metadata", '{}'::jsonb) || $3::jsonb,
+         "providerPayload"=COALESCE("providerPayload", '{}'::jsonb) || $4::jsonb
      WHERE "inquiryId"=$1 AND "direction"='OUT' AND "sentAt" <= $2`,
-    [inquiryId, new Date(watermark), JSON.stringify({ metaReadAt: new Date(watermark).toISOString() })],
+    [
+      inquiryId,
+      new Date(watermark),
+      JSON.stringify({ delivery: "READ" }),
+      JSON.stringify({ metaReadAt: new Date(watermark).toISOString(), deliveryStatus: "READ" }),
+    ],
   );
 }
 
@@ -210,11 +222,11 @@ export async function processMetaWebhook(rawBody: string) {
       if (message) {
         const mid = asString(message.mid) || `meta-${randomUUID()}`;
         const recorded = await recordWebhookEvent(channel, mid, "message", event);
-        if (!recorded.inserted) {
-          duplicates += 1;
-          continue;
-        }
+        if (!recorded.inserted) duplicates += 1;
 
+        // Reprocessing a duplicate event is intentional: CommunicationInquiry/Message have
+        // provider-level unique keys, so retries are idempotent and cannot lose a message
+        // when a previous attempt recorded WebhookEvent but failed before ingestion completed.
         if (message.is_echo === true) {
           await updateDeliveryStatus([mid], "SENT");
           accepted += 1;
@@ -269,10 +281,7 @@ export async function processMetaWebhook(rawBody: string) {
         const payload = asString(postback.payload) || asString(postback.title) || "Postback";
         const eventId = `postback:${accountId}:${participantId}:${asNumber(event.timestamp) || Date.now()}:${payload}`;
         const recorded = await recordWebhookEvent(channel, eventId, "postback", event);
-        if (!recorded.inserted) {
-          duplicates += 1;
-          continue;
-        }
+        if (!recorded.inserted) duplicates += 1;
         const receivedAt = eventDate(event.timestamp);
         const inquiry = await ingestCommunicationInquiry({
           channel,
@@ -298,18 +307,22 @@ export async function processMetaWebhook(rawBody: string) {
         const mids = asArray(delivery.mids).map(asString).filter((item): item is string => Boolean(item));
         const eventId = mids.length ? `delivery:${mids.join(",")}` : `delivery:${accountId}:${participantId}:${asNumber(delivery.watermark) || Date.now()}`;
         const recorded = await recordWebhookEvent(channel, eventId, "delivery", event);
-        if (recorded.inserted) await updateDeliveryStatus(mids, "DELIVERED");
-        else duplicates += 1;
+        if (!recorded.inserted) duplicates += 1;
+        await updateDeliveryStatus(mids, "DELIVERED");
         accepted += 1;
         continue;
       }
 
       if (read) {
+        const readMid = asString(read.mid);
         const watermark = asNumber(read.watermark) || asNumber(event.timestamp) || Date.now();
-        const eventId = `read:${accountId}:${participantId}:${watermark}`;
+        const eventId = readMid
+          ? `read:${readMid}`
+          : `read:${accountId}:${participantId}:${watermark}`;
         const recorded = await recordWebhookEvent(channel, eventId, "read", event);
-        if (recorded.inserted) await updateReadStatus(channel, threadExternalId, watermark);
-        else duplicates += 1;
+        if (!recorded.inserted) duplicates += 1;
+        if (readMid) await updateDeliveryStatus([readMid], "READ");
+        else await updateReadStatus(channel, threadExternalId, watermark);
         accepted += 1;
       }
     }
