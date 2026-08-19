@@ -47,6 +47,22 @@ const RULES: Rule[] = [
     resolve: () => ({ kind: "EXTERNAL_PROVIDER", note: "Inbound provider callback authenticated by provider/webhook controls, not employee session." }),
   },
   {
+    match: exact("/api/integrations/olx/callback"),
+    resolve: () => ({ kind: "EXTERNAL_PROVIDER", note: "OLX OAuth callback authenticated with signed short-lived state and provider authorization code." }),
+  },
+  {
+    match: exact("/api/integrations/olx/connect"),
+    resolve: () => internal(PERMISSIONS.SETTINGS_INTEGRATIONS, "ALL", "Starting OLX OAuth changes integration credentials and requires integration administration.", true),
+  },
+  {
+    match: (path) => path === "/api/integrations/olx/sync" || path === "/api/integrations/olx/poll",
+    resolve: () => internal(PERMISSIONS.COMMUNICATIONS_WRITE, "TEAM", "OLX synchronization imports communication facts into the omnichannel inbox.", true),
+  },
+  {
+    match: exact("/api/integrations/communications/status"),
+    resolve: () => internal(PERMISSIONS.COMMUNICATIONS_READ, "TEAM", "Communication integration health is visible to authorized inbox operators without returning secrets.", true),
+  },
+  {
     match: exact("/api/telephony/binotel-webhook"),
     resolve: () => ({ kind: "EXTERNAL_PROVIDER", note: "Binotel callback authenticated with dedicated webhook token/provider contract." }),
   },
@@ -87,12 +103,25 @@ const RULES: Rule[] = [
     resolve: () => internal(PERMISSIONS.OVERVIEW_READ, "LOCATION", "Authenticated role-specific cabinet. Response is narrowed server-side to assigned mechanic work or the manager's station and excludes global finance.", true),
   },
   {
+    match: exact("/api/cabinet/service-advisor"),
+    resolve: () => internal(PERMISSIONS.OVERVIEW_READ, "LOCATION", "Service-advisor cabinet is authenticated and station-scoped; the route also enforces the SERVICE_ADVISOR role.", true),
+  },
+  {
     match: exact("/api/audit"),
     resolve: () => internal(PERMISSIONS.AUDIT_READ, "ALL", "Audit log is sensitive and never inherits generic analytics access."),
   },
   {
     match: (path) => path === "/api/personnel/access-catalog" || /^\/api\/personnel\/[^/]+\/access$/.test(path),
     resolve: () => internal(PERMISSIONS.PERSONNEL_WRITE, "LOCATION", "Delegated employee/cabinet administration is always authenticated and station-scoped when applicable.", true),
+  },
+  {
+    match: prefix("/api/personnel"),
+    resolve: (method) => {
+      if (method.toUpperCase() === "GET") {
+        return internal(PERMISSIONS.PERSONNEL_READ, "SELF", "Personnel nested reads, documents and v2 catalog require personnel read access; route handlers enforce row/location scope.");
+      }
+      return internal(PERMISSIONS.PERSONNEL_WRITE, "LOCATION", "Personnel nested mutations, documents, photos and v2 role operations require strict location-scoped personnel write access.", true);
+    },
   },
   {
     match: exact("/api/personnel"),

@@ -105,12 +105,13 @@ model User {
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
 
-  managedCalls           CallHistory[]          @relation("CallManager")
-  assignedLeads          Lead[]                 @relation("LeadAssignee")
-  communicationInquiries CommunicationInquiry[] @relation("CommunicationAssignee")
-  employeeProfile        EmployeeProfile?
-  accessRoles            UserAccessRole[]
-  permissionOverrides    UserPermissionOverride[]
+  managedCalls              CallHistory[]          @relation("CallManager")
+  assignedLeads             Lead[]                 @relation("LeadAssignee")
+  communicationInquiries    CommunicationInquiry[] @relation("CommunicationAssignee")
+  sentCommunicationMessages CommunicationMessage[]
+  employeeProfile           EmployeeProfile?
+  accessRoles               UserAccessRole[]
+  permissionOverrides       UserPermissionOverride[]
 
   @@index([authUserId, isActive])
 }
@@ -123,11 +124,12 @@ model Client {
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
-  phones             ClientPhone[]
-  vehicles           Vehicle[]
-  diagnosticRequests DiagnosticRequest[]
-  workOrders         WorkOrder[]
-  calls              CallHistory[]
+  phones                     ClientPhone[]
+  vehicles                   Vehicle[]
+  diagnosticRequests         DiagnosticRequest[]
+  workOrders                 WorkOrder[]
+  calls                      CallHistory[]
+  externalContactIdentities  ExternalContactIdentity[]
 }
 
 model ClientPhone {
@@ -307,10 +309,11 @@ model Lead {
   createdAt         DateTime      @default(now())
   updatedAt         DateTime      @updatedAt
 
-  assignedUser           User?                  @relation("LeadAssignee", fields: [assignedUserId], references: [id], onDelete: SetNull)
-  calls                  CallHistory[]
-  diagnosticRequests     DiagnosticRequest[]    @relation("LeadDiagnostics")
-  communicationInquiries CommunicationInquiry[]
+  assignedUser              User?                     @relation("LeadAssignee", fields: [assignedUserId], references: [id], onDelete: SetNull)
+  calls                     CallHistory[]
+  diagnosticRequests        DiagnosticRequest[]       @relation("LeadDiagnostics")
+  communicationInquiries    CommunicationInquiry[]
+  externalContactIdentities ExternalContactIdentity[]
 
   @@index([phone])
   @@index([phoneNormalized])
@@ -359,30 +362,37 @@ model CallHistory {
 }
 
 model CommunicationInquiry {
-  id              String               @id
-  externalId      String?
-  channel         CommunicationChannel
-  state           InquiryState         @default(NEW)
-  name            String?
-  phone           String?
-  phoneNormalized String?
-  handle          String?
-  subject         String
-  preview         String
-  vehicle         String?
-  plate           String?
-  plateNormalized String?
-  unread          Boolean              @default(true)
-  answered        Boolean              @default(false)
-  receivedAt      DateTime
-  sourceDetail    String?
-  campaign        String?
-  utm             String?
-  leadId          String?
-  assignedUserId  String?
-  metadata        Json?
-  createdAt       DateTime             @default(now())
-  updatedAt       DateTime             @default(now()) @updatedAt
+  id                    String               @id
+  externalId            String?
+  channel               CommunicationChannel
+  state                 InquiryState         @default(NEW)
+  name                  String?
+  phone                 String?
+  phoneNormalized       String?
+  handle                String?
+  subject               String
+  preview               String
+  vehicle               String?
+  plate                 String?
+  plateNormalized       String?
+  unread                Boolean              @default(true)
+  answered              Boolean              @default(false)
+  receivedAt            DateTime
+  sourceDetail          String?
+  campaign              String?
+  utm                   String?
+  leadId                String?
+  assignedUserId        String?
+  metadata              Json?
+  integrationAccountId  String?
+  externalThreadId      String?
+  externalParticipantId String?
+  lastInboundAt         DateTime?
+  lastOutboundAt        DateTime?
+  replyAllowedUntil     DateTime?
+  lastSyncedAt          DateTime?
+  createdAt             DateTime             @default(now())
+  updatedAt             DateTime             @default(now()) @updatedAt
 
   lead         Lead?                  @relation(fields: [leadId], references: [id], onDelete: SetNull, onUpdate: NoAction)
   assignedUser User?                  @relation("CommunicationAssignee", fields: [assignedUserId], references: [id], onDelete: SetNull, onUpdate: NoAction)
@@ -394,22 +404,34 @@ model CommunicationInquiry {
   @@index([phoneNormalized])
   @@index([plateNormalized])
   @@index([assignedUserId, state])
+  @@index([channel, externalThreadId], map: "CommunicationInquiry_externalThreadId_idx")
+  @@index([replyAllowedUntil])
 }
 
 model CommunicationMessage {
-  id         String           @id
-  inquiryId  String
-  externalId String?
-  direction  MessageDirection
-  text       String
-  sentAt     DateTime
-  metadata   Json?
-  createdAt  DateTime         @default(now())
+  id                String           @id
+  inquiryId         String
+  externalId        String?
+  direction         MessageDirection
+  text              String
+  sentAt            DateTime
+  metadata          Json?
+  providerMessageId String?
+  deliveryStatus    String           @default("SENT")
+  errorCode         String?
+  errorMessage      String?
+  attachments       Json?
+  providerPayload   Json?
+  sentByUserId      String?
+  createdAt         DateTime         @default(now())
 
-  inquiry CommunicationInquiry @relation(fields: [inquiryId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  inquiry   CommunicationInquiry @relation(fields: [inquiryId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  sentByUser User?               @relation(fields: [sentByUserId], references: [id], onDelete: SetNull)
 
   @@unique([inquiryId, externalId], map: "CommunicationMessage_inquiry_externalId_key")
   @@index([inquiryId, sentAt])
+  @@index([deliveryStatus, sentAt], map: "CommunicationMessage_deliveryStatus_idx")
+  @@index([providerMessageId])
 }
 
 model WebhookEvent {
@@ -425,4 +447,51 @@ model WebhookEvent {
 
   @@unique([channel, externalEventId], map: "WebhookEvent_channel_externalEventId_key")
   @@index([status, createdAt])
+}
+
+model CommunicationAccount {
+  id                String               @id
+  provider          String
+  channel           CommunicationChannel
+  externalAccountId String
+  displayName       String?
+  handle            String?
+  isActive          Boolean              @default(true)
+  metadata          Json?
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @default(now()) @updatedAt
+
+  @@unique([provider, externalAccountId], map: "CommunicationAccount_provider_externalAccountId_key")
+}
+
+model ExternalContactIdentity {
+  id             String               @id
+  provider       String
+  channel        CommunicationChannel
+  externalUserId String
+  handle         String?
+  displayName    String?
+  clientId       String?
+  leadId         String?
+  metadata       Json?
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @default(now()) @updatedAt
+
+  client Client? @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  lead   Lead?   @relation(fields: [leadId], references: [id], onDelete: SetNull)
+
+  @@unique([provider, externalUserId], map: "ExternalContactIdentity_provider_externalUserId_key")
+  @@index([clientId])
+  @@index([leadId])
+}
+
+model CommunicationSyncState {
+  provider      String   @id
+  lastSyncedAt  DateTime?
+  lastSuccessAt DateTime?
+  status        String   @default("IDLE")
+  cursor        String?
+  error         String?
+  metadata      Json?
+  updatedAt     DateTime @default(now()) @updatedAt
 }
