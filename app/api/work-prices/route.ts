@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { ServiceCatalogReviewStatus } from "@/src/generated/prisma/client";
 import { getPrisma } from "@/src/lib/prisma";
 import { resolveLaborPricing } from "@/src/services/labor-pricing.service";
 
@@ -35,12 +36,19 @@ export async function GET(request: NextRequest) {
         where: {
           isActive: true,
           showToOperator: true,
+          reviewStatus: ServiceCatalogReviewStatus.READY,
+          basePrice: { not: null },
           ...(q ? {
             OR: [
               { code: { contains: q, mode: "insensitive" } },
               { externalServiceId: { contains: q, mode: "insensitive" } },
               { internalName: { contains: q, mode: "insensitive" } },
               { displayName: { contains: q, mode: "insensitive" } },
+              { searchAliases: { has: q } },
+              { namePart: { contains: q, mode: "insensitive" } },
+              { namePosition: { contains: q, mode: "insensitive" } },
+              { nameSide: { contains: q, mode: "insensitive" } },
+              { nameOperation: { contains: q, mode: "insensitive" } },
               { sourceCategory: { contains: q, mode: "insensitive" } },
               { bodyPart: { contains: q, mode: "insensitive" } },
               { category: { is: { name: { contains: q, mode: "insensitive" } } } },
@@ -65,6 +73,11 @@ export async function GET(request: NextRequest) {
         category: row.category?.name || row.sourceCategory || "Інше",
         name: row.displayName,
         internalName: row.internalName,
+        namePart: row.namePart,
+        namePosition: row.namePosition,
+        nameSide: row.nameSide,
+        nameOperation: row.nameOperation,
+        searchAliases: row.searchAliases,
         itemType: row.itemType,
         unit: row.unit,
         normHours: row.normMinutes == null ? null : Math.round((row.normMinutes / 60) * 100) / 100,
