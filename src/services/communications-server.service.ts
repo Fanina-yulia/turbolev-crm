@@ -63,6 +63,7 @@ interface CommunicationMessageRow extends QueryResultRow {
   text: string;
   sentAt: Date;
   metadata: unknown;
+  deliveryStatus: string | null;
 }
 
 interface ClientMatchRow extends QueryResultRow {
@@ -108,6 +109,15 @@ function publicChannelLabel(channel: CommunicationChannel) {
   return "Сайт";
 }
 
+function publicMessageMetadata(message: CommunicationMessageRow) {
+  const base = message.metadata && typeof message.metadata === "object" && !Array.isArray(message.metadata)
+    ? message.metadata as Record<string, unknown>
+    : {};
+  return message.direction === "OUT" && message.deliveryStatus
+    ? { ...base, delivery: message.deliveryStatus }
+    : message.metadata ?? null;
+}
+
 export async function listCommunicationInquiries(input?: { channel?: string; unread?: boolean; noReply?: boolean; search?: string }) {
   const pool = getSqlPool();
   const where: string[] = [`i."state" <> 'SPAM'`];
@@ -144,7 +154,7 @@ export async function listCommunicationInquiries(input?: { channel?: string; unr
       direction: message.direction === "OUT" ? "out" : message.direction === "SYSTEM" ? "system" : "in",
       text: message.text,
       at: message.sentAt,
-      metadata: message.metadata ?? null,
+      metadata: publicMessageMetadata(message),
     });
     messagesByInquiry.set(message.inquiryId, list);
   }
