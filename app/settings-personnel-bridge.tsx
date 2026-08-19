@@ -2,11 +2,26 @@
 
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
+import { GlobalSmartSearch } from "./global-smart-search";
 import { PersonnelV2 } from "./personnel-v2";
 
 export function SettingsPersonnelBridge(){
   const [target,setTarget]=useState<HTMLElement|null>(null);
   const [active,setActive]=useState(false);
+  const [searchTarget,setSearchTarget]=useState<HTMLElement|null>(null);
+
+  useEffect(()=>{
+    const sidebar=document.querySelector<HTMLElement>(".sidebar");
+    const brand=sidebar?.querySelector<HTMLElement>(".brand");
+    if(!sidebar||!brand)return;
+    const existing=sidebar.querySelector<HTMLElement>("[data-global-search-host]");
+    if(existing){setSearchTarget(existing);return;}
+    const host=document.createElement("div");
+    host.dataset.globalSearchHost="true";
+    brand.insertAdjacentElement("afterend",host);
+    setSearchTarget(host);
+    return()=>{setSearchTarget(null);host.remove()};
+  },[]);
 
   useEffect(()=>{
     let personnelButton:HTMLButtonElement|null=null;
@@ -34,6 +49,8 @@ export function SettingsPersonnelBridge(){
     return()=>{observer.disconnect();cleanups.splice(0).forEach(fn=>fn())};
   },[]);
 
-  if(!active||!target)return null;
-  return createPortal(<div style={{position:"absolute",inset:"0 0 auto 0",zIndex:20,minHeight:"calc(100vh - 150px)",boxSizing:"border-box",overflow:"visible",background:"var(--bg)",color:"var(--text)",padding:"22px clamp(18px, 2.2vw, 34px) 48px"}}><PersonnelV2/></div>,target);
+  return <>
+    {searchTarget?createPortal(<GlobalSmartSearch/>,searchTarget):null}
+    {active&&target?createPortal(<div style={{position:"absolute",inset:"0 0 auto 0",zIndex:20,minHeight:"calc(100vh - 150px)",boxSizing:"border-box",overflow:"visible",background:"var(--bg)",color:"var(--text)",padding:"22px clamp(18px, 2.2vw, 34px) 48px"}}><PersonnelV2/></div>,target):null}
+  </>;
 }
