@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useState, type CSSProperties, type MouseEvent as ReactMouseEvent } from "react";
 import styles from "./planner-day-view.module.css";
 
 type Post = { id: string; name: string; sortOrder?: number; capabilities?: string[] };
@@ -33,12 +33,13 @@ type AppointmentBase = {
 type AvailabilitySlot = { time: string; posts: Array<{ id: string; available: boolean }> };
 type AvailabilityResponse = { status: string; slots?: AvailabilitySlot[]; message?: string };
 type Row = { id: string; name: string; type: string; reception?: boolean; color: string };
-type FreeWindow = { rowId: string; startIndex: number; span: number; start: number; end: number };
-
+type SlotSelection = { rowId: string; startIndex: number; endIndex: number };
 type StatusMeta = { label: string; tone: "blue" | "green" | "orange" | "amber" | "red" | "gray" | "violet" | "cyan" };
 
 const SLOT = 30;
-const NON_BLOCKING = new Set(["COMPLETED", "NO_SHOW", "CANCELLED"]);
+const DURATION_COOKIE = "turbolev_booking_duration_minutes";
+const CONTEXT_COOKIE = "turbolev_booking_context";
+const NON_BLOCKING = new Set(["NO_SHOW", "CANCELLED"]);
 const IN_PROGRESS = new Set(["ARRIVED", "DIAGNOSTICS", "IN_REPAIR", "WAITING_QC"]);
 const WAITING = new Set(["WAITING_PARTS_SELECTION", "WAITING_CALCULATION", "WAITING_APPROVAL", "WAITING_PARTS", "READY_FOR_REPAIR", "READY_FOR_PICKUP", "PAUSED"]);
 const POST_COLORS = ["#ff6600", "#2f80ed", "#7c3aed", "#16a34a", "#d97706", "#0891b2"];
@@ -110,6 +111,7 @@ export function PlannerDayView<TAppointment extends AppointmentBase>({ day, loca
   const [availability, setAvailability] = useState<AvailabilityResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [selection, setSelection] = useState<SlotSelection | null>(null);
   const timeZone = location.timezone || "Europe/Kyiv";
   const openMinute = Number.isFinite(location.openMinute) ? location.openMinute : 540;
   const closeMinute = Number.isFinite(location.closeMinute) ? location.closeMinute : 1260;
@@ -146,6 +148,12 @@ export function PlannerDayView<TAppointment extends AppointmentBase>({ day, loca
     return () => controller.abort();
   }, [day, location.id]);
 
+  useEffect(() => {
+    const cancelSelection = () => setSelection(null);
+    window.addEventListener("blur", cancelSelection);
+    return () => window.removeEventListener("blur", cancelSelection);
+  }, []);
+
   const dayAppointments = useMemo(() => appointments
     .filter((item) => item.locationId === location.id && localParts(item.plannedStartAt, timeZone).day === day && item.status !== "CANCELLED")
     .sort((a, b) => +new Date(a.plannedStartAt) - +new Date(b.plannedStartAt)), [appointments, location.id, timeZone, day]);
@@ -174,25 +182,6 @@ export function PlannerDayView<TAppointment extends AppointmentBase>({ day, loca
     return result;
   }, [rows, dayAppointments, timeZone, openMinute, closeMinute, totalDayMinutes]);
 
-  const freeWindows = useMemo<FreeWindow[]>(() => {
-    const result: FreeWindow[] = [];
-    for (const row of rows) {
-      if (row.reception) continue;
-      let startIndex = -1;
-      for (let index = 0; index <= slots.length; index += 1) {
-        const minute = slots[index];
-        const available = index < slots.length && availabilityMap.get(`${minuteLabel(minute)}:${row.id}`) === true;
-        if (available && startIndex < 0) startIndex = index;
-        if ((!available || index === slots.length) && startIndex >= 0) {
-          const span = index - startIndex;
-          if (span >= 2) result.push({ rowId: row.id, startIndex, span, start: slots[startIndex], end: slots[startIndex] + span * SLOT });
-          startIndex = -1;
-        }
-      }
-    }
-    return result;
-  }, [rows, slots, availabilityMap]);
-
   const metrics = useMemo(() => {
     const completed = dayAppointments.filter((item) => item.status === "COMPLETED").length;
     const inProgress = dayAppointments.filter((item) => IN_PROGRESS.has(item.status)).length;
@@ -205,7 +194,66 @@ export function PlannerDayView<TAppointment extends AppointmentBase>({ day, loca
     return { total: dayAppointments.length, completed, inProgress, waiting, freeSlots, revenue };
   }, [dayAppointments, availabilityMap]);
 
-  const resourceWidth = 152;
+  function rowHasAppointment(row: Row, minute: number) {
+    const slotEnd = minute + SLOT;
+    return dayAppointments.some((item) => {
+      if (row.reception ? Boolean(item.postId) : item.postId !== row.id) return false;
+      const start = localParts(item.plannedStartAt, timeZone).minute;
+      const end = localParts(item.plannedEndAt, timeZone).minute;
+      return start < slotEnd && end > minute;
+    });
+  }
+
+  function slotAvailable(row: Row, slotIndex: number) {
+    const minute = slots[slotIndex];
+    if (minute === undefined || rowHasAppointment(row, minute)) return false;
+    if (row.reception) return true;
+    return availabilityMap.get(`${minuteLabel(minute)}:${row.id}`) === true;
+  }
+
+  function canSelectRange(row: Row, startIndex: number, endIndex: number) {
+    const from = Math.min(startIndex, endIndex);
+    const to = Math.max(startIndex, endIndex);
+    for (let index = from; index <= to; index += 1) {
+      if (!slotAvailable(row, index)) return false;
+    }
+    return true;
+  }
+
+  function beginSelection(event: ReactMouseEvent<HTMLButtonElement>, row: Row, slotIndex: number) {
+    if (event.button !== 0 || !slotAvailable(row, slotIndex)) return;
+    event.preventDefault();
+    setSelection({ rowId: row.id, startIndex: slotIndex, endIndex: slotIndex });
+  }
+
+  function extendSelection(event: ReactMouseEvent<HTMLButtonElement>, row: Row, slotIndex: number) {
+    if (!selection || selection.rowId !== row.id || event.buttons !== 1) return;
+    if (!canSelectRange(row, selection.startIndex, slotIndex)) return;
+    setSelection((current) => current ? { ...current, endIndex: slotIndex } : current);
+  }
+
+  function commitSelection(event: ReactMouseEvent<HTMLButtonElement>, row: Row, slotIndex: number) {
+    if (!selection || selection.rowId !== row.id) return;
+    event.preventDefault();
+    const endIndex = canSelectRange(row, selection.startIndex, slotIndex) ? slotIndex : selection.endIndex;
+    const from = Math.min(selection.startIndex, endIndex);
+    const to = Math.max(selection.startIndex, endIndex);
+    const startTime = minuteLabel(slots[from]);
+    const durationMinutes = (to - from + 1) * SLOT;
+    const context = {
+      date: day,
+      time: startTime,
+      durationMinutes,
+      locationId: location.id,
+      postId: row.reception ? "" : row.id,
+    };
+    document.cookie = `${DURATION_COOKIE}=${durationMinutes}; Path=/; Max-Age=1800; SameSite=Lax`;
+    document.cookie = `${CONTEXT_COOKIE}=${encodeURIComponent(JSON.stringify(context))}; Path=/; Max-Age=1800; SameSite=Lax`;
+    setSelection(null);
+    onCreate(day, startTime, row.reception ? "" : row.id);
+  }
+
+  const resourceWidth = 164;
   const gridStyle = { gridTemplateColumns: `${resourceWidth}px repeat(${slots.length}, minmax(0, 1fr))` } as CSSProperties;
   const now = new Date();
   const nowParts = localParts(now.toISOString(), timeZone);
@@ -226,11 +274,11 @@ export function PlannerDayView<TAppointment extends AppointmentBase>({ day, loca
 
     <div className={styles.meta}>
       <div><strong>{location.name}</strong> · {minuteLabel(openMinute)}–{minuteLabel(closeMinute)} · крок 30 хв</div>
-      <div>{loading ? "Оновлюю доступність…" : error || "Весь робочий день видно на одному екрані"}</div>
+      <div>{loading ? "Оновлюю доступність…" : error || "Затисніть мишу на вільній клітинці та протягніть до часу завершення"}</div>
     </div>
 
     <div className={styles.board}>
-      <div className={styles.grid} style={gridStyle}>
+      <div className={styles.grid} style={gridStyle} onMouseLeave={() => selection && setSelection(selection)}>
         <div className={styles.corner} style={{ gridColumn: 1, gridRow: 1 }}>Пости / ресурси</div>
         {slots.map((minute, index) => <div className={styles.time} key={minute} style={{ gridColumn: index + 2, gridRow: 1 }}>{minuteLabel(minute)}</div>)}
 
@@ -245,38 +293,24 @@ export function PlannerDayView<TAppointment extends AppointmentBase>({ day, loca
               <small>{loadPercent}% зайнято</small>
             </div>
             {slots.map((minute, slotIndex) => {
+              const available = slotAvailable(row, slotIndex);
+              const selected = selection?.rowId === row.id && slotIndex >= Math.min(selection.startIndex, selection.endIndex) && slotIndex <= Math.max(selection.startIndex, selection.endIndex);
+              const cellClass = available ? styles.free : styles.busy;
               const time = minuteLabel(minute);
-              const available = row.reception ? false : availabilityMap.get(`${time}:${row.id}`);
-              const cellClass = row.reception ? styles.unknown : available === true ? styles.free : styles.busy;
               return <button
                 type="button"
-                aria-label={row.reception ? `${row.name} ${time}` : `${row.name} ${time}: ${available ? "вільно" : "зайнято"}`}
-                title={row.reception ? "Записи без призначеного поста" : available ? `${row.name} · ${time} · вільно` : `${row.name} · ${time} · зайнято`}
-                className={`${styles.cell} ${cellClass}`}
+                aria-label={`${row.name} ${time}: ${available ? "вільно" : "зайнято"}`}
+                title={available ? `${row.name} · ${time} · вільно` : `${row.name} · ${time} · зайнято`}
+                className={`${styles.cell} ${cellClass} ${selected ? styles.selected : ""}`}
                 key={`${row.id}-${minute}`}
                 style={{ gridColumn: slotIndex + 2, gridRow }}
-                disabled={row.reception || available !== true}
-                onClick={() => onCreate(day, time, row.id)}
+                disabled={!available}
+                onMouseDown={(event) => beginSelection(event, row, slotIndex)}
+                onMouseEnter={(event) => extendSelection(event, row, slotIndex)}
+                onMouseUp={(event) => commitSelection(event, row, slotIndex)}
               />;
             })}
           </div>;
-        })}
-
-        {freeWindows.map((window) => {
-          const rowIndex = rows.findIndex((row) => row.id === window.rowId);
-          if (rowIndex < 0) return null;
-          return <button
-            type="button"
-            className={styles.freeWindow}
-            key={`${window.rowId}-${window.start}`}
-            style={{ gridColumn: `${window.startIndex + 2} / span ${window.span}`, gridRow: rowIndex + 2 }}
-            onClick={() => onCreate(day, minuteLabel(window.start), window.rowId)}
-            title={`Створити запис ${minuteLabel(window.start)}–${minuteLabel(window.end)}`}
-          >
-            <span>{minuteLabel(window.start)}–{minuteLabel(window.end)}</span>
-            <b>Вільне вікно</b>
-            <i>+</i>
-          </button>;
         })}
 
         {dayAppointments.map((item) => {
@@ -289,7 +323,7 @@ export function PlannerDayView<TAppointment extends AppointmentBase>({ day, loca
           if (clippedStart >= closeMinute || clippedEnd <= openMinute) return null;
           const startIndex = Math.max(0, Math.floor((clippedStart - openMinute) / SLOT));
           const span = Math.max(1, Math.ceil((clippedEnd - clippedStart) / SLOT));
-          const done = NON_BLOCKING.has(item.status);
+          const done = item.status === "COMPLETED";
           const row = rows[rowIndex];
           const status = STATUS_META[item.status] || { label: item.status, tone: "gray" as const };
           return <button
@@ -318,7 +352,8 @@ export function PlannerDayView<TAppointment extends AppointmentBase>({ day, loca
       <span><i className={styles.legendOrange}/>Очікує запчастини</span>
       <span><i className={styles.legendAmber}/>Очікує клієнта</span>
       <span><i className={styles.legendDone}/>Виконано</span>
-      <span><i className={styles.legendFree}/>Вільне вікно</span>
+      <span><i className={styles.legendFree}/>Вільний слот</span>
+      <span><i className={styles.legendSelected}/>Обраний час</span>
     </div>
   </div>;
 }
