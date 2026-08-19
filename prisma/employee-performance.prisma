@@ -84,7 +84,9 @@ model EmployeeProfile {
   userId             String?   @unique
   firstName          String
   lastName           String
+  middleName         String?
   birthDate          DateTime? @db.Timestamp(6)
+  hireDate           DateTime? @db.Date
   email              String?   @unique
   phone              String?
   phoneCountry       String?
@@ -466,7 +468,6 @@ model RoleEconomicsSnapshot {
   @@index([locationId, periodStart, periodEnd])
   @@index([status, periodStart, periodEnd])
 }
-
 
 model RoleDemandSnapshot {
   id                  String       @id @default(cuid())
