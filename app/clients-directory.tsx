@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { navigateCrm, readCrmRoute } from "./crm-route";
 import styles from "./directory-pages.module.css";
 
 type Client = {
@@ -70,8 +71,26 @@ export function ClientsDirectory() {
     };
   }, [query]);
 
+  useEffect(() => {
+    const syncFromRoute = () => {
+      const clientId = readCrmRoute().clientId;
+      setSelected(clientId ? clients.find((client) => client.id === clientId) ?? null : null);
+    };
+    syncFromRoute();
+    window.addEventListener("popstate", syncFromRoute);
+    return () => window.removeEventListener("popstate", syncFromRoute);
+  }, [clients]);
+
   function openNewRequest() {
     window.dispatchEvent(new CustomEvent("turbolev:open-new-request", { detail: { source: "CLIENTS" } }));
+  }
+
+  function openClient(client: Client) {
+    navigateCrm("Клієнти", { clientId: client.id });
+  }
+
+  function closeClient() {
+    navigateCrm("Клієнти");
   }
 
   return <div className={styles.page}>
@@ -95,7 +114,7 @@ export function ClientsDirectory() {
     <div className={styles.summary}>Знайдено клієнтів: <b>{total}</b></div>
     {error && <div className={styles.error}>{error}</div>}
     {loading ? <div className={styles.state}>Завантажую клієнтів…</div> : !clients.length ? <div className={styles.state}>Нічого не знайдено.</div> : <div className={styles.grid}>
-      {clients.map((client) => <button key={client.id} className={styles.card} onClick={() => setSelected(client)}>
+      {clients.map((client) => <button key={client.id} className={styles.card} onClick={() => openClient(client)}>
         <div className={styles.identity}>
           <span className={styles.avatar}>{initials(client.name)}</span>
           <span className={styles.identityText}><strong>{displayName(client)}</strong><small>{client.phone}</small></span>
@@ -109,14 +128,14 @@ export function ClientsDirectory() {
       </button>)}
     </div>}
 
-    {selected && <div className={styles.backdrop} onMouseDown={(event) => { if (event.target === event.currentTarget) setSelected(null); }}>
+    {selected && <div className={styles.backdrop} onMouseDown={(event) => { if (event.target === event.currentTarget) closeClient(); }}>
       <aside className={styles.drawer}>
         <header className={styles.drawerHeader}>
           <div className={styles.identity}>
             <span className={styles.avatar}>{initials(selected.name)}</span>
             <span className={styles.identityText}><small>КАРТКА КЛІЄНТА</small><strong>{displayName(selected)}</strong><span>{selected.phone}</span></span>
           </div>
-          <button className={styles.close} onClick={() => setSelected(null)}>×</button>
+          <button className={styles.close} onClick={closeClient}>×</button>
         </header>
         <div className={styles.drawerBody}>
           <section className={styles.panel}>
@@ -130,11 +149,19 @@ export function ClientsDirectory() {
           </section>
           <section className={styles.panel}>
             <h3>Пов’язані автомобілі <span>{selected._count.vehicles}</span></h3>
-            {selected.vehicles.length ? <div className={styles.relatedList}>{selected.vehicles.map((vehicle) => <button key={vehicle.id} onClick={() => window.dispatchEvent(new CustomEvent("turbolev:navigate", { detail: "Авто" }))}>
+            {selected.vehicles.length ? <div className={styles.relatedList}>{selected.vehicles.map((vehicle) => <button key={vehicle.id} onClick={() => navigateCrm("Авто", { vehicleId: vehicle.id })}>
               <strong>{[vehicle.brand, vehicle.model, vehicle.year].filter(Boolean).join(" ") || "Автомобіль"}</strong>
               <small>{vehicle.plateNumber || vehicle.vin || "Без номера"}</small>
               <span>›</span>
             </button>)}</div> : <div className={styles.emptyInline}>Автомобілі ще не додані.</div>}
+          </section>
+          <section className={styles.panel}>
+            <h3>Замовлення-наряди <span>{selected._count.workOrders}</span></h3>
+            {selected.workOrders.length ? <div className={styles.relatedList}>{selected.workOrders.map((workOrder) => <button key={workOrder.id} onClick={() => navigateCrm("Замовлення-наряди", { workOrderId: workOrder.id })}>
+              <strong>{workOrder.status}</strong>
+              <small>{dateText(workOrder.closedAt || workOrder.updatedAt || workOrder.createdAt)}</small>
+              <span>›</span>
+            </button>)}</div> : <div className={styles.emptyInline}>Замовлень-нарядів ще немає.</div>}
           </section>
         </div>
         <footer className={styles.drawerFooter}><button className={styles.primary} onClick={openNewRequest}>+ Нова заявка</button></footer>

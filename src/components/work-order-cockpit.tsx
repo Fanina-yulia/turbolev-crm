@@ -13,8 +13,7 @@ export type AttentionCar = {
   plannedStartAt?: string | null;
   tone: "warn" | "active" | "waiting" | "good";
   section: string;
-  filter: string;
-  filterLabel: string;
+  routeParams?: Record<string, string>;
 };
 
 function UkrainianPlate({ plate }: { plate: string }) {

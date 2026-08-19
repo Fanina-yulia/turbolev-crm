@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { navigateCrm, readCrmRoute, type CrmRouteParams } from "./crm-route";
 import { WorkOrderCommercialPanel } from "./work-order-commercial-panel";
 import styles from "./work-orders.module.css";
 
@@ -79,6 +80,8 @@ const FILTERS = [
   ["CLOSED", "Закриті"],
 ] as const;
 
+const FILTER_CODES = new Set<string>(FILTERS.map(([code]) => code));
+
 function vehicleName(item: WorkOrderRow) {
   return [item.vehicle.brand, item.vehicle.model, item.vehicle.year].filter(Boolean).join(" ") || "Автомобіль";
 }
@@ -98,12 +101,22 @@ function transitionReason(item: Transition) {
   return "Перехід дозволено системними правилами.";
 }
 
-function matchesContext(row: WorkOrderRow, contextFilter: string) {
-  if (!contextFilter) return true;
-  const normalized = contextFilter.trim().toUpperCase().replace(/\s/g, "");
-  return row.id === contextFilter || row.vehicle.id === contextFilter || row.client.id === contextFilter ||
-    (row.vehicle.plateNumber || "").toUpperCase().replace(/\s/g, "") === normalized ||
-    (row.vehicle.vin || "").toUpperCase() === normalized;
+function normalize(value: string | null | undefined) {
+  return (value || "").trim().toUpperCase().replace(/\s/g, "");
+}
+
+function matchesRoute(row: WorkOrderRow, route: CrmRouteParams) {
+  if (route.scope === "qc" && !["WAITING_QC", "READY_FOR_PICKUP"].includes(row.status)) return false;
+  if (route.workOrderId && row.id !== route.workOrderId) return false;
+  if (route.vehicleId && row.vehicle.id !== route.vehicleId) return false;
+  if (route.clientId && row.client.id !== route.clientId) return false;
+  if (route.plate && normalize(row.vehicle.plateNumber) !== normalize(route.plate)) return false;
+  if (route.vin && normalize(row.vehicle.vin) !== normalize(route.vin)) return false;
+  return true;
+}
+
+function statusFromRoute(route: CrmRouteParams) {
+  return route.status && FILTER_CODES.has(route.status) ? route.status : "ALL";
 }
 
 export function WorkOrders() {
@@ -111,11 +124,24 @@ export function WorkOrders() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [detail, setDetail] = useState<WorkOrderDetail | null>(null);
   const [filter, setFilter] = useState("ALL");
-  const [contextFilter, setContextFilter] = useState("");
+  const [route, setRoute] = useState<CrmRouteParams>({});
   const [loading, setLoading] = useState(true);
   const [detailLoading, setDetailLoading] = useState(false);
   const [busyTransition, setBusyTransition] = useState<string | null>(null);
   const [message, setMessage] = useState<{ kind: "error" | "success"; text: string } | null>(null);
+
+  const applyRoute = useCallback((nextRows: WorkOrderRow[]) => {
+    const nextRoute = readCrmRoute();
+    const nextFilter = statusFromRoute(nextRoute);
+    setRoute(nextRoute);
+    setFilter(nextFilter);
+    const matchingRows = nextRows.filter((row) => (nextFilter === "ALL" || row.status === nextFilter) && matchesRoute(row, nextRoute));
+    setSelectedId((current) => {
+      if (nextRoute.workOrderId) return matchingRows.find((row) => row.id === nextRoute.workOrderId)?.id ?? null;
+      if (current && matchingRows.some((row) => row.id === current)) return current;
+      return matchingRows[0]?.id ?? null;
+    });
+  }, []);
 
   const loadRows = useCallback(async () => {
     setLoading(true);
@@ -125,16 +151,13 @@ export function WorkOrders() {
       if (!response.ok || !payload.ok) throw new Error(payload.error || "Не вдалося завантажити замовлення-наряди.");
       const nextRows = Array.isArray(payload.workOrders) ? payload.workOrders as WorkOrderRow[] : [];
       setRows(nextRows);
-      const urlFilter = typeof window !== "undefined" ? new URL(window.location.href).searchParams.get("filter") || "" : "";
-      if (urlFilter) setContextFilter(urlFilter);
-      const contextual = urlFilter ? nextRows.find((row) => matchesContext(row, urlFilter)) : null;
-      setSelectedId((current) => contextual?.id || (current && nextRows.some((row) => row.id === current) ? current : nextRows[0]?.id ?? null));
+      applyRoute(nextRows);
     } catch (error) {
       setMessage({ kind: "error", text: error instanceof Error ? error.message : "Помилка завантаження." });
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [applyRoute]);
 
   const loadDetail = useCallback(async (id: string) => {
     setDetailLoading(true);
@@ -154,27 +177,26 @@ export function WorkOrders() {
   useEffect(() => { void loadRows(); }, [loadRows]);
   useEffect(() => { if (selectedId) void loadDetail(selectedId); else setDetail(null); }, [selectedId, loadDetail]);
   useEffect(() => {
-    const sync = () => {
-      const next = new URL(window.location.href).searchParams.get("filter") || "";
-      setContextFilter(next);
-      if (next) {
-        setFilter("ALL");
-        const match = rows.find((row) => matchesContext(row, next));
-        if (match) setSelectedId(match.id);
-      }
-    };
+    const sync = () => applyRoute(rows);
     window.addEventListener("popstate", sync);
-    window.addEventListener("turbolev:navigate", sync);
-    return () => { window.removeEventListener("popstate", sync); window.removeEventListener("turbolev:navigate", sync); };
-  }, [rows]);
+    return () => window.removeEventListener("popstate", sync);
+  }, [rows, applyRoute]);
 
-  const filtered = useMemo(() => rows.filter((row) => (filter === "ALL" || row.status === filter) && matchesContext(row, contextFilter)), [rows, filter, contextFilter]);
+  const filtered = useMemo(() => rows.filter((row) => (filter === "ALL" || row.status === filter) && matchesRoute(row, route)), [rows, filter, route]);
   const counts = useMemo(() => ({
     active: rows.filter((row) => !["CLOSED", "CANCELLED"].includes(row.status)).length,
     repair: rows.filter((row) => row.status === "IN_REPAIR").length,
     blocked: rows.filter((row) => row.transitions.some((transition) => !transition.allowed && (transition.missingGates.length || transition.unsupportedActions.length))).length,
     ready: rows.filter((row) => row.status === "READY_FOR_PICKUP").length,
   }), [rows]);
+
+  function chooseFilter(code: string) {
+    navigateCrm("Замовлення-наряди", code === "ALL" ? {} : { status: code });
+  }
+
+  function chooseWorkOrder(item: WorkOrderRow) {
+    navigateCrm("Замовлення-наряди", { ...(filter === "ALL" ? {} : { status: filter }), workOrderId: item.id });
+  }
 
   async function runTransition(transition: Transition) {
     if (!detail || !transition.allowed || busyTransition) return;
@@ -220,7 +242,7 @@ export function WorkOrders() {
     <nav className={styles.filters}>
       {FILTERS.map(([code, label]) => {
         const count = code === "ALL" ? rows.length : rows.filter((row) => row.status === code).length;
-        return <button type="button" className={filter === code ? styles.activeFilter : ""} key={code} onClick={() => setFilter(code)}>{label}<b>{count}</b></button>;
+        return <button type="button" className={filter === code ? styles.activeFilter : ""} key={code} onClick={() => chooseFilter(code)}>{label}<b>{count}</b></button>;
       })}
     </nav>
 
@@ -228,7 +250,7 @@ export function WorkOrders() {
 
     <div className={styles.layout}>
       <section className={styles.list}>
-        {loading && !rows.length ? <div className={styles.empty}>Завантажую замовлення-наряди…</div> : !filtered.length ? <div className={styles.empty}>За вибраним клієнтом або автомобілем історії нарядів немає.</div> : filtered.map((item) => <button type="button" key={item.id} className={`${styles.row} ${selectedId === item.id ? styles.rowActive : ""}`} onClick={() => setSelectedId(item.id)}>
+        {loading && !rows.length ? <div className={styles.empty}>Завантажую замовлення-наряди…</div> : !filtered.length ? <div className={styles.empty}>За вибраним статусом, клієнтом або автомобілем історії нарядів немає.</div> : filtered.map((item) => <button type="button" key={item.id} className={`${styles.row} ${selectedId === item.id ? styles.rowActive : ""}`} onClick={() => chooseWorkOrder(item)}>
           <div>
             <div className={styles.rowTitle}><strong>{vehicleName(item)}</strong>{item.vehicle.plateNumber && <span className={styles.plate}>{item.vehicle.plateNumber}</span>}</div>
             <div className={styles.rowMeta}>{item.client.name || "Клієнт без імені"} · {item.client.phone}<br/>Оновлено {formatDate(item.updatedAt)}</div>
@@ -245,6 +267,8 @@ export function WorkOrders() {
           </div>
 
           <div className={styles.grid}>
+            <div className={styles.field}><span>Клієнт</span><button type="button" onClick={() => navigateCrm("Клієнти", { clientId: detail.client.id })}><strong>{detail.client.name || detail.client.phone}</strong></button></div>
+            <div className={styles.field}><span>Автомобіль</span><button type="button" onClick={() => navigateCrm("Авто", { vehicleId: detail.vehicle.id })}><strong>{vehicleName(detail)}</strong></button></div>
             <div className={styles.field}><span>Держномер</span><strong>{detail.vehicle.plateNumber || "—"}</strong></div>
             <div className={styles.field}><span>VIN</span><strong>{detail.vehicle.vin || "—"}</strong></div>
             <div className={styles.field}><span>Пробіг</span><strong>{detail.vehicle.mileageKm ? `${detail.vehicle.mileageKm.toLocaleString("uk-UA")} км` : "—"}</strong></div>
