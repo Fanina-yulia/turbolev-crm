@@ -58,6 +58,13 @@ function normalizeStocks(value: BmStock[] | undefined): SupplierStock[] {
     .filter((stock) => stock.quantity !== "-" && stock.quantity !== "0");
 }
 
+function quotaMessage(response: Response) {
+  const remaining = response.headers.get("x-ratelimit-remaining");
+  const limit = response.headers.get("x-ratelimit-limit");
+  if (!remaining || !limit) return "";
+  return ` Ліміт API: ${remaining}/${limit}.`;
+}
+
 export const bmPartsAdapter: SupplierAdapter = {
   id: "bm-parts",
   name: "BM Parts",
@@ -80,7 +87,7 @@ export const bmPartsAdapter: SupplierAdapter = {
     try {
       const response = await request("/profile/me");
       return response.ok
-        ? { ok: true, state: "CONNECTED", message: "З'єднання з BM Parts працює.", checkedAt: new Date().toISOString(), latencyMs: Date.now() - started }
+        ? { ok: true, state: "CONNECTED", message: `З'єднання з BM Parts працює.${quotaMessage(response)}`, checkedAt: new Date().toISOString(), latencyMs: Date.now() - started }
         : { ok: false, state: "ERROR", message: `BM Parts відповів HTTP ${response.status}.`, checkedAt: new Date().toISOString(), latencyMs: Date.now() - started };
     } catch (error) {
       return { ok: false, state: "ERROR", message: error instanceof Error ? error.message : "Не вдалося з'єднатися з BM Parts.", checkedAt: new Date().toISOString(), latencyMs: Date.now() - started };
