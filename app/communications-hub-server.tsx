@@ -46,7 +46,7 @@ type CommunicationIntegrationStatus = {
 };
 
 const LOCAL_KEY = "turbolev-communications-v1";
-const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
+const MAX_IMAGE_BYTES = 4 * 1024 * 1024;
 const MAX_IMAGES = 4;
 const IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
 const channels: Channel[] = ["INSTAGRAM", "FACEBOOK", "TIKTOK", "BINOTEL", "OLX", "WEBSITE"];
@@ -356,7 +356,7 @@ export function CommunicationsHub() {
     const live = isLiveReplyChannel(inquiry.channel);
     if (live) {
       const invalid = files.find((file) => !IMAGE_TYPES.has(file.type) || file.size > MAX_IMAGE_BYTES || file.size <= 0);
-      if (invalid) return notify(`«${invalid.name}»: дозволені JPG, PNG, WEBP, GIF до 8 МБ.`);
+      if (invalid) return notify(`«${invalid.name}»: дозволені JPG, PNG, WEBP, GIF до 4 МБ.`);
       if (files.length > MAX_IMAGES) return notify(`За одне відправлення можна додати до ${MAX_IMAGES} зображень.`);
     }
     if (!serverMode) {
@@ -388,9 +388,10 @@ export function CommunicationsHub() {
         const text = files.map((file) => `📎 ${file.name}`).join("\n");
         await postReplyMessage(inquiry, text);
       }
+      const sentImages = files.length;
       setReply(""); setFiles([]); setEmojiOpen(false);
       await load(true);
-      if (lastDelivery === "SENT") notify(`Надіслано в ${channelMeta[inquiry.channel].label}${files.length ? " разом із зображеннями" : ""}.`);
+      if (lastDelivery === "SENT") notify(`Надіслано в ${channelMeta[inquiry.channel].label}${sentImages ? " разом із зображеннями" : ""}.`);
       else if (inquiry.channel === "BINOTEL") notify("Відповідь збережено в історії контакту.");
       else notify("Повідомлення збережено в CRM.");
     } catch (error) {
@@ -575,10 +576,10 @@ export function CommunicationsHub() {
               <input ref={fileInputRef} type="file" accept="image/jpeg,image/png,image/webp,image/gif" multiple hidden onChange={(event) => {
                 const incoming = Array.from(event.target.files || []);
                 const invalid = incoming.find((file) => !IMAGE_TYPES.has(file.type) || file.size > MAX_IMAGE_BYTES || file.size <= 0);
-                if (invalid) notify(`«${invalid.name}»: дозволені JPG, PNG, WEBP, GIF до 8 МБ.`);
+                if (invalid) notify(`«${invalid.name}»: дозволені JPG, PNG, WEBP, GIF до 4 МБ.`);
                 const valid = incoming.filter((file) => IMAGE_TYPES.has(file.type) && file.size > 0 && file.size <= MAX_IMAGE_BYTES);
+                if (files.length + valid.length > MAX_IMAGES) notify(`Максимум ${MAX_IMAGES} зображення за одне відправлення.`);
                 setFiles((current) => [...current, ...valid].slice(0, MAX_IMAGES));
-                if (currentFileCountPlus(current => current.length, valid.length) > MAX_IMAGES) notify(`Максимум ${MAX_IMAGES} зображення за одне відправлення.`);
                 event.currentTarget.value = "";
               }}/>
               <button type="button" className="communicationsToolButton" onClick={() => fileInputRef.current?.click()} title="Додати фото">📎</button>
@@ -587,7 +588,7 @@ export function CommunicationsHub() {
               <button type="button" className="communicationsToolButton" onClick={() => notify("Голосові повідомлення підключимо окремим transport-етапом") } title="Голосове повідомлення">🎙</button>
               <button type="button" className="communicationsSendButton" disabled={sending || metaReplyExpired || (!reply.trim() && files.length === 0)} onClick={() => void sendReply()}>{sending ? "…" : "➤"}</button>
             </div>
-            <span className={styles.composerHint}>Enter — надіслати · Shift+Enter — новий рядок. Фото JPG/PNG/WEBP/GIF до 8 МБ відправляються через Facebook, Instagram та OLX як реальні медіа-повідомлення.</span>
+            <span className={styles.composerHint}>Enter — надіслати · Shift+Enter — новий рядок. Фото JPG/PNG/WEBP/GIF до 4 МБ відправляються через Facebook, Instagram та OLX як реальні медіа-повідомлення.</span>
           </div>
         </>}</section>
       </section>
@@ -608,9 +609,4 @@ export function CommunicationsHub() {
       @media (max-width:900px){.communicationsReplyMeta{align-items:flex-start;flex-direction:column}.communicationsClientResults{grid-template-columns:1fr!important}.communicationsLinkClientButton{margin-left:0}.communicationsMessageImages{grid-template-columns:1fr}}
     `}</style>
   </div>;
-}
-
-function currentFileCountPlus(getCurrentCount: (setter: (current: File[]) => File[]) => number, incoming: number) {
-  void getCurrentCount;
-  return incoming;
 }
