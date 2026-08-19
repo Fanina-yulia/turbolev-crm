@@ -32,8 +32,7 @@ function toIso(day:string,time:string){const [year,month,date]=day.split("-").ma
 function editState(item:Appointment):EditState{return{id:item.id,date:kyivDateKey(new Date(item.plannedStartAt)),status:item.status,postId:item.postId||"",mechanicId:item.mechanicId||"",start:clock(item.plannedStartAt),duration:String(duration(item))};}
 
 export function PlannerV2(){
- const initialRoute=readCrmRoute();
- const [anchorDay,setAnchorDay]=useState(()=>initialRoute.date||kyivDateKey());const [locations,setLocations]=useState<Location[]>([]);const [locationId,setLocationId]=useState("");const [appointments,setAppointments]=useState<Appointment[]>([]);const [statusFilter,setStatusFilter]=useState(()=>isStatus(initialRoute.status)?initialRoute.status:"");const [mechanicFilter,setMechanicFilter]=useState("");const [searchDraft,setSearchDraft]=useState("");const [search,setSearch]=useState("");const [message,setMessage]=useState("План робіт готовий.");const [busy,setBusy]=useState(false);const [edit,setEdit]=useState<EditState|null>(null);const [saving,setSaving]=useState(false);
+ const [anchorDay,setAnchorDay]=useState(()=>kyivDateKey());const [locations,setLocations]=useState<Location[]>([]);const [locationId,setLocationId]=useState("");const [appointments,setAppointments]=useState<Appointment[]>([]);const [statusFilter,setStatusFilter]=useState("");const [mechanicFilter,setMechanicFilter]=useState("");const [searchDraft,setSearchDraft]=useState("");const [search,setSearch]=useState("");const [message,setMessage]=useState("План робіт готовий.");const [busy,setBusy]=useState(false);const [edit,setEdit]=useState<EditState|null>(null);const [saving,setSaving]=useState(false);
  const days=useMemo(()=>Array.from({length:7},(_,i)=>addDays(anchorDay,i)),[anchorDay]);
  const location=useMemo(()=>locations.find(x=>x.id===locationId)??locations[0]??null,[locations,locationId]);
  const today=kyivDateKey();
