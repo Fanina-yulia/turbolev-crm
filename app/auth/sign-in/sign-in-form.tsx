@@ -27,6 +27,7 @@ export function SignInForm() {
   const nextPath = useMemo(() => safeNextPath(searchParams.get("next")), [searchParams]);
   const [identifier, setIdentifier] = useState(searchParams.get("email") || searchParams.get("login") || "");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
 
@@ -38,11 +39,11 @@ export function SignInForm() {
       return true;
     }
     if (me?.authenticated && me.provisioningState === "AUTHENTICATED_UNPROVISIONED") {
-      setMessage("Обліковий запис підтверджено, але доступ до Turbo LEV CRM ще не призначено адміністратором.");
+      setMessage("Обліковий запис підтверджено, але доступ до CRM ще не призначено керівником.");
       return true;
     }
     if (me?.provisioningState === "INACTIVE") {
-      setMessage("Доступ цього облікового запису деактивовано.");
+      setMessage("Доступ цього працівника до CRM деактивовано.");
       return true;
     }
     return false;
@@ -55,7 +56,11 @@ export function SignInForm() {
     try {
       const value = identifier.trim();
       if (!value) {
-        setMessage("Вкажіть логін або e-mail.");
+        setMessage("Вкажіть робочий логін.");
+        return;
+      }
+      if (!password) {
+        setMessage("Вкажіть пароль.");
         return;
       }
 
@@ -68,11 +73,11 @@ export function SignInForm() {
         });
         const result = await response.json().catch(() => null);
         if (!response.ok || !result?.ok) {
-          setMessage(result?.message || result?.error || "Не вдалося увійти. Перевірте логін і пароль.");
+          setMessage(result?.message || result?.error || "Невірний логін або пароль.");
           return;
         }
         if (!(await confirmCrmAccess())) {
-          setMessage("Вхід виконано, але CRM не змогла підтвердити профіль доступу.");
+          setMessage("Вхід виконано, але CRM не змогла підтвердити Ваш профіль доступу.");
         }
         return;
       }
@@ -85,7 +90,7 @@ export function SignInForm() {
       })) as { error?: AuthError } | undefined;
 
       if (result?.error) {
-        setMessage(result.error.message || result.error.code || "Не вдалося увійти. Перевірте e-mail і пароль.");
+        setMessage("Невірний логін або пароль.");
         return;
       }
 
@@ -98,12 +103,17 @@ export function SignInForm() {
   }
 
   async function requestPasswordSetup() {
-    const normalizedEmail = identifier.trim().toLowerCase();
-    if (!normalizedEmail || !normalizedEmail.includes("@")) {
-      setMessage("Відновлення через e-mail доступне лише для e-mail входу. Пароль працівника за логіном змінюється в його картці у розділі «Персонал».");
+    const value = identifier.trim();
+    if (!value) {
+      setMessage("Спочатку введіть свій логін або робочий e-mail.");
+      return;
+    }
+    if (!value.includes("@")) {
+      setMessage("Пароль для робочого логіна відновлює керівник у «Налаштування → Персонал».");
       return;
     }
 
+    const normalizedEmail = value.toLowerCase();
     setBusy(true);
     setMessage("");
     try {
@@ -118,13 +128,13 @@ export function SignInForm() {
       });
 
       if (result?.error) {
-        setMessage(result.error.message || result.error.code || "Не вдалося надіслати лист для встановлення пароля.");
+        setMessage("Не вдалося надіслати лист для відновлення пароля.");
         return;
       }
 
-      setMessage("Лист для встановлення пароля надіслано. Відкрийте його та задайте пароль, після чого CRM увійде під цим e-mail.");
+      setMessage("Лист для відновлення пароля надіслано на робочий e-mail.");
     } catch {
-      setMessage("Не вдалося надіслати лист для встановлення пароля. Спробуйте ще раз.");
+      setMessage("Не вдалося надіслати лист для відновлення пароля. Спробуйте ще раз.");
     } finally {
       setBusy(false);
     }
@@ -132,10 +142,19 @@ export function SignInForm() {
 
   async function activateAccount() {
     const normalizedEmail = identifier.trim().toLowerCase();
-    if (!normalizedEmail.includes("@") || password.length < 8) {
-      setMessage("Для першої e-mail активації введіть робочий e-mail і пароль щонайменше з 8 символів.");
+    if (!normalizedEmail) {
+      setMessage("Введіть робочий логін або e-mail.");
       return;
     }
+    if (!normalizedEmail.includes("@")) {
+      setMessage("Для працівника з робочим логіном перший пароль задає керівник у «Налаштування → Персонал». Після цього просто натисніть «Увійти».");
+      return;
+    }
+    if (password.length < 8) {
+      setMessage("Для першої e-mail активації введіть пароль щонайменше з 8 символів.");
+      return;
+    }
+
     setBusy(true);
     setMessage("");
     try {
@@ -148,10 +167,10 @@ export function SignInForm() {
       const result = await response.json().catch(() => null);
       if (!response.ok) {
         if (result?.error === "ACCOUNT_ALREADY_LINKED") {
-          setMessage("Цей e-mail уже прив'язаний до CRM. Натисніть «Задати / відновити пароль» нижче.");
+          setMessage("Цей e-mail уже активований. Скористайтеся звичайним входом або відновленням пароля.");
           return;
         }
-        setMessage(result?.message || result?.error || "Не вдалося активувати обліковий запис.");
+        setMessage(result?.message || "Не вдалося активувати обліковий запис.");
         return;
       }
       await confirmCrmAccess();
@@ -171,9 +190,7 @@ export function SignInForm() {
         callbackURL: nextPath,
       })) as { error?: AuthError } | undefined;
 
-      if (result?.error) {
-        setMessage(result.error.message || result.error.code || "Не вдалося розпочати вхід через Google.");
-      }
+      if (result?.error) setMessage("Не вдалося розпочати вхід через Google.");
     } catch {
       setMessage("Сервіс Google-входу тимчасово недоступний.");
     } finally {
@@ -183,21 +200,61 @@ export function SignInForm() {
 
   return (
     <form className={styles.form} onSubmit={submit}>
-      <button type="button" disabled={busy} onClick={signInWithGoogle}>Увійти через Google</button>
-      <div className={styles.help}>або логіном / e-mail і паролем</div>
-      <label>
-        <span>Логін або e-mail</span>
-        <input type="text" autoComplete="username" value={identifier} onChange={(event) => setIdentifier(event.target.value)} required />
+      <label className={styles.field}>
+        <span>Логін</span>
+        <input
+          type="text"
+          autoComplete="username"
+          autoCapitalize="none"
+          spellCheck={false}
+          value={identifier}
+          onChange={(event) => setIdentifier(event.target.value)}
+          placeholder="Ваш робочий логін"
+          required
+          autoFocus
+        />
       </label>
-      <label>
+
+      <label className={styles.field}>
         <span>Пароль</span>
-        <input type="password" autoComplete="current-password" minLength={8} value={password} onChange={(event) => setPassword(event.target.value)} required />
+        <div className={styles.passwordField}>
+          <input
+            type={showPassword ? "text" : "password"}
+            autoComplete="current-password"
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
+            placeholder="Введіть пароль"
+            required
+          />
+          <button
+            type="button"
+            className={styles.eyeButton}
+            onClick={() => setShowPassword((visible) => !visible)}
+            aria-label={showPassword ? "Приховати пароль" : "Показати пароль"}
+            aria-pressed={showPassword}
+          >{showPassword ? "◉" : "◌"}</button>
+        </div>
       </label>
-      <button type="submit" disabled={busy}>{busy ? "Перевіряю…" : "Увійти"}</button>
-      <button type="button" disabled={busy} onClick={requestPasswordSetup}>Задати / відновити пароль e-mail акаунта</button>
-      <button type="button" disabled={busy} onClick={activateAccount}>Перший e-mail вхід</button>
+
+      <button type="submit" className={styles.primaryButton} disabled={busy}>
+        {busy ? "Входжу…" : "Увійти →"}
+      </button>
+
+      <div className={styles.accountLinks}>
+        <button type="button" disabled={busy} onClick={requestPasswordSetup}>Забули пароль?</button>
+        <span aria-hidden="true">·</span>
+        <button type="button" disabled={busy} onClick={activateAccount}>Перший вхід</button>
+      </div>
+
       {message ? <div className={styles.message} role="status">{message}</div> : null}
-      <p className={styles.help}>Для працівників логін і пароль задає керівник у «Налаштування → Персонал». E-mail для такого входу не потрібен.</p>
+
+      <details className={styles.alternative}>
+        <summary>Інший спосіб входу</summary>
+        <div className={styles.alternativeBody}>
+          <button type="button" className={styles.googleButton} disabled={busy} onClick={signInWithGoogle}>Продовжити через Google</button>
+          <p>Google-вхід залишено як додатковий спосіб для раніше підключених облікових записів.</p>
+        </div>
+      </details>
     </form>
   );
 }
