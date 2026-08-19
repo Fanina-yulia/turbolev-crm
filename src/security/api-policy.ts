@@ -141,6 +141,10 @@ const RULES: Rule[] = [
     resolve: (method) => readWrite(method, PERMISSIONS.PRODUCTION_READ, PERMISSIONS.PRODUCTION_WRITE, "LOCATION", "Production board is station-scoped; mechanics are further narrowed to assigned appointments or WorkOrder lines."),
   },
   {
+    match: prefix("/api/qc"),
+    resolve: (method) => readWrite(method, PERMISSIONS.QC_READ, PERMISSIONS.QC_WRITE, "LOCATION", "Quality-control queue is station-scoped and reuses canonical WorkOrder QC attempts and transitions."),
+  },
+  {
     match: (path) => /^\/api\/work-orders\/[^/]+\/payments(?:\/|$)/.test(path),
     resolve: (method) => readWrite(method, PERMISSIONS.PAYMENTS_READ, PERMISSIONS.PAYMENTS_WRITE, "ALL", "WorkOrder payment operations."),
   },
