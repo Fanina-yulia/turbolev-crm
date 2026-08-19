@@ -156,7 +156,7 @@ const RULES: Rule[] = [
     resolve: () => internal(PERMISSIONS.OVERVIEW_READ, "LOCATION", "Operational station overview."),
   },
   {
-    match: (path) => prefix("/api/client-card")(path) || path === "/api/clients-vehicles" || prefix("/api/vehicles")(path),
+    match: (path) => prefix("/api/client-card")(path) || prefix("/api/clients")(path) || path === "/api/clients-vehicles" || prefix("/api/vehicles")(path),
     resolve: (method) => readWrite(method, PERMISSIONS.CLIENTS_READ, PERMISSIONS.CLIENTS_WRITE, "TEAM", "Client and vehicle intelligence/read models."),
   },
   {
