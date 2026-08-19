@@ -22,6 +22,7 @@ type ProfileInput = {
   middleName?: string | null;
   birthDate?: string | null;
   hireDate?: string | null;
+  employmentType?: string | null;
   email?: string | null;
   phone?: string | null;
   phoneCountry?: string | null;
@@ -57,6 +58,7 @@ const SYSTEM_ROLES = [
 type SystemRole = (typeof SYSTEM_ROLES)[number];
 const GLOBAL_ROLES = new Set<SystemRole>(["OWNER", "EXECUTIVE_DIRECTOR", "HEAD_OF_SALES", "ACCOUNTANT"]);
 const STATION_DELEGATION = new Set<SystemRole>(["SERVICE_ADVISOR", "MECHANIC", "PARTS_SPECIALIST", "ADMINISTRATOR"]);
+const EMPLOYMENT_TYPES = new Set(["STAFF", "CONTRACT", "FOP", "INTERNSHIP", "OTHER"]);
 
 export class PersonnelV2Error extends Error {
   code: string;
@@ -289,6 +291,8 @@ export async function savePersonnelV2(input: ProfileInput, context: AccessContex
   const firstName = clean(input.firstName, 120) || "";
   const lastName = clean(input.lastName, 120) || "";
   const middleName = clean(input.middleName, 120);
+  const employmentType = clean(input.employmentType, 32)?.toUpperCase() || null;
+  if (employmentType && !EMPLOYMENT_TYPES.has(employmentType)) throw new PersonnelV2Error("INVALID_EMPLOYMENT_TYPE", "Некоректний тип оформлення працівника.");
   if (!firstName || !lastName) throw new PersonnelV2Error("NAME_REQUIRED", "Вкажіть ім’я та прізвище.");
   const birthDateText = clean(input.birthDate, 10);
   const birthDate = birthDateText ? new Date(`${birthDateText}T00:00:00`) : null;
@@ -311,6 +315,7 @@ export async function savePersonnelV2(input: ProfileInput, context: AccessContex
       middleName,
       birthDate,
       hireDate,
+      employmentType,
       email: clean(input.email, 240)?.toLowerCase() || null,
       phone: clean(input.phone, 80),
       phoneCountry: clean(input.phoneCountry, 8) || "UA",
@@ -346,7 +351,7 @@ export async function savePersonnelV2(input: ProfileInput, context: AccessContex
     entityType: "EmployeeProfile",
     entityId: result.employee.id,
     action: input.id ? "PERSONNEL_V2_UPDATED" : "PERSONNEL_V2_CREATED",
-    after: { roles: result.assignments, cabinetEnabled, active: isActive, userId: result.user?.id || null },
+    after: { roles: result.assignments, cabinetEnabled, active: isActive, employmentType, userId: result.user?.id || null },
   });
   return result;
 }
