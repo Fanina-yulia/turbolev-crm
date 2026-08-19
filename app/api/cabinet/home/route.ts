@@ -207,6 +207,7 @@ export async function GET(request: Request) {
           id: item.id,
           workOrderId: item.workOrderId,
           status: item.appointmentStatus,
+          workOrderStatus: item.workOrderStatus,
           plannedStartAt: item.plannedStartAt,
           plannedEndAt: item.plannedEndAt,
           plate: item.plateNumber || "—",
