@@ -1,11 +1,12 @@
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 import { authorize } from "@/src/security/authorize";
 import { PERMISSIONS } from "@/src/security/permissions";
 import { createIntake, IntakeConflictError, IntakeValidationError, type IntakeInput } from "@/src/services/intake.service";
+import { generateVehicleImageInBackground } from "@/src/services/vehicle-images/vehicle-image-background.service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-export const maxDuration = 30;
+export const maxDuration = 100;
 
 const DURATION_COOKIE = "turbolev_booking_duration_minutes";
 const CONTEXT_COOKIE = "turbolev_booking_context";
@@ -78,6 +79,20 @@ export async function POST(request: Request) {
     }
 
     const result = await createIntake(input);
+
+    if (result.vehicle.brand && result.vehicle.model) {
+      after(async () => {
+        try {
+          await generateVehicleImageInBackground(result.vehicle.id);
+        } catch (error) {
+          console.error("background vehicle image generation after intake failed", {
+            vehicleId: result.vehicle.id,
+            message: error instanceof Error ? error.message : "unknown error",
+          });
+        }
+      });
+    }
+
     return clearPlannerCookies(NextResponse.json({ ok: true, ...result }, { status: 201 }));
   } catch (error) {
     if (error instanceof SyntaxError) {
