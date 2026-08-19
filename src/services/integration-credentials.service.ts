@@ -14,6 +14,15 @@ export type IntegrationProvider =
 
 export type IntegrationCategory = "COMMUNICATIONS" | "SUPPLIERS" | "VEHICLES";
 
+export type IntegrationStatus =
+  | "NOT_CONFIGURED"
+  | "CONFIGURED"
+  | "AUTHORIZATION_REQUIRED"
+  | "CONNECTED"
+  | "DEGRADED"
+  | "TOKEN_EXPIRED"
+  | "ERROR";
+
 type FieldSpec = {
   key: string;
   label: string;
@@ -41,7 +50,7 @@ export const integrationProviderSpecs: ProviderSpec[] = [
       { key: "companyId", label: "Company ID", secret: false, placeholder: "ID компанії Binotel" },
       { key: "apiKey", label: "API key", secret: true, required: true },
       { key: "apiSecret", label: "API secret", secret: true, required: true },
-      { key: "webhookToken", label: "Webhook token", secret: true, placeholder: "Можна залишити порожнім — CRM згенерує" },
+      { key: "webhookToken", label: "Webhook token", secret: true },
       { key: "wsKey", label: "WebSocket key", secret: true },
       { key: "wsSecret", label: "WebSocket secret", secret: true },
     ],
@@ -60,16 +69,26 @@ export const integrationProviderSpecs: ProviderSpec[] = [
     title: "Facebook + Instagram",
     description: "Messenger, Instagram Direct та Meta Lead Ads.",
     fields: [
-      { key: "appId", label: "Meta App ID", secret: false },
-      { key: "pageAccessToken", label: "Page access token", secret: true, required: true },
+      { key: "appId", label: "Meta App ID", secret: false, required: true },
       { key: "appSecret", label: "App secret", secret: true, required: true },
-      { key: "verifyToken", label: "Webhook verify token", secret: true, placeholder: "Можна залишити порожнім — CRM згенерує" },
+      { key: "verifyToken", label: "Webhook verify token", secret: true },
+      { key: "userAccessToken", label: "User access token", secret: true },
+      { key: "pageAccessToken", label: "Page access token", secret: true },
+      { key: "pageId", label: "Facebook Page ID", secret: false },
+      { key: "pageName", label: "Facebook Page", secret: false },
+      { key: "instagramAccountId", label: "Instagram account ID", secret: false },
+      { key: "instagramAccountName", label: "Instagram account", secret: false },
+      { key: "externalAccountId", label: "External account ID", secret: false },
+      { key: "externalAccountName", label: "External account", secret: false },
+      { key: "scopes", label: "Scopes", secret: false },
+      { key: "tokenExpiresAt", label: "Token expires at", secret: false },
     ],
     envFallback: {
       appId: "META_APP_ID",
-      pageAccessToken: "META_PAGE_ACCESS_TOKEN",
       appSecret: "META_APP_SECRET",
       verifyToken: "META_WEBHOOK_VERIFY_TOKEN",
+      pageAccessToken: "META_PAGE_ACCESS_TOKEN",
+      userAccessToken: "META_USER_ACCESS_TOKEN",
     },
   },
   {
@@ -78,14 +97,22 @@ export const integrationProviderSpecs: ProviderSpec[] = [
     title: "TikTok",
     description: "TikTok Business, lead forms та доступні події акаунта.",
     fields: [
-      { key: "clientKey", label: "Client key", secret: false },
+      { key: "clientKey", label: "Client key", secret: false, required: true },
       { key: "clientSecret", label: "Client secret", secret: true, required: true },
-      { key: "accessToken", label: "Access token", secret: true, required: true },
+      { key: "accessToken", label: "Access token", secret: true },
+      { key: "refreshToken", label: "Refresh token", secret: true },
+      { key: "openId", label: "Open ID", secret: false },
+      { key: "externalAccountId", label: "External account ID", secret: false },
+      { key: "externalAccountName", label: "External account", secret: false },
+      { key: "scopes", label: "Scopes", secret: false },
+      { key: "tokenExpiresAt", label: "Token expires at", secret: false },
+      { key: "refreshTokenExpiresAt", label: "Refresh token expires at", secret: false },
     ],
     envFallback: {
       clientKey: "TIKTOK_CLIENT_KEY",
       clientSecret: "TIKTOK_CLIENT_SECRET",
       accessToken: "TIKTOK_ACCESS_TOKEN",
+      refreshToken: "TIKTOK_REFRESH_TOKEN",
     },
   },
   {
@@ -96,12 +123,20 @@ export const integrationProviderSpecs: ProviderSpec[] = [
     fields: [
       { key: "clientId", label: "Client ID", secret: false, required: true },
       { key: "clientSecret", label: "Client secret", secret: true, required: true },
+      { key: "apiKey", label: "API key", secret: true },
+      { key: "notificationSecret", label: "Notification secret", secret: true },
       { key: "accessToken", label: "Access token", secret: true },
       { key: "refreshToken", label: "Refresh token", secret: true },
+      { key: "externalAccountId", label: "External account ID", secret: false },
+      { key: "externalAccountName", label: "External account", secret: false },
+      { key: "scopes", label: "Scopes", secret: false },
+      { key: "tokenExpiresAt", label: "Token expires at", secret: false },
     ],
     envFallback: {
       clientId: "OLX_CLIENT_ID",
       clientSecret: "OLX_CLIENT_SECRET",
+      apiKey: "OLX_API_KEY",
+      notificationSecret: "OLX_NOTIFICATION_SECRET",
       accessToken: "OLX_ACCESS_TOKEN",
       refreshToken: "OLX_REFRESH_TOKEN",
     },
@@ -113,15 +148,25 @@ export const integrationProviderSpecs: ProviderSpec[] = [
     description: "Власна бібліотека PNG: CRM генерує зображення конкретної марки, моделі та року через OpenAI і повторно використовує його в картках.",
     fields: [
       { key: "apiKey", label: "OpenAI API key", secret: true, required: true, placeholder: "sk-…" },
-      { key: "model", label: "Модель зображень", secret: false, placeholder: "gpt-image-1.5" },
-      { key: "quality", label: "Якість: low / medium / high / auto", secret: false, placeholder: "medium" },
-      { key: "autoGenerate", label: "Автогенерація: ON / OFF", secret: false, placeholder: "ON" },
+      { key: "model", label: "Модель зображень", secret: false, placeholder: "gpt-image-2" },
+      { key: "quality", label: "Якість", secret: false, placeholder: "medium" },
+      { key: "imageSize", label: "Розмір", secret: false, placeholder: "1536x1024" },
+      { key: "outputFormat", label: "Формат", secret: false, placeholder: "png" },
+      { key: "transparent", label: "Прозорий фон", secret: false, placeholder: "ON" },
+      { key: "autoGenerate", label: "Автогенерація", secret: false, placeholder: "ON" },
+      { key: "requireApproval", label: "Підтвердження", secret: false, placeholder: "ON" },
+      { key: "reuseLibrary", label: "Повторне використання бібліотеки", secret: false, placeholder: "ON" },
     ],
     envFallback: {
       apiKey: "OPENAI_API_KEY",
       model: "OPENAI_IMAGE_MODEL",
       quality: "OPENAI_IMAGE_QUALITY",
+      imageSize: "OPENAI_IMAGE_SIZE",
+      outputFormat: "OPENAI_IMAGE_OUTPUT_FORMAT",
+      transparent: "OPENAI_IMAGE_TRANSPARENT",
       autoGenerate: "VEHICLE_IMAGE_AUTO_GENERATE",
+      requireApproval: "VEHICLE_IMAGE_REQUIRE_APPROVAL",
+      reuseLibrary: "VEHICLE_IMAGE_REUSE_LIBRARY",
     },
   },
   {
@@ -133,10 +178,7 @@ export const integrationProviderSpecs: ProviderSpec[] = [
       { key: "apiKey", label: "API key", secret: true, required: true },
       { key: "baseUrl", label: "API URL", secret: false, placeholder: "https://api.bm.parts" },
     ],
-    envFallback: {
-      apiKey: "BM_PARTS_API_KEY",
-      baseUrl: "BM_PARTS_API_BASE_URL",
-    },
+    envFallback: { apiKey: "BM_PARTS_API_KEY", baseUrl: "BM_PARTS_API_BASE_URL" },
   },
   {
     provider: "UNIQUE_TRADE",
@@ -150,10 +192,8 @@ export const integrationProviderSpecs: ProviderSpec[] = [
       { key: "fingerprint", label: "Browser fingerprint", secret: false, placeholder: "turbolev-crm-unique-trade-v2" },
     ],
     envFallback: {
-      email: "UNIQUE_TRADE_EMAIL",
-      password: "UNIQUE_TRADE_PASSWORD",
-      baseUrl: "UNIQUE_TRADE_API_BASE_URL",
-      fingerprint: "UNIQUE_TRADE_BROWSER_FINGERPRINT",
+      email: "UNIQUE_TRADE_EMAIL", password: "UNIQUE_TRADE_PASSWORD",
+      baseUrl: "UNIQUE_TRADE_API_BASE_URL", fingerprint: "UNIQUE_TRADE_BROWSER_FINGERPRINT",
     },
   },
   {
@@ -166,11 +206,7 @@ export const integrationProviderSpecs: ProviderSpec[] = [
       { key: "login", label: "API login", secret: false, required: true },
       { key: "password", label: "API password", secret: true, required: true },
     ],
-    envFallback: {
-      baseUrl: "AUTONOVA_API_BASE_URL",
-      login: "AUTONOVA_API_LOGIN",
-      password: "AUTONOVA_API_PASSWORD",
-    },
+    envFallback: { baseUrl: "AUTONOVA_API_BASE_URL", login: "AUTONOVA_API_LOGIN", password: "AUTONOVA_API_PASSWORD" },
   },
   {
     provider: "ATL",
@@ -183,12 +219,7 @@ export const integrationProviderSpecs: ProviderSpec[] = [
       { key: "baseUrl", label: "API / B2B URL", secret: false, placeholder: "https://atl.ua" },
       { key: "apiKey", label: "API key / token", secret: true, placeholder: "Якщо ATL надасть окремий токен" },
     ],
-    envFallback: {
-      login: "ATL_LOGIN",
-      password: "ATL_PASSWORD",
-      baseUrl: "ATL_API_BASE_URL",
-      apiKey: "ATL_API_KEY",
-    },
+    envFallback: { login: "ATL_LOGIN", password: "ATL_PASSWORD", baseUrl: "ATL_API_BASE_URL", apiKey: "ATL_API_KEY" },
   },
 ];
 
@@ -282,6 +313,24 @@ async function readStored(provider: IntegrationProvider) {
   }
 }
 
+function tokenExpired(values: Record<string, string>) {
+  if (!values.tokenExpiresAt) return false;
+  const time = new Date(values.tokenExpiresAt).getTime();
+  return Number.isFinite(time) && time <= Date.now();
+}
+
+function effectiveStatus(provider: IntegrationProvider, values: Record<string, string>, storedStatus?: string | null): IntegrationStatus {
+  const spec = providerSpec(provider)!;
+  const configured = spec.fields.filter((field) => field.required).every((field) => Boolean(values[field.key]));
+  if (!configured) return "NOT_CONFIGURED";
+  if (tokenExpired(values)) return "TOKEN_EXPIRED";
+  if (["META", "TIKTOK", "OLX"].includes(provider) && !values.accessToken && !values.pageAccessToken) return "AUTHORIZATION_REQUIRED";
+  if (storedStatus === "CONNECTED") return "CONNECTED";
+  if (storedStatus === "DEGRADED") return "DEGRADED";
+  if (storedStatus === "ERROR") return "ERROR";
+  return "CONFIGURED";
+}
+
 export async function getIntegrationCredential(provider: IntegrationProvider) {
   const spec = providerSpec(provider);
   if (!spec) return null;
@@ -314,7 +363,7 @@ export async function listIntegrationPublicStatuses() {
       fields: spec.fields,
       configured,
       configuredVia: stored ? "CRM" : Object.keys(fallback).length ? "ENV" : null,
-      status: stored?.status ?? (configured ? "CONFIGURED" : "NOT_CONFIGURED"),
+      status: effectiveStatus(spec.provider, values, stored?.status),
       masked,
       visible,
       lastTestAt: stored?.lastTestAt ?? null,
@@ -347,6 +396,20 @@ export async function saveIntegrationCredential(provider: IntegrationProvider, i
   if (provider === "META" && !merged.verifyToken) {
     merged.verifyToken = randomBytes(24).toString("hex");
     generated.verifyToken = merged.verifyToken;
+  }
+  if (provider === "OLX" && !merged.notificationSecret) {
+    merged.notificationSecret = randomBytes(32).toString("hex");
+    generated.notificationSecret = merged.notificationSecret;
+  }
+  if (provider === "VEHICLE_IMAGES") {
+    merged.model ||= "gpt-image-2";
+    merged.quality ||= "medium";
+    merged.imageSize ||= "1536x1024";
+    merged.outputFormat = "png";
+    merged.transparent = "ON";
+    merged.autoGenerate ||= "ON";
+    merged.requireApproval ||= "ON";
+    merged.reuseLibrary ||= "ON";
   }
 
   const missing = spec.fields.filter((field) => field.required && !merged[field.key]).map((field) => field.label);
@@ -383,6 +446,14 @@ export async function recordIntegrationTest(provider: IntegrationProvider, resul
   await pool.query(
     `UPDATE public."IntegrationCredential" SET "status"=$2,"lastTestAt"=CURRENT_TIMESTAMP,"lastTestStatus"=$2,"lastTestMessage"=$3,"updatedAt"=CURRENT_TIMESTAMP WHERE "provider"=$1`,
     [provider, result.ok ? "CONNECTED" : "ERROR", result.message],
+  );
+}
+
+export async function recordIntegrationStatus(provider: IntegrationProvider, status: IntegrationStatus, message?: string) {
+  const pool = getSqlPool();
+  await pool.query(
+    `UPDATE public."IntegrationCredential" SET "status"=$2,"lastTestMessage"=COALESCE($3,"lastTestMessage"),"updatedAt"=CURRENT_TIMESTAMP WHERE "provider"=$1`,
+    [provider, status, message || null],
   );
 }
 
