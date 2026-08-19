@@ -1,0 +1,207 @@
+enum DiagnosticReviewState {
+  DRAFT
+  SUBMITTED
+  RETURNED
+  CONFIRMED
+}
+
+enum DiagnosticInspectionStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+}
+
+enum DiagnosticCheckState {
+  NOT_CHECKED
+  OK
+  ATTENTION
+  DEFECT
+}
+
+enum DiagnosticFindingAction {
+  NONE
+  REPLACE
+  REPAIR
+  ADJUST
+  CLEAN
+  ADDITIONAL_DIAGNOSTICS
+}
+
+enum DiagnosticUrgency {
+  INFO
+  SOON
+  CRITICAL
+}
+
+enum MechanicTextScale {
+  S
+  M
+  L
+  XL
+}
+
+enum MechanicControlScale {
+  COMPACT
+  STANDARD
+  LARGE
+}
+
+enum MechanicTextMode {
+  STANDARD
+  HIGH_CONTRAST
+  DARK
+}
+
+enum MechanicInterfaceContrast {
+  NORMAL
+  HIGH
+}
+
+enum MechanicSpacing {
+  NORMAL
+  SPACIOUS
+}
+
+model DiagnosticAssignment {
+  id                  String   @id @default(cuid())
+  diagnosticRequestId String   @unique
+  locationId          String?
+  mechanicId          String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@index([locationId, updatedAt])
+  @@index([mechanicId, updatedAt])
+}
+
+model DiagnosticReview {
+  id                  String                @id @default(cuid())
+  diagnosticRequestId String                @unique
+  state               DiagnosticReviewState @default(DRAFT)
+  submittedAt         DateTime?
+  returnedAt          DateTime?
+  confirmedAt         DateTime?
+  reviewerUserId      String?
+  mechanicComment     String?               @db.Text
+  managerComment      String?               @db.Text
+  createdAt           DateTime              @default(now())
+  updatedAt           DateTime              @updatedAt
+
+  @@index([state, updatedAt])
+  @@index([reviewerUserId])
+}
+
+model DiagnosticTemplate {
+  id          String   @id @default(cuid())
+  code        String   @unique @db.VarChar(80)
+  name        String
+  description String?  @db.Text
+  isDefault   Boolean  @default(false)
+  isActive    Boolean  @default(true)
+  sortOrder   Int      @default(100)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([isActive, sortOrder])
+}
+
+model DiagnosticTemplateSection {
+  id        String   @id @default(cuid())
+  templateId String
+  code      String   @db.VarChar(96)
+  name      String
+  sortOrder Int      @default(100)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([templateId, code])
+  @@index([templateId, sortOrder])
+}
+
+model DiagnosticTemplateItem {
+  id                String   @id @default(cuid())
+  sectionId         String
+  code              String   @db.VarChar(128)
+  name              String
+  position          String?  @db.VarChar(80)
+  measurementUnit   String?  @db.VarChar(40)
+  suggestedWorkName String?
+  suggestedPartName String?
+  isRequired        Boolean  @default(true)
+  sortOrder         Int      @default(100)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@unique([sectionId, code])
+  @@index([sectionId, sortOrder])
+}
+
+model DiagnosticInspection {
+  id                  String                     @id @default(cuid())
+  diagnosticRequestId String
+  templateId          String
+  mechanicId          String?
+  status              DiagnosticInspectionStatus @default(PENDING)
+  startedAt           DateTime?
+  completedAt         DateTime?
+  createdAt           DateTime                   @default(now())
+  updatedAt           DateTime                   @updatedAt
+
+  @@unique([diagnosticRequestId, templateId])
+  @@index([diagnosticRequestId, status])
+  @@index([mechanicId, status])
+}
+
+model DiagnosticCheck {
+  id               String               @id @default(cuid())
+  inspectionId     String
+  templateItemId   String
+  state            DiagnosticCheckState @default(NOT_CHECKED)
+  measurementValue Decimal?             @db.Decimal(14, 3)
+  measurementText  String?              @db.VarChar(160)
+  note             String?              @db.Text
+  checkedAt        DateTime?
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
+
+  @@unique([inspectionId, templateItemId])
+  @@index([inspectionId, state])
+}
+
+model DiagnosticFinding {
+  id                String                  @id @default(cuid())
+  checkId           String                  @unique
+  action            DiagnosticFindingAction @default(NONE)
+  urgency           DiagnosticUrgency       @default(INFO)
+  findingText       String?                 @db.Text
+  suggestedWorkName String?
+  suggestedPartName String?
+  createdAt         DateTime                @default(now())
+  updatedAt         DateTime                @updatedAt
+
+  @@index([urgency, updatedAt])
+}
+
+model DiagnosticMedia {
+  id        String   @id @default(cuid())
+  findingId String
+  fileName  String
+  mimeType  String   @db.VarChar(160)
+  fileSize  Int
+  fileData  Bytes
+  createdAt DateTime @default(now())
+
+  @@index([findingId, createdAt])
+}
+
+model UserUiPreference {
+  userId            String                    @id
+  textScale         MechanicTextScale         @default(M)
+  controlScale      MechanicControlScale      @default(STANDARD)
+  textMode          MechanicTextMode          @default(STANDARD)
+  interfaceContrast MechanicInterfaceContrast @default(NORMAL)
+  spacing           MechanicSpacing           @default(NORMAL)
+  largeTouchTargets Boolean                   @default(true)
+  createdAt         DateTime                  @default(now())
+  updatedAt         DateTime                  @updatedAt
+}
