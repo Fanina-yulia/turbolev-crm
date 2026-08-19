@@ -103,12 +103,25 @@ const RULES: Rule[] = [
     resolve: () => internal(PERMISSIONS.OVERVIEW_READ, "LOCATION", "Authenticated role-specific cabinet. Response is narrowed server-side to assigned mechanic work or the manager's station and excludes global finance.", true),
   },
   {
+    match: exact("/api/cabinet/service-advisor"),
+    resolve: () => internal(PERMISSIONS.OVERVIEW_READ, "LOCATION", "Service-advisor cabinet is authenticated and station-scoped; the route also enforces the SERVICE_ADVISOR role.", true),
+  },
+  {
     match: exact("/api/audit"),
     resolve: () => internal(PERMISSIONS.AUDIT_READ, "ALL", "Audit log is sensitive and never inherits generic analytics access."),
   },
   {
     match: (path) => path === "/api/personnel/access-catalog" || /^\/api\/personnel\/[^/]+\/access$/.test(path),
     resolve: () => internal(PERMISSIONS.PERSONNEL_WRITE, "LOCATION", "Delegated employee/cabinet administration is always authenticated and station-scoped when applicable.", true),
+  },
+  {
+    match: prefix("/api/personnel"),
+    resolve: (method) => {
+      if (method.toUpperCase() === "GET") {
+        return internal(PERMISSIONS.PERSONNEL_READ, "SELF", "Personnel nested reads, documents and v2 catalog require personnel read access; route handlers enforce row/location scope.");
+      }
+      return internal(PERMISSIONS.PERSONNEL_WRITE, "LOCATION", "Personnel nested mutations, documents, photos and v2 role operations require strict location-scoped personnel write access.", true);
+    },
   },
   {
     match: exact("/api/personnel"),
