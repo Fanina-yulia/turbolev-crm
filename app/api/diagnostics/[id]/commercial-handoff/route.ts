@@ -42,7 +42,7 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
 export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
   const { id } = await context.params;
   try {
-    const access = await authorize(PERMISSIONS.WORK_ORDERS_ESTIMATE, { request, minimumScope: "LOCATION" });
+    const access = await authorize(PERMISSIONS.WORK_ORDERS_ESTIMATE, { request, minimumScope: "LOCATION", strict: true });
     if (!access.allowed) return access.response!;
     if (!(await locationAllowed(access, id))) return NextResponse.json({ ok: false, error: "LOCATION_FORBIDDEN" }, { status: 403 });
     const data = await importDiagnosticRecommendationsToEstimate(id, "CRM / Сервіс-менеджер");
