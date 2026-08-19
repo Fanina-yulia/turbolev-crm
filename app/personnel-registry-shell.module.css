@@ -1,0 +1,62 @@
+.registryShell{width:100%;min-width:0}
+
+.registryShell :global(aside){
+  grid-column:1 / -1;
+  width:100%;
+  max-height:none!important;
+  min-height:0;
+  overflow:visible!important;
+}
+
+.registryShell :global(aside + main){
+  display:none!important;
+}
+
+.registryShell :global(aside > button){
+  width:100%;
+  min-height:74px;
+  padding:14px 16px!important;
+  grid-template-columns:46px minmax(0,1fr) auto!important;
+  border-bottom:1px solid var(--line)!important;
+}
+
+.registryShell :global(aside > button:last-child){
+  border-bottom:0!important;
+}
+
+.registryShell :global(aside > button > div:nth-child(2)){
+  min-width:0;
+}
+
+.registryShell :global(aside > button > div:nth-child(2) > b){
+  font-size:14px;
+  line-height:1.35;
+}
+
+.registryShell :global(aside > button > div:nth-child(2) > span),
+.registryShell :global(aside > button > div:nth-child(2) > small){
+  margin-top:3px;
+  white-space:normal;
+  overflow-wrap:anywhere;
+}
+
+@media (min-width:900px){
+  .registryShell :global(aside > button > div:nth-child(2)){
+    display:grid;
+    grid-template-columns:minmax(220px,1.25fr) minmax(180px,.9fr) minmax(280px,1.4fr);
+    align-items:center;
+    column-gap:24px;
+  }
+  .registryShell :global(aside > button > div:nth-child(2) > b),
+  .registryShell :global(aside > button > div:nth-child(2) > span),
+  .registryShell :global(aside > button > div:nth-child(2) > small){
+    margin:0;
+  }
+}
+
+@media (max-width:720px){
+  .registryShell :global(aside > button){
+    min-height:68px;
+    padding:12px!important;
+  }
+}
