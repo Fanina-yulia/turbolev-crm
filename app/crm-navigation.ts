@@ -24,6 +24,29 @@ export type CrmNavItem = (typeof CRM_NAV)[number];
 
 type CrmNavGroup = { label: string; items: readonly CrmNavItem[] };
 
+const IMPLEMENTED_SLUGS = new Set<CrmSectionSlug>([
+  "overview",
+  "communications",
+  "leads",
+  "clients",
+  "vehicles",
+  "planner",
+  "diagnostics",
+  "work-orders",
+  "parts",
+  "finance",
+  "settings",
+]);
+
+const SECTION_FALLBACKS: Partial<Record<CrmSectionLabel, CrmSectionLabel>> = {
+  "Виробництво": "Замовлення-наряди",
+  "Контроль якості": "Замовлення-наряди",
+  "Закупівлі та склад": "Підбір запчастин",
+  "Оплати": "Фінансовий центр",
+  "Гарантії": "Замовлення-наряди",
+  "Аналітика": "Фінансовий центр",
+};
+
 function navItems(...slugs: CrmSectionSlug[]): CrmNavItem[] {
   return slugs.map((slug) => {
     const item = CRM_NAV.find((candidate) => candidate.slug === slug);
@@ -36,18 +59,28 @@ export const CRM_NAV_GROUPS: readonly CrmNavGroup[] = [
   { label: "Головне", items: navItems("overview") },
   { label: "Клієнти", items: navItems("communications", "leads", "clients", "vehicles") },
   { label: "Сервіс", items: navItems("planner", "diagnostics", "work-orders") },
-  { label: "Ремонт", items: navItems("production", "quality", "warranties") },
-  { label: "Запчастини", items: navItems("parts", "procurement") },
-  { label: "Фінанси", items: navItems("finance", "payments") },
-  { label: "Управління", items: navItems("analytics", "settings") },
+  { label: "Запчастини", items: navItems("parts") },
+  { label: "Фінанси", items: navItems("finance") },
+  { label: "Управління", items: navItems("settings") },
 ];
 
-export function sectionFromSlug(value: string | null | undefined): CrmSectionLabel {
-  return CRM_NAV.find((item) => item.slug === value)?.label ?? "Огляд станції";
+export function isImplementedCrmSection(value: CrmSectionLabel): boolean {
+  return IMPLEMENTED_SLUGS.has(slugFromSection(value));
 }
+
+export function resolveCrmSection(value: CrmSectionLabel): CrmSectionLabel {
+  return SECTION_FALLBACKS[value] ?? value;
+}
+
+export function sectionFromSlug(value: string | null | undefined): CrmSectionLabel {
+  const section = CRM_NAV.find((item) => item.slug === value)?.label ?? "Огляд станції";
+  return resolveCrmSection(section);
+}
+
 export function slugFromSection(value: string): CrmSectionSlug {
   return CRM_NAV.find((item) => item.label === value)?.slug ?? "overview";
 }
+
 export function isCrmSection(value: string): value is CrmSectionLabel {
   return CRM_NAV.some((item) => item.label === value);
 }
