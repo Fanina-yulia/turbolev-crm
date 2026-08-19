@@ -63,6 +63,7 @@ interface CommunicationMessageRow extends QueryResultRow {
   text: string;
   sentAt: Date;
   metadata: unknown;
+  attachments: unknown;
   deliveryStatus: string | null;
 }
 
@@ -110,12 +111,16 @@ function publicChannelLabel(channel: CommunicationChannel) {
 }
 
 function publicMessageMetadata(message: CommunicationMessageRow) {
-  const base = message.metadata && typeof message.metadata === "object" && !Array.isArray(message.metadata)
-    ? message.metadata as Record<string, unknown>
+  const base: Record<string, unknown> = message.metadata && typeof message.metadata === "object" && !Array.isArray(message.metadata)
+    ? { ...(message.metadata as Record<string, unknown>) }
     : {};
-  return message.direction === "OUT" && message.deliveryStatus
-    ? { ...base, delivery: message.deliveryStatus }
-    : message.metadata ?? null;
+  if (Array.isArray(message.attachments) && message.attachments.length) {
+    base.attachments = message.attachments;
+  }
+  if (message.direction === "OUT" && message.deliveryStatus) {
+    base.delivery = message.deliveryStatus;
+  }
+  return Object.keys(base).length ? base : null;
 }
 
 export async function listCommunicationInquiries(input?: { channel?: string; unread?: boolean; noReply?: boolean; search?: string }) {
