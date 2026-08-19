@@ -1,6 +1,7 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import styles from "./sign-in.module.css";
 
 type AccessStatus = {
@@ -9,7 +10,14 @@ type AccessStatus = {
   user?: { name?: string | null } | null;
 };
 
+function safeNextPath(value: string | null) {
+  if (!value || !value.startsWith("/") || value.startsWith("//")) return "/";
+  return value;
+}
+
 export function SignInForm() {
+  const searchParams = useSearchParams();
+  const nextPath = useMemo(() => safeNextPath(searchParams.get("next")), [searchParams]);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
@@ -19,7 +27,7 @@ export function SignInForm() {
     const meResponse = await fetch("/api/auth/me", { credentials: "include", cache: "no-store" });
     const me = (await meResponse.json().catch(() => null)) as AccessStatus | null;
     if (me?.authenticated && me.provisioningState === "ACTIVE") {
-      window.location.assign("/");
+      window.location.assign(nextPath);
       return true;
     }
     if (me?.authenticated && me.provisioningState === "AUTHENTICATED_UNPROVISIONED") {
@@ -94,7 +102,7 @@ export function SignInForm() {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json", Accept: "application/json" },
-        body: JSON.stringify({ provider: "google", callbackURL: "/" }),
+        body: JSON.stringify({ provider: "google", callbackURL: nextPath }),
       });
       const result = await response.json().catch(() => null);
       if (!response.ok) {

@@ -1,25 +1,244 @@
 import { NextResponse } from "next/server";
-import { inflateRawSync } from "node:zlib";
+import {
+  ServiceCatalogBodySide,
+  ServiceCatalogCalculatorOperation,
+  ServiceCatalogItemType,
+  ServiceCatalogPayrollType,
+  ServiceCatalogReviewStatus,
+  ServiceCatalogSource,
+} from "@/src/generated/prisma/client";
 import { getPrisma } from "@/src/lib/prisma";
+import { toPrismaJson } from "@/src/lib/prisma-json";
+import { applyDuplicateNameReview } from "@/src/services/service-catalog-duplicate-review.service";
+import { parseServiceCatalogWorkbook, type ParsedCatalogRow } from "@/src/services/service-catalog-import.service";
+import { bodySideLabel, buildServiceSearchAliases, calculatorOperationLabel } from "@/src/services/service-catalog-name-builder.service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-export const maxDuration = 30;
+export const maxDuration = 60;
 
-type PriceRow = { code:string; category:string; name:string; unit:string; price:number; normHours:number|null; complexSurcharge:number|null; note:string };
-type ExistingRow = { id:string; code:string|null };
-const NS = "(?:[A-Za-z_][\\w.-]*:)?";
+function sourceEnum(value: "MS_MASTER" | "MANUAL") {
+  return value === "MS_MASTER" ? ServiceCatalogSource.MS_MASTER : ServiceCatalogSource.MANUAL;
+}
+function itemTypeEnum(value: ParsedCatalogRow["itemType"]) { return ServiceCatalogItemType[value]; }
+function reviewEnum(value: ParsedCatalogRow["reviewStatus"]) { return ServiceCatalogReviewStatus[value]; }
+function payrollEnum(value: ParsedCatalogRow["payrollType"]) { return ServiceCatalogPayrollType[value]; }
+function sideEnum(value: ParsedCatalogRow["bodySide"]) { return value ? ServiceCatalogBodySide[value] : null; }
+function operationEnum(value: ParsedCatalogRow["calculatorOperation"]) { return value ? ServiceCatalogCalculatorOperation[value] : null; }
+function chunks<T>(rows: T[], size = 100) { const result: T[][] = []; for (let i = 0; i < rows.length; i += size) result.push(rows.slice(i, i + size)); return result; }
+function naming(row: ParsedCatalogRow) {
+  const namePart = row.bodyPart || null;
+  const namePosition = null;
+  const nameSide = bodySideLabel(row.bodySide) || null;
+  const nameOperation = calculatorOperationLabel(row.calculatorOperation) || null;
+  const searchAliases = buildServiceSearchAliases({
+    part: namePart,
+    position: namePosition,
+    side: nameSide,
+    operation: nameOperation,
+    displayName: row.displayName,
+    internalName: row.internalName,
+    code: row.code,
+    externalServiceId: row.externalServiceId,
+    existing: row.searchAliases,
+  });
+  return { namePart, namePosition, nameSide, nameOperation, searchAliases };
+}
 
-function xmlDecode(value:string){return value.replace(/&lt;/g,"<").replace(/&gt;/g,">").replace(/&quot;/g,'"').replace(/&apos;/g,"'").replace(/&amp;/g,"&").replace(/&#(\d+);/g,(_,n)=>String.fromCodePoint(Number(n))).replace(/&#x([0-9a-f]+);/gi,(_,n)=>String.fromCodePoint(parseInt(n,16)));}
-function attr(source:string,name:string){const match=new RegExp(`(?:^|\\s)${name.replace(":","\\:")}="([^"]*)"`).exec(source);return match?xmlDecode(match[1]):"";}
-function unzip(buffer:Buffer){let eocd=-1;for(let i=buffer.length-22;i>=Math.max(0,buffer.length-65557);i--){if(buffer.readUInt32LE(i)===0x06054b50){eocd=i;break;}}if(eocd<0)throw new Error("INVALID_XLSX");const total=buffer.readUInt16LE(eocd+10);let offset=buffer.readUInt32LE(eocd+16);const files=new Map<string,Buffer>();for(let i=0;i<total;i++){if(buffer.readUInt32LE(offset)!==0x02014b50)throw new Error("INVALID_XLSX");const method=buffer.readUInt16LE(offset+10);const compressedSize=buffer.readUInt32LE(offset+20);const nameLength=buffer.readUInt16LE(offset+28);const extraLength=buffer.readUInt16LE(offset+30);const commentLength=buffer.readUInt16LE(offset+32);const localOffset=buffer.readUInt32LE(offset+42);const name=buffer.subarray(offset+46,offset+46+nameLength).toString("utf8");if(buffer.readUInt32LE(localOffset)!==0x04034b50)throw new Error("INVALID_XLSX");const localNameLength=buffer.readUInt16LE(localOffset+26);const localExtraLength=buffer.readUInt16LE(localOffset+28);const dataStart=localOffset+30+localNameLength+localExtraLength;const compressed=buffer.subarray(dataStart,dataStart+compressedSize);const content=method===0?compressed:method===8?inflateRawSync(compressed):null;if(content)files.set(name.replace(/^\//,""),content);offset+=46+nameLength+extraLength+commentLength;}return files;}
-function matches(xml:string,tag:string){return xml.matchAll(new RegExp(`<${NS}${tag}\\b[^>]*>([\\s\\S]*?)<\\/${NS}${tag}>`,"g"));}
-function sharedStrings(files:Map<string,Buffer>){const xml=files.get("xl/sharedStrings.xml")?.toString("utf8")||"";const result:string[]=[];for(const match of matches(xml,"si")){const parts=[...matches(match[1],"t")].map(x=>xmlDecode(x[1]));result.push(parts.join(""));}return result;}
-function sheetPath(files:Map<string,Buffer>,wanted:string){const workbook=files.get("xl/workbook.xml")?.toString("utf8")||"";const rels=files.get("xl/_rels/workbook.xml.rels")?.toString("utf8")||"";let relationshipId="";const sheetRe=new RegExp(`<${NS}sheet\\b([^>]*)\\/?\\s*>`,"g");for(const match of workbook.matchAll(sheetRe)){if(attr(match[1],"name").trim().toLocaleLowerCase("uk-UA")===wanted.trim().toLocaleLowerCase("uk-UA")){relationshipId=attr(match[1],"r:id");break;}}if(!relationshipId)throw new Error("PRICE_SHEET_NOT_FOUND");for(const match of rels.matchAll(/<Relationship\b([^>]*)\/?\s*>/g)){if(attr(match[1],"Id")===relationshipId){const target=attr(match[1],"Target").replace(/^\//,"");return target.startsWith("xl/")?target:`xl/${target.replace(/^\.\//,"")}`;}}throw new Error("PRICE_SHEET_NOT_FOUND");}
-function columnIndex(ref:string){const letters=(/^([A-Z]+)/i.exec(ref)?.[1]||"A").toUpperCase();let index=0;for(const ch of letters)index=index*26+(ch.charCodeAt(0)-64);return index-1;}
-function parseSheet(xml:string,shared:string[]){const rows:Array<Array<string|number|null>>=[];for(const rowMatch of matches(xml,"row")){const row:Array<string|number|null>=[];const cellRe=new RegExp(`<${NS}c\\b([^>]*?)(?:\\/\\s*>|>([\\s\\S]*?)<\\/${NS}c>)`,"g");for(const cellMatch of rowMatch[1].matchAll(cellRe)){const attrs=cellMatch[1],body=cellMatch[2]??"",ref=attr(attrs,"r"),type=attr(attrs,"t");const v=new RegExp(`<${NS}v\\b[^>]*>([\\s\\S]*?)<\\/${NS}v>`).exec(body)?.[1]??"";const inline=[...matches(body,"t")].map(x=>xmlDecode(x[1])).join("");let value:string|number|null=null;if(type==="s")value=shared[Number(v)]??"";else if(type==="inlineStr"||type==="str")value=inline||xmlDecode(v);else if(v!==""){const n=Number(v);value=Number.isFinite(n)?n:xmlDecode(v);}else if(inline)value=inline;if(ref)row[columnIndex(ref)]=value;}rows.push(row);}return rows;}
-function clean(value:unknown){return String(value??"").trim();}
-function numeric(value:unknown){const n=typeof value==="number"?value:Number(String(value??"").replace(/\s/g,"").replace(",","."));return Number.isFinite(n)?n:0;}
-function parsePriceRows(buffer:Buffer):PriceRow[]{const files=unzip(buffer),shared=sharedStrings(files),path=sheetPath(files,"Повний внутрішній прайс"),xml=files.get(path)?.toString("utf8");if(!xml)throw new Error("PRICE_SHEET_NOT_FOUND");const rows=parseSheet(xml,shared);const headerIndex=rows.findIndex(row=>row.some(v=>clean(v)==="Код")&&row.some(v=>clean(v)==="Назва роботи"));if(headerIndex<0)throw new Error("PRICE_HEADER_NOT_FOUND");const headers=rows[headerIndex].map(v=>clean(v));const col=(name:string)=>headers.findIndex(h=>h===name);const indexes={code:col("Код"),category:col("Категорія"),name:col("Назва роботи"),unit:col("Одиниця"),price:col("Базова ціна"),hours:col("Нормо-години"),surcharge:col("Доплата в комплексі"),note:col("Примітка")};if(indexes.code<0||indexes.name<0||indexes.price<0)throw new Error("PRICE_HEADER_NOT_FOUND");const result:PriceRow[]=[];for(const row of rows.slice(headerIndex+1)){const code=clean(row[indexes.code]),name=clean(row[indexes.name]);if(!code||!name)continue;const price=numeric(row[indexes.price]);if(price<0)continue;const hoursRaw=indexes.hours>=0?row[indexes.hours]:null,surchargeRaw=indexes.surcharge>=0?row[indexes.surcharge]:null;result.push({code:code.slice(0,64),category:indexes.category>=0?clean(row[indexes.category]).slice(0,180):"",name:name.slice(0,180),unit:indexes.unit>=0?clean(row[indexes.unit]).slice(0,80):"",price,normHours:hoursRaw==null||clean(hoursRaw)===""?null:numeric(hoursRaw),complexSurcharge:surchargeRaw==null||clean(surchargeRaw)===""?null:numeric(surchargeRaw),note:indexes.note>=0?clean(row[indexes.note]).slice(0,1000):""});}if(!result.length)throw new Error("PRICE_EMPTY");return result;}
+function sampleRow(row: ParsedCatalogRow) {
+  return {
+    externalServiceId: row.externalServiceId,
+    code: row.code,
+    internalName: row.internalName,
+    displayName: row.displayName,
+    category: row.normalizedCategory,
+    sourceCategory: row.sourceCategory,
+    itemType: row.itemType,
+    basePrice: row.basePrice,
+    normMinutes: row.normMinutes,
+    warrantyKm: row.warrantyKm,
+    warrantyDays: row.warrantyDays,
+    payrollType: row.payrollType,
+    bodyPart: row.bodyPart,
+    bodySide: row.bodySide,
+    calculatorOperation: row.calculatorOperation,
+    reviewStatus: row.reviewStatus,
+    reviewReason: row.reviewReason,
+    sourceRow: row.sourceRow,
+  };
+}
 
-export async function POST(request:Request){try{const form=await request.formData(),file=form.get("file"),mode=String(form.get("mode")||"preview");if(!(file instanceof File))return NextResponse.json({ok:false,error:"Оберіть XLSX-файл прайсу."},{status:400});if(file.size>8*1024*1024)return NextResponse.json({ok:false,error:"Файл завеликий. Максимум 8 МБ."},{status:413});if(!file.name.toLowerCase().endsWith(".xlsx"))return NextResponse.json({ok:false,error:"Підтримується формат .xlsx."},{status:400});const rows=parsePriceRows(Buffer.from(await file.arrayBuffer())),prisma=getPrisma();const existing=await prisma.$queryRawUnsafe<ExistingRow[]>(`SELECT "id","code" FROM "CrmDirectoryItem" WHERE "category"='WORK_PRICE' AND "code" IS NOT NULL`);const byCode=new Map(existing.filter(x=>x.code).map(x=>[String(x.code).toUpperCase(),x]));const stats={total:rows.length,create:rows.filter(x=>!byCode.has(x.code.toUpperCase())).length,update:rows.filter(x=>byCode.has(x.code.toUpperCase())).length};if(mode!=="import")return NextResponse.json({ok:true,mode:"preview",fileName:file.name,stats,rows:rows.slice(0,25)});const operations=rows.map((row,index)=>{const current=byCode.get(row.code.toUpperCase()),data={category:row.category,price:row.price,unit:row.unit,normHours:row.normHours,complexSurcharge:row.complexSurcharge,note:row.note,importSource:file.name,importedAt:new Date().toISOString()};if(current)return prisma.$executeRawUnsafe(`UPDATE "CrmDirectoryItem" SET "name"=$2,"data"=$3::jsonb,"isActive"=TRUE,"sortOrder"=$4,"updatedAt"=CURRENT_TIMESTAMP WHERE "id"=$1`,current.id,row.name,JSON.stringify(data),index+1);const id=`dir_work_price_${crypto.randomUUID()}`;return prisma.$executeRawUnsafe(`INSERT INTO "CrmDirectoryItem" ("id","category","name","code","data","isActive","sortOrder","updatedAt") VALUES ($1,'WORK_PRICE',$2,$3,$4::jsonb,TRUE,$5,CURRENT_TIMESTAMP)`,id,row.name,row.code,JSON.stringify(data),index+1);});await prisma.$transaction(operations);return NextResponse.json({ok:true,mode:"import",fileName:file.name,stats,message:`Імпортовано ${stats.total}: додано ${stats.create}, оновлено ${stats.update}.`});}catch(error){const code=error instanceof Error?error.message:"UNKNOWN",message=code==="INVALID_XLSX"?"Файл не схожий на коректний XLSX.":code==="PRICE_SHEET_NOT_FOUND"?"Не знайдено аркуш «Повний внутрішній прайс».":code==="PRICE_HEADER_NOT_FOUND"?"Не знайдено обов'язкові колонки: Код, Назва роботи, Базова ціна.":code==="PRICE_EMPTY"?"У файлі не знайдено позицій прайсу.":"Не вдалося імпортувати прайс.";console.error("work price import failed",error);return NextResponse.json({ok:false,error:message},{status:400});}}
+export async function POST(request: Request) {
+  try {
+    const form = await request.formData();
+    const file = form.get("file");
+    const mode = String(form.get("mode") || "preview");
+    if (!(file instanceof File)) return NextResponse.json({ ok: false, error: "Оберіть XLSX-файл прайсу." }, { status: 400 });
+    if (file.size > 12 * 1024 * 1024) return NextResponse.json({ ok: false, error: "Файл завеликий. Максимум 12 МБ." }, { status: 413 });
+    if (!file.name.toLowerCase().endsWith(".xlsx")) return NextResponse.json({ ok: false, error: "Підтримується формат .xlsx." }, { status: 400 });
+
+    const buffer = Buffer.from(await file.arrayBuffer());
+    const parsed = applyDuplicateNameReview(parseServiceCatalogWorkbook(buffer, file.name));
+    const prisma = getPrisma();
+    const source = sourceEnum(parsed.source);
+    const ids = parsed.rows.map((row) => row.externalServiceId);
+    const existing = await prisma.serviceCatalogItem.findMany({
+      where: { source, externalServiceId: { in: ids } },
+      select: { id: true, externalServiceId: true, isActive: true, reviewStatus: true },
+    });
+    const byExternalId = new Map(existing.filter((row) => row.externalServiceId).map((row) => [row.externalServiceId as string, row]));
+    const createCount = parsed.rows.filter((row) => !byExternalId.has(row.externalServiceId)).length;
+    const updateCount = parsed.rows.length - createCount;
+    const preview = {
+      ok: true,
+      mode: "preview",
+      format: parsed.format,
+      source: parsed.source,
+      fileName: parsed.fileName,
+      sheetName: parsed.sheetName,
+      sha256: parsed.sha256,
+      stats: { ...parsed.stats, create: createCount, update: updateCount, autoActivate: 0 },
+      warnings: parsed.warnings,
+      rows: parsed.rows.slice(0, 40).map(sampleRow),
+    };
+    if (mode !== "import") return NextResponse.json(preview);
+
+    const now = new Date();
+    const sourceVersion = `${file.name}:${parsed.sha256.slice(0, 12)}`;
+    const batch = await prisma.serviceCatalogImportBatch.create({
+      data: {
+        source,
+        fileName: file.name,
+        fileSha256: parsed.sha256,
+        sourceVersion,
+        totalRows: parsed.stats.total,
+        readyRows: parsed.stats.ready,
+        reviewRows: parsed.stats.needsReview,
+        quarantinedRows: parsed.stats.quarantined,
+        metadata: toPrismaJson({ format: parsed.format, sheetName: parsed.sheetName, warnings: parsed.warnings, stats: parsed.stats }),
+      },
+    });
+
+    const newRows = parsed.rows.filter((row) => !byExternalId.has(row.externalServiceId));
+    if (newRows.length) {
+      await prisma.serviceCatalogItem.createMany({
+        data: newRows.map((row) => {
+          const name = naming(row);
+          return {
+            source,
+            externalServiceId: row.externalServiceId,
+            code: row.code,
+            internalName: row.internalName,
+            displayName: row.displayName,
+            searchAliases: name.searchAliases,
+            namePart: name.namePart,
+            namePosition: name.namePosition,
+            nameSide: name.nameSide,
+            nameOperation: name.nameOperation,
+            categoryId: row.categoryId,
+            sourceCategory: row.sourceCategory || null,
+            itemType: itemTypeEnum(row.itemType),
+            basePrice: row.basePrice,
+            currency: "UAH",
+            unit: row.unit,
+            defaultQuantity: row.defaultQuantity,
+            normMinutes: row.normMinutes,
+            complexSurcharge: row.complexSurcharge,
+            vehicleCoefficientEnabled: row.vehicleCoefficientEnabled,
+            warrantyKm: row.warrantyKm,
+            warrantyDays: row.warrantyDays,
+            payrollCategory: row.payrollCategory,
+            payrollType: payrollEnum(row.payrollType),
+            mechanicPercent: row.mechanicPercent,
+            mechanicFixedAmount: row.mechanicFixedAmount,
+            bodyPart: row.bodyPart,
+            bodySide: sideEnum(row.bodySide),
+            calculatorOperation: operationEnum(row.calculatorOperation),
+            isActive: false,
+            showToOperator: false,
+            showToClient: false,
+            showOnLanding: false,
+            reviewStatus: reviewEnum(row.reviewStatus),
+            reviewReason: row.reviewReason,
+            sourceRow: row.sourceRow,
+            sourceVersion,
+            originalData: toPrismaJson(row.originalData),
+            importBatchId: batch.id,
+            importedAt: now,
+          };
+        }),
+      });
+    }
+
+    const updateRows = parsed.rows.filter((row) => byExternalId.has(row.externalServiceId));
+    for (const group of chunks(updateRows)) {
+      await prisma.$transaction(group.map((row) => {
+        const current = byExternalId.get(row.externalServiceId)!;
+        const unsafe = row.reviewStatus !== "READY";
+        const name = naming(row);
+        return prisma.serviceCatalogItem.update({
+          where: { id: current.id },
+          data: {
+            code: row.code,
+            internalName: row.internalName,
+            displayName: row.displayName,
+            searchAliases: name.searchAliases,
+            namePart: name.namePart,
+            namePosition: name.namePosition,
+            nameSide: name.nameSide,
+            nameOperation: name.nameOperation,
+            categoryId: row.categoryId,
+            sourceCategory: row.sourceCategory || null,
+            itemType: itemTypeEnum(row.itemType),
+            basePrice: row.basePrice,
+            unit: row.unit,
+            defaultQuantity: row.defaultQuantity,
+            normMinutes: row.normMinutes,
+            complexSurcharge: row.complexSurcharge,
+            vehicleCoefficientEnabled: row.vehicleCoefficientEnabled,
+            warrantyKm: row.warrantyKm,
+            warrantyDays: row.warrantyDays,
+            payrollCategory: row.payrollCategory,
+            payrollType: payrollEnum(row.payrollType),
+            mechanicPercent: row.mechanicPercent,
+            mechanicFixedAmount: row.mechanicFixedAmount,
+            bodyPart: row.bodyPart,
+            bodySide: sideEnum(row.bodySide),
+            calculatorOperation: operationEnum(row.calculatorOperation),
+            ...(unsafe ? { isActive: false, showToOperator: false, showToClient: false, showOnLanding: false } : {}),
+            reviewStatus: reviewEnum(row.reviewStatus),
+            reviewReason: row.reviewReason,
+            sourceRow: row.sourceRow,
+            sourceVersion,
+            originalData: toPrismaJson(row.originalData),
+            importBatchId: batch.id,
+            importedAt: now,
+          },
+        });
+      }));
+    }
+
+    const preservedActive = updateRows.filter((row) => row.reviewStatus === "READY" && byExternalId.get(row.externalServiceId)?.isActive).length;
+    await prisma.serviceCatalogImportBatch.update({
+      where: { id: batch.id },
+      data: { createdRows: createCount, updatedRows: updateCount, activatedRows: preservedActive },
+    });
+
+    return NextResponse.json({
+      ...preview,
+      mode: "import",
+      batchId: batch.id,
+      stats: { ...preview.stats, preservedActive },
+      message: `Імпортовано у staging ${parsed.stats.total} позицій: нових ${createCount}, оновлено ${updateCount}. Автоматично не активовано жодної нової позиції.`,
+    });
+  } catch (error) {
+    const code = error instanceof Error ? error.message : "UNKNOWN";
+    const message = code === "INVALID_XLSX" ? "Файл не схожий на коректний XLSX."
+      : code === "PRICE_SHEET_NOT_FOUND" ? "У XLSX не знайдено аркушів із даними."
+      : code === "PRICE_HEADER_NOT_FOUND" ? "Не знайдено структуру МС Мастер або Turbo LEV прайсу."
+      : code === "PRICE_EMPTY" ? "У файлі не знайдено позицій прайсу."
+      : "Не вдалося імпортувати прайс у Price Catalog 2.0.";
+    console.error("service catalog import failed", error);
+    return NextResponse.json({ ok: false, error: message }, { status: 400 });
+  }
+}
