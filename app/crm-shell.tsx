@@ -5,7 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import { NewRequestLauncher } from "./new-request-launcher";
 import { SettingsPersonnelBridge } from "./settings-personnel-bridge";
 import { useCrmAccess } from "./use-crm-access";
-import { CRM_NAV_GROUPS, isCrmSection, sectionFromSlug, slugFromSection, type CrmSectionLabel } from "./crm-navigation";
+import { CRM_NAV_GROUPS, isCrmSection, resolveCrmSection, sectionFromSlug, slugFromSection, type CrmSectionLabel } from "./crm-navigation";
 import { CRM_ROUTE_KEYS, navigateCrm, type CrmRouteParams } from "./crm-route";
 import { PERMISSIONS } from "@/src/security/permissions";
 import { turboLevLogoDark, turboLevLogoLight } from "@/src/brand/logos";
@@ -13,6 +13,7 @@ import shellStyles from "./crm-shell.module.css";
 
 type NavigateDetail = string | { section: CrmSectionLabel; filter?: string; filterLabel?: string };
 type SettingsTab = "schedule"|"personnel"|"suppliers"|"warehouse"|"workPrices"|"posts"|"markup"|"cash"|"integrations"|"cameras"|"appearance"|"workflow"|"security";
+type LegacyRoute = { section: CrmSectionLabel; params: CrmRouteParams };
 
 function SectionLoading() {
   return <div className={shellStyles.sectionLoading} role="status" aria-live="polite" aria-label="Завантаження розділу">
@@ -60,10 +61,28 @@ function clearTypedRouteParams(url:URL){
   for(const key of CRM_ROUTE_KEYS)url.searchParams.delete(key);
 }
 
-function legacyTypedRoute(section:CrmSectionLabel,filter:string):CrmRouteParams|null{
+function legacyRoute(section:CrmSectionLabel,filter:string):LegacyRoute|null{
   const value=filter.trim();
-  if(!value)return null;
+
+  if(section==="Виробництво"){
+    if(value==="in-repair"||value==="in_repair")return{section:"Замовлення-наряди",params:{status:"IN_REPAIR"}};
+    if(value==="ready"||value==="ready-for-repair"||value==="ready_for_repair")return{section:"Замовлення-наряди",params:{status:"READY_FOR_REPAIR"}};
+    if(value==="completed-today")return{section:"Замовлення-наряди",params:{status:"CLOSED"}};
+    if(value==="posts")return{section:"Планувальник",params:{}};
+    return{section:"Замовлення-наряди",params:{}};
+  }
+
+  if(section==="Контроль якості"){
+    if(value==="ready"||value==="ready_for_pickup")return{section:"Замовлення-наряди",params:{status:"READY_FOR_PICKUP"}};
+    return{section:"Замовлення-наряди",params:{scope:"qc"}};
+  }
+
+  if(section==="Закупівлі та склад")return{section:"Підбір запчастин",params:{}};
+  if(section==="Оплати"||section==="Аналітика")return{section:"Фінансовий центр",params:{}};
+  if(section==="Гарантії")return{section:"Замовлення-наряди",params:{}};
+
   if(section==="Замовлення-наряди"){
+    if(!value)return null;
     const statuses:Record<string,string>={
       approval:"WAITING_APPROVAL",
       waiting_approval:"WAITING_APPROVAL",
@@ -76,17 +95,22 @@ function legacyTypedRoute(section:CrmSectionLabel,filter:string):CrmRouteParams|
       "ready-for-repair":"READY_FOR_REPAIR",
       ready_for_repair:"READY_FOR_REPAIR",
     };
-    if(value==="qc-ready"||value==="waiting_qc")return{scope:"qc"};
-    if(statuses[value])return{status:statuses[value]};
-    if(value==="assigned")return{};
-    if(/^[A-Z_]+$/.test(value)&&["PARTS_REVIEW","WAITING_APPROVAL","WAITING_PARTS","READY_FOR_REPAIR","IN_REPAIR","WAITING_QC","READY_FOR_PICKUP","CLOSED"].includes(value))return{status:value};
-    return{workOrderId:value};
+    if(value==="qc-ready"||value==="waiting_qc")return{section,params:{scope:"qc"}};
+    if(statuses[value])return{section,params:{status:statuses[value]}};
+    if(value==="assigned")return{section,params:{}};
+    if(/^[A-Z_]+$/.test(value)&&["PARTS_REVIEW","WAITING_APPROVAL","WAITING_PARTS","READY_FOR_REPAIR","IN_REPAIR","WAITING_QC","READY_FOR_PICKUP","CLOSED"].includes(value))return{section,params:{status:value}};
+    return{section,params:{workOrderId:value}};
   }
+
   if(section==="Планувальник"){
+    if(!value)return null;
     const statuses:Record<string,string>={booked:"BOOKED","no-show":"NO_SHOW",no_show:"NO_SHOW"};
-    if(statuses[value])return{status:statuses[value]};
-    if(value==="today"||value==="assigned"||value==="mechanics")return{};
+    if(statuses[value])return{section,params:{status:statuses[value]}};
+    if(value==="today"||value==="assigned"||value==="mechanics")return{section,params:{}};
   }
+
+  if(section==="Підбір запчастин"&&["assigned","waiting-parts","waiting_parts"].includes(value))return{section,params:{}};
+  if(section==="Діагностика"&&value==="active")return{section,params:{}};
   return null;
 }
 
@@ -101,13 +125,14 @@ export function CrmShell({ initialSection }: { initialSection?: string }) {
   const access=useCrmAccess();
 
   const navigateTo = useCallback((next: CrmSectionLabel, historyMode: "push" | "replace" = "push", filter = "", filterLabel = "") => {
-    setActive(next); setOpenGroup(groupForSection(next)); setWorkflowFilter(filter); setWorkflowFilterLabel(filterLabel); setMobileNavOpen(false);
-    const url = new URL(window.location.href); const slug = slugFromSection(next);
+    const resolved=resolveCrmSection(next);
+    setActive(resolved); setOpenGroup(groupForSection(resolved)); setWorkflowFilter(filter); setWorkflowFilterLabel(filterLabel); setMobileNavOpen(false);
+    const url = new URL(window.location.href); const slug = slugFromSection(resolved);
     if (slug === "overview") url.searchParams.delete("section"); else url.searchParams.set("section", slug);
     clearTypedRouteParams(url);
     if (filter) url.searchParams.set("filter", filter); else url.searchParams.delete("filter");
     if (filterLabel) url.searchParams.set("filterLabel", filterLabel); else url.searchParams.delete("filterLabel");
-    if(next!=="Налаштування") url.searchParams.delete("settingsTab");
+    if(resolved!=="Налаштування") url.searchParams.delete("settingsTab");
     const nextUrl = `${url.pathname}${url.search}${url.hash}`;
     if (historyMode === "replace") window.history.replaceState({}, "", nextUrl); else window.history.pushState({}, "", nextUrl);
   }, []);
@@ -134,8 +159,8 @@ export function CrmShell({ initialSection }: { initialSection?: string }) {
         return;
       }
       if(!detail||!isCrmSection(detail.section))return;
-      const typed=legacyTypedRoute(detail.section,detail.filter||"");
-      if(typed){navigateCrm(detail.section,typed);return;}
+      const redirect=legacyRoute(detail.section,detail.filter||"");
+      if(redirect){navigateCrm(redirect.section,redirect.params);return;}
       navigateTo(detail.section,"push",detail.filter||"",detail.filterLabel||"");
     };
     syncFromUrl(); window.addEventListener("turbolev:navigate", navigate); window.addEventListener("popstate", syncFromUrl);
@@ -208,6 +233,6 @@ export function CrmShell({ initialSection }: { initialSection?: string }) {
       <div className="sidebarFoot"><span className="liveDot"/> {access.enforced?(access.snapshot?.user?.name||"Захищений режим"):"Станція онлайн"}</div>
     </aside>
     <div className={active==="Огляд станції"?shellStyles.globalNewRequest:undefined}><NewRequestLauncher showButton={active==="Огляд станції"&&canCreateRequest}/></div>
-    <section className={`workspace ${active==="Огляд станції"?shellStyles.workspaceWithFloatingAction:""}`}>{!activeAllowed?accessDenied:<>{active!=="Огляд станції"&&active!=="Налаштування"&&filterBanner}{active==="Комунікації"?<CommunicationsHub/>:active==="Ліди"?<LeadsBoardV2/>:active==="Клієнти"?<ClientsDirectory/>:active==="Авто"?<VehiclesDirectory/>:active==="Планувальник"?<PlannerV2/>:active==="Діагностика"?<Diagnostics/>:active==="Замовлення-наряди"?<WorkOrders/>:active==="Підбір запчастин"?<PartsCatalog/>:active==="Фінансовий центр"?<FinancialCenter/>:active==="Налаштування"?<SettingsPage key={settingsTab}/>:active==="Огляд станції"?<RoleAwareOverview access={access.snapshot}/>:<div className="comingSoon"><p className="eyebrow">TURBO LEV CRM</p><h1>{active}</h1>{workflowFilter?<p>Показуємо зріз: <strong>{workflowFilterLabel||workflowFilter}</strong>.</p>:<p>Розділ буде реалізований наступним.</p>}</div>}</>}</section>
+    <section className={`workspace ${active==="Огляд станції"?shellStyles.workspaceWithFloatingAction:""}`}>{!activeAllowed?accessDenied:<>{active!=="Огляд станції"&&active!=="Налаштування"&&filterBanner}{active==="Комунікації"?<CommunicationsHub/>:active==="Ліди"?<LeadsBoardV2/>:active==="Клієнти"?<ClientsDirectory/>:active==="Авто"?<VehiclesDirectory/>:active==="Планувальник"?<PlannerV2/>:active==="Діагностика"?<Diagnostics/>:active==="Замовлення-наряди"?<WorkOrders/>:active==="Підбір запчастин"?<PartsCatalog/>:active==="Фінансовий центр"?<FinancialCenter/>:active==="Налаштування"?<SettingsPage key={settingsTab}/>:active==="Огляд станції"?<RoleAwareOverview access={access.snapshot}/>:<div className="comingSoon"><p className="eyebrow">TURBO LEV CRM</p><h1>{active}</h1><p>Розділ тимчасово недоступний.</p></div>}</>}</section>
   </main>;
 }
