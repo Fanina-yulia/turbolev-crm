@@ -74,6 +74,7 @@ const RULES: Rule[] = [
   },
   { match: exact("/api/payments"), resolve: () => internal(PERMISSIONS.PAYMENTS_READ, "ALL", "Cashier queue is a payment read model; the route narrows records to the allowed station scope when configured.") },
   { match: prefix("/api/finance"), resolve: (method) => readWrite(method, PERMISSIONS.FINANCE_READ, PERMISSIONS.FINANCE_WRITE, "ALL", "Financial center and accounts.") },
+  { match: prefix("/api/analytics"), resolve: () => internal(PERMISSIONS.ANALYTICS_READ, "LOCATION", "Operational analytics is scoped by the caller's analytics grant; financial and personnel KPI blocks require their dedicated analytics permissions.") },
   { match: prefix("/api/production"), resolve: (method) => readWrite(method, PERMISSIONS.PRODUCTION_READ, PERMISSIONS.PRODUCTION_WRITE, "LOCATION", "Production board is station-scoped; mechanics are further narrowed to assigned appointments or WorkOrder lines.") },
   { match: exact("/api/procurement"), resolve: (method) => readWrite(method, PERMISSIONS.PROCUREMENT_READ, PERMISSIONS.PROCUREMENT_WRITE, "LOCATION", "Procurement queue is station-scoped and requires procurement read/write permissions.") },
   { match: prefix("/api/qc"), resolve: (method) => readWrite(method, PERMISSIONS.QC_READ, PERMISSIONS.QC_WRITE, "LOCATION", "Quality-control queue is station-scoped and reuses canonical WorkOrder QC attempts and transitions.") },
