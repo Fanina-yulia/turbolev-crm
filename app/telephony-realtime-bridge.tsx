@@ -57,6 +57,10 @@ function phaseLabel(phase: LiveCall["phase"]) {
   return "Дзвінок завершено";
 }
 
+function isMechanicCabinet() {
+  return Boolean(document.querySelector('[data-mechanic-cabinet="true"]'));
+}
+
 export function TelephonyRealtimeBridge() {
   const [enabled, setEnabled] = useState(false);
   const [payload, setPayload] = useState<LivePayload | null>(null);
@@ -75,6 +79,12 @@ export function TelephonyRealtimeBridge() {
   const seenRef = useRef(new Set<string>());
 
   const loadLive = useCallback(async () => {
+    if (isMechanicCabinet()) {
+      setEnabled(false);
+      setPayload(null);
+      setActive(null);
+      return;
+    }
     if (document.visibilityState !== "visible") return;
     try {
       const response = await fetch("/api/telephony/live", { cache: "no-store" });
@@ -98,6 +108,7 @@ export function TelephonyRealtimeBridge() {
   }, [dismissed]);
 
   useEffect(() => {
+    if (isMechanicCabinet()) return;
     void loadLive();
     const timer = window.setInterval(() => void loadLive(), 2_500);
     const onVisibility = () => { if (document.visibilityState === "visible") void loadLive(); };
@@ -109,6 +120,7 @@ export function TelephonyRealtimeBridge() {
   }, [loadLive]);
 
   useEffect(() => {
+    if (isMechanicCabinet()) return;
     const reconcile = async () => {
       if (document.visibilityState !== "visible") return;
       try {
@@ -192,6 +204,7 @@ export function TelephonyRealtimeBridge() {
   }, [transferOpen, loadTransferTargets]);
 
   useEffect(() => {
+    if (isMechanicCabinet()) return;
     const onCall = (event: Event) => {
       const detail = (event as CustomEvent<string | { phone?: string }>).detail;
       const value = typeof detail === "string" ? detail : detail?.phone || "";
