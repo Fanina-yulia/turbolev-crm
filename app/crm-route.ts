@@ -7,6 +7,7 @@ export type CrmRouteParams = {
   clientId?: string;
   vehicleId?: string;
   workOrderId?: string;
+  workOrderTab?: string;
   appointmentId?: string;
   plate?: string;
   vin?: string;
@@ -19,6 +20,7 @@ export const CRM_ROUTE_KEYS: Array<keyof CrmRouteParams> = [
   "clientId",
   "vehicleId",
   "workOrderId",
+  "workOrderTab",
   "appointmentId",
   "plate",
   "vin",
