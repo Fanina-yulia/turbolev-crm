@@ -6,6 +6,8 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
 
+const MAX_LIBRARY_DELIVERY_BYTES = 100 * 1024;
+
 async function fetchWithTimeout(url: string) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 15_000);
@@ -24,7 +26,7 @@ export async function GET(_request: Request, context: { params: Promise<{ assetI
   const { assetId } = await context.params;
 
   const libraryAsset = await getVehicleLibraryAsset(assetId);
-  if (libraryAsset) {
+  if (libraryAsset && libraryAsset.mimeType === "image/webp" && libraryAsset.sizeBytes <= MAX_LIBRARY_DELIVERY_BYTES) {
     return new NextResponse(new Uint8Array(libraryAsset.bytes), {
       status: 200,
       headers: {
@@ -35,6 +37,9 @@ export async function GET(_request: Request, context: { params: Promise<{ assetI
         "X-Vehicle-Image-Library": "1",
       },
     });
+  }
+  if (libraryAsset) {
+    return NextResponse.json({ ok: false, error: "Зображення бібліотеки ще оптимізується." }, { status: 425, headers: { "Cache-Control": "no-store" } });
   }
 
   const asset = await getVehicleImageAsset(assetId);
