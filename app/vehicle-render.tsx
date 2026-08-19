@@ -19,6 +19,12 @@ type VehicleRenderProps = {
   className?: string;
 };
 
+type LibraryState = {
+  state?: "READY" | "MISSING" | "GENERATING" | "ERROR" | "NOT_CONFIGURED" | "MISSING_DATA";
+  autoGenerate?: boolean;
+  canGenerate?: boolean;
+};
+
 const PAINTS = ["Imagin-black","Imagin-grey","Imagin-white","Imagin-blue","Imagin-yellow","Imagin-red","Imagin-orange","Imagin-green"] as const;
 type ThemePaint = typeof PAINTS[number];
 
@@ -67,6 +73,7 @@ export function VehicleRender(props: VehicleRenderProps) {
   const size = props.size || "card";
   const [themePaint, setThemePaint] = useState<ThemePaint>("Imagin-orange");
   const [failed, setFailed] = useState(false);
+  const [libraryVersion, setLibraryVersion] = useState(0);
 
   useEffect(() => {
     const sync = () => setThemePaint(readThemePaint());
@@ -76,11 +83,62 @@ export function VehicleRender(props: VehicleRenderProps) {
     return () => observer.disconnect();
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+    let pollTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const schedulePoll = () => {
+      if (cancelled) return;
+      pollTimer = setTimeout(() => void inspect(), 5000);
+    };
+
+    const inspect = async () => {
+      try {
+        const query = new URLSearchParams({ theme: themePaint });
+        const response = await fetch(`/api/vehicles/${encodeURIComponent(props.id)}/image?${query.toString()}`, { cache: "no-store" });
+        const data = await response.json() as { ok?: boolean; image?: unknown; library?: LibraryState };
+        if (cancelled || !response.ok || !data.ok) return;
+        if (data.image) {
+          setLibraryVersion((value) => value + 1);
+          return;
+        }
+
+        const library = data.library;
+        if (library?.state === "GENERATING") {
+          schedulePoll();
+          return;
+        }
+        if (library?.state !== "MISSING" || !library.autoGenerate || !library.canGenerate) return;
+
+        const generation = await fetch(`/api/vehicles/${encodeURIComponent(props.id)}/image`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ themePaint }),
+        });
+        const result = await generation.json().catch(() => null) as { ok?: boolean; image?: unknown; generation?: { state?: string } } | null;
+        if (cancelled) return;
+        if (generation.ok && result?.ok && result.image) {
+          setLibraryVersion((value) => value + 1);
+          return;
+        }
+        if (result?.generation?.state === "GENERATING") schedulePoll();
+      } catch {
+        // The card keeps its local placeholder when generation is unavailable.
+      }
+    };
+
+    void inspect();
+    return () => {
+      cancelled = true;
+      if (pollTimer) clearTimeout(pollTimer);
+    };
+  }, [props.id, props.updatedAt, themePaint]);
+
   const src = useMemo(() => {
-    const params = new URLSearchParams({ theme: themePaint });
+    const params = new URLSearchParams({ theme: themePaint, lib: String(libraryVersion) });
     if (props.updatedAt) params.set("v", props.updatedAt);
     return `/api/vehicles/${encodeURIComponent(props.id)}/image/render?${params.toString()}`;
-  }, [props.id, props.updatedAt, themePaint]);
+  }, [props.id, props.updatedAt, themePaint, libraryVersion]);
 
   useEffect(() => setFailed(false), [src]);
 

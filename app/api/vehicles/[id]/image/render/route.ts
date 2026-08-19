@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getPrisma } from "@/src/lib/prisma";
 import { markVehicleImageFailure, resolveVehicleImage } from "@/src/services/vehicle-images/vehicle-image.service";
+import { getVehicleLibraryAsset } from "@/src/services/vehicle-images/openai-library.service";
 import { normalizeThemePaint } from "@/src/services/vehicle-images/vehicle-color.service";
 
 export const runtime = "nodejs";
@@ -57,14 +58,6 @@ function svgResponse(svg: string) {
   return new NextResponse(svg, { status: 200, headers: { "Content-Type": "image/svg+xml; charset=utf-8", "Cache-Control": "public, max-age=3600, s-maxage=3600, stale-while-revalidate=86400", "X-Vehicle-Image-Fallback": "1" } });
 }
 
-function isResolvedVehicle(response: Response) {
-  const resolved = response.headers.get("x-imaginstudio-request-resolved");
-  const found = response.headers.get("x-imaginstudio-request-found");
-  if (resolved && resolved.toLowerCase() === "false") return false;
-  if (found && found.toLowerCase() === "false") return false;
-  return true;
-}
-
 export async function GET(request: NextRequest, context: { params: Promise<{ id: string }> }) {
   const { id } = await context.params;
   const themePaint = request.nextUrl.searchParams.get("theme");
@@ -75,24 +68,35 @@ export async function GET(request: NextRequest, context: { params: Promise<{ id:
   try {
     const image = await resolveVehicleImage(id, { themePaint });
     if (!image) return fallback();
+
+    if (image.provider === "OPENAI") {
+      const libraryAsset = await getVehicleLibraryAsset(image.assetId);
+      if (!libraryAsset) return fallback();
+      return new NextResponse(new Uint8Array(libraryAsset.bytes), {
+        status: 200,
+        headers: {
+          "Content-Type": libraryAsset.mimeType,
+          "Content-Length": String(libraryAsset.sizeBytes),
+          "Cache-Control": "public, max-age=604800, s-maxage=604800, stale-while-revalidate=2592000",
+          "X-Vehicle-Image-Provider": "OPENAI",
+          "X-Vehicle-Image-Library": "1",
+        },
+      });
+    }
+
     const response = await imageFetch(image.sourceUrl);
     const contentType = response.headers.get("content-type") || "";
-    if (!response.ok || !contentType.startsWith("image/") || !isResolvedVehicle(response)) {
-      const resolved = response.headers.get("x-imaginstudio-request-resolved") || "unknown";
-      const found = response.headers.get("x-imaginstudio-request-found") || "unknown";
-      await markVehicleImageFailure(image.assetId, `Provider HTTP ${response.status}; content-type=${contentType || "unknown"}; resolved=${resolved}; found=${found}`);
+    if (!response.ok || !contentType.startsWith("image/")) {
+      await markVehicleImageFailure(image.assetId, `Provider HTTP ${response.status}; content-type=${contentType || "unknown"}`);
       return fallback();
     }
 
-    const performedMatches = response.headers.get("x-imaginstudio-performed-matches");
     return new NextResponse(response.body, {
       status: 200,
       headers: {
         "Content-Type": contentType,
         "Cache-Control": "public, max-age=86400, s-maxage=86400, stale-while-revalidate=604800",
         "X-Vehicle-Image-Provider": image.provider,
-        "X-Vehicle-Image-Confidence": String(image.confidence),
-        ...(performedMatches ? { "X-Vehicle-Image-Matches": performedMatches.slice(0, 240) } : {}),
       },
     });
   } catch (error) {
