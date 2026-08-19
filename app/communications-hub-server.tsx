@@ -21,6 +21,8 @@ type BinotelHealth = { ok: boolean; databaseConfigured: boolean; restConfigured:
 type LinkedVehicle = { id: string; plateNumber?: string | null; vin?: string | null; brand?: string | null; model?: string | null; year?: number | null };
 type LinkedClientCard = { id: string; name?: string | null; phone: string; vehicles: LinkedVehicle[] };
 type ClientSearchItem = { id: string; name?: string | null; phone: string; vehicles?: LinkedVehicle[] };
+type UploadedAttachment = { id: string; name: string; type: string; size: number; url: string; providerUrl: string };
+type TimelineAttachment = { name: string; type: string; url: string };
 type CommunicationIntegrationStatus = {
   ok: boolean;
   meta?: {
@@ -44,6 +46,9 @@ type CommunicationIntegrationStatus = {
 };
 
 const LOCAL_KEY = "turbolev-communications-v1";
+const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
+const MAX_IMAGES = 4;
+const IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
 const channels: Channel[] = ["INSTAGRAM", "FACEBOOK", "TIKTOK", "BINOTEL", "OLX", "WEBSITE"];
 const emojis = ["😀","😊","👍","❤️","🔥","✅","🙏","😉","😂","🚗","🔧","📍","☎️","💬","👌","🎯"];
 const channelMeta: Record<Channel, { label: string; short: string; tone: string }> = {
@@ -95,6 +100,21 @@ function messageDelivery(message: Message) {
   if (delivery === "SENT") return { text: "✓ надіслано", failed: false };
   if (delivery === "CRM_ONLY") return { text: "збережено в CRM", failed: false };
   return null;
+}
+function messageAttachments(message: Message): TimelineAttachment[] {
+  if (!message.metadata || typeof message.metadata !== "object") return [];
+  const metadata = message.metadata as Record<string, unknown>;
+  const raw = Array.isArray(metadata.attachments) ? metadata.attachments : [];
+  return raw.flatMap((value, index) => {
+    if (!value || typeof value !== "object") return [];
+    const item = value as Record<string, unknown>;
+    const url = typeof item.url === "string" ? item.url : "";
+    if (!url) return [];
+    const rawType = typeof item.type === "string" ? item.type : "";
+    const type = rawType === "image" ? "image/remote" : rawType;
+    const name = typeof item.name === "string" && item.name.trim() ? item.name.trim() : `Зображення ${index + 1}`;
+    return [{ name, type, url }];
+  });
 }
 function searchText(conversation: CommunicationConversation) {
   return [
@@ -312,33 +332,69 @@ export function CommunicationsHub() {
     const results = await Promise.all(conversation.unreadInquiryIds.map((id) => patchOne(id, { unread: false })));
     if (results.some((ok) => !ok)) notify("Не всі позначки прочитання вдалося синхронізувати");
   }
+  async function postReplyMessage(inquiry: Inquiry, text: string, attachments: UploadedAttachment[] = []) {
+    const response = await fetch(`/api/communications/${inquiry.id}/messages`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ text, attachments }),
+    });
+    const data = await response.json().catch(() => ({})) as { ok?: boolean; error?: string; delivery?: string };
+    if (!response.ok || !data.ok) throw new Error(data.error || "Не вдалося доставити повідомлення");
+    return data;
+  }
+  async function uploadImage(inquiry: Inquiry, file: File) {
+    const form = new FormData();
+    form.set("file", file);
+    const response = await fetch(`/api/communications/${inquiry.id}/attachments`, { method: "POST", body: form });
+    const data = await response.json().catch(() => ({})) as { ok?: boolean; error?: string; attachment?: UploadedAttachment };
+    if (!response.ok || !data.ok || !data.attachment) throw new Error(data.error || `Не вдалося завантажити ${file.name}`);
+    return data.attachment;
+  }
   async function sendReply() {
     if (!selected || !replyInquiry || (!reply.trim() && files.length === 0) || sending || metaReplyExpired) return;
     const inquiry = replyInquiry;
-    if (isLiveReplyChannel(inquiry.channel) && files.length > 0) {
-      notify("Файли для Facebook, Instagram та OLX ще не відправляються назовні. Надішліть текст окремо; модуль вкладень готується наступним етапом.");
-      return;
+    const live = isLiveReplyChannel(inquiry.channel);
+    if (live) {
+      const invalid = files.find((file) => !IMAGE_TYPES.has(file.type) || file.size > MAX_IMAGE_BYTES || file.size <= 0);
+      if (invalid) return notify(`«${invalid.name}»: дозволені JPG, PNG, WEBP, GIF до 8 МБ.`);
+      if (files.length > MAX_IMAGES) return notify(`За одне відправлення можна додати до ${MAX_IMAGES} зображень.`);
     }
-    const attachmentText = files.length ? `\n${files.map((file) => `📎 ${file.name}`).join("\n")}` : "";
-    const finalText = `${reply.trim()}${attachmentText}`.trim();
-    const attachments = files.map((file) => ({ name: file.name, type: file.type, size: file.size }));
     if (!serverMode) {
-      const message: Message = { id: `local-${Date.now()}`, direction: "out", text: finalText, at: new Date().toISOString(), metadata: { attachments, delivery: "CRM_ONLY" } };
+      const attachmentText = files.length ? `\n${files.map((file) => `📎 ${file.name}`).join("\n")}` : "";
+      const finalText = `${reply.trim()}${attachmentText}`.trim();
+      const message: Message = { id: `local-${Date.now()}`, direction: "out", text: finalText, at: new Date().toISOString(), metadata: { attachments: [], delivery: "CRM_ONLY" } };
       setItems((current) => current.map((item) => item.id === inquiry.id ? { ...item, messages: [...item.messages, message], answered: true, unread: false, state: item.state === "NEW" ? "IN_WORK" : item.state } : item));
       setReply(""); setFiles([]); setEmojiOpen(false);
       return;
     }
     setSending(true);
+    let providerMessageAttempted = false;
     try {
-      const response = await fetch(`/api/communications/${inquiry.id}/messages`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text: finalText, attachments }) });
-      const data = await response.json().catch(() => ({})) as { ok?: boolean; error?: string; delivery?: string };
-      if (!response.ok || !data.ok) throw new Error(data.error || "Не вдалося доставити повідомлення");
+      let lastDelivery = "";
+      if (reply.trim()) {
+        providerMessageAttempted = true;
+        const data = await postReplyMessage(inquiry, reply.trim());
+        lastDelivery = data.delivery || "";
+      }
+      if (live) {
+        for (const file of files) {
+          const uploaded = await uploadImage(inquiry, file);
+          providerMessageAttempted = true;
+          const data = await postReplyMessage(inquiry, `📎 ${file.name}`, [uploaded]);
+          lastDelivery = data.delivery || lastDelivery;
+        }
+      } else if (files.length) {
+        providerMessageAttempted = true;
+        const text = files.map((file) => `📎 ${file.name}`).join("\n");
+        await postReplyMessage(inquiry, text);
+      }
       setReply(""); setFiles([]); setEmojiOpen(false);
       await load(true);
-      if (data.delivery === "SENT") notify(`Надіслано в ${channelMeta[inquiry.channel].label}.`);
+      if (lastDelivery === "SENT") notify(`Надіслано в ${channelMeta[inquiry.channel].label}${files.length ? " разом із зображеннями" : ""}.`);
       else if (inquiry.channel === "BINOTEL") notify("Відповідь збережено в історії контакту.");
       else notify("Повідомлення збережено в CRM.");
     } catch (error) {
+      if (providerMessageAttempted) { setReply(""); setFiles([]); }
       await load(true);
       notify(error instanceof Error ? error.message : "Не вдалося доставити повідомлення");
     } finally { setSending(false); }
@@ -501,7 +557,10 @@ export function CommunicationsHub() {
             {selected.inquiryCount > 1 && <div className={styles.conversationSummary}>Об'єднано {selected.inquiryCount} звернень цього контакту · історія не видаляється</div>}
             {selected.timeline.length === 0 ? <div className={styles.empty}>{selected.preview}</div> : selected.timeline.map((message) => {
               const delivery = messageDelivery(message);
-              return <article key={`${message.inquiryId}:${message.id}`} className={`${styles.event} ${styles[message.direction]} ${messageIsMissed(message) ? styles.missedEvent : ""}`}><p>{message.text}</p><footer><span>{channelMeta[message.channel].label}{delivery ? <em className={delivery.failed ? "communicationsDeliveryFailed" : "communicationsDeliveryState"}> · {delivery.text}</em> : null}{delivery?.failed && isLiveReplyChannel(message.channel) ? <button className="communicationsRetryButton" type="button" disabled={Boolean(retryingMessageId)} onClick={() => void retryMessage(message.inquiryId, message.id)}>{retryingMessageId === message.id ? "Повторюю…" : "Повторити"}</button> : null}</span><time>{fmtLong(message.at)}</time></footer></article>;
+              const attachments = messageAttachments(message);
+              return <article key={`${message.inquiryId}:${message.id}`} className={`${styles.event} ${styles[message.direction]} ${messageIsMissed(message) ? styles.missedEvent : ""}`}>
+                {attachments.length > 0 && <div className="communicationsMessageImages">{attachments.map((attachment, index) => <a key={`${attachment.url}-${index}`} href={attachment.url} target="_blank" rel="noreferrer" title={attachment.name}>{attachment.type.startsWith("image/") ? <img src={attachment.url} alt={attachment.name}/> : <span>📎 {attachment.name}</span>}</a>)}</div>}
+                <p>{message.text}</p><footer><span>{channelMeta[message.channel].label}{delivery ? <em className={delivery.failed ? "communicationsDeliveryFailed" : "communicationsDeliveryState"}> · {delivery.text}</em> : null}{delivery?.failed && isLiveReplyChannel(message.channel) ? <button className="communicationsRetryButton" type="button" disabled={Boolean(retryingMessageId)} onClick={() => void retryMessage(message.inquiryId, message.id)}>{retryingMessageId === message.id ? "Повторюю…" : "Повторити"}</button> : null}</span><time>{fmtLong(message.at)}</time></footer></article>;
             })}
             <div ref={messageEndRef}/>
           </div>
@@ -510,17 +569,25 @@ export function CommunicationsHub() {
               <label>Відповісти через <select value={replyInquiry?.id || ""} onChange={(event) => { setReplyInquiryId(event.target.value); setFiles([]); }}>{replyCandidates.map((candidate) => <option key={candidate.id} value={candidate.id}>{channelMeta[candidate.channel].label}</option>)}</select></label>
               {replyDeadline && <span className={metaReplyExpired ? "expired" : ""}>{metaReplyExpired ? "Стандартне вікно Meta завершилося" : `Meta: відповідь дозволена до ${fmtLong(replyDeadline.toISOString())}`}</span>}
             </div>
-            {files.length > 0 && <div className="communicationsFileChips">{files.map((file, index) => <span key={`${file.name}-${index}`}>📎 ${file.name}<button type="button" onClick={() => setFiles((current) => current.filter((_, itemIndex) => itemIndex !== index))}>×</button></span>)}</div>}
+            {files.length > 0 && <div className="communicationsFileChips">{files.map((file, index) => <span key={`${file.name}-${index}`}>🖼 {file.name}<button type="button" onClick={() => setFiles((current) => current.filter((_, itemIndex) => itemIndex !== index))}>×</button></span>)}</div>}
             {emojiOpen && <div className="communicationsEmojiPicker">{emojis.map((emoji) => <button type="button" key={emoji} onClick={() => { setReply((current) => current + emoji); setEmojiOpen(false); }}>{emoji}</button>)}</div>}
             <div className="communicationsComposeRow">
-              <input ref={fileInputRef} type="file" multiple hidden onChange={(event) => { setFiles((current) => [...current, ...Array.from(event.target.files || [])].slice(0, 8)); event.currentTarget.value = ""; }}/>
-              <button type="button" className="communicationsToolButton" onClick={() => { if (replyInquiry && isLiveReplyChannel(replyInquiry.channel)) notify("Реальну відправку фото та файлів через API каналів додаємо наступним етапом. Зараз вкладення не буде маскуватися як відправлене."); else fileInputRef.current?.click(); }} title={replyInquiry && isLiveReplyChannel(replyInquiry.channel) ? "Вкладення для live-каналів ще не активовані" : "Додати файл"}>📎</button>
-              <textarea value={reply} onChange={(event) => setReply(event.target.value)} placeholder={metaReplyExpired ? "Стандартне вікно відповіді Meta завершилося" : "Повідомлення або внутрішня відповідь по контакту..."} disabled={metaReplyExpired} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); void sendReply(); } }}/>
+              <input ref={fileInputRef} type="file" accept="image/jpeg,image/png,image/webp,image/gif" multiple hidden onChange={(event) => {
+                const incoming = Array.from(event.target.files || []);
+                const invalid = incoming.find((file) => !IMAGE_TYPES.has(file.type) || file.size > MAX_IMAGE_BYTES || file.size <= 0);
+                if (invalid) notify(`«${invalid.name}»: дозволені JPG, PNG, WEBP, GIF до 8 МБ.`);
+                const valid = incoming.filter((file) => IMAGE_TYPES.has(file.type) && file.size > 0 && file.size <= MAX_IMAGE_BYTES);
+                setFiles((current) => [...current, ...valid].slice(0, MAX_IMAGES));
+                if (currentFileCountPlus(current => current.length, valid.length) > MAX_IMAGES) notify(`Максимум ${MAX_IMAGES} зображення за одне відправлення.`);
+                event.currentTarget.value = "";
+              }}/>
+              <button type="button" className="communicationsToolButton" onClick={() => fileInputRef.current?.click()} title="Додати фото">📎</button>
+              <textarea value={reply} onChange={(event) => setReply(event.target.value)} placeholder={metaReplyExpired ? "Стандартне вікно відповіді Meta завершилося" : "Повідомлення або відповідь по контакту..."} disabled={metaReplyExpired} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); void sendReply(); } }}/>
               <button type="button" className="communicationsToolButton" onClick={() => setEmojiOpen((current) => !current)} title="Emoji">☺</button>
-              <button type="button" className="communicationsToolButton" onClick={() => notify("Голосові повідомлення підключимо разом з API каналу") } title="Голосове повідомлення">🎙</button>
+              <button type="button" className="communicationsToolButton" onClick={() => notify("Голосові повідомлення підключимо окремим transport-етапом") } title="Голосове повідомлення">🎙</button>
               <button type="button" className="communicationsSendButton" disabled={sending || metaReplyExpired || (!reply.trim() && files.length === 0)} onClick={() => void sendReply()}>{sending ? "…" : "➤"}</button>
             </div>
-            <span className={styles.composerHint}>Enter — надіслати · Shift+Enter — новий рядок. Facebook, Instagram та OLX відправляються через API обраного каналу; для інших каналів відповідь зберігається в CRM.</span>
+            <span className={styles.composerHint}>Enter — надіслати · Shift+Enter — новий рядок. Фото JPG/PNG/WEBP/GIF до 8 МБ відправляються через Facebook, Instagram та OLX як реальні медіа-повідомлення.</span>
           </div>
         </>}</section>
       </section>
@@ -532,12 +599,18 @@ export function CommunicationsHub() {
       .communicationsComposer{display:block!important;position:relative}
       .communicationsReplyMeta{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:0 0 8px;color:var(--muted);font-size:9px}.communicationsReplyMeta label{display:flex;align-items:center;gap:6px}.communicationsReplyMeta select{border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--text);padding:5px 8px;font:inherit}.communicationsReplyMeta span{padding:5px 8px;border-radius:999px;background:var(--surface);border:1px solid var(--line)}.communicationsReplyMeta span.expired{color:#ef4444;border-color:rgba(239,68,68,.35);background:rgba(239,68,68,.07)}
       .communicationsFileChips{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 8px}.communicationsFileChips>span{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:999px;background:var(--surface);padding:5px 8px;color:var(--muted);font-size:8px}.communicationsFileChips button{width:18px!important;height:18px!important;padding:0!important;border:0!important;border-radius:50%!important;background:transparent!important;color:var(--muted)!important}
+      .communicationsMessageImages{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;margin-bottom:7px}.communicationsMessageImages a{display:block;overflow:hidden;border-radius:10px;border:1px solid var(--line);background:var(--surface);min-width:0}.communicationsMessageImages img{display:block;width:100%;max-height:240px;object-fit:cover}.communicationsMessageImages span{display:block;padding:10px;color:var(--text);font-size:9px}
       .communicationsEmojiPicker{position:absolute;left:12px;bottom:76px;z-index:5;width:220px;display:grid;grid-template-columns:repeat(8,1fr);gap:3px;border:1px solid var(--line);border-radius:12px;background:var(--panel);padding:8px;box-shadow:0 14px 34px rgba(0,0,0,.16)}.communicationsEmojiPicker button{width:25px!important;height:25px!important;padding:0!important;border:0!important;background:transparent!important;color:var(--text)!important;font-size:15px!important}
       .communicationsComposeRow{display:grid;grid-template-columns:36px minmax(0,1fr) 36px 36px 44px;gap:7px;align-items:end}.communicationsComposeRow textarea{min-height:42px!important;max-height:100px}.communicationsComposeRow button{height:42px!important;padding:0!important}.communicationsToolButton{border:1px solid var(--line)!important;background:var(--surface)!important;color:var(--text)!important;border-radius:10px!important;font-size:15px!important}.communicationsSendButton{border:0!important;background:var(--orange)!important;color:#fff!important;border-radius:10px!important;font-size:15px!important}.communicationsSendButton:disabled{opacity:.4}
       .communicationsDeliveryState{font-style:normal;color:var(--muted);font-size:8px}.communicationsDeliveryFailed{font-style:normal;color:#ef4444;font-size:8px}.communicationsRetryButton{margin-left:6px;border:1px solid rgba(239,68,68,.35);border-radius:999px;background:rgba(239,68,68,.07);color:#ef4444;padding:3px 7px;font:inherit;font-size:8px;cursor:pointer}.communicationsRetryButton:disabled{opacity:.5;cursor:wait}
       .communicationsLinkClientButton{margin-left:auto;border:1px solid var(--orange);border-radius:9px;background:transparent;color:var(--orange);padding:7px 10px;font:inherit;font-size:9px;cursor:pointer}.communicationsLinkPanel{border-bottom:1px solid var(--line);background:var(--surface);padding:12px 14px;display:grid;gap:9px}.communicationsLinkPanel>div:first-child{display:grid;gap:3px}.communicationsLinkPanel strong{font-size:10px}.communicationsLinkPanel span{font-size:8px;color:var(--muted)}.communicationsClientSearch{display:grid!important;grid-template-columns:minmax(0,1fr) auto auto;gap:6px!important}.communicationsClientSearch input{min-width:0;border:1px solid var(--line);border-radius:9px;background:var(--panel);color:var(--text);padding:8px 10px;font:inherit;font-size:9px}.communicationsClientSearch button{border:1px solid var(--line);border-radius:9px;background:var(--panel);color:var(--text);padding:7px 10px;font:inherit;font-size:9px;cursor:pointer}.communicationsClientResults{display:grid!important;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:6px!important}.communicationsClientResults>button{display:grid;text-align:left;gap:2px;border:1px solid var(--line);border-radius:10px;background:var(--panel);color:var(--text);padding:9px 10px;cursor:pointer}.communicationsClientResults>button:hover{border-color:var(--orange)}.communicationsClientResults small{font-size:8px;color:var(--muted)}.communicationsClientResults i{font-size:8px;color:var(--orange);font-style:normal}
       .communicationsIntegrationActions{display:flex;gap:7px;flex-wrap:wrap;margin-top:10px}.communicationsIntegrationActions button{border:1px solid var(--line);border-radius:9px;background:var(--surface);color:var(--text);padding:7px 10px;font:inherit;font-size:9px;cursor:pointer}.communicationsIntegrationActions button:disabled{opacity:.45;cursor:not-allowed}.communicationsIntegrationMeta{display:block;margin-top:7px;color:var(--muted);font-size:8px}
-      @media (max-width:900px){.communicationsReplyMeta{align-items:flex-start;flex-direction:column}.communicationsClientResults{grid-template-columns:1fr!important}.communicationsLinkClientButton{margin-left:0}}
+      @media (max-width:900px){.communicationsReplyMeta{align-items:flex-start;flex-direction:column}.communicationsClientResults{grid-template-columns:1fr!important}.communicationsLinkClientButton{margin-left:0}.communicationsMessageImages{grid-template-columns:1fr}}
     `}</style>
   </div>;
+}
+
+function currentFileCountPlus(getCurrentCount: (setter: (current: File[]) => File[]) => number, incoming: number) {
+  void getCurrentCount;
+  return incoming;
 }
