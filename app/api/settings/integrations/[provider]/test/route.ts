@@ -9,6 +9,7 @@ import { testMetaConnection } from "@/src/services/meta-communications.service";
 import { testOlxConnection } from "@/src/services/olx-communications.service";
 import { bmPartsAdapter } from "@/src/services/suppliers/bm-parts.adapter";
 import { uniqueTradeAdapter } from "@/src/services/suppliers/unique-trade.adapter";
+import { testVehicleImageConnection } from "@/src/services/vehicle-images/vehicle-image.service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -41,6 +42,7 @@ async function fetchWithTimeout(url: string, init?: RequestInit) {
 async function testProvider(provider: IntegrationProvider, config?: Record<string, string> | null): Promise<TestResult> {
   if (provider === "BM_PARTS") return bmPartsAdapter.testConnection();
   if (provider === "UNIQUE_TRADE") return uniqueTradeAdapter.testConnection();
+  if (provider === "VEHICLE_IMAGES") return testVehicleImageConnection();
 
   if (provider === "AUTONOVA_D") {
     return {
@@ -97,9 +99,9 @@ export async function POST(request: NextRequest, context: { params: Promise<{ pr
       );
     }
 
-    const supplierLive = provider === "BM_PARTS" || provider === "UNIQUE_TRADE";
-    const config = supplierLive ? null : await getIntegrationCredential(provider);
-    if (!supplierLive && !config) {
+    const adapterManaged = provider === "BM_PARTS" || provider === "UNIQUE_TRADE" || provider === "VEHICLE_IMAGES";
+    const config = adapterManaged ? null : await getIntegrationCredential(provider);
+    if (!adapterManaged && !config) {
       return NextResponse.json({ ok: false, message: "Спочатку збережіть доступи." }, { status: 400 });
     }
 
