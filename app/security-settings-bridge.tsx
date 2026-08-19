@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
+import { SecurityEnforcementControl } from "./security-enforcement-control";
 import { SecuritySettingsPanelV2 } from "./security-settings-panel-v2";
 import settingsStyles from "./settings-center.module.css";
 
@@ -28,5 +29,5 @@ export function SecuritySettingsBridge(){
   },[]);
 
   const activate=()=>{setActive(true);const url=new URL(window.location.href);url.searchParams.set("section","settings");url.searchParams.set("settingsTab","security");window.history.pushState({},"",`${url.pathname}${url.search}${url.hash}`);window.dispatchEvent(new CustomEvent("turbolev:settings-tab",{detail:"security"}))};
-  return <>{tabTarget?createPortal(<button type="button" className={`${settingsStyles.tab} ${active?settingsStyles.tabActive:""}`} onClick={activate}><span className={settingsStyles.tabIcon}>⌾</span><span><strong>Ролі та доступи</strong><small>Кабінети, ролі, scope, винятки</small></span></button>,tabTarget):null}{active&&contentTarget?createPortal(<div style={{position:"absolute",inset:0,zIndex:40,overflow:"auto",background:"var(--bg)",padding:"20px 24px 40px"}}><SecuritySettingsPanelV2/></div>,contentTarget):null}</>;
+  return <>{tabTarget?createPortal(<button type="button" className={`${settingsStyles.tab} ${active?settingsStyles.tabActive:""}`} onClick={activate}><span className={settingsStyles.tabIcon}>⌾</span><span><strong>Ролі та доступи</strong><small>Кабінети, ролі, scope, винятки</small></span></button>,tabTarget):null}{active&&contentTarget?createPortal(<div style={{position:"absolute",inset:0,zIndex:40,overflow:"auto",background:"var(--bg)",padding:"20px 24px 40px"}}><SecurityEnforcementControl/><SecuritySettingsPanelV2/></div>,contentTarget):null}</>;
 }
