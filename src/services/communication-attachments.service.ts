@@ -17,6 +17,7 @@ type StoredAttachmentRow = {
   fileName: string;
   mimeType: string;
   fileSize: number;
+  providerUrl: string;
   providerTokenHash: string;
   providerExpiresAt: Date;
   fileData: Buffer;
@@ -80,28 +81,29 @@ export async function createCommunicationImage(input: {
   const token = randomBytes(32).toString("base64url");
   const expiresAt = new Date(Date.now() + PROVIDER_URL_TTL_MS);
   const fileName = safeName(input.file.name);
+  const origin = input.origin.replace(/\/$/, "");
+  const providerUrl = `${origin}/api/webhooks/communication-assets/${encodeURIComponent(token)}`;
   await pool.query(
     `INSERT INTO "CommunicationAttachment"
-      ("id","inquiryId","fileName","mimeType","fileSize","sha256","providerTokenHash","providerExpiresAt","fileData")
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
-    [id, input.inquiryId, fileName, input.file.type, bytes.length, fileHash(bytes), tokenHash(token), expiresAt, bytes],
+      ("id","inquiryId","fileName","mimeType","fileSize","sha256","providerUrl","providerTokenHash","providerExpiresAt","fileData")
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+    [id, input.inquiryId, fileName, input.file.type, bytes.length, fileHash(bytes), providerUrl, tokenHash(token), expiresAt, bytes],
   );
 
-  const origin = input.origin.replace(/\/$/, "");
   return {
     id,
     name: fileName,
     type: input.file.type,
     size: bytes.length,
     url: `/api/communications/attachments/${encodeURIComponent(id)}`,
-    providerUrl: `${origin}/api/webhooks/communication-assets/${encodeURIComponent(token)}`,
+    providerUrl,
   };
 }
 
 export async function getCommunicationAttachmentById(id: string) {
   const pool = getSqlPool();
   const result = await pool.query<StoredAttachmentRow>(
-    `SELECT "id","inquiryId","messageId","fileName","mimeType","fileSize","providerTokenHash","providerExpiresAt","fileData"
+    `SELECT "id","inquiryId","messageId","fileName","mimeType","fileSize","providerUrl","providerTokenHash","providerExpiresAt","fileData"
      FROM "CommunicationAttachment" WHERE "id"=$1 LIMIT 1`,
     [id],
   );
@@ -112,7 +114,7 @@ export async function getCommunicationAttachmentByProviderToken(token: string) {
   if (!token || token.length < 32 || token.length > 128) return null;
   const pool = getSqlPool();
   const result = await pool.query<StoredAttachmentRow>(
-    `SELECT "id","inquiryId","messageId","fileName","mimeType","fileSize","providerTokenHash","providerExpiresAt","fileData"
+    `SELECT "id","inquiryId","messageId","fileName","mimeType","fileSize","providerUrl","providerTokenHash","providerExpiresAt","fileData"
      FROM "CommunicationAttachment"
      WHERE "providerTokenHash"=$1 AND "providerExpiresAt" > CURRENT_TIMESTAMP
      LIMIT 1`,
@@ -144,8 +146,8 @@ export async function assertStoredCommunicationImages(inquiryId: string, attachm
   }
   const ids = attachments.map((item) => item.id);
   const pool = getSqlPool();
-  const result = await pool.query<{ id: string; fileName: string; mimeType: string; fileSize: number }>(
-    `SELECT "id","fileName","mimeType","fileSize" FROM "CommunicationAttachment"
+  const result = await pool.query<{ id: string; fileName: string; mimeType: string; fileSize: number; providerUrl: string; providerExpiresAt: Date }>(
+    `SELECT "id","fileName","mimeType","fileSize","providerUrl","providerExpiresAt" FROM "CommunicationAttachment"
      WHERE "inquiryId"=$1 AND "id" = ANY($2::text[])`,
     [inquiryId, ids],
   );
@@ -155,11 +157,13 @@ export async function assertStoredCommunicationImages(inquiryId: string, attachm
   const byId = new Map(result.rows.map((row) => [row.id, row]));
   for (const attachment of attachments) {
     const stored = byId.get(attachment.id);
-    if (!stored || !ALLOWED_IMAGE_TYPES.has(stored.mimeType) || stored.fileSize > MAX_IMAGE_BYTES) {
-      throw Object.assign(new Error("Вкладення не пройшло перевірку."), { code: "ATTACHMENT_INVALID" });
+    if (!stored || !ALLOWED_IMAGE_TYPES.has(stored.mimeType) || stored.fileSize > MAX_IMAGE_BYTES || stored.providerExpiresAt.getTime() <= Date.now()) {
+      throw Object.assign(new Error("Вкладення не пройшло перевірку або посилання для провайдера вже протерміноване."), { code: "ATTACHMENT_INVALID" });
     }
     attachment.name = stored.fileName;
     attachment.type = stored.mimeType;
     attachment.size = stored.fileSize;
+    attachment.url = `/api/communications/attachments/${encodeURIComponent(stored.id)}`;
+    attachment.providerUrl = stored.providerUrl;
   }
 }
