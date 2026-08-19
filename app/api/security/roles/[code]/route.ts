@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { getPrisma } from "@/src/lib/prisma";
 import { authorize } from "@/src/security/authorize";
 import { PERMISSIONS, type AccessScopeCode } from "@/src/security/permissions";
 import { SecurityAdminError } from "@/src/security/security-admin.service";
@@ -35,6 +36,14 @@ export async function PATCH(request: Request, context: Context) {
           }))
         : [],
     });
+
+    // StaffRole is the personnel-side representation of the same business role.
+    // Keep its visible name synchronized so Personnel and Security never show two names for one role code.
+    await getPrisma().staffRole.updateMany({
+      where: { code: role.code },
+      data: { name: role.name },
+    });
+
     return NextResponse.json({
       ok: true,
       role: {
