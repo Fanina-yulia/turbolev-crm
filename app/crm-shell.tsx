@@ -39,6 +39,7 @@ const ProductionBoard = dynamic(() => import("./production-board").then((mod) =>
 const QcQueue = dynamic(() => import("./qc-queue").then((mod) => mod.QcQueue), { loading: SectionLoading });
 const RoleAwareOverview = dynamic(() => import("./role-cabinet").then((mod) => mod.RoleAwareOverview), { loading: SectionLoading });
 const FinancialCenter = dynamic(() => import("./financial-center").then((mod) => mod.FinancialCenter), { loading: SectionLoading });
+const PaymentsQueue = dynamic(() => import("./payments-queue").then((mod) => mod.PaymentsQueue), { loading: SectionLoading });
 
 const SETTINGS_SUBMENU:Array<{id:SettingsTab;label:string}>=[
   {id:"schedule",label:"Графік"},
@@ -94,7 +95,15 @@ function legacyRoute(section:CrmSectionLabel,filter:string):LegacyRoute|null{
     return value?{section,params:{}}:null;
   }
 
-  if(section==="Оплати"||section==="Аналітика")return{section:"Фінансовий центр",params:{}};
+  if(section==="Оплати"){
+    if(value==="due"||value==="unpaid")return{section,params:{scope:"due"}};
+    if(value==="partial"||value==="partially-paid"||value==="partially_paid")return{section,params:{scope:"partial"}};
+    if(value==="paid"||value==="paid-today"||value==="paid_today")return{section,params:{scope:"paidToday"}};
+    if(value==="debt"||value==="overdue")return{section,params:{scope:"debt"}};
+    return value?{section,params:{}}:null;
+  }
+
+  if(section==="Аналітика")return{section:"Фінансовий центр",params:{}};
   if(section==="Гарантії")return{section:"Замовлення-наряди",params:{}};
 
   if(section==="Замовлення-наряди"){
@@ -250,6 +259,6 @@ export function CrmShell({ initialSection, initialSettingsTab }: { initialSectio
       <div className="sidebarFoot"><span className="liveDot"/> {access.enforced?(access.snapshot?.user?.name||"Захищений режим"):"Станція онлайн"}</div>
     </aside>
     <div className={active==="Огляд станції"?shellStyles.globalNewRequest:undefined}><NewRequestLauncher showButton={active==="Огляд станції"&&canCreateRequest}/></div>
-    <section className={`workspace ${active==="Огляд станції"?shellStyles.workspaceWithFloatingAction:""}`}>{!activeAllowed?accessDenied:<>{active!=="Огляд станції"&&active!=="Налаштування"&&filterBanner}{active==="Комунікації"?<CommunicationsHub/>:active==="Ліди"?<LeadsBoardV2/>:active==="Клієнти"?<ClientsDirectory/>:active==="Авто"?<VehiclesDirectory/>:active==="Планувальник"?<PlannerV2/>:active==="Діагностика"?<Diagnostics/>:active==="Замовлення-наряди"?<WorkOrders/>:active==="Виробництво"?<ProductionBoard/>:active==="Контроль якості"?<QcQueue/>:active==="Підбір запчастин"?<PartsCatalog/>:active==="Закупівлі та склад"?<ProcurementQueue/>:active==="Фінансовий центр"?<FinancialCenter/>:active==="Налаштування"?<SettingsPage key={settingsTab}/>:active==="Огляд станції"?<RoleAwareOverview access={access.snapshot}/>:<div className="comingSoon"><p className="eyebrow">TURBO LEV CRM</p><h1>{active}</h1><p>Розділ тимчасово недоступний.</p></div>}</>}</section>
+    <section className={`workspace ${active==="Огляд станції"?shellStyles.workspaceWithFloatingAction:""}`}>{!activeAllowed?accessDenied:<>{active!=="Огляд станції"&&active!=="Налаштування"&&filterBanner}{active==="Комунікації"?<CommunicationsHub/>:active==="Ліди"?<LeadsBoardV2/>:active==="Клієнти"?<ClientsDirectory/>:active==="Авто"?<VehiclesDirectory/>:active==="Планувальник"?<PlannerV2/>:active==="Діагностика"?<Diagnostics/>:active==="Замовлення-наряди"?<WorkOrders/>:active==="Виробництво"?<ProductionBoard/>:active==="Контроль якості"?<QcQueue/>:active==="Підбір запчастин"?<PartsCatalog/>:active==="Закупівлі та склад"?<ProcurementQueue/>:active==="Фінансовий центр"?<FinancialCenter/>:active==="Оплати"?<PaymentsQueue/>:active==="Налаштування"?<SettingsPage key={settingsTab}/>:active==="Огляд станції"?<RoleAwareOverview access={access.snapshot}/>:<div className="comingSoon"><p className="eyebrow">TURBO LEV CRM</p><h1>{active}</h1><p>Розділ тимчасово недоступний.</p></div>}</>}</section>
   </main>;
 }

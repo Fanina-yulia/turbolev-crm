@@ -137,6 +137,10 @@ const RULES: Rule[] = [
     },
   },
   {
+    match: exact("/api/payments"),
+    resolve: () => internal(PERMISSIONS.PAYMENTS_READ, "ALL", "Cashier queue is a payment read model; the route narrows records to the allowed station scope when configured."),
+  },
+  {
     match: prefix("/api/finance"),
     resolve: (method) => readWrite(method, PERMISSIONS.FINANCE_READ, PERMISSIONS.FINANCE_WRITE, "ALL", "Financial center and accounts."),
   },
