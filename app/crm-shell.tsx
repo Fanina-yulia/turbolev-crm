@@ -26,7 +26,8 @@ function SectionLoading() {
 const SettingsPage = dynamic(() => import("./settings-page").then((mod) => mod.SettingsPage), { loading: SectionLoading });
 const LeadsBoardV2 = dynamic(() => import("./leads-board-v2").then((mod) => mod.LeadsBoardV2), { loading: SectionLoading });
 const CommunicationsHub = dynamic(() => import("./communications-hub-server").then((mod) => mod.CommunicationsHub), { loading: SectionLoading });
-const ClientsVehicles = dynamic(() => import("./clients-vehicles").then((mod) => mod.ClientsVehicles), { loading: SectionLoading });
+const ClientsDirectory = dynamic(() => import("./clients-directory").then((mod) => mod.ClientsDirectory), { loading: SectionLoading });
+const VehiclesDirectory = dynamic(() => import("./vehicles-directory").then((mod) => mod.VehiclesDirectory), { loading: SectionLoading });
 const PartsCatalog = dynamic(() => import("./parts-catalog").then((mod) => mod.PartsCatalog), { loading: SectionLoading });
 const PlannerV2 = dynamic(() => import("./planner-v2").then((mod) => mod.PlannerV2), { loading: SectionLoading });
 const Diagnostics = dynamic(() => import("./diagnostics").then((mod) => mod.Diagnostics), { loading: SectionLoading });
@@ -161,6 +162,6 @@ export function CrmShell({ initialSection }: { initialSection?: string }) {
       <div className="sidebarFoot"><span className="liveDot"/> {access.enforced?(access.snapshot?.user?.name||"Захищений режим"):"Станція онлайн"}</div>
     </aside>
     <div className={active==="Огляд станції"?shellStyles.globalNewRequest:undefined}><NewRequestLauncher showButton={active==="Огляд станції"&&canCreateRequest}/></div>
-    <section className={`workspace ${active==="Огляд станції"?shellStyles.workspaceWithFloatingAction:""}`}>{!activeAllowed?accessDenied:<>{active!=="Огляд станції"&&active!=="Налаштування"&&filterBanner}{active==="Комунікації"?<CommunicationsHub/>:active==="Ліди"?<LeadsBoardV2/>:active==="Клієнти та авто"?<ClientsVehicles/>:active==="Планувальник"?<PlannerV2/>:active==="Діагностика"?<Diagnostics/>:active==="Замовлення-наряди"?<WorkOrders/>:active==="Підбір запчастин"?<PartsCatalog/>:active==="Фінансовий центр"?<FinancialCenter/>:active==="Налаштування"?<SettingsPage key={settingsTab}/>:active==="Огляд станції"?<RoleAwareOverview access={access.snapshot}/>:<div className="comingSoon"><p className="eyebrow">TURBO LEV CRM</p><h1>{active}</h1>{workflowFilter?<p>Показуємо зріз: <strong>{workflowFilterLabel||workflowFilter}</strong>.</p>:<p>Розділ буде реалізований наступним.</p>}</div>}</>}</section>
+    <section className={`workspace ${active==="Огляд станції"?shellStyles.workspaceWithFloatingAction:""}`}>{!activeAllowed?accessDenied:<>{active!=="Огляд станції"&&active!=="Налаштування"&&filterBanner}{active==="Комунікації"?<CommunicationsHub/>:active==="Ліди"?<LeadsBoardV2/>:active==="Клієнти"?<ClientsDirectory/>:active==="Авто"?<VehiclesDirectory/>:active==="Планувальник"?<PlannerV2/>:active==="Діагностика"?<Diagnostics/>:active==="Замовлення-наряди"?<WorkOrders/>:active==="Підбір запчастин"?<PartsCatalog/>:active==="Фінансовий центр"?<FinancialCenter/>:active==="Налаштування"?<SettingsPage key={settingsTab}/>:active==="Огляд станції"?<RoleAwareOverview access={access.snapshot}/>:<div className="comingSoon"><p className="eyebrow">TURBO LEV CRM</p><h1>{active}</h1>{workflowFilter?<p>Показуємо зріз: <strong>{workflowFilterLabel||workflowFilter}</strong>.</p>:<p>Розділ буде реалізований наступним.</p>}</div>}</>}</section>
   </main>;
 }
