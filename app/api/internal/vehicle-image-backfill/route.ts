@@ -7,9 +7,10 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
-const BACKFILL_TOKEN = "hRjG3uI4O1g06STE4M4Hsx8wg3B2IoFmKDFcLMjZ6ww";
+const BACKFILL_TOKEN = process.env.VEHICLE_IMAGE_BACKFILL_TOKEN?.trim() || "";
 
 function allowed(request: NextRequest) {
+  if (!BACKFILL_TOKEN) return false;
   return request.headers.get("x-backfill-token") === BACKFILL_TOKEN
     || request.nextUrl.searchParams.get("token") === BACKFILL_TOKEN;
 }
