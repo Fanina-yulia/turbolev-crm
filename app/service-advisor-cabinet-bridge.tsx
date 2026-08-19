@@ -8,10 +8,16 @@ type Finding = {
   id: string;
   workOrderId: string;
   status: string;
+  resolutionCode: string | null;
+  estimateLineId: string | null;
   urgency: string;
   findingText: string;
   recommendation: string | null;
+  managerComment: string | null;
+  mechanicReply: string | null;
+  mechanicRepliedAt: string | null;
   submittedAt: string;
+  reviewedAt: string | null;
   mechanic: string;
   workDescription: string;
   plate: string;
@@ -29,6 +35,8 @@ type Data = {
   mechanicFindings?: Finding[];
 };
 
+type FindingAction = "APPROVE" | "REJECT" | "CLARIFY" | "ADD_TO_ESTIMATE";
+
 function nav(section: string, filter = "", label = "") {
   window.dispatchEvent(new CustomEvent("turbolev:navigate", { detail: { section, filter, filterLabel: label } }));
 }
@@ -41,11 +49,61 @@ function urgencyLabel(value: string) {
   return value === "CRITICAL" ? "Критично" : value === "SOON" ? "Найближчим часом" : "Рекомендація";
 }
 
+function decisionLabel(value: string | null) {
+  if (value === "CLARIFICATION_REQUIRED") return "Очікує уточнення механіка";
+  if (value === "CLARIFICATION_ANSWERED") return "Механік відповів";
+  if (value === "ADDED_TO_ESTIMATE") return "Додано в кошторис";
+  if (value === "APPROVED") return "Погоджено";
+  if (value === "REJECTED") return "Відхилено";
+  return "Потребує рішення";
+}
+
 function Dashboard({ data }: { data: Data }) {
   const k = data.kpis!;
   const appointments = data.appointments || [];
   const diagnostics = data.diagnostics || [];
   const findings = data.mechanicFindings || [];
+  const [busyFinding, setBusyFinding] = useState<string | null>(null);
+  const [actionMessage, setActionMessage] = useState("");
+  const [actionError, setActionError] = useState("");
+
+  async function decide(finding: Finding, action: FindingAction) {
+    let comment = "";
+    if (action === "CLARIFY") {
+      comment = window.prompt("Що саме потрібно уточнити механіку?")?.trim() || "";
+      if (comment.length < 3) return;
+    } else if (action === "REJECT") {
+      comment = window.prompt("Причина відхилення несправності:")?.trim() || "";
+      if (comment.length < 3) return;
+    } else if (action === "APPROVE") {
+      if (!window.confirm("Погодити цю несправність до подальшого опрацювання? Це внутрішнє рішення сервісу і не замінює погодження кошторису клієнтом.")) return;
+    } else if (action === "ADD_TO_ESTIMATE") {
+      if (!window.confirm("Додати цю несправність у замовлення-наряд як нову чернеткову позицію кошторису? Ціну потрібно буде вказати окремо.")) return;
+    }
+
+    setBusyFinding(`${finding.id}:${action}`);
+    setActionMessage("");
+    setActionError("");
+    try {
+      const response = await fetch(`/api/cabinet/service-advisor/findings/${encodeURIComponent(finding.id)}`, {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action, comment }),
+      });
+      const body = await response.json().catch(() => null);
+      if (!response.ok || !body?.ok) throw new Error(body?.message || body?.error || "Не вдалося зберегти рішення");
+      setActionMessage(body.message || "Рішення збережено.");
+      window.dispatchEvent(new CustomEvent("turbolev:data-changed"));
+      if (action === "ADD_TO_ESTIMATE") {
+        nav("Замовлення-наряди", finding.workOrderId, `${finding.plate} · ${finding.vehicle}`);
+      }
+    } catch (cause) {
+      setActionError(cause instanceof Error ? cause.message : "Не вдалося зберегти рішення");
+    } finally {
+      setBusyFinding(null);
+    }
+  }
 
   return <div className={styles.page}>
     <header className={styles.head}>
@@ -53,13 +111,16 @@ function Dashboard({ data }: { data: Data }) {
       <button className={styles.primary} onClick={() => nav("Планувальник")}>Планувальник →</button>
     </header>
 
+    {actionMessage && <div className={styles.actionNotice}>{actionMessage}</div>}
+    {actionError && <div className={`${styles.actionNotice} ${styles.actionError}`}>{actionError}</div>}
+
     <section className={styles.kpis}>
       <button onClick={() => nav("Планувальник", "today", "Сьогодні")}><span>Авто сьогодні</span><strong>{k.today}</strong><small>у плані станції</small></button>
       <button onClick={() => nav("Діагностика", "active", "На діагностиці")}><span>Приймання / діагностика</span><strong>{k.arrived}</strong><small>потребують уваги</small></button>
       <button onClick={() => nav("Замовлення-наряди", "approval", "Очікують погодження")}><span>Погодження</span><strong>{k.approval}</strong><small>кошториси клієнтів</small></button>
       <button onClick={() => nav("Підбір запчастин", "waiting-parts", "Очікують деталі")}><span>Запчастини</span><strong>{k.waitingParts}</strong><small>у підборі / очікуванні</small></button>
       <button onClick={() => nav("Виробництво", "in-repair", "Ремонт")}><span>У ремонті</span><strong>{k.inRepair}</strong><small>готові або в роботі</small></button>
-      <button className={k.mechanicFindings ? styles.alertKpi : ""}><span>Виявлено механіком</span><strong>{k.mechanicFindings}</strong><small>нові зауваження</small></button>
+      <button className={k.mechanicFindings ? styles.alertKpi : ""}><span>Виявлено механіком</span><strong>{k.mechanicFindings}</strong><small>потребують рішення</small></button>
     </section>
 
     <div className={styles.columns}>
@@ -76,6 +137,18 @@ function Dashboard({ data }: { data: Data }) {
             <span>{finding.workDescription}</span><strong>{finding.findingText}</strong>{finding.recommendation && <small>Рекомендація: {finding.recommendation}</small>}<small>{finding.mechanic} · {time(finding.submittedAt)}</small>
           </button>
           {finding.media.length > 0 && <div className={styles.findingPhotos}>{finding.media.map((media) => <a key={media.id} href={media.url} target="_blank" rel="noreferrer" title={media.fileName}><img src={media.url} alt="Фото виявленої несправності" /></a>)}</div>}
+          <div className={styles.findingDecisionState} data-state={finding.resolutionCode || "PENDING"}>
+            <b>{decisionLabel(finding.resolutionCode)}</b>
+            {finding.managerComment && <span>Сервіс-менеджер: {finding.managerComment}</span>}
+            {finding.mechanicReply && <span className={styles.mechanicReply}>Відповідь механіка: {finding.mechanicReply}</span>}
+          </div>
+          <div className={styles.findingActions}>
+            <button type="button" disabled={Boolean(busyFinding)} onClick={() => void decide(finding, "APPROVE")}>✓ Погодити ремонт</button>
+            <button type="button" disabled={Boolean(busyFinding)} onClick={() => void decide(finding, "ADD_TO_ESTIMATE")}>＋ Додати в кошторис</button>
+            <button type="button" disabled={Boolean(busyFinding)} onClick={() => void decide(finding, "CLARIFY")}>? Уточнити у механіка</button>
+            <button type="button" className={styles.rejectAction} disabled={Boolean(busyFinding)} onClick={() => void decide(finding, "REJECT")}>× Відхилити</button>
+          </div>
+          {busyFinding?.startsWith(`${finding.id}:`) && <div className={styles.findingBusy}>Зберігаю рішення…</div>}
         </article>) : <div className={styles.empty}>Нових зауважень від механіків немає.</div>}</div>
 
         <div className={styles.panelHead}><div><span className={styles.eyebrow}>ДІАГНОСТИКА</span><h2>Потребує опрацювання</h2></div></div>
@@ -128,12 +201,14 @@ export function ServiceAdvisorCabinetBridge() {
     observer.observe(document.body, { childList: true, subtree: true });
     window.addEventListener("popstate", sync);
     window.addEventListener("turbolev:navigate", sync);
+    window.addEventListener("turbolev:data-changed", sync);
     return () => {
       cancelled = true;
       window.clearInterval(timer);
       observer.disconnect();
       window.removeEventListener("popstate", sync);
       window.removeEventListener("turbolev:navigate", sync);
+      window.removeEventListener("turbolev:data-changed", sync);
     };
   }, [active, target]);
 
