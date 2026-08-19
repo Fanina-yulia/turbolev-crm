@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { getAccessContext } from "@/src/security/access-context";
 import { CrmShell } from "./crm-shell";
-import { MechanicStandaloneCabinet } from "./mechanic-standalone-cabinet";
+import { MechanicLiveCabinet } from "./mechanic-live-cabinet";
 
 type HomePageProps = {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
@@ -27,7 +27,7 @@ export default async function HomePage({ searchParams }: HomePageProps) {
 
   const primaryRole = access.roles.find((role) => role.isPrimary) ?? access.roles[0] ?? null;
   if (access.provisioningState === "ACTIVE" && primaryRole?.code === "MECHANIC") {
-    return <MechanicStandaloneCabinet userName={access.user?.employeeName || access.user?.name} />;
+    return <MechanicLiveCabinet userName={access.user?.employeeName || access.user?.name} />;
   }
 
   const section = first(params.section);
