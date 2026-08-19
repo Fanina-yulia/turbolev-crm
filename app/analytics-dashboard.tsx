@@ -153,7 +153,7 @@ export function AnalyticsDashboard() {
       <div className={styles.grid}>
         <section className={styles.panel}>
           <header><div><small>ВОРОНКА</small><h2>Конверсія сервісу</h2></div></header>
-          {data.funnel?.lead && <div className={styles.funnelRow}><span>Ліди → запис</span><b>{data.funnel.leads} → {data.funnel.lead.booked}</b><strong>{percent(data.funnel.lead.conversionPct)}</strong></div>}
+          {data.funnel?.lead && <div className={styles.funnelRow}><span>Ліди → запис</span><b>{data.funnel.lead.leads} → {data.funnel.lead.booked}</b><strong>{percent(data.funnel.lead.conversionPct)}</strong></div>}
           {!data.funnel?.lead && <p className={styles.note}>Для station-scoped перегляду lead→booking не показується: у ліда поки немає власного locationId. Це захищає аналітику від хибної конверсії.</p>}
           <div className={styles.funnelRow}><span>Запис → візит</span><b>{data.funnel?.scheduled || 0} → {data.funnel?.arrived || 0}</b><strong>{percent(data.funnel?.bookingToArrivalPct)}</strong></div>
           <div className={styles.funnelRow}><span>Запис → ЗН</span><b>{data.funnel?.scheduled || 0} → {data.funnel?.workOrderLinked || 0}</b><strong>{percent(data.funnel?.bookingToWorkOrderPct)}</strong></div>
