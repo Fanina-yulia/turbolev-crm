@@ -1,6 +1,7 @@
 import "server-only";
 
 import { getPrisma } from "@/src/lib/prisma";
+import { getNeonAuthSdkSession } from "@/src/security/neon-auth-server";
 import { getNeonAuthSession, isNeonAuthConfigured, type NeonAuthSession } from "@/src/security/neon-auth-transport";
 import { computeEffectivePermissions } from "@/src/security/rbac-engine";
 import type { AccessScopeCode, PermissionCode } from "@/src/security/permissions";
@@ -110,7 +111,7 @@ export async function getAccessContext(input?: Request | Headers): Promise<Acces
   const anonymous = emptyContext(enforcementMode, authConfigured);
   if (!authConfigured) return anonymous;
 
-  const session = await getNeonAuthSession(requestHeaders);
+  const session = (await getNeonAuthSdkSession()) ?? (await getNeonAuthSession(requestHeaders));
   if (!session) return anonymous;
 
   const appUser = await findOrClaimAppUser(session);

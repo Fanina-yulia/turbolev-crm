@@ -46,8 +46,11 @@ jobs:
           cache: npm
           cache-dependency-path: package-lock.json
 
-      - name: Install locked dependencies
-        run: npm ci --no-audit --no-fund
+      - name: Install dependencies
+        # @neondatabase/auth is pinned; its current peer metadata requires Next 16
+        # even though the adapter builds against our Next 15 app. .npmrc enables
+        # the compatibility bridge until Turbo LEV moves the full app to Next 16.
+        run: npm install --no-audit --no-fund
 
       - name: Validate Prisma schema
         run: npx prisma validate
