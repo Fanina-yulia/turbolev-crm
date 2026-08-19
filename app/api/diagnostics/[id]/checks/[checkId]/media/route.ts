@@ -21,7 +21,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     if (!(file instanceof File)) return NextResponse.json({ ok: false, error: "FILE_REQUIRED", message: "Оберіть фото дефекту." }, { status: 400 });
     if (!ALLOWED.has(file.type)) return NextResponse.json({ ok: false, error: "UNSUPPORTED_FILE", message: "Доступні JPG, PNG або WEBP." }, { status: 415 });
     if (file.size <= 0 || file.size > MAX_BYTES) return NextResponse.json({ ok: false, error: "FILE_TOO_LARGE", message: "Максимальний розмір фото — 4 МБ." }, { status: 413 });
-    const data = Buffer.from(await file.arrayBuffer());
+    const data = new Uint8Array(await file.arrayBuffer());
     const media = await addDiagnosticMedia(access.context.user.id, id, checkId, { name: file.name || "diagnostic-photo.jpg", type: file.type, size: file.size, data });
     return NextResponse.json({ ok: true, media });
   } catch (error) {
