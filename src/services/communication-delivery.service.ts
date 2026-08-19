@@ -3,6 +3,12 @@ import type { QueryResultRow } from "pg";
 import { getSqlPool } from "@/src/lib/sql";
 import { sendMetaTextMessage } from "@/src/services/meta-communications.service";
 import { markOlxThreadRead, sendOlxTextMessage } from "@/src/services/olx-communications.service";
+import {
+  assertStoredCommunicationImages,
+  attachStoredCommunicationImages,
+  type CommunicationAttachmentRef,
+} from "@/src/services/communication-attachments.service";
+import { sendMetaImageMessage, sendOlxImageMessage } from "@/src/services/communication-media-provider.service";
 import type { CommunicationChannel } from "@/src/services/communications-server.service";
 
 type DeliveryInquiryRow = QueryResultRow & {
@@ -25,12 +31,7 @@ type DeliveryMessageRow = QueryResultRow & {
   attachments: unknown;
 };
 
-type AttachmentInput = {
-  name?: string;
-  type?: string;
-  size?: number;
-  url?: string;
-};
+type AttachmentInput = Partial<CommunicationAttachmentRef>;
 
 function makeId(prefix: string) {
   return `${prefix}_${randomUUID().replace(/-/g, "")}`;
@@ -56,6 +57,23 @@ function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : "Не вдалося доставити повідомлення";
 }
 
+function normalizeAttachments(value: unknown): CommunicationAttachmentRef[] {
+  if (!Array.isArray(value)) return [];
+  return value.map((raw) => {
+    const item = raw && typeof raw === "object" ? raw as Record<string, unknown> : {};
+    const id = typeof item.id === "string" ? item.id.trim() : "";
+    const name = typeof item.name === "string" ? item.name.trim() : "";
+    const type = typeof item.type === "string" ? item.type.trim() : "";
+    const size = typeof item.size === "number" && Number.isFinite(item.size) ? item.size : 0;
+    const url = typeof item.url === "string" ? item.url.trim() : "";
+    const providerUrl = typeof item.providerUrl === "string" ? item.providerUrl.trim() : "";
+    if (!id || !name || !type || !size || !url || !providerUrl) {
+      throw Object.assign(new Error("Некоректне вкладення."), { code: "ATTACHMENT_INVALID" });
+    }
+    return { id, name, type, size, url, providerUrl };
+  });
+}
+
 function assertReplyWindow(inquiry: DeliveryInquiryRow) {
   if (isMetaChannel(inquiry.channel)
       && inquiry.replyAllowedUntil
@@ -79,7 +97,29 @@ async function loadInquiry(id: string) {
   return inquiry;
 }
 
-async function deliverToProvider(inquiry: DeliveryInquiryRow, text: string) {
+async function deliverToProvider(inquiry: DeliveryInquiryRow, text: string, attachments: CommunicationAttachmentRef[]) {
+  if (attachments.length) {
+    if (inquiry.channel === "OLX") {
+      return sendOlxImageMessage(
+        { externalId: inquiry.externalId, externalThreadId: inquiry.externalThreadId },
+        text,
+        attachments,
+      );
+    }
+    if (isMetaChannel(inquiry.channel)) {
+      if (attachments.length !== 1) {
+        throw Object.assign(new Error("Meta: одне медіа-повідомлення має містити одне зображення."), { code: "META_ATTACHMENT_LIMIT" });
+      }
+      return sendMetaImageMessage({
+        channel: inquiry.channel,
+        integrationAccountId: inquiry.integrationAccountId,
+        externalParticipantId: inquiry.externalParticipantId,
+        metadata: inquiry.metadata,
+      }, attachments[0]);
+    }
+    throw Object.assign(new Error("Вкладення для цього каналу ще не підтримуються."), { code: "ATTACHMENT_CHANNEL_NOT_SUPPORTED" });
+  }
+
   if (inquiry.channel === "OLX") {
     return sendOlxTextMessage(
       { externalId: inquiry.externalId, externalThreadId: inquiry.externalThreadId },
@@ -133,10 +173,10 @@ async function markDeliverySent(inquiryId: string, messageId: string, delivered:
   return { message: message.rows[0], delivery: "SENT" as const, providerMessageId: delivered.providerMessageId };
 }
 
-async function deliverExistingMessage(inquiry: DeliveryInquiryRow, messageId: string, text: string) {
+async function deliverExistingMessage(inquiry: DeliveryInquiryRow, messageId: string, text: string, attachments: CommunicationAttachmentRef[]) {
   assertReplyWindow(inquiry);
   try {
-    const delivered = await deliverToProvider(inquiry, text);
+    const delivered = await deliverToProvider(inquiry, text, attachments);
     return await markDeliverySent(inquiry.id, messageId, delivered);
   } catch (error) {
     await markDeliveryFailed(messageId, error);
@@ -144,13 +184,15 @@ async function deliverExistingMessage(inquiry: DeliveryInquiryRow, messageId: st
   }
 }
 
-export async function sendCommunicationReply(id: string, text: string, attachments: AttachmentInput[] = []) {
+export async function sendCommunicationReply(id: string, text: string, attachmentsInput: AttachmentInput[] = []) {
   const normalizedText = text.trim();
   if (!normalizedText) throw Object.assign(new Error("text is required"), { code: "TEXT_REQUIRED" });
 
   const pool = getSqlPool();
   const inquiry = await loadInquiry(id);
   assertReplyWindow(inquiry);
+  const attachments = normalizeAttachments(attachmentsInput);
+  await assertStoredCommunicationImages(id, attachments);
 
   const messageId = makeId("msg");
   const initialStatus = isLiveMessageChannel(inquiry.channel) ? "PENDING" : "CRM_ONLY";
@@ -163,11 +205,12 @@ export async function sendCommunicationReply(id: string, text: string, attachmen
       messageId,
       id,
       normalizedText,
-      JSON.stringify({ delivery: initialStatus }),
+      JSON.stringify({ delivery: initialStatus, attachments }),
       initialStatus,
       JSON.stringify(attachments),
     ],
   );
+  await attachStoredCommunicationImages(messageId, id, attachments);
 
   if (!isLiveMessageChannel(inquiry.channel)) {
     await pool.query(
@@ -180,7 +223,7 @@ export async function sendCommunicationReply(id: string, text: string, attachmen
     return { message: inserted.rows[0], delivery: "CRM_ONLY" as const };
   }
 
-  return deliverExistingMessage(inquiry, messageId, normalizedText);
+  return deliverExistingMessage(inquiry, messageId, normalizedText, attachments);
 }
 
 export async function retryCommunicationMessage(inquiryId: string, messageId: string) {
@@ -216,7 +259,9 @@ export async function retryCommunicationMessage(inquiryId: string, messageId: st
     throw Object.assign(new Error("Повторна відправка доступна лише для повідомлень зі статусом FAILED"), { code: "MESSAGE_NOT_FAILED" });
   }
 
-  return deliverExistingMessage(inquiry, messageId, message.text.trim());
+  const attachments = normalizeAttachments(message.attachments);
+  await assertStoredCommunicationImages(inquiryId, attachments);
+  return deliverExistingMessage(inquiry, messageId, message.text.trim(), attachments);
 }
 
 export async function markCommunicationRead(id: string) {

@@ -1,0 +1,19 @@
+model CommunicationAttachment {
+  id                String   @id
+  inquiryId         String
+  messageId         String?
+  fileName          String
+  mimeType          String
+  fileSize          Int
+  sha256             String
+  providerUrl       String
+  providerTokenHash String   @unique
+  providerExpiresAt DateTime
+  fileData          Bytes
+  createdAt         DateTime @default(now())
+  attachedAt        DateTime?
+
+  @@index([inquiryId, createdAt])
+  @@index([messageId])
+  @@index([providerExpiresAt])
+}
