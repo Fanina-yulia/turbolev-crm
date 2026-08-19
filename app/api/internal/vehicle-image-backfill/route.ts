@@ -10,7 +10,8 @@ export const maxDuration = 300;
 const BACKFILL_TOKEN = "hRjG3uI4O1g06STE4M4Hsx8wg3B2IoFmKDFcLMjZ6ww";
 
 function allowed(request: NextRequest) {
-  return request.headers.get("x-backfill-token") === BACKFILL_TOKEN;
+  return request.headers.get("x-backfill-token") === BACKFILL_TOKEN
+    || request.nextUrl.searchParams.get("token") === BACKFILL_TOKEN;
 }
 
 export async function GET(request: NextRequest) {
