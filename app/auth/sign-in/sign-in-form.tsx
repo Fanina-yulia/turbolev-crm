@@ -94,7 +94,7 @@ export function SignInForm() {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json", Accept: "application/json" },
-        body: JSON.stringify({ provider: "google", callbackURL: `${window.location.origin}/` }),
+        body: JSON.stringify({ provider: "google", callbackURL: "/" }),
       });
       const result = await response.json().catch(() => null);
       if (!response.ok) {
