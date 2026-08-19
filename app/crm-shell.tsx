@@ -6,6 +6,7 @@ import { NewRequestLauncher } from "./new-request-launcher";
 import { SettingsPersonnelBridge } from "./settings-personnel-bridge";
 import { useCrmAccess } from "./use-crm-access";
 import { CRM_NAV_GROUPS, isCrmSection, sectionFromSlug, slugFromSection, type CrmSectionLabel } from "./crm-navigation";
+import { CRM_ROUTE_KEYS } from "./crm-route";
 import { PERMISSIONS } from "@/src/security/permissions";
 import { turboLevLogoDark, turboLevLogoLight } from "@/src/brand/logos";
 import shellStyles from "./crm-shell.module.css";
@@ -55,6 +56,10 @@ function groupForSection(section:CrmSectionLabel){
   return CRM_NAV_GROUPS.find(group=>group.items.some(item=>item.label===section))?.label||null;
 }
 
+function clearTypedRouteParams(url:URL){
+  for(const key of CRM_ROUTE_KEYS)url.searchParams.delete(key);
+}
+
 export function CrmShell({ initialSection }: { initialSection?: string }) {
   const initialActive=sectionFromSlug(initialSection);
   const [active, setActive] = useState<CrmSectionLabel>(initialActive);
@@ -69,6 +74,7 @@ export function CrmShell({ initialSection }: { initialSection?: string }) {
     setActive(next); setOpenGroup(groupForSection(next)); setWorkflowFilter(filter); setWorkflowFilterLabel(filterLabel); setMobileNavOpen(false);
     const url = new URL(window.location.href); const slug = slugFromSection(next);
     if (slug === "overview") url.searchParams.delete("section"); else url.searchParams.set("section", slug);
+    clearTypedRouteParams(url);
     if (filter) url.searchParams.set("filter", filter); else url.searchParams.delete("filter");
     if (filterLabel) url.searchParams.set("filterLabel", filterLabel); else url.searchParams.delete("filterLabel");
     if(next!=="Налаштування") url.searchParams.delete("settingsTab");
@@ -78,7 +84,7 @@ export function CrmShell({ initialSection }: { initialSection?: string }) {
 
   const navigateSettings = useCallback((tab:SettingsTab,historyMode:"push"|"replace"="push")=>{
     setActive("Налаштування");setOpenGroup(groupForSection("Налаштування"));setWorkflowFilter("");setWorkflowFilterLabel("");setSettingsTab(tab);setMobileNavOpen(false);
-    const url=new URL(window.location.href);url.searchParams.set("section","settings");url.searchParams.set("settingsTab",tab);url.searchParams.delete("filter");url.searchParams.delete("filterLabel");
+    const url=new URL(window.location.href);url.searchParams.set("section","settings");url.searchParams.set("settingsTab",tab);url.searchParams.delete("filter");url.searchParams.delete("filterLabel");clearTypedRouteParams(url);
     const nextUrl=`${url.pathname}${url.search}${url.hash}`;
     if(historyMode==="replace")window.history.replaceState({},"",nextUrl);else window.history.pushState({},"",nextUrl);
     window.dispatchEvent(new CustomEvent("turbolev:settings-tab",{detail:tab}));
