@@ -31,7 +31,7 @@ CREATE INDEX IF NOT EXISTS "CommunicationMessage_providerMessageId_idx"
 DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='CommunicationMessage_sentByUserId_fkey') THEN
     ALTER TABLE "CommunicationMessage" ADD CONSTRAINT "CommunicationMessage_sentByUserId_fkey"
-      FOREIGN KEY ("sentByUserId") REFERENCES "User"("id") ON DELETE SET NULL;
+      FOREIGN KEY ("sentByUserId") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE CASCADE;
   END IF;
 END $$;
 
@@ -77,14 +77,14 @@ CREATE INDEX IF NOT EXISTS "ExternalContactIdentity_leadId_idx"
 DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='ExternalContactIdentity_clientId_fkey') THEN
     ALTER TABLE "ExternalContactIdentity" ADD CONSTRAINT "ExternalContactIdentity_clientId_fkey"
-      FOREIGN KEY ("clientId") REFERENCES "Client"("id") ON DELETE SET NULL;
+      FOREIGN KEY ("clientId") REFERENCES "Client"("id") ON DELETE SET NULL ON UPDATE CASCADE;
   END IF;
 END $$;
 
 DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='ExternalContactIdentity_leadId_fkey') THEN
     ALTER TABLE "ExternalContactIdentity" ADD CONSTRAINT "ExternalContactIdentity_leadId_fkey"
-      FOREIGN KEY ("leadId") REFERENCES "Lead"("id") ON DELETE SET NULL;
+      FOREIGN KEY ("leadId") REFERENCES "Lead"("id") ON DELETE SET NULL ON UPDATE CASCADE;
   END IF;
 END $$;
 
