@@ -93,6 +93,23 @@ enum MessageDirection {
   SYSTEM
 }
 
+enum VehicleImageStatus {
+  PENDING
+  READY
+  NOT_FOUND
+  ERROR
+  MANUAL
+}
+
+enum VehicleColorSource {
+  USER
+  VIN
+  REGISTRY
+  PROVIDER
+  THEME
+  UNKNOWN
+}
+
 model User {
   id             String        @id @default(cuid())
   name           String
@@ -124,12 +141,12 @@ model Client {
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
-  phones                     ClientPhone[]
-  vehicles                   Vehicle[]
-  diagnosticRequests         DiagnosticRequest[]
-  workOrders                 WorkOrder[]
-  calls                      CallHistory[]
-  externalContactIdentities  ExternalContactIdentity[]
+  phones                    ClientPhone[]
+  vehicles                  Vehicle[]
+  diagnosticRequests        DiagnosticRequest[]
+  workOrders                WorkOrder[]
+  calls                     CallHistory[]
+  externalContactIdentities ExternalContactIdentity[]
 }
 
 model ClientPhone {
@@ -148,13 +165,13 @@ model ClientPhone {
 }
 
 model Vehicle {
-  id                       String   @id @default(cuid())
+  id                       String              @id @default(cuid())
   clientId                 String
-  plateNumber              String?  @unique
-  plateNormalized          String?  @unique
+  plateNumber              String?             @unique
+  plateNormalized          String?             @unique
   brand                    String?
   model                    String?
-  vin                      String?  @unique
+  vin                      String?             @unique
   year                     Int?
   mileageKm                Int?
   engineName               String?
@@ -165,20 +182,26 @@ model Vehicle {
   driveType                String?
   vehicleType              String?
   turboLevClass            String?
-  priceCoefficient         Decimal  @default(1.00) @db.Decimal(4, 2)
+  priceCoefficient         Decimal             @default(1.00) @db.Decimal(4, 2)
   classificationSource     String?
   classificationConfidence Int?
-  manualClassOverride      Boolean  @default(false)
+  manualClassOverride      Boolean             @default(false)
   vehicleDataSource        String?
   vehicleDataConfidence    Int?
   lastVehicleLookupAt      DateTime?
-  createdAt                DateTime @default(now())
-  updatedAt                DateTime @updatedAt
+  exteriorColorName        String?
+  exteriorColorHex         String?             @db.VarChar(16)
+  exteriorPaintCode        String?             @db.VarChar(48)
+  exteriorColorSource      VehicleColorSource?
+  exteriorColorConfirmed   Boolean             @default(false)
+  createdAt                DateTime            @default(now())
+  updatedAt                DateTime            @updatedAt
 
   client             Client                @relation(fields: [clientId], references: [id], onDelete: Cascade)
   registrations      VehicleRegistration[]
   diagnosticRequests DiagnosticRequest[]
   workOrders         WorkOrder[]
+  vehicleImages      VehicleImageAsset[]
 
   @@index([clientId])
   @@index([brand, model])
@@ -202,6 +225,37 @@ model VehicleRegistration {
 
   @@index([countryCode, plateNormalized])
   @@index([vehicleId, isCurrent])
+}
+
+model VehicleImageAsset {
+  id              String             @id @default(cuid())
+  vehicleId       String
+  provider        String
+  make            String?
+  model           String?
+  year            Int?
+  trim            String?
+  bodyType        String?
+  angle           String
+  requestedColor  String?
+  providerPaintId String?
+  sourceUrl       String?            @db.Text
+  cachedUrl       String?            @db.Text
+  status          VehicleImageStatus @default(PENDING)
+  matchConfidence Int?
+  matchReason     String?
+  signature       String
+  fetchedAt       DateTime?
+  expiresAt       DateTime?
+  lastError       String?            @db.Text
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+
+  vehicle Vehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+
+  @@unique([vehicleId, signature])
+  @@index([vehicleId, status])
+  @@index([expiresAt])
 }
 
 model VinDecodeCache {

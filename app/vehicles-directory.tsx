@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { navigateCrm, readCrmRoute } from "./crm-route";
 import { VehicleBrandLogo } from "./vehicle-brand-logo";
+import { VehicleRender } from "./vehicle-render";
 import styles from "./directory-pages.module.css";
 
 type Vehicle = {
@@ -24,6 +25,11 @@ type Vehicle = {
   priceCoefficient: string | number;
   vehicleDataSource: string | null;
   vehicleDataConfidence: number | null;
+  exteriorColorName: string | null;
+  exteriorColorHex: string | null;
+  exteriorPaintCode: string | null;
+  exteriorColorSource: string | null;
+  exteriorColorConfirmed: boolean;
   createdAt: string;
   updatedAt: string;
   client: { id: string; name: string | null; phone: string };
@@ -57,6 +63,21 @@ function engineText(vehicle: Vehicle | VehicleCard) {
   if (vehicle.engineName) return vehicle.engineName;
   if (vehicle.engineVolumeCm3) return `${(vehicle.engineVolumeCm3 / 1000).toFixed(1)} л`;
   return "—";
+}
+
+function VehicleImage({ vehicle, size = "card", eager = false }: { vehicle: Vehicle | VehicleCard; size?: "mini" | "card" | "drawer" | "hero"; eager?: boolean }) {
+  return <VehicleRender
+    id={vehicle.id}
+    brand={vehicle.brand}
+    model={vehicle.model}
+    year={vehicle.year}
+    updatedAt={vehicle.updatedAt}
+    exteriorColorName={vehicle.exteriorColorName}
+    exteriorColorHex={vehicle.exteriorColorHex}
+    exteriorColorConfirmed={vehicle.exteriorColorConfirmed}
+    size={size}
+    eager={eager}
+  />;
 }
 
 export function VehiclesDirectory() {
@@ -144,6 +165,11 @@ export function VehiclesDirectory() {
     navigateCrm("Авто");
   }
 
+  function updateVehicleCard(next: VehicleCard) {
+    setVehicleCard(next);
+    setVehicles((current) => current.map((vehicle) => vehicle.id === next.id ? { ...vehicle, ...next, client: next.client } : vehicle));
+  }
+
   return <div className={styles.page}>
     <header className={styles.header}>
       <div>
@@ -165,13 +191,19 @@ export function VehiclesDirectory() {
     <div className={styles.summary}>Знайдено автомобілів: <b>{total}</b>{total > 0 && <span> · сторінка {page} з {pages}</span>}</div>
     {error && <div className={styles.error}>{error}</div>}
     {loading ? <div className={styles.state}>Завантажую автомобілі…</div> : !vehicles.length ? <div className={styles.state}>Нічого не знайдено.</div> : <div className={styles.grid}>
-      {vehicles.map((vehicle) => <button key={vehicle.id} className={styles.card} onClick={() => openVehicle(vehicle.id)}>
-        <div className={styles.vehicleIdentity}>
-          <VehicleBrandLogo brand={vehicle.brand} size={42} />
-          <span className={styles.identityText}>
-            <strong>{vehicleTitle(vehicle)}</strong>
-            <small>{vehicle.plateNumber || "Без держномера"}{vehicle.vin ? ` · ${vehicle.vin}` : ""}</small>
-          </span>
+      {vehicles.map((vehicle, index) => <button key={vehicle.id} className={styles.card} onClick={() => openVehicle(vehicle.id)}>
+        <div className={styles.vehicleHero}>
+          <div className={styles.vehicleCopy}>
+            <div className={styles.vehicleTitleLine}>
+              <VehicleBrandLogo brand={vehicle.brand} size={38} />
+              <span className={styles.identityText}>
+                <strong>{vehicleTitle(vehicle)}</strong>
+                <small>{vehicle.plateNumber || "Без держномера"}</small>
+              </span>
+            </div>
+            <small className={styles.vehicleVin}>{vehicle.vin ? `VIN: ${vehicle.vin}` : "VIN не вказаний"}</small>
+          </div>
+          <VehicleImage vehicle={vehicle} size="card" eager={index < 6} />
           <span className={styles.chevron}>›</span>
         </div>
         <div className={styles.ownerLine}>
@@ -196,9 +228,12 @@ export function VehiclesDirectory() {
       <aside className={styles.drawer}>
         {vehicleLoading || !vehicleCard ? <div className={styles.state}>Завантажую картку автомобіля…</div> : <>
           <header className={styles.drawerHeader}>
-            <div className={styles.vehicleIdentity}>
-              <VehicleBrandLogo brand={vehicleCard.brand} size={48} />
-              <span className={styles.identityText}><small>КАРТКА АВТОМОБІЛЯ</small><strong>{vehicleTitle(vehicleCard)}</strong><span>{vehicleCard.plateNumber || "Без держномера"}</span></span>
+            <div className={styles.drawerVehicleHeader}>
+              <div className={styles.vehicleIdentity}>
+                <VehicleBrandLogo brand={vehicleCard.brand} size={48} />
+                <span className={styles.identityText}><small>КАРТКА АВТОМОБІЛЯ</small><strong>{vehicleTitle(vehicleCard)}</strong><span>{vehicleCard.plateNumber || "Без держномера"}</span></span>
+              </div>
+              <VehicleImage vehicle={vehicleCard} size="drawer" eager />
             </div>
             <button className={styles.close} onClick={closeVehicle}>×</button>
           </header>
@@ -222,6 +257,7 @@ export function VehiclesDirectory() {
                 <span><small>Привід</small><b>{vehicleCard.driveType || "—"}</b></span>
               </div>
             </section>
+            <VehicleAppearanceEditor vehicle={vehicleCard} onSaved={updateVehicleCard}/>
             <section className={styles.panel}>
               <h3>Сервісна історія</h3>
               <div className={styles.facts}>
@@ -242,4 +278,79 @@ export function VehiclesDirectory() {
       </aside>
     </div>}
   </div>;
+}
+
+function VehicleAppearanceEditor({ vehicle, onSaved }: { vehicle: VehicleCard; onSaved: (vehicle: VehicleCard) => void }) {
+  const [name, setName] = useState(vehicle.exteriorColorName || "");
+  const [hex, setHex] = useState(vehicle.exteriorColorHex || "");
+  const [paintCode, setPaintCode] = useState(vehicle.exteriorPaintCode || "");
+  const [confirmed, setConfirmed] = useState(vehicle.exteriorColorConfirmed);
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState("");
+
+  useEffect(() => {
+    setName(vehicle.exteriorColorName || "");
+    setHex(vehicle.exteriorColorHex || "");
+    setPaintCode(vehicle.exteriorPaintCode || "");
+    setConfirmed(vehicle.exteriorColorConfirmed);
+  }, [vehicle.id, vehicle.exteriorColorName, vehicle.exteriorColorHex, vehicle.exteriorPaintCode, vehicle.exteriorColorConfirmed]);
+
+  async function save() {
+    setSaving(true);
+    setMessage("");
+    try {
+      const response = await fetch(`/api/vehicles/${encodeURIComponent(vehicle.id)}/appearance`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          exteriorColorName: name,
+          exteriorColorHex: hex,
+          exteriorPaintCode: paintCode,
+          exteriorColorConfirmed: confirmed,
+        }),
+      });
+      const data = await response.json() as { ok?: boolean; error?: string; vehicle?: Partial<VehicleCard> & { updatedAt?: string } };
+      if (!response.ok || !data.ok || !data.vehicle) throw new Error(data.error || "Не вдалося зберегти колір");
+      const next = { ...vehicle, ...data.vehicle } as VehicleCard;
+      onSaved(next);
+      setMessage("Колір збережено. Зображення авто оновиться автоматично.");
+    } catch (cause) {
+      setMessage(cause instanceof Error ? cause.message : "Помилка збереження");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function refreshImage() {
+    setSaving(true);
+    setMessage("");
+    try {
+      const response = await fetch(`/api/vehicles/${encodeURIComponent(vehicle.id)}/image`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      const data = await response.json() as { ok?: boolean; error?: string; fallback?: boolean };
+      if (!response.ok || !data.ok) throw new Error(data.error || "Не вдалося оновити зображення");
+      onSaved({ ...vehicle, updatedAt: new Date().toISOString() });
+      setMessage(data.fallback ? "Точний render поки недоступний — показано безпечний силует." : "Render автомобіля оновлено.");
+    } catch (cause) {
+      setMessage(cause instanceof Error ? cause.message : "Помилка оновлення зображення");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return <section className={styles.panel}>
+    <div className={styles.panelTitleRow}><h3>Колір кузова</h3><span>{vehicle.exteriorColorConfirmed ? "Підтверджено" : "AUTO: колір теми"}</span></div>
+    <p className={styles.colorHint}>Якщо реальний колір підтверджено, CRM використовує його. Якщо ні — зображення адаптується до активного акцентного кольору CRM.</p>
+    <div className={styles.colorForm}>
+      <label><span>Назва кольору</span><input value={name} onChange={(event) => setName(event.target.value)} placeholder="Crystal White Pearl"/></label>
+      <label><span>Код фарби</span><input value={paintCode} onChange={(event) => setPaintCode(event.target.value)} placeholder="707"/></label>
+      <label><span>HEX</span><span className={styles.hexField}><input value={hex} onChange={(event) => setHex(event.target.value)} placeholder="#F4F4F1"/>{/^#[0-9a-f]{6}$/i.test(hex) ? <i style={{ backgroundColor: hex }}/> : null}</span></label>
+    </div>
+    <label className={styles.confirmColor}><input type="checkbox" checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)}/><span>Реальний колір автомобіля підтверджено</span></label>
+    <div className={styles.colorActions}><button type="button" disabled={saving} onClick={() => void refreshImage()}>Оновити render</button><button type="button" className={styles.primary} disabled={saving} onClick={() => void save()}>{saving ? "Зберігаємо…" : "Зберегти колір"}</button></div>
+    {message ? <small className={styles.colorMessage}>{message}</small> : null}
+  </section>;
 }
