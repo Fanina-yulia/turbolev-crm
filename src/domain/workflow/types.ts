@@ -38,13 +38,15 @@ export type WorkflowTone = "neutral" | "info" | "accent" | "warning" | "success"
 export type WorkflowRole =
   | "OWNER"
   | "EXECUTIVE_DIRECTOR"
+  | "HEAD_OF_SALES"
   | "SALES"
-  | "SERVICE_MANAGER"
-  | "PARTS_MANAGER"
+  | "PARTS_SPECIALIST"
+  | "STATION_MANAGER"
+  | "SERVICE_ADVISOR"
+  | "SHIFT_MASTER"
   | "MECHANIC"
-  | "QUALITY_CONTROLLER"
-  | "CASHIER_ACCOUNTING"
-  | "ADMIN";
+  | "ACCOUNTANT"
+  | "ADMINISTRATOR";
 
 export type BlockerCode =
   | "CUSTOMER_REPLY"

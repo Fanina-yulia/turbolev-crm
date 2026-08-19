@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { WorkOrderFinanceValidationError } from "@/src/domain/work-order-finance";
+import { getPrisma } from "@/src/lib/prisma";
+import { transitionWorkOrder } from "@/src/services/work-orders.service";
 import {
   recordWorkOrderPayment,
   WorkOrderFinanceError,
@@ -28,7 +30,19 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       ? body.actorName.trim().slice(0, 120)
       : "CRM / Каса";
     const result = await recordWorkOrderPayment(id, body, actorName);
-    return NextResponse.json({ ok: true, ...result });
+    let workOrder = null;
+    let workflowWarning = null;
+    if (result.obligation?.status === "PAID") {
+      const current = await getPrisma().workOrder.findUnique({ where: { id }, select: { status: true } });
+      if (current?.status === "WAITING_PAYMENT") {
+        try {
+          workOrder = await transitionWorkOrder(id, "READY_FOR_PICKUP", actorName);
+        } catch (error) {
+          workflowWarning = error instanceof Error ? error.message : "READY_FOR_PICKUP_TRANSITION_FAILED";
+        }
+      }
+    }
+    return NextResponse.json({ ok: true, ...result, workOrder, workflowWarning });
   } catch (error) {
     return errorResponse(error);
   }

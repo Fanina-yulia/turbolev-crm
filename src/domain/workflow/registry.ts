@@ -1,11 +1,11 @@
 import type { WorkflowDefinition, WorkflowStatusDefinition, WorkflowTransitionDefinition } from "./types";
 
 const SALES = ["SALES"] as const;
-const SERVICE = ["SERVICE_MANAGER"] as const;
-const SERVICE_AND_MECHANIC = ["SERVICE_MANAGER", "MECHANIC"] as const;
-const PARTS = ["PARTS_MANAGER"] as const;
-const QC = ["QUALITY_CONTROLLER", "SERVICE_MANAGER"] as const;
-const FINANCE = ["CASHIER_ACCOUNTING", "SERVICE_MANAGER"] as const;
+const SERVICE = ["SERVICE_ADVISOR"] as const;
+const SERVICE_AND_MECHANIC = ["SERVICE_ADVISOR", "MECHANIC"] as const;
+const PARTS = ["SERVICE_ADVISOR", "PARTS_SPECIALIST"] as const;
+const QC = ["SHIFT_MASTER"] as const;
+const FINANCE = ["SERVICE_ADVISOR", "ACCOUNTANT"] as const;
 
 function transition(from: string, to: string, extra: Omit<WorkflowTransitionDefinition, "from" | "to"> = {}): WorkflowTransitionDefinition {
   return { from, to, ...extra };
@@ -17,7 +17,7 @@ export const LEAD_CANONICAL_STATUS_CODES = [
 
 export const APPOINTMENT_STATUS_CODES = [
   "BOOKED", "ARRIVED", "DIAGNOSTICS", "WAITING_PARTS_SELECTION", "WAITING_CALCULATION", "WAITING_APPROVAL",
-  "WAITING_PARTS", "READY_FOR_REPAIR", "IN_REPAIR", "WAITING_QC", "READY_FOR_PICKUP", "COMPLETED",
+  "WAITING_PARTS", "READY_FOR_REPAIR", "IN_REPAIR", "WAITING_QC", "WAITING_PAYMENT", "READY_FOR_PICKUP", "COMPLETED",
   "WARRANTY", "PAUSED", "NO_SHOW", "CANCELLED", "RESERVE",
 ] as const;
 
@@ -25,7 +25,7 @@ export type AppointmentStatusCode = (typeof APPOINTMENT_STATUS_CODES)[number];
 
 export const APPOINTMENT_BLOCKING_STATUS_CODES = [
   "BOOKED", "ARRIVED", "DIAGNOSTICS", "WAITING_PARTS_SELECTION", "WAITING_CALCULATION", "WAITING_APPROVAL",
-  "WAITING_PARTS", "READY_FOR_REPAIR", "IN_REPAIR", "WAITING_QC", "READY_FOR_PICKUP", "WARRANTY", "PAUSED", "RESERVE",
+  "WAITING_PARTS", "READY_FOR_REPAIR", "IN_REPAIR", "WAITING_QC", "WAITING_PAYMENT", "READY_FOR_PICKUP", "WARRANTY", "PAUSED", "RESERVE",
 ] as const satisfies readonly AppointmentStatusCode[];
 
 export const WORK_ORDER_STATUS_CODES = [
@@ -66,11 +66,11 @@ const leadStatuses: readonly WorkflowStatusDefinition[] = [
 ];
 
 const appointmentStatuses: readonly WorkflowStatusDefinition[] = [
-  { code: "BOOKED", label: "Записаний", stage: "BOOKING", tone: "accent", sortOrder: 10, system: true, blocksResource: true, responsibleRoles: ["SALES", "SERVICE_MANAGER"] },
+  { code: "BOOKED", label: "Записаний", stage: "BOOKING", tone: "accent", sortOrder: 10, system: true, blocksResource: true, responsibleRoles: ["SALES", "SERVICE_ADVISOR"] },
   { code: "ARRIVED", label: "Приїхав", stage: "INTAKE", tone: "success", sortOrder: 20, system: true, blocksResource: true, responsibleRoles: SERVICE },
   { code: "NO_SHOW", label: "Не приїхав", stage: "CLOSED", tone: "danger", sortOrder: 80, system: true, terminal: true, responsibleRoles: SALES },
-  { code: "CANCELLED", label: "Скасований", stage: "CLOSED", tone: "neutral", sortOrder: 90, system: true, terminal: true, responsibleRoles: ["SALES", "SERVICE_MANAGER"] },
-  { code: "RESERVE", label: "Резерв", stage: "BOOKING", tone: "warning", sortOrder: 100, system: true, blocksResource: true, responsibleRoles: ["SALES", "SERVICE_MANAGER"] },
+  { code: "CANCELLED", label: "Скасований", stage: "CLOSED", tone: "neutral", sortOrder: 90, system: true, terminal: true, responsibleRoles: ["SALES", "SERVICE_ADVISOR"] },
+  { code: "RESERVE", label: "Резерв", stage: "BOOKING", tone: "warning", sortOrder: 100, system: true, blocksResource: true, responsibleRoles: ["SALES", "SERVICE_ADVISOR"] },
   { code: "DIAGNOSTICS", label: "На діагностиці", stage: "DIAGNOSTICS", tone: "info", sortOrder: 210, system: true, blocksResource: true, compatibilityOnly: true, description: "Тимчасовий bridge-статус Планувальника. Після декомпозиції джерелом правди буде DiagnosticRequest." },
   { code: "WAITING_PARTS_SELECTION", label: "Очікує підбору деталей", stage: "PARTS", tone: "warning", sortOrder: 220, system: true, blocksResource: true, compatibilityOnly: true },
   { code: "WAITING_CALCULATION", label: "Очікує калькуляції", stage: "ESTIMATE", tone: "warning", sortOrder: 230, system: true, blocksResource: true, compatibilityOnly: true },
@@ -79,6 +79,7 @@ const appointmentStatuses: readonly WorkflowStatusDefinition[] = [
   { code: "READY_FOR_REPAIR", label: "Готовий до ремонту", stage: "READY_FOR_REPAIR", tone: "success", sortOrder: 260, system: true, blocksResource: true, compatibilityOnly: true },
   { code: "IN_REPAIR", label: "У ремонті", stage: "REPAIR", tone: "accent", sortOrder: 270, system: true, blocksResource: true, compatibilityOnly: true },
   { code: "WAITING_QC", label: "Очікує контроль якості", stage: "QUALITY_CONTROL", tone: "warning", sortOrder: 280, system: true, blocksResource: true, compatibilityOnly: true },
+  { code: "WAITING_PAYMENT", label: "Очікує оплату", stage: "PAYMENT", tone: "warning", sortOrder: 285, system: true, blocksResource: true, compatibilityOnly: true },
   { code: "READY_FOR_PICKUP", label: "Готовий до видачі", stage: "DELIVERY", tone: "success", sortOrder: 290, system: true, blocksResource: true, compatibilityOnly: true },
   { code: "COMPLETED", label: "Завершений", stage: "CLOSED", tone: "success", sortOrder: 300, system: true, terminal: true, compatibilityOnly: true },
   { code: "WARRANTY", label: "Гарантійне звернення", stage: "AFTERSALES", tone: "danger", sortOrder: 310, system: true, blocksResource: true, compatibilityOnly: true },
@@ -87,22 +88,22 @@ const appointmentStatuses: readonly WorkflowStatusDefinition[] = [
 
 const diagnosticStatuses: readonly WorkflowStatusDefinition[] = [
   { code: "PENDING", label: "Очікує діагностики", stage: "DIAGNOSTICS", tone: "warning", sortOrder: 10, system: true, responsibleRoles: SERVICE_AND_MECHANIC },
-  { code: "IN_PROGRESS", label: "Діагностика триває", stage: "DIAGNOSTICS", tone: "accent", sortOrder: 20, system: true, responsibleRoles: SERVICE_AND_MECHANIC },
+  { code: "IN_PROGRESS", label: "Діагностика триває", stage: "DIAGNOSTICS", tone: "accent", sortOrder: 20, system: true, responsibleRoles: ["MECHANIC"] },
   { code: "CONFIRMED", label: "Діагностику підтверджено", stage: "DIAGNOSTICS", tone: "success", sortOrder: 30, system: true, terminal: true, responsibleRoles: SERVICE },
   { code: "CANCELLED", label: "Діагностику скасовано", stage: "CLOSED", tone: "neutral", sortOrder: 90, system: true, terminal: true, responsibleRoles: SERVICE },
 ];
 
 const workOrderStatuses: readonly WorkflowStatusDefinition[] = [
-  { code: "PARTS_REVIEW", label: "Опрацювання робіт і деталей", stage: "PARTS", tone: "info", sortOrder: 10, system: true, responsibleRoles: ["SERVICE_MANAGER", "PARTS_MANAGER"] },
+  { code: "PARTS_REVIEW", label: "Кошторис / роботи / деталі", stage: "PARTS", tone: "info", sortOrder: 10, system: true, responsibleRoles: PARTS },
   { code: "WAITING_APPROVAL", label: "Очікує погодження клієнта", stage: "APPROVAL", tone: "warning", sortOrder: 20, system: true, responsibleRoles: SERVICE },
-  { code: "WAITING_PARTS", label: "Очікує запчастини", stage: "PARTS", tone: "warning", sortOrder: 30, system: true, responsibleRoles: ["SERVICE_MANAGER", "PARTS_MANAGER"] },
+  { code: "WAITING_PARTS", label: "Очікує запчастини", stage: "PARTS", tone: "warning", sortOrder: 30, system: true, responsibleRoles: PARTS },
   { code: "READY_FOR_REPAIR", label: "Готовий до ремонту", stage: "READY_FOR_REPAIR", tone: "success", sortOrder: 40, system: true, responsibleRoles: SERVICE },
-  { code: "IN_REPAIR", label: "У ремонті", stage: "REPAIR", tone: "accent", sortOrder: 50, system: true, responsibleRoles: SERVICE_AND_MECHANIC },
-  { code: "PAUSED", label: "Призупинений / проблема", stage: "REPAIR", tone: "warning", sortOrder: 60, system: true, responsibleRoles: SERVICE },
+  { code: "IN_REPAIR", label: "У ремонті", stage: "REPAIR", tone: "accent", sortOrder: 50, system: true, responsibleRoles: ["MECHANIC"] },
+  { code: "PAUSED", label: "Призупинений / проблема", stage: "REPAIR", tone: "warning", sortOrder: 60, system: true, responsibleRoles: SERVICE_AND_MECHANIC },
   { code: "WAITING_QC", label: "Очікує контроль якості", stage: "QUALITY_CONTROL", tone: "warning", sortOrder: 70, system: true, responsibleRoles: QC },
-  { code: "REWORK", label: "Повернено на доопрацювання", stage: "REPAIR", tone: "danger", sortOrder: 80, system: true, responsibleRoles: ["SERVICE_MANAGER", "MECHANIC", "QUALITY_CONTROLLER"] },
-  { code: "READY_FOR_PICKUP", label: "Готовий до видачі", stage: "DELIVERY", tone: "success", sortOrder: 90, system: true, responsibleRoles: SERVICE },
-  { code: "WAITING_PAYMENT", label: "Очікує оплату", stage: "PAYMENT", tone: "warning", sortOrder: 100, system: true, responsibleRoles: FINANCE },
+  { code: "REWORK", label: "Повернено на доопрацювання", stage: "REPAIR", tone: "danger", sortOrder: 80, system: true, responsibleRoles: ["MECHANIC", "SHIFT_MASTER", "SERVICE_ADVISOR"] },
+  { code: "WAITING_PAYMENT", label: "Очікує оплату", stage: "PAYMENT", tone: "warning", sortOrder: 90, system: true, responsibleRoles: FINANCE },
+  { code: "READY_FOR_PICKUP", label: "Готовий до видачі", stage: "DELIVERY", tone: "success", sortOrder: 100, system: true, responsibleRoles: SERVICE },
   { code: "CLOSED", label: "Закритий / виданий", stage: "CLOSED", tone: "success", sortOrder: 110, system: true, terminal: true, responsibleRoles: SERVICE },
   { code: "CANCELLED", label: "Скасований", stage: "CLOSED", tone: "neutral", sortOrder: 120, system: true, terminal: true, responsibleRoles: SERVICE },
 ];
@@ -111,13 +112,13 @@ const partsRequestStatuses: readonly WorkflowStatusDefinition[] = [
   { code: "NEW", label: "Потрібно опрацювати", stage: "PARTS", tone: "accent", sortOrder: 10, system: true, responsibleRoles: PARTS },
   { code: "SELECTING", label: "Підбір деталей", stage: "PARTS", tone: "info", sortOrder: 20, system: true, responsibleRoles: PARTS },
   { code: "SELECTED", label: "Деталі підібрано", stage: "PARTS", tone: "success", sortOrder: 30, system: true, responsibleRoles: PARTS },
-  { code: "WAITING_APPROVAL", label: "Очікує погодження", stage: "APPROVAL", tone: "warning", sortOrder: 40, system: true, responsibleRoles: ["PARTS_MANAGER", "SERVICE_MANAGER"] },
+  { code: "WAITING_APPROVAL", label: "Очікує погодження", stage: "APPROVAL", tone: "warning", sortOrder: 40, system: true, responsibleRoles: ["PARTS_SPECIALIST", "SERVICE_ADVISOR"] },
   { code: "APPROVED", label: "Погоджено", stage: "PARTS", tone: "success", sortOrder: 50, system: true, responsibleRoles: PARTS },
   { code: "ORDER_REQUIRED", label: "Потрібно замовити", stage: "PARTS", tone: "warning", sortOrder: 60, system: true, responsibleRoles: PARTS },
   { code: "ORDERED", label: "Замовлено", stage: "PARTS", tone: "info", sortOrder: 70, system: true, responsibleRoles: PARTS },
   { code: "PARTIALLY_RECEIVED", label: "Отримано частково", stage: "PARTS", tone: "warning", sortOrder: 80, system: true, responsibleRoles: PARTS },
   { code: "RECEIVED", label: "Отримано повністю", stage: "PARTS", tone: "success", sortOrder: 90, system: true, responsibleRoles: PARTS },
-  { code: "INSTALLED", label: "Встановлено", stage: "REPAIR", tone: "success", sortOrder: 100, system: true, terminal: true, responsibleRoles: ["PARTS_MANAGER", "MECHANIC"] },
+  { code: "INSTALLED", label: "Встановлено", stage: "REPAIR", tone: "success", sortOrder: 100, system: true, terminal: true, responsibleRoles: ["PARTS_SPECIALIST", "MECHANIC"] },
   { code: "RETURNED", label: "Повернено", stage: "CLOSED", tone: "neutral", sortOrder: 110, system: true, terminal: true, responsibleRoles: PARTS },
   { code: "CANCELLED", label: "Скасовано", stage: "CLOSED", tone: "neutral", sortOrder: 120, system: true, terminal: true, responsibleRoles: PARTS },
 ];
@@ -135,8 +136,8 @@ const supplierOrderStatuses: readonly WorkflowStatusDefinition[] = [
 const stockReservationStatuses: readonly WorkflowStatusDefinition[] = [
   { code: "OPEN", label: "Очікує резервування", stage: "PARTS", tone: "warning", sortOrder: 10, system: true, responsibleRoles: PARTS },
   { code: "RESERVED", label: "Зарезервовано", stage: "PARTS", tone: "info", sortOrder: 20, system: true, responsibleRoles: PARTS },
-  { code: "ISSUED", label: "Видано в роботу", stage: "REPAIR", tone: "accent", sortOrder: 30, system: true, responsibleRoles: ["PARTS_MANAGER", "MECHANIC"] },
-  { code: "INSTALLED", label: "Встановлено", stage: "REPAIR", tone: "success", sortOrder: 40, system: true, terminal: true, responsibleRoles: ["PARTS_MANAGER", "MECHANIC"] },
+  { code: "ISSUED", label: "Видано в роботу", stage: "REPAIR", tone: "accent", sortOrder: 30, system: true, responsibleRoles: ["PARTS_SPECIALIST", "MECHANIC"] },
+  { code: "INSTALLED", label: "Встановлено", stage: "REPAIR", tone: "success", sortOrder: 40, system: true, terminal: true, responsibleRoles: ["PARTS_SPECIALIST", "MECHANIC"] },
   { code: "RELEASED", label: "Резерв знято", stage: "CLOSED", tone: "neutral", sortOrder: 50, system: true, terminal: true, responsibleRoles: PARTS },
   { code: "RETURNED", label: "Повернено на склад", stage: "PARTS", tone: "neutral", sortOrder: 60, system: true, terminal: true, responsibleRoles: PARTS },
 ];
@@ -161,8 +162,8 @@ const qualityStatuses: readonly WorkflowStatusDefinition[] = [
 const warrantyStatuses: readonly WorkflowStatusDefinition[] = [
   { code: "OPEN", label: "Відкрите звернення", stage: "AFTERSALES", tone: "accent", sortOrder: 10, system: true, responsibleRoles: SERVICE },
   { code: "DIAGNOSTICS", label: "Гарантійна діагностика", stage: "AFTERSALES", tone: "info", sortOrder: 20, system: true, responsibleRoles: SERVICE_AND_MECHANIC },
-  { code: "APPROVED", label: "Гарантію визнано", stage: "AFTERSALES", tone: "success", sortOrder: 30, system: true, responsibleRoles: ["SERVICE_MANAGER", "EXECUTIVE_DIRECTOR"] },
-  { code: "REJECTED", label: "У гарантії відмовлено", stage: "CLOSED", tone: "danger", sortOrder: 40, system: true, terminal: true, responsibleRoles: ["SERVICE_MANAGER", "EXECUTIVE_DIRECTOR"] },
+  { code: "APPROVED", label: "Гарантію визнано", stage: "AFTERSALES", tone: "success", sortOrder: 30, system: true, responsibleRoles: ["SERVICE_ADVISOR", "EXECUTIVE_DIRECTOR"] },
+  { code: "REJECTED", label: "У гарантії відмовлено", stage: "CLOSED", tone: "danger", sortOrder: 40, system: true, terminal: true, responsibleRoles: ["SERVICE_ADVISOR", "EXECUTIVE_DIRECTOR"] },
   { code: "IN_REPAIR", label: "Гарантійний ремонт", stage: "REPAIR", tone: "accent", sortOrder: 50, system: true, responsibleRoles: SERVICE_AND_MECHANIC },
   { code: "RESOLVED", label: "Вирішено", stage: "AFTERSALES", tone: "success", sortOrder: 60, system: true, responsibleRoles: SERVICE },
   { code: "CLOSED", label: "Закрито", stage: "CLOSED", tone: "success", sortOrder: 70, system: true, terminal: true, responsibleRoles: SERVICE },
@@ -216,7 +217,7 @@ export const WORKFLOW_DEFINITIONS: Readonly<Record<string, WorkflowDefinition>> 
       transition("WAITING_PARTS", "READY_FOR_REPAIR"), transition("READY_FOR_REPAIR", "IN_REPAIR"),
       transition("IN_REPAIR", "WAITING_QC"), transition("IN_REPAIR", "WAITING_PARTS"), transition("IN_REPAIR", "PAUSED"),
       transition("PAUSED", "IN_REPAIR"), transition("PAUSED", "WAITING_PARTS"),
-      transition("WAITING_QC", "READY_FOR_PICKUP"), transition("READY_FOR_PICKUP", "COMPLETED", { actions: ["CLOSE_APPOINTMENT"] }),
+      transition("WAITING_QC", "WAITING_PAYMENT"), transition("WAITING_PAYMENT", "READY_FOR_PICKUP"), transition("READY_FOR_PICKUP", "COMPLETED", { actions: ["CLOSE_APPOINTMENT"] }),
       transition("COMPLETED", "WARRANTY"), transition("WARRANTY", "IN_REPAIR"),
     ],
   },
@@ -234,10 +235,10 @@ export const WORKFLOW_DEFINITIONS: Readonly<Record<string, WorkflowDefinition>> 
       transition("READY_FOR_REPAIR", "IN_REPAIR", { gates: ["ESTIMATE_APPROVED_BEFORE_REPAIR", "REQUIRED_PARTS_READY_BEFORE_REPAIR", "MECHANIC_ASSIGNED_BEFORE_REPAIR"] }), transition("READY_FOR_REPAIR", "PAUSED"), transition("READY_FOR_REPAIR", "CANCELLED"),
       transition("IN_REPAIR", "WAITING_QC", { actions: ["CREATE_QC_TASK", "SET_VEHICLE_LOCATION_QC"] }), transition("IN_REPAIR", "WAITING_PARTS"), transition("IN_REPAIR", "WAITING_APPROVAL", { gates: ["ADDITIONAL_WORK_REQUIRES_APPROVAL"] }), transition("IN_REPAIR", "PAUSED"),
       transition("PAUSED", "PARTS_REVIEW"), transition("PAUSED", "WAITING_APPROVAL"), transition("PAUSED", "WAITING_PARTS"), transition("PAUSED", "READY_FOR_REPAIR"), transition("PAUSED", "IN_REPAIR"),
-      transition("WAITING_QC", "READY_FOR_PICKUP", { gates: ["QC_PASSED_BEFORE_READY"], actions: ["SET_VEHICLE_LOCATION_READY"] }), transition("WAITING_QC", "REWORK"),
+      transition("WAITING_QC", "WAITING_PAYMENT", { gates: ["QC_PASSED_BEFORE_READY"] }), transition("WAITING_QC", "REWORK"),
       transition("REWORK", "IN_REPAIR"),
-      transition("READY_FOR_PICKUP", "WAITING_PAYMENT"), transition("READY_FOR_PICKUP", "CLOSED", { gates: ["QC_PASSED_BEFORE_READY", "ZERO_BALANCE_BEFORE_DELIVERY"], actions: ["CLOSE_WORK_ORDER"] }),
-      transition("WAITING_PAYMENT", "READY_FOR_PICKUP"), transition("WAITING_PAYMENT", "CLOSED", { gates: ["ZERO_BALANCE_BEFORE_DELIVERY"], actions: ["CLOSE_WORK_ORDER"] }),
+      transition("WAITING_PAYMENT", "READY_FOR_PICKUP", { gates: ["ZERO_BALANCE_BEFORE_DELIVERY"], actions: ["SET_VEHICLE_LOCATION_READY"] }),
+      transition("READY_FOR_PICKUP", "CLOSED", { gates: ["QC_PASSED_BEFORE_READY", "ZERO_BALANCE_BEFORE_DELIVERY"], actions: ["CLOSE_WORK_ORDER"] }),
     ],
   },
   PARTS_REQUEST: {

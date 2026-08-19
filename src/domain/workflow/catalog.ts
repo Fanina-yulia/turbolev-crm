@@ -24,13 +24,15 @@ export const MASTER_SERVICE_STAGES: ReadonlyArray<{ code: WorkflowStage; label: 
 export const WORKFLOW_ROLE_LABELS: Record<WorkflowRole, string> = {
   OWNER: "Власник",
   EXECUTIVE_DIRECTOR: "Виконавчий директор",
+  HEAD_OF_SALES: "Керівник відділу продажів",
   SALES: "Продажі",
-  SERVICE_MANAGER: "Сервіс-менеджмент",
-  PARTS_MANAGER: "Підбір / запчастини",
+  PARTS_SPECIALIST: "Підбір / закупівлі",
+  STATION_MANAGER: "Завідувач станцією",
+  SERVICE_ADVISOR: "Сервіс-менеджер",
+  SHIFT_MASTER: "Майстер зміни",
   MECHANIC: "Автомеханік",
-  QUALITY_CONTROLLER: "Контроль якості",
-  CASHIER_ACCOUNTING: "Каса / бухгалтерія",
-  ADMIN: "Адміністратор CRM",
+  ACCOUNTANT: "Бухгалтер / каса",
+  ADMINISTRATOR: "Адміністратор CRM",
 };
 
 export const BLOCKER_LABELS: Record<BlockerCode, string> = {
@@ -70,8 +72,8 @@ export const HARD_GATE_LABELS: Record<HardGateCode, string> = {
   REQUIRED_PARTS_READY_BEFORE_REPAIR: "Для старту ремонту всі обов'язкові деталі мають бути доступні",
   MECHANIC_ASSIGNED_BEFORE_REPAIR: "Для старту ремонту має бути призначений автомеханік",
   ADDITIONAL_WORK_REQUIRES_APPROVAL: "Додаткові платні роботи потребують нового погодження",
-  QC_PASSED_BEFORE_READY: "Готовність до видачі тільки після успішного контролю якості",
-  ZERO_BALANCE_BEFORE_DELIVERY: "Видача автомобіля тільки після закриття обов'язкового балансу",
+  QC_PASSED_BEFORE_READY: "Перед передачею в оплату контроль якості має бути успішно пройдений",
+  ZERO_BALANCE_BEFORE_DELIVERY: "Статус «Готовий до видачі» доступний тільки після повної оплати",
 };
 
 export const WORKFLOW_ACTION_LABELS: Record<WorkflowActionCode, string> = {
