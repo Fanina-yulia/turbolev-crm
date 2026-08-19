@@ -18,7 +18,13 @@ type WarrantyLineLike = {
   type: string;
   status: string;
   description: string;
+  catalogItemId?: string | null;
   completedAt: Date | string | null;
+  warrantyKm?: number | null;
+  warrantyDays?: number | null;
+  warrantyStartsAt?: Date | string | null;
+  warrantyEndsAt?: Date | string | null;
+  warrantyMileageStartKm?: number | null;
   metadata: unknown;
 };
 
@@ -30,9 +36,19 @@ function isRecord(value: unknown): value is JsonRecord {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
+function hasOwn(source: JsonRecord, key: string) {
+  return Object.prototype.hasOwnProperty.call(source, key);
+}
+
 function positiveInteger(value: unknown) {
   const n = Number(value);
   return Number.isFinite(n) && n > 0 ? Math.round(n) : null;
+}
+
+function validDate(value: Date | string | null | undefined) {
+  if (!value) return null;
+  const date = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
 }
 
 function addDays(date: Date, days: number) {
@@ -49,7 +65,7 @@ export async function prepareCatalogWorkOrderLineInput(body: JsonRecord) {
   const prisma = getPrisma();
   const item = await prisma.serviceCatalogItem.findFirst({
     where: {
-      id: catalogItemId,
+      OR: [{ id: catalogItemId }, { legacyDirectoryItemId: catalogItemId }],
       isActive: true,
       showToOperator: true,
       reviewStatus: ServiceCatalogReviewStatus.READY,
@@ -88,16 +104,19 @@ export async function prepareCatalogWorkOrderLineInput(body: JsonRecord) {
 
   return {
     ...body,
-    // WorkOrderLine historically used legacy CrmDirectoryItem for catalogItemId.
-    // New Service Catalog linkage is kept explicitly in sourceEntity/sourceEntityId
-    // and in the immutable metadata snapshot below.
+    // Prevent the canonical line service from falling back to the removed
+    // CrmDirectoryItem price lookup. The DB trigger restores catalogItemId
+    // from sourceEntityId and snapshots warranty fields atomically.
     catalogItemId: null,
-    type: "LABOR",
-    description: item.displayName,
-    code: item.code,
-    unit: item.unit || "робота",
-    plannedUnitPrice: body.plannedUnitPrice ?? item.basePrice?.toString() ?? "0",
-    laborHours: body.laborHours ?? (item.normMinutes == null ? null : Math.round((item.normMinutes / 60) * 100) / 100),
+    type: hasOwn(body, "type") ? body.type : "LABOR",
+    description: hasOwn(body, "description") ? body.description : item.displayName,
+    code: hasOwn(body, "code") ? body.code : item.code,
+    unit: hasOwn(body, "unit") ? body.unit : item.unit || "робота",
+    plannedUnitPrice: hasOwn(body, "plannedUnitPrice") ? body.plannedUnitPrice : item.basePrice?.toString() ?? "0",
+    plannedUnitCost: hasOwn(body, "plannedUnitCost") ? body.plannedUnitCost : 0,
+    laborHours: hasOwn(body, "laborHours")
+      ? body.laborHours
+      : item.normMinutes == null ? null : Math.round((item.normMinutes / 60) * 100) / 100,
     sourceEntity: "SERVICE_CATALOG",
     sourceEntityId: item.id,
     metadata: {
@@ -130,25 +149,33 @@ export function buildWorkOrderLineWarranty(line: WarrantyLineLike) {
   if (line.type !== "LABOR" || line.status === "CANCELLED") return null;
   const metadata = isRecord(line.metadata) ? line.metadata : {};
   const nested = isRecord(metadata.serviceWarranty) ? metadata.serviceWarranty : {};
-  const warrantyKm = positiveInteger(nested.warrantyKm ?? metadata.warrantyKm);
-  const warrantyDays = positiveInteger(nested.warrantyDays ?? metadata.warrantyDays);
+  const warrantyKm = positiveInteger(line.warrantyKm ?? nested.warrantyKm ?? metadata.warrantyKm);
+  const warrantyDays = positiveInteger(line.warrantyDays ?? nested.warrantyDays ?? metadata.warrantyDays);
   if (!warrantyKm && !warrantyDays) return null;
 
-  const completedAt = line.completedAt ? new Date(line.completedAt) : null;
-  const validCompletedAt = completedAt && !Number.isNaN(completedAt.getTime()) ? completedAt : null;
-  const expiresAt = validCompletedAt && warrantyDays ? addDays(validCompletedAt, warrantyDays) : null;
+  const startsAt = validDate(line.warrantyStartsAt) || validDate(line.completedAt);
+  const storedEndsAt = validDate(line.warrantyEndsAt);
+  const expiresAt = storedEndsAt || (startsAt && warrantyDays ? addDays(startsAt, warrantyDays) : null);
+  const mileageStartKm = positiveInteger(line.warrantyMileageStartKm);
+  const mileageLimitKm = mileageStartKm && warrantyKm ? mileageStartKm + warrantyKm : null;
   const now = new Date();
-  const status = !validCompletedAt ? "PENDING_START" : expiresAt && expiresAt.getTime() < now.getTime() ? "EXPIRED_BY_TIME" : "ACTIVE";
+  const status = !startsAt
+    ? "PENDING_START"
+    : expiresAt && expiresAt.getTime() < now.getTime()
+      ? "EXPIRED_BY_TIME"
+      : "ACTIVE";
 
   return {
     lineId: line.id,
     description: line.description,
     warrantyKm,
     warrantyDays,
-    startsAt: validCompletedAt?.toISOString() ?? null,
+    startsAt: startsAt?.toISOString() ?? null,
     expiresAt: expiresAt?.toISOString() ?? null,
+    mileageStartKm,
+    mileageLimitKm,
     status,
-    sourceCatalogItemId: clean(nested.sourceCatalogItemId, 160) || clean(metadata.serviceCatalogItemId, 160) || null,
+    sourceCatalogItemId: clean(line.catalogItemId, 160) || clean(nested.sourceCatalogItemId, 160) || clean(metadata.serviceCatalogItemId, 160) || null,
     copiedAt: clean(nested.copiedAt, 80) || null,
   };
 }
