@@ -1,11 +1,15 @@
 import sharp from "sharp";
+import { getPrisma } from "@/src/lib/prisma";
 import { getSqlPool } from "@/src/lib/sql";
 import {
   generateVehicleImageForVehicle,
+  getOpenAIVehicleImageConfig,
   getVehicleImageLibraryState,
 } from "./openai-library.service";
 
 const TARGET_IMAGE_BYTES = 100 * 1024;
+const OPENAI_IMAGES_URL = "https://api.openai.com/v1/images/generations";
+const FALLBACK_MAX_BYTES = 16 * 1024 * 1024;
 
 type ImageRow = {
   id: string;
@@ -19,6 +23,8 @@ type BackgroundOptions = {
   themePaint?: string | null;
   force?: boolean;
 };
+
+type OpenAIImageConfig = NonNullable<Awaited<ReturnType<typeof getOpenAIVehicleImageConfig>>>;
 
 const OPTIMIZATION_PROFILES = [
   { width: 1024, quality: 70, alphaQuality: 82 },
@@ -37,6 +43,196 @@ function isWebp(bytes: Buffer) {
   return bytes.length >= 12
     && bytes.toString("ascii", 0, 4) === "RIFF"
     && bytes.toString("ascii", 8, 12) === "WEBP";
+}
+
+function isTransparentBackgroundCompatibilityError(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error || "");
+  return /transparent background is not supported for this model/i.test(message);
+}
+
+function openAIErrorMessage(payload: unknown, fallback: string) {
+  if (payload && typeof payload === "object" && !Array.isArray(payload)) {
+    const nested = (payload as { error?: unknown }).error;
+    if (nested && typeof nested === "object" && !Array.isArray(nested)) {
+      const message = (nested as { message?: unknown }).message;
+      if (typeof message === "string" && message.trim()) return message.trim();
+    }
+  }
+  return fallback;
+}
+
+async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs: number) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal, cache: "no-store" });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function buildCompatibilityPrompt(vehicleId: string, themePaint?: string | null) {
+  const vehicle = await getPrisma().vehicle.findUnique({
+    where: { id: vehicleId },
+    select: { brand: true, model: true, year: true, bodyType: true },
+  });
+  if (!vehicle?.brand?.trim() || !vehicle.model?.trim()) {
+    throw new Error("Для резервної генерації потрібні марка і модель автомобіля.");
+  }
+  const identity = [vehicle.brand.trim(), vehicle.model.trim(), vehicle.year || null, vehicle.bodyType?.trim() || null]
+    .filter(Boolean)
+    .join(" ");
+  const paint = themePaint?.trim() || "rich warm orange automotive paint";
+  return [
+    "Create exactly one photorealistic production vehicle cutout for a professional automotive service CRM card.",
+    `Vehicle: ${identity}.`,
+    "Match the real production generation, silhouette, body proportions, roofline, lights, grille, bumpers, wheel arches, glazing and door layout as closely as possible.",
+    "Show the complete vehicle, facing right, in a clean front three-quarter side view, centered, with all tires visible and no cropping.",
+    `Use ${paint} while preserving realistic automotive materials and reflections.`,
+    "Compatibility background rule: render the entire background as one perfectly uniform pure chroma-key magenta color #FF00FF.",
+    "The magenta background must contain no floor, no road, no scenery, no studio wall, no gradient, no texture, no cast shadow and no reflected objects.",
+    "Do not use magenta anywhere on the vehicle itself. Do not add people, text, captions, watermarks or readable license-plate text.",
+    "Use a blank neutral plate area. Keep the vehicle edges clean and catalog-like. The magenta background will be removed programmatically after generation.",
+  ].join(" ");
+}
+
+async function requestCompatibilityPng(config: OpenAIImageConfig, prompt: string) {
+  const response = await fetchWithTimeout(OPENAI_IMAGES_URL, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${config.apiKey}`,
+      "Content-Type": "application/json",
+      Accept: "application/json",
+    },
+    body: JSON.stringify({
+      model: config.model,
+      prompt,
+      n: 1,
+      size: config.imageSize,
+      quality: config.quality,
+      output_format: "png",
+    }),
+  }, 90_000);
+
+  const payload = await response.json().catch(() => null) as { data?: Array<{ b64_json?: string; url?: string }> } | null;
+  if (!response.ok) {
+    throw new Error(openAIErrorMessage(payload, `OpenAI Images API: HTTP ${response.status}`));
+  }
+
+  const item = payload?.data?.[0];
+  let bytes: Buffer | null = null;
+  if (item?.b64_json) {
+    bytes = Buffer.from(item.b64_json, "base64");
+  } else if (item?.url) {
+    const imageResponse = await fetchWithTimeout(item.url, { headers: { Accept: "image/png,image/*" } }, 30_000);
+    if (!imageResponse.ok) throw new Error(`Не вдалося завантажити резервний PNG: HTTP ${imageResponse.status}`);
+    bytes = Buffer.from(await imageResponse.arrayBuffer());
+  }
+
+  if (!bytes?.length) throw new Error("OpenAI не повернув байти резервного зображення.");
+  if (bytes.length > FALLBACK_MAX_BYTES) throw new Error(`Резервний PNG завеликий: ${Math.ceil(bytes.length / 1024)} КБ.`);
+  return bytes;
+}
+
+async function convertChromaKeyToTransparentPng(source: Buffer) {
+  const decoded = await sharp(source, { failOn: "none" })
+    .rotate()
+    .ensureAlpha()
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+
+  const data = decoded.data;
+  const { width, height, channels } = decoded.info;
+  if (!width || !height || channels !== 4) throw new Error("Не вдалося декодувати резервний PNG у RGBA.");
+
+  let alreadyTransparent = 0;
+  for (let i = 3; i < data.length; i += 4) {
+    if (data[i] < 245) alreadyTransparent += 1;
+  }
+  const pixels = width * height;
+  if (alreadyTransparent / Math.max(1, pixels) > 0.01) {
+    return sharp(data, { raw: { width, height, channels: 4 } })
+      .png({ compressionLevel: 9, adaptiveFiltering: true })
+      .toBuffer();
+  }
+
+  let removed = 0;
+  for (let i = 0; i < data.length; i += 4) {
+    const r = data[i];
+    const g = data[i + 1];
+    const b = data[i + 2];
+    const originalAlpha = data[i + 3];
+    const distance = Math.sqrt((255 - r) ** 2 + g ** 2 + (255 - b) ** 2);
+
+    if (distance <= 52) {
+      data[i + 3] = 0;
+      removed += 1;
+      continue;
+    }
+    if (distance < 132) {
+      const edgeAlpha = Math.max(0, Math.min(255, Math.round(((distance - 52) / 80) * 255)));
+      data[i + 3] = Math.min(originalAlpha, edgeAlpha);
+      if (data[i + 3] < 245) removed += 1;
+    }
+  }
+
+  if (removed / Math.max(1, pixels) < 0.08) {
+    throw new Error("OpenAI не дотримався однотонного chroma-key фону; безпечне видалення фону неможливе.");
+  }
+
+  const output = await sharp(data, { raw: { width, height, channels: 4 } })
+    .png({ compressionLevel: 9, adaptiveFiltering: true })
+    .toBuffer();
+  const metadata = await sharp(output, { failOn: "none" }).metadata();
+  if (!metadata.hasAlpha) throw new Error("Після chroma-key обробки PNG не має alpha-каналу.");
+  return output;
+}
+
+async function generateVehicleImageWithCompatibilityFallback(vehicleId: string, options?: BackgroundOptions) {
+  try {
+    return await generateVehicleImageForVehicle(vehicleId, {
+      themePaint: options?.themePaint,
+      force: options?.force === true,
+    });
+  } catch (error) {
+    if (!isTransparentBackgroundCompatibilityError(error)) throw error;
+
+    const [config, state] = await Promise.all([
+      getOpenAIVehicleImageConfig(),
+      getVehicleImageLibraryState(vehicleId, options?.themePaint),
+    ]);
+    if (!config || !state.assetId || !state.libraryKey) throw error;
+
+    try {
+      const prompt = await buildCompatibilityPrompt(vehicleId, options?.themePaint);
+      const generated = await requestCompatibilityPng(config, prompt);
+      const transparent = await convertChromaKeyToTransparentPng(generated);
+      await getSqlPool().query(
+        `UPDATE public."VehicleImageLibraryAsset"
+            SET "provider"='OPENAI',
+                "providerModel"=$2,
+                "status"='READY',
+                "imageMimeType"='image/png',
+                "imageData"=$3,
+                "imageSizeBytes"=$4,
+                "lastError"=NULL,
+                "generatedAt"=CURRENT_TIMESTAMP,
+                "updatedAt"=CURRENT_TIMESTAMP
+          WHERE "id"=$1`,
+        [state.assetId, config.model, transparent, transparent.length],
+      );
+      return { state: "READY" as const, assetId: state.assetId, libraryKey: state.libraryKey, compatibilityFallback: true };
+    } catch (fallbackError) {
+      const message = fallbackError instanceof Error ? fallbackError.message : "Помилка сумісної генерації зображення.";
+      await getSqlPool().query(
+        `UPDATE public."VehicleImageLibraryAsset"
+            SET "status"='ERROR',"lastError"=$2,"updatedAt"=CURRENT_TIMESTAMP
+          WHERE "id"=$1`,
+        [state.assetId, message.slice(0, 4000)],
+      ).catch(() => undefined);
+      throw fallbackError;
+    }
+  }
 }
 
 async function loadAsset(assetId: string): Promise<ImageRow | null> {
@@ -195,10 +391,7 @@ export async function generateVehicleImageInBackground(vehicleId: string, option
       return { state: "READY" as const, assetId: rechecked.assetId, libraryKey: rechecked.libraryKey, optimization, reused: true };
     }
 
-    const generation = await generateVehicleImageForVehicle(vehicleId, {
-      themePaint: options?.themePaint,
-      force: options?.force === true,
-    });
+    const generation = await generateVehicleImageWithCompatibilityFallback(vehicleId, options);
 
     if (generation.state !== "READY" || !generation.assetId) return generation;
 
