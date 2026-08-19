@@ -7,9 +7,19 @@ import {
 } from "@/src/services/integration-credentials.service";
 import { testMetaConnection } from "@/src/services/meta-communications.service";
 import { testOlxConnection } from "@/src/services/olx-communications.service";
+import { bmPartsAdapter } from "@/src/services/suppliers/bm-parts.adapter";
+import { uniqueTradeAdapter } from "@/src/services/suppliers/unique-trade.adapter";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+type TestResult = {
+  ok: boolean;
+  message: string;
+  state?: string;
+  checkedAt?: string;
+  latencyMs?: number;
+};
 
 function sameOrigin(request: NextRequest) {
   const origin = request.headers.get("origin");
@@ -28,29 +38,27 @@ async function fetchWithTimeout(url: string, init?: RequestInit) {
   }
 }
 
-async function testProvider(provider: IntegrationProvider, config: Record<string, string>) {
-  if (provider === "BM_PARTS") {
-    const baseUrl = (config.baseUrl || "https://api.bm.parts").replace(/\/$/, "");
-    const response = await fetchWithTimeout(`${baseUrl}/profile/me`, {
-      headers: { Accept: "application/json", Authorization: config.apiKey || "", "User-Agent": "TurboLEV-CRM/0.4.0" },
-    });
-    return response.ok
-      ? { ok: true, message: "З'єднання з BM Parts працює." }
-      : { ok: false, message: `BM Parts відповів HTTP ${response.status}.` };
+async function testProvider(provider: IntegrationProvider, config?: Record<string, string> | null): Promise<TestResult> {
+  if (provider === "BM_PARTS") return bmPartsAdapter.testConnection();
+  if (provider === "UNIQUE_TRADE") return uniqueTradeAdapter.testConnection();
+
+  if (provider === "AUTONOVA_D") {
+    return {
+      ok: false,
+      state: "MANUAL_SETUP",
+      message: "Live API Автонова-Д не запускається без офіційного endpoint, способу авторизації та технічної документації постачальника.",
+    };
   }
 
-  if (provider === "UNIQUE_TRADE") {
-    const baseUrl = (config.baseUrl || "https://order24-api.utr.ua").replace(/\/$/, "");
-    const fingerprint = (config.fingerprint || "turbolev-crm-unique-trade-v2").slice(0, 128);
-    const response = await fetchWithTimeout(`${baseUrl}/api/login_check?browser_fingerprint=${encodeURIComponent(fingerprint)}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Accept: "application/json" },
-      body: JSON.stringify({ email: config.email, password: config.password }),
-    });
-    return response.ok
-      ? { ok: true, message: "Авторизація Юнік Трейд працює." }
-      : { ok: false, message: `Юнік Трейд відповів HTTP ${response.status}.` };
+  if (provider === "ATL") {
+    return {
+      ok: false,
+      state: "MANUAL_SETUP",
+      message: "Live API ATL не запускається без офіційного B2B/API endpoint та технічної документації постачальника.",
+    };
   }
+
+  if (!config) return { ok: false, message: "Спочатку збережіть доступи." };
 
   if (provider === "BINOTEL") {
     const response = await fetchWithTimeout("https://api.binotel.com/api/4.0/settings/list-of-employees.json", {
@@ -68,14 +76,6 @@ async function testProvider(provider: IntegrationProvider, config: Record<string
   if (provider === "META") return testMetaConnection();
   if (provider === "OLX") return testOlxConnection();
 
-  if (provider === "AUTONOVA_D") {
-    return { ok: false, message: "Доступ збережено. Автоматична перевірка буде доступна після офіційної API-документації Автонова-Д." };
-  }
-
-  if (provider === "ATL") {
-    return { ok: false, message: "Доступ ATL збережено. Live-перевірку не запускаємо без офіційного B2B/API endpoint та документації ATL." };
-  }
-
   return { ok: true, message: "Доступи збережені. З'єднання буде остаточно підтверджене першою live-подією провайдера." };
 }
 
@@ -89,11 +89,22 @@ export async function POST(request: NextRequest, context: { params: Promise<{ pr
       return NextResponse.json({ ok: false, error: "Невідома інтеграція" }, { status: 404 });
     }
 
-    const config = await getIntegrationCredential(provider);
-    if (!config) return NextResponse.json({ ok: false, message: "Спочатку збережіть доступи." }, { status: 400 });
+    if (provider === "AUTONOVA_D" || provider === "ATL") {
+      const result = await testProvider(provider);
+      return NextResponse.json(
+        { ...result, checkedAt: new Date().toISOString() },
+        { status: 200, headers: { "Cache-Control": "no-store" } },
+      );
+    }
+
+    const supplierLive = provider === "BM_PARTS" || provider === "UNIQUE_TRADE";
+    const config = supplierLive ? null : await getIntegrationCredential(provider);
+    if (!supplierLive && !config) {
+      return NextResponse.json({ ok: false, message: "Спочатку збережіть доступи." }, { status: 400 });
+    }
 
     const started = Date.now();
-    let result: { ok: boolean; message: string };
+    let result: TestResult;
     try {
       result = await testProvider(provider, config);
     } catch (error) {
@@ -101,7 +112,14 @@ export async function POST(request: NextRequest, context: { params: Promise<{ pr
     }
 
     await recordIntegrationTest(provider, result).catch(() => undefined);
-    return NextResponse.json({ ...result, latencyMs: Date.now() - started, checkedAt: new Date().toISOString() }, { status: result.ok ? 200 : 422 });
+    return NextResponse.json(
+      {
+        ...result,
+        latencyMs: result.latencyMs ?? Date.now() - started,
+        checkedAt: result.checkedAt ?? new Date().toISOString(),
+      },
+      { status: result.ok ? 200 : 422, headers: { "Cache-Control": "no-store" } },
+    );
   } catch (error) {
     console.error("POST integration test failed", error);
     return NextResponse.json({ ok: false, error: "Не вдалося перевірити інтеграцію" }, { status: 500 });
