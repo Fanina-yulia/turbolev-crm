@@ -1,7 +1,7 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { getSqlPool } from "@/src/lib/sql";
 
-const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
+const MAX_IMAGE_BYTES = 4 * 1024 * 1024;
 const PROVIDER_URL_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const ALLOWED_IMAGE_TYPES = new Set([
   "image/jpeg",
@@ -57,7 +57,7 @@ export function validateCommunicationImage(file: File) {
     throw Object.assign(new Error("Файл порожній."), { code: "ATTACHMENT_EMPTY" });
   }
   if (file.size > MAX_IMAGE_BYTES) {
-    throw Object.assign(new Error("Максимальний розмір зображення — 8 МБ."), { code: "ATTACHMENT_TOO_LARGE" });
+    throw Object.assign(new Error("Максимальний розмір зображення — 4 МБ."), { code: "ATTACHMENT_TOO_LARGE" });
   }
 }
 
