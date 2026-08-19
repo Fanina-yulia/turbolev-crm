@@ -87,6 +87,7 @@ model EmployeeProfile {
   middleName         String?
   birthDate          DateTime? @db.Timestamp(6)
   hireDate           DateTime? @db.Date
+  employmentType     String?   @db.VarChar(32)
   email              String?   @unique
   phone              String?
   phoneCountry       String?
@@ -478,7 +479,7 @@ model RoleDemandSnapshot {
   periodEnd           DateTime     @db.Date
   metricCode          String       @db.VarChar(96)
   demandValue         Decimal      @db.Decimal(18, 4)
-  unit                KpiValueUnit
+  unit                 KpiValueUnit
   sourceType          String       @db.VarChar(64)
   sourceId            String?      @db.VarChar(160)
   dataCompletenessPct Decimal?     @db.Decimal(7, 2)
