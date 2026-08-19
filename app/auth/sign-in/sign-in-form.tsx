@@ -2,6 +2,7 @@
 
 import { FormEvent, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
+import { neonAuthClient } from "@/src/security/neon-auth-client";
 import styles from "./sign-in.module.css";
 
 type AccessStatus = {
@@ -98,23 +99,14 @@ export function SignInForm() {
     setBusy(true);
     setMessage("");
     try {
-      const response = await fetch("/api/auth/sign-in/social", {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json", Accept: "application/json" },
-        body: JSON.stringify({ provider: "google", callbackURL: nextPath }),
-      });
-      const result = await response.json().catch(() => null);
-      if (!response.ok) {
-        setMessage(result?.message || result?.error || "Не вдалося розпочати вхід через Google.");
-        return;
+      const result = (await neonAuthClient.signIn.social({
+        provider: "google",
+        callbackURL: nextPath,
+      })) as { error?: { message?: string; code?: string } | null } | undefined;
+
+      if (result?.error) {
+        setMessage(result.error.message || result.error.code || "Не вдалося розпочати вхід через Google.");
       }
-      const target = typeof result?.url === "string" ? result.url : typeof result?.redirect === "string" ? result.redirect : null;
-      if (target) {
-        window.location.assign(target);
-        return;
-      }
-      setMessage("Google не повернув адресу авторизації. Спробуйте ще раз.");
     } catch {
       setMessage("Сервіс Google-входу тимчасово недоступний.");
     } finally {

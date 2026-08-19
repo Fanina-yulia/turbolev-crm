@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, type ReactNode } from "react";
+import { neonAuthClient } from "@/src/security/neon-auth-client";
 
 type AccessState =
   | { kind: "checking" }
@@ -74,27 +75,14 @@ export function PersonnelAccessGate({ children }: { children: ReactNode }) {
     setAuthBusy(true);
     setAuthError("");
     try {
-      const response = await fetch("/api/auth/sign-in/social", {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json", Accept: "application/json" },
-        body: JSON.stringify({ provider: "google", callbackURL: PERSONNEL_RETURN_PATH }),
-      });
-      const result = await response.json().catch(() => null);
-      if (!response.ok) {
-        setAuthError(result?.message || result?.error || "Не вдалося розпочати вхід через Google.");
-        return;
+      const result = (await neonAuthClient.signIn.social({
+        provider: "google",
+        callbackURL: PERSONNEL_RETURN_PATH,
+      })) as { error?: { message?: string; code?: string } | null } | undefined;
+
+      if (result?.error) {
+        setAuthError(result.error.message || result.error.code || "Не вдалося розпочати вхід через Google.");
       }
-      const target = typeof result?.url === "string"
-        ? result.url
-        : typeof result?.redirect === "string"
-          ? result.redirect
-          : null;
-      if (!target) {
-        setAuthError("Google не повернув адресу авторизації. Спробуйте ще раз.");
-        return;
-      }
-      window.location.assign(target);
     } catch {
       setAuthError("Сервіс Google-входу тимчасово недоступний. Спробуйте ще раз.");
     } finally {
