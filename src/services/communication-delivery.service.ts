@@ -27,6 +27,14 @@ function makeId(prefix: string) {
   return `${prefix}_${randomUUID().replace(/-/g, "")}`;
 }
 
+function isMetaChannel(channel: CommunicationChannel): channel is "FACEBOOK" | "INSTAGRAM" {
+  return channel === "FACEBOOK" || channel === "INSTAGRAM";
+}
+
+function isLiveMessageChannel(channel: CommunicationChannel) {
+  return isMetaChannel(channel) || channel === "OLX";
+}
+
 function errorCode(error: unknown) {
   if (typeof error === "object" && error && "code" in error) {
     const code = (error as { code?: unknown }).code;
@@ -52,7 +60,7 @@ export async function sendCommunicationReply(id: string, text: string, attachmen
   const inquiry = inquiryResult.rows[0];
   if (!inquiry) throw Object.assign(new Error("Inquiry not found"), { code: "INQUIRY_NOT_FOUND" });
 
-  if ((inquiry.channel === "FACEBOOK" || inquiry.channel === "INSTAGRAM")
+  if (isMetaChannel(inquiry.channel)
       && inquiry.replyAllowedUntil
       && inquiry.replyAllowedUntil.getTime() < Date.now()) {
     throw Object.assign(
@@ -62,7 +70,7 @@ export async function sendCommunicationReply(id: string, text: string, attachmen
   }
 
   const messageId = makeId("msg");
-  const initialStatus = ["FACEBOOK", "INSTAGRAM", "OLX"].includes(inquiry.channel) ? "PENDING" : "CRM_ONLY";
+  const initialStatus = isLiveMessageChannel(inquiry.channel) ? "PENDING" : "CRM_ONLY";
   const inserted = await pool.query(
     `INSERT INTO "CommunicationMessage"
      ("id","inquiryId","direction","text","sentAt","metadata","deliveryStatus","attachments")
@@ -78,7 +86,7 @@ export async function sendCommunicationReply(id: string, text: string, attachmen
     ],
   );
 
-  if (initialStatus === "CRM_ONLY") {
+  if (!isLiveMessageChannel(inquiry.channel)) {
     await pool.query(
       `UPDATE "CommunicationInquiry"
        SET "answered"=TRUE,"unread"=FALSE,"state"=CASE WHEN "state"='NEW' THEN 'IN_WORK' ELSE "state" END,
@@ -90,14 +98,22 @@ export async function sendCommunicationReply(id: string, text: string, attachmen
   }
 
   try {
-    const delivered = inquiry.channel === "OLX"
-      ? await sendOlxTextMessage({ externalId: inquiry.externalId, externalThreadId: inquiry.externalThreadId }, normalizedText)
-      : await sendMetaTextMessage({
-          channel: inquiry.channel,
-          integrationAccountId: inquiry.integrationAccountId,
-          externalParticipantId: inquiry.externalParticipantId,
-          metadata: inquiry.metadata,
-        }, normalizedText);
+    let delivered: { providerMessageId: string | null; providerPayload: unknown };
+    if (inquiry.channel === "OLX") {
+      delivered = await sendOlxTextMessage(
+        { externalId: inquiry.externalId, externalThreadId: inquiry.externalThreadId },
+        normalizedText,
+      );
+    } else if (isMetaChannel(inquiry.channel)) {
+      delivered = await sendMetaTextMessage({
+        channel: inquiry.channel,
+        integrationAccountId: inquiry.integrationAccountId,
+        externalParticipantId: inquiry.externalParticipantId,
+        metadata: inquiry.metadata,
+      }, normalizedText);
+    } else {
+      throw Object.assign(new Error("Unsupported live communication channel"), { code: "CHANNEL_NOT_SUPPORTED" });
+    }
 
     await pool.query(
       `UPDATE "CommunicationMessage"
