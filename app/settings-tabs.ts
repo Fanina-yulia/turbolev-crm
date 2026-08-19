@@ -9,6 +9,7 @@ export const SETTINGS_TABS = [
   "cash",
   "integrations",
   "cameras",
+  "diagnosticTemplates",
   "appearance",
   "workflow",
   "security",
