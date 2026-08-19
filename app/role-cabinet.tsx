@@ -119,7 +119,7 @@ function StationManagerCabinet({ data, userName }: { data: ManagerPayload; userN
     { label: "Очікують деталі", value: data.flow.waitingParts, section: "Виробництво", params: { status: "WAITING_PARTS" } },
     { label: "Готові до ремонту", value: data.flow.readyForRepair, section: "Виробництво", params: { status: "READY_FOR_REPAIR" } },
     { label: "У ремонті", value: data.flow.inRepair, section: "Виробництво", params: { status: "IN_REPAIR" } },
-    { label: "QC", value: data.flow.qc, section: "Замовлення-наряди", params: { scope: "qc" } },
+    { label: "QC", value: data.flow.qc, section: "Контроль якості", params: { scope: "waiting" } },
     { label: "До видачі", value: data.flow.ready, section: "Замовлення-наряди", params: { status: "READY_FOR_PICKUP" } },
   ];
   const attention = data.attention ?? [];
@@ -158,7 +158,7 @@ function StationManagerCabinet({ data, userName }: { data: ManagerPayload; userN
           <button type="button" onClick={() => navigateCrm("Діагностика")}>Діагностика<span>черга та підтвердження →</span></button>
           <button type="button" onClick={() => navigateCrm("Замовлення-наряди")}>Замовлення-наряди<span>кошториси та статуси →</span></button>
           <button type="button" onClick={() => navigateCrm("Виробництво", { status: "IN_REPAIR" })}>Ремонт у роботі<span>пости та активні роботи →</span></button>
-          <button type="button" onClick={() => navigateCrm("Замовлення-наряди", { scope: "qc" })}>Контроль якості<span>QC та видача →</span></button>
+          <button type="button" onClick={() => navigateCrm("Контроль якості")}>Контроль якості<span>черга QC та результати →</span></button>
           <button type="button" onClick={() => navigateCrm("Підбір запчастин")}>Запчастини<span>підбір і постачальники →</span></button>
           <button type="button" onClick={() => navigateCrm("Планувальник")}>Планувальник<span>запис і майбутнє завантаження →</span></button>
         </div>
