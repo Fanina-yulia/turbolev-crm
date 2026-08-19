@@ -2,6 +2,10 @@ import { NextResponse } from "next/server";
 import { authorize } from "@/src/security/authorize";
 import { PERMISSIONS } from "@/src/security/permissions";
 import {
+  getRequiredDiagnosticCompletion,
+  submitStructuredDiagnosticRespectingOptional,
+} from "@/src/services/diagnostic-completeness.service";
+import {
   addTemplateForMechanic,
   getStructuredDiagnostic,
   getStructuredDiagnosticForMechanic,
@@ -9,7 +13,6 @@ import {
   setDiagnosticSectionAllOk,
   startStructuredDiagnostic,
   StructuredDiagnosticError,
-  submitStructuredDiagnostic,
 } from "@/src/services/structured-diagnostics.service";
 
 export const runtime = "nodejs";
@@ -26,6 +29,11 @@ async function managerLocationAllowed(access: Awaited<ReturnType<typeof authoriz
   return Boolean(locationId && access.context.locationIds.includes(locationId));
 }
 
+async function withCompletion<T extends Awaited<ReturnType<typeof getStructuredDiagnostic>>>(diagnosticRequestId: string, data: T) {
+  const completion = await getRequiredDiagnosticCompletion(diagnosticRequestId);
+  return { ...data, canSubmit: completion.canSubmit, completion };
+}
+
 export async function GET(request: Request, context: { params: Promise<{ id: string }> }) {
   const { id } = await context.params;
   try {
@@ -36,7 +44,7 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
       ? await getStructuredDiagnosticForMechanic(access.context.user.id, id)
       : await getStructuredDiagnostic(id);
     if (!isMechanic(access) && !(await managerLocationAllowed(access, id))) return NextResponse.json({ ok: false, error: "LOCATION_FORBIDDEN" }, { status: 403 });
-    return NextResponse.json({ ok: true, ...data }, { headers: { "Cache-Control": "no-store" } });
+    return NextResponse.json({ ok: true, ...(await withCompletion(id, data)) }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
     if (error instanceof StructuredDiagnosticError) return NextResponse.json({ ok: false, error: error.code, message: error.message }, { status: error.status });
     console.error("GET structured diagnostic failed", error);
@@ -55,7 +63,7 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
       if (!access.context.user) return NextResponse.json({ ok: false, error: "UNAUTHENTICATED" }, { status: 401 });
       if (!(await managerLocationAllowed(access, id))) return NextResponse.json({ ok: false, error: "LOCATION_FORBIDDEN" }, { status: 403 });
       const data = await returnStructuredDiagnostic(id, access.context.user.id, typeof body.managerComment === "string" ? body.managerComment : null);
-      return NextResponse.json({ ok: true, ...data });
+      return NextResponse.json({ ok: true, ...(await withCompletion(id, data)) });
     }
 
     const access = await authorize(PERMISSIONS.DIAGNOSTICS_WRITE, { request, minimumScope: "ASSIGNED" });
@@ -64,24 +72,24 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
 
     if (action === "START") {
       const data = await startStructuredDiagnostic(access.context.user.id, id);
-      return NextResponse.json({ ok: true, ...data });
+      return NextResponse.json({ ok: true, ...(await withCompletion(id, data)) });
     }
     if (action === "ADD_TEMPLATE") {
       const templateId = String(body.templateId || "");
       if (!templateId) return NextResponse.json({ ok: false, error: "TEMPLATE_REQUIRED" }, { status: 400 });
       const data = await addTemplateForMechanic(access.context.user.id, id, templateId);
-      return NextResponse.json({ ok: true, ...data });
+      return NextResponse.json({ ok: true, ...(await withCompletion(id, data)) });
     }
     if (action === "SECTION_ALL_OK") {
       const inspectionId = String(body.inspectionId || "");
       const sectionId = String(body.sectionId || "");
       if (!inspectionId || !sectionId) return NextResponse.json({ ok: false, error: "SECTION_REQUIRED" }, { status: 400 });
       const data = await setDiagnosticSectionAllOk(access.context.user.id, id, inspectionId, sectionId);
-      return NextResponse.json({ ok: true, ...data });
+      return NextResponse.json({ ok: true, ...(await withCompletion(id, data)) });
     }
     if (action === "SUBMIT") {
-      const data = await submitStructuredDiagnostic(access.context.user.id, id, typeof body.mechanicComment === "string" ? body.mechanicComment : null);
-      return NextResponse.json({ ok: true, ...data });
+      const data = await submitStructuredDiagnosticRespectingOptional(access.context.user.id, id, typeof body.mechanicComment === "string" ? body.mechanicComment : null);
+      return NextResponse.json({ ok: true, ...(await withCompletion(id, data)) });
     }
     return NextResponse.json({ ok: false, error: "UNKNOWN_ACTION" }, { status: 400 });
   } catch (error) {

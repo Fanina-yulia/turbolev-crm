@@ -1,0 +1,15 @@
+model DiagnosticReportShare {
+  id                     String   @id @default(cuid())
+  diagnosticRequestId    String
+  tokenHash              String   @unique @db.VarChar(64)
+  snapshot               Json
+  expiresAt              DateTime?
+  revokedAt              DateTime?
+  requestedPricingAt     DateTime?
+  createdByUserId        String?
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+
+  @@index([diagnosticRequestId, createdAt])
+  @@index([revokedAt, expiresAt])
+}
