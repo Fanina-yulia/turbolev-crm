@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { navigateCrm, type CrmRouteParams } from "./crm-route";
 import type { CrmAccessSnapshot } from "./use-crm-access";
 import { StationOverview } from "./station-overview";
+import { MechanicMobileCabinet } from "./mechanic-mobile-cabinet";
 import type { CrmSectionLabel } from "./crm-navigation";
 import styles from "./role-cabinet.module.css";
 
@@ -50,55 +51,15 @@ const statusLabels: Record<string, string> = {
   NO_SHOW: "Не приїхав",
 };
 
-function formatTime(value: string) {
-  return new Intl.DateTimeFormat("uk-UA", { timeZone: "Europe/Kyiv", hour: "2-digit", minute: "2-digit" }).format(new Date(value));
-}
-
 function Loading() {
   return <div className={styles.state}><strong>Завантажую робочий кабінет…</strong><span>Дані беруться з поточного профілю доступу.</span></div>;
 }
 
-function LinkRequired({ role }: { role: "mechanic" | "manager" }) {
-  const mechanic = role === "mechanic";
+function LinkRequired() {
   return <div className={styles.state}>
-    <strong>{mechanic ? "Кабінет автомеханіка створений, але профіль ще не прив’язаний" : "Кабінет завідувача створений, але станція ще не призначена"}</strong>
-    <span>{mechanic ? "Коли створимо акаунт працівника, прив’яжемо його до ресурсу автомеханіка в Планувальнику — після цього тут автоматично з’являться тільки його роботи." : "При створенні акаунта завідувача призначимо йому станцію Глеваха. Після цього пульт покаже тільки її операційні дані."}</span>
+    <strong>Кабінет завідувача створений, але станція ще не призначена</strong>
+    <span>Призначте станцію працівнику в «Персонал». Після цього пульт покаже тільки її операційні дані.</span>
   </div>;
-}
-
-function MechanicCabinet({ data, userName }: { data: MechanicPayload; userName?: string | null }) {
-  if (!data.linked || !data.mechanic || !data.kpis) return <LinkRequired role="mechanic" />;
-  const tasks = data.tasks ?? [];
-  const appointments = data.appointments ?? [];
-  return <>
-    <header className={styles.header}>
-      <div><p className="eyebrow">TURBO LEV · ПЕРСОНАЛЬНИЙ КАБІНЕТ</p><h1>Мої роботи</h1><span className="muted">{userName || data.mechanic.name} · Автомеханік · {data.mechanic.station.name}</span></div>
-      <button className={styles.primaryAction} type="button" onClick={() => navigateCrm("Виробництво", { scope: "mechanics" })}>Відкрити мої роботи →</button>
-    </header>
-
-    <section className={styles.kpis}>
-      <button type="button" onClick={() => navigateCrm("Виробництво", { scope: "mechanics" })}><span>Призначено</span><strong>{data.kpis.assigned}</strong><small>активних робіт</small></button>
-      <button type="button" onClick={() => navigateCrm("Виробництво", { status: "IN_REPAIR", scope: "mechanics" })}><span>Зараз у роботі</span><strong>{data.kpis.inProgress}</strong><small>розпочатих робіт</small></button>
-      <button type="button" onClick={() => navigateCrm("Замовлення-наряди", { status: "CLOSED" })}><span>Завершено сьогодні</span><strong>{data.kpis.completedToday}</strong><small>моїх робіт</small></button>
-      <button type="button" onClick={() => navigateCrm("Виробництво", { status: "WAITING_PARTS", scope: "mechanics" })}><span>Очікують деталей</span><strong>{data.kpis.waitingParts}</strong><small>нарядів</small></button>
-    </section>
-
-    <div className={styles.twoColumns}>
-      <section className={styles.panel}>
-        <div className={styles.panelHead}><div><p className="eyebrow">МОЇ ЗАВДАННЯ</p><h2>Роботи в нарядах</h2></div><button type="button" onClick={() => navigateCrm("Виробництво", { scope: "mechanics" })}>Виробнича дошка →</button></div>
-        {tasks.length ? <div className={styles.list}>{tasks.map((task) => <button className={styles.task} type="button" key={task.id} onClick={() => navigateCrm("Замовлення-наряди", { workOrderId: task.workOrderId, workOrderTab: "works" })}>
-          <div><b>{task.plate}</b><span>{task.vehicle}</span></div>
-          <div className={styles.taskMain}><strong>{task.description}</strong><span>{task.laborHours ? `${task.laborHours} нормо-год.` : "Без норми часу"}</span></div>
-          <em>{statusLabels[task.status] || task.status}</em>
-        </button>)}</div> : <div className={styles.empty}>Активних робіт поки немає.</div>}
-      </section>
-
-      <aside className={styles.panel}>
-        <div className={styles.panelHead}><div><p className="eyebrow">СЬОГОДНІ</p><h2>Мій графік</h2></div><button type="button" onClick={() => navigateCrm("Планувальник")}>Планувальник →</button></div>
-        {appointments.length ? <div className={styles.timeline}>{appointments.map((item) => <div className={styles.timelineItem} key={item.id}><time>{formatTime(item.plannedStartAt)}</time><div><b>{item.plate} · {item.vehicle}</b><span>{item.problem || "Без опису робіт"}</span><small>{item.post || "Пост не призначено"} · {statusLabels[item.status] || item.status}</small></div></div>)}</div> : <div className={styles.empty}>На сьогодні записів не призначено.</div>}
-      </aside>
-    </div>
-  </>;
 }
 
 function attentionRoute(item: NonNullable<ManagerPayload["attention"]>[number]): { section: CrmSectionLabel; params: CrmRouteParams } {
@@ -111,7 +72,7 @@ function attentionRoute(item: NonNullable<ManagerPayload["attention"]>[number]):
 }
 
 function StationManagerCabinet({ data, userName }: { data: ManagerPayload; userName?: string | null }) {
-  if (!data.linked || !data.station || !data.kpis || !data.flow) return <LinkRequired role="manager" />;
+  if (!data.linked || !data.station || !data.kpis || !data.flow) return <LinkRequired />;
   const flow: FlowRoute[] = [
     { label: "Записані", value: data.flow.booked, section: "Планувальник", params: { status: "BOOKED" } },
     { label: "Приймання / діагностика", value: data.flow.diagnostics, section: "Діагностика" },
@@ -195,6 +156,6 @@ export function RoleAwareOverview({ access }: { access: CrmAccessSnapshot | null
   if (loading && !data) return <Loading />;
   if (error && !data) return <div className={styles.state}><strong>Не вдалося відкрити кабінет</strong><span>{error}</span><button type="button" onClick={() => void load()}>Повторити</button></div>;
   if (!data) return <Loading />;
-  if (data.cabinet === "MECHANIC") return <MechanicCabinet data={data} userName={access?.user?.name} />;
+  if (data.cabinet === "MECHANIC") return <MechanicMobileCabinet data={data} userName={access?.user?.name} />;
   return <StationManagerCabinet data={data} userName={access?.user?.name} />;
 }
