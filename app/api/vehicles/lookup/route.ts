@@ -1,5 +1,8 @@
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 import { lookupVehicleByPlate, normalizeRegistrationPlate } from "@/src/services/vehicle-lookup.service";
+import { generateVehicleImageForConfirmedDescriptor } from "@/src/services/vehicle-images/vehicle-image-descriptor-background.service";
+import { authorize } from "@/src/security/authorize";
+import { PERMISSIONS } from "@/src/security/permissions";
 
 export const runtime = "nodejs";
 // Vehicle lookup reads the fast Neon registry index first; deep MVS scans are opt-in only.
@@ -22,6 +25,34 @@ export async function GET(request: Request) {
 
   try {
     const result = await lookupVehicleByPlate(plate);
+
+    if (result.status === "FOUND" && result.vehicle?.make && result.vehicle.model) {
+      // Vehicle lookup itself stays readable for its existing callers. The paid OpenAI
+      // side effect is stricter: only an authenticated CRM user with vehicle/client
+      // write permission may enqueue generation.
+      const access = await authorize(PERMISSIONS.CLIENTS_WRITE, { request, strict: true });
+      if (access.allowed) {
+        const descriptor = {
+          make: result.vehicle.make,
+          model: result.vehicle.model,
+          year: result.vehicle.year,
+          bodyType: result.vehicle.bodyType,
+        };
+        after(async () => {
+          try {
+            await generateVehicleImageForConfirmedDescriptor(descriptor);
+          } catch (error) {
+            console.error("background vehicle image generation after plate confirmation failed", {
+              plate,
+              make: descriptor.make,
+              model: descriptor.model,
+              message: error instanceof Error ? error.message : "unknown error",
+            });
+          }
+        });
+      }
+    }
+
     return NextResponse.json(result);
   } catch (error) {
     console.error("vehicle lookup failed", error);
