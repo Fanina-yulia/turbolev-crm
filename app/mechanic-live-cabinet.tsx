@@ -68,6 +68,7 @@ export function MechanicLiveCabinet({ userName }: { userName?: string | null }) 
   const [revision, setRevision] = useState(0);
   const [lastKey, setLastKey] = useState("");
   const [expanded, setExpanded] = useState(true);
+  const [dismissedKey, setDismissedKey] = useState("");
 
   const load = useCallback(async () => {
     const response = await fetch("/api/cabinet/mechanic/assigned-vehicles", { cache: "no-store", credentials: "include" });
@@ -83,6 +84,11 @@ export function MechanicLiveCabinet({ userName }: { userName?: string | null }) 
   }, []);
 
   useEffect(() => {
+    try {
+      setDismissedKey(window.localStorage.getItem("turbolev:mechanic-dismissed-assigned-feed") || "");
+    } catch {
+      // Storage can be unavailable in private browsing; dismissal still works for the current session.
+    }
     void load();
     const timer = window.setInterval(() => void load(), 15000);
     const onFocus = () => void load();
@@ -109,16 +115,30 @@ export function MechanicLiveCabinet({ userName }: { userName?: string | null }) 
     return rank(a) - rank(b) || new Date(a.plannedStartAt).getTime() - new Date(b.plannedStartAt).getTime();
   }), [items]);
 
+  function dismissFeed() {
+    setDismissedKey(lastKey);
+    try {
+      window.localStorage.setItem("turbolev:mechanic-dismissed-assigned-feed", lastKey);
+    } catch {
+      // Keep the in-memory dismissal when persistent storage is unavailable.
+    }
+  }
+
+  const showFeed = Boolean(lastKey && sortedItems.length && dismissedKey !== lastKey);
+
   return <div style={{ minHeight: "100dvh", background: "#0f141a" }}>
-    <section style={{ position: "sticky", top: 0, zIndex: 2200, width: "100%", maxWidth: 560, margin: "0 auto", padding: "10px 12px 0", boxSizing: "border-box" }}>
+    {showFeed && <section style={{ position: "sticky", top: 0, zIndex: 2200, width: "100%", maxWidth: 560, margin: "0 auto", padding: "10px 12px 0", boxSizing: "border-box" }}>
       <div style={{ borderRadius: 18, background: "rgba(21,27,35,.98)", color: "#fff", border: "1px solid rgba(255,255,255,.10)", boxShadow: "0 12px 32px rgba(0,0,0,.28)", overflow: "hidden", backdropFilter: "blur(14px)" }}>
-        <button type="button" onClick={() => setExpanded((value) => !value)} style={{ width: "100%", border: 0, background: "transparent", color: "inherit", padding: "12px 14px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, cursor: "pointer", textAlign: "left" }}>
-          <div>
-            <div style={{ fontSize: 11, fontWeight: 900, letterSpacing: ".08em", color: "#ff9d58" }}>ЗАКРІПЛЕНІ ЗА МНОЮ АВТО</div>
-            <strong style={{ display: "block", marginTop: 3, fontSize: 16 }}>{sortedItems.length} {sortedItems.length === 1 ? "авто" : "авто"}</strong>
-          </div>
-          <span style={{ fontSize: 18, opacity: .8 }}>{expanded ? "⌃" : "⌄"}</span>
-        </button>
+        <div style={{ display: "flex", alignItems: "stretch" }}>
+          <button type="button" onClick={() => setExpanded((value) => !value)} style={{ flex: 1, minWidth: 0, border: 0, background: "transparent", color: "inherit", padding: "12px 8px 12px 14px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, cursor: "pointer", textAlign: "left" }}>
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 900, letterSpacing: ".08em", color: "#ff9d58" }}>ЗАКРІПЛЕНІ ЗА МНОЮ АВТО</div>
+              <strong style={{ display: "block", marginTop: 3, fontSize: 16 }}>{sortedItems.length} авто</strong>
+            </div>
+            <span style={{ fontSize: 18, opacity: .8 }}>{expanded ? "⌃" : "⌄"}</span>
+          </button>
+          <button type="button" aria-label="Закрити сповіщення" onClick={dismissFeed} style={{ width: 46, border: 0, borderLeft: "1px solid rgba(255,255,255,.08)", background: "transparent", color: "#fff", fontSize: 24, lineHeight: 1, cursor: "pointer", touchAction: "manipulation" }}>×</button>
+        </div>
 
         {expanded && <div style={{ maxHeight: "38dvh", overflowY: "auto", borderTop: "1px solid rgba(255,255,255,.08)" }}>
           {sortedItems.map((item) => {
@@ -139,7 +159,7 @@ export function MechanicLiveCabinet({ userName }: { userName?: string | null }) 
         </div>}
         <div style={{ padding: "8px 14px", fontSize: 10, opacity: .58 }}>Авто залишається тут до фактичної видачі клієнту. Оновлення — автоматично.</div>
       </div>
-    </section>
+    </section>}
     <MechanicStandaloneCabinet key={revision} userName={userName} />
   </div>;
 }
