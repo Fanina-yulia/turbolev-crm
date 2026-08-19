@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getPrisma } from "@/src/lib/prisma";
 import { getAccessContext, hasPermission } from "@/src/security/access-context";
 import { PERMISSIONS } from "@/src/security/permissions";
+import { effectiveAssignmentStatus, listActiveMechanicAssignments } from "@/src/services/mechanic-assignments.service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -150,16 +151,7 @@ export async function GET(request: Request) {
       }
 
       const mechanicIds = [mechanic.id, context.user.id];
-      const [appointments, lines] = await Promise.all([
-        prisma.serviceAppointment.findMany({
-          where: {
-            mechanicId: mechanic.id,
-            plannedStartAt: { gte: startAt, lt: endAt },
-            status: { notIn: ["CANCELLED", "RESERVE"] },
-          },
-          include: { post: { select: { name: true } } },
-          orderBy: { plannedStartAt: "asc" },
-        }),
+      const [lines, activeAssignments] = await Promise.all([
         prisma.workOrderLine.findMany({
           where: {
             mechanicId: { in: mechanicIds },
@@ -178,10 +170,14 @@ export async function GET(request: Request) {
           orderBy: [{ status: "asc" }, { updatedAt: "desc" }],
           take: 40,
         }),
+        listActiveMechanicAssignments(mechanic.id),
       ]);
 
       const activeLines = lines.filter((line) => line.status !== "COMPLETED");
-      const waitingPartsWorkOrders = new Set(activeLines.filter((line) => line.workOrder.status === "WAITING_PARTS").map((line) => line.workOrderId));
+      const assignmentStatuses = activeAssignments.map(effectiveAssignmentStatus);
+      const scheduledToday = activeAssignments.filter((item) => item.plannedStartAt >= startAt && item.plannedStartAt < endAt).length;
+      const inProgressAssignments = assignmentStatuses.filter((status) => status === "IN_REPAIR" || status === "REWORK").length;
+      const waitingPartsAssignments = assignmentStatuses.filter((status) => status === "WAITING_PARTS" || status === "WAITING_PARTS_SELECTION").length;
 
       return NextResponse.json({
         ok: true,
@@ -189,10 +185,11 @@ export async function GET(request: Request) {
         linked: true,
         mechanic: { id: mechanic.id, name: mechanic.name, station: mechanic.location },
         kpis: {
-          assigned: activeLines.length,
-          inProgress: activeLines.filter((line) => line.status === "IN_PROGRESS").length,
+          assigned: activeAssignments.length,
+          scheduledToday,
+          inProgress: Math.max(inProgressAssignments, activeLines.filter((line) => line.status === "IN_PROGRESS").length),
           completedToday: lines.filter((line) => line.status === "COMPLETED").length,
-          waitingParts: waitingPartsWorkOrders.size,
+          waitingParts: waitingPartsAssignments,
         },
         tasks: lines.map((line) => ({
           id: line.id,
@@ -206,16 +203,16 @@ export async function GET(request: Request) {
           workOrderStatus: line.workOrder.status,
           updatedAt: line.updatedAt,
         })),
-        appointments: appointments.map((item) => ({
+        appointments: activeAssignments.map((item) => ({
           id: item.id,
           workOrderId: item.workOrderId,
-          status: item.status,
+          status: item.appointmentStatus,
           plannedStartAt: item.plannedStartAt,
           plannedEndAt: item.plannedEndAt,
           plate: item.plateNumber || "—",
           vehicle: item.vehicleLabel || "Автомобіль",
           problem: item.problem,
-          post: item.post?.name ?? null,
+          post: item.postName,
         })),
       }, { headers: { "Cache-Control": "no-store" } });
     }

@@ -39,7 +39,7 @@ type HomePayload = {
   linked?: boolean;
   reason?: string;
   mechanic?: { id: string; name: string; station: { id: string; name: string } };
-  kpis?: { assigned: number; inProgress: number; completedToday: number; waitingParts: number };
+  kpis?: { assigned: number; scheduledToday: number; inProgress: number; completedToday: number; waitingParts: number };
   tasks?: MechanicTask[];
   appointments?: Appointment[];
   message?: string;
@@ -78,6 +78,30 @@ type Clarification = {
   reviewedAt: string | null;
 };
 
+type MechanicNotification = {
+  id: string;
+  type: string;
+  title: string;
+  body: string | null;
+  vehicle: string;
+  plate: string;
+  appointmentId: string | null;
+  workOrderId: string | null;
+  findingId: string | null;
+  payload: Record<string, unknown> | null;
+  readAt: string | null;
+  createdAt: string;
+};
+
+type NotificationFeed = {
+  ok: boolean;
+  linked: boolean;
+  unreadCount: number;
+  items: MechanicNotification[];
+  message?: string;
+  error?: string;
+};
+
 type Payroll = { ok: boolean; projection?: { total?: number | string; month?: string } };
 type Screen = "HOME" | "WORKS" | "WORK_DETAIL" | "FINDING" | "DIAGNOSTICS" | "NOTIFICATIONS" | "PROFILE" | "SCHEDULE" | "PAYROLL" | "SUPPORT";
 type WorkAction = "START" | "PAUSE" | "RESUME" | "COMPLETE";
@@ -109,6 +133,17 @@ const statusLabel: Record<string, string> = {
 function time(value?: string | null) {
   if (!value) return "—";
   return new Intl.DateTimeFormat("uk-UA", { timeZone: "Europe/Kyiv", hour: "2-digit", minute: "2-digit" }).format(new Date(value));
+}
+
+function notificationTime(value?: string | null) {
+  if (!value) return "—";
+  return new Intl.DateTimeFormat("uk-UA", {
+    timeZone: "Europe/Kyiv",
+    day: "2-digit",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(value));
 }
 
 function duration(start?: string | null, end?: string | null) {
@@ -148,14 +183,14 @@ function statusTone(status: string) {
   return styles.accentPill;
 }
 
-function BottomNav({ screen, onChange }: { screen: Screen; onChange: (screen: Screen) => void }) {
+function BottomNav({ screen, notificationCount, onChange }: { screen: Screen; notificationCount: number; onChange: (screen: Screen) => void }) {
   const workActive = ["WORKS", "WORK_DETAIL", "FINDING", "SUPPORT"].includes(screen);
   const profileActive = ["PROFILE", "SCHEDULE", "PAYROLL"].includes(screen);
   return <nav className={styles.bottomNav} aria-label="Навігація механіка">
     <button type="button" className={screen === "HOME" ? styles.navActive : ""} onClick={() => onChange("HOME")}><span>⌂</span><b>Головна</b></button>
     <button type="button" className={workActive ? styles.navActive : ""} onClick={() => onChange("WORKS")}><span>▤</span><b>Роботи</b></button>
     <button type="button" className={screen === "DIAGNOSTICS" ? styles.navActive : ""} onClick={() => onChange("DIAGNOSTICS")}><span>◇</span><b>Діагностика</b></button>
-    <button type="button" className={screen === "NOTIFICATIONS" ? styles.navActive : ""} onClick={() => onChange("NOTIFICATIONS")}><span>◉</span><b>Сповіщення</b></button>
+    <button type="button" className={screen === "NOTIFICATIONS" ? styles.navActive : ""} onClick={() => onChange("NOTIFICATIONS")}><span>◉{notificationCount > 0 && <em className={styles.navBadge}>{notificationCount}</em>}</span><b>Сповіщення</b></button>
     <button type="button" className={profileActive ? styles.navActive : ""} onClick={() => onChange("PROFILE")}><span>●</span><b>Профіль</b></button>
   </nav>;
 }
@@ -174,6 +209,7 @@ export function MechanicStandaloneCabinet({ userName }: { userName?: string | nu
   const [taskKpis, setTaskKpis] = useState<TaskFeed["kpis"] | null>(null);
   const [diagnostics, setDiagnostics] = useState<DiagnosticItem[]>([]);
   const [clarifications, setClarifications] = useState<Clarification[]>([]);
+  const [notificationFeed, setNotificationFeed] = useState<NotificationFeed | null>(null);
   const [screen, setScreen] = useState<Screen>("HOME");
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [themeChoice, setThemeChoice] = useState<ThemeChoice>("system");
@@ -214,9 +250,19 @@ export function MechanicStandaloneCabinet({ userName }: { userName?: string | nu
   }, []);
 
   const loadNotifications = useCallback(async () => {
-    const response = await fetch("/api/cabinet/mechanic/findings", { cache: "no-store", credentials: "include" });
-    const body = await response.json().catch(() => null);
-    if (response.ok && body?.ok) setClarifications(body.items ?? []);
+    const [notificationsResponse, findingsResponse] = await Promise.all([
+      fetch("/api/cabinet/mechanic/notifications", { cache: "no-store", credentials: "include" }),
+      fetch("/api/cabinet/mechanic/findings", { cache: "no-store", credentials: "include" }),
+    ]);
+    const [notificationsBody, findingsBody] = await Promise.all([
+      notificationsResponse.json().catch(() => null) as Promise<NotificationFeed | null>,
+      findingsResponse.json().catch(() => null),
+    ]);
+    if (!notificationsResponse.ok || !notificationsBody?.ok) {
+      throw new Error(notificationsBody?.message || notificationsBody?.error || "Не вдалося завантажити сповіщення");
+    }
+    setNotificationFeed(notificationsBody);
+    if (findingsResponse.ok && findingsBody?.ok) setClarifications(findingsBody.items ?? []);
   }, []);
 
   useEffect(() => {
@@ -225,8 +271,18 @@ export function MechanicStandaloneCabinet({ userName }: { userName?: string | nu
     void Promise.all([loadHome(), loadTasks(), loadDiagnostics(), loadNotifications()]).catch((cause) => setError(cause instanceof Error ? cause.message : "Не вдалося завантажити кабінет"));
   }, [loadDiagnostics, loadHome, loadNotifications, loadTasks]);
 
+  useEffect(() => {
+    const timer = window.setInterval(() => void loadNotifications().catch(() => undefined), 15000);
+    const refresh = () => void loadNotifications().catch(() => undefined);
+    window.addEventListener("focus", refresh);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("focus", refresh);
+    };
+  }, [loadNotifications]);
+
   const appointments = home?.appointments ?? [];
-  const activeAppointments = appointments.filter((item) => !["CANCELLED", "COMPLETED", "NO_SHOW", "RESERVE"].includes(item.status));
+  const activeAppointments = appointments;
   const representedWorkOrderIds = new Set(tasks.map((item) => item.workOrderId));
   const scheduledAppointments = activeAppointments.filter((item) => !item.workOrderId || !representedWorkOrderIds.has(item.workOrderId));
   const nextScheduledAppointment = scheduledAppointments
@@ -237,10 +293,11 @@ export function MechanicStandaloneCabinet({ userName }: { userName?: string | nu
   const selectedAppointment = selectedTask ? appointments.find((item) => item.plate === selectedTask.plate || item.vehicle === selectedTask.vehicle) ?? null : null;
   const activeTask = tasks.find((item) => item.status === "IN_PROGRESS" || item.status === "PAUSED") ?? tasks.find((item) => !isDone(item.status) && item.status !== "CANCELLED") ?? null;
   const currentPost = activeTask ? appointments.find((item) => item.plate === activeTask.plate)?.post : appointments.find((item) => item.post)?.post;
-  const planned = tasks.filter((item) => ["DRAFT", "APPROVED", "PENDING", "READY"].includes(item.status)).length + scheduledAppointments.length;
+  const assignedCases = home?.kpis?.assigned ?? activeAppointments.length;
+  const scheduledToday = home?.kpis?.scheduledToday ?? scheduledAppointments.length;
   const inProgress = (taskKpis?.inProgress ?? tasks.filter((item) => item.status === "IN_PROGRESS").length) + (taskKpis?.paused ?? tasks.filter((item) => item.status === "PAUSED").length);
   const completed = taskKpis?.completedToday ?? tasks.filter((item) => isDone(item.status)).length;
-  const notificationCount = clarifications.length + (home?.kpis?.waitingParts ?? 0);
+  const notificationCount = notificationFeed?.unreadCount ?? 0;
   const mechanicName = userName || home?.mechanic?.name || "Автомеханік";
 
   const todayLabel = useMemo(() => new Intl.DateTimeFormat("uk-UA", { timeZone: "Europe/Kyiv", day: "numeric", month: "long" }).format(new Date()), []);
@@ -312,6 +369,62 @@ export function MechanicStandaloneCabinet({ userName }: { userName?: string | nu
     finally { setBusy(""); }
   }
 
+  async function markNotification(notificationId: string) {
+    const wasUnread = notificationFeed?.items.some((item) => item.id === notificationId && !item.readAt) ?? false;
+    if (wasUnread) {
+      const now = new Date().toISOString();
+      setNotificationFeed((current) => current ? {
+        ...current,
+        unreadCount: Math.max(0, current.unreadCount - 1),
+        items: current.items.map((item) => item.id === notificationId ? { ...item, readAt: now } : item),
+      } : current);
+    }
+    try {
+      const response = await fetch("/api/cabinet/mechanic/notifications", {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ notificationId }),
+      });
+      const body = await response.json().catch(() => null);
+      if (!response.ok || !body?.ok) throw new Error(body?.message || body?.error || "Не вдалося позначити сповіщення");
+    } catch (cause) {
+      await loadNotifications().catch(() => undefined);
+      throw cause;
+    }
+  }
+
+  async function markAllNotifications() {
+    if (!notificationCount) return;
+    setBusy("notifications:all"); setError("");
+    const now = new Date().toISOString();
+    setNotificationFeed((current) => current ? {
+      ...current,
+      unreadCount: 0,
+      items: current.items.map((item) => item.readAt ? item : { ...item, readAt: now }),
+    } : current);
+    try {
+      const response = await fetch("/api/cabinet/mechanic/notifications", {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ all: true }),
+      });
+      const body = await response.json().catch(() => null);
+      if (!response.ok || !body?.ok) throw new Error(body?.message || body?.error || "Не вдалося оновити сповіщення");
+    } catch (cause) {
+      await loadNotifications().catch(() => undefined);
+      setError(cause instanceof Error ? cause.message : "Не вдалося оновити сповіщення");
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function openNotification(item: MechanicNotification) {
+    if (!item.readAt) await markNotification(item.id).catch((cause) => setError(cause instanceof Error ? cause.message : "Не вдалося оновити сповіщення"));
+    if (item.type !== "UNASSIGNED") setScreen(item.appointmentId ? "SCHEDULE" : "WORKS");
+  }
+
   async function replyClarification(item: Clarification) {
     const reply = (replyDrafts[item.id] || "").trim();
     if (reply.length < 3) return;
@@ -351,13 +464,21 @@ export function MechanicStandaloneCabinet({ userName }: { userName?: string | nu
         </header>
         <main className={styles.content}>
           <section className={styles.profileCard}><div className={styles.avatar}>{firstName(mechanicName).slice(0, 1).toUpperCase()}</div><div><h1>{greeting()}, {firstName(mechanicName)}!</h1><p>{currentPost || "Пост не призначено"}</p><span>{home.mechanic.station.name}</span></div></section>
-          <section className={styles.card}><div className={styles.sectionHead}><div><h2>Сьогодні, {todayLabel}</h2><p>Ваш персональний план робіт</p></div></div><div className={styles.metrics}><div><b>{planned}</b><span>Заплановано</span></div><div><b>{inProgress}</b><span>В роботі</span></div><div><b>{completed}</b><span>Завершено</span></div><div><b>{home.kpis?.waitingParts ?? 0}</b><span>Очікує деталей</span></div></div></section>
+          <section className={styles.card}>
+            <div className={styles.sectionHead}><div><h2>Сьогодні, {todayLabel}</h2><p>Закріплено — до фактичної видачі; на сьогодні — план поточного дня.</p></div></div>
+            <div className={styles.metrics}>
+              <div><b>{assignedCases}</b><span>Закріплено</span></div>
+              <div><b>{scheduledToday}</b><span>На сьогодні</span></div>
+              <div><b>{inProgress}</b><span>В роботі</span></div>
+              <div><b>{home.kpis?.waitingParts ?? 0}</b><span>Очікує деталей</span></div>
+            </div>
+          </section>
           <section><div className={styles.sectionHead}><div><h2>{activeTask?.status === "IN_PROGRESS" ? "Поточна робота" : activeTask?.status === "PAUSED" ? "Робота на паузі" : "Наступна робота"}</h2><p>Найближче завдання</p></div></div>{activeTask ? <article className={styles.taskHero}><div className={styles.taskTop}><div className={styles.carIcon}>🚗</div><div><h3>{activeTask.vehicle}</h3><p>{activeTask.plate}</p></div><span className={`${styles.pill} ${statusTone(activeTask.status)}`}>{statusLabel[activeTask.status] || activeTask.status}</span></div><strong>🔧 {activeTask.description}</strong><div className={styles.meta}><span>Пост <b>{appointments.find((item) => item.plate === activeTask.plate)?.post || "—"}</b></span><span>Час <b>{time(appointments.find((item) => item.plate === activeTask.plate)?.plannedStartAt)}</b></span></div><button type="button" className={styles.primary} onClick={() => openTask(activeTask)}>Відкрити роботу →</button></article> : nextScheduledAppointment ? <article className={styles.taskHero}><div className={styles.taskTop}><div className={styles.carIcon}>🚗</div><div><h3>{nextScheduledAppointment.vehicle}</h3><p>{nextScheduledAppointment.plate}</p></div><span className={`${styles.pill} ${styles.accentPill}`}>Заплановано</span></div><strong>🔧 {nextScheduledAppointment.problem || "Запис на СТО"}</strong><div className={styles.meta}><span>Пост <b>{nextScheduledAppointment.post || "—"}</b></span><span>Час <b>{time(nextScheduledAppointment.plannedStartAt)}</b></span></div><p className={styles.subtle}>Замовлення-наряд та операції з’являться після оформлення автомобіля.</p><button type="button" className={styles.primary} onClick={() => setScreen("SCHEDULE")}>Відкрити графік →</button></article> : <div className={styles.empty}>Активних робіт немає.</div>}</section>
-          <section className={styles.card}><div className={styles.sectionHead}><div><h2>Мої роботи</h2><p>Сьогодні та активні</p></div><button type="button" className={styles.textButton} onClick={() => setScreen("WORKS")}>Всі ›</button></div><div className={styles.compactList}>{scheduledAppointments.slice(0, Math.max(0, 4 - tasks.length)).map((item) => <button type="button" key={`appointment:${item.id}`} onClick={() => setScreen("SCHEDULE")}><div><strong>{item.vehicle}</strong><small>{time(item.plannedStartAt)} · {item.problem || "Запис на СТО"}</small></div><span className={`${styles.pill} ${styles.accentPill}`}>Заплановано</span></button>)}{tasks.slice(0, 4).map((task) => <button type="button" key={task.id} onClick={() => openTask(task)}><div><strong>{task.vehicle}</strong><small>{task.description}</small></div><span className={`${styles.pill} ${statusTone(task.status)}`}>{statusLabel[task.status] || task.status}</span></button>)}</div>{!tasks.length && !scheduledAppointments.length && <div className={styles.emptyInline}>Робіт немає.</div>}</section>
+          <section className={styles.card}><div className={styles.sectionHead}><div><h2>Мої роботи</h2><p>Сьогодні та активні</p></div><button type="button" className={styles.textButton} onClick={() => setScreen("WORKS")}>Всі ›</button></div><div className={styles.compactList}>{scheduledAppointments.slice(0, Math.max(0, 4 - tasks.length)).map((item) => <button type="button" key={`appointment:${item.id}`} onClick={() => setScreen("SCHEDULE")}><div><strong>{item.vehicle}</strong><small>{notificationTime(item.plannedStartAt)} · {item.problem || "Запис на СТО"}</small></div><span className={`${styles.pill} ${styles.accentPill}`}>Заплановано</span></button>)}{tasks.slice(0, 4).map((task) => <button type="button" key={task.id} onClick={() => openTask(task)}><div><strong>{task.vehicle}</strong><small>{task.description}</small></div><span className={`${styles.pill} ${statusTone(task.status)}`}>{statusLabel[task.status] || task.status}</span></button>)}</div>{!tasks.length && !scheduledAppointments.length && <div className={styles.emptyInline}>Робіт немає.</div>}</section>
         </main>
       </>}
 
-      {screen === "WORKS" && <><TopBar title="Мої роботи" onBack={() => setScreen("HOME")} /><main className={styles.content}><div className={styles.pageTitle}><h1>Призначені роботи</h1><p>Ваші записи, замовлення-наряди та операції.</p></div><div className={styles.stack}>{scheduledAppointments.map((item) => <button type="button" className={styles.listCard} key={`appointment:${item.id}`} onClick={() => setScreen("SCHEDULE")}><div><h3>{item.vehicle}</h3><b>{item.plate}</b></div><p>{item.problem || "Запис на СТО"}</p><div className={styles.meta}><span>Час <b>{time(item.plannedStartAt)}</b></span><span>Пост <b>{item.post || "—"}</b></span></div><small className={styles.subtle}>Наряд ще не оформлено</small><span className={`${styles.pill} ${styles.accentPill}`}>Заплановано</span></button>)}{tasks.map((task) => <button type="button" className={styles.listCard} key={task.id} onClick={() => openTask(task)}><div><h3>{task.vehicle}</h3><b>{task.plate}</b></div><p>{task.description}</p><span className={`${styles.pill} ${statusTone(task.status)}`}>{statusLabel[task.status] || task.status}</span></button>)}</div>{!tasks.length && !scheduledAppointments.length && <div className={styles.empty}>Призначених робіт немає.</div>}</main></>}
+      {screen === "WORKS" && <><TopBar title="Мої роботи" onBack={() => setScreen("HOME")} /><main className={styles.content}><div className={styles.pageTitle}><h1>Призначені роботи</h1><p>Усі активні записи, замовлення-наряди та операції.</p></div><div className={styles.stack}>{scheduledAppointments.map((item) => <button type="button" className={styles.listCard} key={`appointment:${item.id}`} onClick={() => setScreen("SCHEDULE")}><div><h3>{item.vehicle}</h3><b>{item.plate}</b></div><p>{item.problem || "Запис на СТО"}</p><div className={styles.meta}><span>Час <b>{notificationTime(item.plannedStartAt)}</b></span><span>Пост <b>{item.post || "—"}</b></span></div><small className={styles.subtle}>Наряд ще не оформлено</small><span className={`${styles.pill} ${styles.accentPill}`}>Заплановано</span></button>)}{tasks.map((task) => <button type="button" className={styles.listCard} key={task.id} onClick={() => openTask(task)}><div><h3>{task.vehicle}</h3><b>{task.plate}</b></div><p>{task.description}</p><span className={`${styles.pill} ${statusTone(task.status)}`}>{statusLabel[task.status] || task.status}</span></button>)}</div>{!tasks.length && !scheduledAppointments.length && <div className={styles.empty}>Призначених робіт немає.</div>}</main></>}
 
       {screen === "WORK_DETAIL" && selectedTask && <><TopBar title="Робота" onBack={() => setScreen("WORKS")} /><main className={styles.content}><section className={styles.card}><div className={styles.taskTop}><div className={styles.carIcon}>🚗</div><div><h2>{selectedTask.vehicle}</h2><p>{selectedTask.plate}</p></div><span className={`${styles.pill} ${statusTone(selectedTask.status)}`}>{statusLabel[selectedTask.status] || selectedTask.status}</span></div><div className={styles.metaGrid}><span>Пост<b>{selectedAppointment?.post || "—"}</b></span><span>Початок<b>{time(selectedTask.startedAt || selectedAppointment?.plannedStartAt)}</b></span><span>Тривалість<b>{duration(selectedAppointment?.plannedStartAt, selectedAppointment?.plannedEndAt)}</b></span></div></section><section className={styles.card}><div className={styles.sectionHead}><div><h2>Роботи за нарядом</h2><p>{selectedOrderTasks.filter((item) => isDone(item.status)).length} з {selectedOrderTasks.length} виконано</p></div></div><div className={styles.orderLines}>{selectedOrderTasks.map((item) => <div key={item.id}><i className={statusTone(item.status)}>●</i><div><strong>{item.description}</strong><small>{item.laborHours ? `${item.laborHours} нормо-год` : item.type}</small></div><span>{statusLabel[item.status] || item.status}</span></div>)}</div></section><section className={styles.card}><div className={styles.sectionHead}><div><h2>Керування роботою</h2><p>Фіксується в історії замовлення</p></div></div>{selectedTask.status === "APPROVED" && <button className={styles.primary} disabled={Boolean(busy)} onClick={() => void runAction("START")}>▶ Почати роботу</button>}{selectedTask.status === "IN_PROGRESS" && <div className={styles.twoButtons}><button className={styles.secondary} disabled={Boolean(busy)} onClick={() => void runAction("PAUSE")}>Ⅱ Пауза</button><button className={styles.successButton} disabled={Boolean(busy)} onClick={() => void runAction("COMPLETE")}>✓ Завершити</button></div>}{selectedTask.status === "PAUSED" && <div className={styles.twoButtons}><button className={styles.primary} disabled={Boolean(busy)} onClick={() => void runAction("RESUME")}>▶ Продовжити</button><button className={styles.successButton} disabled={Boolean(busy)} onClick={() => void runAction("COMPLETE")}>✓ Завершити</button></div>}{isDone(selectedTask.status) && <div className={styles.doneBox}>✓ Роботу завершено</div>}<div className={styles.actionList}><button type="button" onClick={() => setScreen("FINDING")}>📷 Додати фото / виявлений дефект <span>›</span></button><button type="button" onClick={() => { setSupportKind("PART_REQUEST"); setSupportText(""); setScreen("SUPPORT"); }}>⚙ Запросити запчастину <span>›</span></button><button type="button" onClick={() => { setSupportKind("QUESTION"); setSupportText(""); setScreen("SUPPORT"); }}>💬 Поставити питання менеджеру <span>›</span></button></div></section></main></>}
 
@@ -367,17 +488,47 @@ export function MechanicStandaloneCabinet({ userName }: { userName?: string | nu
 
       {screen === "DIAGNOSTICS" && <><TopBar title="Діагностика" onBack={() => setScreen("HOME")} /><main className={styles.content}><div className={styles.pageTitle}><h1>Мої діагностики</h1><p>Лише автомобілі, призначені вам.</p></div><div className={styles.stack}>{diagnostics.map((item) => <article className={styles.listCard} key={item.id}><div><h3>{item.vehicle.label}</h3><b>{item.vehicle.plateNumber || "Без номера"}</b></div><p>{item.problem || "Планова діагностика"}</p><div className={styles.meta}><span>Час <b>{time(item.plannedStartAt)}</b></span><span>Пост <b>{item.post || "—"}</b></span></div><span className={`${styles.pill} ${statusTone(item.workflowState)}`}>{statusLabel[item.workflowState] || item.workflowState}</span></article>)}</div>{!diagnostics.length && <div className={styles.empty}>{scheduledAppointments.length ? "Діагностика з’явиться після відмітки «Приїхав»." : "Призначених діагностик немає."}</div>}</main></>}
 
-      {screen === "NOTIFICATIONS" && <><TopBar title="Сповіщення" onBack={() => setScreen("HOME")} /><main className={styles.content}><div className={styles.pageTitle}><h1>Потребує вашої уваги</h1><p>Уточнення сервіс-менеджера та робочі повідомлення.</p></div>{clarifications.map((item) => <section className={styles.noticeCard} key={item.id}><div><strong>{item.vehicle} · {item.plate}</strong><span>{item.workDescription}</span></div><p>{item.managerComment || "Сервіс-менеджер просить уточнення."}</p><blockquote>{item.findingText}</blockquote><textarea rows={3} value={replyDrafts[item.id] || ""} onChange={(event) => setReplyDrafts((current) => ({ ...current, [item.id]: event.target.value }))} placeholder="Відповідь сервіс-менеджеру…" /><button type="button" className={styles.primary} disabled={busy === `reply:${item.id}`} onClick={() => void replyClarification(item)}>Відповісти →</button></section>)}{!clarifications.length && <div className={styles.empty}>Нових запитів немає.</div>}</main></>}
+      {screen === "NOTIFICATIONS" && <>
+        <TopBar title="Сповіщення" onBack={() => setScreen("HOME")} />
+        <main className={styles.content}>
+          <div className={styles.notificationTitle}>
+            <div><h1>Історія подій</h1><p>Призначення, зміни часу, поста, статусу та уточнення менеджера.</p></div>
+            {notificationCount > 0 && <button type="button" disabled={busy === "notifications:all"} onClick={() => void markAllNotifications()}>Прочитати всі</button>}
+          </div>
+          <div className={styles.notificationList}>
+            {(notificationFeed?.items ?? []).map((notification) => {
+              const clarification = notification.findingId ? clarifications.find((item) => item.id === notification.findingId) : null;
+              return <section className={`${styles.noticeCard} ${notification.readAt ? "" : styles.noticeUnread}`} key={notification.id}>
+                <div className={styles.noticeHeader}>
+                  <div><strong>{notification.title}</strong><span>{notificationTime(notification.createdAt)}</span></div>
+                  {!notification.readAt && <em>Нове</em>}
+                </div>
+                <div className={styles.noticeVehicle}><strong>{notification.vehicle} · {notification.plate}</strong>{clarification && <span>{clarification.workDescription}</span>}</div>
+                <p>{notification.body || "Оновлено дані призначення."}</p>
+                {clarification ? <>
+                  <blockquote>{clarification.findingText}</blockquote>
+                  <textarea rows={3} value={replyDrafts[clarification.id] || ""} onChange={(event) => setReplyDrafts((current) => ({ ...current, [clarification.id]: event.target.value }))} placeholder="Відповідь сервіс-менеджеру…" />
+                  <button type="button" className={styles.primary} disabled={busy === `reply:${clarification.id}`} onClick={() => void replyClarification(clarification)}>Відповісти →</button>
+                </> : <div className={styles.noticeActions}>
+                  {!notification.readAt && <button type="button" onClick={() => void markNotification(notification.id).catch((cause) => setError(cause instanceof Error ? cause.message : "Не вдалося оновити сповіщення"))}>Позначити прочитаним</button>}
+                  {notification.type !== "UNASSIGNED" && <button type="button" onClick={() => void openNotification(notification)}>Відкрити роботи →</button>}
+                </div>}
+              </section>;
+            })}
+          </div>
+          {!notificationFeed?.items.length && <div className={styles.empty}>Сповіщень ще немає.</div>}
+        </main>
+      </>}
 
       {screen === "PROFILE" && <><TopBar title="Профіль" onBack={() => setScreen("HOME")} /><main className={styles.content}><section className={styles.profileLarge}><div className={styles.avatar}>{firstName(mechanicName).slice(0, 1).toUpperCase()}</div><div><h1>{mechanicName}</h1><p>Автомеханік</p><span>{home.mechanic.station.name} · {currentPost || "пост не призначено"}</span></div></section><section className={styles.card}><div className={styles.sectionHead}><div><h2>Оформлення</h2><p>Тема цього мобільного кабінету</p></div></div><div className={styles.themePicker}><button type="button" className={themeChoice === "system" ? styles.themeActive : ""} onClick={() => changeTheme("system")}>Як у системі</button><button type="button" className={themeChoice === "light" ? styles.themeActive : ""} onClick={() => changeTheme("light")}>Світла</button><button type="button" className={themeChoice === "dark" ? styles.themeActive : ""} onClick={() => changeTheme("dark")}>Темна</button></div></section><section className={styles.card}><div className={styles.actionList}><button type="button" onClick={() => setScreen("SCHEDULE")}>▣ Мій графік <span>›</span></button><button type="button" onClick={() => void openPayroll()}>₴ Моя зарплата <span>›</span></button></div></section></main></>}
 
-      {screen === "SCHEDULE" && <><TopBar title="Мій графік" onBack={() => setScreen("PROFILE")} /><main className={styles.content}><div className={styles.stack}>{appointments.map((item) => <article className={styles.scheduleCard} key={item.id}><time>{time(item.plannedStartAt)}–{time(item.plannedEndAt)}</time><div><strong>{item.vehicle}</strong><p>{item.plate} · {item.problem || "Запис на СТО"}</p><small>{item.post || "Пост не призначено"}</small></div></article>)}</div>{!appointments.length && <div className={styles.empty}>Запланованих робіт немає.</div>}</main></>}
+      {screen === "SCHEDULE" && <><TopBar title="Мій графік" onBack={() => setScreen("PROFILE")} /><main className={styles.content}><div className={styles.pageTitle}><h1>Активні закріплення</h1><p>Авто залишаються тут до завершення сервісного випадку.</p></div><div className={styles.stack}>{appointments.map((item) => <article className={styles.scheduleCard} key={item.id}><time>{notificationTime(item.plannedStartAt)}–{time(item.plannedEndAt)}</time><div><strong>{item.vehicle}</strong><p>{item.plate} · {item.problem || "Запис на СТО"}</p><small>{item.post || "Пост не призначено"}</small></div></article>)}</div>{!appointments.length && <div className={styles.empty}>Активних закріплень немає.</div>}</main></>}
 
-      {screen === "PAYROLL" && <><TopBar title="Моя зарплата" onBack={() => setScreen("PROFILE")} /><main className={styles.content}><section className={styles.payHero}><span>Прогноз за місяць</span><strong>{money(payroll?.projection?.total)}</strong><small>{payroll?.projection?.month || "Поточний місяць"}</small></section><section className={styles.card}><div className={styles.metrics}><div><b>{taskKpis?.assigned ?? tasks.length}</b><span>Призначено</span></div><div><b>{inProgress}</b><span>В роботі</span></div><div><b>{completed}</b><span>Завершено</span></div><div><b>{home.kpis?.waitingParts ?? 0}</b><span>Очікує деталей</span></div></div></section></main></>}
+      {screen === "PAYROLL" && <><TopBar title="Моя зарплата" onBack={() => setScreen("PROFILE")} /><main className={styles.content}><section className={styles.payHero}><span>Прогноз за місяць</span><strong>{money(payroll?.projection?.total)}</strong><small>{payroll?.projection?.month || "Поточний місяць"}</small></section><section className={styles.card}><div className={styles.metrics}><div><b>{assignedCases}</b><span>Закріплено</span></div><div><b>{inProgress}</b><span>В роботі</span></div><div><b>{completed}</b><span>Завершено</span></div><div><b>{home.kpis?.waitingParts ?? 0}</b><span>Очікує деталей</span></div></div></section></main></>}
 
       {message && <div className={styles.toastGood}><span>{message}</span><button type="button" onClick={() => setMessage("")}>×</button></div>}
       {error && <div className={styles.toastBad}><span>{error}</span><button type="button" onClick={() => setError("")}>×</button></div>}
-      <BottomNav screen={screen} onChange={(next) => { setScreen(next); setError(""); setMessage(""); }} />
+      <BottomNav screen={screen} notificationCount={notificationCount} onChange={(next) => { setScreen(next); setError(""); setMessage(""); }} />
     </div>
   </div>;
 }
