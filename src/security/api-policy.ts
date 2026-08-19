@@ -107,6 +107,10 @@ const RULES: Rule[] = [
     resolve: () => internal(PERMISSIONS.OVERVIEW_READ, "LOCATION", "Service-advisor cabinet is authenticated and station-scoped; the route also enforces the SERVICE_ADVISOR role.", true),
   },
   {
+    match: exact("/api/search"),
+    resolve: () => internal(PERMISSIONS.OVERVIEW_READ, "LOCATION", "Global CRM search requires operational overview access; the route additionally filters client and WorkOrder result types by their own permissions and assignment/location scope."),
+  },
+  {
     match: exact("/api/audit"),
     resolve: () => internal(PERMISSIONS.AUDIT_READ, "ALL", "Audit log is sensitive and never inherits generic analytics access."),
   },
