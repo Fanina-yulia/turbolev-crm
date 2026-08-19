@@ -10,6 +10,8 @@ import { testOlxConnection } from "@/src/services/olx-communications.service";
 import { bmPartsAdapter } from "@/src/services/suppliers/bm-parts.adapter";
 import { uniqueTradeAdapter } from "@/src/services/suppliers/unique-trade.adapter";
 import { testVehicleImageConnection } from "@/src/services/vehicle-images/vehicle-image.service";
+import { authorize } from "@/src/security/authorize";
+import { PERMISSIONS } from "@/src/security/permissions";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -82,6 +84,8 @@ async function testProvider(provider: IntegrationProvider, config?: Record<strin
 }
 
 export async function POST(request: NextRequest, context: { params: Promise<{ provider: string }> }) {
+  const access = await authorize(PERMISSIONS.SETTINGS_INTEGRATIONS, { strict: true, request });
+  if (!access.allowed) return access.response!;
   if (!sameOrigin(request)) return NextResponse.json({ ok: false, error: "Forbidden" }, { status: 403 });
 
   try {
