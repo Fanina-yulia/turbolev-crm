@@ -1,0 +1,7 @@
+model WorkOrderNumber {
+  workOrderId String   @id
+  number      Int      @unique @default(autoincrement())
+  createdAt   DateTime @default(now())
+
+  @@index([createdAt])
+}

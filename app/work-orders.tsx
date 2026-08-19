@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { formatWorkOrderNumber } from "@/src/domain/work-order-number";
 import { navigateCrm, readCrmRoute, type CrmRouteParams } from "./crm-route";
 import { WorkOrderCommercialPanel, type WorkOrderCommercialSummary, type WorkOrderCommercialView } from "./work-order-commercial-panel";
 import styles from "./work-orders.module.css";
@@ -20,6 +21,7 @@ type Transition = {
 
 type WorkOrderRow = {
   id: string;
+  number: number | null;
   status: string;
   statusLabel: string;
   statusTone: string;
@@ -49,7 +51,7 @@ type WorkOrderRow = {
   transitions: Transition[];
 };
 
-type WorkOrderDetail = WorkOrderRow & {
+type WorkOrderDetail = Omit<WorkOrderRow, "number"> & {
   appointment: null | {
     id: string;
     status: string;
@@ -96,7 +98,7 @@ const WORK_ORDER_TABS: Array<[WorkOrderTab, string]> = [
 const FILTER_CODES = new Set<string>(FILTERS.map(([code]) => code));
 const TAB_CODES = new Set<string>(WORK_ORDER_TABS.map(([code]) => code));
 
-function vehicleName(item: WorkOrderRow) {
+function vehicleName(item: WorkOrderRow | WorkOrderDetail) {
   return [item.vehicle.brand, item.vehicle.model, item.vehicle.year].filter(Boolean).join(" ") || "Автомобіль";
 }
 
@@ -144,8 +146,18 @@ function tabFromRoute(route: CrmRouteParams): WorkOrderTab {
   return "overview";
 }
 
-function shortCode(id: string) {
-  return id.slice(-8).toUpperCase();
+function matchesSearch(row: WorkOrderRow, query: string) {
+  const q = query.trim().toLocaleLowerCase("uk-UA");
+  if (!q) return true;
+  return [
+    formatWorkOrderNumber(row.number),
+    String(row.number || ""),
+    row.client.name,
+    row.client.phone,
+    row.vehicle.plateNumber,
+    row.vehicle.vin,
+    vehicleName(row),
+  ].filter(Boolean).join(" ").toLocaleLowerCase("uk-UA").includes(q);
 }
 
 export function WorkOrders() {
@@ -153,6 +165,7 @@ export function WorkOrders() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [detail, setDetail] = useState<WorkOrderDetail | null>(null);
   const [filter, setFilter] = useState("ALL");
+  const [search, setSearch] = useState("");
   const [route, setRoute] = useState<CrmRouteParams>({});
   const [activeTab, setActiveTab] = useState<WorkOrderTab>("overview");
   const [commercialSummary, setCommercialSummary] = useState<WorkOrderCommercialSummary | null>(null);
@@ -181,7 +194,16 @@ export function WorkOrders() {
       const response = await fetch("/api/work-orders", { cache: "no-store" });
       const payload = await response.json();
       if (!response.ok || !payload.ok) throw new Error(payload.error || "Не вдалося завантажити замовлення-наряди.");
-      const nextRows = Array.isArray(payload.workOrders) ? payload.workOrders as WorkOrderRow[] : [];
+      const rawRows = Array.isArray(payload.workOrders) ? payload.workOrders as Array<Omit<WorkOrderRow, "number">> : [];
+      let numberMap = new Map<string, number>();
+      if (rawRows.length) {
+        const numberResponse = await fetch(`/api/work-orders/numbers?ids=${encodeURIComponent(rawRows.map((row) => row.id).join(","))}`, { cache: "no-store" });
+        const numberPayload = await numberResponse.json();
+        if (numberResponse.ok && numberPayload.ok && Array.isArray(numberPayload.rows)) {
+          numberMap = new Map(numberPayload.rows.map((item: { workOrderId: string; number: number }) => [item.workOrderId, item.number]));
+        }
+      }
+      const nextRows: WorkOrderRow[] = rawRows.map((row) => ({ ...row, number: numberMap.get(row.id) ?? null }));
       setRows(nextRows);
       applyRoute(nextRows);
     } catch (error) {
@@ -218,7 +240,8 @@ export function WorkOrders() {
     return () => window.removeEventListener("popstate", sync);
   }, [rows, applyRoute]);
 
-  const filtered = useMemo(() => rows.filter((row) => (filter === "ALL" || row.status === filter) && matchesRoute(row, route)), [rows, filter, route]);
+  const filtered = useMemo(() => rows.filter((row) => (filter === "ALL" || row.status === filter) && matchesRoute(row, route) && matchesSearch(row, search)), [rows, filter, route, search]);
+  const selectedNumber = useMemo(() => rows.find((row) => row.id === selectedId)?.number ?? null, [rows, selectedId]);
   const counts = useMemo(() => ({
     active: rows.filter((row) => !["CLOSED", "CANCELLED"].includes(row.status)).length,
     repair: rows.filter((row) => row.status === "IN_REPAIR").length,
@@ -302,6 +325,15 @@ export function WorkOrders() {
       <div><span>Готові до видачі</span><strong>{counts.ready}</strong></div>
     </section>
 
+    <div style={{ display: "grid", gridTemplateColumns: "minmax(240px, 1fr) auto", gap: 10, alignItems: "center", marginBottom: 12 }}>
+      <label style={{ display: "grid", gridTemplateColumns: "24px 1fr auto", alignItems: "center", gap: 7, minHeight: 42, padding: "0 10px", border: "1px solid var(--line)", borderRadius: 10, background: "var(--panel)" }}>
+        <span style={{ color: "var(--muted)" }}>⌕</span>
+        <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="ЗН-000124, клієнт, телефон, номер авто або VIN..." style={{ border: 0, outline: 0, minWidth: 0, background: "transparent", color: "var(--text)" }}/>
+        {search && <button type="button" onClick={() => setSearch("")} aria-label="Очистити пошук" style={{ border: 0, background: "transparent", color: "var(--muted)", cursor: "pointer", fontSize: 18 }}>×</button>}
+      </label>
+      <span style={{ color: "var(--muted)", fontSize: 11 }}>{filtered.length} з {rows.length}</span>
+    </div>
+
     <nav className={styles.filters}>
       {FILTERS.map(([code, label]) => {
         const count = code === "ALL" ? rows.length : rows.filter((row) => row.status === code).length;
@@ -313,9 +345,9 @@ export function WorkOrders() {
 
     <div className={styles.layout}>
       <section className={styles.list}>
-        {loading && !rows.length ? <div className={styles.empty}>Завантажую замовлення-наряди…</div> : !filtered.length ? <div className={styles.empty}>За вибраним статусом, клієнтом або автомобілем нарядів немає.</div> : filtered.map((item) => <button type="button" key={item.id} className={`${styles.row} ${selectedId === item.id ? styles.rowActive : ""}`} onClick={() => chooseWorkOrder(item)}>
+        {loading && !rows.length ? <div className={styles.empty}>Завантажую замовлення-наряди…</div> : !filtered.length ? <div className={styles.empty}>За вибраним статусом або пошуком нарядів немає.</div> : filtered.map((item) => <button type="button" key={item.id} className={`${styles.row} ${selectedId === item.id ? styles.rowActive : ""}`} onClick={() => chooseWorkOrder(item)}>
           <div>
-            <div className={styles.rowTitle}><strong>{vehicleName(item)}</strong>{item.vehicle.plateNumber && <span className={styles.plate}>{item.vehicle.plateNumber}</span>}</div>
+            <div className={styles.rowTitle}><span style={{ fontFamily: "ui-monospace,SFMono-Regular,Menlo,monospace", fontWeight: 850, fontSize: 11, color: "var(--orange)" }}>{formatWorkOrderNumber(item.number)}</span><strong>{vehicleName(item)}</strong>{item.vehicle.plateNumber && <span className={styles.plate}>{item.vehicle.plateNumber}</span>}</div>
             <div className={styles.rowMeta}>{item.client.name || "Клієнт без імені"} · {item.client.phone}<br/>Оновлено {formatDate(item.updatedAt)}</div>
           </div>
           <span className={styles.status}>{item.statusLabel}</span>
@@ -328,7 +360,7 @@ export function WorkOrders() {
             <div className={styles.summaryTop}>
               <div className={styles.summaryIdentity}>
                 <div className={styles.summaryPlate}>{detail.vehicle.plateNumber || "БЕЗ НОМЕРА"}</div>
-                <div><small>ЗН · {shortCode(detail.id)}</small><h2>{vehicleName(detail)}</h2><button type="button" onClick={() => navigateCrm("Клієнти", { clientId: detail.client.id })}>{detail.client.name || detail.client.phone}</button></div>
+                <div><small>{formatWorkOrderNumber(selectedNumber)}</small><h2>{vehicleName(detail)}</h2><button type="button" onClick={() => navigateCrm("Клієнти", { clientId: detail.client.id })}>{detail.client.name || detail.client.phone}</button></div>
               </div>
               <div className={styles.summaryStatus}><span className={styles.status}>{detail.statusLabel}</span><small>{detail.appointment ? `${detail.appointment.post?.name || "Без поста"} · ${detail.appointment.mechanic?.name || "Без механіка"}` : "Пост / механік не призначені"}</small></div>
             </div>
@@ -345,6 +377,7 @@ export function WorkOrders() {
           <div className={styles.detailBody}>
             {activeTab === "overview" && <div className={styles.tabContent}>
               <div className={styles.grid}>
+                <div className={styles.field}><span>Номер ЗН</span><strong>{formatWorkOrderNumber(selectedNumber)}</strong></div>
                 <div className={styles.field}><span>Клієнт</span><button type="button" onClick={() => navigateCrm("Клієнти", { clientId: detail.client.id })}><strong>{detail.client.name || detail.client.phone}</strong></button></div>
                 <div className={styles.field}><span>Автомобіль</span><button type="button" onClick={() => navigateCrm("Авто", { vehicleId: detail.vehicle.id })}><strong>{vehicleName(detail)}</strong></button></div>
                 <div className={styles.field}><span>Держномер</span><strong>{detail.vehicle.plateNumber || "—"}</strong></div>
@@ -373,6 +406,7 @@ export function WorkOrders() {
 
             {activeTab === "history" && <div className={styles.tabContent}>
               <section className={styles.sectionCard}><h3>Контрольні дати</h3><div className={styles.timeline}>
+                <div><span>Номер ЗН</span><strong>{formatWorkOrderNumber(selectedNumber)}</strong></div>
                 <div><span>Наряд створено</span><strong>{formatDate(detail.createdAt)}</strong></div>
                 <div><span>Остання зміна</span><strong>{formatDate(detail.updatedAt)}</strong></div>
                 <div><span>Діагностику підтверджено</span><strong>{formatDate(detail.diagnosticRequest.confirmedAt)}</strong></div>
