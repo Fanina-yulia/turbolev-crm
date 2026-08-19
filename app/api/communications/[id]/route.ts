@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { markCommunicationRead } from "@/src/services/communication-delivery.service";
 import { patchCommunicationInquiry } from "@/src/services/communications-server.service";
 
 export const runtime = "nodejs";
@@ -13,6 +14,9 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
     if (["NEW","IN_WORK","CONVERTED","LINKED","SPAM"].includes(body.state)) patch.state = body.state;
     if (body.assignedUserId === null || typeof body.assignedUserId === "string") patch.assignedUserId = body.assignedUserId;
     const inquiry = await patchCommunicationInquiry(id, patch);
+    if (body.unread === false) {
+      await markCommunicationRead(id).catch((error) => console.warn("External read sync failed", error));
+    }
     return NextResponse.json({ ok: true, inquiry });
   } catch (error) {
     console.error("PATCH /api/communications/[id] failed", error);
