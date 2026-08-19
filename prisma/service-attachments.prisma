@@ -1,0 +1,36 @@
+enum ServiceAttachmentOwnerType {
+  WORK_ORDER
+  WORK_ORDER_LINE
+  WARRANTY_CLAIM
+}
+
+enum ServiceAttachmentKind {
+  IMAGE
+  VIDEO
+  DOCUMENT
+  OTHER
+}
+
+model ServiceAttachment {
+  id               String                     @id @default(cuid())
+  workOrderId      String                     @db.VarChar(64)
+  ownerType        ServiceAttachmentOwnerType
+  ownerId          String                     @db.VarChar(64)
+  kind             ServiceAttachmentKind
+  fileName         String
+  mimeType         String                     @db.VarChar(160)
+  fileSize         Int
+  sha256           String                     @db.VarChar(64)
+  caption          String?                    @db.Text
+  storageProvider  String                     @default("DATABASE") @db.VarChar(32)
+  storageKey       String?                    @db.Text
+  fileData         Bytes?
+  uploadedByUserId String?                    @db.VarChar(64)
+  uploadedByName   String?                    @db.VarChar(160)
+  createdAt        DateTime                   @default(now())
+  updatedAt        DateTime                   @updatedAt
+
+  @@index([workOrderId, createdAt])
+  @@index([ownerType, ownerId, createdAt])
+  @@index([sha256])
+}
