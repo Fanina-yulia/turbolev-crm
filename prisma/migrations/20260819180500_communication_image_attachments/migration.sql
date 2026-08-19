@@ -6,6 +6,7 @@ CREATE TABLE IF NOT EXISTS "CommunicationAttachment" (
   "mimeType" TEXT NOT NULL,
   "fileSize" INTEGER NOT NULL,
   "sha256" TEXT NOT NULL,
+  "providerUrl" TEXT NOT NULL,
   "providerTokenHash" TEXT NOT NULL,
   "providerExpiresAt" TIMESTAMP(3) NOT NULL,
   "fileData" BYTEA NOT NULL,
