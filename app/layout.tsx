@@ -26,6 +26,7 @@ import "./settings-page-layout-fix.css";
 import "./ui-readability.css";
 import "./layout-stability.css";
 import "./responsive-popups.css";
+import "./personnel-wizard-polish.css";
 import "./typography-final.css";
 import { PhoneInputNormalizer } from "./phone-input-normalizer";
 import { LeadDetailsEnhancer } from "./lead-details-enhancer";
