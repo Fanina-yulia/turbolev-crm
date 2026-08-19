@@ -126,6 +126,10 @@ model EmployeeDocument {
   type       String
   name       String
   fileUrl    String?
+  fileName   String?
+  mimeType   String?   @db.VarChar(160)
+  fileSize   Int?
+  fileData   Bytes?
   status     String    @default("MISSING")
   uploadedAt DateTime? @db.Timestamp(6)
   createdAt  DateTime  @default(now()) @db.Timestamp(6)
