@@ -17,6 +17,27 @@ type Filter = "ALL" | "NEW" | "NEEDS_REPLY" | "MISSED" | "MESSAGES" | Channel;
 type BinotelHealth = { ok: boolean; databaseConfigured: boolean; restConfigured: boolean; webhookTokenConfigured: boolean; websocketConfigured: boolean; companyIdConfigured: boolean; webhookPath: string; missing: string[]; optionalMissing: string[] };
 type LinkedVehicle = { id: string; plateNumber?: string | null; vin?: string | null; brand?: string | null; model?: string | null; year?: number | null };
 type LinkedClientCard = { id: string; name?: string | null; phone: string; vehicles: LinkedVehicle[] };
+type CommunicationIntegrationStatus = {
+  ok: boolean;
+  meta?: {
+    configured: boolean;
+    status: string;
+    lastTestAt?: string | null;
+    lastTestMessage?: string | null;
+    lastFacebookEventAt?: string | null;
+    lastInstagramEventAt?: string | null;
+    webhookPath: string;
+  };
+  olx?: {
+    configured: boolean;
+    status: string;
+    lastTestAt?: string | null;
+    lastTestMessage?: string | null;
+    lastSyncedAt?: string | null;
+    lastSuccessAt?: string | null;
+    error?: string | null;
+  };
+};
 
 const LOCAL_KEY = "turbolev-communications-v1";
 const channels: Channel[] = ["INSTAGRAM", "FACEBOOK", "TIKTOK", "BINOTEL", "OLX", "WEBSITE"];
@@ -30,12 +51,12 @@ const channelMeta: Record<Channel, { label: string; short: string; tone: string 
   WEBSITE: { label: "Сайт", short: "W", tone: "#6366f1" },
 };
 const integrations = [
-  { key: "META", title: "Facebook + Instagram", endpoint: "/api/webhooks/meta", text: "Messenger, Instagram та Meta lead forms" },
+  { key: "META", title: "Facebook + Instagram", endpoint: "/api/webhooks/meta", text: "Messenger та Instagram Direct через Meta Webhooks + Send API" },
   { key: "BINOTEL", title: "Binotel", endpoint: "/api/telephony/binotel-webhook", text: "Вхідні, пропущені дзвінки, CallHistory та записи розмов" },
   { key: "WEBSITE", title: "Сайт / Lead Forms", endpoint: "/api/webhooks/website", text: "Форми сайту та landing pages" },
   { key: "TIKTOK", title: "TikTok", endpoint: "/api/webhooks/tiktok", text: "Lead forms та повідомлення" },
-  { key: "OLX", title: "OLX", endpoint: "/api/webhooks/olx", text: "Діалоги та прив'язка до оголошень" },
-];
+  { key: "OLX", title: "OLX", endpoint: "/api/integrations/olx/connect", text: "OAuth, діалоги, синхронізація та відповіді з CRM" },
+] as const;
 
 function fmt(value: string) {
   const date = new Date(value);
@@ -59,6 +80,18 @@ function messageIsMissed(message: Message) {
   const nestedStatus = typeof nested?.callStatus === "string" ? nested.callStatus.toUpperCase() : "";
   return direct === "MISSED" || nestedStatus === "MISSED" || message.text.toLocaleLowerCase("uk-UA").includes("пропущен");
 }
+function messageDelivery(message: Message) {
+  if (message.direction !== "out" || !message.metadata || typeof message.metadata !== "object") return null;
+  const metadata = message.metadata as Record<string, unknown>;
+  const delivery = typeof metadata.delivery === "string" ? metadata.delivery.toUpperCase() : "";
+  if (delivery === "FAILED") return { text: "⚠ не відправлено", failed: true };
+  if (delivery === "PENDING") return { text: "◷ надсилається", failed: false };
+  if (delivery === "READ") return { text: "✓✓ прочитано", failed: false };
+  if (delivery === "DELIVERED") return { text: "✓✓ доставлено", failed: false };
+  if (delivery === "SENT") return { text: "✓ надіслано", failed: false };
+  if (delivery === "CRM_ONLY") return { text: "збережено в CRM", failed: false };
+  return null;
+}
 function searchText(conversation: CommunicationConversation) {
   return [
     conversation.displayName,
@@ -71,6 +104,20 @@ function searchText(conversation: CommunicationConversation) {
 }
 function vehicleTitle(vehicle: LinkedVehicle) {
   return [vehicle.brand, vehicle.model].filter(Boolean).join(" ") || "Автомобіль";
+}
+function integrationReady(key: typeof integrations[number]["key"], status: CommunicationIntegrationStatus | null, binotel: BinotelHealth | null) {
+  if (key === "BINOTEL") return Boolean(binotel?.ok);
+  if (key === "WEBSITE") return true;
+  if (key === "META") return Boolean(status?.meta?.configured && (status.meta.status === "CONNECTED" || status.meta.lastFacebookEventAt || status.meta.lastInstagramEventAt));
+  if (key === "OLX") return Boolean(status?.olx?.configured && (status.olx.status === "READY" || status.olx.status === "CONNECTED"));
+  return false;
+}
+function integrationStateText(key: typeof integrations[number]["key"], status: CommunicationIntegrationStatus | null, binotel: BinotelHealth | null) {
+  if (integrationReady(key, status, binotel)) return "Підключено";
+  if (key === "WEBSITE") return "Endpoint готовий";
+  if (key === "META" && status?.meta?.configured) return "Налаштовано · перевірити Meta";
+  if (key === "OLX" && status?.olx?.configured) return status.olx.status === "ERROR" ? "Помилка синхронізації" : "Потрібна OAuth-авторизація";
+  return "Потрібен доступ";
 }
 
 export function CommunicationsHub() {
@@ -85,17 +132,20 @@ export function CommunicationsHub() {
   const [toast, setToast] = useState("");
   const [serverMode, setServerMode] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [sending, setSending] = useState(false);
+  const [syncingOlx, setSyncingOlx] = useState(false);
   const [pageSize, setPageSize] = useState<20 | 50 | 100>(20);
   const [binotelHealth, setBinotelHealth] = useState<BinotelHealth | null>(null);
+  const [integrationStatus, setIntegrationStatus] = useState<CommunicationIntegrationStatus | null>(null);
   const [clientCardOpen, setClientCardOpen] = useState(false);
   const [linkedClient, setLinkedClient] = useState<LinkedClientCard | null>(null);
   const [vehicleCardId, setVehicleCardId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const messageEndRef = useRef<HTMLDivElement | null>(null);
 
-  const notify = (message: string) => { setToast(message); window.setTimeout(() => setToast(""), 3200); };
-  const load = useCallback(async () => {
-    setLoading(true);
+  const notify = (message: string) => { setToast(message); window.setTimeout(() => setToast(""), 3600); };
+  const load = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
     try {
       const response = await fetch("/api/communications", { cache: "no-store" });
       if (!response.ok) throw new Error();
@@ -103,10 +153,12 @@ export function CommunicationsHub() {
       setItems((data.items || []) as Inquiry[]);
       setServerMode(true);
     } catch {
-      setServerMode(false);
-      try { setItems(JSON.parse(window.localStorage.getItem(LOCAL_KEY) || "[]") as Inquiry[]); }
-      catch { setItems([]); }
-    } finally { setLoading(false); }
+      if (!silent) {
+        setServerMode(false);
+        try { setItems(JSON.parse(window.localStorage.getItem(LOCAL_KEY) || "[]") as Inquiry[]); }
+        catch { setItems([]); }
+      }
+    } finally { if (!silent) setLoading(false); }
   }, []);
   const loadBinotelHealth = useCallback(async () => {
     try {
@@ -114,13 +166,42 @@ export function CommunicationsHub() {
       setBinotelHealth(await response.json());
     } catch { setBinotelHealth(null); }
   }, []);
+  const loadIntegrationStatus = useCallback(async () => {
+    try {
+      const response = await fetch("/api/integrations/communications/status", { cache: "no-store" });
+      if (!response.ok) return;
+      setIntegrationStatus(await response.json() as CommunicationIntegrationStatus);
+    } catch { setIntegrationStatus(null); }
+  }, []);
+  const pollOlx = useCallback(async () => {
+    try {
+      const response = await fetch("/api/integrations/olx/poll", { method: "POST" });
+      if (!response.ok) return;
+      const data = await response.json() as { configured?: boolean; skipped?: boolean; messages?: number };
+      if (data.configured && !data.skipped) {
+        await Promise.all([load(true), loadIntegrationStatus()]);
+      }
+    } catch {}
+  }, [load, loadIntegrationStatus]);
 
-  useEffect(() => { void load(); void loadBinotelHealth(); }, [load, loadBinotelHealth]);
+  useEffect(() => { void load(); void loadBinotelHealth(); void loadIntegrationStatus(); }, [load, loadBinotelHealth, loadIntegrationStatus]);
   useEffect(() => {
-    const refresh = () => { void load(); };
+    const refresh = () => { void load(true); };
     window.addEventListener("turbolev:data-changed", refresh);
     return () => window.removeEventListener("turbolev:data-changed", refresh);
   }, [load]);
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === "visible") void load(true);
+    }, 7000);
+    return () => window.clearInterval(timer);
+  }, [load]);
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === "visible") void pollOlx();
+    }, 55_000);
+    return () => window.clearInterval(timer);
+  }, [pollOlx]);
   useEffect(() => { if (!serverMode) try { window.localStorage.setItem(LOCAL_KEY, JSON.stringify(items)); } catch {} }, [items, serverMode]);
 
   const conversations = useMemo(() => buildCommunicationConversations(items), [items]);
@@ -189,24 +270,31 @@ export function CommunicationsHub() {
     if (results.some((ok) => !ok)) notify("Не всі позначки прочитання вдалося синхронізувати");
   }
   async function sendReply() {
-    if (!selected || (!reply.trim() && files.length === 0)) return;
+    if (!selected || (!reply.trim() && files.length === 0) || sending) return;
     const inquiry = selected.representative;
     const attachmentText = files.length ? `\n${files.map((file) => `📎 ${file.name}`).join("\n")}` : "";
     const finalText = `${reply.trim()}${attachmentText}`.trim();
     const attachments = files.map((file) => ({ name: file.name, type: file.type, size: file.size }));
     if (!serverMode) {
-      const message: Message = { id: `local-${Date.now()}`, direction: "out", text: finalText, at: new Date().toISOString(), metadata: { attachments } };
+      const message: Message = { id: `local-${Date.now()}`, direction: "out", text: finalText, at: new Date().toISOString(), metadata: { attachments, delivery: "CRM_ONLY" } };
       setItems((current) => current.map((item) => item.id === inquiry.id ? { ...item, messages: [...item.messages, message], answered: true, unread: false, state: item.state === "NEW" ? "IN_WORK" : item.state } : item));
       setReply(""); setFiles([]); setEmojiOpen(false);
       return;
     }
+    setSending(true);
     try {
       const response = await fetch(`/api/communications/${inquiry.id}/messages`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text: finalText, attachments }) });
-      if (!response.ok) throw new Error();
+      const data = await response.json().catch(() => ({})) as { ok?: boolean; error?: string; delivery?: string };
+      if (!response.ok || !data.ok) throw new Error(data.error || "Не вдалося доставити повідомлення");
       setReply(""); setFiles([]); setEmojiOpen(false);
-      await load();
-      notify(inquiry.channel === "BINOTEL" ? "Відповідь збережено в історії контакту." : "Повідомлення збережено. Доставка залежить від API каналу.");
-    } catch { notify("Не вдалося зберегти повідомлення"); }
+      await load(true);
+      if (data.delivery === "SENT") notify(`Надіслано в ${channelMeta[inquiry.channel].label}.`);
+      else if (inquiry.channel === "BINOTEL") notify("Відповідь збережено в історії контакту.");
+      else notify("Повідомлення збережено в CRM.");
+    } catch (error) {
+      await load(true);
+      notify(error instanceof Error ? error.message : "Не вдалося доставити повідомлення");
+    } finally { setSending(false); }
   }
   async function convertToLead() {
     if (!selected || !serverMode) return notify("Для додавання в Активні потрібне серверне з'єднання");
@@ -215,8 +303,25 @@ export function CommunicationsHub() {
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Помилка");
       notify(data.linkedExisting ? "Контакт уже є в Активних" : "Контакт додано в Активні");
-      await load();
+      await load(true);
     } catch (error) { notify(error instanceof Error ? error.message : "Не вдалося додати контакт в Активні"); }
+  }
+  async function syncOlxNow() {
+    if (syncingOlx) return;
+    setSyncingOlx(true);
+    try {
+      const response = await fetch("/api/integrations/olx/sync", { method: "POST" });
+      const data = await response.json().catch(() => ({})) as { ok?: boolean; error?: string; threads?: number; messages?: number };
+      if (!response.ok || !data.ok) throw new Error(data.error || "Не вдалося синхронізувати OLX");
+      await Promise.all([load(true), loadIntegrationStatus()]);
+      notify(`OLX синхронізовано: ${data.threads || 0} діалогів, ${data.messages || 0} повідомлень.`);
+    } catch (error) { notify(error instanceof Error ? error.message : "Помилка синхронізації OLX"); }
+    finally { setSyncingOlx(false); }
+  }
+  async function copyMetaWebhook() {
+    const value = `${window.location.origin}/api/webhooks/meta`;
+    try { await navigator.clipboard.writeText(value); notify("Meta webhook URL скопійовано"); }
+    catch { notify(value); }
   }
 
   const filterPills: { key: Filter; label: string; count: number }[] = [
@@ -232,12 +337,24 @@ export function CommunicationsHub() {
     {toast && <div className={styles.toast}>{toast}</div>}
     <header className={styles.header}>
       <div><p className={styles.eyebrow}>OMNICHANNEL · CONTACT INBOX</p><h1>Комунікації</h1><p className={styles.subtitle}>Один клієнт — один діалог. Дзвінки та повідомлення зберігаються єдиною хронологією.</p></div>
-      <div className={styles.headerRight}><span className={styles.serverBadge} data-ok={serverMode}>{serverMode ? "NEON SERVER" : "LOCAL FALLBACK"}</span><div className={styles.tabs}><button className={tab === "inbox" ? styles.active : ""} onClick={() => setTab("inbox")}>Inbox</button><button className={tab === "integrations" ? styles.active : ""} onClick={() => setTab("integrations")}>Інтеграції</button></div></div>
+      <div className={styles.headerRight}><span className={styles.serverBadge} data-ok={serverMode}>{serverMode ? "NEON SERVER" : "LOCAL FALLBACK"}</span><div className={styles.tabs}><button className={tab === "inbox" ? styles.active : ""} onClick={() => setTab("inbox")}>Inbox</button><button className={tab === "integrations" ? styles.active : ""} onClick={() => { setTab("integrations"); void loadIntegrationStatus(); }}>Інтеграції</button></div></div>
     </header>
 
     {tab === "integrations" ? <section className={styles.integrations}>
-      <div className={styles.integrationHead}><div><p className={styles.eyebrow}>КАНАЛИ</p><h2>Інтеграції комунікацій</h2></div><span>Підключення каналів керується централізовано.</span></div>
-      <div className={styles.integrationGrid}>{integrations.map((item) => <article className={styles.integrationCard} key={item.key}><div className={styles.integrationIcon}>{item.key === "BINOTEL" ? "☎" : item.key[0]}</div><div><strong>{item.title}</strong><p>{item.text}</p><code>{item.endpoint}</code></div><span className={`${styles.integrationState} ${item.key === "BINOTEL" && binotelHealth?.ok ? styles.ready : ""}`}>{item.key === "BINOTEL" && binotelHealth?.ok ? "Підключено" : item.key === "WEBSITE" ? "Endpoint готовий" : "Потрібен доступ"}</span></article>)}</div>
+      <div className={styles.integrationHead}><div><p className={styles.eyebrow}>КАНАЛИ</p><h2>Інтеграції комунікацій</h2></div><span>Live-стан каналів та службові дії.</span></div>
+      <div className={styles.integrationGrid}>{integrations.map((item) => {
+        const ready = integrationReady(item.key, integrationStatus, binotelHealth);
+        return <article className={styles.integrationCard} key={item.key}>
+          <div className={styles.integrationIcon}>{item.key === "BINOTEL" ? "☎" : item.key[0]}</div>
+          <div><strong>{item.title}</strong><p>{item.text}</p><code>{item.endpoint}</code>
+            {item.key === "META" && <div className="communicationsIntegrationActions"><button type="button" onClick={() => void copyMetaWebhook()}>Копіювати webhook URL</button><button type="button" onClick={() => void loadIntegrationStatus()}>Оновити стан</button></div>}
+            {item.key === "OLX" && <div className="communicationsIntegrationActions"><button type="button" onClick={() => { window.location.href = "/api/integrations/olx/connect"; }}>Підключити OLX</button><button type="button" disabled={syncingOlx || !integrationStatus?.olx?.configured} onClick={() => void syncOlxNow()}>{syncingOlx ? "Синхронізую…" : "Синхронізувати зараз"}</button></div>}
+            {item.key === "OLX" && integrationStatus?.olx?.lastSuccessAt && <small className="communicationsIntegrationMeta">Остання успішна синхронізація: {fmtLong(integrationStatus.olx.lastSuccessAt)}</small>}
+            {item.key === "META" && (integrationStatus?.meta?.lastFacebookEventAt || integrationStatus?.meta?.lastInstagramEventAt) && <small className="communicationsIntegrationMeta">Остання Meta-подія: {fmtLong(integrationStatus.meta.lastInstagramEventAt || integrationStatus.meta.lastFacebookEventAt || "")}</small>}
+          </div>
+          <span className={`${styles.integrationState} ${ready ? styles.ready : ""}`}>{integrationStateText(item.key, integrationStatus, binotelHealth)}</span>
+        </article>;
+      })}</div>
     </section> : <>
       <nav className={styles.filters} aria-label="Фільтри комунікацій">{filterPills.map((item) => <button key={item.key} className={`${styles.filterButton} ${filter === item.key ? styles.active : ""}`} onClick={() => setFilter(item.key)}>{item.label}<span>{item.count}</span></button>)}</nav>
       <section className={styles.shell}>
@@ -281,7 +398,10 @@ export function CommunicationsHub() {
           </header>
           <div className={styles.timeline}>
             {selected.inquiryCount > 1 && <div className={styles.conversationSummary}>Об'єднано {selected.inquiryCount} звернень цього контакту · історія не видаляється</div>}
-            {selected.timeline.length === 0 ? <div className={styles.empty}>{selected.preview}</div> : selected.timeline.map((message) => <article key={`${message.inquiryId}:${message.id}`} className={`${styles.event} ${styles[message.direction]} ${messageIsMissed(message) ? styles.missedEvent : ""}`}><p>{message.text}</p><footer><span>{channelMeta[message.channel].label}</span><time>{fmtLong(message.at)}</time></footer></article>)}
+            {selected.timeline.length === 0 ? <div className={styles.empty}>{selected.preview}</div> : selected.timeline.map((message) => {
+              const delivery = messageDelivery(message);
+              return <article key={`${message.inquiryId}:${message.id}`} className={`${styles.event} ${styles[message.direction]} ${messageIsMissed(message) ? styles.missedEvent : ""}`}><p>{message.text}</p><footer><span>{channelMeta[message.channel].label}{delivery ? <em className={delivery.failed ? "communicationsDeliveryFailed" : "communicationsDeliveryState"}> · {delivery.text}</em> : null}</span><time>{fmtLong(message.at)}</time></footer></article>;
+            })}
             <div ref={messageEndRef}/>
           </div>
           <div className={`${styles.composer} communicationsComposer`}>
@@ -293,9 +413,9 @@ export function CommunicationsHub() {
               <textarea value={reply} onChange={(event) => setReply(event.target.value)} placeholder="Повідомлення або внутрішня відповідь по контакту..." onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); void sendReply(); } }}/>
               <button type="button" className="communicationsToolButton" onClick={() => setEmojiOpen((current) => !current)} title="Emoji">☺</button>
               <button type="button" className="communicationsToolButton" onClick={() => notify("Голосові повідомлення підключимо разом з API каналу") } title="Голосове повідомлення">🎙</button>
-              <button type="button" className="communicationsSendButton" disabled={!reply.trim() && files.length === 0} onClick={() => void sendReply()}>➤</button>
+              <button type="button" className="communicationsSendButton" disabled={sending || (!reply.trim() && files.length === 0)} onClick={() => void sendReply()}>{sending ? "…" : "➤"}</button>
             </div>
-            <span className={styles.composerHint}>Enter — надіслати · Shift+Enter — новий рядок. Відповідь додається до останнього звернення контакту; фактична доставка залежить від API каналу.</span>
+            <span className={styles.composerHint}>Enter — надіслати · Shift+Enter — новий рядок. Facebook, Instagram та OLX відправляються через API каналу; для інших каналів відповідь зберігається в CRM.</span>
           </div>
         </>}</section>
       </section>
@@ -308,6 +428,8 @@ export function CommunicationsHub() {
       .communicationsFileChips{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 8px}.communicationsFileChips>span{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:999px;background:var(--surface);padding:5px 8px;color:var(--muted);font-size:8px}.communicationsFileChips button{width:18px!important;height:18px!important;padding:0!important;border:0!important;border-radius:50%!important;background:transparent!important;color:var(--muted)!important}
       .communicationsEmojiPicker{position:absolute;left:12px;bottom:76px;z-index:5;width:220px;display:grid;grid-template-columns:repeat(8,1fr);gap:3px;border:1px solid var(--line);border-radius:12px;background:var(--panel);padding:8px;box-shadow:0 14px 34px rgba(0,0,0,.16)}.communicationsEmojiPicker button{width:25px!important;height:25px!important;padding:0!important;border:0!important;background:transparent!important;color:var(--text)!important;font-size:15px!important}
       .communicationsComposeRow{display:grid;grid-template-columns:36px minmax(0,1fr) 36px 36px 44px;gap:7px;align-items:end}.communicationsComposeRow textarea{min-height:42px!important;max-height:100px}.communicationsComposeRow button{height:42px!important;padding:0!important}.communicationsToolButton{border:1px solid var(--line)!important;background:var(--surface)!important;color:var(--text)!important;border-radius:10px!important;font-size:15px!important}.communicationsSendButton{border:0!important;background:var(--orange)!important;color:#fff!important;border-radius:10px!important;font-size:15px!important}.communicationsSendButton:disabled{opacity:.4}
+      .communicationsDeliveryState{font-style:normal;color:var(--muted);font-size:8px}.communicationsDeliveryFailed{font-style:normal;color:#ef4444;font-size:8px}
+      .communicationsIntegrationActions{display:flex;gap:7px;flex-wrap:wrap;margin-top:10px}.communicationsIntegrationActions button{border:1px solid var(--line);border-radius:9px;background:var(--surface);color:var(--text);padding:7px 10px;font:inherit;font-size:9px;cursor:pointer}.communicationsIntegrationActions button:disabled{opacity:.45;cursor:not-allowed}.communicationsIntegrationMeta{display:block;margin-top:7px;color:var(--muted);font-size:8px}
     `}</style>
   </div>;
 }

@@ -5,6 +5,8 @@ import {
   recordIntegrationTest,
   type IntegrationProvider,
 } from "@/src/services/integration-credentials.service";
+import { testMetaConnection } from "@/src/services/meta-communications.service";
+import { testOlxConnection } from "@/src/services/olx-communications.service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -63,13 +65,8 @@ async function testProvider(provider: IntegrationProvider, config: Record<string
       : { ok: true, message: "З'єднання з Binotel працює." };
   }
 
-  if (provider === "META") {
-    const token = config.pageAccessToken || "";
-    const response = await fetchWithTimeout(`https://graph.facebook.com/me?fields=id,name&access_token=${encodeURIComponent(token)}`);
-    return response.ok
-      ? { ok: true, message: "Meta access token працює." }
-      : { ok: false, message: `Meta Graph API відповів HTTP ${response.status}.` };
-  }
+  if (provider === "META") return testMetaConnection();
+  if (provider === "OLX") return testOlxConnection();
 
   if (provider === "AUTONOVA_D") {
     return { ok: false, message: "Доступ збережено. Автоматична перевірка буде доступна після офіційної API-документації Автонова-Д." };
