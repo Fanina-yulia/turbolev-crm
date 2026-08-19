@@ -6,7 +6,7 @@ import { NewRequestLauncher } from "./new-request-launcher";
 import { SettingsPersonnelBridge } from "./settings-personnel-bridge";
 import { useCrmAccess } from "./use-crm-access";
 import { CRM_NAV_GROUPS, isCrmSection, sectionFromSlug, slugFromSection, type CrmSectionLabel } from "./crm-navigation";
-import { CRM_ROUTE_KEYS } from "./crm-route";
+import { CRM_ROUTE_KEYS, navigateCrm, type CrmRouteParams } from "./crm-route";
 import { PERMISSIONS } from "@/src/security/permissions";
 import { turboLevLogoDark, turboLevLogoLight } from "@/src/brand/logos";
 import shellStyles from "./crm-shell.module.css";
@@ -60,6 +60,36 @@ function clearTypedRouteParams(url:URL){
   for(const key of CRM_ROUTE_KEYS)url.searchParams.delete(key);
 }
 
+function legacyTypedRoute(section:CrmSectionLabel,filter:string):CrmRouteParams|null{
+  const value=filter.trim();
+  if(!value)return null;
+  if(section==="Замовлення-наряди"){
+    const statuses:Record<string,string>={
+      approval:"WAITING_APPROVAL",
+      waiting_approval:"WAITING_APPROVAL",
+      "waiting-parts":"WAITING_PARTS",
+      waiting_parts:"WAITING_PARTS",
+      "in-repair":"IN_REPAIR",
+      in_repair:"IN_REPAIR",
+      ready:"READY_FOR_PICKUP",
+      ready_for_pickup:"READY_FOR_PICKUP",
+      "ready-for-repair":"READY_FOR_REPAIR",
+      ready_for_repair:"READY_FOR_REPAIR",
+    };
+    if(value==="qc-ready"||value==="waiting_qc")return{scope:"qc"};
+    if(statuses[value])return{status:statuses[value]};
+    if(value==="assigned")return{};
+    if(/^[A-Z_]+$/.test(value)&&["PARTS_REVIEW","WAITING_APPROVAL","WAITING_PARTS","READY_FOR_REPAIR","IN_REPAIR","WAITING_QC","READY_FOR_PICKUP","CLOSED"].includes(value))return{status:value};
+    return{workOrderId:value};
+  }
+  if(section==="Планувальник"){
+    const statuses:Record<string,string>={booked:"BOOKED","no-show":"NO_SHOW",no_show:"NO_SHOW"};
+    if(statuses[value])return{status:statuses[value]};
+    if(value==="today"||value==="assigned"||value==="mechanics")return{};
+  }
+  return null;
+}
+
 export function CrmShell({ initialSection }: { initialSection?: string }) {
   const initialActive=sectionFromSlug(initialSection);
   const [active, setActive] = useState<CrmSectionLabel>(initialActive);
@@ -97,7 +127,17 @@ export function CrmShell({ initialSection }: { initialSection?: string }) {
       setActive(next);setOpenGroup(groupForSection(next));setWorkflowFilter(url.searchParams.get("filter") || "");setWorkflowFilterLabel(url.searchParams.get("filterLabel") || "");setMobileNavOpen(false);
       const tab=url.searchParams.get("settingsTab") as SettingsTab|null;if(tab&&SETTINGS_SUBMENU.some(item=>item.id===tab))setSettingsTab(tab);
     };
-    const navigate = (event: Event) => { const detail = (event as CustomEvent<NavigateDetail>).detail; if (typeof detail === "string") { if (isCrmSection(detail)) navigateTo(detail); return; } if (detail && isCrmSection(detail.section)) navigateTo(detail.section, "push", detail.filter || "", detail.filterLabel || ""); };
+    const navigate = (event: Event) => {
+      const detail = (event as CustomEvent<NavigateDetail>).detail;
+      if(typeof detail==="string"){
+        if(isCrmSection(detail))navigateTo(detail);
+        return;
+      }
+      if(!detail||!isCrmSection(detail.section))return;
+      const typed=legacyTypedRoute(detail.section,detail.filter||"");
+      if(typed){navigateCrm(detail.section,typed);return;}
+      navigateTo(detail.section,"push",detail.filter||"",detail.filterLabel||"");
+    };
     syncFromUrl(); window.addEventListener("turbolev:navigate", navigate); window.addEventListener("popstate", syncFromUrl);
     return () => { window.removeEventListener("turbolev:navigate", navigate); window.removeEventListener("popstate", syncFromUrl); };
   }, [navigateTo]);
