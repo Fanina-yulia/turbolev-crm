@@ -15,10 +15,14 @@ model MechanicWorkFinding {
   recommendation     String?                   @db.Text
   urgency            DiagnosticUrgency         @default(INFO)
   status             MechanicWorkFindingStatus @default(SUBMITTED)
+  resolutionCode     String?                   @db.VarChar(40)
+  estimateLineId     String?                   @db.VarChar(64)
   submittedAt        DateTime                  @default(now())
   reviewedAt         DateTime?
   reviewedByUserId   String?                   @db.VarChar(64)
   managerComment     String?                   @db.Text
+  mechanicReply      String?                   @db.Text
+  mechanicRepliedAt  DateTime?
   createdAt          DateTime                  @default(now())
   updatedAt          DateTime                  @updatedAt
 
@@ -27,6 +31,7 @@ model MechanicWorkFinding {
   @@index([workOrderId, status, createdAt])
   @@index([workOrderLineId, createdAt])
   @@index([mechanicUserId, createdAt])
+  @@index([resolutionCode, updatedAt])
 }
 
 model MechanicWorkFindingMedia {
