@@ -14,7 +14,7 @@ type Location = {
   posts: Post[];
   mechanics: Mechanic[];
 };
-type Appointment = {
+type AppointmentBase = {
   id: string;
   locationId: string;
   postId: string | null;
@@ -62,11 +62,11 @@ function postType(post: Post) {
   return type === "PIT" ? "Яма" : type === "ALIGNMENT" ? "Розвал-сходження" : type === "NO_LIFT" ? "Без підйомника" : "Підйомник";
 }
 
-export function PlannerDayView({ day, location, appointments, onOpen, onCreate }: {
+export function PlannerDayView<TAppointment extends AppointmentBase>({ day, location, appointments, onOpen, onCreate }: {
   day: string;
   location: Location;
-  appointments: Appointment[];
-  onOpen: (appointmentId: string) => void;
+  appointments: TAppointment[];
+  onOpen: (appointment: TAppointment) => void;
   onCreate: (day: string, time: string, postId: string) => void;
 }) {
   const [availability, setAvailability] = useState<AvailabilityResponse | null>(null);
@@ -174,7 +174,7 @@ export function PlannerDayView({ day, location, appointments, onOpen, onCreate }
             key={item.id}
             className={`${styles.event} ${done ? styles.eventDone : ""}`}
             style={{ gridColumn: `${startIndex + 2} / span ${span}`, gridRow: rowIndex + 2 }}
-            onClick={() => onOpen(item.id)}
+            onClick={() => onOpen(item)}
             title={`${item.plateNumber || "Без номера"} · ${minuteLabel(start)}–${minuteLabel(end)}`}
           >
             <b>{item.plateNumber || "БЕЗ НОМЕРА"}</b>
