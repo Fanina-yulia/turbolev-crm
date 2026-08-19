@@ -27,7 +27,20 @@ export async function GET() {
   const diagnosticMap = Object.fromEntries(diagnostics.map((x)=>[x.status,x._count._all]));
   const workMap = Object.fromEntries(workOrderGroups.map((x)=>[x.status,x._count._all]));
   const countStatus = (...statuses: string[]) => appointments.filter((x)=>statuses.includes(x.status)).length;
-  const attention = appointments.filter((x)=>["BOOKED","WAITING_APPROVAL","WAITING_PARTS","IN_REPAIR","WAITING_QC","READY_FOR_PICKUP","NO_SHOW"].includes(x.status)).slice(0, 8).map((x)=>({ id:x.id, plate:x.plateNumber||"БЕЗ НОМЕРА", vehicle:x.vehicleLabel||"Автомобіль", status:x.status, problem:x.problem, plannedStartAt:x.plannedStartAt, post:x.post?.name||null, mechanic:x.mechanic?.name||null }));
+  const attention = appointments.filter((x)=>["BOOKED","WAITING_APPROVAL","WAITING_PARTS","IN_REPAIR","WAITING_QC","READY_FOR_PICKUP","NO_SHOW"].includes(x.status)).slice(0, 8).map((x)=>({
+    id:x.id,
+    appointmentId:x.id,
+    clientId:x.clientId,
+    vehicleId:x.vehicleId,
+    workOrderId:x.workOrderId,
+    plate:x.plateNumber||"БЕЗ НОМЕРА",
+    vehicle:x.vehicleLabel||"Автомобіль",
+    status:x.status,
+    problem:x.problem,
+    plannedStartAt:x.plannedStartAt,
+    post:x.post?.name||null,
+    mechanic:x.mechanic?.name||null,
+  }));
 
   return NextResponse.json({
     ok: true,
