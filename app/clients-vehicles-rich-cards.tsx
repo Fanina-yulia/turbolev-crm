@@ -31,6 +31,7 @@ function currentThemePaint(){
 }
 
 function ensureVehicleImage(button:HTMLElement,v:Vehicle){
+  button.classList.add(visualStyles.vehicleButtonEnhanced);
   let visual=button.querySelector<HTMLElement>('[data-vehicle-card-image]');
   if(!visual){
     visual=document.createElement('span');
@@ -59,6 +60,46 @@ function ensureVehicleImage(button:HTMLElement,v:Vehicle){
   }
 }
 
+function buildRichVehicle(v:Vehicle){
+  const box=document.createElement('div');
+  box.dataset.richVehicle='1';
+  box.className=visualStyles.richVehicle;
+
+  const facts=document.createElement('div');
+  facts.className=visualStyles.richFacts;
+  const mileage=v.mileageKm?`${v.mileageKm.toLocaleString('uk-UA')} км`:'—';
+  const factRows=[['ПРОБІГ',mileage],['ДВИГУН',engine(v)],['ПАЛИВО',v.fuelType||'—'],['ПРИВІД',v.driveType||'—']];
+  for(const [label,value] of factRows){
+    const item=document.createElement('span');
+    const small=document.createElement('small'); small.textContent=label;
+    const strong=document.createElement('b'); strong.textContent=value;
+    item.append(small,strong); facts.appendChild(item);
+  }
+  box.appendChild(facts);
+
+  const tags=document.createElement('div');
+  tags.className=visualStyles.richTags;
+  const source=v.vehicleDataSource||'CRM';
+  const confidence=v.vehicleDataConfidence?`${v.vehicleDataConfidence}%`:'—';
+  const tagValues=[v.turboLevClass||'',coefficient(v.priceCoefficient),`${source} · ${confidence}`,`ЗН ${v._count?.workOrders??0}`,`Діагн. ${v._count?.diagnosticRequests??0}`];
+  tagValues.filter(Boolean).forEach((value,index)=>{
+    const tag=document.createElement('span');
+    tag.textContent=value;
+    if(index===0&&v.turboLevClass)tag.className=visualStyles.classTag;
+    tags.appendChild(tag);
+  });
+  box.appendChild(tags);
+
+  if(v.vin){
+    const vin=document.createElement('div');
+    vin.className=visualStyles.richVin;
+    const label=document.createElement('small'); label.textContent='VIN';
+    const code=document.createElement('code'); code.textContent=v.vin;
+    vin.append(label,code); box.appendChild(vin);
+  }
+  return box;
+}
+
 export function ClientsVehiclesRichCards(){
   useEffect(()=>{
     let stopped=false;
@@ -77,8 +118,10 @@ export function ClientsVehiclesRichCards(){
         if(identity&&!card.querySelector('[data-rich-client-meta]')){
           const meta=document.createElement('div');
           meta.dataset.richClientMeta='1';
-          meta.className='cvRichClientMeta';
-          meta.innerHTML=`<span>Діагностики <b>${client._count?.diagnosticRequests??0}</b></span><span>Активність <b>${client._count?.workOrders??0} нарядів</b></span>`;
+          meta.className=visualStyles.richClientMeta;
+          const diagnostics=document.createElement('span'); diagnostics.append('Діагностики '); const diagnosticsValue=document.createElement('b'); diagnosticsValue.textContent=String(client._count?.diagnosticRequests??0); diagnostics.appendChild(diagnosticsValue);
+          const activity=document.createElement('span'); activity.append('Активність '); const activityValue=document.createElement('b'); activityValue.textContent=`${client._count?.workOrders??0} нарядів`; activity.appendChild(activityValue);
+          meta.append(diagnostics,activity);
           identity.insertAdjacentElement('afterend',meta);
         }
 
@@ -87,29 +130,7 @@ export function ClientsVehiclesRichCards(){
           const v=findVehicle(client,button.innerText);
           if(!v)return;
           ensureVehicleImage(button,v);
-          if(button.querySelector('[data-rich-vehicle]'))return;
-          const box=document.createElement('div');
-          box.dataset.richVehicle='1';
-          box.className='cvRichVehicle';
-          const mileage=v.mileageKm?`${v.mileageKm.toLocaleString('uk-UA')} км`:'—';
-          const source=v.vehicleDataSource||'CRM';
-          const confidence=v.vehicleDataConfidence?`${v.vehicleDataConfidence}%`:'—';
-          box.innerHTML=`
-            <div class="cvRichFacts">
-              <span><small>ПРОБІГ</small><b>${mileage}</b></span>
-              <span><small>ДВИГУН</small><b>${engine(v)}</b></span>
-              <span><small>ПАЛИВО</small><b>${v.fuelType||'—'}</b></span>
-              <span><small>ПРИВІД</small><b>${v.driveType||'—'}</b></span>
-            </div>
-            <div class="cvRichTags">
-              ${v.turboLevClass?`<span class="classTag">${v.turboLevClass}</span>`:''}
-              <span>${coefficient(v.priceCoefficient)}</span>
-              <span>${source} · ${confidence}</span>
-              <span>ЗН ${v._count?.workOrders??0}</span>
-              <span>Діагн. ${v._count?.diagnosticRequests??0}</span>
-            </div>
-            ${v.vin?`<div class="cvRichVin"><small>VIN</small><code>${v.vin}</code></div>`:''}`;
-          button.appendChild(box);
+          if(!button.querySelector('[data-rich-vehicle]'))button.appendChild(buildRichVehicle(v));
         });
       });
     };
