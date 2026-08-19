@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { getAccessContext } from "@/src/security/access-context";
 import { CrmShell } from "./crm-shell";
+import { MechanicStandaloneCabinet } from "./mechanic-standalone-cabinet";
 
 type HomePageProps = {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
@@ -24,8 +25,12 @@ export default async function HomePage({ searchParams }: HomePageProps) {
     redirect(`/auth/sign-in?next=${encodeURIComponent(nextPath)}`);
   }
 
+  const primaryRole = access.roles.find((role) => role.isPrimary) ?? access.roles[0] ?? null;
+  if (access.provisioningState === "ACTIVE" && primaryRole?.code === "MECHANIC") {
+    return <MechanicStandaloneCabinet userName={access.user?.employeeName || access.user?.name} />;
+  }
+
   const section = first(params.section);
   const settingsTab = first(params.settingsTab);
-
   return <CrmShell initialSection={section} initialSettingsTab={settingsTab} />;
 }
