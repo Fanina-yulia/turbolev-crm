@@ -35,7 +35,7 @@ model WorkOrderLine {
   actualQuantity   Decimal?            @db.Decimal(12, 3)
   actualUnitPrice  Decimal?            @db.Decimal(14, 2)
   actualUnitCost   Decimal?            @db.Decimal(14, 2)
-  actualDiscount   Decimal?            @db.Decimal(14, 2)
+  actualDiscount  Decimal?            @db.Decimal(14, 2)
 
   laborHours       Decimal?            @db.Decimal(8, 2)
   mechanicId       String?
@@ -46,6 +46,12 @@ model WorkOrderLine {
   sourceEntity     String?             @db.VarChar(40)
   sourceEntityId   String?             @db.VarChar(96)
   sortOrder        Int                 @default(100)
+
+  warrantyKm             Int?
+  warrantyDays           Int?
+  warrantyStartsAt       DateTime?
+  warrantyEndsAt         DateTime?
+  warrantyMileageStartKm Int?
 
   approvedAt       DateTime?
   startedAt        DateTime?
@@ -65,4 +71,5 @@ model WorkOrderLine {
   @@index([mechanicId])
   @@index([catalogItemId])
   @@index([sourceEntity, sourceEntityId])
+  @@index([warrantyEndsAt])
 }
