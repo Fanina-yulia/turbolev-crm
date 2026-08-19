@@ -31,7 +31,7 @@ type AvailabilityResponse = {
 
 export function AvailabilityPicker({
   date,
-  locationId,
+  locationId = "",
   durationMinutes = 60,
   excludeAppointmentId,
   selectedTime,
@@ -40,7 +40,7 @@ export function AvailabilityPicker({
   onChange,
 }: {
   date: string;
-  locationId: string;
+  locationId?: string;
   durationMinutes?: number;
   excludeAppointmentId?: string;
   selectedTime: string;
@@ -55,12 +55,13 @@ export function AvailabilityPicker({
   useEffect(() => {
     setData(null);
     setError("");
-    if (!date || !locationId) return;
+    if (!date) return;
     const controller = new AbortController();
     void (async () => {
       setLoading(true);
       try {
-        const params = new URLSearchParams({ date, locationId, durationMinutes: String(durationMinutes) });
+        const params = new URLSearchParams({ date, durationMinutes: String(durationMinutes) });
+        if (locationId) params.set("locationId", locationId);
         if (excludeAppointmentId) params.set("excludeAppointmentId", excludeAppointmentId);
         const response = await fetch(`/api/planner/availability?${params}`, { cache: "no-store", signal: controller.signal });
         const payload = await response.json() as AvailabilityResponse;
@@ -84,27 +85,15 @@ export function AvailabilityPicker({
     const mechanic = currentMechanic || [...slot.mechanics]
       .filter((item) => item.available)
       .sort((a, b) => (a.parallelCount ?? 0) - (b.parallelCount ?? 0))[0];
-    onChange({
-      time: slot.time,
-      postId: post.id,
-      mechanicId: mechanic?.id || "",
-      startAt: slot.startAt,
-      endAt: slot.endAt,
-    });
+    onChange({ time: slot.time, postId: post.id, mechanicId: mechanic?.id || "", startAt: slot.startAt, endAt: slot.endAt });
   }
 
   function chooseMechanic(mechanic: ResourceState) {
     if (!selectedSlot || !selectedPostId || !mechanic.available) return;
-    onChange({
-      time: selectedSlot.time,
-      postId: selectedPostId,
-      mechanicId: mechanic.id,
-      startAt: selectedSlot.startAt,
-      endAt: selectedSlot.endAt,
-    });
+    onChange({ time: selectedSlot.time, postId: selectedPostId, mechanicId: mechanic.id, startAt: selectedSlot.startAt, endAt: selectedSlot.endAt });
   }
 
-  if (!date || !locationId) return <div className={styles.picker}><div className={styles.state}>Оберіть дату та локацію — покажу вільні пости по 30 хвилин.</div></div>;
+  if (!date) return <div className={styles.picker}><div className={styles.state}>Оберіть дату — покажу вільні пости по 30 хвилин.</div></div>;
 
   return <div className={styles.picker}>
     <div className={styles.head}>
@@ -113,7 +102,7 @@ export function AvailabilityPicker({
     </div>
     {loading && !data ? <div className={styles.state}>Перевіряю вільні місця…</div>
       : error ? <div className={styles.state}>{error}</div>
-      : !data?.slots.length ? <div className={styles.state}>На цей день немає доступних інтервалів у робочому графіку.</div>
+      : !data?.slots.length ? <div className={styles.state}>На цей день немає інтервалів у робочому графіку.</div>
       : <>
         <div className={styles.body}>
           {data.slots.map((slot) => <div className={`${styles.slot} ${slot.available ? "" : styles.unavailable}`} key={slot.time}>
