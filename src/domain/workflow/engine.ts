@@ -1,9 +1,22 @@
-import { BLOCKER_LABELS, HARD_GATE_LABELS, MASTER_SERVICE_STAGES, STATUS_ARCHITECTURE_VERSION, VEHICLE_LOCATION_LABELS, WORKFLOW_ACTION_LABELS, WORKFLOW_ROLE_LABELS } from "./catalog";
+import {
+  BLOCKER_LABELS,
+  HARD_GATE_LABELS,
+  MASTER_SERVICE_STAGES,
+  OPERATIONAL_WORKFLOW_ROLE_LABELS,
+  STATUS_ARCHITECTURE_VERSION,
+  VEHICLE_LOCATION_LABELS,
+  WORKFLOW_ACTION_LABELS,
+} from "./catalog";
+import { applyTurboLevOperatingPolicy } from "./operating-policy";
 import { WORKFLOW_DEFINITIONS } from "./registry";
 import type { WorkflowDefinition, WorkflowEntity, WorkflowStatusDefinition, WorkflowTransitionDefinition } from "./types";
 
+const effectiveDefinitions = Object.fromEntries(
+  Object.entries(WORKFLOW_DEFINITIONS).map(([key, definition]) => [key, applyTurboLevOperatingPolicy(definition)]),
+) as Readonly<Record<string, WorkflowDefinition>>;
+
 export function getWorkflowDefinition(entity: WorkflowEntity): WorkflowDefinition {
-  const definition = WORKFLOW_DEFINITIONS[entity];
+  const definition = effectiveDefinitions[entity];
   if (!definition) throw new Error(`Unknown workflow entity: ${entity}`);
   return definition;
 }
@@ -43,7 +56,7 @@ export function canTransition(entity: WorkflowEntity, from: string, to: string):
 }
 
 export function assertWorkflowRegistryIntegrity(): true {
-  for (const definition of Object.values(WORKFLOW_DEFINITIONS)) {
+  for (const definition of Object.values(effectiveDefinitions)) {
     const codes = new Set(definition.statuses.map((status) => status.code));
     if (codes.size !== definition.statuses.length) throw new Error(`Duplicate status code in ${definition.entity}`);
     for (const transition of definition.transitions) {
@@ -70,11 +83,11 @@ export function getWorkflowCatalog() {
       automationsAreDeclarativeUntilImplemented: true,
     },
     masterStages: MASTER_SERVICE_STAGES,
-    roles: WORKFLOW_ROLE_LABELS,
+    roles: OPERATIONAL_WORKFLOW_ROLE_LABELS,
     blockers: BLOCKER_LABELS,
     vehicleLocations: VEHICLE_LOCATION_LABELS,
     hardGates: HARD_GATE_LABELS,
     actions: WORKFLOW_ACTION_LABELS,
-    entities: Object.values(WORKFLOW_DEFINITIONS),
+    entities: Object.values(effectiveDefinitions),
   };
 }
