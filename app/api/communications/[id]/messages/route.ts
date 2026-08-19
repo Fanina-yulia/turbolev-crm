@@ -7,9 +7,12 @@ function statusForError(error: unknown) {
   const code = typeof error === "object" && error && "code" in error
     ? String((error as { code?: unknown }).code || "")
     : "";
-  if (code === "TEXT_REQUIRED") return 400;
+  if (code === "TEXT_REQUIRED" || code === "ATTACHMENT_INVALID" || code === "ATTACHMENT_EMPTY" || code === "ATTACHMENT_LIMIT") return 400;
   if (code === "INQUIRY_NOT_FOUND") return 404;
   if (code === "META_REPLY_WINDOW_EXPIRED") return 409;
+  if (code === "ATTACHMENT_TOO_LARGE") return 413;
+  if (code === "ATTACHMENT_TYPE_NOT_ALLOWED") return 415;
+  if (code === "ATTACHMENT_OWNERSHIP_INVALID" || code === "ATTACHMENT_CHANNEL_NOT_SUPPORTED" || code === "META_ATTACHMENT_LIMIT" || code === "META_ATTACHMENT_TYPE_NOT_SUPPORTED") return 422;
   if (code.includes("NOT_CONFIGURED") || code.includes("NOT_AUTHORIZED") || code.includes("REAUTH_REQUIRED") || code.includes("TARGET_MISSING") || code.includes("THREAD_MISSING")) return 422;
   if (code === "OLX_RATE_LIMITED") return 429;
   return 502;
