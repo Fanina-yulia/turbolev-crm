@@ -34,6 +34,7 @@ const PartsCatalog = dynamic(() => import("./parts-catalog").then((mod) => mod.P
 const PlannerV2 = dynamic(() => import("./planner-v2").then((mod) => mod.PlannerV2), { loading: SectionLoading });
 const Diagnostics = dynamic(() => import("./diagnostics").then((mod) => mod.Diagnostics), { loading: SectionLoading });
 const WorkOrders = dynamic(() => import("./work-orders").then((mod) => mod.WorkOrders), { loading: SectionLoading });
+const ProductionBoard = dynamic(() => import("./production-board").then((mod) => mod.ProductionBoard), { loading: SectionLoading });
 const RoleAwareOverview = dynamic(() => import("./role-cabinet").then((mod) => mod.RoleAwareOverview), { loading: SectionLoading });
 const FinancialCenter = dynamic(() => import("./financial-center").then((mod) => mod.FinancialCenter), { loading: SectionLoading });
 
@@ -65,11 +66,13 @@ function legacyRoute(section:CrmSectionLabel,filter:string):LegacyRoute|null{
   const value=filter.trim();
 
   if(section==="Виробництво"){
-    if(value==="in-repair"||value==="in_repair")return{section:"Замовлення-наряди",params:{status:"IN_REPAIR"}};
-    if(value==="ready"||value==="ready-for-repair"||value==="ready_for_repair")return{section:"Замовлення-наряди",params:{status:"READY_FOR_REPAIR"}};
-    if(value==="completed-today")return{section:"Замовлення-наряди",params:{status:"CLOSED"}};
-    if(value==="posts")return{section:"Планувальник",params:{}};
-    return{section:"Замовлення-наряди",params:{}};
+    if(value==="in-repair"||value==="in_repair")return{section,params:{status:"IN_REPAIR"}};
+    if(value==="ready"||value==="ready-for-repair"||value==="ready_for_repair")return{section,params:{status:"READY_FOR_REPAIR"}};
+    if(value==="waiting-parts"||value==="waiting_parts")return{section,params:{status:"WAITING_PARTS"}};
+    if(value==="qc-ready"||value==="waiting_qc")return{section,params:{status:"WAITING_QC"}};
+    if(value==="mechanics"||value==="assigned")return{section,params:{scope:"mechanics"}};
+    if(value==="posts")return{section,params:{scope:"posts"}};
+    return value?{section,params:{}}:null;
   }
 
   if(section==="Контроль якості"){
@@ -234,6 +237,6 @@ export function CrmShell({ initialSection, initialSettingsTab }: { initialSectio
       <div className="sidebarFoot"><span className="liveDot"/> {access.enforced?(access.snapshot?.user?.name||"Захищений режим"):"Станція онлайн"}</div>
     </aside>
     <div className={active==="Огляд станції"?shellStyles.globalNewRequest:undefined}><NewRequestLauncher showButton={active==="Огляд станції"&&canCreateRequest}/></div>
-    <section className={`workspace ${active==="Огляд станції"?shellStyles.workspaceWithFloatingAction:""}`}>{!activeAllowed?accessDenied:<>{active!=="Огляд станції"&&active!=="Налаштування"&&filterBanner}{active==="Комунікації"?<CommunicationsHub/>:active==="Ліди"?<LeadsBoardV2/>:active==="Клієнти"?<ClientsDirectory/>:active==="Авто"?<VehiclesDirectory/>:active==="Планувальник"?<PlannerV2/>:active==="Діагностика"?<Diagnostics/>:active==="Замовлення-наряди"?<WorkOrders/>:active==="Підбір запчастин"?<PartsCatalog/>:active==="Фінансовий центр"?<FinancialCenter/>:active==="Налаштування"?<SettingsPage key={settingsTab}/>:active==="Огляд станції"?<RoleAwareOverview access={access.snapshot}/>:<div className="comingSoon"><p className="eyebrow">TURBO LEV CRM</p><h1>{active}</h1><p>Розділ тимчасово недоступний.</p></div>}</>}</section>
+    <section className={`workspace ${active==="Огляд станції"?shellStyles.workspaceWithFloatingAction:""}`}>{!activeAllowed?accessDenied:<>{active!=="Огляд станції"&&active!=="Налаштування"&&filterBanner}{active==="Комунікації"?<CommunicationsHub/>:active==="Ліди"?<LeadsBoardV2/>:active==="Клієнти"?<ClientsDirectory/>:active==="Авто"?<VehiclesDirectory/>:active==="Планувальник"?<PlannerV2/>:active==="Діагностика"?<Diagnostics/>:active==="Замовлення-наряди"?<WorkOrders/>:active==="Виробництво"?<ProductionBoard/>:active==="Підбір запчастин"?<PartsCatalog/>:active==="Фінансовий центр"?<FinancialCenter/>:active==="Налаштування"?<SettingsPage key={settingsTab}/>:active==="Огляд станції"?<RoleAwareOverview access={access.snapshot}/>:<div className="comingSoon"><p className="eyebrow">TURBO LEV CRM</p><h1>{active}</h1><p>Розділ тимчасово недоступний.</p></div>}</>}</section>
   </main>;
 }

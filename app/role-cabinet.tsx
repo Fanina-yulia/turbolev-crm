@@ -73,20 +73,20 @@ function MechanicCabinet({ data, userName }: { data: MechanicPayload; userName?:
   return <>
     <header className={styles.header}>
       <div><p className="eyebrow">TURBO LEV · ПЕРСОНАЛЬНИЙ КАБІНЕТ</p><h1>Мої роботи</h1><span className="muted">{userName || data.mechanic.name} · Автомеханік · {data.mechanic.station.name}</span></div>
-      <button className={styles.primaryAction} type="button" onClick={() => navigateCrm("Замовлення-наряди")}>Відкрити наряди →</button>
+      <button className={styles.primaryAction} type="button" onClick={() => navigateCrm("Виробництво", { scope: "mechanics" })}>Відкрити мої роботи →</button>
     </header>
 
     <section className={styles.kpis}>
-      <button type="button" onClick={() => navigateCrm("Замовлення-наряди")}><span>Призначено</span><strong>{data.kpis.assigned}</strong><small>активних робіт</small></button>
-      <button type="button" onClick={() => navigateCrm("Замовлення-наряди", { status: "IN_REPAIR" })}><span>Зараз у роботі</span><strong>{data.kpis.inProgress}</strong><small>розпочатих робіт</small></button>
+      <button type="button" onClick={() => navigateCrm("Виробництво", { scope: "mechanics" })}><span>Призначено</span><strong>{data.kpis.assigned}</strong><small>активних робіт</small></button>
+      <button type="button" onClick={() => navigateCrm("Виробництво", { status: "IN_REPAIR", scope: "mechanics" })}><span>Зараз у роботі</span><strong>{data.kpis.inProgress}</strong><small>розпочатих робіт</small></button>
       <button type="button" onClick={() => navigateCrm("Замовлення-наряди", { status: "CLOSED" })}><span>Завершено сьогодні</span><strong>{data.kpis.completedToday}</strong><small>моїх робіт</small></button>
-      <button type="button" onClick={() => navigateCrm("Замовлення-наряди", { status: "WAITING_PARTS" })}><span>Очікують деталей</span><strong>{data.kpis.waitingParts}</strong><small>нарядів</small></button>
+      <button type="button" onClick={() => navigateCrm("Виробництво", { status: "WAITING_PARTS", scope: "mechanics" })}><span>Очікують деталей</span><strong>{data.kpis.waitingParts}</strong><small>нарядів</small></button>
     </section>
 
     <div className={styles.twoColumns}>
       <section className={styles.panel}>
-        <div className={styles.panelHead}><div><p className="eyebrow">МОЇ ЗАВДАННЯ</p><h2>Роботи в нарядах</h2></div><button type="button" onClick={() => navigateCrm("Замовлення-наряди")}>Усі наряди →</button></div>
-        {tasks.length ? <div className={styles.list}>{tasks.map((task) => <button className={styles.task} type="button" key={task.id} onClick={() => navigateCrm("Замовлення-наряди", { workOrderId: task.workOrderId })}>
+        <div className={styles.panelHead}><div><p className="eyebrow">МОЇ ЗАВДАННЯ</p><h2>Роботи в нарядах</h2></div><button type="button" onClick={() => navigateCrm("Виробництво", { scope: "mechanics" })}>Виробнича дошка →</button></div>
+        {tasks.length ? <div className={styles.list}>{tasks.map((task) => <button className={styles.task} type="button" key={task.id} onClick={() => navigateCrm("Замовлення-наряди", { workOrderId: task.workOrderId, workOrderTab: "works" })}>
           <div><b>{task.plate}</b><span>{task.vehicle}</span></div>
           <div className={styles.taskMain}><strong>{task.description}</strong><span>{task.laborHours ? `${task.laborHours} нормо-год.` : "Без норми часу"}</span></div>
           <em>{statusLabels[task.status] || task.status}</em>
@@ -116,9 +116,9 @@ function StationManagerCabinet({ data, userName }: { data: ManagerPayload; userN
     { label: "Записані", value: data.flow.booked, section: "Планувальник", params: { status: "BOOKED" } },
     { label: "Приймання / діагностика", value: data.flow.diagnostics, section: "Діагностика" },
     { label: "Погодження", value: data.flow.approval, section: "Замовлення-наряди", params: { status: "WAITING_APPROVAL" } },
-    { label: "Очікують деталі", value: data.flow.waitingParts, section: "Замовлення-наряди", params: { status: "WAITING_PARTS" } },
-    { label: "Готові до ремонту", value: data.flow.readyForRepair, section: "Замовлення-наряди", params: { status: "READY_FOR_REPAIR" } },
-    { label: "У ремонті", value: data.flow.inRepair, section: "Замовлення-наряди", params: { status: "IN_REPAIR" } },
+    { label: "Очікують деталі", value: data.flow.waitingParts, section: "Виробництво", params: { status: "WAITING_PARTS" } },
+    { label: "Готові до ремонту", value: data.flow.readyForRepair, section: "Виробництво", params: { status: "READY_FOR_REPAIR" } },
+    { label: "У ремонті", value: data.flow.inRepair, section: "Виробництво", params: { status: "IN_REPAIR" } },
     { label: "QC", value: data.flow.qc, section: "Замовлення-наряди", params: { scope: "qc" } },
     { label: "До видачі", value: data.flow.ready, section: "Замовлення-наряди", params: { status: "READY_FOR_PICKUP" } },
   ];
@@ -126,14 +126,14 @@ function StationManagerCabinet({ data, userName }: { data: ManagerPayload; userN
   return <>
     <header className={styles.header}>
       <div><p className="eyebrow">TURBO LEV · КАБІНЕТ ЗАВІДУВАЧА</p><h1>Операційний пульт станції</h1><span className="muted">{userName || "Завідувач станцією"} · {data.station.name} · без глобальних фінансів мережі</span></div>
-      <button className={styles.primaryAction} type="button" onClick={() => navigateCrm("Планувальник")}>Планувальник сьогодні →</button>
+      <button className={styles.primaryAction} type="button" onClick={() => navigateCrm("Виробництво", { scope: "posts" })}>Виробництво зараз →</button>
     </header>
 
     <section className={styles.kpis}>
       <button type="button" onClick={() => navigateCrm("Планувальник")}><span>Авто сьогодні</span><strong>{data.kpis.carsToday}</strong><small>{data.kpis.carsOnStation} у потоці станції</small></button>
-      <button type="button" onClick={() => navigateCrm("Замовлення-наряди", { status: "IN_REPAIR" })}><span>У ремонті</span><strong>{data.kpis.inRepair}</strong><small>активних авто</small></button>
-      <button type="button" onClick={() => navigateCrm("Планувальник")}><span>Пости</span><strong>{data.kpis.postsOccupied}/{data.kpis.postsTotal}</strong><small>зайнято зараз</small></button>
-      <button type="button" onClick={() => navigateCrm("Планувальник")}><span>Автомеханіки</span><strong>{data.kpis.mechanicsTotal}</strong><small>активних на станції</small></button>
+      <button type="button" onClick={() => navigateCrm("Виробництво", { status: "IN_REPAIR" })}><span>У ремонті</span><strong>{data.kpis.inRepair}</strong><small>активних авто</small></button>
+      <button type="button" onClick={() => navigateCrm("Виробництво", { scope: "posts" })}><span>Пости</span><strong>{data.kpis.postsOccupied}/{data.kpis.postsTotal}</strong><small>зайнято зараз</small></button>
+      <button type="button" onClick={() => navigateCrm("Виробництво", { scope: "mechanics" })}><span>Автомеханіки</span><strong>{data.kpis.mechanicsTotal}</strong><small>активних на станції</small></button>
     </section>
 
     <section className={styles.panel}>
@@ -157,10 +157,10 @@ function StationManagerCabinet({ data, userName }: { data: ManagerPayload; userN
         <div className={styles.quickGrid}>
           <button type="button" onClick={() => navigateCrm("Діагностика")}>Діагностика<span>черга та підтвердження →</span></button>
           <button type="button" onClick={() => navigateCrm("Замовлення-наряди")}>Замовлення-наряди<span>кошториси та статуси →</span></button>
-          <button type="button" onClick={() => navigateCrm("Замовлення-наряди", { status: "IN_REPAIR" })}>Ремонт у роботі<span>активні наряди →</span></button>
+          <button type="button" onClick={() => navigateCrm("Виробництво", { status: "IN_REPAIR" })}>Ремонт у роботі<span>пости та активні роботи →</span></button>
           <button type="button" onClick={() => navigateCrm("Замовлення-наряди", { scope: "qc" })}>Контроль якості<span>QC та видача →</span></button>
           <button type="button" onClick={() => navigateCrm("Підбір запчастин")}>Запчастини<span>підбір і постачальники →</span></button>
-          <button type="button" onClick={() => navigateCrm("Планувальник")}>Планувальник<span>пости та завантаження →</span></button>
+          <button type="button" onClick={() => navigateCrm("Планувальник")}>Планувальник<span>запис і майбутнє завантаження →</span></button>
         </div>
       </aside>
     </div>
