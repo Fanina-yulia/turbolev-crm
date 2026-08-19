@@ -6,6 +6,8 @@ export const dynamic = "force-dynamic";
 
 export async function GET(request: NextRequest) {
   const target = new URL("/", request.nextUrl.origin);
+  target.searchParams.set("section", "settings");
+  target.searchParams.set("settingsTab", "integrations");
   target.searchParams.set("integration", "meta");
   const error = request.nextUrl.searchParams.get("error") || request.nextUrl.searchParams.get("error_reason") || "";
   const code = request.nextUrl.searchParams.get("code") || "";
