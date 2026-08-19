@@ -1,0 +1,27 @@
+enum WarrantyClaimStatus {
+  OPEN
+  REVIEW
+  APPROVED
+  REJECTED
+  CLOSED
+}
+
+model WarrantyClaim {
+  id                String              @id @default(cuid())
+  workOrderLineId   String
+  status            WarrantyClaimStatus @default(OPEN)
+  reason            String              @db.Text
+  mileageKmAtClaim  Int?
+  resolution        String?             @db.Text
+  openedByUserId    String?             @db.VarChar(64)
+  openedByName      String?             @db.VarChar(160)
+  closedAt          DateTime?
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+
+  workOrderLine WorkOrderLine @relation(fields: [workOrderLineId], references: [id], onDelete: Restrict)
+
+  @@index([workOrderLineId, status])
+  @@index([status, createdAt])
+  @@index([createdAt])
+}

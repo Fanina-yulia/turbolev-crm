@@ -40,6 +40,7 @@ const QcQueue = dynamic(() => import("./qc-queue").then((mod) => mod.QcQueue), {
 const RoleAwareOverview = dynamic(() => import("./role-cabinet").then((mod) => mod.RoleAwareOverview), { loading: SectionLoading });
 const FinancialCenter = dynamic(() => import("./financial-center").then((mod) => mod.FinancialCenter), { loading: SectionLoading });
 const PaymentsQueue = dynamic(() => import("./payments-queue").then((mod) => mod.PaymentsQueue), { loading: SectionLoading });
+const WarrantyCenter = dynamic(() => import("./warranty-center").then((mod) => mod.WarrantyCenter), { loading: SectionLoading });
 
 const SETTINGS_SUBMENU:Array<{id:SettingsTab;label:string}>=[
   {id:"schedule",label:"Графік"},
@@ -105,7 +106,6 @@ function legacyRoute(section:CrmSectionLabel,filter:string):LegacyRoute|null{
   }
 
   if(section==="Аналітика")return{section:"Фінансовий центр",params:{}};
-  if(section==="Гарантії")return{section:"Замовлення-наряди",params:{}};
 
   if(section==="Замовлення-наряди"){
     if(!value)return null;
@@ -259,6 +259,6 @@ export function CrmShell({ initialSection, initialSettingsTab }: { initialSectio
       <div className="sidebarFoot"><span className="liveDot"/> {access.enforced?(access.snapshot?.user?.name||"Захищений режим"):"Станція онлайн"}</div>
     </aside>
     <div className={active==="Огляд станції"?shellStyles.globalNewRequest:undefined}><NewRequestLauncher showButton={active==="Огляд станції"&&canCreateRequest}/></div>
-    <section className={`workspace ${active==="Огляд станції"?shellStyles.workspaceWithFloatingAction:""}`}>{!activeAllowed?accessDenied:<>{active!=="Огляд станції"&&active!=="Налаштування"&&filterBanner}{active==="Комунікації"?<CommunicationsHub/>:active==="Ліди"?<LeadsBoardV2/>:active==="Клієнти"?<ClientsDirectory/>:active==="Авто"?<VehiclesDirectory/>:active==="Планувальник"?<PlannerV2/>:active==="Діагностика"?<Diagnostics/>:active==="Замовлення-наряди"?<WorkOrders/>:active==="Виробництво"?<ProductionBoard/>:active==="Контроль якості"?<QcQueue/>:active==="Підбір запчастин"?<PartsCatalog/>:active==="Закупівлі та склад"?<ProcurementQueue/>:active==="Фінансовий центр"?<FinancialCenter/>:active==="Оплати"?<PaymentsQueue/>:active==="Налаштування"?<SettingsPage tab={settingsTab}/>:active==="Огляд станції"?<RoleAwareOverview access={access.snapshot}/>:<div className="comingSoon"><p className="eyebrow">TURBO LEV CRM</p><h1>{active}</h1><p>Розділ тимчасово недоступний.</p></div>}</>}</section>
+    <section className={`workspace ${active==="Огляд станції"?shellStyles.workspaceWithFloatingAction:""}`}>{!activeAllowed?accessDenied:<>{active!=="Огляд станції"&&active!=="Налаштування"&&filterBanner}{active==="Комунікації"?<CommunicationsHub/>:active==="Ліди"?<LeadsBoardV2/>:active==="Клієнти"?<ClientsDirectory/>:active==="Авто"?<VehiclesDirectory/>:active==="Планувальник"?<PlannerV2/>:active==="Діагностика"?<Diagnostics/>:active==="Замовлення-наряди"?<WorkOrders/>:active==="Виробництво"?<ProductionBoard/>:active==="Контроль якості"?<QcQueue/>:active==="Підбір запчастин"?<PartsCatalog/>:active==="Закупівлі та склад"?<ProcurementQueue/>:active==="Фінансовий центр"?<FinancialCenter/>:active==="Оплати"?<PaymentsQueue/>:active==="Гарантії"?<WarrantyCenter/>:active==="Налаштування"?<SettingsPage tab={settingsTab}/>:active==="Огляд станції"?<RoleAwareOverview access={access.snapshot}/>:<div className="comingSoon"><p className="eyebrow">TURBO LEV CRM</p><h1>{active}</h1><p>Розділ тимчасово недоступний.</p></div>}</>}</section>
   </main>;
 }

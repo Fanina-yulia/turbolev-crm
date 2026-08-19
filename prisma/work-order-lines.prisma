@@ -62,6 +62,7 @@ model WorkOrderLine {
   updatedAt        DateTime            @updatedAt
 
   workOrder        WorkOrder           @relation(fields: [workOrderId], references: [id], onDelete: Restrict)
+  warrantyClaims   WarrantyClaim[]
 
   @@index([workOrderId, status, sortOrder])
   @@index([workOrderId, type])
