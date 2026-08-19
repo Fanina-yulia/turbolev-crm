@@ -15,7 +15,10 @@ type Client = {
   vehicles: Array<{ id: string; plateNumber: string | null; vin: string | null; brand: string | null; model: string | null; year: number | null }>;
 };
 
-type ListResponse = { ok: boolean; total: number; clients: Client[]; error?: string };
+type ListResponse = { ok: boolean; total: number; page: number; limit: number; pages: number; clients: Client[]; error?: string };
+type ClientResponse = { ok: boolean; client?: Client; error?: string };
+
+const PAGE_SIZE = 24;
 
 function initials(name: string | null) {
   const source = (name || "Клієнт").trim();
@@ -40,11 +43,15 @@ function lastVisit(client: Client) {
 
 export function ClientsDirectory() {
   const [query, setQuery] = useState("");
+  const [page, setPage] = useState(1);
+  const [pages, setPages] = useState(1);
   const [clients, setClients] = useState<Client[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selected, setSelected] = useState<Client | null>(null);
+  const [selectedLoading, setSelectedLoading] = useState(false);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -52,15 +59,17 @@ export function ClientsDirectory() {
       setLoading(true);
       setError("");
       try {
-        const params = new URLSearchParams({ limit: "100" });
+        const params = new URLSearchParams({ page: String(page), limit: String(PAGE_SIZE) });
         if (query.trim()) params.set("q", query.trim());
-        const response = await fetch(`/api/clients-vehicles?${params}`, { cache: "no-store", signal: controller.signal });
+        const response = await fetch(`/api/clients?${params}`, { cache: "no-store", signal: controller.signal });
         const data = await response.json() as ListResponse;
         if (!response.ok || !data.ok) throw new Error(data.error || "Не вдалося завантажити клієнтів");
         setClients(data.clients || []);
         setTotal(data.total || 0);
-      } catch (e) {
-        if ((e as Error).name !== "AbortError") setError(e instanceof Error ? e.message : "Помилка завантаження");
+        setPages(data.pages || 1);
+        if (data.page !== page) setPage(data.page);
+      } catch (cause) {
+        if ((cause as Error).name !== "AbortError") setError(cause instanceof Error ? cause.message : "Помилка завантаження");
       } finally {
         if (!controller.signal.aborted) setLoading(false);
       }
@@ -69,17 +78,50 @@ export function ClientsDirectory() {
       controller.abort();
       window.clearTimeout(timer);
     };
-  }, [query]);
+  }, [query, page]);
 
   useEffect(() => {
-    const syncFromRoute = () => {
-      const clientId = readCrmRoute().clientId;
-      setSelected(clientId ? clients.find((client) => client.id === clientId) ?? null : null);
-    };
+    const syncFromRoute = () => setSelectedId(readCrmRoute().clientId || null);
     syncFromRoute();
     window.addEventListener("popstate", syncFromRoute);
     return () => window.removeEventListener("popstate", syncFromRoute);
-  }, [clients]);
+  }, []);
+
+  useEffect(() => {
+    if (!selectedId) {
+      setSelected(null);
+      setSelectedLoading(false);
+      return;
+    }
+    const local = clients.find((client) => client.id === selectedId);
+    if (local) {
+      setSelected(local);
+      setSelectedLoading(false);
+      return;
+    }
+
+    const controller = new AbortController();
+    setSelected(null);
+    setSelectedLoading(true);
+    void (async () => {
+      try {
+        const response = await fetch(`/api/clients?id=${encodeURIComponent(selectedId)}`, { cache: "no-store", signal: controller.signal });
+        const data = await response.json() as ClientResponse;
+        if (!response.ok || !data.ok || !data.client) throw new Error(data.error || "Не вдалося відкрити клієнта");
+        setSelected(data.client);
+      } catch (cause) {
+        if ((cause as Error).name !== "AbortError") setError(cause instanceof Error ? cause.message : "Помилка картки клієнта");
+      } finally {
+        if (!controller.signal.aborted) setSelectedLoading(false);
+      }
+    })();
+    return () => controller.abort();
+  }, [selectedId, clients]);
+
+  function changeQuery(value: string) {
+    setQuery(value);
+    setPage(1);
+  }
 
   function openNewRequest() {
     window.dispatchEvent(new CustomEvent("turbolev:open-new-request", { detail: { source: "CLIENTS" } }));
@@ -106,12 +148,12 @@ export function ClientsDirectory() {
     <div className={styles.toolbar}>
       <label className={styles.search}>
         <span>⌕</span>
-        <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Пошук за ПІБ або телефоном..." />
-        {query && <button type="button" onClick={() => setQuery("")} aria-label="Очистити пошук">×</button>}
+        <input value={query} onChange={(event) => changeQuery(event.target.value)} placeholder="Пошук за ПІБ, телефоном, номером авто або VIN..." />
+        {query && <button type="button" onClick={() => changeQuery("")} aria-label="Очистити пошук">×</button>}
       </label>
     </div>
 
-    <div className={styles.summary}>Знайдено клієнтів: <b>{total}</b></div>
+    <div className={styles.summary}>Знайдено клієнтів: <b>{total}</b>{total > 0 && <span> · сторінка {page} з {pages}</span>}</div>
     {error && <div className={styles.error}>{error}</div>}
     {loading ? <div className={styles.state}>Завантажую клієнтів…</div> : !clients.length ? <div className={styles.state}>Нічого не знайдено.</div> : <div className={styles.grid}>
       {clients.map((client) => <button key={client.id} className={styles.card} onClick={() => openClient(client)}>
@@ -128,43 +170,51 @@ export function ClientsDirectory() {
       </button>)}
     </div>}
 
-    {selected && <div className={styles.backdrop} onMouseDown={(event) => { if (event.target === event.currentTarget) closeClient(); }}>
+    {!loading && total > PAGE_SIZE && <nav className={styles.pagination} aria-label="Сторінки клієнтів">
+      <button type="button" disabled={page <= 1} onClick={() => setPage((current) => Math.max(1, current - 1))}>← Назад</button>
+      <span>Сторінка <b>{page}</b> з <b>{pages}</b></span>
+      <button type="button" disabled={page >= pages} onClick={() => setPage((current) => Math.min(pages, current + 1))}>Далі →</button>
+    </nav>}
+
+    {selectedId && <div className={styles.backdrop} onMouseDown={(event) => { if (event.target === event.currentTarget) closeClient(); }}>
       <aside className={styles.drawer}>
-        <header className={styles.drawerHeader}>
-          <div className={styles.identity}>
-            <span className={styles.avatar}>{initials(selected.name)}</span>
-            <span className={styles.identityText}><small>КАРТКА КЛІЄНТА</small><strong>{displayName(selected)}</strong><span>{selected.phone}</span></span>
-          </div>
-          <button className={styles.close} onClick={closeClient}>×</button>
-        </header>
-        <div className={styles.drawerBody}>
-          <section className={styles.panel}>
-            <h3>Основні дані</h3>
-            <div className={styles.facts}>
-              <span><small>Телефон</small><b>{selected.phone}</b></span>
-              <span><small>Створено</small><b>{dateText(selected.createdAt)}</b></span>
-              <span><small>Остання активність</small><b>{dateText(selected.updatedAt)}</b></span>
-              <span><small>Останній візит</small><b>{lastVisit(selected)}</b></span>
+        {selectedLoading || !selected ? <div className={styles.state}>Завантажую картку клієнта…</div> : <>
+          <header className={styles.drawerHeader}>
+            <div className={styles.identity}>
+              <span className={styles.avatar}>{initials(selected.name)}</span>
+              <span className={styles.identityText}><small>КАРТКА КЛІЄНТА</small><strong>{displayName(selected)}</strong><span>{selected.phone}</span></span>
             </div>
-          </section>
-          <section className={styles.panel}>
-            <h3>Пов’язані автомобілі <span>{selected._count.vehicles}</span></h3>
-            {selected.vehicles.length ? <div className={styles.relatedList}>{selected.vehicles.map((vehicle) => <button key={vehicle.id} onClick={() => navigateCrm("Авто", { vehicleId: vehicle.id })}>
-              <strong>{[vehicle.brand, vehicle.model, vehicle.year].filter(Boolean).join(" ") || "Автомобіль"}</strong>
-              <small>{vehicle.plateNumber || vehicle.vin || "Без номера"}</small>
-              <span>›</span>
-            </button>)}</div> : <div className={styles.emptyInline}>Автомобілі ще не додані.</div>}
-          </section>
-          <section className={styles.panel}>
-            <h3>Замовлення-наряди <span>{selected._count.workOrders}</span></h3>
-            {selected.workOrders.length ? <div className={styles.relatedList}>{selected.workOrders.map((workOrder) => <button key={workOrder.id} onClick={() => navigateCrm("Замовлення-наряди", { workOrderId: workOrder.id })}>
-              <strong>{workOrder.status}</strong>
-              <small>{dateText(workOrder.closedAt || workOrder.updatedAt || workOrder.createdAt)}</small>
-              <span>›</span>
-            </button>)}</div> : <div className={styles.emptyInline}>Замовлень-нарядів ще немає.</div>}
-          </section>
-        </div>
-        <footer className={styles.drawerFooter}><button className={styles.primary} onClick={openNewRequest}>+ Нова заявка</button></footer>
+            <button className={styles.close} onClick={closeClient}>×</button>
+          </header>
+          <div className={styles.drawerBody}>
+            <section className={styles.panel}>
+              <h3>Основні дані</h3>
+              <div className={styles.facts}>
+                <span><small>Телефон</small><b>{selected.phone}</b></span>
+                <span><small>Створено</small><b>{dateText(selected.createdAt)}</b></span>
+                <span><small>Остання активність</small><b>{dateText(selected.updatedAt)}</b></span>
+                <span><small>Останній візит</small><b>{lastVisit(selected)}</b></span>
+              </div>
+            </section>
+            <section className={styles.panel}>
+              <h3>Пов’язані автомобілі <span>{selected._count.vehicles}</span></h3>
+              {selected.vehicles.length ? <div className={styles.relatedList}>{selected.vehicles.map((vehicle) => <button key={vehicle.id} onClick={() => navigateCrm("Авто", { vehicleId: vehicle.id })}>
+                <strong>{[vehicle.brand, vehicle.model, vehicle.year].filter(Boolean).join(" ") || "Автомобіль"}</strong>
+                <small>{vehicle.plateNumber || vehicle.vin || "Без номера"}</small>
+                <span>›</span>
+              </button>)}</div> : <div className={styles.emptyInline}>Автомобілі ще не додані.</div>}
+            </section>
+            <section className={styles.panel}>
+              <h3>Замовлення-наряди <span>{selected._count.workOrders}</span></h3>
+              {selected.workOrders.length ? <div className={styles.relatedList}>{selected.workOrders.map((workOrder) => <button key={workOrder.id} onClick={() => navigateCrm("Замовлення-наряди", { workOrderId: workOrder.id })}>
+                <strong>{workOrder.status}</strong>
+                <small>{dateText(workOrder.closedAt || workOrder.updatedAt || workOrder.createdAt)}</small>
+                <span>›</span>
+              </button>)}</div> : <div className={styles.emptyInline}>Замовлень-нарядів ще немає.</div>}
+            </section>
+          </div>
+          <footer className={styles.drawerFooter}><button className={styles.primary} onClick={openNewRequest}>+ Нова заявка</button></footer>
+        </>}
       </aside>
     </div>}
   </div>;
