@@ -36,7 +36,7 @@ try {
   assert.equal(config.rows[0].allowSelfRegistration, false);
 
   const roleCount = await client.query(`SELECT count(*)::int AS count FROM "AccessRole" WHERE "isActive"=true`);
-  assert.equal(roleCount.rows[0].count, 9);
+  assert.equal(roleCount.rows[0].count, 10);
 
   const permissionCount = await client.query(`SELECT count(*)::int AS count FROM "Permission"`);
   assert.equal(permissionCount.rows[0].count, 45);
@@ -45,18 +45,20 @@ try {
   assert.equal(users.rows[0].count, 0, "security migration must not create application users");
 
   const grants = await client.query(`
-    SELECT r.code AS role_code, p.code AS permission_code
+    SELECT r.code AS role_code, p.code AS permission_code, rp.scope
     FROM "AccessRolePermission" rp
     JOIN "AccessRole" r ON r.id=rp."roleId"
     JOIN "Permission" p ON p.id=rp."permissionId"
   `);
   const matrix = new Map<string, Set<string>>();
+  const scopes = new Map<string, string>();
   for (const row of grants.rows) {
     if (!matrix.has(row.role_code)) matrix.set(row.role_code, new Set());
     matrix.get(row.role_code)!.add(row.permission_code);
+    scopes.set(`${row.role_code}:${row.permission_code}`, row.scope);
   }
 
-  const roleCodes = ["OWNER","EXECUTIVE_DIRECTOR","HEAD_OF_SALES","SALES","PARTS_SPECIALIST","STATION_MANAGER","MECHANIC","ACCOUNTANT","ADMINISTRATOR"];
+  const roleCodes = ["OWNER","EXECUTIVE_DIRECTOR","HEAD_OF_SALES","SALES","PARTS_SPECIALIST","STATION_MANAGER","SERVICE_ADVISOR","MECHANIC","ACCOUNTANT","ADMINISTRATOR"];
   for (const role of roleCodes) {
     assert.ok(matrix.get(role)?.has("PAYROLL.SELF_READ"), `${role} must be able to read own salary`);
   }
@@ -66,19 +68,27 @@ try {
   assert.ok(matrix.get("EXECUTIVE_DIRECTOR")?.has("PAYROLL.ALL_READ"));
   assert.ok(!matrix.get("HEAD_OF_SALES")?.has("PAYROLL.ALL_READ"));
   assert.ok(!matrix.get("STATION_MANAGER")?.has("PAYROLL.ALL_READ"));
+  assert.ok(!matrix.get("SERVICE_ADVISOR")?.has("PAYROLL.ALL_READ"));
   assert.ok(!matrix.get("MECHANIC")?.has("PAYROLL.ALL_READ"));
   assert.ok(!matrix.get("SALES")?.has("PAYROLL.ALL_READ"));
 
   for (const role of ["OWNER", "EXECUTIVE_DIRECTOR", "ACCOUNTANT"]) {
     assert.ok(matrix.get(role)?.has("PERSONNEL.COMPENSATION_READ"), `${role} should have compensation visibility`);
   }
-  for (const role of ["HEAD_OF_SALES", "SALES", "PARTS_SPECIALIST", "STATION_MANAGER", "MECHANIC", "ADMINISTRATOR"]) {
+  for (const role of ["HEAD_OF_SALES", "SALES", "PARTS_SPECIALIST", "STATION_MANAGER", "SERVICE_ADVISOR", "MECHANIC", "ADMINISTRATOR"]) {
     assert.ok(!matrix.get(role)?.has("PERSONNEL.COMPENSATION_READ"), `${role} must not see other salaries`);
   }
 
+  assert.ok(matrix.get("MECHANIC")?.has("DIAGNOSTICS.WRITE"));
+  assert.equal(scopes.get("MECHANIC:DIAGNOSTICS.WRITE"), "ASSIGNED");
+  assert.ok(!matrix.get("MECHANIC")?.has("DIAGNOSTICS.CONFIRM"));
+  assert.ok(matrix.get("SERVICE_ADVISOR")?.has("DIAGNOSTICS.CONFIRM"));
+  assert.equal(scopes.get("SERVICE_ADVISOR:DIAGNOSTICS.CONFIRM"), "LOCATION");
+  assert.ok(!matrix.get("SERVICE_ADVISOR")?.has("FINANCE.READ"));
+
   assert.ok(matrix.get("OWNER")?.has("SECURITY.ACCESS_MANAGE"));
   assert.ok(matrix.get("EXECUTIVE_DIRECTOR")?.has("SECURITY.ACCESS_MANAGE"));
-  for (const role of ["HEAD_OF_SALES", "SALES", "PARTS_SPECIALIST", "STATION_MANAGER", "MECHANIC", "ACCOUNTANT", "ADMINISTRATOR"]) {
+  for (const role of ["HEAD_OF_SALES", "SALES", "PARTS_SPECIALIST", "STATION_MANAGER", "SERVICE_ADVISOR", "MECHANIC", "ACCOUNTANT", "ADMINISTRATOR"]) {
     assert.ok(!matrix.get(role)?.has("SECURITY.ACCESS_MANAGE"), `${role} must not administer access`);
   }
 
