@@ -45,22 +45,44 @@ export type DiagnosticReportSnapshot = {
   }>;
 };
 
+type ShareMetaSource = {
+  id: string;
+  diagnosticRequestId: string;
+  createdAt: Date;
+  expiresAt: Date | null;
+  revokedAt: Date | null;
+  requestedPricingAt: Date | null;
+};
+
 function hashToken(token: string) { return createHash("sha256").update(token).digest("hex"); }
-function firstName(value: string | null) {
+function clientFirstName(value: string | null) {
   if (!value) return null;
-  const parts = value.trim().split(/\s+/).filter(Boolean);
-  return parts.length > 1 ? parts[1] || parts[0] : parts[0] || null;
+  return value.trim().split(/\s+/).filter(Boolean)[0] || null;
 }
 function measurement(item: { measurementValue: string | null; measurementText: string | null; measurementUnit: string | null }) {
   if (item.measurementValue) return `${item.measurementValue}${item.measurementUnit ? ` ${item.measurementUnit}` : ""}`;
   return item.measurementText || null;
+}
+function reviewCanBeShared(state: DiagnosticReviewState) {
+  return state === DiagnosticReviewState.SUBMITTED || state === DiagnosticReviewState.CONFIRMED;
+}
+function publicMeta(share: ShareMetaSource, contextualActive = true) {
+  return {
+    id: share.id,
+    diagnosticRequestId: share.diagnosticRequestId,
+    createdAt: share.createdAt,
+    expiresAt: share.expiresAt,
+    revokedAt: share.revokedAt,
+    requestedPricingAt: share.requestedPricingAt,
+    active: contextualActive && !share.revokedAt && (!share.expiresAt || share.expiresAt.getTime() > Date.now()),
+  };
 }
 
 export async function buildDiagnosticReportSnapshot(diagnosticRequestId: string): Promise<DiagnosticReportSnapshot> {
   const prisma = getPrisma();
   const view = await getStructuredDiagnostic(diagnosticRequestId);
   const reviewState = view.diagnostic.review.state;
-  if (reviewState !== DiagnosticReviewState.SUBMITTED && reviewState !== DiagnosticReviewState.CONFIRMED) {
+  if (!reviewCanBeShared(reviewState)) {
     throw new DiagnosticReportError("REPORT_NOT_READY", "Клієнтський звіт можна створити після передачі діагностики сервіс-менеджеру.", 409);
   }
   const mechanicId = view.diagnostic.assignment?.mechanicId || null;
@@ -74,7 +96,7 @@ export async function buildDiagnosticReportSnapshot(diagnosticRequestId: string)
     diagnosticRequestId,
     generatedAt: new Date().toISOString(),
     vehicle: { label: view.diagnostic.vehicle.label, plateNumber: view.diagnostic.vehicle.plateNumber, mileageKm: view.diagnostic.vehicle.mileageKm },
-    client: { name: firstName(view.diagnostic.client.name) },
+    client: { name: clientFirstName(view.diagnostic.client.name) },
     problem: view.diagnostic.problem,
     technicalConclusion: view.diagnostic.technicalConclusion,
     mechanicComment: view.diagnostic.review.mechanicComment,
@@ -114,35 +136,91 @@ export async function createDiagnosticReportShare(diagnosticRequestId: string, c
   const now = new Date();
   const share = await prisma.$transaction(async (tx) => {
     await tx.diagnosticReportShare.updateMany({ where: { diagnosticRequestId, revokedAt: null }, data: { revokedAt: now } });
-    return tx.diagnosticReportShare.create({ data: { diagnosticRequestId, tokenHash, snapshot: toPrismaJson(snapshot), expiresAt, createdByUserId } });
+    const created = await tx.diagnosticReportShare.create({ data: { diagnosticRequestId, tokenHash, snapshot: toPrismaJson(snapshot), expiresAt, createdByUserId } });
+    await tx.auditEvent.create({
+      data: {
+        actorName: "CRM / Сервіс-менеджер",
+        entityType: "DiagnosticRequest",
+        entityId: diagnosticRequestId,
+        action: "DIAGNOSTIC_REPORT_LINK_CREATED",
+        metadata: toPrismaJson({ shareId: created.id, expiresAt: created.expiresAt?.toISOString() || null, createdByUserId }),
+      },
+    });
+    return created;
   });
   return { share: publicMeta(share), token, path: `/r/${token}` };
 }
 
 export async function latestDiagnosticReportShare(diagnosticRequestId: string) {
-  const share = await getPrisma().diagnosticReportShare.findFirst({ where: { diagnosticRequestId }, orderBy: { createdAt: "desc" } });
-  return share ? publicMeta(share) : null;
+  const prisma = getPrisma();
+  const [share, review] = await Promise.all([
+    prisma.diagnosticReportShare.findFirst({ where: { diagnosticRequestId }, orderBy: { createdAt: "desc" } }),
+    prisma.diagnosticReview.findUnique({ where: { diagnosticRequestId }, select: { state: true, submittedAt: true } }),
+  ]);
+  if (!share) return null;
+  const currentRevision = Boolean(
+    review &&
+    reviewCanBeShared(review.state) &&
+    (!review.submittedAt || share.createdAt.getTime() >= review.submittedAt.getTime()),
+  );
+  return publicMeta(share, currentRevision);
 }
 
 export async function revokeDiagnosticReportShare(diagnosticRequestId: string, shareId?: string | null) {
   const prisma = getPrisma();
   const share = shareId ? await prisma.diagnosticReportShare.findFirst({ where: { id: shareId, diagnosticRequestId } }) : await prisma.diagnosticReportShare.findFirst({ where: { diagnosticRequestId, revokedAt: null }, orderBy: { createdAt: "desc" } });
   if (!share) throw new DiagnosticReportError("REPORT_SHARE_NOT_FOUND", "Активне посилання не знайдено.", 404);
-  const updated = await prisma.diagnosticReportShare.update({ where: { id: share.id }, data: { revokedAt: new Date() } });
-  return publicMeta(updated);
+  const updated = await prisma.$transaction(async (tx) => {
+    const row = await tx.diagnosticReportShare.update({ where: { id: share.id }, data: { revokedAt: new Date() } });
+    await tx.auditEvent.create({
+      data: {
+        actorName: "CRM / Сервіс-менеджер",
+        entityType: "DiagnosticRequest",
+        entityId: diagnosticRequestId,
+        action: "DIAGNOSTIC_REPORT_LINK_REVOKED",
+        metadata: toPrismaJson({ shareId: share.id }),
+      },
+    });
+    return row;
+  });
+  return publicMeta(updated, false);
 }
 
 export async function getDiagnosticReportByToken(token: string) {
   if (!token || token.length < 20) throw new DiagnosticReportError("INVALID_REPORT_TOKEN", "Некоректне посилання на звіт.", 404);
-  const share = await getPrisma().diagnosticReportShare.findUnique({ where: { tokenHash: hashToken(token) } });
-  if (!share || share.revokedAt || (share.expiresAt && share.expiresAt.getTime() <= Date.now())) throw new DiagnosticReportError("REPORT_LINK_EXPIRED", "Це посилання недійсне або строк його дії завершився.", 404);
+  const prisma = getPrisma();
+  const share = await prisma.diagnosticReportShare.findUnique({ where: { tokenHash: hashToken(token) } });
+  if (!share || share.revokedAt || (share.expiresAt && share.expiresAt.getTime() <= Date.now())) {
+    throw new DiagnosticReportError("REPORT_LINK_EXPIRED", "Це посилання недійсне або строк його дії завершився.", 404);
+  }
+  const review = await prisma.diagnosticReview.findUnique({
+    where: { diagnosticRequestId: share.diagnosticRequestId },
+    select: { state: true, submittedAt: true },
+  });
+  if (!review || !reviewCanBeShared(review.state) || (review.submittedAt && share.createdAt.getTime() < review.submittedAt.getTime())) {
+    throw new DiagnosticReportError("REPORT_REVISION_OUTDATED", "Звіт оновлюється. Запросіть у сервіс-менеджера нове посилання після повторного погодження діагностики.", 404);
+  }
   return { id: share.id, diagnosticRequestId: share.diagnosticRequestId, snapshot: share.snapshot as unknown as DiagnosticReportSnapshot, requestedPricingAt: share.requestedPricingAt, expiresAt: share.expiresAt };
 }
 
 export async function requestDiagnosticPricing(token: string) {
   const active = await getDiagnosticReportByToken(token);
+  const prisma = getPrisma();
   const at = active.requestedPricingAt || new Date();
-  if (!active.requestedPricingAt) await getPrisma().diagnosticReportShare.update({ where: { id: active.id }, data: { requestedPricingAt: at } });
+  if (!active.requestedPricingAt) {
+    await prisma.$transaction(async (tx) => {
+      await tx.diagnosticReportShare.update({ where: { id: active.id }, data: { requestedPricingAt: at } });
+      await tx.auditEvent.create({
+        data: {
+          actorName: "Клієнт / public link",
+          entityType: "DiagnosticRequest",
+          entityId: active.diagnosticRequestId,
+          action: "DIAGNOSTIC_PRICING_REQUESTED_PUBLIC",
+          metadata: toPrismaJson({ shareId: active.id, source: "PUBLIC_LINK" }),
+        },
+      });
+    });
+  }
   return { ...active, requestedPricingAt: at };
 }
 
@@ -153,8 +231,4 @@ export async function getSharedDiagnosticMedia(token: string, mediaId: string) {
   const media = await getPrisma().diagnosticMedia.findUnique({ where: { id: mediaId } });
   if (!media) throw new DiagnosticReportError("REPORT_MEDIA_NOT_FOUND", "Фото не знайдено.", 404);
   return media;
-}
-
-function publicMeta(share: { id: string; diagnosticRequestId: string; createdAt: Date; expiresAt: Date | null; revokedAt: Date | null; requestedPricingAt: Date | null }) {
-  return { id: share.id, diagnosticRequestId: share.diagnosticRequestId, createdAt: share.createdAt, expiresAt: share.expiresAt, revokedAt: share.revokedAt, requestedPricingAt: share.requestedPricingAt, active: !share.revokedAt && (!share.expiresAt || share.expiresAt.getTime() > Date.now()) };
 }
