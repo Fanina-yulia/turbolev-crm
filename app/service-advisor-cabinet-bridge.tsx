@@ -85,7 +85,7 @@ function Dashboard({ data }: { data: Data }) {
     setActionMessage("");
     setActionError("");
     try {
-      const response = await fetch(`/api/cabinet/service-advisor/findings/${encodeURIComponent(finding.id)}`, {
+      const response = await fetch(`/api/work-orders/${encodeURIComponent(finding.workOrderId)}/estimate/finding/${encodeURIComponent(finding.id)}`, {
         method: "PATCH",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
