@@ -136,17 +136,33 @@ export async function optimizeVehicleImageAsset(assetId: string) {
 }
 
 export async function generateVehicleImageInBackground(vehicleId: string, options?: BackgroundOptions) {
+  const initialState = await getVehicleImageLibraryState(vehicleId, options?.themePaint);
+  if (initialState.state === "READY" && initialState.assetId && !options?.force) {
+    const optimization = await optimizeVehicleImageAsset(initialState.assetId);
+    return { state: "READY" as const, assetId: initialState.assetId, libraryKey: initialState.libraryKey, optimization };
+  }
+  if (!initialState.libraryKey) {
+    return {
+      state: initialState.state,
+      assetId: initialState.assetId,
+      libraryKey: initialState.libraryKey,
+      error: initialState.error,
+    };
+  }
+
   const pool = getSqlPool();
   const client = await pool.connect();
-  const lockName = `vehicle-image:${vehicleId}:${options?.themePaint || "default"}`;
+  const lockName = `vehicle-image-library:${initialState.libraryKey}`;
+  let locked = false;
 
   try {
     const lockResult = await client.query<{ locked: boolean }>(
       "SELECT pg_try_advisory_lock(hashtext($1)) AS locked",
       [lockName],
     );
+    locked = Boolean(lockResult.rows[0]?.locked);
 
-    if (!lockResult.rows[0]?.locked) {
+    if (!locked) {
       const state = await getVehicleImageLibraryState(vehicleId, options?.themePaint);
       return {
         state: "GENERATING" as const,
@@ -154,6 +170,12 @@ export async function generateVehicleImageInBackground(vehicleId: string, option
         libraryKey: state.libraryKey,
         deduplicated: true,
       };
+    }
+
+    const rechecked = await getVehicleImageLibraryState(vehicleId, options?.themePaint);
+    if (rechecked.state === "READY" && rechecked.assetId && !options?.force) {
+      const optimization = await optimizeVehicleImageAsset(rechecked.assetId);
+      return { state: "READY" as const, assetId: rechecked.assetId, libraryKey: rechecked.libraryKey, optimization, reused: true };
     }
 
     const generation = await generateVehicleImageForVehicle(vehicleId, {
@@ -166,7 +188,7 @@ export async function generateVehicleImageInBackground(vehicleId: string, option
     const optimization = await optimizeVehicleImageAsset(generation.assetId);
     return { ...generation, optimization };
   } finally {
-    await client.query("SELECT pg_advisory_unlock(hashtext($1))", [lockName]).catch(() => undefined);
+    if (locked) await client.query("SELECT pg_advisory_unlock(hashtext($1))", [lockName]).catch(() => undefined);
     client.release();
   }
 }
