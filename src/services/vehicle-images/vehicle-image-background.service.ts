@@ -47,6 +47,19 @@ async function loadAsset(assetId: string): Promise<ImageRow | null> {
   return result.rowCount ? result.rows[0] as ImageRow : null;
 }
 
+async function rejectOverweightAsset(assetId: string, message: string) {
+  await getSqlPool().query(
+    `UPDATE public."VehicleImageLibraryAsset"
+        SET "status"='ERROR',
+            "imageData"=NULL,
+            "imageSizeBytes"=NULL,
+            "lastError"=$2,
+            "updatedAt"=CURRENT_TIMESTAMP
+      WHERE "id"=$1`,
+    [assetId, message.slice(0, 4000)],
+  ).catch(() => undefined);
+}
+
 export async function optimizeVehicleImageAsset(assetId: string) {
   const asset = await loadAsset(assetId);
   if (!asset || asset.status !== "READY" || !asset.imageData?.length) {
@@ -58,58 +71,65 @@ export async function optimizeVehicleImageAsset(assetId: string) {
     return { optimized: false, sizeBytes: source.length, reason: "ALREADY_WITHIN_LIMIT" as const };
   }
 
-  const sourceMetadata = await sharp(source, { failOn: "none" }).metadata();
-  if (!sourceMetadata.hasAlpha) {
-    throw new Error("Зображення автомобіля не має прозорого alpha-каналу і не може бути збережене в бібліотеку CRM.");
-  }
-
-  let smallest: Buffer | null = null;
-  for (const profile of OPTIMIZATION_PROFILES) {
-    const output = await sharp(source, { failOn: "none" })
-      .rotate()
-      .resize({
-        width: profile.width,
-        height: Math.round(profile.width * 0.75),
-        fit: "inside",
-        withoutEnlargement: true,
-      })
-      .webp({
-        quality: profile.quality,
-        alphaQuality: profile.alphaQuality,
-        effort: 6,
-        smartSubsample: true,
-      })
-      .toBuffer();
-
-    if (!smallest || output.length < smallest.length) smallest = output;
-    if (output.length > TARGET_IMAGE_BYTES) continue;
-
-    const finalMetadata = await sharp(output, { failOn: "none" }).metadata();
-    if (!finalMetadata.hasAlpha || !isWebp(output)) {
-      throw new Error("Оптимізований файл втратив прозорість або формат WebP.");
+  try {
+    const sourceMetadata = await sharp(source, { failOn: "none" }).metadata();
+    if (!sourceMetadata.hasAlpha) {
+      throw new Error("Зображення автомобіля не має прозорого alpha-каналу і не може бути збережене в бібліотеку CRM.");
     }
 
-    await getSqlPool().query(
-      `UPDATE public."VehicleImageLibraryAsset"
-          SET "imageMimeType"='image/webp',
-              "imageData"=$2,
-              "imageSizeBytes"=$3,
-              "updatedAt"=CURRENT_TIMESTAMP
-        WHERE "id"=$1`,
-      [assetId, output, output.length],
-    );
+    let smallest: Buffer | null = null;
+    for (const profile of OPTIMIZATION_PROFILES) {
+      const output = await sharp(source, { failOn: "none" })
+        .rotate()
+        .resize({
+          width: profile.width,
+          height: Math.round(profile.width * 0.75),
+          fit: "inside",
+          withoutEnlargement: true,
+        })
+        .webp({
+          quality: profile.quality,
+          alphaQuality: profile.alphaQuality,
+          effort: 6,
+          smartSubsample: true,
+        })
+        .toBuffer();
 
-    return {
-      optimized: true,
-      sizeBytes: output.length,
-      width: finalMetadata.width ?? null,
-      height: finalMetadata.height ?? null,
-      targetBytes: TARGET_IMAGE_BYTES,
-    };
+      if (!smallest || output.length < smallest.length) smallest = output;
+      if (output.length > TARGET_IMAGE_BYTES) continue;
+
+      const finalMetadata = await sharp(output, { failOn: "none" }).metadata();
+      if (!finalMetadata.hasAlpha || !isWebp(output)) {
+        throw new Error("Оптимізований файл втратив прозорість або формат WebP.");
+      }
+
+      await getSqlPool().query(
+        `UPDATE public."VehicleImageLibraryAsset"
+            SET "imageMimeType"='image/webp',
+                "imageData"=$2,
+                "imageSizeBytes"=$3,
+                "lastError"=NULL,
+                "updatedAt"=CURRENT_TIMESTAMP
+          WHERE "id"=$1`,
+        [assetId, output, output.length],
+      );
+
+      return {
+        optimized: true,
+        sizeBytes: output.length,
+        width: finalMetadata.width ?? null,
+        height: finalMetadata.height ?? null,
+        targetBytes: TARGET_IMAGE_BYTES,
+      };
+    }
+
+    const smallestKb = smallest ? Math.ceil(smallest.length / 1024) : null;
+    throw new Error(`Не вдалося стиснути зображення до 100 КБ${smallestKb ? `; мінімальний результат ${smallestKb} КБ` : ""}.`);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Не вдалося оптимізувати зображення автомобіля до 100 КБ.";
+    await rejectOverweightAsset(assetId, message);
+    throw error;
   }
-
-  const smallestKb = smallest ? Math.ceil(smallest.length / 1024) : null;
-  throw new Error(`Не вдалося стиснути зображення до 100 КБ${smallestKb ? `; мінімальний результат ${smallestKb} КБ` : ""}.`);
 }
 
 export async function generateVehicleImageInBackground(vehicleId: string, options?: BackgroundOptions) {
