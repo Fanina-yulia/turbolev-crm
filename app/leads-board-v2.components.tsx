@@ -1,5 +1,6 @@
 "use client";
 
+import { AvailabilityPicker } from "./availability-picker";
 import {
   carLabel,
   isLeadStatus,
@@ -116,51 +117,52 @@ export function LeadBookingModal({ booking, bookingLocation, locations, saving, 
   onClose: () => void;
   onSave: () => Promise<void>;
 }) {
+  function resetSelection(next: Partial<BookingState>) {
+    onChange({ ...booking, ...next, time: "", postId: "", mechanicId: "" });
+  }
+
   return <div className="leadModalBackdrop" onMouseDown={onClose}>
     <section className="leadModal" onMouseDown={(event) => event.stopPropagation()}>
       <header>
         <div>
           <p className="eyebrow">АКТИВНЕ ЗВЕРНЕННЯ → ПЛАНУВАЛЬНИК</p>
           <h2>Записати {booking.lead.name || "клієнта"}</h2>
+          {bookingLocation && <span>{bookingLocation.name} · оберіть реальне вільне місце</span>}
         </div>
         <button type="button" aria-label="Закрити" onClick={onClose}>×</button>
       </header>
       <div className="leadFormGrid">
-        <label><span>Дата</span><input type="date" value={booking.date} onChange={(event) => onChange({ ...booking, date: event.target.value })} /></label>
-        <label><span>Час</span><input type="time" step="1800" value={booking.time} onChange={(event) => onChange({ ...booking, time: event.target.value })} /></label>
+        <label><span>Дата</span><input type="date" value={booking.date} onChange={(event) => resetSelection({ date: event.target.value })} /></label>
         <label>
           <span>Локація</span>
-          <select value={booking.locationId} onChange={(event) => onChange({ ...booking, locationId: event.target.value, postId: "", mechanicId: "" })}>
+          <select value={booking.locationId} onChange={(event) => resetSelection({ locationId: event.target.value })}>
             {locations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}
           </select>
         </label>
         <label>
           <span>Тривалість</span>
-          <select value={booking.duration} onChange={(event) => onChange({ ...booking, duration: event.target.value })}>
+          <select value={booking.duration} onChange={(event) => resetSelection({ duration: event.target.value })}>
             {[30, 60, 90, 120, 180, 240].map((minutes) => <option key={minutes} value={minutes}>{minutes < 60 ? `${minutes} хв` : `${minutes / 60} год`}</option>)}
           </select>
         </label>
-        <label>
-          <span>Пост</span>
-          <select value={booking.postId} onChange={(event) => onChange({ ...booking, postId: event.target.value })}>
-            <option value="">Черга / без поста</option>
-            {bookingLocation?.posts.map((post) => <option key={post.id} value={post.id}>{post.name}</option>)}
-          </select>
-        </label>
-        <label>
-          <span>Механік</span>
-          <select value={booking.mechanicId} onChange={(event) => onChange({ ...booking, mechanicId: event.target.value })}>
-            <option value="">Не призначено</option>
-            {bookingLocation?.mechanics.map((mechanic) => <option key={mechanic.id} value={mechanic.id}>{mechanic.name}</option>)}
-          </select>
-        </label>
       </div>
+
+      <AvailabilityPicker
+        date={booking.date}
+        locationId={booking.locationId}
+        durationMinutes={Number(booking.duration) || 60}
+        selectedTime={booking.time}
+        selectedPostId={booking.postId}
+        selectedMechanicId={booking.mechanicId}
+        onChange={(selection) => onChange({ ...booking, time: selection.time, postId: selection.postId, mechanicId: selection.mechanicId })}
+      />
+
       <footer>
         <button type="button" className="secondary" onClick={onClose}>Скасувати</button>
         <button
           type="button"
           className="primary"
-          disabled={saving || !booking.locationId || !booking.date || !booking.time}
+          disabled={saving || !booking.locationId || !booking.date || !booking.time || !booking.postId || !booking.mechanicId}
           onClick={() => void onSave()}
         >
           {saving ? "Записую…" : "Записати в планувальник"}
