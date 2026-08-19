@@ -2,7 +2,8 @@ export const CRM_NAV = [
   { label: "Огляд станції", slug: "overview" },
   { label: "Комунікації", slug: "communications" },
   { label: "Ліди", slug: "leads" },
-  { label: "Клієнти та авто", slug: "clients" },
+  { label: "Клієнти", slug: "clients" },
+  { label: "Авто", slug: "vehicles" },
   { label: "Планувальник", slug: "planner" },
   { label: "Діагностика", slug: "diagnostics" },
   { label: "Замовлення-наряди", slug: "work-orders" },
@@ -33,7 +34,7 @@ function navItems(...slugs: CrmSectionSlug[]): CrmNavItem[] {
 
 export const CRM_NAV_GROUPS: readonly CrmNavGroup[] = [
   { label: "Головне", items: navItems("overview") },
-  { label: "Клієнти", items: navItems("communications", "leads", "clients") },
+  { label: "Клієнти", items: navItems("communications", "leads", "clients", "vehicles") },
   { label: "Сервіс", items: navItems("planner", "diagnostics", "work-orders") },
   { label: "Ремонт", items: navItems("production", "quality", "warranties") },
   { label: "Запчастини", items: navItems("parts", "procurement") },
