@@ -99,6 +99,10 @@ const RULES: Rule[] = [
     resolve: () => internal(PERMISSIONS.PAYROLL_SELF_READ, "SELF", "Authenticated employee can read only own salary projection.", true),
   },
   {
+    match: exact("/api/me/ui-preferences"),
+    resolve: () => internal(PERMISSIONS.OVERVIEW_READ, "SELF", "Authenticated employee can read and update only own accessibility/readability preferences.", true),
+  },
+  {
     match: exact("/api/cabinet/home"),
     resolve: () => internal(PERMISSIONS.OVERVIEW_READ, "LOCATION", "Authenticated role-specific cabinet. Response is narrowed server-side to assigned mechanic work or the manager's station and excludes global finance.", true),
   },
@@ -182,7 +186,7 @@ const RULES: Rule[] = [
   },
   {
     match: prefix("/api/diagnostics"),
-    resolve: (method) => readWrite(method, PERMISSIONS.DIAGNOSTICS_READ, PERMISSIONS.DIAGNOSTICS_WRITE, "LOCATION", "Diagnostic requests and conclusions."),
+    resolve: (method) => readWrite(method, PERMISSIONS.DIAGNOSTICS_READ, PERMISSIONS.DIAGNOSTICS_WRITE, "LOCATION", "Diagnostic requests, structured checks, media and conclusions; route handlers apply ASSIGNED/LOCATION narrowing and separate confirmation permission."),
   },
   {
     match: prefix("/api/planner"),

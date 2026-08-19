@@ -162,6 +162,26 @@ export async function arrivePlannerAppointment(id: string, body: Record<string, 
       };
     }
 
+    if (diagnosticRequestId) {
+      await tx.diagnosticAssignment.upsert({
+        where: { diagnosticRequestId },
+        create: {
+          diagnosticRequestId,
+          locationId: input.locationId,
+          mechanicId: input.mechanicId,
+        },
+        update: {
+          locationId: input.locationId,
+          mechanicId: input.mechanicId,
+        },
+      });
+      await tx.diagnosticReview.upsert({
+        where: { diagnosticRequestId },
+        create: { diagnosticRequestId },
+        update: {},
+      });
+    }
+
     const before = fresh;
     const appointment = await tx.serviceAppointment.update({
       where: { id },
@@ -193,6 +213,8 @@ export async function arrivePlannerAppointment(id: string, body: Record<string, 
             diagnosticRequestId,
             leadUpdated,
             reusedDiagnostic,
+            diagnosticLocationId: input.locationId,
+            diagnosticMechanicId: input.mechanicId,
             vehicleLocation: "RECEPTION",
             hardGate: "WORK_ORDER_AFTER_CONFIRMED_DIAGNOSTICS",
           }),
