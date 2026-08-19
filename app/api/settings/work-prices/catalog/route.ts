@@ -126,7 +126,7 @@ export async function PATCH(request: NextRequest) {
     if (wantsActive) {
       if (nextStatus !== ServiceCatalogReviewStatus.READY) return NextResponse.json({ ok: false, error: "Активувати можна лише позицію зі статусом READY." }, { status: 409 });
       if (!nextCategoryId) return NextResponse.json({ ok: false, error: "Перед активацією вкажіть категорію." }, { status: 409 });
-      if (![ServiceCatalogItemType.INFORMATION, ServiceCatalogItemType.CHECKLIST].includes(nextType) && nextPrice == null) return NextResponse.json({ ok: false, error: "Перед активацією вкажіть базову ціну." }, { status: 409 });
+      if (nextType !== ServiceCatalogItemType.INFORMATION && nextType !== ServiceCatalogItemType.CHECKLIST && nextPrice == null) return NextResponse.json({ ok: false, error: "Перед активацією вкажіть базову ціну." }, { status: 409 });
     }
 
     const data = {
