@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { DiagnosticReportSharePanel } from "./diagnostic-report-share-panel";
 import styles from "./structured-diagnostic-review-panel.module.css";
 
 type Media = { id: string; fileName: string };
@@ -95,6 +96,8 @@ export function StructuredDiagnosticReviewPanel({ diagnosticId, onChanged }: { d
     {findings.length > 0 && <div className={styles.findingIndex}><h4>Рекомендації до кошторису</h4>{findings.map(({ section, item }) => <div key={`index-${item.id || item.templateItemId}`}><span className={item.state === "DEFECT" ? styles.red : styles.orange}>{item.state === "DEFECT" ? "×" : "!"}</span><div><strong>{item.name}</strong><small>{section} · {item.finding?.findingText || item.note || "Без опису"}</small></div><div>{item.finding?.suggestedWorkName && <em>🔧 {item.finding.suggestedWorkName}</em>}{item.finding?.suggestedPartName && <em>▣ {item.finding.suggestedPartName}</em>}</div></div>)}</div>}
 
     {view.diagnostic.review.mechanicComment && <div className={styles.comment}><span>Коментар механіка</span><p>{view.diagnostic.review.mechanicComment}</p></div>}
+
+    <DiagnosticReportSharePanel diagnosticId={diagnosticId} reviewState={view.diagnostic.review.state} workOrder={view.diagnostic.workOrder} />
 
     {view.diagnostic.review.state === "SUBMITTED" && view.diagnostic.status === "IN_PROGRESS" && <div className={styles.decision}><label><span>Коментар сервіс-менеджера</span><textarea rows={3} value={managerComment} onChange={(event) => setManagerComment(event.target.value)} placeholder="Причина повернення або внутрішня примітка…" /></label><div><button className={styles.returnButton} type="button" disabled={busy} onClick={() => void returnToMechanic()}>← Повернути механіку</button><button className={styles.confirmButton} type="button" disabled={busy} onClick={() => void confirmDiagnostic()}>{busy ? "Обробляю…" : "Підтвердити та створити WorkOrder"}</button></div></div>}
     {view.diagnostic.review.state === "RETURNED" && <div className={styles.lock}>Очікуємо уточнення від автомеханіка. Після повторної передачі знову з’являться кнопки рішення.</div>}
