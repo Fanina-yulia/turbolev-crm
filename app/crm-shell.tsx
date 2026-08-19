@@ -4,6 +4,7 @@ import dynamic from "next/dynamic";
 import { useCallback, useEffect, useState } from "react";
 import { NewRequestLauncher } from "./new-request-launcher";
 import { SettingsPersonnelBridge } from "./settings-personnel-bridge";
+import { isSettingsTab, type SettingsTab } from "./settings-tabs";
 import { useCrmAccess } from "./use-crm-access";
 import { CRM_NAV_GROUPS, isCrmSection, resolveCrmSection, sectionFromSlug, slugFromSection, type CrmSectionLabel } from "./crm-navigation";
 import { CRM_ROUTE_KEYS, navigateCrm, type CrmRouteParams } from "./crm-route";
@@ -12,7 +13,6 @@ import { turboLevLogoDark, turboLevLogoLight } from "@/src/brand/logos";
 import shellStyles from "./crm-shell.module.css";
 
 type NavigateDetail = string | { section: CrmSectionLabel; filter?: string; filterLabel?: string };
-type SettingsTab = "schedule"|"personnel"|"suppliers"|"warehouse"|"workPrices"|"posts"|"markup"|"cash"|"integrations"|"cameras"|"appearance"|"workflow"|"security";
 type LegacyRoute = { section: CrmSectionLabel; params: CrmRouteParams };
 
 function SectionLoading() {
@@ -52,6 +52,7 @@ const SETTINGS_SUBMENU:Array<{id:SettingsTab;label:string}>=[
   {id:"cash",label:"Каса"},
   {id:"integrations",label:"Інтеграції"},
   {id:"cameras",label:"Камери"},
+  {id:"diagnosticTemplates",label:"Шаблони діагностики"},
   {id:"appearance",label:"Оформлення"},
   {id:"workflow",label:"Процеси та статуси"},
   {id:"security",label:"Ролі та доступи"},
@@ -141,7 +142,7 @@ function legacyRoute(section:CrmSectionLabel,filter:string):LegacyRoute|null{
 
 export function CrmShell({ initialSection, initialSettingsTab }: { initialSection?: string; initialSettingsTab?: string }) {
   const initialActive=sectionFromSlug(initialSection);
-  const initialTab=(SETTINGS_SUBMENU.some(item=>item.id===initialSettingsTab)?initialSettingsTab:"schedule") as SettingsTab;
+  const initialTab=isSettingsTab(initialSettingsTab)?initialSettingsTab:"schedule";
   const [active, setActive] = useState<CrmSectionLabel>(initialActive);
   const [workflowFilter, setWorkflowFilter] = useState("");
   const [workflowFilterLabel, setWorkflowFilterLabel] = useState("");
@@ -168,7 +169,6 @@ export function CrmShell({ initialSection, initialSettingsTab }: { initialSectio
     const url=new URL(window.location.href);url.searchParams.set("section","settings");url.searchParams.set("settingsTab",tab);url.searchParams.delete("filter");url.searchParams.delete("filterLabel");clearTypedRouteParams(url);
     const nextUrl=`${url.pathname}${url.search}${url.hash}`;
     if(historyMode==="replace")window.history.replaceState({},"",nextUrl);else window.history.pushState({},"",nextUrl);
-    window.dispatchEvent(new CustomEvent("turbolev:settings-tab",{detail:tab}));
   },[]);
 
   useEffect(() => {
@@ -176,7 +176,7 @@ export function CrmShell({ initialSection, initialSettingsTab }: { initialSectio
       const url = new URL(window.location.href);
       const next=sectionFromSlug(url.searchParams.get("section"));
       setActive(next);setOpenGroup(groupForSection(next));setWorkflowFilter(url.searchParams.get("filter") || "");setWorkflowFilterLabel(url.searchParams.get("filterLabel") || "");setMobileNavOpen(false);
-      const tab=url.searchParams.get("settingsTab") as SettingsTab|null;setSettingsTab(tab&&SETTINGS_SUBMENU.some(item=>item.id===tab)?tab:"schedule");
+      const tab=url.searchParams.get("settingsTab");setSettingsTab(isSettingsTab(tab)?tab:"schedule");
     };
     const navigate = (event: Event) => {
       const detail = (event as CustomEvent<NavigateDetail>).detail;
@@ -259,6 +259,6 @@ export function CrmShell({ initialSection, initialSettingsTab }: { initialSectio
       <div className="sidebarFoot"><span className="liveDot"/> {access.enforced?(access.snapshot?.user?.name||"Захищений режим"):"Станція онлайн"}</div>
     </aside>
     <div className={active==="Огляд станції"?shellStyles.globalNewRequest:undefined}><NewRequestLauncher showButton={active==="Огляд станції"&&canCreateRequest}/></div>
-    <section className={`workspace ${active==="Огляд станції"?shellStyles.workspaceWithFloatingAction:""}`}>{!activeAllowed?accessDenied:<>{active!=="Огляд станції"&&active!=="Налаштування"&&filterBanner}{active==="Комунікації"?<CommunicationsHub/>:active==="Ліди"?<LeadsBoardV2/>:active==="Клієнти"?<ClientsDirectory/>:active==="Авто"?<VehiclesDirectory/>:active==="Планувальник"?<PlannerV2/>:active==="Діагностика"?<Diagnostics/>:active==="Замовлення-наряди"?<WorkOrders/>:active==="Виробництво"?<ProductionBoard/>:active==="Контроль якості"?<QcQueue/>:active==="Підбір запчастин"?<PartsCatalog/>:active==="Закупівлі та склад"?<ProcurementQueue/>:active==="Фінансовий центр"?<FinancialCenter/>:active==="Оплати"?<PaymentsQueue/>:active==="Налаштування"?<SettingsPage key={settingsTab}/>:active==="Огляд станції"?<RoleAwareOverview access={access.snapshot}/>:<div className="comingSoon"><p className="eyebrow">TURBO LEV CRM</p><h1>{active}</h1><p>Розділ тимчасово недоступний.</p></div>}</>}</section>
+    <section className={`workspace ${active==="Огляд станції"?shellStyles.workspaceWithFloatingAction:""}`}>{!activeAllowed?accessDenied:<>{active!=="Огляд станції"&&active!=="Налаштування"&&filterBanner}{active==="Комунікації"?<CommunicationsHub/>:active==="Ліди"?<LeadsBoardV2/>:active==="Клієнти"?<ClientsDirectory/>:active==="Авто"?<VehiclesDirectory/>:active==="Планувальник"?<PlannerV2/>:active==="Діагностика"?<Diagnostics/>:active==="Замовлення-наряди"?<WorkOrders/>:active==="Виробництво"?<ProductionBoard/>:active==="Контроль якості"?<QcQueue/>:active==="Підбір запчастин"?<PartsCatalog/>:active==="Закупівлі та склад"?<ProcurementQueue/>:active==="Фінансовий центр"?<FinancialCenter/>:active==="Оплати"?<PaymentsQueue/>:active==="Налаштування"?<SettingsPage tab={settingsTab}/>:active==="Огляд станції"?<RoleAwareOverview access={access.snapshot}/>:<div className="comingSoon"><p className="eyebrow">TURBO LEV CRM</p><h1>{active}</h1><p>Розділ тимчасово недоступний.</p></div>}</>}</section>
   </main>;
 }
