@@ -16,6 +16,15 @@ type DeliveryInquiryRow = QueryResultRow & {
   metadata: unknown;
 };
 
+type DeliveryMessageRow = QueryResultRow & {
+  id: string;
+  inquiryId: string;
+  direction: string;
+  text: string;
+  deliveryStatus: string | null;
+  attachments: unknown;
+};
+
 type AttachmentInput = {
   name?: string;
   type?: string;
@@ -47,19 +56,7 @@ function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : "Не вдалося доставити повідомлення";
 }
 
-export async function sendCommunicationReply(id: string, text: string, attachments: AttachmentInput[] = []) {
-  const normalizedText = text.trim();
-  if (!normalizedText) throw Object.assign(new Error("text is required"), { code: "TEXT_REQUIRED" });
-
-  const pool = getSqlPool();
-  const inquiryResult = await pool.query<DeliveryInquiryRow>(
-    `SELECT "id","channel","externalId","integrationAccountId","externalThreadId","externalParticipantId","replyAllowedUntil","metadata"
-     FROM "CommunicationInquiry" WHERE "id"=$1 LIMIT 1`,
-    [id],
-  );
-  const inquiry = inquiryResult.rows[0];
-  if (!inquiry) throw Object.assign(new Error("Inquiry not found"), { code: "INQUIRY_NOT_FOUND" });
-
+function assertReplyWindow(inquiry: DeliveryInquiryRow) {
   if (isMetaChannel(inquiry.channel)
       && inquiry.replyAllowedUntil
       && inquiry.replyAllowedUntil.getTime() < Date.now()) {
@@ -68,6 +65,92 @@ export async function sendCommunicationReply(id: string, text: string, attachmen
       { code: "META_REPLY_WINDOW_EXPIRED" },
     );
   }
+}
+
+async function loadInquiry(id: string) {
+  const pool = getSqlPool();
+  const result = await pool.query<DeliveryInquiryRow>(
+    `SELECT "id","channel","externalId","integrationAccountId","externalThreadId","externalParticipantId","replyAllowedUntil","metadata"
+     FROM "CommunicationInquiry" WHERE "id"=$1 LIMIT 1`,
+    [id],
+  );
+  const inquiry = result.rows[0];
+  if (!inquiry) throw Object.assign(new Error("Inquiry not found"), { code: "INQUIRY_NOT_FOUND" });
+  return inquiry;
+}
+
+async function deliverToProvider(inquiry: DeliveryInquiryRow, text: string) {
+  if (inquiry.channel === "OLX") {
+    return sendOlxTextMessage(
+      { externalId: inquiry.externalId, externalThreadId: inquiry.externalThreadId },
+      text,
+    );
+  }
+  if (isMetaChannel(inquiry.channel)) {
+    return sendMetaTextMessage({
+      channel: inquiry.channel,
+      integrationAccountId: inquiry.integrationAccountId,
+      externalParticipantId: inquiry.externalParticipantId,
+      metadata: inquiry.metadata,
+    }, text);
+  }
+  throw Object.assign(new Error("Unsupported live communication channel"), { code: "CHANNEL_NOT_SUPPORTED" });
+}
+
+async function markDeliveryFailed(messageId: string, error: unknown) {
+  const pool = getSqlPool();
+  await pool.query(
+    `UPDATE "CommunicationMessage"
+     SET "deliveryStatus"='FAILED',"errorCode"=$2,"errorMessage"=$3,
+         "metadata"=COALESCE("metadata", '{}'::jsonb) || $4::jsonb
+     WHERE "id"=$1`,
+    [messageId, errorCode(error), errorMessage(error), JSON.stringify({ delivery: "FAILED" })],
+  );
+}
+
+async function markDeliverySent(inquiryId: string, messageId: string, delivered: { providerMessageId: string | null; providerPayload: unknown }) {
+  const pool = getSqlPool();
+  await pool.query(
+    `UPDATE "CommunicationMessage"
+     SET "externalId"=COALESCE($2,"externalId"),
+         "providerMessageId"=$2,
+         "deliveryStatus"='SENT',
+         "providerPayload"=$3::jsonb,
+         "metadata"=COALESCE("metadata", '{}'::jsonb) || $4::jsonb,
+         "errorCode"=NULL,
+         "errorMessage"=NULL
+     WHERE "id"=$1`,
+    [messageId, delivered.providerMessageId, JSON.stringify(delivered.providerPayload ?? {}), JSON.stringify({ delivery: "SENT" })],
+  );
+  await pool.query(
+    `UPDATE "CommunicationInquiry"
+     SET "answered"=TRUE,"unread"=FALSE,"state"=CASE WHEN "state"='NEW' THEN 'IN_WORK' ELSE "state" END,
+         "lastOutboundAt"=CURRENT_TIMESTAMP,"lastSyncedAt"=CURRENT_TIMESTAMP,"updatedAt"=CURRENT_TIMESTAMP
+     WHERE "id"=$1`,
+    [inquiryId],
+  );
+  const message = await pool.query(`SELECT * FROM "CommunicationMessage" WHERE "id"=$1`, [messageId]);
+  return { message: message.rows[0], delivery: "SENT" as const, providerMessageId: delivered.providerMessageId };
+}
+
+async function deliverExistingMessage(inquiry: DeliveryInquiryRow, messageId: string, text: string) {
+  assertReplyWindow(inquiry);
+  try {
+    const delivered = await deliverToProvider(inquiry, text);
+    return await markDeliverySent(inquiry.id, messageId, delivered);
+  } catch (error) {
+    await markDeliveryFailed(messageId, error);
+    throw error;
+  }
+}
+
+export async function sendCommunicationReply(id: string, text: string, attachments: AttachmentInput[] = []) {
+  const normalizedText = text.trim();
+  if (!normalizedText) throw Object.assign(new Error("text is required"), { code: "TEXT_REQUIRED" });
+
+  const pool = getSqlPool();
+  const inquiry = await loadInquiry(id);
+  assertReplyWindow(inquiry);
 
   const messageId = makeId("msg");
   const initialStatus = isLiveMessageChannel(inquiry.channel) ? "PENDING" : "CRM_ONLY";
@@ -97,65 +180,47 @@ export async function sendCommunicationReply(id: string, text: string, attachmen
     return { message: inserted.rows[0], delivery: "CRM_ONLY" as const };
   }
 
-  try {
-    let delivered: { providerMessageId: string | null; providerPayload: unknown };
-    if (inquiry.channel === "OLX") {
-      delivered = await sendOlxTextMessage(
-        { externalId: inquiry.externalId, externalThreadId: inquiry.externalThreadId },
-        normalizedText,
-      );
-    } else if (isMetaChannel(inquiry.channel)) {
-      delivered = await sendMetaTextMessage({
-        channel: inquiry.channel,
-        integrationAccountId: inquiry.integrationAccountId,
-        externalParticipantId: inquiry.externalParticipantId,
-        metadata: inquiry.metadata,
-      }, normalizedText);
-    } else {
-      throw Object.assign(new Error("Unsupported live communication channel"), { code: "CHANNEL_NOT_SUPPORTED" });
-    }
+  return deliverExistingMessage(inquiry, messageId, normalizedText);
+}
 
-    await pool.query(
-      `UPDATE "CommunicationMessage"
-       SET "externalId"=COALESCE($2,"externalId"),
-           "providerMessageId"=$2,
-           "deliveryStatus"='SENT',
-           "providerPayload"=$3::jsonb,
-           "metadata"=COALESCE("metadata", '{}'::jsonb) || $4::jsonb,
-           "errorCode"=NULL,
-           "errorMessage"=NULL
-       WHERE "id"=$1`,
-      [messageId, delivered.providerMessageId, JSON.stringify(delivered.providerPayload ?? {}), JSON.stringify({ delivery: "SENT" })],
-    );
-    await pool.query(
-      `UPDATE "CommunicationInquiry"
-       SET "answered"=TRUE,"unread"=FALSE,"state"=CASE WHEN "state"='NEW' THEN 'IN_WORK' ELSE "state" END,
-           "lastOutboundAt"=CURRENT_TIMESTAMP,"lastSyncedAt"=CURRENT_TIMESTAMP,"updatedAt"=CURRENT_TIMESTAMP
-       WHERE "id"=$1`,
-      [id],
-    );
-    const message = await pool.query(`SELECT * FROM "CommunicationMessage" WHERE "id"=$1`, [messageId]);
-    return { message: message.rows[0], delivery: "SENT" as const, providerMessageId: delivered.providerMessageId };
-  } catch (error) {
-    await pool.query(
-      `UPDATE "CommunicationMessage"
-       SET "deliveryStatus"='FAILED',"errorCode"=$2,"errorMessage"=$3,
-           "metadata"=COALESCE("metadata", '{}'::jsonb) || $4::jsonb
-       WHERE "id"=$1`,
-      [messageId, errorCode(error), errorMessage(error), JSON.stringify({ delivery: "FAILED" })],
-    );
-    throw error;
+export async function retryCommunicationMessage(inquiryId: string, messageId: string) {
+  const pool = getSqlPool();
+  const inquiry = await loadInquiry(inquiryId);
+  if (!isLiveMessageChannel(inquiry.channel)) {
+    throw Object.assign(new Error("Повторна відправка доступна лише для Facebook, Instagram та OLX."), { code: "RETRY_NOT_SUPPORTED" });
   }
+  assertReplyWindow(inquiry);
+
+  const claimed = await pool.query<DeliveryMessageRow>(
+    `UPDATE "CommunicationMessage"
+     SET "deliveryStatus"='PENDING',
+         "errorCode"=NULL,
+         "errorMessage"=NULL,
+         "metadata"=COALESCE("metadata", '{}'::jsonb) || $3::jsonb
+     WHERE "id"=$1 AND "inquiryId"=$2 AND "direction"='OUT' AND "deliveryStatus"='FAILED'
+     RETURNING "id","inquiryId","direction","text","deliveryStatus","attachments"`,
+    [messageId, inquiryId, JSON.stringify({ delivery: "PENDING", retryRequestedAt: new Date().toISOString() })],
+  );
+
+  const message = claimed.rows[0];
+  if (!message) {
+    const existing = await pool.query<DeliveryMessageRow>(
+      `SELECT "id","inquiryId","direction","text","deliveryStatus","attachments"
+       FROM "CommunicationMessage" WHERE "id"=$1 AND "inquiryId"=$2 LIMIT 1`,
+      [messageId, inquiryId],
+    );
+    const row = existing.rows[0];
+    if (!row) throw Object.assign(new Error("Повідомлення не знайдено"), { code: "MESSAGE_NOT_FOUND" });
+    if (row.direction !== "OUT") throw Object.assign(new Error("Вхідне повідомлення не можна відправити повторно"), { code: "MESSAGE_NOT_RETRYABLE" });
+    if (row.deliveryStatus === "PENDING") throw Object.assign(new Error("Повідомлення вже повторно надсилається"), { code: "MESSAGE_RETRY_IN_PROGRESS" });
+    throw Object.assign(new Error("Повторна відправка доступна лише для повідомлень зі статусом FAILED"), { code: "MESSAGE_NOT_FAILED" });
+  }
+
+  return deliverExistingMessage(inquiry, messageId, message.text.trim());
 }
 
 export async function markCommunicationRead(id: string) {
-  const pool = getSqlPool();
-  const result = await pool.query<DeliveryInquiryRow>(
-    `SELECT "id","channel","externalId","integrationAccountId","externalThreadId","externalParticipantId","replyAllowedUntil","metadata"
-     FROM "CommunicationInquiry" WHERE "id"=$1 LIMIT 1`,
-    [id],
-  );
-  const inquiry = result.rows[0];
+  const inquiry = await loadInquiry(id).catch(() => null);
   if (!inquiry) return false;
 
   if (inquiry.channel === "OLX") {
