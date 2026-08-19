@@ -9,6 +9,7 @@ import {
 } from "@/src/generated/prisma/client";
 import { getPrisma } from "@/src/lib/prisma";
 import { toPrismaJson } from "@/src/lib/prisma-json";
+import { applyDuplicateNameReview } from "@/src/services/service-catalog-duplicate-review.service";
 import { parseServiceCatalogWorkbook, type ParsedCatalogRow } from "@/src/services/service-catalog-import.service";
 
 export const runtime = "nodejs";
@@ -58,7 +59,7 @@ export async function POST(request: Request) {
     if (!file.name.toLowerCase().endsWith(".xlsx")) return NextResponse.json({ ok: false, error: "Підтримується формат .xlsx." }, { status: 400 });
 
     const buffer = Buffer.from(await file.arrayBuffer());
-    const parsed = parseServiceCatalogWorkbook(buffer, file.name);
+    const parsed = applyDuplicateNameReview(parseServiceCatalogWorkbook(buffer, file.name));
     const prisma = getPrisma();
     const source = sourceEnum(parsed.source);
     const ids = parsed.rows.map((row) => row.externalServiceId);
