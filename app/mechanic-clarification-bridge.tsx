@@ -20,6 +20,7 @@ type Clarification = {
 type Payload = { ok: boolean; linked?: boolean; items?: Clarification[]; message?: string; error?: string };
 
 export function MechanicClarificationBridge() {
+  const [enabled, setEnabled] = useState(false);
   const [items, setItems] = useState<Clarification[]>([]);
   const [open, setOpen] = useState(false);
   const [reply, setReply] = useState("");
@@ -28,6 +29,7 @@ export function MechanicClarificationBridge() {
   const current = useMemo(() => items[0] ?? null, [items]);
 
   const load = useCallback(async () => {
+    if (!enabled) return;
     try {
       const response = await fetch("/api/cabinet/mechanic/findings", { cache: "no-store", credentials: "include" });
       const body = await response.json().catch(() => null) as Payload | null;
@@ -37,9 +39,23 @@ export function MechanicClarificationBridge() {
     } catch {
       // The main mechanic cabinet remains usable even if the clarification inbox cannot refresh.
     }
+  }, [enabled]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void fetch("/api/auth/me", { cache: "no-store", credentials: "include" })
+      .then((response) => response.json())
+      .then((body) => {
+        if (cancelled) return;
+        const roles = Array.isArray(body?.roles) ? body.roles as Array<{ code?: string }> : [];
+        setEnabled(body?.provisioningState === "ACTIVE" && roles.some((role) => role.code === "MECHANIC"));
+      })
+      .catch(() => undefined);
+    return () => { cancelled = true; };
   }, []);
 
   useEffect(() => {
+    if (!enabled) return;
     void load();
     const timer = window.setInterval(() => void load(), 20000);
     const handler = () => void load();
@@ -48,7 +64,7 @@ export function MechanicClarificationBridge() {
       window.clearInterval(timer);
       window.removeEventListener("turbolev:data-changed", handler);
     };
-  }, [load]);
+  }, [enabled, load]);
 
   useEffect(() => {
     setReply("");
@@ -79,7 +95,7 @@ export function MechanicClarificationBridge() {
     }
   }
 
-  if (!current) return null;
+  if (!enabled || !current) return null;
 
   return <>
     <button type="button" className={styles.alert} onClick={() => setOpen(true)}>
