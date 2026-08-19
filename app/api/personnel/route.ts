@@ -43,11 +43,18 @@ function payload(body: JsonObject) {
   if (birthDate && Number.isNaN(birthDate.getTime())) {
     throw new PersonnelAccessError("INVALID_BIRTH_DATE", "Вкажіть коректну дату народження.", 400);
   }
+  const hireDateText = text(body.hireDate);
+  const hireDate = hireDateText ? new Date(`${hireDateText}T00:00:00.000Z`) : null;
+  if (hireDate && Number.isNaN(hireDate.getTime())) {
+    throw new PersonnelAccessError("INVALID_HIRE_DATE", "Вкажіть коректну дату прийняття на роботу.", 400);
+  }
 
   return {
     firstName: text(body.firstName) || "",
     lastName: text(body.lastName) || "",
+    middleName: text(body.middleName),
     birthDate,
+    hireDate,
     email,
     phone: text(body.phone),
     phoneCountry: text(body.phoneCountry) || "UA",

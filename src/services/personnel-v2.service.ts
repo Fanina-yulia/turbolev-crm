@@ -19,7 +19,9 @@ type ProfileInput = {
   id?: string | null;
   firstName: string;
   lastName: string;
+  middleName?: string | null;
   birthDate?: string | null;
+  hireDate?: string | null;
   email?: string | null;
   phone?: string | null;
   phoneCountry?: string | null;
@@ -286,10 +288,14 @@ export async function savePersonnelV2(input: ProfileInput, context: AccessContex
   const assignments = normalizeAssignments(input.roles);
   const firstName = clean(input.firstName, 120) || "";
   const lastName = clean(input.lastName, 120) || "";
+  const middleName = clean(input.middleName, 120);
   if (!firstName || !lastName) throw new PersonnelV2Error("NAME_REQUIRED", "Вкажіть ім’я та прізвище.");
   const birthDateText = clean(input.birthDate, 10);
   const birthDate = birthDateText ? new Date(`${birthDateText}T00:00:00`) : null;
   if (birthDate && Number.isNaN(birthDate.getTime())) throw new PersonnelV2Error("INVALID_BIRTH_DATE", "Некоректна дата народження.");
+  const hireDateText = clean(input.hireDate, 10);
+  const hireDate = hireDateText ? new Date(`${hireDateText}T00:00:00.000Z`) : null;
+  if (hireDate && Number.isNaN(hireDate.getTime())) throw new PersonnelV2Error("INVALID_HIRE_DATE", "Некоректна дата прийняття на роботу.");
   const primary = assignments.find((item) => item.isPrimary)!;
   const cabinetEnabled = input.cabinetEnabled === true;
   const isActive = input.isActive !== false;
@@ -302,7 +308,9 @@ export async function savePersonnelV2(input: ProfileInput, context: AccessContex
     const data = {
       firstName,
       lastName,
+      middleName,
       birthDate,
+      hireDate,
       email: clean(input.email, 240)?.toLowerCase() || null,
       phone: clean(input.phone, 80),
       phoneCountry: clean(input.phoneCountry, 8) || "UA",
