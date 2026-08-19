@@ -1,6 +1,6 @@
 import { PERMISSIONS, type AccessScopeCode, type PermissionCode } from "@/src/security/permissions";
 
-export type ApiSecurityKind = "AUTH_PUBLIC" | "SESSION_STATUS" | "EXTERNAL_PROVIDER" | "INTERNAL_RBAC";
+export type ApiSecurityKind = "AUTH_PUBLIC" | "SESSION_STATUS" | "EXTERNAL_PROVIDER" | "PUBLIC_TOKEN" | "INTERNAL_RBAC";
 
 export type ApiSecurityPolicy = {
   kind: ApiSecurityKind;
@@ -36,6 +36,7 @@ const prefix = (value: string) => (path: string) => path === value || path.start
 const RULES: Rule[] = [
   { match: exact("/api/auth/me"), resolve: () => ({ kind: "SESSION_STATUS", note: "Safe session/provisioning status; no secrets or business data." }) },
   { match: prefix("/api/auth"), resolve: () => ({ kind: "AUTH_PUBLIC", note: "Allowlisted Neon Auth transport only: sign-in, sign-out, get-session." }) },
+  { match: prefix("/api/public/diagnostic-report"), resolve: () => ({ kind: "PUBLIC_TOKEN", note: "Client-facing immutable diagnostic report authenticated by a high-entropy single-purpose token stored only as SHA-256 hash; routes validate expiry, revision freshness and media membership." }) },
   { match: prefix("/api/webhooks"), resolve: () => ({ kind: "EXTERNAL_PROVIDER", note: "Inbound provider callback authenticated by provider/webhook controls, not employee session." }) },
   { match: exact("/api/integrations/olx/callback"), resolve: () => ({ kind: "EXTERNAL_PROVIDER", note: "OLX OAuth callback authenticated with signed short-lived state and provider authorization code." }) },
   { match: exact("/api/integrations/olx/connect"), resolve: () => internal(PERMISSIONS.SETTINGS_INTEGRATIONS, "ALL", "Starting OLX OAuth changes integration credentials and requires integration administration.", true) },
@@ -79,6 +80,8 @@ const RULES: Rule[] = [
   { match: (path) => /^\/api\/work-orders\/[^/]+\/parts-request(?:\/|$)/.test(path), resolve: (method) => readWrite(method, PERMISSIONS.PROCUREMENT_READ, PERMISSIONS.PROCUREMENT_WRITE, "LOCATION", "Parts request generated from WorkOrder.") },
   { match: (path) => /^\/api\/work-orders\/[^/]+\/estimate(?:\/|$)/.test(path), resolve: (method) => readWrite(method, PERMISSIONS.WORK_ORDERS_READ, PERMISSIONS.WORK_ORDERS_ESTIMATE, "LOCATION", "Estimate and client-approval workflow.") },
   { match: prefix("/api/work-orders"), resolve: (method) => readWrite(method, PERMISSIONS.WORK_ORDERS_READ, PERMISSIONS.WORK_ORDERS_WRITE, "LOCATION", "Canonical WorkOrder lifecycle.") },
+  { match: (path) => /^\/api\/diagnostics\/[^/]+\/report$/.test(path), resolve: (method) => internal(method.toUpperCase() === "GET" ? PERMISSIONS.DIAGNOSTICS_READ : PERMISSIONS.DIAGNOSTICS_CONFIRM, "LOCATION", "Client report share management is location-scoped; creating or revoking a public link requires diagnostic confirmation authority.", method.toUpperCase() !== "GET") },
+  { match: (path) => /^\/api\/diagnostics\/[^/]+\/commercial-handoff$/.test(path), resolve: (method) => internal(method.toUpperCase() === "GET" ? PERMISSIONS.WORK_ORDERS_READ : PERMISSIONS.WORK_ORDERS_ESTIMATE, "LOCATION", "Structured diagnostic recommendations may be previewed with WorkOrder read access and imported as DRAFT estimate lines only by estimate-authorized staff.", method.toUpperCase() !== "GET") },
   { match: prefix("/api/diagnostics"), resolve: (method) => readWrite(method, PERMISSIONS.DIAGNOSTICS_READ, PERMISSIONS.DIAGNOSTICS_WRITE, "LOCATION", "Diagnostic requests, structured checks, media and conclusions; route handlers apply ASSIGNED/LOCATION narrowing and separate confirmation permission.") },
   { match: prefix("/api/planner"), resolve: (method) => readWrite(method, PERMISSIONS.PLANNER_READ, PERMISSIONS.PLANNER_WRITE, "LOCATION", "Service planner.") },
   { match: prefix("/api/communications"), resolve: (method) => readWrite(method, PERMISSIONS.COMMUNICATIONS_READ, PERMISSIONS.COMMUNICATIONS_WRITE, "TEAM", "Omnichannel inquiries and messages.") },
