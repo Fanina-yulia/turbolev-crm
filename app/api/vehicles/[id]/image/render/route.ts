@@ -72,7 +72,7 @@ export async function GET(request: NextRequest, context: { params: Promise<{ id:
     if (image.provider === "OPENAI") {
       const libraryAsset = await getVehicleLibraryAsset(image.assetId);
       if (!libraryAsset) return fallback();
-      return new NextResponse(libraryAsset.bytes, {
+      return new NextResponse(new Uint8Array(libraryAsset.bytes), {
         status: 200,
         headers: {
           "Content-Type": libraryAsset.mimeType,
