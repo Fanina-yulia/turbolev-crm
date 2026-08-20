@@ -40,8 +40,13 @@ replace_once(
 )
 replace_once(
     'src/domain/workflow/catalog.ts',
-    '''  MECHANIC: "Автомеханік",\n  ACCOUNTANT: "Бухгалтерія / каса",''',
+    '''  MECHANIC: "Автомеханік",\n  ACCOUNTANT: "Бухгалтер / каса",''',
     '''  MECHANIC: "Автомеханік",\n  CASHIER: "Касир",\n  ACCOUNTANT: "Бухгалтер",''',
+)
+replace_once(
+    'src/domain/workflow/catalog.ts',
+    '''  MECHANIC: WORKFLOW_ROLE_LABELS.MECHANIC,\n  ACCOUNTANT: WORKFLOW_ROLE_LABELS.ACCOUNTANT,''',
+    '''  MECHANIC: WORKFLOW_ROLE_LABELS.MECHANIC,\n  CASHIER: WORKFLOW_ROLE_LABELS.CASHIER,\n  ACCOUNTANT: WORKFLOW_ROLE_LABELS.ACCOUNTANT,''',
 )
 replace_once(
     'src/domain/workflow/operating-policy.ts',
