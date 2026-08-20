@@ -7,8 +7,8 @@ model VehicleModelPopularity {
   normalizedModel   String
   vehicleCount      BigInt
   coveragePct       Decimal  @default(0) @db.Decimal(8, 4)
-  firstReliableYear Int?
-  lastReliableYear  Int?
+  firstReliableYear Int?     @db.SmallInt
+  lastReliableYear  Int?     @db.SmallInt
   topYears          Json     @default("[]")
   sourceTotalRows   BigInt   @default(0)
   status            String   @default("ACTIVE")
@@ -17,6 +17,7 @@ model VehicleModelPopularity {
   updatedAt         DateTime @default(now())
 
   @@unique([normalizedMake, normalizedModel], map: "VehicleModelPopularity_normalized_unique")
+  @@index([rank], map: "VehicleModelPopularity_rank_idx")
   @@index([vehicleCount(sort: Desc)], map: "VehicleModelPopularity_count_idx")
 }
 
@@ -28,8 +29,8 @@ model VehicleGenerationReference {
   normalizedModel    String
   generationCode     String
   generationLabel    String
-  fromYear           Int
-  toYear             Int
+  fromYear           Int      @db.SmallInt
+  toYear             Int      @db.SmallInt
   confidence         Int      @default(90)
   verificationStatus String   @default("CURATED")
   sourceLabel        String?
