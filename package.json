@@ -12,6 +12,7 @@
     "postinstall": "prisma generate",
     "start": "next start",
     "lint": "next lint",
+    "module:scope": "node scripts/module-scope.mjs",
     "db:generate": "prisma generate",
     "db:push": "prisma db push",
     "db:migrate:dev": "prisma migrate dev",
