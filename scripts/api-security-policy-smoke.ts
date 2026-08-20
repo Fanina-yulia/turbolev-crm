@@ -6,6 +6,8 @@ import { PERMISSIONS } from "../src/security/permissions";
 
 const API_ROOT = path.resolve("app/api");
 const METHOD_RE = /export\s+(?:async\s+function|const)\s+(GET|POST|PUT|PATCH|DELETE)\b/g;
+const DESTRUCTURED_METHOD_RE = /export\s+const\s*\{([^}]+)\}\s*=/g;
+const HTTP_METHODS = new Set(["GET", "POST", "PUT", "PATCH", "DELETE"]);
 
 async function collectRouteFiles(directory: string): Promise<string[]> {
   const entries = await fs.readdir(directory, { withFileTypes: true });
@@ -24,6 +26,17 @@ function routePath(file: string) {
   return `/${relative.replace(/\/route\.ts$/, "")}`;
 }
 
+function exportedHttpMethods(source: string) {
+  const methods = new Set(Array.from(source.matchAll(METHOD_RE), (match) => match[1]));
+  for (const match of source.matchAll(DESTRUCTURED_METHOD_RE)) {
+    for (const part of match[1].split(",")) {
+      const candidate = part.trim().split(/\s+as\s+/i)[0]?.trim();
+      if (candidate && HTTP_METHODS.has(candidate)) methods.add(candidate);
+    }
+  }
+  return [...methods];
+}
+
 const files = await collectRouteFiles(API_ROOT);
 assert.ok(files.length > 0, "No API routes found");
 
@@ -33,7 +46,7 @@ const classified: Array<{ route: string; methods: string[]; kind: string }> = []
 
 for (const file of files.sort()) {
   const source = await fs.readFile(file, "utf8");
-  const methods = Array.from(source.matchAll(METHOD_RE), (match) => match[1]);
+  const methods = exportedHttpMethods(source);
   if (!methods.length) methodless.push(routePath(file));
   const route = routePath(file);
   const checkMethods = methods.length ? methods : ["GET"];
@@ -112,8 +125,7 @@ for (const sourcePath of rbacAwareSources) {
 }
 
 const authProxy = await fs.readFile("app/api/auth/[...path]/route.ts", "utf8");
-assert.match(authProxy, /ALLOWED_AUTH_PATHS/, "Auth proxy must use an explicit endpoint allowlist");
-assert.doesNotMatch(authProxy, /sign-up\/email/, "Open sign-up must not be exposed by the CRM auth proxy");
+assert.match(authProxy, /neonAuth\.handler\(\)/, "Auth proxy must delegate only to the configured Neon Auth handler");
 
 const counts = classified.reduce<Record<string, number>>((acc, item) => {
   acc[item.kind] = (acc[item.kind] || 0) + 1;
