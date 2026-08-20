@@ -6,6 +6,12 @@ import { getPrisma } from "@/src/lib/prisma";
 import type { AccessContext } from "@/src/security/access-context";
 import { hashCrmPassword, normalizeCrmLogin, validCrmLogin } from "@/src/security/local-credentials";
 import type { AccessScopeCode } from "@/src/security/permissions";
+import {
+  GLOBAL_PERSONNEL_ROLE_CODES,
+  PERSONNEL_ROLE_CODES,
+  STATION_MANAGER_DELEGATABLE_ROLE_CODES,
+  type PersonnelRoleCode,
+} from "@/src/security/personnel-org-structure";
 import { writeAuditEvent } from "@/src/services/audit.service";
 
 export type PersonnelRoleInput = {
@@ -45,22 +51,10 @@ type ProfileInput = {
   roles: PersonnelRoleInput[];
 };
 
-const SYSTEM_ROLES = [
-  "OWNER",
-  "EXECUTIVE_DIRECTOR",
-  "HEAD_OF_SALES",
-  "SALES",
-  "PARTS_SPECIALIST",
-  "STATION_MANAGER",
-  "SERVICE_ADVISOR",
-  "MECHANIC",
-  "ACCOUNTANT",
-  "ADMINISTRATOR",
-] as const;
-
-type SystemRole = (typeof SYSTEM_ROLES)[number];
-const GLOBAL_ROLES = new Set<SystemRole>(["OWNER", "EXECUTIVE_DIRECTOR", "HEAD_OF_SALES", "ACCOUNTANT"]);
-const STATION_DELEGATION = new Set<SystemRole>(["SERVICE_ADVISOR", "MECHANIC", "PARTS_SPECIALIST", "ADMINISTRATOR"]);
+const SYSTEM_ROLES = PERSONNEL_ROLE_CODES;
+type SystemRole = PersonnelRoleCode;
+const GLOBAL_ROLES = GLOBAL_PERSONNEL_ROLE_CODES;
+const STATION_DELEGATION = STATION_MANAGER_DELEGATABLE_ROLE_CODES;
 const EMPLOYMENT_TYPES = new Set(["STAFF", "CONTRACT", "FOP", "INTERNSHIP", "OTHER"]);
 
 export class PersonnelV2Error extends Error {
@@ -117,7 +111,7 @@ function normalizeAssignments(items: PersonnelRoleInput[]) {
     seen.add(key);
     result.push({ roleCode, locationId, isPrimary: Boolean(raw.isPrimary) });
   }
-  if (!result.length) throw new PersonnelV2Error("ROLE_REQUIRED", "Призначте працівнику хоча б одну роль.");
+  if (!result.length) throw new PersonnelV2Error("ROLE_REQUIRED", "Призначте працівнику хоча б одну посаду.");
   const requestedPrimary = result.findIndex((role) => role.isPrimary);
   return result.map((role, index) => ({ ...role, isPrimary: index === (requestedPrimary >= 0 ? requestedPrimary : 0) }));
 }
@@ -134,13 +128,13 @@ async function validateAssignments(
       throw new PersonnelV2Error("ROLE_DELEGATION_FORBIDDEN", `Ваша роль не може призначати «${assignment.roleCode}».`, 403);
     }
     if (!GLOBAL_ROLES.has(assignment.roleCode) && !assignment.locationId) {
-      throw new PersonnelV2Error("LOCATION_REQUIRED", `Для ролі ${assignment.roleCode} потрібно обрати станцію.`);
+      throw new PersonnelV2Error("LOCATION_REQUIRED", `Для посади ${assignment.roleCode} потрібно обрати станцію.`);
     }
     if (assignment.locationId) {
       const location = await tx.serviceLocation.findFirst({ where: { id: assignment.locationId, isActive: true }, select: { id: true } });
       if (!location) throw new PersonnelV2Error("LOCATION_NOT_FOUND", "Обрану станцію не знайдено.", 404);
       if (!hasGlobalAuthority(context, scope) && !context.locationIds.includes(assignment.locationId)) {
-        throw new PersonnelV2Error("LOCATION_FORBIDDEN", "Ви можете призначати ролі лише в межах своєї станції.", 403);
+        throw new PersonnelV2Error("LOCATION_FORBIDDEN", "Ви можете призначати посади лише в межах своєї станції.", 403);
       }
     }
   }
@@ -150,7 +144,7 @@ async function validateAssignments(
     tx.accessRole.findMany({ where: { code: { in: codes }, isActive: true }, select: { id: true, code: true, name: true } }),
   ]);
   if (staffRoles.length !== new Set(codes).size || accessRoles.length !== new Set(codes).size) {
-    throw new PersonnelV2Error("ROLE_NOT_CONFIGURED", "Одна з ролей ще не синхронізована між Персоналом та системою доступу.", 409);
+    throw new PersonnelV2Error("ROLE_NOT_CONFIGURED", "Одна з посад ще не синхронізована між Персоналом та системою доступу.", 409);
   }
   return {
     staffByCode: new Map(staffRoles.map((role) => [role.code, role])),
@@ -358,8 +352,8 @@ export async function savePersonnelV2(input: ProfileInput, context: AccessContex
       phoneCountry: clean(input.phoneCountry, 8) || "UA",
       address: clean(input.address, 500),
       photoUrl: clean(input.photoUrl, 2000),
-      personnelCategory: clean(input.personnelCategory, 120) || primaryStaff.category,
-      position: clean(input.position, 160) || primaryStaff.name,
+      personnelCategory: primaryStaff.category,
+      position: primaryStaff.name,
       crmLogin: crmLogin || null,
       crmPasswordHash,
       isActive,
