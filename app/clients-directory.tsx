@@ -1,22 +1,16 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import type { ClientDirectoryItem } from "@/src/lib/contracts/crm-core";
+import {
+  parseClientDirectoryItemPayload,
+  parseClientDirectoryPayload,
+  payloadMessage,
+} from "@/src/lib/contracts/directory-payload.parsers";
 import { navigateCrm, readCrmRoute } from "./crm-route";
 import styles from "./directory-pages.module.css";
 
-type Client = {
-  id: string;
-  name: string | null;
-  phone: string;
-  createdAt: string;
-  updatedAt: string;
-  _count: { vehicles: number; workOrders: number; diagnosticRequests: number };
-  workOrders: Array<{ id: string; status: string; createdAt: string; updatedAt: string; closedAt: string | null }>;
-  vehicles: Array<{ id: string; plateNumber: string | null; vin: string | null; brand: string | null; model: string | null; year: number | null }>;
-};
-
-type ListResponse = { ok: boolean; total: number; page: number; limit: number; pages: number; clients: Client[]; error?: string };
-type ClientResponse = { ok: boolean; client?: Client; error?: string };
+type Client = ClientDirectoryItem;
 
 const PAGE_SIZE = 24;
 
@@ -62,11 +56,12 @@ export function ClientsDirectory() {
         const params = new URLSearchParams({ page: String(page), limit: String(PAGE_SIZE) });
         if (query.trim()) params.set("q", query.trim());
         const response = await fetch(`/api/clients?${params}`, { cache: "no-store", signal: controller.signal });
-        const data = await response.json() as ListResponse;
-        if (!response.ok || !data.ok) throw new Error(data.error || "Не вдалося завантажити клієнтів");
-        setClients(data.clients || []);
-        setTotal(data.total || 0);
-        setPages(data.pages || 1);
+        const payload: unknown = await response.json().catch(() => null);
+        const data = parseClientDirectoryPayload(payload);
+        if (!response.ok || !data) throw new Error(payloadMessage(payload, "Не вдалося завантажити клієнтів"));
+        setClients(data.clients);
+        setTotal(data.total);
+        setPages(data.pages);
         if (data.page !== page) setPage(data.page);
       } catch (cause) {
         if ((cause as Error).name !== "AbortError") setError(cause instanceof Error ? cause.message : "Помилка завантаження");
@@ -106,9 +101,10 @@ export function ClientsDirectory() {
     void (async () => {
       try {
         const response = await fetch(`/api/clients?id=${encodeURIComponent(selectedId)}`, { cache: "no-store", signal: controller.signal });
-        const data = await response.json() as ClientResponse;
-        if (!response.ok || !data.ok || !data.client) throw new Error(data.error || "Не вдалося відкрити клієнта");
-        setSelected(data.client);
+        const payload: unknown = await response.json().catch(() => null);
+        const client = parseClientDirectoryItemPayload(payload);
+        if (!response.ok || !client) throw new Error(payloadMessage(payload, "Не вдалося відкрити клієнта"));
+        setSelected(client);
       } catch (cause) {
         if ((cause as Error).name !== "AbortError") setError(cause instanceof Error ? cause.message : "Помилка картки клієнта");
       } finally {
