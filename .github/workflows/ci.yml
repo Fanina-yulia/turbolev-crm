@@ -14,7 +14,74 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  scope:
+    runs-on: ubuntu-latest
+    outputs:
+      full_ci: ${{ steps.scope.outputs.full_ci }}
+      modules: ${{ steps.scope.outputs.modules }}
+      dependency_modules: ${{ steps.scope.outputs.dependency_modules }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Resolve CI scope
+        id: scope
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then
+            echo "full_ci=true" >> "$GITHUB_OUTPUT"
+            echo "modules=main-push" >> "$GITHUB_OUTPUT"
+            echo "dependency_modules=" >> "$GITHUB_OUTPUT"
+            echo "# Module-aware CI plan" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "Push to main: full production safety gate is mandatory." >> "$GITHUB_STEP_SUMMARY"
+          else
+            node scripts/module-ci.mjs --base "origin/${{ github.base_ref }}"
+          fi
+
+  module-checks:
+    needs: scope
+    if: github.event_name == 'pull_request' && needs.scope.outputs.full_ci != 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/turbolev_ci
+      DATABASE_URL_UNPOOLED: postgresql://postgres:postgres@localhost:5432/turbolev_ci
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Validate Prisma schema
+        run: npx prisma validate
+
+      - name: TypeScript contract check
+        run: npx tsc --noEmit
+
+      - name: Run targeted stateless module smoke checks
+        run: node scripts/module-ci.mjs --base "origin/${{ github.base_ref }}" --run
+
   build:
+    needs: scope
+    if: github.event_name == 'push' || needs.scope.outputs.full_ci == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 25
     services:
