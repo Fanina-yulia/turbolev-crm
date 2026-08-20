@@ -50,6 +50,7 @@ export type WorkflowRole =
   | "STATION_MANAGER"
   | "SHIFT_MASTER"
   | "MECHANIC"
+  | "CASHIER"
   | "ACCOUNTANT"
   | "ADMINISTRATOR"
   // legacy presentation role codes

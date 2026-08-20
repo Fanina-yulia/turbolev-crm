@@ -93,8 +93,8 @@ export const DEFAULT_ACCESS_ROLES: AccessRolePreset[] = [
     grant(PERMISSIONS.WORK_ORDERS_ESTIMATE,"ASSIGNED"), grant(PERMISSIONS.PAYROLL_SELF_READ,"SELF"),
   ]},
   { code: "PARTS_SPECIALIST", name: "Запчастини / закупівлі / склад", description: "Підбір, замовлення, отримання та складський контур деталей.", sortOrder: 50, grants: [
-    grant(PERMISSIONS.OVERVIEW_READ,"LOCATION"), grant(PERMISSIONS.WORK_ORDERS_READ,"LOCATION"), grant(PERMISSIONS.PARTS_READ,"ALL"),
-    grant(PERMISSIONS.PARTS_WRITE,"ALL"), grant(PERMISSIONS.PROCUREMENT_READ,"ALL"), grant(PERMISSIONS.PROCUREMENT_WRITE,"ALL"), grant(PERMISSIONS.PAYROLL_SELF_READ,"SELF"),
+    grant(PERMISSIONS.OVERVIEW_READ,"LOCATION"), grant(PERMISSIONS.WORK_ORDERS_READ,"LOCATION"), grant(PERMISSIONS.PARTS_READ,"LOCATION"),
+    grant(PERMISSIONS.PARTS_WRITE,"LOCATION"), grant(PERMISSIONS.PROCUREMENT_READ,"LOCATION"), grant(PERMISSIONS.PROCUREMENT_WRITE,"LOCATION"), grant(PERMISSIONS.PAYROLL_SELF_READ,"SELF"),
   ]},
   { code: "STATION_MANAGER", name: "Завідувач станцією", description: "Повний операційний цикл конкретної станції без доступу до глобальної фінансової адміністрації.", sortOrder: 60, grants: [
     grant(PERMISSIONS.OVERVIEW_READ,"LOCATION"), grant(PERMISSIONS.CLIENTS_READ,"LOCATION"), grant(PERMISSIONS.PLANNER_READ,"LOCATION"), grant(PERMISSIONS.PLANNER_WRITE,"LOCATION"),
@@ -117,7 +117,11 @@ export const DEFAULT_ACCESS_ROLES: AccessRolePreset[] = [
     grant(PERMISSIONS.WORK_ORDERS_READ,"ASSIGNED"), grant(PERMISSIONS.PRODUCTION_READ,"ASSIGNED"), grant(PERMISSIONS.PRODUCTION_WRITE,"ASSIGNED"),
     grant(PERMISSIONS.QC_READ,"ASSIGNED"), grant(PERMISSIONS.PARTS_READ,"ASSIGNED"), grant(PERMISSIONS.PAYROLL_SELF_READ,"SELF"),
   ]},
-  { code: "ACCOUNTANT", name: "Бухгалтер / каса", description: "Проведення оплат, фінансовий та зарплатний облік по мережі.", sortOrder: 80, grants: [
+  { code: "CASHIER", name: "Касир", description: "Приймає та проводить оплату по ЗН своєї станції без доступу до зарплат і глобального P&L.", sortOrder: 75, grants: [
+    grant(PERMISSIONS.OVERVIEW_READ,"LOCATION"), grant(PERMISSIONS.WORK_ORDERS_READ,"LOCATION"),
+    grant(PERMISSIONS.PAYMENTS_READ,"LOCATION"), grant(PERMISSIONS.PAYMENTS_WRITE,"LOCATION"), grant(PERMISSIONS.PAYROLL_SELF_READ,"SELF"),
+  ]},
+  { code: "ACCOUNTANT", name: "Бухгалтер", description: "Фінанси, оплати, зарплата та фінансова аналітика по мережі.", sortOrder: 80, grants: [
     grant(PERMISSIONS.OVERVIEW_READ,"ALL"), grant(PERMISSIONS.WORK_ORDERS_READ,"ALL"), grant(PERMISSIONS.FINANCE_READ,"ALL"), grant(PERMISSIONS.FINANCE_WRITE,"ALL"),
     grant(PERMISSIONS.PAYMENTS_READ,"ALL"), grant(PERMISSIONS.PAYMENTS_WRITE,"ALL"), grant(PERMISSIONS.PAYROLL_SELF_READ,"SELF"), grant(PERMISSIONS.PAYROLL_ALL_READ,"ALL"),
     grant(PERMISSIONS.PAYROLL_WRITE,"ALL"), grant(PERMISSIONS.PAYROLL_CLOSE,"ALL"), grant(PERMISSIONS.PERSONNEL_READ,"ALL"), grant(PERMISSIONS.PERSONNEL_COMPENSATION_READ,"ALL"),

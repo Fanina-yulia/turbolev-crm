@@ -14,7 +14,8 @@ const SERVICE_PARTS = ["SERVICE_ADVISOR", "PARTS_SPECIALIST"] as const satisfies
 const PARTS = ["PARTS_SPECIALIST"] as const satisfies readonly WorkflowRole[];
 const SHIFT_MASTER = ["SHIFT_MASTER"] as const satisfies readonly WorkflowRole[];
 const REWORK = ["SHIFT_MASTER", "MECHANIC", "SERVICE_ADVISOR"] as const satisfies readonly WorkflowRole[];
-const ACCOUNTANT = ["ACCOUNTANT"] as const satisfies readonly WorkflowRole[];
+const SERVICE_PAYMENT = ["SERVICE_ADVISOR", "CASHIER", "ACCOUNTANT"] as const satisfies readonly WorkflowRole[];
+const PAYMENT_OPERATORS = ["CASHIER", "ACCOUNTANT"] as const satisfies readonly WorkflowRole[];
 
 function withStatuses(
   definition: WorkflowDefinition,
@@ -56,8 +57,8 @@ function workOrderPolicy(definition: WorkflowDefinition): WorkflowDefinition {
     WAITING_PAYMENT: {
       label: "Очікує повну оплату",
       sortOrder: 90,
-      responsibleRoles: SERVICE,
-      description: "Сервіс-менеджер контролює закриття балансу; оплату проводить каса/бухгалтерія.",
+      responsibleRoles: SERVICE_PAYMENT,
+      description: "Сервіс-менеджер контролює клієнта й баланс; оплату проводить касир або бухгалтер.",
     },
     READY_FOR_PICKUP: {
       label: "Готовий до видачі",
@@ -162,7 +163,7 @@ function qcPolicy(definition: WorkflowDefinition): WorkflowDefinition {
 }
 
 function paymentPolicy(definition: WorkflowDefinition): WorkflowDefinition {
-  const overrides = Object.fromEntries(definition.statuses.map((status) => [status.code, { responsibleRoles: ACCOUNTANT }]));
+  const overrides = Object.fromEntries(definition.statuses.map((status) => [status.code, { responsibleRoles: PAYMENT_OPERATORS }]));
   return { ...definition, statuses: withStatuses(definition, overrides) };
 }
 

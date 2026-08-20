@@ -47,11 +47,50 @@ SET "name"='Запчастини / закупівлі / склад',
     "updatedAt"=NOW()
 WHERE code='PARTS_SPECIALIST';
 
-UPDATE "StaffRole"
-SET "name"='Бухгалтер / каса', "updatedAt"=NOW()
-WHERE code='ACCOUNTANT';
-UPDATE "AccessRole"
-SET "name"='Бухгалтер / каса',
-    "description"='Проведення оплат, фінансовий та зарплатний облік по мережі.',
-    "updatedAt"=NOW()
-WHERE code='ACCOUNTANT';
+
+-- Parts/procurement defaults to the employee's station; Owner can widen scope explicitly later.
+UPDATE "AccessRolePermission" arp
+SET "scope"='LOCATION'::"AccessScope", "updatedAt"=NOW()
+FROM "AccessRole" r, "Permission" p
+WHERE arp."roleId"=r.id AND arp."permissionId"=p.id
+  AND r.code='PARTS_SPECIALIST'
+  AND p.code IN ('PARTS.READ','PARTS.WRITE','PROCUREMENT.READ','PROCUREMENT.WRITE');
+
+-- Cashier is station-scoped and intentionally separated from Accountant/payroll.
+INSERT INTO "StaffRole" (
+  "id","code","name","category","economicsMode","isActive","sortOrder","createdAt","updatedAt"
+)
+VALUES (
+  'staff_role_cashier','CASHIER','Касир','FINANCE','SUPPORT_CAPACITY',true,75,NOW(),NOW()
+)
+ON CONFLICT ("code") DO UPDATE SET
+  "name"=EXCLUDED."name", "category"=EXCLUDED."category", "economicsMode"=EXCLUDED."economicsMode",
+  "isActive"=true, "sortOrder"=EXCLUDED."sortOrder", "updatedAt"=NOW();
+
+INSERT INTO "AccessRole" (
+  "id","code","name","description","isSystem","isActive","sortOrder","createdAt","updatedAt"
+)
+VALUES (
+  'access_role_cashier','CASHIER','Касир',
+  'Приймає та проводить оплату по ЗН своєї станції без доступу до зарплат і глобального P&L.',
+  true,true,75,NOW(),NOW()
+)
+ON CONFLICT ("code") DO UPDATE SET
+  "name"=EXCLUDED."name", "description"=EXCLUDED."description", "isActive"=true,
+  "sortOrder"=EXCLUDED."sortOrder", "updatedAt"=NOW();
+
+WITH target_role AS (
+  SELECT id FROM "AccessRole" WHERE code='CASHIER'
+), target_permissions AS (
+  SELECT id,code FROM "Permission" WHERE code IN (
+    'OVERVIEW.READ','WORK_ORDERS.READ','PAYMENTS.READ','PAYMENTS.WRITE','PAYROLL.SELF_READ'
+  )
+)
+INSERT INTO "AccessRolePermission" ("id","roleId","permissionId","scope","createdAt","updatedAt")
+SELECT
+  'arp_cashier_' || LEFT(MD5(p.code),20), r.id, p.id,
+  CASE WHEN p.code='PAYROLL.SELF_READ' THEN 'SELF'::"AccessScope" ELSE 'LOCATION'::"AccessScope" END,
+  NOW(),NOW()
+FROM target_role r CROSS JOIN target_permissions p
+ON CONFLICT ("roleId","permissionId") DO UPDATE SET
+  "scope"=EXCLUDED."scope", "updatedAt"=NOW();
