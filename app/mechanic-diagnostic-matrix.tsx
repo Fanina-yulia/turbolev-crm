@@ -70,9 +70,48 @@ type MatrixRow = {
   side: Side;
   item: Check;
 };
-type View = "MATRIX" | "NODE" | "SUMMARY";
+type PairedPart = {
+  key: string;
+  name: string;
+  left: MatrixRow | null;
+  right: MatrixRow | null;
+};
+type NodeGroup = {
+  node: string;
+  pairs: PairedPart[];
+  common: MatrixRow[];
+};
+type SystemSection = Section & { inspectionId: string };
+type SaveOptions = {
+  findingText?: string | null;
+  urgency?: string;
+  action?: string;
+};
+type StateChoice = {
+  state: "OK" | "ATTENTION" | "DEFECT";
+  label: string;
+  findingSuffix?: string;
+  action?: string;
+  urgency?: string;
+};
 
 const NODE_ORDER = ["Підвіска", "Рульове", "Гальма", "Привід"];
+const CHASSIS_SECTION_CODES = new Set([
+  "FRONT_SUSPENSION",
+  "FRONT_STEERING",
+  "FRONT_DRIVE",
+  "FRONT_BRAKES",
+  "REAR_SUSPENSION",
+  "REAR_BRAKES",
+]);
+const SYSTEM_SECTION_CODES = new Set([
+  "ENGINE_LEAKS",
+  "TRANSMISSION_LEAKS",
+  "AXLE_SEALS_FRONT",
+  "AXLE_SEALS_REAR",
+  "EXHAUST",
+  "FLUIDS_EXTENDED",
+]);
 
 function lower(value?: string | null) {
   return (value || "").toLocaleLowerCase("uk-UA");
@@ -99,40 +138,141 @@ function nodeFor(section: Section) {
   return section.name;
 }
 
-function cleanPartName(item: Check) {
+function partName(item: Check) {
   return item.name
     .replace(/^(лівий|ліва|ліве|ліві|правий|права|праве|праві)\s+/iu, "")
-    .replace(/^(передній|передня|переднє|передні|задній|задня|заднє|задні)\s+/iu, "")
+    .replace(/\s+/g, " ")
     .trim();
 }
 
-function sideLabel(side: Side) {
-  return side === "LEFT" ? "Ліва сторона" : side === "RIGHT" ? "Права сторона" : "Загальне";
+function partKey(item: Check) {
+  return lower(partName(item)).replace(/[’']/g, "").trim();
 }
 
-function nodeIcon(node: string) {
-  if (node === "Підвіска") return "◫";
-  if (node === "Рульове") return "◉";
-  if (node === "Гальма") return "◎";
-  if (node === "Привід") return "↔";
-  return "◇";
+function buildAxisGroups(rows: MatrixRow[], axis: Axis): NodeGroup[] {
+  const axisRows = rows.filter((row) => row.axis === axis);
+  const nodes = Array.from(new Set(axisRows.map((row) => row.node)));
+  const orderedNodes = [...NODE_ORDER.filter((node) => nodes.includes(node)), ...nodes.filter((node) => !NODE_ORDER.includes(node))];
+
+  return orderedNodes.map((node) => {
+    const nodeRows = axisRows.filter((row) => row.node === node);
+    const pairMap = new Map<string, PairedPart>();
+    const common: MatrixRow[] = [];
+
+    for (const row of nodeRows) {
+      if (row.side === "COMMON") {
+        common.push(row);
+        continue;
+      }
+      const key = partKey(row.item);
+      const current = pairMap.get(key) || { key, name: partName(row.item), left: null, right: null };
+      if (row.side === "LEFT") current.left = row;
+      if (row.side === "RIGHT") current.right = row;
+      pairMap.set(key, current);
+    }
+
+    return { node, pairs: Array.from(pairMap.values()), common };
+  });
+}
+
+function buildSectionPairs(section: SystemSection): PairedPart[] {
+  const pairMap = new Map<string, PairedPart>();
+  for (const item of section.items) {
+    const side = sideFor(item);
+    if (side === "COMMON") continue;
+    const key = partKey(item);
+    const row: MatrixRow = {
+      inspectionId: section.inspectionId,
+      sectionId: section.id,
+      sectionCode: section.code,
+      sectionName: section.name,
+      node: section.name,
+      axis: section.code === "AXLE_SEALS_REAR" ? "REAR" : "FRONT",
+      side,
+      item,
+    };
+    const current = pairMap.get(key) || { key, name: partName(item), left: null, right: null };
+    if (side === "LEFT") current.left = row;
+    if (side === "RIGHT") current.right = row;
+    pairMap.set(key, current);
+  }
+  return Array.from(pairMap.values());
+}
+
+function systemChoices(section: SystemSection, item: Check): StateChoice[] {
+  if (section.code === "ENGINE_LEAKS" || section.code === "TRANSMISSION_LEAKS") {
+    return [
+      { state: "OK", label: "Норма" },
+      { state: "ATTENTION", label: "Запотівання", findingSuffix: "запотівання", action: "ADDITIONAL_DIAGNOSTICS", urgency: "INFO" },
+      { state: "DEFECT", label: "Підтікання", findingSuffix: "підтікання", action: "REPAIR", urgency: "SOON" },
+    ];
+  }
+
+  if (section.code === "EXHAUST") {
+    return [
+      { state: "OK", label: "Норма" },
+      { state: "ATTENTION", label: "Увага", findingSuffix: "потребує уваги", action: "ADDITIONAL_DIAGNOSTICS", urgency: "INFO" },
+      { state: "DEFECT", label: "Дефект", findingSuffix: "виявлено дефект", action: "REPAIR", urgency: "SOON" },
+    ];
+  }
+
+  const name = lower(item.name);
+  if (/рівень моторної оливи/u.test(name)) {
+    return [
+      { state: "OK", label: "Норма" },
+      { state: "ATTENTION", label: "Низький", findingSuffix: "низький рівень", action: "ADDITIONAL_DIAGNOSTICS", urgency: "SOON" },
+      { state: "DEFECT", label: "Високий", findingSuffix: "високий рівень", action: "ADDITIONAL_DIAGNOSTICS", urgency: "SOON" },
+    ];
+  }
+  if (/рівень/u.test(name)) {
+    return [
+      { state: "OK", label: "Норма" },
+      { state: "ATTENTION", label: "Низький", findingSuffix: "низький рівень", action: "ADDITIONAL_DIAGNOSTICS", urgency: "SOON" },
+      { state: "DEFECT", label: "Критично", findingSuffix: "критично низький рівень", action: "ADDITIONAL_DIAGNOSTICS", urgency: "SOON" },
+    ];
+  }
+
+  return [
+    { state: "OK", label: "Норма" },
+    { state: "ATTENTION", label: "Увага", findingSuffix: "потребує уваги", action: "ADDITIONAL_DIAGNOSTICS", urgency: "INFO" },
+    { state: "DEFECT", label: "Заміна", findingSuffix: "потребує заміни", action: "REPLACE", urgency: "SOON" },
+  ];
+}
+
+function remarkLabel(count: number) {
+  const mod10 = count % 10;
+  const mod100 = count % 100;
+  if (mod10 === 1 && mod100 !== 11) return "зауваження";
+  if (mod10 >= 2 && mod10 <= 4 && !(mod100 >= 12 && mod100 <= 14)) return "зауваження";
+  return "зауважень";
 }
 
 export function MechanicDiagnosticMatrix({ diagnosticId, onBack, onChanged }: { diagnosticId: string; onBack: () => void; onChanged?: () => void }) {
   const [data, setData] = useState<DiagnosticPayload | null>(null);
-  const [view, setView] = useState<View>("MATRIX");
-  const [axis, setAxis] = useState<Axis>("FRONT");
-  const [selectedSide, setSelectedSide] = useState<Side>("LEFT");
-  const [selectedNode, setSelectedNode] = useState("Підвіска");
   const [busy, setBusy] = useState("");
+  const [savingChecks, setSavingChecks] = useState<Set<string>>(() => new Set());
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [comment, setComment] = useState("");
 
   const load = useCallback(async () => {
     const response = await fetch(`/api/diagnostics/${encodeURIComponent(diagnosticId)}/structured`, { cache: "no-store", credentials: "include" });
-    const body = await response.json().catch(() => null) as DiagnosticPayload | null;
+    let body = await response.json().catch(() => null) as DiagnosticPayload | null;
     if (!response.ok || !body?.ok) throw new Error(body?.message || body?.error || "Не вдалося відкрити діагностику");
+
+    const workflow = body.diagnostic?.workflowState || body.diagnostic?.status || "PENDING";
+    const reviewState = body.diagnostic?.review.state;
+    const locked = ["SUBMITTED", "CONFIRMED", "CANCELLED"].includes(workflow)
+      || reviewState === "SUBMITTED"
+      || reviewState === "CONFIRMED";
+    const matrixInspection = (body.inspections || []).some((inspection) => /матриця ходової/iu.test(inspection.templateName));
+
+    if (workflow !== "PENDING" && !locked && matrixInspection) {
+      const syncResponse = await fetch(`/api/diagnostics/${encodeURIComponent(diagnosticId)}/matrix-start`, { method: "POST", credentials: "include" });
+      const syncBody = await syncResponse.json().catch(() => null) as DiagnosticPayload | null;
+      if (syncResponse.ok && syncBody?.ok) body = syncBody;
+    }
+
     setData(body);
     setComment(body.diagnostic?.review.mechanicComment || "");
   }, [diagnosticId]);
@@ -147,34 +287,68 @@ export function MechanicDiagnosticMatrix({ diagnosticId, onBack, onChanged }: { 
     || data?.diagnostic?.review.state === "CONFIRMED";
 
   const rows = useMemo<MatrixRow[]>(() => {
-    return (data?.inspections || []).flatMap((inspection) => inspection.sections.flatMap((section) => section.items.map((item) => ({
-      inspectionId: inspection.id,
-      sectionId: section.id,
-      sectionCode: section.code,
-      sectionName: section.name,
-      node: nodeFor(section),
-      axis: axisFor(section, item),
-      side: sideFor(item),
-      item,
-    }))));
+    return (data?.inspections || []).flatMap((inspection) => inspection.sections
+      .filter((section) => CHASSIS_SECTION_CODES.has(section.code))
+      .flatMap((section) => section.items.map((item) => ({
+        inspectionId: inspection.id,
+        sectionId: section.id,
+        sectionCode: section.code,
+        sectionName: section.name,
+        node: nodeFor(section),
+        axis: axisFor(section, item),
+        side: sideFor(item),
+        item,
+      }))));
   }, [data]);
 
-  const defectRows = useMemo(() => rows.filter((row) => row.item.state === "DEFECT"), [rows]);
-  const recommendedWorks = useMemo(() => Array.from(new Set(defectRows.map((row) => row.item.finding?.suggestedWorkName).filter((value): value is string => Boolean(value)))), [defectRows]);
+  const systemSections = useMemo<SystemSection[]>(() => {
+    return (data?.inspections || []).flatMap((inspection) => inspection.sections
+      .filter((section) => SYSTEM_SECTION_CODES.has(section.code))
+      .map((section) => ({ ...section, inspectionId: inspection.id })));
+  }, [data]);
 
-  const nodeRows = useMemo(() => rows.filter((row) => row.axis === axis && row.side === selectedSide && row.node === selectedNode), [rows, axis, selectedSide, selectedNode]);
-  const nodesFor = useCallback((side: Side) => {
-    const available = Array.from(new Set(rows.filter((row) => row.axis === axis && row.side === side).map((row) => row.node)));
-    return [...NODE_ORDER.filter((node) => available.includes(node)), ...available.filter((node) => !NODE_ORDER.includes(node))];
-  }, [axis, rows]);
+  const frontGroups = useMemo(() => buildAxisGroups(rows, "FRONT"), [rows]);
+  const rearGroups = useMemo(() => buildAxisGroups(rows, "REAR"), [rows]);
+  const remarkCount = useMemo(() => (data?.inspections || []).flatMap((inspection) => inspection.sections.flatMap((section) => section.items))
+    .filter((item) => item.state === "ATTENTION" || item.state === "DEFECT").length, [data]);
 
-  const openNode = (side: Side, node: string) => {
-    setSelectedSide(side);
-    setSelectedNode(node);
-    setView("NODE");
-    setMessage("");
-    setError("");
-  };
+  function applyLocalCheckState(checkId: string, state: CheckState) {
+    setData((current) => {
+      if (!current?.inspections) return current;
+      let changed = false;
+      const inspections = current.inspections.map((inspection) => ({
+        ...inspection,
+        sections: inspection.sections.map((section) => ({
+          ...section,
+          items: section.items.map((item) => {
+            if (item.id !== checkId) return item;
+            changed = true;
+            return { ...item, state };
+          }),
+        })),
+      }));
+      if (!changed) return current;
+
+      const allItems = inspections.flatMap((inspection) => inspection.sections.flatMap((section) => section.items));
+      const requiredChecked = allItems.filter((item) => item.state !== "NOT_CHECKED").length;
+      const requiredRemaining = Math.max(0, allItems.length - requiredChecked);
+      const canSubmit = allItems.length > 0 && requiredRemaining === 0;
+
+      return {
+        ...current,
+        inspections,
+        canSubmit,
+        completion: {
+          ...current.completion,
+          canSubmit,
+          requiredTotal: allItems.length,
+          requiredChecked,
+          requiredRemaining,
+          missingRequired: requiredRemaining,
+        },
+      };
+    });
+  }
 
   async function start() {
     setBusy("start"); setError(""); setMessage("");
@@ -184,17 +358,17 @@ export function MechanicDiagnosticMatrix({ diagnosticId, onBack, onChanged }: { 
       if (!response.ok || !body?.ok) throw new Error(body?.message || body?.error || "Не вдалося розпочати діагностику");
       setData(body);
       setComment(body.diagnostic?.review.mechanicComment || "");
-      setMessage("Діагностику розпочато. Відмічайте лише те, що потребує заміни.");
+      setMessage("Діагностику розпочато. Вся перевірка доступна однією стрічкою.");
       onChanged?.();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Не вдалося розпочати діагностику");
     } finally { setBusy(""); }
   }
 
-  async function patchCheck(item: Check, state: CheckState, silent = false) {
+  async function patchCheck(item: Check, state: CheckState, silent = false, compact = false, options?: SaveOptions) {
     if (!item.id) return null;
-    const replacement = state === "DEFECT";
-    const response = await fetch(`/api/diagnostics/${encodeURIComponent(diagnosticId)}/checks/${encodeURIComponent(item.id)}`, {
+    const problem = state === "ATTENTION" || state === "DEFECT";
+    const response = await fetch(`/api/diagnostics/${encodeURIComponent(diagnosticId)}/checks/${encodeURIComponent(item.id)}${compact ? "?compact=1" : ""}`, {
       method: "PATCH",
       credentials: "include",
       headers: { "Content-Type": "application/json" },
@@ -203,49 +377,100 @@ export function MechanicDiagnosticMatrix({ diagnosticId, onBack, onChanged }: { 
         measurementValue: null,
         measurementText: null,
         note: null,
-        findingText: replacement ? `${cleanPartName(item)} — потребує заміни` : null,
-        urgency: replacement ? "SOON" : "INFO",
-        action: replacement ? "REPLACE" : "NONE",
+        findingText: problem ? (options?.findingText ?? `${item.name} — потребує уваги`) : null,
+        urgency: problem ? (options?.urgency ?? (state === "DEFECT" ? "SOON" : "INFO")) : "INFO",
+        action: problem ? (options?.action ?? (state === "DEFECT" ? "REPLACE" : "ADDITIONAL_DIAGNOSTICS")) : "NONE",
       }),
     });
     const body = await response.json().catch(() => null) as DiagnosticPayload | null;
     if (!response.ok || !body?.ok) throw new Error(body?.message || body?.error || "Не вдалося зберегти відмітку");
-    if (!silent) setData(body);
+    if (!silent && !compact) setData(body);
     return body;
   }
 
-  async function toggleReplacement(item: Check) {
-    if (locked || !item.id) return;
-    setBusy(`check:${item.id}`); setError(""); setMessage("");
+  async function setCheckState(item: Check, nextState: CheckState, options?: SaveOptions) {
+    if (!item.id || locked || busy || savingChecks.has(item.id) || item.state === nextState) return;
+    const previousState = item.state;
+
+    applyLocalCheckState(item.id, nextState);
+    setSavingChecks((current) => {
+      const next = new Set(current);
+      next.add(item.id!);
+      return next;
+    });
+    setError("");
+
     try {
-      const nextState: CheckState = item.state === "DEFECT" ? "OK" : "DEFECT";
-      const body = await patchCheck(item, nextState);
-      if (body) {
-        onChanged?.();
-        setMessage(nextState === "DEFECT" ? "Додано до переліку заміни." : "Прибрано з переліку заміни.");
-      }
+      await patchCheck(item, nextState, true, true, options);
     } catch (cause) {
+      applyLocalCheckState(item.id, previousState);
       setError(cause instanceof Error ? cause.message : "Не вдалося зберегти відмітку");
+    } finally {
+      setSavingChecks((current) => {
+        const next = new Set(current);
+        next.delete(item.id!);
+        return next;
+      });
+    }
+  }
+
+  async function toggleReplacement(row: MatrixRow | null) {
+    const item = row?.item;
+    if (!item) return;
+    const nextState: CheckState = item.state === "DEFECT" ? "OK" : "DEFECT";
+    await setCheckState(item, nextState, {
+      findingText: nextState === "DEFECT" ? `${item.name} — потребує заміни` : null,
+      urgency: "SOON",
+      action: "REPLACE",
+    });
+  }
+
+  async function completeChassis() {
+    if (locked || busy || savingChecks.size > 0) return;
+    const unchecked = rows.filter((row) => row.item.id && row.item.state === "NOT_CHECKED");
+    if (!unchecked.length) {
+      setMessage("Ходова вже перевірена.");
+      return;
+    }
+    setBusy("complete"); setError(""); setMessage("");
+    try {
+      const chunkSize = 6;
+      for (let index = 0; index < unchecked.length; index += chunkSize) {
+        const chunk = unchecked.slice(index, index + chunkSize);
+        await Promise.all(chunk.map((row) => patchCheck(row.item, "OK", true, true)));
+      }
+      await load();
+      setMessage("Ходову перевірено. Непозначені деталі збережено як справні.");
+      onChanged?.();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Не вдалося завершити перевірку ходової");
     } finally { setBusy(""); }
   }
 
-  async function confirmNode() {
-    if (locked || !nodeRows.length) return;
-    setBusy("confirm-node"); setError(""); setMessage("");
+  async function markSectionNormal(section: SystemSection) {
+    if (locked || busy || savingChecks.size > 0) return;
+    const targets = section.items.filter((item) => item.id && item.state === "NOT_CHECKED");
+    if (!targets.length) return;
+
+    for (const item of targets) applyLocalCheckState(item.id!, "OK");
+    setSavingChecks((current) => new Set([...current, ...targets.map((item) => item.id!)]));
+    setError("");
     try {
-      for (const row of nodeRows) {
-        if (row.item.state === "NOT_CHECKED") await patchCheck(row.item, "OK", true);
-      }
-      await load();
-      setMessage("Вузол перевірено. Непозначені деталі не додані до заміни.");
-      onChanged?.();
+      await Promise.all(targets.map((item) => patchCheck(item, "OK", true, true)));
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Не вдалося підтвердити вузол");
-    } finally { setBusy(""); }
+      await load();
+      setError(cause instanceof Error ? cause.message : "Не вдалося зберегти блок");
+    } finally {
+      setSavingChecks((current) => {
+        const next = new Set(current);
+        for (const item of targets) next.delete(item.id!);
+        return next;
+      });
+    }
   }
 
   async function submit() {
-    if (!data?.canSubmit) return;
+    if (!data?.canSubmit || busy || savingChecks.size > 0) return;
     if (!window.confirm("Завершити діагностику? Після цього вона буде передана сервіс-менеджеру, а редагування механіком буде заблоковано.")) return;
     setBusy("submit"); setError(""); setMessage("");
     try {
@@ -271,19 +496,133 @@ export function MechanicDiagnosticMatrix({ diagnosticId, onBack, onChanged }: { 
 
   const vehicle = data.diagnostic.vehicle;
   const remaining = data.completion?.requiredRemaining ?? data.completion?.missingRequired ?? 0;
-  const nodeComplete = nodeRows.length > 0 && nodeRows.every((row) => row.item.state !== "NOT_CHECKED");
+  const allChassisChecked = rows.length > 0 && rows.every((row) => row.item.state !== "NOT_CHECKED");
+
+  function renderSideCheck(row: MatrixRow | null, side: "LEFT" | "RIGHT") {
+    if (!row) return <span className={styles.emptySide} aria-hidden="true">—</span>;
+    const checked = row.item.state === "DEFECT";
+    const saving = Boolean(row.item.id && savingChecks.has(row.item.id));
+    const disabled = locked || !row.item.id || Boolean(busy);
+    return <button
+      type="button"
+      className={`${styles.sideCheck} ${checked ? styles.sideCheckActive : ""} ${saving ? styles.sideCheckSaving : ""}`}
+      aria-label={`${side === "LEFT" ? "Ліва" : "Права"} сторона: ${partName(row.item)}${checked ? ", потребує заміни" : ""}`}
+      aria-pressed={checked}
+      aria-busy={saving}
+      disabled={disabled}
+      onClick={() => void toggleReplacement(row)}
+    >{checked ? "✓" : ""}</button>;
+  }
+
+  function renderAxis(axis: Axis, groups: NodeGroup[]) {
+    return <section className={styles.axisSection} key={axis}>
+      <header className={styles.axisHeader}>
+        <div><span>ХОДОВА</span><h2>{axis === "FRONT" ? "Передня вісь" : "Задня вісь"}</h2></div>
+      </header>
+      <div className={styles.columnLabels}><span>Ліва</span><b>Вузол / деталь</b><span>Права</span></div>
+      {groups.map((group) => <div className={styles.nodeSection} key={`${axis}:${group.node}`}>
+        <h3>{group.node}</h3>
+        <div className={styles.partRows}>
+          {group.pairs.map((pair) => <div className={styles.partRow} key={`${axis}:${group.node}:${pair.key}`}>
+            {renderSideCheck(pair.left, "LEFT")}
+            <strong>{pair.name}</strong>
+            {renderSideCheck(pair.right, "RIGHT")}
+          </div>)}
+          {group.common.map((row) => {
+            const checked = row.item.state === "DEFECT";
+            const saving = Boolean(row.item.id && savingChecks.has(row.item.id));
+            return <div className={`${styles.partRow} ${styles.commonRow}`} key={row.item.id || row.item.templateItemId}>
+              <span className={styles.commonMark}>ЗАГ.</span>
+              <strong>{partName(row.item)}</strong>
+              <button
+                type="button"
+                className={`${styles.sideCheck} ${checked ? styles.sideCheckActive : ""} ${saving ? styles.sideCheckSaving : ""}`}
+                aria-pressed={checked}
+                aria-busy={saving}
+                disabled={locked || !row.item.id || Boolean(busy)}
+                onClick={() => void toggleReplacement(row)}
+              >{checked ? "✓" : ""}</button>
+            </div>;
+          })}
+        </div>
+      </div>)}
+    </section>;
+  }
+
+  function renderAxleSealSection(section: SystemSection) {
+    const pairs = buildSectionPairs(section);
+    return <section className={styles.axisSection} key={section.id}>
+      <header className={styles.systemHeader}>
+        <div><span>ТРАНСМІСІЯ</span><h2>{section.name}</h2></div>
+      </header>
+      <div className={styles.columnLabels}><span>Ліва</span><b>Деталь</b><span>Права</span></div>
+      <div className={styles.partRows}>
+        {pairs.map((pair) => <div className={styles.partRow} key={`${section.code}:${pair.key}`}>
+          {renderSideCheck(pair.left, "LEFT")}
+          <strong>{pair.name}</strong>
+          {renderSideCheck(pair.right, "RIGHT")}
+        </div>)}
+      </div>
+    </section>;
+  }
+
+  function renderSystemSection(section: SystemSection) {
+    if (section.code === "AXLE_SEALS_FRONT" || section.code === "AXLE_SEALS_REAR") return renderAxleSealSection(section);
+    const unchecked = section.items.filter((item) => item.state === "NOT_CHECKED").length;
+    const eyebrow = section.code === "ENGINE_LEAKS"
+      ? "ДВИГУН"
+      : section.code === "TRANSMISSION_LEAKS"
+        ? "ТРАНСМІСІЯ"
+        : section.code === "EXHAUST"
+          ? "ВИХЛОП"
+          : "РІДИНИ";
+
+    return <section className={styles.systemSection} key={section.id}>
+      <header className={styles.systemHeader}>
+        <div><span>{eyebrow}</span><h2>{section.name}</h2></div>
+        {!locked && unchecked > 0 && <button type="button" className={styles.allNormalButton} disabled={Boolean(busy) || savingChecks.size > 0} onClick={() => void markSectionNormal(section)}>✓ Непозначене — норма</button>}
+      </header>
+      <div className={styles.systemRows}>
+        {section.items.map((item) => {
+          const saving = Boolean(item.id && savingChecks.has(item.id));
+          const choices = systemChoices(section, item);
+          return <div className={styles.systemRow} key={item.id || item.templateItemId}>
+            <strong>{item.name}</strong>
+            <div className={styles.stateChoices}>
+              {choices.map((choice) => {
+                const active = item.state === choice.state;
+                return <button
+                  type="button"
+                  key={choice.state}
+                  className={`${styles.stateChoice} ${active ? styles.stateChoiceActive : ""} ${active && choice.state === "ATTENTION" ? styles.stateAttention : ""} ${active && choice.state === "DEFECT" ? styles.stateDefect : ""}`}
+                  aria-pressed={active}
+                  aria-busy={saving}
+                  disabled={locked || !item.id || Boolean(busy) || saving}
+                  onClick={() => void setCheckState(item, choice.state, {
+                    findingText: choice.state === "OK" ? null : `${item.name} — ${choice.findingSuffix || "потребує уваги"}`,
+                    action: choice.action,
+                    urgency: choice.urgency,
+                  })}
+                >{choice.label}</button>;
+              })}
+            </div>
+          </div>;
+        })}
+      </div>
+    </section>;
+  }
 
   return <div className={styles.page}>
     <header className={styles.top}>
-      <button type="button" onClick={() => view === "MATRIX" ? onBack() : setView(view === "SUMMARY" ? "MATRIX" : "MATRIX")}>‹</button>
-      <strong>{view === "SUMMARY" ? "Діагностична карта" : view === "NODE" ? selectedNode : "Ходова"}</strong>
+      <button type="button" onClick={onBack}>‹</button>
+      <strong>Діагностика</strong>
       <span />
     </header>
 
     <main className={styles.content}>
       <section className={styles.vehicleBar}>
         <div><strong>{vehicle.label}</strong><span>{vehicle.plateNumber || "Без номера"}</span></div>
-        <b>{defectRows.length} до заміни</b>
+        <b>{remarkCount} {remarkLabel(remarkCount)}</b>
       </section>
 
       {data.diagnostic.review.managerComment && <div className={styles.managerNote}><b>Коментар сервіс-менеджера</b><span>{data.diagnostic.review.managerComment}</span></div>}
@@ -293,67 +632,25 @@ export function MechanicDiagnosticMatrix({ diagnosticId, onBack, onChanged }: { 
       {workflow === "PENDING" ? <section className={styles.startCard}>
         <span className={styles.bigIcon}>✓</span>
         <h1>{data.diagnostic.problem || "Діагностика автомобіля"}</h1>
-        <p>Відмічайте тільки деталі, які потребують заміни. Справні деталі не потрібно проклацувати по одній.</p>
+        <p>Після старту вся перевірка відкриється однією стрічкою: ходова, підтікання, трансмісія, вихлоп і технічні рідини.</p>
         <button type="button" disabled={Boolean(busy)} onClick={() => void start()}>{busy === "start" ? "Розпочинаю…" : "Почати діагностику →"}</button>
-      </section> : view === "MATRIX" ? <>
-        <div className={styles.axisTabs}>
-          <button type="button" className={axis === "FRONT" ? styles.activeTab : ""} onClick={() => setAxis("FRONT")}>Передня вісь</button>
-          <button type="button" className={axis === "REAR" ? styles.activeTab : ""} onClick={() => setAxis("REAR")}>Задня вісь</button>
-        </div>
+      </section> : <>
+        {renderAxis("FRONT", frontGroups)}
+        {renderAxis("REAR", rearGroups)}
 
-        <section className={styles.matrix}>
-          {(["LEFT", "RIGHT"] as Side[]).map((side) => <div className={styles.sideColumn} key={side}>
-            <h2>{side === "LEFT" ? "Ліва сторона" : "Права сторона"}</h2>
-            <div className={styles.nodeGrid}>{nodesFor(side).map((node) => {
-              const group = rows.filter((row) => row.axis === axis && row.side === side && row.node === node);
-              const defects = group.filter((row) => row.item.state === "DEFECT").length;
-              const complete = group.length > 0 && group.every((row) => row.item.state !== "NOT_CHECKED");
-              return <button type="button" key={`${side}:${node}`} onClick={() => openNode(side, node)}>
-                <span>{nodeIcon(node)}</span><strong>{node}</strong>
-                {defects > 0 ? <em>{defects}</em> : complete ? <small>✓</small> : null}
-              </button>;
-            })}</div>
-          </div>)}
-        </section>
+        {!locked && <section className={styles.finishCard}>
+          <div><h2>Ходова перевірена?</h2><p>Позначайте тільки несправності. Кнопка нижче зафіксує всі непозначені деталі ходової як справні.</p></div>
+          <button type="button" className={allChassisChecked ? styles.checkedButton : styles.finishButton} disabled={Boolean(busy) || allChassisChecked || savingChecks.size > 0} onClick={() => void completeChassis()}>
+            {busy === "complete" ? "Зберігаю…" : allChassisChecked ? "✓ Ходову перевірено" : savingChecks.size > 0 ? "Зберігаю відмітки…" : "✓ Завершити перевірку ходової"}
+          </button>
+        </section>}
 
-        {nodesFor("COMMON").length > 0 && <section className={styles.commonBlock}><h2>Загальне для осі</h2><div className={styles.nodeGrid}>{nodesFor("COMMON").map((node) => <button type="button" key={`COMMON:${node}`} onClick={() => openNode("COMMON", node)}><span>{nodeIcon(node)}</span><strong>{node}</strong></button>)}</div></section>}
-
-        <button type="button" className={styles.summaryButton} onClick={() => setView("SUMMARY")}><span>Відмічено до заміни</span><b>{defectRows.length}</b><i>›</i></button>
-      </> : view === "NODE" ? <>
-        <div className={styles.breadcrumb}>{axis === "FRONT" ? "Передня вісь" : "Задня вісь"} · {sideLabel(selectedSide)}</div>
-        <section className={styles.nodeCard}>
-          <header><div><span>{nodeIcon(selectedNode)}</span><div><h1>{selectedNode}</h1><p>Галочка означає: деталь потребує заміни</p></div></div><b>{nodeRows.filter((row) => row.item.state === "DEFECT").length}</b></header>
-          <div className={styles.parts}>{nodeRows.map((row) => {
-            const checked = row.item.state === "DEFECT";
-            return <button type="button" key={row.item.id || row.item.templateItemId} className={checked ? styles.partChecked : ""} disabled={Boolean(busy) || locked || !row.item.id} onClick={() => void toggleReplacement(row.item)}>
-              <span className={styles.checkbox}>{checked ? "✓" : ""}</span>
-              <strong>{cleanPartName(row.item)}</strong>
-              {checked && <em>ДО ЗАМІНИ</em>}
-            </button>;
-          })}</div>
-          {!locked && <button type="button" className={nodeComplete ? styles.nodeDone : styles.confirmNode} disabled={Boolean(busy)} onClick={() => void confirmNode()}>{busy === "confirm-node" ? "Зберігаю…" : nodeComplete ? "✓ Вузол перевірено" : "✓ Завершити перевірку вузла"}</button>}
-        </section>
-        <button type="button" className={styles.summaryButton} onClick={() => setView("SUMMARY")}><span>Відмічено до заміни</span><b>{defectRows.length}</b><i>›</i></button>
-      </> : <>
-        <section className={styles.summaryCard}>
-          <header><div><span>✓</span><div><h1>Потребує заміни</h1><p>Тільки відмічені механіком деталі</p></div></div><b>{defectRows.length}</b></header>
-          {defectRows.length ? (["FRONT", "REAR"] as Axis[]).map((summaryAxis) => {
-            const axisRows = defectRows.filter((row) => row.axis === summaryAxis);
-            if (!axisRows.length) return null;
-            return <div className={styles.summaryAxis} key={summaryAxis}><h2>{summaryAxis === "FRONT" ? "Передня вісь" : "Задня вісь"}</h2>{(["LEFT", "RIGHT", "COMMON"] as Side[]).map((side) => {
-              const sideRows = axisRows.filter((row) => row.side === side);
-              if (!sideRows.length) return null;
-              return <div className={styles.summarySide} key={side}><h3>{sideLabel(side)}</h3>{Array.from(new Set(sideRows.map((row) => row.node))).map((node) => <div className={styles.summaryNode} key={node}><strong>{node}</strong>{sideRows.filter((row) => row.node === node).map((row) => <span key={row.item.id || row.item.templateItemId}>• {cleanPartName(row.item)}</span>)}</div>)}</div>;
-            })}</div>;
-          }) : <div className={styles.empty}>Деталей до заміни не відмічено.</div>}
-        </section>
-
-        {recommendedWorks.length > 0 && <section className={styles.worksCard}><h2>Автоматично сформовані роботи</h2>{recommendedWorks.map((work) => <div key={work}><span>🔧</span><strong>{work}</strong></div>)}</section>}
+        {systemSections.map((section) => renderSystemSection(section))}
 
         {!locked && <section className={styles.submitCard}>
           <label><span>Примітка механіка <small>(необов’язково)</small></span><textarea rows={2} value={comment} onChange={(event) => setComment(event.target.value)} placeholder="За потреби додайте коротке уточнення" /></label>
-          {!data.canSubmit && <div className={styles.incomplete}>Щоб завершити діагностику, підтвердьте всі вузли. Залишилось пунктів: <b>{remaining}</b>.</div>}
-          <button type="button" disabled={Boolean(busy) || !data.canSubmit} onClick={() => void submit()}>{busy === "submit" ? "Завершую…" : "Завершити діагностику"}</button>
+          {!data.canSubmit && <div className={styles.incomplete}>Для передачі діагностики сервіс-менеджеру перевірте всі пункти. Залишилось: <b>{remaining}</b>.</div>}
+          <button type="button" disabled={Boolean(busy) || !data.canSubmit || savingChecks.size > 0} onClick={() => void submit()}>{busy === "submit" ? "Передаю…" : savingChecks.size > 0 ? "Зберігаю відмітки…" : "Завершити діагностику"}</button>
         </section>}
         {locked && <div className={styles.locked}>✓ Діагностика завершена. Результат передано сервіс-менеджеру.</div>}
       </>}

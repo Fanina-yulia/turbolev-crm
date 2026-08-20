@@ -3,6 +3,7 @@ import { getAccessContext } from "@/src/security/access-context";
 import { CrmShell } from "./crm-shell";
 import { MechanicLiveCabinet } from "./mechanic-live-cabinet";
 import { SidebarRail } from "./auth/sidebar-rail";
+import { SidebarRailIcons } from "./auth/sidebar-rail-icons";
 
 type HomePageProps = {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
@@ -33,5 +34,5 @@ export default async function HomePage({ searchParams }: HomePageProps) {
 
   const section = first(params.section);
   const settingsTab = first(params.settingsTab);
-  return <><SidebarRail/><CrmShell initialSection={section} initialSettingsTab={settingsTab} /></>;
+  return <><SidebarRail/><SidebarRailIcons/><CrmShell initialSection={section} initialSettingsTab={settingsTab} /></>;
 }

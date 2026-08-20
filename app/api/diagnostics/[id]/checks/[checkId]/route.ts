@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { authorize } from "@/src/security/authorize";
 import { PERMISSIONS } from "@/src/security/permissions";
 import { StructuredDiagnosticError, updateDiagnosticCheck } from "@/src/services/structured-diagnostics.service";
+import { updateQuickDiagnosticCheck } from "@/src/services/quick-diagnostic-check.service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -15,7 +16,7 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
       return NextResponse.json({ ok: false, error: "MECHANIC_ROLE_REQUIRED" }, { status: 403 });
     }
     const body = await request.json().catch(() => ({})) as Record<string, unknown>;
-    const data = await updateDiagnosticCheck(access.context.user.id, id, checkId, {
+    const input = {
       state: String(body.state || ""),
       measurementValue: typeof body.measurementValue === "number" || typeof body.measurementValue === "string" ? body.measurementValue : null,
       measurementText: typeof body.measurementText === "string" ? body.measurementText : null,
@@ -23,7 +24,11 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
       action: typeof body.action === "string" ? body.action : null,
       urgency: typeof body.urgency === "string" ? body.urgency : null,
       findingText: typeof body.findingText === "string" ? body.findingText : null,
-    });
+    };
+    const compact = new URL(request.url).searchParams.get("compact") === "1";
+    const data = compact
+      ? await updateQuickDiagnosticCheck(access.context.user.id, id, checkId, input)
+      : await updateDiagnosticCheck(access.context.user.id, id, checkId, input);
     return NextResponse.json({ ok: true, ...data });
   } catch (error) {
     if (error instanceof StructuredDiagnosticError) return NextResponse.json({ ok: false, error: error.code, message: error.message }, { status: error.status });
