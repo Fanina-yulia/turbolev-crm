@@ -46,6 +46,7 @@ type DiagnosticPayload = {
     requiredChecked?: number;
     requiredRemaining?: number;
     missingRequired?: number;
+    autoFillRemaining?: number;
   };
   diagnostic?: {
     id: string;
@@ -330,8 +331,12 @@ export function MechanicDiagnosticMatrix({ diagnosticId, onBack, onChanged }: { 
       if (!changed) return current;
 
       const allItems = inspections.flatMap((inspection) => inspection.sections.flatMap((section) => section.items));
+      const allItemsWithSection = inspections.flatMap((inspection) => inspection.sections.flatMap((section) => section.items.map((item) => ({ item, sectionCode: section.code }))));
       const requiredChecked = allItems.filter((item) => item.state !== "NOT_CHECKED").length;
-      const requiredRemaining = Math.max(0, allItems.length - requiredChecked);
+      const requiredRemaining = allItemsWithSection.filter(({ item, sectionCode }) => item.state === "NOT_CHECKED"
+        && !CHASSIS_SECTION_CODES.has(sectionCode)
+        && sectionCode !== "AXLE_SEALS_FRONT"
+        && sectionCode !== "AXLE_SEALS_REAR").length;
       const canSubmit = allItems.length > 0 && requiredRemaining === 0;
 
       return {
