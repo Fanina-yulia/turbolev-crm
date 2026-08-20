@@ -1,0 +1,36 @@
+/* Compact sidebar brand mark: use the dedicated round Turbo LEV logo supplied by the user.
+   Expanded sidebar keeps the existing full wordmark. */
+@media (min-width: 761px) {
+  .sidebar:has(> button[aria-controls="crm-primary-navigation"][aria-expanded="false"]) .brand {
+    justify-content: center !important;
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+  }
+
+  .sidebar:has(> button[aria-controls="crm-primary-navigation"][aria-expanded="false"]) .brandLogoWrap {
+    position: relative !important;
+    width: 44px !important;
+    min-width: 44px !important;
+    height: 44px !important;
+    display: grid !important;
+    place-items: center !important;
+    overflow: visible !important;
+    background: transparent !important;
+  }
+
+  .sidebar:has(> button[aria-controls="crm-primary-navigation"][aria-expanded="false"]) .brandLogo {
+    display: none !important;
+  }
+
+  .sidebar:has(> button[aria-controls="crm-primary-navigation"][aria-expanded="false"]) .brandLogoWrap::after {
+    content: "";
+    display: block;
+    width: 42px;
+    height: 42px;
+    border-radius: 50%;
+    background-image: url("data:image/webp;base64,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");
+    background-repeat: no-repeat;
+    background-position: center;
+    background-size: contain;
+  }
+}
