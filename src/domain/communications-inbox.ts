@@ -1,4 +1,4 @@
-export type CommunicationChannel = "FACEBOOK" | "INSTAGRAM" | "TIKTOK" | "BINOTEL" | "OLX" | "WEBSITE";
+export type CommunicationChannel = "FACEBOOK" | "INSTAGRAM" | "TIKTOK" | "BINOTEL" | "OLX" | "WEBSITE" | "TELEGRAM";
 export type CommunicationLifecycleState = "NEW" | "IN_WORK" | "WAITING_CLIENT" | "CLOSED" | "SPAM";
 export type CommunicationInquiryState = CommunicationLifecycleState | "CONVERTED" | "LINKED";
 export type CommunicationMessage = {
@@ -48,6 +48,8 @@ export type CommunicationConversation = {
   unreadInquiryIds: string[];
   timeline: ConversationTimelineMessage[];
   channels: CommunicationChannel[];
+  sourceChannel: CommunicationChannel;
+  activeChannel: CommunicationChannel;
   displayName: string;
   phone?: string;
   handle?: string;
@@ -67,6 +69,16 @@ export type CommunicationConversation = {
 
 function isObject(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+export function normalizeCommunicationInquiryChannel(inquiry: CommunicationInquiry): CommunicationInquiry {
+  if (inquiry.channel !== "WEBSITE") return inquiry;
+  const metadata = isObject(inquiry.metadata) ? inquiry.metadata : null;
+  const source = typeof metadata?.source === "string" ? metadata.source.trim().toUpperCase() : "";
+  const telegramHint = source === "TELEGRAM"
+    || String(inquiry.sourceDetail || "").trim().toLocaleLowerCase("uk-UA").startsWith("telegram")
+    || String(inquiry.subject || "").trim().toLocaleLowerCase("uk-UA").startsWith("telegram");
+  return telegramHint ? { ...inquiry, channel: "TELEGRAM" } : inquiry;
 }
 
 export function getCommunicationLifecycleState(inquiry: CommunicationInquiry): CommunicationLifecycleState {
@@ -97,32 +109,61 @@ export function normalizeCommunicationPhone(value?: string | null) {
 }
 
 export function getCommunicationConversationKey(inquiry: CommunicationInquiry) {
-  const phone = normalizeCommunicationPhone(inquiry.phone);
+  const normalizedInquiry = normalizeCommunicationInquiryChannel(inquiry);
+  const phone = normalizeCommunicationPhone(normalizedInquiry.phone);
   if (phone) return `phone:${phone}`;
-  const handle = inquiry.handle?.trim().toLocaleLowerCase("uk-UA");
-  if (handle) return `handle:${inquiry.channel}:${handle}`;
-  if (inquiry.existingLeadId) return `lead:${inquiry.existingLeadId}`;
-  return `inquiry:${inquiry.id}`;
+  const handle = normalizedInquiry.handle?.trim().toLocaleLowerCase("uk-UA");
+  if (handle) return `handle:${normalizedInquiry.channel}:${handle}`;
+  if (normalizedInquiry.existingLeadId) return `lead:${normalizedInquiry.existingLeadId}`;
+  return `inquiry:${normalizedInquiry.id}`;
 }
 
 export function isLiveReplyChannel(channel: CommunicationChannel) {
-  return channel === "FACEBOOK" || channel === "INSTAGRAM" || channel === "OLX";
+  return channel === "FACEBOOK" || channel === "INSTAGRAM" || channel === "OLX" || channel === "TELEGRAM";
+}
+
+function toMillis(value?: string | null) {
+  const time = new Date(value || "").getTime();
+  return Number.isFinite(time) ? time : 0;
+}
+
+function inquiryLastInboundAt(inquiry: CommunicationInquiry) {
+  const explicit = toMillis(inquiry.lastInboundAt);
+  const messages = inquiry.messages
+    .filter((message) => message.direction === "in")
+    .map((message) => toMillis(message.at));
+  return Math.max(explicit, ...messages, 0);
+}
+
+function activeInquiry(inquiries: CommunicationInquiry[]) {
+  if (!inquiries.length) return null;
+  const ranked = inquiries
+    .map((inquiry) => ({ inquiry, inboundAt: inquiryLastInboundAt(inquiry) }))
+    .sort((left, right) => right.inboundAt - left.inboundAt || toMillis(right.inquiry.receivedAt) - toMillis(left.inquiry.receivedAt));
+  return ranked[0]?.inboundAt ? ranked[0].inquiry : inquiries[0];
 }
 
 export function getCommunicationReplyInquiries(conversation: CommunicationConversation) {
   const byChannel = new Map<CommunicationChannel, CommunicationInquiry>();
   for (const inquiry of conversation.inquiries) {
-    if (!byChannel.has(inquiry.channel)) byChannel.set(inquiry.channel, inquiry);
+    const previous = byChannel.get(inquiry.channel);
+    if (!previous || inquiryLastInboundAt(inquiry) > inquiryLastInboundAt(previous) || toMillis(inquiry.receivedAt) > toMillis(previous.receivedAt)) {
+      byChannel.set(inquiry.channel, inquiry);
+    }
   }
   const items = Array.from(byChannel.values());
   return items.sort((left, right) => {
     const liveDelta = Number(isLiveReplyChannel(right.channel)) - Number(isLiveReplyChannel(left.channel));
     if (liveDelta) return liveDelta;
-    return new Date(right.receivedAt).getTime() - new Date(left.receivedAt).getTime();
+    const inboundDelta = inquiryLastInboundAt(right) - inquiryLastInboundAt(left);
+    if (inboundDelta) return inboundDelta;
+    return toMillis(right.receivedAt) - toMillis(left.receivedAt);
   });
 }
 
 export function getDefaultCommunicationReplyInquiry(conversation: CommunicationConversation) {
+  const active = activeInquiry(conversation.inquiries);
+  if (active && isLiveReplyChannel(active.channel)) return active;
   return getCommunicationReplyInquiries(conversation)[0] || conversation.representative;
 }
 
@@ -158,11 +199,6 @@ function chooseDisplayName(inquiries: CommunicationInquiry[]) {
   return inquiries[0]?.name?.trim() || "Без імені";
 }
 
-function toMillis(value: string) {
-  const time = new Date(value).getTime();
-  return Number.isFinite(time) ? time : 0;
-}
-
 function latestHandledAt(inquiries: CommunicationInquiry[]) {
   let latest = 0;
   for (const inquiry of inquiries) {
@@ -189,7 +225,8 @@ function conversationLifecycleState(inquiries: CommunicationInquiry[]): Communic
 
 export function buildCommunicationConversations(source: CommunicationInquiry[]) {
   const groups = new Map<string, CommunicationInquiry[]>();
-  for (const inquiry of source) {
+  for (const sourceInquiry of source) {
+    const inquiry = normalizeCommunicationInquiryChannel(sourceInquiry);
     if (getCommunicationLifecycleState(inquiry) === "SPAM") continue;
     const key = getCommunicationConversationKey(inquiry);
     const group = groups.get(key) || [];
@@ -214,6 +251,8 @@ export function buildCommunicationConversations(source: CommunicationInquiry[]) 
       .filter((message, index, items) => items.findIndex((candidate) => candidate.id === message.id) === index)
       .sort((a, b) => toMillis(a.at) - toMillis(b.at));
     const channels = Array.from(new Set(inquiries.map((item) => item.channel)));
+    const sourceInquiry = [...inquiries].sort((a, b) => toMillis(a.receivedAt) - toMillis(b.receivedAt))[0] || representative;
+    const active = activeInquiry(inquiries) || representative;
     const unreadCount = unreadInquiryIds.length;
     const unansweredCount = unanswered.length;
     const unresolvedMissedCount = unresolvedMissed.length;
@@ -237,6 +276,8 @@ export function buildCommunicationConversations(source: CommunicationInquiry[]) 
       unreadInquiryIds,
       timeline,
       channels,
+      sourceChannel: sourceInquiry.channel,
+      activeChannel: active.channel,
       displayName: chooseDisplayName(inquiries),
       phone,
       handle,
