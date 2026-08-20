@@ -1,5 +1,5 @@
 import type { CrmDateTime } from "./crm-core";
-import type { PlannerStatusContract } from "./planner";
+import type { PlannerLifecycleContract, PlannerStatusContract } from "./planner";
 
 export type CabinetStationReference = {
   id: string;
@@ -24,6 +24,7 @@ export type MechanicHomeAppointmentContract = {
   workOrderId: string | null;
   status: PlannerStatusContract;
   workOrderStatus: string | null;
+  lifecycle: PlannerLifecycleContract | null;
   plannedStartAt: CrmDateTime;
   plannedEndAt: CrmDateTime;
   plate: string;
@@ -87,6 +88,7 @@ export type StationManagerFlowContract = {
 export type StationManagerAttentionContract = {
   id: string;
   status: PlannerStatusContract;
+  lifecycle: PlannerLifecycleContract | null;
   plate: string;
   vehicle: string;
   problem: string | null;
