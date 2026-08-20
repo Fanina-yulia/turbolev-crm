@@ -36,13 +36,17 @@ export type VehicleCardLifecycleContract = VehicleCardContract & {
   lifecycle: VehicleLifecyclePayload | null;
 };
 
+export type ClientDirectoryLifecycleItem = Omit<ClientDirectoryItem, "vehicles"> & {
+  vehicles: Array<ClientDirectoryItem["vehicles"][number] & { lifecycle: VehicleLifecyclePayload | null }>;
+};
+
 export type ClientDirectoryPayload = {
   ok: true;
   total: number;
   page: number;
   limit: number;
   pages: number;
-  clients: ClientDirectoryItem[];
+  clients: ClientDirectoryLifecycleItem[];
 };
 
 export type VehicleDirectoryPayload = {
@@ -128,20 +132,34 @@ function parseVehicleDirectoryLifecycleItem(value: unknown): VehicleDirectoryLif
   return { ...vehicle, lifecycle: value.lifecycle == null ? null : parseLifecycle(value.lifecycle) };
 }
 
+function parseClientDirectoryLifecycleItem(value: unknown): ClientDirectoryLifecycleItem | null {
+  const client = parseClientDirectoryItem(value);
+  if (!client || !isRecord(value)) return null;
+  const rawVehicles = Array.isArray(value.vehicles) ? value.vehicles : [];
+  const rawById = new Map(rawVehicles.flatMap((item) => isRecord(item) && typeof item.id === "string" ? [[item.id, item] as const] : []));
+  return {
+    ...client,
+    vehicles: client.vehicles.map((vehicle) => {
+      const raw = rawById.get(vehicle.id);
+      return { ...vehicle, lifecycle: raw?.lifecycle == null ? null : parseLifecycle(raw.lifecycle) };
+    }),
+  };
+}
+
 export function parseClientDirectoryPayload(value: unknown): ClientDirectoryPayload | null {
   if (!isRecord(value) || value.ok !== true) return null;
   const total = finiteInteger(value.total);
   const page = finiteInteger(value.page);
   const limit = finiteInteger(value.limit);
   const pages = finiteInteger(value.pages);
-  const clients = parseArrayStrict(value.clients, parseClientDirectoryItem);
+  const clients = parseArrayStrict(value.clients, parseClientDirectoryLifecycleItem);
   if (total == null || page == null || limit == null || pages == null || !clients) return null;
   return { ok: true, total, page, limit, pages, clients };
 }
 
-export function parseClientDirectoryItemPayload(value: unknown): ClientDirectoryItem | null {
+export function parseClientDirectoryItemPayload(value: unknown): ClientDirectoryLifecycleItem | null {
   if (!isRecord(value) || value.ok !== true) return null;
-  return parseClientDirectoryItem(value.client);
+  return parseClientDirectoryLifecycleItem(value.client);
 }
 
 export function parseVehicleDirectoryPayload(value: unknown): VehicleDirectoryPayload | null {
