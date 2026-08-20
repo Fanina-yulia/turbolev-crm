@@ -14,7 +14,7 @@
     "lint": "next lint",
     "module:scope": "node scripts/module-scope.mjs",
     "module:ci": "node scripts/module-ci.mjs",
-    "contracts:smoke": "tsx scripts/crm-core-contracts-smoke.ts",
+    "contracts:smoke": "tsx scripts/crm-core-contracts-smoke.ts && tsx scripts/planner-contracts-smoke.ts",
     "db:generate": "prisma generate",
     "db:push": "prisma db push",
     "db:migrate:dev": "prisma migrate dev",
