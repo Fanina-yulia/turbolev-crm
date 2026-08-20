@@ -1,24 +1,15 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import type { ClientCardContract as ClientCard } from "@/src/lib/contracts/client-card";
+import {
+  clientCardPayloadMessage,
+  parseClientCardGetPayload,
+  parseClientCardSavePayload,
+  parseClientCardVehicleSavePayload,
+} from "@/src/lib/contracts/client-card-payload.parsers";
 import { VehicleBrandLogo } from "./vehicle-brand-logo";
 
-type Vehicle = {
-  id:string;
-  plateNumber?:string|null;
-  vin?:string|null;
-  brand?:string|null;
-  model?:string|null;
-  year?:number|null;
-  engineName?:string|null;
-  fuelType?:string|null;
-  driveType?:string|null;
-  vehicleDataSource?:string|null;
-  vehicleDataConfidence?:number|null;
-};
-type ClientPhone = { id:string; phone:string; phoneNormalized:string; label?:string|null; isPrimary:boolean };
-type ServiceHistory = { id:string; vehicleId:string; status:string; createdAt:string; updatedAt:string; closedAt?:string|null };
-type ClientCard = { id:string; name?:string|null; phone:string; phones:ClientPhone[]; vehicles:Vehicle[]; serviceHistory:ServiceHistory[] };
 type Props = {
   open:boolean;
   name:string;
@@ -94,11 +85,12 @@ export function ClientCardDrawer({open,name,phone,channel,existingLeadId,onClose
         autoCreate:allowAutoCreate,
       }),
     });
-    const data=await response.json();
-    if(!response.ok)throw new Error(data.error||"Не вдалося зберегти клієнта");
+    const raw:unknown=await response.json().catch(()=>null);
+    const data=parseClientCardSavePayload(raw);
+    if(!response.ok||!data)throw new Error(clientCardPayloadMessage(raw,"Не вдалося зберегти клієнта"));
     applyClient(data.client,name,primaryPhone);
     window.dispatchEvent(new CustomEvent("turbolev:data-changed",{detail:{entity:"client",clientId:data.client.id}}));
-    return data.client as ClientCard;
+    return data.client;
   }
 
   async function loadCard(){
@@ -107,7 +99,9 @@ export function ClientCardDrawer({open,name,phone,channel,existingLeadId,onClose
     try{
       if(normalizePhone(incoming).length!==12){applyClient(null,name,incoming);return}
       const response=await fetch(`/api/client-card?phone=${encodeURIComponent(incoming)}`,{cache:"no-store"});
-      const data=await response.json();
+      const raw:unknown=await response.json().catch(()=>null);
+      const data=parseClientCardGetPayload(raw);
+      if(!response.ok||!data)throw new Error(clientCardPayloadMessage(raw));
       if(data.client){applyClient(data.client,name,incoming);return}
       applyClient(null,name,incoming);
       if(channel==="BINOTEL"){
@@ -115,8 +109,9 @@ export function ClientCardDrawer({open,name,phone,channel,existingLeadId,onClose
           method:"PUT",headers:{"content-type":"application/json"},
           body:JSON.stringify({name,primaryPhone:incoming,sourceChannel:"BINOTEL",autoCreate:true}),
         });
-        const createdData=await created.json();
-        if(created.ok&&createdData.client)applyClient(createdData.client,name,incoming);
+        const createdRaw:unknown=await created.json().catch(()=>null);
+        const createdData=parseClientCardSavePayload(createdRaw);
+        if(created.ok&&createdData)applyClient(createdData.client,name,incoming);
       }
     }catch{applyClient(null,name,incoming)}finally{setLoading(false)}
   }
@@ -148,18 +143,19 @@ export function ClientCardDrawer({open,name,phone,channel,existingLeadId,onClose
         method:"POST",headers:{"content-type":"application/json"},
         body:JSON.stringify({name:nameDraft||name,phone:savedClient.phone||primaryPhoneDraft,plate:plate.trim(),vin:vin.trim()}),
       });
-      const data=await response.json();
-      if(!response.ok)throw new Error(data.error||"Не вдалося зберегти автомобіль");
+      const raw:unknown=await response.json().catch(()=>null);
+      const data=parseClientCardVehicleSavePayload(raw);
+      if(!response.ok||!data)throw new Error(clientCardPayloadMessage(raw,"Не вдалося зберегти автомобіль"));
       applyClient(data.client,name,savedClient.phone);
-      setActiveVehicleId(data.vehicle?.id||data.client?.vehicles?.[0]?.id||"");
-      if(data.vehicle?.vin){
+      setActiveVehicleId(data.vehicle.id||data.client.vehicles[0]?.id||"");
+      if(data.vehicle.vin){
         setPlate("");setVin("");setShowVinFallback(false);setAddingVehicle(false);
         setMessage(`Автомобіль розпізнано: ${[data.vehicle.brand,data.vehicle.model].filter(Boolean).join(" ")||data.vehicle.plateNumber||"авто"}.`);
       }else{
         setShowVinFallback(true);
         setMessage("Автомобіль збережено, але VIN автоматично не знайдено. За потреби введіть VIN вручну.");
       }
-      window.dispatchEvent(new CustomEvent("turbolev:data-changed",{detail:{entity:"vehicle",vehicleId:data.vehicle?.id,clientId:data.client?.id}}));
+      window.dispatchEvent(new CustomEvent("turbolev:data-changed",{detail:{entity:"vehicle",vehicleId:data.vehicle.id,clientId:data.client.id}}));
     }catch(error){setMessage(error instanceof Error?error.message:"Помилка збереження автомобіля")}finally{setSavingVehicle(false)}
   }
 
