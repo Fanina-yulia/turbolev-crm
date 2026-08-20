@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { authorize } from "@/src/security/authorize";
 import { PERMISSIONS } from "@/src/security/permissions";
+import { getRequiredDiagnosticCompletion } from "@/src/services/diagnostic-completeness.service";
 import { ensureExtendedDiagnosticMatrix } from "@/src/services/extended-diagnostic-matrix.service";
 import { startMechanicDiagnosticByType } from "@/src/services/mechanic-diagnostic-matrix.service";
 import { getStructuredDiagnosticForMechanic, StructuredDiagnosticError } from "@/src/services/structured-diagnostics.service";
@@ -20,8 +21,12 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     await startMechanicDiagnosticByType(access.context.user.id, id);
     await ensureExtendedDiagnosticMatrix(id);
     const data = await getStructuredDiagnosticForMechanic(access.context.user.id, id);
+    const completion = await getRequiredDiagnosticCompletion(id);
 
-    return NextResponse.json({ ok: true, ...data }, { headers: { "Cache-Control": "no-store" } });
+    return NextResponse.json(
+      { ok: true, ...data, canSubmit: completion.canSubmit, completion },
+      { headers: { "Cache-Control": "no-store" } },
+    );
   } catch (error) {
     if (error instanceof StructuredDiagnosticError) {
       return NextResponse.json({ ok: false, error: error.code, message: error.message }, { status: error.status });

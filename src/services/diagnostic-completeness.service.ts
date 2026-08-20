@@ -13,6 +13,17 @@ import {
   StructuredDiagnosticError,
 } from "@/src/services/structured-diagnostics.service";
 
+const AUTO_OK_SECTION_CODES = new Set([
+  "FRONT_SUSPENSION",
+  "FRONT_STEERING",
+  "FRONT_DRIVE",
+  "FRONT_BRAKES",
+  "REAR_SUSPENSION",
+  "REAR_BRAKES",
+  "AXLE_SEALS_FRONT",
+  "AXLE_SEALS_REAR",
+]);
+
 export type DiagnosticCompletion = {
   canSubmit: boolean;
   total: number;
@@ -22,6 +33,7 @@ export type DiagnosticCompletion = {
   requiredRemaining: number;
   optionalTotal: number;
   optionalRemaining: number;
+  autoFillRemaining: number;
 };
 
 export async function getRequiredDiagnosticCompletion(diagnosticRequestId: string): Promise<DiagnosticCompletion> {
@@ -31,7 +43,7 @@ export async function getRequiredDiagnosticCompletion(diagnosticRequestId: strin
     select: { id: true },
   });
   if (!inspections.length) {
-    return { canSubmit: false, total: 0, checked: 0, requiredTotal: 0, requiredChecked: 0, requiredRemaining: 0, optionalTotal: 0, optionalRemaining: 0 };
+    return { canSubmit: false, total: 0, checked: 0, requiredTotal: 0, requiredChecked: 0, requiredRemaining: 0, optionalTotal: 0, optionalRemaining: 0, autoFillRemaining: 0 };
   }
 
   const checks = await prisma.diagnosticCheck.findMany({
@@ -39,30 +51,80 @@ export async function getRequiredDiagnosticCompletion(diagnosticRequestId: strin
     select: { templateItemId: true, state: true },
   });
   if (!checks.length) {
-    return { canSubmit: false, total: 0, checked: 0, requiredTotal: 0, requiredChecked: 0, requiredRemaining: 0, optionalTotal: 0, optionalRemaining: 0 };
+    return { canSubmit: false, total: 0, checked: 0, requiredTotal: 0, requiredChecked: 0, requiredRemaining: 0, optionalTotal: 0, optionalRemaining: 0, autoFillRemaining: 0 };
   }
 
   const templateItems = await prisma.diagnosticTemplateItem.findMany({
     where: { id: { in: Array.from(new Set(checks.map((item) => item.templateItemId))) } },
-    select: { id: true, isRequired: true },
+    select: { id: true, isRequired: true, sectionId: true },
   });
-  const requiredById = new Map(templateItems.map((item) => [item.id, item.isRequired]));
-  const required = checks.filter((item) => requiredById.get(item.templateItemId) !== false);
-  const optional = checks.filter((item) => requiredById.get(item.templateItemId) === false);
+  const sectionIds = Array.from(new Set(templateItems.map((item) => item.sectionId)));
+  const sections = sectionIds.length
+    ? await prisma.diagnosticTemplateSection.findMany({
+        where: { id: { in: sectionIds } },
+        select: { id: true, code: true },
+      })
+    : [];
+  const sectionCodeById = new Map(sections.map((section) => [section.id, section.code]));
+  const itemMetaById = new Map(templateItems.map((item) => [item.id, {
+    isRequired: item.isRequired,
+    sectionCode: sectionCodeById.get(item.sectionId) || "",
+  }]));
+
+  const required = checks.filter((item) => itemMetaById.get(item.templateItemId)?.isRequired !== false);
+  const optional = checks.filter((item) => itemMetaById.get(item.templateItemId)?.isRequired === false);
   const isChecked = (state: DiagnosticCheckState) => state !== DiagnosticCheckState.NOT_CHECKED;
+  const isAutoFill = (templateItemId: string) => AUTO_OK_SECTION_CODES.has(itemMetaById.get(templateItemId)?.sectionCode || "");
   const requiredChecked = required.filter((item) => isChecked(item.state)).length;
   const optionalChecked = optional.filter((item) => isChecked(item.state)).length;
+  const requiredBlocking = required.filter((item) => !isChecked(item.state) && !isAutoFill(item.templateItemId));
+  const autoFillRemaining = required.filter((item) => !isChecked(item.state) && isAutoFill(item.templateItemId)).length;
 
   return {
-    canSubmit: required.every((item) => isChecked(item.state)),
+    canSubmit: requiredBlocking.length === 0,
     total: checks.length,
     checked: requiredChecked + optionalChecked,
     requiredTotal: required.length,
     requiredChecked,
-    requiredRemaining: required.length - requiredChecked,
+    requiredRemaining: requiredBlocking.length,
     optionalTotal: optional.length,
     optionalRemaining: optional.length - optionalChecked,
+    autoFillRemaining,
   };
+}
+
+async function markAutoFillChecksOk(diagnosticRequestId: string) {
+  const prisma = getPrisma();
+  const inspections = await prisma.diagnosticInspection.findMany({
+    where: { diagnosticRequestId },
+    select: { id: true },
+  });
+  if (!inspections.length) return 0;
+
+  const sections = await prisma.diagnosticTemplateSection.findMany({
+    where: { code: { in: Array.from(AUTO_OK_SECTION_CODES) } },
+    select: { id: true },
+  });
+  if (!sections.length) return 0;
+
+  const items = await prisma.diagnosticTemplateItem.findMany({
+    where: { sectionId: { in: sections.map((section) => section.id) } },
+    select: { id: true },
+  });
+  if (!items.length) return 0;
+
+  const result = await prisma.diagnosticCheck.updateMany({
+    where: {
+      inspectionId: { in: inspections.map((inspection) => inspection.id) },
+      templateItemId: { in: items.map((item) => item.id) },
+      state: DiagnosticCheckState.NOT_CHECKED,
+    },
+    data: {
+      state: DiagnosticCheckState.OK,
+      checkedAt: new Date(),
+    },
+  });
+  return result.count;
 }
 
 export async function submitStructuredDiagnosticRespectingOptional(
@@ -79,7 +141,17 @@ export async function submitStructuredDiagnosticRespectingOptional(
     throw new StructuredDiagnosticError("DIAGNOSTIC_LOCKED", "Діагностика вже передана на перевірку.", 409);
   }
 
-  const completion = await getRequiredDiagnosticCompletion(diagnosticRequestId);
+  let completion = await getRequiredDiagnosticCompletion(diagnosticRequestId);
+  if (!completion.canSubmit) {
+    throw new StructuredDiagnosticError(
+      "DIAGNOSTIC_INCOMPLETE",
+      `Перед передачею сервіс-менеджеру перевірте всі обов’язкові пункти. Залишилось: ${completion.requiredRemaining}.`,
+      409,
+    );
+  }
+
+  const autoFilledCount = await markAutoFillChecksOk(diagnosticRequestId);
+  completion = await getRequiredDiagnosticCompletion(diagnosticRequestId);
   if (!completion.canSubmit) {
     throw new StructuredDiagnosticError(
       "DIAGNOSTIC_INCOMPLETE",
@@ -120,6 +192,7 @@ export async function submitStructuredDiagnosticRespectingOptional(
           source: "MECHANIC_MOBILE",
           counts: view.counts,
           requiredCompletion: completion,
+          autoFilledCount,
         }),
       },
     });
