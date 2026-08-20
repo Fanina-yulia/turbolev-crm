@@ -21,6 +21,8 @@ type ScanResult = {
   assignedToMe?: boolean;
   nextAction?: ScanAction;
   confirmed?: boolean;
+  arrivalApplied?: boolean;
+  diagnosticRequestId?: string | null;
   message?: string;
   error?: string;
 };
@@ -67,6 +69,8 @@ export function MechanicVehicleScanner() {
   const autoTimerRef = useRef<number | null>(null);
   const autoTriedRef = useRef(false);
   const scanAbortRef = useRef<AbortController | null>(null);
+  const autoAdvanceRef = useRef("");
+  const autoAdvanceTimerRef = useRef<number | null>(null);
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [manual, setManual] = useState("");
@@ -78,6 +82,17 @@ export function MechanicVehicleScanner() {
   const [cameraError, setCameraError] = useState("");
   const [navTarget, setNavTarget] = useState<HTMLElement | null>(null);
   const [heroTarget, setHeroTarget] = useState<HTMLElement | null>(null);
+  const [countdown, setCountdown] = useState<number | null>(null);
+
+  const awaitingVehicleConfirmation = result?.assignedToMe
+    && result.nextAction?.type === "WAITING"
+    && result.nextAction.label === "Очікує підтвердження авто";
+  const autoAdvanceToDiagnostic = Boolean(
+    result?.assignedToMe
+    && result.recognition?.plate
+    && result.nextAction
+    && (result.nextAction.type === "DIAGNOSTIC" || awaitingVehicleConfirmation),
+  );
 
   useEffect(() => {
     const syncTargets = () => {
@@ -107,7 +122,15 @@ export function MechanicVehicleScanner() {
     setCameraReady(false);
   }, []);
 
+  function stopAutoAdvance() {
+    if (autoAdvanceTimerRef.current != null) {
+      window.clearInterval(autoAdvanceTimerRef.current);
+      autoAdvanceTimerRef.current = null;
+    }
+  }
+
   function reset() {
+    stopAutoAdvance();
     setResult(null);
     setError("");
     setScanHint("");
@@ -115,6 +138,8 @@ export function MechanicVehicleScanner() {
     setManualMode(false);
     setBusy(false);
     setCameraError("");
+    setCountdown(null);
+    autoAdvanceRef.current = "";
     autoTriedRef.current = false;
     if (galleryRef.current) galleryRef.current.value = "";
   }
@@ -129,6 +154,7 @@ export function MechanicVehicleScanner() {
   function close() {
     scanAbortRef.current?.abort();
     scanAbortRef.current = null;
+    stopAutoAdvance();
     stopCamera();
     setOpen(false);
     reset();
@@ -285,18 +311,24 @@ export function MechanicVehicleScanner() {
 
   useEffect(() => () => {
     scanAbortRef.current?.abort();
+    stopAutoAdvance();
     stopCamera();
   }, [stopCamera]);
 
   async function confirmVehicle() {
     if (!result?.assignedToMe || !result.recognition?.plate || !result.nextAction) return;
+    stopAutoAdvance();
     const confirmed = await requestScan(result.recognition.plate, true, result);
-    if (!confirmed?.confirmed || !confirmed.nextAction) return;
+    if (!confirmed?.confirmed || !confirmed.nextAction) {
+      setCountdown(null);
+      return;
+    }
     const action = confirmed.nextAction;
+    const diagnosticId = action.diagnosticId || confirmed.diagnosticRequestId || null;
     setOpen(false);
     reset();
-    if (action.type === "DIAGNOSTIC" && action.diagnosticId) {
-      window.dispatchEvent(new CustomEvent("turbolev:mechanic-open-diagnostic", { detail: { diagnosticId: action.diagnosticId } }));
+    if (diagnosticId && (action.type === "DIAGNOSTIC" || action.type === "WAITING")) {
+      window.dispatchEvent(new CustomEvent("turbolev:mechanic-open-diagnostic", { detail: { diagnosticId } }));
       return;
     }
     if (action.type === "REPAIR" && action.taskId) {
@@ -306,6 +338,35 @@ export function MechanicVehicleScanner() {
     window.dispatchEvent(new CustomEvent("turbolev:mechanic-refresh"));
   }
 
+  useEffect(() => {
+    if (!open || !autoAdvanceToDiagnostic || busy || error || !result?.recognition?.plate || !result.nextAction) return;
+    const key = `${result.recognition.plate}:${result.nextAction.type}:${result.nextAction.diagnosticId || "new"}`;
+    if (autoAdvanceRef.current === key) return;
+    autoAdvanceRef.current = key;
+
+    let value = 3;
+    setCountdown(value);
+    const timer = window.setInterval(() => {
+      value -= 1;
+      if (value > 0) {
+        setCountdown(value);
+        return;
+      }
+      window.clearInterval(timer);
+      if (autoAdvanceTimerRef.current === timer) autoAdvanceTimerRef.current = null;
+      setCountdown(0);
+      void confirmVehicle();
+    }, 1000);
+    autoAdvanceTimerRef.current = timer;
+
+    return () => {
+      if (autoAdvanceTimerRef.current === timer) {
+        window.clearInterval(timer);
+        autoAdvanceTimerRef.current = null;
+      }
+    };
+  }, [autoAdvanceToDiagnostic, busy, error, open, result?.nextAction, result?.recognition?.plate]);
+
   const scanButton = <button type="button" className={styles.navScan} onClick={show} aria-label="Сканувати номер автомобіля">
     <span>▣</span><b>Сканувати</b>
   </button>;
@@ -313,10 +374,6 @@ export function MechanicVehicleScanner() {
   const profileButton = <button type="button" className={styles.profileTop} onClick={openProfile} aria-label="Профіль механіка" title="Профіль">
     <span>●</span>
   </button>;
-
-  const awaitingVehicleConfirmation = result?.assignedToMe
-    && result.nextAction?.type === "WAITING"
-    && result.nextAction.label === "Очікує підтвердження авто";
 
   return <>
     {navTarget ? createPortal(scanButton, navTarget) : null}
@@ -392,15 +449,24 @@ export function MechanicVehicleScanner() {
 
           {result.assignedToMe ? <div className={styles.mine}><b>✓ Автомобіль закріплений за вами</b><span>CRM перевірила активне призначення механіка.</span></div> : <div className={styles.notMine}><b>⚠ Автомобіль не закріплений за вами</b><span>{result.nextAction?.reason || "Зверніться до сервіс-менеджера."}</span></div>}
 
-          {result.assignedToMe && result.nextAction && <div className={styles.actionBox} data-kind={result.nextAction.type}>
+          {autoAdvanceToDiagnostic && !error && <div aria-live="polite" style={{ display: "grid", justifyItems: "center", gap: 12, padding: "22px 16px", borderRadius: 20, background: "rgba(255,101,0,.08)", border: "1px solid rgba(255,101,0,.28)", textAlign: "center" }}>
+            <div style={{ width: 82, height: 82, borderRadius: 999, border: "5px solid #ff6500", display: "grid", placeItems: "center", boxShadow: "0 0 0 8px rgba(255,101,0,.10)", fontSize: 34, fontWeight: 900, color: "#fff", fontVariantNumeric: "tabular-nums" }}>{countdown && countdown > 0 ? countdown : "✓"}</div>
+            <div><strong style={{ display: "block", fontSize: 18, color: "#f4f7fb" }}>Автомобіль закріплений за вами</strong><span style={{ display: "block", marginTop: 5, color: "#9aa6b2", fontSize: 14 }}>{busy ? "Підтверджую авто та створюю діагностику…" : "Автоматично відкриваю діагностику цього автомобіля…"}</span></div>
+          </div>}
+
+          {!autoAdvanceToDiagnostic && result.assignedToMe && result.nextAction && <div className={styles.actionBox} data-kind={result.nextAction.type}>
             <small>НАСТУПНИЙ ЕТАП</small>
             <strong>{result.nextAction.label}</strong>
             {result.nextAction.reason && <span>{result.nextAction.reason}</span>}
           </div>}
 
-          {result.assignedToMe && result.nextAction && (["DIAGNOSTIC", "REPAIR"].includes(result.nextAction.type) || awaitingVehicleConfirmation) && <button type="button" className={styles.confirm} disabled={busy} onClick={() => void confirmVehicle()}>{busy ? "Підтверджую…" : awaitingVehicleConfirmation ? "Підтвердити авто та перейти до діагностики →" : `Підтвердити авто та ${result.nextAction.type === "DIAGNOSTIC" ? "перейти до діагностики" : "перейти до ремонту"} →`}</button>}
-          {result.assignedToMe && result.nextAction?.type === "WAITING" && !awaitingVehicleConfirmation && <div className={styles.waiting}>Дію поки заблоковано workflow CRM. Статус зміниться автоматично після наступного етапу.</div>}
-          <div className={styles.resultButtons}><button type="button" onClick={() => { reset(); setOpen(true); }}>Сканувати інше авто</button><button type="button" onClick={close}>Закрити</button></div>
+          {error && <div className={styles.error}>{error}</div>}
+
+          {!autoAdvanceToDiagnostic && result.assignedToMe && result.nextAction && ["DIAGNOSTIC", "REPAIR"].includes(result.nextAction.type) && <button type="button" className={styles.confirm} disabled={busy} onClick={() => void confirmVehicle()}>{busy ? "Підтверджую…" : `Підтвердити авто та ${result.nextAction.type === "DIAGNOSTIC" ? "перейти до діагностики" : "перейти до ремонту"} →`}</button>}
+          {autoAdvanceToDiagnostic && error && <button type="button" className={styles.confirm} disabled={busy} onClick={() => { autoAdvanceRef.current = ""; setError(""); setCountdown(3); void confirmVehicle(); }}>{busy ? "Підтверджую…" : "Повторити перехід до діагностики →"}</button>}
+          {result.assignedToMe && result.nextAction?.type === "WAITING" && !awaitingVehicleConfirmation && !autoAdvanceToDiagnostic && <div className={styles.waiting}>Дію поки заблоковано workflow CRM. Статус зміниться автоматично після наступного етапу.</div>}
+          {!autoAdvanceToDiagnostic && <div className={styles.resultButtons}><button type="button" onClick={() => { reset(); setOpen(true); }}>Сканувати інше авто</button><button type="button" onClick={close}>Закрити</button></div>}
+          {autoAdvanceToDiagnostic && error && <div className={styles.resultButtons}><button type="button" onClick={() => { reset(); setOpen(true); }}>Сканувати інше авто</button><button type="button" onClick={close}>Закрити</button></div>}
         </div>}
       </section>
     </div>}
