@@ -1,8 +1,15 @@
+import {
+  VEHICLE_LIFECYCLE_CODES,
+  VEHICLE_LIFECYCLE_FLAGS,
+  type VehicleLifecycleCode,
+  type VehicleLifecycleFlag,
+} from "@/src/domain/vehicle-lifecycle";
 import { isRecord, payloadMessage } from "./crm-core.parsers";
 import {
   PLANNER_STATUS_VALUES,
   type PlannerAppointmentContract,
   type PlannerBoardPayload,
+  type PlannerLifecycleContract,
   type PlannerLocationContract,
   type PlannerMechanicContract,
   type PlannerPostContract,
@@ -10,6 +17,8 @@ import {
 } from "./planner";
 
 const PLANNER_STATUSES = new Set<string>(PLANNER_STATUS_VALUES);
+const LIFECYCLE_CODES = new Set<string>(VEHICLE_LIFECYCLE_CODES);
+const LIFECYCLE_FLAGS = new Set<string>(VEHICLE_LIFECYCLE_FLAGS);
 
 function requiredString(value: unknown) {
   if (typeof value !== "string") return null;
@@ -74,6 +83,25 @@ function parseStatus(value: unknown): PlannerStatusContract | null {
     : null;
 }
 
+function parseLifecycle(value: unknown): PlannerLifecycleContract | null {
+  if (!isRecord(value)) return null;
+  const code = typeof value.code === "string" && LIFECYCLE_CODES.has(value.code) ? value.code as VehicleLifecycleCode : null;
+  const label = requiredString(value.label);
+  const tone = typeof value.tone === "string" && ["neutral", "info", "accent", "warning", "success", "danger"].includes(value.tone)
+    ? value.tone as PlannerLifecycleContract["tone"]
+    : null;
+  const order = integer(value.order);
+  const active = typeof value.active === "boolean" ? value.active : null;
+  if (!Array.isArray(value.flags)) return null;
+  const flags: VehicleLifecycleFlag[] = [];
+  for (const raw of value.flags) {
+    if (typeof raw !== "string" || !LIFECYCLE_FLAGS.has(raw)) return null;
+    flags.push(raw as VehicleLifecycleFlag);
+  }
+  if (!code || !label || !tone || order == null || active == null) return null;
+  return { code, label, tone, order, active, flags };
+}
+
 function parsePost(value: unknown): PlannerPostContract | null {
   if (!isRecord(value)) return null;
   const id = requiredString(value.id);
@@ -131,13 +159,14 @@ function parseAppointment(value: unknown): PlannerAppointmentContract | null {
   const actualStartAt = nullableDateString(value.actualStartAt);
   const actualEndAt = nullableDateString(value.actualEndAt);
   const partsEtaAt = nullableDateString(value.partsEtaAt);
+  const lifecycle = value.lifecycle == null ? null : parseLifecycle(value.lifecycle);
 
   if (
     postId === undefined || mechanicId === undefined || workOrderId === undefined ||
     customerName === undefined || phone === undefined || vehicleLabel === undefined ||
     plateNumber === undefined || problem === undefined || comment === undefined || source === undefined ||
     estimatedAmount === undefined || actualArrivalAt === undefined || actualStartAt === undefined ||
-    actualEndAt === undefined || partsEtaAt === undefined
+    actualEndAt === undefined || partsEtaAt === undefined || (value.lifecycle != null && !lifecycle)
   ) return null;
 
   const post = value.post == null ? null : parsePost(value.post);
@@ -151,6 +180,7 @@ function parseAppointment(value: unknown): PlannerAppointmentContract | null {
     postId,
     mechanicId,
     status,
+    lifecycle,
     workOrderId,
     customerName,
     phone,
