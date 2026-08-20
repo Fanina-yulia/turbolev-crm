@@ -36,10 +36,10 @@ export function DiagnosticReportSharePanel({ diagnosticId, reviewState, workOrde
     try {
       const response = await fetch(`/api/diagnostics/${encodeURIComponent(diagnosticId)}/report`, { cache: "no-store", credentials: "include" });
       const body = await response.json().catch(() => null);
-      if (!response.ok || !body?.ok) throw new Error(body?.message || body?.error || "Не вдалося завантажити клієнтський звіт");
+      if (!response.ok || !body?.ok) throw new Error(body?.message || body?.error || "Не вдалося завантажити кабінет клієнта");
       setShare(body.share || null);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Помилка звіту");
+      setError(cause instanceof Error ? cause.message : "Помилка кабінету клієнта");
     }
   }, [diagnosticId]);
 
@@ -62,7 +62,7 @@ export function DiagnosticReportSharePanel({ diagnosticId, reviewState, workOrde
       if (!response.ok || !body?.ok || !body?.path) throw new Error(body?.message || body?.error || "Не вдалося створити посилання");
       setShare(body.share as ShareMeta);
       setFreshPath(String(body.path));
-      setMessage("Нове клієнтське посилання створено. Попереднє посилання відкликано.");
+      setMessage("Нове посилання на особистий кабінет створено. Попереднє посилання відкликано.");
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Помилка створення посилання"); }
     finally { setBusy(false); }
   }
@@ -79,13 +79,13 @@ export function DiagnosticReportSharePanel({ diagnosticId, reviewState, workOrde
   }
 
   async function revoke() {
-    if (!share?.active || !confirm("Відкликати клієнтське посилання? Після цього клієнт більше не відкриє цей звіт.")) return;
+    if (!share?.active || !confirm("Відкликати посилання на особистий кабінет? Після цього клієнт більше не відкриє цей кабінет.")) return;
     setBusy(true); setError(""); setMessage("");
     try {
       const response = await fetch(`/api/diagnostics/${encodeURIComponent(diagnosticId)}/report?shareId=${encodeURIComponent(share.id)}`, { method: "DELETE", credentials: "include" });
       const body = await response.json().catch(() => null);
       if (!response.ok || !body?.ok) throw new Error(body?.message || body?.error || "Не вдалося відкликати посилання");
-      setShare(body.share as ShareMeta); setFreshPath(null); setMessage("Клієнтське посилання відкликано.");
+      setShare(body.share as ShareMeta); setFreshPath(null); setMessage("Посилання на особистий кабінет відкликано.");
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Помилка відкликання"); }
     finally { setBusy(false); }
   }
@@ -108,17 +108,17 @@ export function DiagnosticReportSharePanel({ diagnosticId, reviewState, workOrde
 
   return <section className={styles.panel}>
     <div className={styles.head}>
-      <div><span>КЛІЄНТСЬКИЙ ЗВІТ</span><h4>Поділитися результатом діагностики</h4><p>Захищене одноразово-кероване посилання містить тільки зафіксований результат, фото та рекомендації.</p></div>
-      <div className={`${styles.status} ${share?.active ? styles.active : ""}`}>{share?.active ? "● Посилання активне" : "Посилання неактивне"}</div>
+      <div><span>КАБІНЕТ КЛІЄНТА</span><h4>Особистий кабінет власника авто</h4><p>Одне захищене посилання: статус ремонту, діагностика, кошторис, погодження та чат із сервіс-менеджером.</p></div>
+      <div className={`${styles.status} ${share?.active ? styles.active : ""}`}>{share?.active ? "● Кабінет доступний" : "Посилання неактивне"}</div>
     </div>
 
     {error && <div className={styles.error}>{error}</div>}
     {message && <div className={styles.message}>{message}</div>}
-    {share?.requestedPricingAt && <div className={styles.pricingAlert}><span>₴</span><div><strong>Клієнт попросив кошторис</strong><small>{dateTime(share.requestedPricingAt)} · запит отримано через клієнтський звіт</small></div></div>}
+    {share?.requestedPricingAt && <div className={styles.pricingAlert}><span>₴</span><div><strong>Клієнт попросив кошторис</strong><small>{dateTime(share.requestedPricingAt)} · запит отримано через особистий кабінет</small></div></div>}
 
     <div className={styles.grid}>
       <div className={styles.shareBox}>
-        <div className={styles.shareMeta}><span>Публічний звіт</span>{share ? <><strong>{share.active ? "Доступний клієнту" : share.revokedAt ? "Відкликаний" : "Потрібно оновити"}</strong><small>Створено: {dateTime(share.createdAt)}{share.expiresAt ? ` · до ${dateTime(share.expiresAt)}` : ""}</small></> : <><strong>Ще не створений</strong><small>Створити можна після передачі діагностики менеджеру.</small></>}</div>
+        <div className={styles.shareMeta}><span>Особистий кабінет</span>{share ? <><strong>{share.active ? "Доступний клієнту" : share.revokedAt ? "Відкликаний" : "Потрібно оновити"}</strong><small>Створено: {dateTime(share.createdAt)}{share.expiresAt ? ` · до ${dateTime(share.expiresAt)}` : ""}</small></> : <><strong>Ще не створений</strong><small>Створити можна після передачі діагностики менеджеру.</small></>}</div>
         <div className={styles.actions}>
           <button className={styles.primary} type="button" disabled={busy} onClick={() => void createLink()}>{freshPath ? "Створити нове посилання" : share?.active ? "Перегенерувати посилання" : "Створити посилання"}</button>
           {freshPath && <button className={styles.copy} type="button" disabled={busy} onClick={() => void copyLink()}>⧉ Копіювати</button>}
