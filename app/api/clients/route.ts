@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { toClientDirectoryItem } from "@/src/lib/contracts/crm-core.server";
 import { getPrisma } from "@/src/lib/prisma";
 
 export const runtime = "nodejs";
@@ -46,7 +47,10 @@ export async function GET(request: NextRequest) {
     if (id) {
       const client = await prisma.client.findUnique({ where: { id }, select: clientSelect });
       if (!client) return NextResponse.json({ ok: false, error: "Клієнта не знайдено." }, { status: 404 });
-      return NextResponse.json({ ok: true, client }, { headers: { "Cache-Control": "no-store" } });
+      return NextResponse.json(
+        { ok: true, client: toClientDirectoryItem(client) },
+        { headers: { "Cache-Control": "no-store" } },
+      );
     }
 
     const where = q ? {
@@ -72,7 +76,7 @@ export async function GET(request: NextRequest) {
     });
 
     return NextResponse.json(
-      { ok: true, total, page: safePage, limit, pages, clients },
+      { ok: true, total, page: safePage, limit, pages, clients: clients.map(toClientDirectoryItem) },
       { headers: { "Cache-Control": "no-store" } },
     );
   } catch (error) {
