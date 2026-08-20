@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 import { evaluateWorkflowTransition } from "@/src/domain/workflow";
 import { getPrisma } from "@/src/lib/prisma";
 import {
@@ -7,9 +7,10 @@ import {
 } from "@/src/services/lead-arrival.service";
 import { arrivePlannerAppointment } from "@/src/services/planner-arrival.service";
 import { parsePlannerStatus, updatePlannerAppointment } from "@/src/services/planner.service";
+import { generateVehicleImageInBackground } from "@/src/services/vehicle-images/vehicle-image-background.service";
 
 export const runtime = "nodejs";
-export const maxDuration = 30;
+export const maxDuration = 100;
 
 async function observePlannerTransition(id: string, requestedStatus: unknown) {
   const to = parsePlannerStatus(requestedStatus);
@@ -67,6 +68,20 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
         conflict: result.conflict,
         workflowObservation,
       }, { status: 409 });
+    }
+
+    if (result.ok && requestedStatus === "ARRIVED" && "workflowAction" in result && result.workflowAction?.vehicleId) {
+      const vehicleId = result.workflowAction.vehicleId;
+      after(async () => {
+        try {
+          await generateVehicleImageInBackground(vehicleId);
+        } catch (error) {
+          console.error("background vehicle image generation after planner arrival failed", {
+            vehicleId,
+            message: error instanceof Error ? error.message : "unknown error",
+          });
+        }
+      });
     }
 
     return NextResponse.json({
