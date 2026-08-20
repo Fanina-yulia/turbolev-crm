@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { deriveVehicleLifecycle } from "@/src/domain/vehicle-lifecycle";
 import type {
   ClientPortalMessage,
   ClientPortalSnapshot,
@@ -63,6 +64,21 @@ function messageAuthor(message: ClientPortalMessage) {
   if (message.direction === "IN") return "Ви";
   if (message.direction === "OUT") return "Сервіс-менеджер";
   return "Turbo LEV";
+}
+
+function currentVehicleStatus(portal: ClientPortalSnapshot) {
+  const futureBooking = portal.service.appointmentStatus === "BOOKED" && portal.service.workOrderStatus === "PARTS_REVIEW";
+  const lifecycle = deriveVehicleLifecycle({
+    appointmentStatus: portal.service.appointmentStatus,
+    appointmentPlannedEndAt: portal.service.plannedEndAt,
+    appointmentActualArrivalAt: portal.service.actualArrivalAt,
+    diagnosticStatus: "CONFIRMED",
+    diagnosticCardSent: true,
+    workOrderStatus: portal.service.workOrderStatus,
+    estimateStatus: portal.estimate?.status || null,
+    hasFutureBookedWork: futureBooking,
+  });
+  return lifecycle?.label || portal.service.statusLabel;
 }
 
 export function ClientPortal({ token, initialSnapshot }: { token: string; initialSnapshot: ClientPortalSnapshot }) {
@@ -181,7 +197,7 @@ export function ClientPortal({ token, initialSnapshot }: { token: string; initia
               {portal.vehicle.mileageKm != null && <span>{new Intl.NumberFormat("uk-UA").format(portal.vehicle.mileageKm)} км</span>}
             </div>
           </div>
-          <div className={styles.currentStatus}><small>Зараз</small><strong>{portal.service.statusLabel}</strong></div>
+          <div className={styles.currentStatus}><small>Зараз</small><strong>{currentVehicleStatus(portal)}</strong></div>
         </div>
         <div className={styles.serviceMeta}>
           <span>СТО <b>{portal.service.stationName || "Turbo LEV"}</b></span>
