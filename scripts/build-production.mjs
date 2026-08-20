@@ -1,4 +1,5 @@
 import { spawnSync } from "node:child_process";
+import { createMigrationEnvironment } from "./migration-database-url.mjs";
 
 const npx = process.platform === "win32" ? "npx.cmd" : "npx";
 
@@ -23,10 +24,19 @@ function sleep(ms) {
 
 function runMigrationWithRetry() {
   const maxAttempts = 4;
+  const migration = createMigrationEnvironment(process.env);
+
+  if (migration.usesDirectNeon) {
+    console.log("[build] Prisma migrations connection: direct Neon endpoint.");
+  } else if (migration.databaseUrl) {
+    console.log("[build] Prisma migrations connection: configured database endpoint.");
+  } else {
+    console.warn("[build] Prisma migrations connection: no database URL detected; Prisma will report the configuration error.");
+  }
 
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     const result = spawnSync(npx, ["prisma", "migrate", "deploy"], {
-      env: process.env,
+      env: migration.env,
       encoding: "utf8",
       stdio: ["inherit", "pipe", "pipe"],
     });
