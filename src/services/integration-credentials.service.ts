@@ -3,6 +3,7 @@ import { getSqlPool } from "@/src/lib/sql";
 
 export type IntegrationProvider =
   | "BINOTEL"
+  | "TELEGRAM"
   | "META"
   | "TIKTOK"
   | "OLX"
@@ -61,6 +62,22 @@ export const integrationProviderSpecs: ProviderSpec[] = [
       webhookToken: "BINOTEL_WEBHOOK_TOKEN",
       wsKey: "BINOTEL_WS_KEY",
       wsSecret: "BINOTEL_WS_SECRET",
+    },
+  },
+  {
+    provider: "TELEGRAM",
+    category: "COMMUNICATIONS",
+    title: "Telegram",
+    description: "Безкоштовний Telegram Bot API: двосторонній чат, статус авто та персональна прив’язка клієнта.",
+    fields: [
+      { key: "botToken", label: "Bot token", secret: true, required: true, placeholder: "123456:ABC..." },
+      { key: "botUsername", label: "Bot username", secret: false, placeholder: "TurboLevBot" },
+      { key: "webhookSecret", label: "Webhook secret", secret: true },
+    ],
+    envFallback: {
+      botToken: "TELEGRAM_BOT_TOKEN",
+      botUsername: "TELEGRAM_BOT_USERNAME",
+      webhookSecret: "TELEGRAM_WEBHOOK_SECRET",
     },
   },
   {
@@ -392,6 +409,10 @@ export async function saveIntegrationCredential(provider: IntegrationProvider, i
   if (provider === "BINOTEL" && !merged.webhookToken) {
     merged.webhookToken = randomBytes(24).toString("hex");
     generated.webhookToken = merged.webhookToken;
+  }
+  if (provider === "TELEGRAM" && !merged.webhookSecret) {
+    merged.webhookSecret = randomBytes(32).toString("base64url");
+    generated.webhookSecret = merged.webhookSecret;
   }
   if (provider === "META" && !merged.verifyToken) {
     merged.verifyToken = randomBytes(24).toString("hex");

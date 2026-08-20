@@ -3,6 +3,7 @@ import type { QueryResultRow } from "pg";
 import { getSqlPool } from "@/src/lib/sql";
 import { sendMetaTextMessage } from "@/src/services/meta-communications.service";
 import { markOlxThreadRead, sendOlxTextMessage } from "@/src/services/olx-communications.service";
+import { sendTelegramTextMessage } from "@/src/services/telegram.service";
 import {
   assertStoredCommunicationImages,
   attachStoredCommunicationImages,
@@ -41,8 +42,28 @@ function isMetaChannel(channel: CommunicationChannel): channel is "FACEBOOK" | "
   return channel === "FACEBOOK" || channel === "INSTAGRAM";
 }
 
-function isLiveMessageChannel(channel: CommunicationChannel) {
-  return isMetaChannel(channel) || channel === "OLX";
+function metadataObject(value: unknown) {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+}
+
+function isTelegramInquiry(inquiry: DeliveryInquiryRow) {
+  const metadata = metadataObject(inquiry.metadata);
+  return inquiry.channel === "WEBSITE"
+    && metadata.source === "TELEGRAM"
+    && Boolean(inquiry.externalParticipantId || metadata.chatId);
+}
+
+function telegramChatId(inquiry: DeliveryInquiryRow) {
+  const metadata = metadataObject(inquiry.metadata);
+  const value = inquiry.externalParticipantId || (typeof metadata.chatId === "string" ? metadata.chatId : "");
+  if (!value) throw Object.assign(new Error("Telegram chat ID відсутній."), { code: "TELEGRAM_CHAT_ID_MISSING" });
+  return value;
+}
+
+function isLiveInquiry(inquiry: DeliveryInquiryRow) {
+  return isMetaChannel(inquiry.channel) || inquiry.channel === "OLX" || isTelegramInquiry(inquiry);
 }
 
 function errorCode(error: unknown) {
@@ -98,6 +119,13 @@ async function loadInquiry(id: string) {
 }
 
 async function deliverToProvider(inquiry: DeliveryInquiryRow, text: string, attachments: CommunicationAttachmentRef[]) {
+  if (isTelegramInquiry(inquiry)) {
+    if (attachments.length) {
+      throw Object.assign(new Error("Вкладення Telegram будуть додані на наступному етапі. Зараз надішліть текст."), { code: "TELEGRAM_ATTACHMENT_NOT_SUPPORTED" });
+    }
+    return sendTelegramTextMessage({ chatId: telegramChatId(inquiry), text });
+  }
+
   if (attachments.length) {
     if (inquiry.channel === "OLX") {
       return sendOlxImageMessage(
@@ -195,7 +223,7 @@ export async function sendCommunicationReply(id: string, text: string, attachmen
   await assertStoredCommunicationImages(id, attachments);
 
   const messageId = makeId("msg");
-  const initialStatus = isLiveMessageChannel(inquiry.channel) ? "PENDING" : "CRM_ONLY";
+  const initialStatus = isLiveInquiry(inquiry) ? "PENDING" : "CRM_ONLY";
   const inserted = await pool.query(
     `INSERT INTO "CommunicationMessage"
      ("id","inquiryId","direction","text","sentAt","metadata","deliveryStatus","attachments")
@@ -212,7 +240,7 @@ export async function sendCommunicationReply(id: string, text: string, attachmen
   );
   await attachStoredCommunicationImages(messageId, id, attachments);
 
-  if (!isLiveMessageChannel(inquiry.channel)) {
+  if (!isLiveInquiry(inquiry)) {
     await pool.query(
       `UPDATE "CommunicationInquiry"
        SET "answered"=TRUE,"unread"=FALSE,"state"=CASE WHEN "state"='NEW' THEN 'IN_WORK' ELSE "state" END,
@@ -229,8 +257,8 @@ export async function sendCommunicationReply(id: string, text: string, attachmen
 export async function retryCommunicationMessage(inquiryId: string, messageId: string) {
   const pool = getSqlPool();
   const inquiry = await loadInquiry(inquiryId);
-  if (!isLiveMessageChannel(inquiry.channel)) {
-    throw Object.assign(new Error("Повторна відправка доступна лише для Facebook, Instagram та OLX."), { code: "RETRY_NOT_SUPPORTED" });
+  if (!isLiveInquiry(inquiry)) {
+    throw Object.assign(new Error("Повторна відправка доступна лише для Facebook, Instagram, OLX та Telegram."), { code: "RETRY_NOT_SUPPORTED" });
   }
   assertReplyWindow(inquiry);
 

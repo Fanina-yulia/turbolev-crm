@@ -4,6 +4,7 @@ import {
   isKnownIntegrationProvider,
   saveIntegrationCredential,
 } from "@/src/services/integration-credentials.service";
+import { configureTelegramWebhook } from "@/src/services/telegram.service";
 import { authorize } from "@/src/security/authorize";
 import { PERMISSIONS } from "@/src/security/permissions";
 
@@ -37,7 +38,10 @@ export async function PUT(request: NextRequest, context: { params: Promise<{ pro
 
     const body = await request.json();
     const result = await saveIntegrationCredential(provider, body?.values ?? body);
-    return NextResponse.json({ ok: true, ...result });
+    const webhook = provider === "TELEGRAM"
+      ? await configureTelegramWebhook(request.nextUrl.origin)
+      : null;
+    return NextResponse.json({ ok: true, ...result, webhook });
   } catch (error) {
     console.error("PUT /api/settings/integrations/[provider] failed", error);
     return NextResponse.json(
