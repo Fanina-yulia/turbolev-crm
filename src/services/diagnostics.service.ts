@@ -36,6 +36,15 @@ function clean(value: unknown, max = 10000) {
   return next ? next.slice(0, max) : null;
 }
 
+type StructuredMeta = {
+  reviewState: string;
+  reviewerUserId: string | null;
+  inspections: number;
+  checked: number;
+  defects: number;
+  attention: number;
+};
+
 export function parseDiagnosticStatus(value: unknown): DiagnosticRequestStatus | null {
   if (typeof value !== "string") return null;
   const normalized = value.trim().toUpperCase();
@@ -44,7 +53,7 @@ export function parseDiagnosticStatus(value: unknown): DiagnosticRequestStatus |
 
 async function structuredMeta(ids: string[]) {
   const prisma = getPrisma();
-  if (!ids.length) return new Map<string, { reviewState: string; inspections: number; checked: number; defects: number; attention: number }>();
+  if (!ids.length) return new Map<string, StructuredMeta>();
   const [reviews, inspections] = await Promise.all([
     prisma.diagnosticReview.findMany({ where: { diagnosticRequestId: { in: ids } } }),
     prisma.diagnosticInspection.findMany({ where: { diagnosticRequestId: { in: ids } }, select: { id: true, diagnosticRequestId: true } }),
@@ -52,10 +61,12 @@ async function structuredMeta(ids: string[]) {
   const inspectionIds = inspections.map((item) => item.id);
   const checks = inspectionIds.length ? await prisma.diagnosticCheck.findMany({ where: { inspectionId: { in: inspectionIds } }, select: { inspectionId: true, state: true } }) : [];
   const requestByInspection = new Map(inspections.map((item) => [item.id, item.diagnosticRequestId]));
-  const result = new Map<string, { reviewState: string; inspections: number; checked: number; defects: number; attention: number }>();
+  const result = new Map<string, StructuredMeta>();
   for (const id of ids) {
+    const review = reviews.find((row) => row.diagnosticRequestId === id);
     result.set(id, {
-      reviewState: reviews.find((row) => row.diagnosticRequestId === id)?.state || DiagnosticReviewState.DRAFT,
+      reviewState: review?.state || DiagnosticReviewState.DRAFT,
+      reviewerUserId: review?.reviewerUserId || null,
       inspections: inspections.filter((row) => row.diagnosticRequestId === id).length,
       checked: 0,
       defects: 0,
@@ -95,6 +106,14 @@ async function reportShareMeta(ids: string[]) {
   return result;
 }
 
+function diagnosticWorkflowState(status: DiagnosticRequestStatus, structured: StructuredMeta | undefined, reportActive: boolean) {
+  if (status === DiagnosticRequestStatus.CONFIRMED && reportActive) return "CARD_SENT";
+  if (structured?.reviewState === DiagnosticReviewState.SUBMITTED && structured.reviewerUserId) return "REVIEWING";
+  if (structured?.reviewState === DiagnosticReviewState.SUBMITTED) return "SUBMITTED";
+  if (structured?.reviewState === DiagnosticReviewState.RETURNED) return "RETURNED";
+  return status;
+}
+
 export async function listDiagnostics(input?: { status?: DiagnosticRequestStatus | null; limit?: number }) {
   const prisma = getPrisma();
   const limit = Math.max(1, Math.min(500, input?.limit ?? 200));
@@ -114,17 +133,11 @@ export async function listDiagnostics(input?: { status?: DiagnosticRequestStatus
   return rows.map((row) => {
     const structured = meta.get(row.id);
     const reportShare = reports.get(row.id) || null;
-    const workflowState = row.status === DiagnosticRequestStatus.CONFIRMED && reportShare?.active
-      ? "CARD_SENT"
-      : structured?.reviewState === DiagnosticReviewState.SUBMITTED
-        ? "SUBMITTED"
-        : structured?.reviewState === DiagnosticReviewState.RETURNED
-          ? "RETURNED"
-          : row.status;
     return {
       ...row,
       reviewState: structured?.reviewState || DiagnosticReviewState.DRAFT,
-      workflowState,
+      reviewerUserId: structured?.reviewerUserId || null,
+      workflowState: diagnosticWorkflowState(row.status, structured, Boolean(reportShare?.active)),
       reportShare,
       structured: {
         inspections: structured?.inspections || 0,
@@ -151,17 +164,11 @@ export async function getDiagnostic(id: string) {
   const [meta, reports] = await Promise.all([structuredMeta([id]), reportShareMeta([id])]);
   const structured = meta.get(id);
   const reportShare = reports.get(id) || null;
-  const workflowState = row.status === DiagnosticRequestStatus.CONFIRMED && reportShare?.active
-    ? "CARD_SENT"
-    : structured?.reviewState === DiagnosticReviewState.SUBMITTED
-      ? "SUBMITTED"
-      : structured?.reviewState === DiagnosticReviewState.RETURNED
-        ? "RETURNED"
-        : row.status;
   return {
     ...row,
     reviewState: structured?.reviewState || DiagnosticReviewState.DRAFT,
-    workflowState,
+    reviewerUserId: structured?.reviewerUserId || null,
+    workflowState: diagnosticWorkflowState(row.status, structured, Boolean(reportShare?.active)),
     reportShare,
     structured: {
       inspections: structured?.inspections || 0,
