@@ -1,3 +1,4 @@
+import type { VehicleLifecycleCode, VehicleLifecycleFlag } from "@/src/domain/vehicle-lifecycle";
 import type { CrmDateTime, CrmDecimal } from "./crm-core";
 
 export const PLANNER_STATUS_VALUES = [
@@ -22,6 +23,15 @@ export const PLANNER_STATUS_VALUES = [
 ] as const;
 
 export type PlannerStatusContract = (typeof PLANNER_STATUS_VALUES)[number];
+
+export type PlannerLifecycleContract = {
+  code: VehicleLifecycleCode;
+  label: string;
+  tone: "neutral" | "info" | "accent" | "warning" | "success" | "danger";
+  order: number;
+  active: boolean;
+  flags: VehicleLifecycleFlag[];
+};
 
 export type PlannerPostContract = {
   id: string;
@@ -52,6 +62,7 @@ export type PlannerAppointmentContract = {
   postId: string | null;
   mechanicId: string | null;
   status: PlannerStatusContract;
+  lifecycle: PlannerLifecycleContract | null;
   workOrderId: string | null;
   customerName: string | null;
   phone: string | null;
