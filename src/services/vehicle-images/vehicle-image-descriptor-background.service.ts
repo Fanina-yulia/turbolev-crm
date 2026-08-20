@@ -4,19 +4,25 @@ import { createHash, randomUUID } from "node:crypto";
 import { getSqlPool } from "@/src/lib/sql";
 import { getOpenAIVehicleImageConfig } from "./openai-library.service";
 import { normalizeThemePaint } from "./vehicle-color.service";
+import { getOpenAIVehiclePaint, type OpenAIVehiclePaintSpec } from "./openai-vehicle-paint";
 import { optimizeVehicleImageAsset } from "./vehicle-image-background.service";
 
 const OPENAI_IMAGES_URL = "https://api.openai.com/v1/images/generations";
-const PROMPT_VERSION = "vehicle-card-v3-transparent-png";
+const PROMPT_VERSION = "vehicle-card-v4-real-color-transparent-png";
 const SOURCE_MAX_BYTES = 12 * 1024 * 1024;
 const GENERATION_LOCK_MS = 10 * 60 * 1000;
 const ERROR_RETRY_MS = 30 * 60 * 1000;
 
-type ConfirmedVehicleDescriptor = {
+export type ConfirmedVehicleDescriptor = {
   make: string;
   model: string;
   year?: number | null;
   bodyType?: string | null;
+  exteriorColorName?: string | null;
+  exteriorColorHex?: string | null;
+  exteriorPaintCode?: string | null;
+  exteriorColorSource?: string | null;
+  exteriorColorConfirmed?: boolean | null;
 };
 
 type AssetRow = {
@@ -43,36 +49,27 @@ function normalizedDescriptor(input: ConfirmedVehicleDescriptor) {
     model: cleanPart(input.model),
     year: Number.isInteger(input.year) ? Number(input.year) : null,
     bodyType: cleanPart(input.bodyType) || null,
+    exteriorColorName: cleanPart(input.exteriorColorName) || null,
+    exteriorColorHex: cleanPart(input.exteriorColorHex) || null,
+    exteriorPaintCode: cleanPart(input.exteriorPaintCode) || null,
+    exteriorColorSource: cleanPart(input.exteriorColorSource) || null,
+    exteriorColorConfirmed: input.exteriorColorConfirmed === true,
   };
 }
 
-function themeDescription(theme: string) {
-  const map: Record<string, string> = {
-    "Imagin-black": "deep glossy graphite-black paint",
-    "Imagin-grey": "clean metallic graphite-grey paint",
-    "Imagin-white": "clean pearl-white paint with subtle grey shading",
-    "Imagin-blue": "rich modern automotive blue paint",
-    "Imagin-yellow": "warm premium yellow-gold automotive paint",
-    "Imagin-red": "deep premium red automotive paint",
-    "Imagin-orange": "rich warm orange automotive paint, approximately #EF6B24",
-    "Imagin-green": "deep modern automotive green paint",
-  };
-  return map[theme] || map["Imagin-orange"];
-}
-
-function libraryKeyFor(input: ReturnType<typeof normalizedDescriptor>, theme: string) {
+function libraryKeyFor(input: ReturnType<typeof normalizedDescriptor>, paint: OpenAIVehiclePaintSpec) {
   const identity = [
     PROMPT_VERSION,
     keyPart(input.make),
     keyPart(input.model),
     input.year == null ? "year-unknown" : String(input.year),
     keyPart(input.bodyType) || "body-unknown",
-    theme.toLowerCase(),
+    paint.signature,
   ].join("|");
   return createHash("sha256").update(identity, "utf8").digest("hex");
 }
 
-function masterPrompt(input: ReturnType<typeof normalizedDescriptor>, theme: string) {
+function masterPrompt(input: ReturnType<typeof normalizedDescriptor>, paint: OpenAIVehiclePaintSpec) {
   const year = input.year ? String(input.year) : "model year not provided";
   const body = input.bodyType ? ` Body type: ${input.bodyType}.` : "";
   return [
@@ -81,7 +78,7 @@ function masterPrompt(input: ReturnType<typeof normalizedDescriptor>, theme: str
     "The vehicle must visually match the real production make, model and model-year/generation as closely as possible. Preserve the generation-specific silhouette, body proportions, roofline, glazing, lights, grille, bumpers, wheel arches and door layout.",
     "Do not substitute a generic car, a different generation, a different body style or a visually similar model. If the model-year is supplied, prioritize generation accuracy over decorative styling.",
     "Composition standard for the whole library: full vehicle visible, facing right, clean front three-quarter side view, camera near belt-line height, natural realistic proportions, centered horizontally, tires fully visible, no cropping.",
-    `Paint the vehicle in ${themeDescription(theme)} so it harmonizes with the CRM theme while keeping realistic automotive reflections.`,
+    paint.instruction,
     "The background must be fully transparent alpha. Every pixel outside the vehicle must remain transparent: no white, grey or colored backdrop, no road, no scenery, no studio wall, no floor, no gradient panel and no environmental reflections that imply a background.",
     "No people, no text, no captions, no watermark and no readable license-plate text. Use a blank neutral plate area if a plate holder is visible.",
     "Avoid large cast shadows. At most, use a tiny soft contact shadow immediately beneath the tires; never create a visible studio floor or a shadow field around the vehicle.",
@@ -192,8 +189,9 @@ export async function generateVehicleImageForConfirmedDescriptor(
   if (!config) return { state: "NOT_CONFIGURED" as const, assetId: null, libraryKey: null };
 
   const theme = normalizeThemePaint(options?.themePaint, "Imagin-orange");
-  const libraryKey = libraryKeyFor(input, theme);
-  const prompt = masterPrompt(input, theme);
+  const paint = getOpenAIVehiclePaint(input, theme);
+  const libraryKey = libraryKeyFor(input, paint);
+  const prompt = masterPrompt(input, paint);
   const pool = getSqlPool();
   const client = await pool.connect();
   const lockName = `vehicle-image-library:${libraryKey}`;
@@ -213,13 +211,13 @@ export async function generateVehicleImageForConfirmedDescriptor(
     const now = Date.now();
     if (existing?.status === "READY") {
       await optimizeVehicleImageAsset(existing.id);
-      return { state: "READY" as const, assetId: existing.id, libraryKey, reused: true };
+      return { state: "READY" as const, assetId: existing.id, libraryKey, reused: true, requestedColor: paint.requestedColor };
     }
     if (existing?.status === "GENERATING" && now - new Date(existing.updatedAt).getTime() < GENERATION_LOCK_MS) {
-      return { state: "GENERATING" as const, assetId: existing.id, libraryKey, deduplicated: true };
+      return { state: "GENERATING" as const, assetId: existing.id, libraryKey, deduplicated: true, requestedColor: paint.requestedColor };
     }
     if (existing?.status === "ERROR" && now - new Date(existing.updatedAt).getTime() < ERROR_RETRY_MS) {
-      return { state: "ERROR" as const, assetId: existing.id, libraryKey, error: existing.lastError };
+      return { state: "ERROR" as const, assetId: existing.id, libraryKey, error: existing.lastError, requestedColor: paint.requestedColor };
     }
 
     assetId = existing?.id || `vimg_${randomUUID().replace(/-/g, "")}`;
@@ -251,7 +249,7 @@ export async function generateVehicleImageForConfirmedDescriptor(
 
     const optimization = await optimizeVehicleImageAsset(claimed.id);
     await finishJob(jobId, "DONE");
-    return { state: "READY" as const, assetId: claimed.id, libraryKey, optimization };
+    return { state: "READY" as const, assetId: claimed.id, libraryKey, optimization, requestedColor: paint.requestedColor };
   } catch (error) {
     const message = error instanceof Error ? error.message : "Помилка генерації зображення.";
     if (assetId) {
