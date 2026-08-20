@@ -29,9 +29,32 @@ export type VehicleDirectoryPayload = {
   vehicles: VehicleDirectoryItem[];
 };
 
+export type VehicleAppearancePatch = Pick<
+  VehicleCardContract,
+  | "id"
+  | "brand"
+  | "model"
+  | "exteriorColorName"
+  | "exteriorColorHex"
+  | "exteriorPaintCode"
+  | "exteriorColorSource"
+  | "exteriorColorConfirmed"
+  | "updatedAt"
+>;
+
 function finiteInteger(value: unknown) {
   if (typeof value !== "number" || !Number.isFinite(value)) return null;
   return Math.trunc(value);
+}
+
+function nullableString(value: unknown) {
+  return typeof value === "string" ? value : null;
+}
+
+function requiredString(value: unknown) {
+  if (typeof value !== "string") return null;
+  const text = value.trim();
+  return text || null;
 }
 
 function parseArrayStrict<T>(value: unknown, parser: (item: unknown) => T | null) {
@@ -75,6 +98,33 @@ export function parseVehicleDirectoryPayload(value: unknown): VehicleDirectoryPa
 export function parseVehicleCardPayload(value: unknown): VehicleCardContract | null {
   if (!isRecord(value) || value.ok !== true) return null;
   return parseVehicleCard(value.vehicle);
+}
+
+export function parseVehicleAppearancePayload(value: unknown): VehicleAppearancePatch | null {
+  if (!isRecord(value) || value.ok !== true || !isRecord(value.vehicle)) return null;
+  const vehicle = value.vehicle;
+  const id = requiredString(vehicle.id);
+  const updatedAt = requiredString(vehicle.updatedAt);
+  if (!id || !updatedAt || typeof vehicle.exteriorColorConfirmed !== "boolean") return null;
+  return {
+    id,
+    brand: nullableString(vehicle.brand),
+    model: nullableString(vehicle.model),
+    exteriorColorName: nullableString(vehicle.exteriorColorName),
+    exteriorColorHex: nullableString(vehicle.exteriorColorHex),
+    exteriorPaintCode: nullableString(vehicle.exteriorPaintCode),
+    exteriorColorSource: nullableString(vehicle.exteriorColorSource),
+    exteriorColorConfirmed: vehicle.exteriorColorConfirmed,
+    updatedAt,
+  };
+}
+
+export function parseVehicleImageRefreshPayload(value: unknown) {
+  if (!isRecord(value) || value.ok !== true) return null;
+  return {
+    ok: true as const,
+    fallback: value.fallback === true,
+  };
 }
 
 export { payloadMessage };
