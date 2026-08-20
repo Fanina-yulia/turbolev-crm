@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getPrisma } from "@/src/lib/prisma";
+import { getVehicleLifecycle } from "@/src/services/vehicle-lifecycle.service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -57,7 +58,8 @@ export async function GET(request: NextRequest) {
     });
 
     if (!vehicle) return NextResponse.json({ ok: false, error: "Автомобіль не знайдено." }, { status: 404 });
-    return NextResponse.json({ ok: true, vehicle }, { headers: { "Cache-Control": "no-store" } });
+    const lifecycle = await getVehicleLifecycle(vehicle.id);
+    return NextResponse.json({ ok: true, vehicle: { ...vehicle, lifecycle } }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
     console.error("vehicle card GET failed", error);
     return NextResponse.json({ ok: false, error: "Не вдалося відкрити картку автомобіля." }, { status: 500 });
