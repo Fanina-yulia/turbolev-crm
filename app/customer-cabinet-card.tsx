@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import styles from "./directory-pages.module.css";
+import styles from "./customer-cabinet-card.module.css";
 
 type ShareMeta = {
   id: string;
