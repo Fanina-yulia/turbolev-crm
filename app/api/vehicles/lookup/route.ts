@@ -1,9 +1,6 @@
-import { after, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { lookupVehicleByPlate, normalizeRegistrationPlate } from "@/src/services/vehicle-lookup.service";
 import { resolveVehicleColorByPlate } from "@/src/services/vehicle-registry-color.service";
-import { generateVehicleImageForConfirmedDescriptor } from "@/src/services/vehicle-images/vehicle-image-descriptor-background.service";
-import { authorize } from "@/src/security/authorize";
-import { PERMISSIONS } from "@/src/security/permissions";
 
 export const runtime = "nodejs";
 // Vehicle lookup reads the fast Neon registry index first; deep MVS scans are opt-in only.
@@ -64,39 +61,8 @@ export async function GET(request: Request) {
         }
       : result;
 
-    if (normalizedResult.status === "FOUND" && normalizedResult.vehicle?.make && normalizedResult.vehicle.model) {
-      // Vehicle lookup itself stays readable for its existing callers. The paid OpenAI
-      // side effect is stricter: only an authenticated CRM user with vehicle/client
-      // write permission may enqueue generation.
-      const access = await authorize(PERMISSIONS.CLIENTS_WRITE, { request, strict: true });
-      if (access.allowed) {
-        const descriptor = {
-          make: normalizedResult.vehicle.make,
-          model: normalizedResult.vehicle.model,
-          year: normalizedResult.vehicle.year,
-          bodyType: normalizedResult.vehicle.bodyType,
-          exteriorColorName: color?.exteriorColorName || null,
-          exteriorColorHex: color?.exteriorColorHex || null,
-          exteriorPaintCode: color?.exteriorPaintCode || null,
-          exteriorColorSource: color?.exteriorColorSource || null,
-          exteriorColorConfirmed: color?.exteriorColorConfirmed === true,
-        };
-        after(async () => {
-          try {
-            await generateVehicleImageForConfirmedDescriptor(descriptor);
-          } catch (error) {
-            console.error("background vehicle image generation after plate confirmation failed", {
-              plate,
-              make: descriptor.make,
-              model: descriptor.model,
-              color: descriptor.exteriorColorName,
-              message: error instanceof Error ? error.message : "unknown error",
-            });
-          }
-        });
-      }
-    }
-
+    // Image generation intentionally starts only after a real Vehicle record exists.
+    // This prevents paid/duplicate assets from plate previews that the operator may never save.
     return NextResponse.json(normalizedResult);
   } catch (error) {
     console.error("vehicle lookup failed", error);

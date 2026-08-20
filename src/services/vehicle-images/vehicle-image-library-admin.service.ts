@@ -2,7 +2,8 @@ import "server-only";
 
 import { getPrisma } from "@/src/lib/prisma";
 import { getSqlPool } from "@/src/lib/sql";
-import { generateVehicleImageInBackground } from "./vehicle-image-background.service";
+import { generateVehicleImageInBackground, optimizeVehicleImageAsset } from "./vehicle-image-background.service";
+import { getVehicleImageLibraryState } from "./openai-library.service";
 
 const MAX_IMAGE_BYTES = 12 * 1024 * 1024;
 
@@ -27,12 +28,19 @@ export type VehicleImageLibraryAdminAsset = {
   generatedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
+  templateKey: string | null;
+  variantKey: string | null;
+  normalizedColor: string | null;
+  generationFrom: number | null;
+  generationTo: number | null;
+  sourceAssetId: string | null;
+  generationMode: string;
 };
 
-const ADMIN_COLUMNS = `"id","libraryKey","make","model","year","bodyType","theme","provider","providerModel","promptVersion","status","reviewStatus","reviewedAt","reviewedByUserId","imageMimeType","imageSizeBytes","lastError","generatedAt","createdAt","updatedAt"`;
+const ADMIN_COLUMNS = `"id","libraryKey","make","model","year","bodyType","theme","provider","providerModel","promptVersion","status","reviewStatus","reviewedAt","reviewedByUserId","imageMimeType","imageSizeBytes","lastError","generatedAt","createdAt","updatedAt","templateKey","variantKey","normalizedColor","generationFrom","generationTo","sourceAssetId","generationMode"`;
 
 function isMissingReviewColumns(error: unknown) {
-  return error instanceof Error && /reviewStatus|reviewedAt|reviewedByUserId|does not exist|42703|42P01/i.test(error.message);
+  return error instanceof Error && /reviewStatus|reviewedAt|reviewedByUserId|templateKey|variantKey|normalizedColor|generationFrom|generationTo|sourceAssetId|generationMode|does not exist|42703|42P01/i.test(error.message);
 }
 
 export async function listVehicleImageLibraryAdmin(limit = 250): Promise<VehicleImageLibraryAdminAsset[]> {
@@ -98,13 +106,20 @@ export async function replaceVehicleImageLibraryAsset(assetId: string, bytes: Bu
            "imageSizeBytes"=$3,
            "lastError"=NULL,
            "generatedAt"=CURRENT_TIMESTAMP,
+           "generationMode"='MANUAL',
            "updatedAt"=CURRENT_TIMESTAMP
      WHERE "id"=$1
-     RETURNING ${ADMIN_COLUMNS}`,
+     RETURNING "id"`,
     [assetId, bytes, bytes.length, userId],
   );
   if (!result.rowCount) throw new Error("Зображення бібліотеки не знайдено.");
-  return result.rows[0] as VehicleImageLibraryAdminAsset;
+
+  // Delivery endpoint serves compact transparent WebP assets. Manual replacements
+  // therefore pass through the same validated optimizer as OpenAI generations.
+  await optimizeVehicleImageAsset(assetId);
+  const optimized = await getVehicleImageLibraryAdminAsset(assetId);
+  if (!optimized) throw new Error("Зображення бібліотеки не знайдено після оптимізації.");
+  return optimized;
 }
 
 export async function regenerateVehicleImageLibraryAsset(assetId: string) {
@@ -112,26 +127,31 @@ export async function regenerateVehicleImageLibraryAsset(assetId: string) {
   if (!asset) throw new Error("Зображення бібліотеки не знайдено.");
 
   const prisma = getPrisma();
-  const baseWhere = {
-    brand: { equals: asset.make, mode: "insensitive" as const },
-    model: { equals: asset.model, mode: "insensitive" as const },
-    ...(asset.year == null ? {} : { year: asset.year }),
-  };
-
-  const vehicle = await prisma.vehicle.findFirst({
-    where: asset.bodyType
-      ? { ...baseWhere, bodyType: { equals: asset.bodyType, mode: "insensitive" } }
-      : baseWhere,
+  const candidates = await prisma.vehicle.findMany({
+    where: {
+      brand: { equals: asset.make, mode: "insensitive" },
+      model: { equals: asset.model, mode: "insensitive" },
+      ...(asset.bodyType ? { bodyType: { equals: asset.bodyType, mode: "insensitive" } } : {}),
+      ...(asset.generationFrom != null && asset.generationTo != null
+        ? { year: { gte: asset.generationFrom, lte: asset.generationTo } }
+        : asset.year == null ? {} : { year: asset.year }),
+    },
     select: { id: true },
     orderBy: { updatedAt: "desc" },
-  }) ?? await prisma.vehicle.findFirst({
-    where: baseWhere,
-    select: { id: true },
-    orderBy: { updatedAt: "desc" },
+    take: 60,
   });
 
-  if (!vehicle) {
-    throw new Error("У CRM більше немає авто з цією маркою, моделлю та роком. Замініть PNG вручну або додайте відповідне авто.");
+  let vehicleId: string | null = null;
+  for (const candidate of candidates) {
+    const state = await getVehicleImageLibraryState(candidate.id, asset.theme);
+    if (state.libraryKey === asset.libraryKey) {
+      vehicleId = candidate.id;
+      break;
+    }
+  }
+
+  if (!vehicleId) {
+    throw new Error("У CRM немає автомобіля, що відповідає саме цьому поколінню та кольоровому варіанту. Додайте таке авто або замініть PNG вручну.");
   }
 
   await getSqlPool().query(
@@ -141,5 +161,5 @@ export async function regenerateVehicleImageLibraryAsset(assetId: string) {
     [assetId],
   );
 
-  return generateVehicleImageInBackground(vehicle.id, { themePaint: asset.theme, force: true });
+  return generateVehicleImageInBackground(vehicleId, { themePaint: asset.theme, force: true });
 }

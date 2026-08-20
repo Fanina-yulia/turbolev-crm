@@ -1,9 +1,11 @@
-import { NextRequest, NextResponse } from "next/server";
+import { after, NextRequest, NextResponse } from "next/server";
 import { getPrisma } from "@/src/lib/prisma";
+import { generateVehicleImageInBackground } from "@/src/services/vehicle-images/vehicle-image-background.service";
 import { invalidateVehicleImages } from "@/src/services/vehicle-images/vehicle-image.service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+export const maxDuration = 100;
 
 function cleanText(value: unknown, max = 120) {
   if (typeof value !== "string") return null;
@@ -42,6 +44,8 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
       },
       select: {
         id: true,
+        brand: true,
+        model: true,
         exteriorColorName: true,
         exteriorColorHex: true,
         exteriorPaintCode: true,
@@ -51,6 +55,20 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
       },
     });
     await invalidateVehicleImages(id);
+
+    if (vehicle.brand && vehicle.model) {
+      after(async () => {
+        try {
+          await generateVehicleImageInBackground(id);
+        } catch (error) {
+          console.error("background vehicle image color variant generation failed", {
+            vehicleId: id,
+            message: error instanceof Error ? error.message : "unknown error",
+          });
+        }
+      });
+    }
+
     return NextResponse.json({ ok: true, vehicle }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
     console.error("vehicle appearance PATCH failed", error);

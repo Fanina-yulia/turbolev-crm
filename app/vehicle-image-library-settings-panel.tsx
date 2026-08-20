@@ -24,6 +24,13 @@ type Asset = {
   generatedAt: string | null;
   createdAt: string;
   updatedAt: string;
+  templateKey: string | null;
+  variantKey: string | null;
+  normalizedColor: string | null;
+  generationFrom: number | null;
+  generationTo: number | null;
+  sourceAssetId: string | null;
+  generationMode: string;
 };
 
 type TestVehicle = {
@@ -60,6 +67,22 @@ function sizeText(bytes: number | null) {
 
 function themeText(theme: string) {
   return theme.replace(/^Imagin-/i, "");
+}
+
+function generationText(asset: Asset) {
+  if (asset.generationFrom != null && asset.generationTo != null) {
+    return asset.generationFrom === asset.generationTo ? String(asset.generationFrom) : `${asset.generationFrom}–${asset.generationTo}`;
+  }
+  return asset.year ? String(asset.year) : "—";
+}
+
+function generationModeText(asset: Asset) {
+  if (!asset.templateKey) return "Стара бібліотека";
+  if (asset.generationMode === "REFERENCE_EDIT") return "Колір із шаблону";
+  if (asset.generationMode === "TEXT_GENERATION_FALLBACK") return "Нова генерація після fallback";
+  if (asset.generationMode === "MANUAL") return "Вручну";
+  if (asset.generationMode === "PENDING") return "Готується";
+  return "Нова модель";
 }
 
 function badge(asset: Asset) {
@@ -127,7 +150,7 @@ export function VehicleImageLibrarySettingsPanel() {
   const visible = useMemo(() => {
     const query = search.trim().toLocaleLowerCase("uk-UA");
     return assets.filter((asset) => {
-      const matchesText = !query || [asset.make, asset.model, asset.year?.toString(), asset.bodyType, asset.providerModel]
+      const matchesText = !query || [asset.make, asset.model, asset.year?.toString(), asset.bodyType, asset.providerModel, asset.normalizedColor, asset.variantKey]
         .filter(Boolean).join(" ").toLocaleLowerCase("uk-UA").includes(query);
       if (!matchesText) return false;
       if (filter === "pending") return asset.status === "READY" && asset.reviewStatus !== "APPROVED";
@@ -153,7 +176,7 @@ export function VehicleImageLibrarySettingsPanel() {
 
       const list = testVehicles.map((vehicle) => `• ${vehicle.make} ${vehicle.model}${vehicle.year ? ` ${vehicle.year}` : ""}`).join("\n");
       const confirmed = window.confirm(
-        `Запустити контрольну генерацію ${testVehicles.length} автомобілів?\n\n${list}\n\nКожне відсутнє зображення створює окремий платний OpenAI API-запит. Уже готові зображення повторно не генеруються.`,
+        `Запустити контрольну генерацію ${testVehicles.length} автомобілів?\n\n${list}\n\nКожен відсутній модельний або кольоровий варіант може створити платний OpenAI API-запит. Уже готові варіанти повторно не генеруються.`,
       );
       if (!confirmed) return;
 
@@ -243,7 +266,7 @@ export function VehicleImageLibrarySettingsPanel() {
       const response = await fetch(`/api/vehicle-images/library/${encodeURIComponent(asset.id)}`, { method: "POST", body: form });
       const payload = await response.json().catch(() => null) as { ok?: boolean; error?: string } | null;
       if (!response.ok || !payload?.ok) throw new Error(payload?.error || "Не вдалося замінити PNG.");
-      setNotice("PNG замінено вручну та автоматично затверджено.");
+      setNotice("PNG замінено, оптимізовано для CRM та автоматично затверджено.");
       await load();
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Не вдалося замінити PNG.");
@@ -257,16 +280,16 @@ export function VehicleImageLibrarySettingsPanel() {
       <div>
         <span className={styles.eyebrow}>OpenAI · бібліотека CRM</span>
         <h2>Бібліотека зображень авто</h2>
-        <p>Перевіряйте згенеровані моделі, затверджуйте вдалі, перегенеровуйте неточні або замінюйте їх власним PNG.</p>
+        <p>Після збереження нового авто CRM автоматично шукає готовий модельний шаблон і колір. Однакові варіанти перевикористовуються, а новий колір за можливості створюється з уже готової моделі.</p>
       </div>
       <button className={styles.refresh} type="button" onClick={() => { void load(); void loadTestSet(); }} disabled={loading || testSetLoading}>↻ Оновити</button>
     </header>
 
     <div className={styles.testPanel}>
       <div className={styles.testCopy}>
-        <span className={styles.testEyebrow}>Контроль якості перед масовим запуском</span>
+        <span className={styles.testEyebrow}>Контроль якості бібліотеки</span>
         <h3>Тестовий набір із реальних авто CRM</h3>
-        <p>CRM бере шість останніх реальних автомобілів із заповненими маркою та моделлю. Це дозволяє перевірити різні кузови, роки й покоління до масштабного наповнення бібліотеки.</p>
+        <p>CRM бере шість останніх реальних автомобілів із заповненими маркою та моделлю. Готовий варіант буде використано повторно; відсутній — створено як новий модельний або кольоровий варіант.</p>
         <div className={styles.testVehicles}>
           {testVehicles.map((vehicle) => <span key={vehicle.id}>{vehicle.make} {vehicle.model}{vehicle.year ? ` · ${vehicle.year}` : ""}</span>)}
           {!testSetLoading && !testVehicles.length ? <span>Немає достатньо автомобілів для тесту</span> : null}
@@ -274,9 +297,9 @@ export function VehicleImageLibrarySettingsPanel() {
       </div>
       <div className={styles.testAction}>
         <button type="button" onClick={() => void runTestSet()} disabled={testSetLoading || testRun.running || !testVehicles.length}>
-          {testRun.running ? `Генерація ${testRun.completed}/${testRun.total}` : testSetLoading ? "Готую набір…" : `Згенерувати ${testVehicles.length} тестових авто`}
+          {testRun.running ? `Генерація ${testRun.completed}/${testRun.total}` : testSetLoading ? "Готую набір…" : `Перевірити ${testVehicles.length} тестових авто`}
         </button>
-        <small>Спочатку CRM перевіряє OpenAI. Платні запити стартують тільки після вашого підтвердження.</small>
+        <small>Платний OpenAI-запит потрібен лише для відсутнього варіанта. Готові варіанти не генеруються повторно.</small>
         {testRun.running ? <div className={styles.testProgress}><span style={{ width: `${testRun.total ? Math.round(testRun.completed / testRun.total * 100) : 0}%` }}/><b>{testRun.current}</b></div> : null}
       </div>
     </div>
@@ -290,15 +313,15 @@ export function VehicleImageLibrarySettingsPanel() {
     </div>
 
     <div className={styles.toolbar}>
-      <label className={styles.search}><span>⌕</span><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Марка, модель, рік або кузов"/></label>
-      <span className={styles.costHint}>Перегенерація запускається лише після підтвердження, бо це новий платний API-запит.</span>
+      <label className={styles.search}><span>⌕</span><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Марка, модель, рік, кузов або колір"/></label>
+      <span className={styles.costHint}>Одна модельна база може мати кілька кольорових варіантів; однакові варіанти спільні для всіх відповідних авто.</span>
     </div>
 
     {error ? <div className={styles.error}>{error}</div> : null}
     {notice ? <div className={styles.notice}>{notice}</div> : null}
 
     {loading ? <div className={styles.empty}>Завантажую бібліотеку…</div> : null}
-    {!loading && !assets.length ? <div className={styles.empty}><b>Бібліотека поки порожня.</b><span>Запустіть контрольний набір вище або згенеруйте зображення з картки автомобіля.</span></div> : null}
+    {!loading && !assets.length ? <div className={styles.empty}><b>Бібліотека поки порожня.</b><span>Додайте новий автомобіль — після його збереження CRM автоматично запустить підбір або генерацію зображення.</span></div> : null}
     {!loading && assets.length > 0 && !visible.length ? <div className={styles.empty}>За цим фільтром нічого не знайдено.</div> : null}
 
     <div className={styles.grid}>
@@ -308,19 +331,22 @@ export function VehicleImageLibrarySettingsPanel() {
         const preview = asset.status === "READY" && asset.imageMimeType;
         return <article className={styles.card} key={asset.id}>
           <div className={styles.preview}>
-            {preview ? <img src={`/api/vehicle-images/${encodeURIComponent(asset.id)}?v=${encodeURIComponent(asset.updatedAt)}`} alt={`${asset.make} ${asset.model}`}/> : <div className={styles.previewFallback}>{asset.status === "GENERATING" ? "Генерація…" : asset.status === "ERROR" ? "Помилка генерації" : "Немає PNG"}</div>}
+            {preview ? <img src={`/api/vehicle-images/${encodeURIComponent(asset.id)}?v=${encodeURIComponent(asset.updatedAt)}`} alt={`${asset.make} ${asset.model}`}/> : <div className={styles.previewFallback}>{asset.status === "GENERATING" ? "Генерація…" : asset.status === "ERROR" ? "Помилка генерації" : "Немає зображення"}</div>}
             <span className={`${styles.badge} ${state.className}`}>{state.label}</span>
           </div>
 
           <div className={styles.cardBody}>
             <div className={styles.titleRow}>
               <div><h3>{asset.make} {asset.model}</h3><p>{asset.year || "Рік не вказано"}{asset.bodyType ? ` · ${asset.bodyType}` : ""}</p></div>
-              <span className={styles.theme}>{themeText(asset.theme)}</span>
+              <span className={styles.theme}>{asset.normalizedColor || themeText(asset.theme)}</span>
             </div>
 
             <dl className={styles.meta}>
               <div><dt>Джерело</dt><dd>{asset.provider === "MANUAL" ? "Вручну" : asset.providerModel || asset.provider}</dd></div>
               <div><dt>Розмір</dt><dd>{sizeText(asset.imageSizeBytes)}</dd></div>
+              <div><dt>Модельний діапазон</dt><dd>{generationText(asset)}</dd></div>
+              <div><dt>Колір-варіант</dt><dd>{asset.normalizedColor || themeText(asset.theme)}</dd></div>
+              <div><dt>Створення</dt><dd>{generationModeText(asset)}</dd></div>
               <div><dt>Згенеровано</dt><dd>{dateText(asset.generatedAt)}</dd></div>
               <div><dt>Перевірено</dt><dd>{asset.reviewStatus === "APPROVED" ? dateText(asset.reviewedAt) : "Ще ні"}</dd></div>
             </dl>
