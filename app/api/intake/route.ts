@@ -1,7 +1,9 @@
 import { after, NextResponse } from "next/server";
 import { authorize } from "@/src/security/authorize";
 import { PERMISSIONS } from "@/src/security/permissions";
+import { getPrisma } from "@/src/lib/prisma";
 import { createIntake, IntakeConflictError, IntakeValidationError, type IntakeInput } from "@/src/services/intake.service";
+import { resolveVehicleColorByPlate } from "@/src/services/vehicle-registry-color.service";
 import { generateVehicleImageInBackground } from "@/src/services/vehicle-images/vehicle-image-background.service";
 
 export const runtime = "nodejs";
@@ -79,21 +81,43 @@ export async function POST(request: Request) {
     }
 
     const result = await createIntake(input);
+    let vehicle = result.vehicle;
 
-    if (result.vehicle.brand && result.vehicle.model) {
+    try {
+      const resolvedColor = await resolveVehicleColorByPlate(vehicle.plateNormalized || vehicle.plateNumber, vehicle.id);
+      if (resolvedColor) {
+        vehicle = await getPrisma().vehicle.update({
+          where: { id: vehicle.id },
+          data: {
+            exteriorColorName: resolvedColor.exteriorColorName,
+            exteriorColorHex: resolvedColor.exteriorColorHex,
+            exteriorPaintCode: resolvedColor.exteriorPaintCode,
+            exteriorColorSource: resolvedColor.exteriorColorSource as "USER" | "VIN" | "REGISTRY" | "PROVIDER" | "THEME" | "UNKNOWN",
+            exteriorColorConfirmed: true,
+          },
+        });
+      }
+    } catch (error) {
+      console.warn("registry vehicle color enrichment after intake failed", {
+        vehicleId: vehicle.id,
+        message: error instanceof Error ? error.message : "unknown error",
+      });
+    }
+
+    if (vehicle.brand && vehicle.model) {
       after(async () => {
         try {
-          await generateVehicleImageInBackground(result.vehicle.id);
+          await generateVehicleImageInBackground(vehicle.id);
         } catch (error) {
           console.error("background vehicle image generation after intake failed", {
-            vehicleId: result.vehicle.id,
+            vehicleId: vehicle.id,
             message: error instanceof Error ? error.message : "unknown error",
           });
         }
       });
     }
 
-    return clearPlannerCookies(NextResponse.json({ ok: true, ...result }, { status: 201 }));
+    return clearPlannerCookies(NextResponse.json({ ok: true, ...result, vehicle }, { status: 201 }));
   } catch (error) {
     if (error instanceof SyntaxError) {
       return NextResponse.json({ ok: false, error: "Некоректний JSON у запиті." }, { status: 400 });
