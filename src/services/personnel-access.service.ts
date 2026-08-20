@@ -14,6 +14,7 @@ const SYSTEM_ROLE_CODES = [
   "OWNER",
   "EXECUTIVE_DIRECTOR",
   "HEAD_OF_SALES",
+  "MARKETING",
   "SALES",
   "PARTS_SPECIALIST",
   "STATION_MANAGER",
@@ -31,6 +32,7 @@ const GLOBAL_ROLES = new Set<SystemRoleCode>([
   "OWNER",
   "EXECUTIVE_DIRECTOR",
   "HEAD_OF_SALES",
+  "MARKETING",
   "ACCOUNTANT",
 ]);
 const STATION_MANAGER_DELEGATION = new Set<SystemRoleCode>([

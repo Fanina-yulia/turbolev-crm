@@ -82,13 +82,17 @@ export const DEFAULT_ACCESS_ROLES: AccessRolePreset[] = [
     grant(PERMISSIONS.CLIENTS_WRITE,"TEAM"), grant(PERMISSIONS.PLANNER_READ,"ALL"), grant(PERMISSIONS.WORK_ORDERS_READ,"ALL"), grant(PERMISSIONS.WORK_ORDERS_ESTIMATE,"TEAM"),
     grant(PERMISSIONS.PAYROLL_SELF_READ,"SELF"), grant(PERMISSIONS.PERSONNEL_READ,"TEAM"), grant(PERMISSIONS.ANALYTICS_READ,"ALL"), grant(PERMISSIONS.ANALYTICS_PERSONNEL_READ,"TEAM"),
   ]},
+  { code: "MARKETING", name: "Маркетинг", description: "Огляд воронки, джерел звернень і операційної аналітики без права змінювати клієнта, ЗН або оплату.", sortOrder: 35, grants: [
+    grant(PERMISSIONS.OVERVIEW_READ,"ALL"), grant(PERMISSIONS.COMMUNICATIONS_READ,"ALL"), grant(PERMISSIONS.LEADS_READ,"ALL"),
+    grant(PERMISSIONS.ANALYTICS_READ,"ALL"), grant(PERMISSIONS.PAYROLL_SELF_READ,"SELF"),
+  ]},
   { code: "SALES", name: "Продавець", description: "Робота зі своїми та командними лідами, клієнтами і записами.", sortOrder: 40, grants: [
     grant(PERMISSIONS.OVERVIEW_READ,"LOCATION"), grant(PERMISSIONS.COMMUNICATIONS_READ,"TEAM"), grant(PERMISSIONS.COMMUNICATIONS_WRITE,"ASSIGNED"),
     grant(PERMISSIONS.LEADS_READ,"TEAM"), grant(PERMISSIONS.LEADS_WRITE,"ASSIGNED"), grant(PERMISSIONS.CLIENTS_READ,"TEAM"), grant(PERMISSIONS.CLIENTS_WRITE,"ASSIGNED"),
     grant(PERMISSIONS.PLANNER_READ,"LOCATION"), grant(PERMISSIONS.PLANNER_WRITE,"ASSIGNED"), grant(PERMISSIONS.WORK_ORDERS_READ,"ASSIGNED"),
     grant(PERMISSIONS.WORK_ORDERS_ESTIMATE,"ASSIGNED"), grant(PERMISSIONS.PAYROLL_SELF_READ,"SELF"),
   ]},
-  { code: "PARTS_SPECIALIST", name: "Підборщик запчастин", description: "Підбір, закупівлі та робота з постачальниками.", sortOrder: 50, grants: [
+  { code: "PARTS_SPECIALIST", name: "Запчастини / закупівлі / склад", description: "Підбір, замовлення, отримання та складський контур деталей.", sortOrder: 50, grants: [
     grant(PERMISSIONS.OVERVIEW_READ,"LOCATION"), grant(PERMISSIONS.WORK_ORDERS_READ,"LOCATION"), grant(PERMISSIONS.PARTS_READ,"ALL"),
     grant(PERMISSIONS.PARTS_WRITE,"ALL"), grant(PERMISSIONS.PROCUREMENT_READ,"ALL"), grant(PERMISSIONS.PROCUREMENT_WRITE,"ALL"), grant(PERMISSIONS.PAYROLL_SELF_READ,"SELF"),
   ]},
@@ -113,7 +117,7 @@ export const DEFAULT_ACCESS_ROLES: AccessRolePreset[] = [
     grant(PERMISSIONS.WORK_ORDERS_READ,"ASSIGNED"), grant(PERMISSIONS.PRODUCTION_READ,"ASSIGNED"), grant(PERMISSIONS.PRODUCTION_WRITE,"ASSIGNED"),
     grant(PERMISSIONS.QC_READ,"ASSIGNED"), grant(PERMISSIONS.PARTS_READ,"ASSIGNED"), grant(PERMISSIONS.PAYROLL_SELF_READ,"SELF"),
   ]},
-  { code: "ACCOUNTANT", name: "Бухгалтер", description: "Фінанси, оплати, зарплата та фінансова аналітика по мережі.", sortOrder: 80, grants: [
+  { code: "ACCOUNTANT", name: "Бухгалтер / каса", description: "Проведення оплат, фінансовий та зарплатний облік по мережі.", sortOrder: 80, grants: [
     grant(PERMISSIONS.OVERVIEW_READ,"ALL"), grant(PERMISSIONS.WORK_ORDERS_READ,"ALL"), grant(PERMISSIONS.FINANCE_READ,"ALL"), grant(PERMISSIONS.FINANCE_WRITE,"ALL"),
     grant(PERMISSIONS.PAYMENTS_READ,"ALL"), grant(PERMISSIONS.PAYMENTS_WRITE,"ALL"), grant(PERMISSIONS.PAYROLL_SELF_READ,"SELF"), grant(PERMISSIONS.PAYROLL_ALL_READ,"ALL"),
     grant(PERMISSIONS.PAYROLL_WRITE,"ALL"), grant(PERMISSIONS.PAYROLL_CLOSE,"ALL"), grant(PERMISSIONS.PERSONNEL_READ,"ALL"), grant(PERMISSIONS.PERSONNEL_COMPENSATION_READ,"ALL"),
