@@ -12,8 +12,8 @@ const MECHANIC = ["MECHANIC"] as const satisfies readonly WorkflowRole[];
 const SERVICE_MECHANIC = ["SERVICE_ADVISOR", "MECHANIC"] as const satisfies readonly WorkflowRole[];
 const SERVICE_PARTS = ["SERVICE_ADVISOR", "PARTS_SPECIALIST"] as const satisfies readonly WorkflowRole[];
 const PARTS = ["PARTS_SPECIALIST"] as const satisfies readonly WorkflowRole[];
-const SHIFT_MASTER = ["SHIFT_MASTER"] as const satisfies readonly WorkflowRole[];
-const REWORK = ["SHIFT_MASTER", "MECHANIC", "SERVICE_ADVISOR"] as const satisfies readonly WorkflowRole[];
+const STATION_MANAGER = ["STATION_MANAGER"] as const satisfies readonly WorkflowRole[];
+const REWORK = ["STATION_MANAGER", "MECHANIC", "SERVICE_ADVISOR"] as const satisfies readonly WorkflowRole[];
 const ACCOUNTANT = ["ACCOUNTANT"] as const satisfies readonly WorkflowRole[];
 
 function withStatuses(
@@ -40,7 +40,7 @@ function workOrderPolicy(definition: WorkflowDefinition): WorkflowDefinition {
       label: "Кошторис і підбір",
       stage: "ESTIMATE",
       responsibleRoles: SERVICE_PARTS,
-      description: "Сервіс-менеджер формує перелік робіт і кошторис; деталі може підбирати він або підборщик.",
+      description: "Сервіс-менеджер формує перелік робіт і кошторис; деталі може підбирати він або менеджер з запчастин.",
     },
     WAITING_APPROVAL: { responsibleRoles: SERVICE },
     WAITING_PARTS: { responsibleRoles: SERVICE_PARTS },
@@ -48,16 +48,16 @@ function workOrderPolicy(definition: WorkflowDefinition): WorkflowDefinition {
     IN_REPAIR: { responsibleRoles: SERVICE_MECHANIC },
     PAUSED: { responsibleRoles: SERVICE_MECHANIC },
     WAITING_QC: {
-      label: "Очікує контроль майстра зміни",
-      responsibleRoles: SHIFT_MASTER,
-      description: "Після завершення ремонту контроль якості виконує Майстер зміни.",
+      label: "Очікує контроль якості",
+      responsibleRoles: STATION_MANAGER,
+      description: "Після завершення ремонту контроль якості виконується під відповідальністю Керівника станції.",
     },
     REWORK: { responsibleRoles: REWORK },
     WAITING_PAYMENT: {
       label: "Очікує повну оплату",
       sortOrder: 90,
       responsibleRoles: SERVICE,
-      description: "Сервіс-менеджер контролює закриття балансу; оплату проводить каса/бухгалтерія.",
+      description: "Сервіс-менеджер контролює закриття балансу; оплату проводить бухгалтерія.",
     },
     READY_FOR_PICKUP: {
       label: "Готовий до видачі",
@@ -108,7 +108,7 @@ function appointmentPolicy(definition: WorkflowDefinition): WorkflowDefinition {
   const statuses = withStatuses(definition, {
     BOOKED: { responsibleRoles: SALES_SERVICE },
     ARRIVED: { responsibleRoles: SERVICE },
-    WAITING_QC: { responsibleRoles: SHIFT_MASTER },
+    WAITING_QC: { responsibleRoles: STATION_MANAGER },
     READY_FOR_PICKUP: { responsibleRoles: SERVICE },
   }, [waitingPayment]);
 
@@ -157,7 +157,7 @@ function partsPolicy(definition: WorkflowDefinition): WorkflowDefinition {
 }
 
 function qcPolicy(definition: WorkflowDefinition): WorkflowDefinition {
-  const overrides = Object.fromEntries(definition.statuses.map((status) => [status.code, { responsibleRoles: SHIFT_MASTER }]));
+  const overrides = Object.fromEntries(definition.statuses.map((status) => [status.code, { responsibleRoles: STATION_MANAGER }]));
   return { ...definition, statuses: withStatuses(definition, overrides) };
 }
 
