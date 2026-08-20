@@ -51,7 +51,6 @@ export type RequestForm = {
   locationId: string;
   postId: string;
   mechanicId: string;
-  workOrderId: string;
 };
 
 export type VehicleCandidate = Partial<RequestForm> & {
@@ -77,7 +76,6 @@ export type OpenRequestDetail = {
   appointmentDate?: string;
   appointmentTime?: string;
   inquiryId?: string;
-  workOrderId?: string;
 };
 
 export type UserOption = { id: string; name: string };
