@@ -314,6 +314,10 @@ export function MechanicVehicleScanner() {
     <span>●</span>
   </button>;
 
+  const awaitingVehicleConfirmation = result?.assignedToMe
+    && result.nextAction?.type === "WAITING"
+    && result.nextAction.label === "Очікує підтвердження авто";
+
   return <>
     {navTarget ? createPortal(scanButton, navTarget) : null}
     {heroTarget ? createPortal(profileButton, heroTarget) : null}
@@ -357,7 +361,6 @@ export function MechanicVehicleScanner() {
         <button type="button" className={styles.manualLink} onClick={() => { setManualMode(true); setScanHint(""); }} disabled={busy}>Ввести номер вручну</button>
         <button type="button" className={styles.cancelCamera} onClick={close}>СКАСУВАТИ</button>
       </div>
-
       {manualMode && <div className={styles.manualOverlay}>
         <button type="button" className={styles.manualBack} onClick={() => { setManualMode(false); setError(""); }} disabled={busy}>← До камери</button>
         <div className={styles.manualCard}>
@@ -395,8 +398,8 @@ export function MechanicVehicleScanner() {
             {result.nextAction.reason && <span>{result.nextAction.reason}</span>}
           </div>}
 
-          {result.assignedToMe && result.nextAction && ["DIAGNOSTIC", "REPAIR"].includes(result.nextAction.type) && <button type="button" className={styles.confirm} disabled={busy} onClick={() => void confirmVehicle()}>{busy ? "Підтверджую…" : `Підтвердити авто та ${result.nextAction.type === "DIAGNOSTIC" ? "перейти до діагностики" : "перейти до ремонту"} →`}</button>}
-          {result.assignedToMe && result.nextAction?.type === "WAITING" && <div className={styles.waiting}>Дію поки заблоковано workflow CRM. Статус зміниться автоматично після наступного етапу.</div>}
+          {result.assignedToMe && result.nextAction && (["DIAGNOSTIC", "REPAIR"].includes(result.nextAction.type) || awaitingVehicleConfirmation) && <button type="button" className={styles.confirm} disabled={busy} onClick={() => void confirmVehicle()}>{busy ? "Підтверджую…" : awaitingVehicleConfirmation ? "Підтвердити авто та перейти до діагностики →" : `Підтвердити авто та ${result.nextAction.type === "DIAGNOSTIC" ? "перейти до діагностики" : "перейти до ремонту"} →`}</button>}
+          {result.assignedToMe && result.nextAction?.type === "WAITING" && !awaitingVehicleConfirmation && <div className={styles.waiting}>Дію поки заблоковано workflow CRM. Статус зміниться автоматично після наступного етапу.</div>}
           <div className={styles.resultButtons}><button type="button" onClick={() => { reset(); setOpen(true); }}>Сканувати інше авто</button><button type="button" onClick={close}>Закрити</button></div>
         </div>}
       </section>
