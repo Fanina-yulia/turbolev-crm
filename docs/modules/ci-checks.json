@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "updated": "2026-08-20",
+  "checks": {
+    "vehicle-classifier": "npx --no-install tsx scripts/vehicle-classifier-smoke.ts",
+    "vehicle-image-resolver": "npx --no-install tsx scripts/vehicle-image-resolver-smoke.ts",
+    "employee-economics": "npx --no-install tsx scripts/employee-economics-smoke.ts",
+    "telephony-webhook": "npx --no-install tsx scripts/production-telephony-smoke.ts",
+    "binotel-contract": "npx --no-install tsx scripts/binotel-webhook-contract-smoke.ts",
+    "rbac-security": "npx --no-install tsx scripts/rbac-smoke.ts",
+    "api-security-policy": "npx --no-install tsx scripts/api-security-policy-smoke.ts",
+    "communications-inbox": "npx --no-install tsx scripts/communications-inbox-smoke.ts",
+    "communication-attachments": "npx --no-install tsx scripts/communication-attachments-smoke.ts",
+    "communication-message-view": "npx --no-install tsx scripts/communication-message-view-smoke.ts",
+    "communication-activation-diagnostics": "npx --no-install tsx scripts/communication-activation-diagnostics-smoke.ts"
+  },
+  "moduleChecks": {
+    "core-platform": ["rbac-security", "api-security-policy"],
+    "dashboard-analytics": ["employee-economics"],
+    "clients-vehicles": ["vehicle-classifier", "vehicle-image-resolver"],
+    "leads-intake": ["communications-inbox"],
+    "planner": [],
+    "diagnostics": [],
+    "work-orders": [],
+    "service-manager": ["rbac-security"],
+    "mechanic-cabinet": ["rbac-security"],
+    "parts-inventory": ["vehicle-classifier"],
+    "personnel-access": ["employee-economics", "rbac-security", "api-security-policy"],
+    "finance": ["employee-economics"],
+    "vehicle-images": ["vehicle-image-resolver"],
+    "notifications": [],
+    "communications": ["telephony-webhook", "binotel-contract", "communications-inbox", "communication-attachments", "communication-message-view", "communication-activation-diagnostics"],
+    "settings-integrations": ["communication-activation-diagnostics"]
+  }
+}
