@@ -21,9 +21,9 @@ export type MechanicHomeTaskContract = {
 
 export type MechanicHomeAppointmentContract = {
   id: string;
-  workOrderId: string;
+  workOrderId: string | null;
   status: PlannerStatusContract;
-  workOrderStatus: string;
+  workOrderStatus: string | null;
   plannedStartAt: CrmDateTime;
   plannedEndAt: CrmDateTime;
   plate: string;
