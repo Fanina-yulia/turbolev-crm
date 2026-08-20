@@ -8,6 +8,7 @@ import { hashCrmPassword, normalizeCrmLogin, validCrmLogin } from "@/src/securit
 import type { AccessScopeCode } from "@/src/security/permissions";
 import {
   GLOBAL_PERSONNEL_ROLE_CODES,
+  HR_MANAGER_DELEGATABLE_ROLE_CODES,
   PERSONNEL_ROLE_CODES,
   STATION_MANAGER_DELEGATABLE_ROLE_CODES,
   type PersonnelRoleCode,
@@ -55,6 +56,7 @@ const SYSTEM_ROLES = PERSONNEL_ROLE_CODES;
 type SystemRole = PersonnelRoleCode;
 const GLOBAL_ROLES = GLOBAL_PERSONNEL_ROLE_CODES;
 const STATION_DELEGATION = STATION_MANAGER_DELEGATABLE_ROLE_CODES;
+const HR_DELEGATION = HR_MANAGER_DELEGATABLE_ROLE_CODES;
 const EMPLOYMENT_TYPES = new Set(["STAFF", "CONTRACT", "FOP", "INTERNSHIP", "OTHER"]);
 
 export class PersonnelV2Error extends Error {
@@ -91,12 +93,13 @@ export function delegatablePersonnelV2Roles(context: AccessContext): SystemRole[
   const roles = roleSet(context);
   if (roles.has("OWNER")) return [...SYSTEM_ROLES];
   if (roles.has("EXECUTIVE_DIRECTOR")) return SYSTEM_ROLES.filter((role) => role !== "OWNER");
+  if (roles.has("HR_MANAGER")) return SYSTEM_ROLES.filter((role) => HR_DELEGATION.has(role));
   if (roles.has("STATION_MANAGER")) return SYSTEM_ROLES.filter((role) => STATION_DELEGATION.has(role));
   return [];
 }
 function hasGlobalAuthority(context: AccessContext, scope: AccessScopeCode | null) {
   const roles = roleSet(context);
-  return scope === "ALL" && (roles.has("OWNER") || roles.has("EXECUTIVE_DIRECTOR"));
+  return scope === "ALL" && (roles.has("OWNER") || roles.has("EXECUTIVE_DIRECTOR") || roles.has("HR_MANAGER"));
 }
 
 function normalizeAssignments(items: PersonnelRoleInput[]) {
@@ -104,14 +107,14 @@ function normalizeAssignments(items: PersonnelRoleInput[]) {
   const result: Array<{ roleCode: SystemRole; locationId: string | null; isPrimary: boolean }> = [];
   for (const raw of items || []) {
     const roleCode = String(raw.roleCode || "").trim().toUpperCase();
-    if (!isSystemRole(roleCode)) throw new PersonnelV2Error("UNKNOWN_ROLE", `Невідома роль ${roleCode || "—"}.`);
+    if (!isSystemRole(roleCode)) throw new PersonnelV2Error("UNKNOWN_ROLE", `Невідома посада ${roleCode || "—"}.`);
     const locationId = GLOBAL_ROLES.has(roleCode) ? null : clean(raw.locationId, 160);
     const key = `${roleCode}:${locationId || "GLOBAL"}`;
     if (seen.has(key)) continue;
     seen.add(key);
     result.push({ roleCode, locationId, isPrimary: Boolean(raw.isPrimary) });
   }
-  if (!result.length) throw new PersonnelV2Error("ROLE_REQUIRED", "Призначте працівнику хоча б одну посаду.");
+  if (!result.length) throw new PersonnelV2Error("ROLE_REQUIRED", "Призначте працівнику посаду.");
   const requestedPrimary = result.findIndex((role) => role.isPrimary);
   return result.map((role, index) => ({ ...role, isPrimary: index === (requestedPrimary >= 0 ? requestedPrimary : 0) }));
 }
@@ -125,7 +128,7 @@ async function validateAssignments(
   const allowed = new Set(delegatablePersonnelV2Roles(context));
   for (const assignment of assignments) {
     if (!allowed.has(assignment.roleCode)) {
-      throw new PersonnelV2Error("ROLE_DELEGATION_FORBIDDEN", `Ваша роль не може призначати «${assignment.roleCode}».`, 403);
+      throw new PersonnelV2Error("ROLE_DELEGATION_FORBIDDEN", `Ваша посада не дозволяє призначати «${assignment.roleCode}».`, 403);
     }
     if (!GLOBAL_ROLES.has(assignment.roleCode) && !assignment.locationId) {
       throw new PersonnelV2Error("LOCATION_REQUIRED", `Для посади ${assignment.roleCode} потрібно обрати станцію.`);
@@ -262,7 +265,7 @@ async function syncAssignments(
 export async function getPersonnelV2Catalog(context: AccessContext, scope: AccessScopeCode | null) {
   const prisma = getPrisma();
   const allowedCodes = delegatablePersonnelV2Roles(context);
-  if (!allowedCodes.length) throw new PersonnelV2Error("PERSONNEL_DELEGATION_FORBIDDEN", "Для Вашої ролі не дозволене керування працівниками.", 403);
+  if (!allowedCodes.length) throw new PersonnelV2Error("PERSONNEL_DELEGATION_FORBIDDEN", "Для Вашої посади не дозволене керування працівниками.", 403);
   const locationIds = hasGlobalAuthority(context, scope) ? null : context.locationIds;
   const [staffRoles, accessRoles, locations] = await Promise.all([
     prisma.staffRole.findMany({ where: { code: { in: allowedCodes }, isActive: true }, orderBy: [{ sortOrder: "asc" }, { name: "asc" }] }),
