@@ -6,7 +6,7 @@ import { VehicleGenerationCatalogPanel } from "./vehicle-generation-catalog-pane
 import { VehicleImageLibrarySettingsPanel } from "./vehicle-image-library-settings-panel";
 import styles from "./integrations-settings-hub.module.css";
 
-type Provider = "BINOTEL" | "META" | "TIKTOK" | "OLX" | "VEHICLE_IMAGES";
+type Provider = "BINOTEL" | "TELEGRAM" | "META" | "TIKTOK" | "OLX" | "VEHICLE_IMAGES";
 type IntegrationField = { key: string; label: string; secret: boolean; required?: boolean; placeholder?: string };
 type IntegrationItem = {
   provider: string;
@@ -26,10 +26,11 @@ type IntegrationItem = {
 
 type TestResult = { ok?: boolean; message?: string; error?: string; checkedAt?: string; latencyMs?: number };
 
-const PROVIDERS: Provider[] = ["BINOTEL", "META", "TIKTOK", "OLX", "VEHICLE_IMAGES"];
+const PROVIDERS: Provider[] = ["BINOTEL", "TELEGRAM", "META", "TIKTOK", "OLX", "VEHICLE_IMAGES"];
 
 const COPY: Record<Provider, { title: string; description: string; mark: string }> = {
   BINOTEL: { title: "Binotel", description: "Телефонія, дзвінки, записи розмов і callbacks.", mark: "B" },
+  TELEGRAM: { title: "Telegram", description: "Безкоштовний бот для двостороннього чату, статусів авто та клієнтського сервісу.", mark: "✈" },
   META: { title: "Facebook + Instagram", description: "Messenger, Instagram Direct та Meta Lead Ads.", mark: "M" },
   TIKTOK: { title: "TikTok", description: "TikTok Business, акаунт та lead/webhook інтеграція.", mark: "♪" },
   OLX: { title: "OLX", description: "Повідомлення, оголошення та звернення з OLX.", mark: "O" },
@@ -38,6 +39,7 @@ const COPY: Record<Provider, { title: string; description: string; mark: string 
 
 const EDITABLE_FIELDS: Record<Provider, string[]> = {
   BINOTEL: ["apiKey", "apiSecret", "companyId", "wsKey", "wsSecret"],
+  TELEGRAM: ["botToken", "botUsername"],
   META: ["appId", "appSecret"],
   TIKTOK: ["clientKey", "clientSecret"],
   OLX: ["clientId", "clientSecret", "apiKey", "notificationSecret"],
@@ -50,6 +52,8 @@ const FIELD_LABELS: Record<string, string> = {
   companyId: "Company ID",
   wsKey: "WebSocket key",
   wsSecret: "WebSocket secret",
+  botToken: "Bot token",
+  botUsername: "Bot username",
   appId: "Meta App ID",
   appSecret: "Meta App Secret",
   clientKey: "TikTok Client Key",
@@ -119,7 +123,7 @@ export function IntegrationsSettingsHub() {
   useEffect(() => {
     const query = new URLSearchParams(window.location.search);
     const provider = query.get("integration")?.toUpperCase();
-    if (provider === "META" || provider === "TIKTOK" || provider === "OLX") setActive(provider);
+    if (provider === "META" || provider === "TIKTOK" || provider === "OLX" || provider === "TELEGRAM") setActive(provider);
     const status = query.get("integrationStatus");
     const oauthMessage = query.get("integrationMessage");
     if (status === "connected") setMessage("Авторизацію завершено. Виконайте перевірку з’єднання.");
@@ -147,9 +151,9 @@ export function IntegrationsSettingsHub() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ values }),
       });
-      const payload = await response.json() as { ok?: boolean; error?: string };
+      const payload = await response.json() as { ok?: boolean; error?: string; webhook?: { url?: string } | null };
       if (!response.ok || !payload.ok) throw new Error(payload.error || "Не вдалося зберегти налаштування");
-      setMessage("Налаштування збережено.");
+      setMessage(active === "TELEGRAM" ? "Telegram збережено, webhook встановлено автоматично." : "Налаштування збережено.");
       await load();
     } catch (error) { setMessage(error instanceof Error ? error.message : "Помилка збереження"); }
     finally { setSaving(false); }
@@ -178,8 +182,12 @@ export function IntegrationsSettingsHub() {
     window.location.assign(`/api/integrations/${provider.toLowerCase()}/connect`);
   }
 
-  const webhookUrl = (provider: "META" | "TIKTOK" | "OLX") =>
-    typeof window === "undefined" ? "" : `${window.location.origin}/api/webhooks/${provider.toLowerCase()}`;
+  const webhookUrl = (provider: "TELEGRAM" | "META" | "TIKTOK" | "OLX") => {
+    if (typeof window === "undefined") return "";
+    return provider === "TELEGRAM"
+      ? `${window.location.origin}/api/integrations/telegram/webhook`
+      : `${window.location.origin}/api/webhooks/${provider.toLowerCase()}`;
+  };
 
   async function copy(value: string) {
     await navigator.clipboard.writeText(value);
@@ -242,10 +250,11 @@ export function IntegrationsSettingsHub() {
             {active === "TIKTOK" ? <div className={styles.warning}>OAuth підключає TikTok account. Lead Generation через TikTok Business/Marketing API працюватиме після надання відповідних дозволів вашому TikTok Business app.</div> : null}
           </section> : null}
 
-          {(active === "META" || active === "TIKTOK" || active === "OLX") ? <section className={styles.section}>
+          {(active === "TELEGRAM" || active === "META" || active === "TIKTOK" || active === "OLX") ? <section className={styles.section}>
             <h3>Webhook</h3>
-            <p className={styles.help}>Production URL створюється CRM. Додайте його в кабінеті провайдера.</p>
+            <p className={styles.help}>{active === "TELEGRAM" ? "Webhook встановлюється автоматично після збереження Bot token." : "Production URL створюється CRM. Додайте його в кабінеті провайдера."}</p>
             <div className={styles.copyField}><code>{webhookUrl(active)}</code><button type="button" className={styles.secondary} onClick={() => void copy(webhookUrl(active))}>Копіювати</button></div>
+            {active === "TELEGRAM" ? <div className={styles.metaList}><span>Telegram Bot API: без платного посередника</span><span>Захист: X-Telegram-Bot-Api-Secret-Token</span></div> : null}
             {active === "META" ? <div className={styles.metaList}><span>Перевірка: verify token зберігається в CRM</span><span>Підпис: X-Hub-Signature-256</span></div> : null}
             {active === "TIKTOK" ? <div className={styles.metaList}><span>Підпис: TikTok-Signature / HMAC-SHA256</span><span>Захист від повторної доставки: event id + timestamp</span></div> : null}
             {active === "OLX" ? <div className={styles.metaList}><span>Підпис: x-signature / HMAC-SHA1</span><span>Ідентифікатор дубля: transaction_id</span></div> : null}
