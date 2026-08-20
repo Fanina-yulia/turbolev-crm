@@ -21,6 +21,20 @@ function requestedTemplateCode(problem: string | null | undefined) {
   return "BASIC_INSPECTION";
 }
 
+async function appointmentProblem(input: { vehicleId: string | null; mechanicId: string }) {
+  if (!input.vehicleId) return null;
+  const appointment = await getPrisma().serviceAppointment.findFirst({
+    where: {
+      vehicleId: input.vehicleId,
+      mechanicId: input.mechanicId,
+      status: { notIn: ["CANCELLED", "NO_SHOW", "COMPLETED"] },
+    },
+    orderBy: [{ updatedAt: "desc" }, { plannedStartAt: "desc" }],
+    select: { problem: true },
+  });
+  return appointment?.problem || null;
+}
+
 export async function startMechanicDiagnosticByType(userId: string, diagnosticRequestId: string) {
   const prisma = getPrisma();
   const mechanic = await getMechanicByUserId(userId);
@@ -50,7 +64,8 @@ export async function startMechanicDiagnosticByType(userId: string, diagnosticRe
   const inspectionCount = await prisma.diagnosticInspection.count({ where: { diagnosticRequestId } });
 
   if (!inspectionCount) {
-    const problem = [diagnostic.lead?.need, diagnostic.lead?.comment].filter(Boolean).join(" · ");
+    let problem = [diagnostic.lead?.need, diagnostic.lead?.comment].filter(Boolean).join(" · ");
+    if (!problem) problem = await appointmentProblem({ vehicleId: diagnostic.vehicleId, mechanicId: mechanic.id }) || "";
     const code = requestedTemplateCode(problem);
     const template = await prisma.diagnosticTemplate.findFirst({ where: { code, isActive: true } });
     if (!template) throw new StructuredDiagnosticError("TEMPLATE_NOT_FOUND", "Шаблон діагностики не знайдено.", 404);

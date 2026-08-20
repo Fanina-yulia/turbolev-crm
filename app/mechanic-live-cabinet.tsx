@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { MechanicStandaloneCabinet } from "./mechanic-standalone-cabinet";
 import { MechanicVehicleScanner } from "./mechanic-vehicle-scanner";
+import { MechanicDiagnosticsArrivalBridge } from "./mechanic-diagnostics-arrival-bridge";
 
 type AssignedVehicle = {
   id: string;
@@ -263,5 +264,6 @@ export function MechanicLiveCabinet({ userName }: { userName?: string | null }) 
     </section>}
     <MechanicStandaloneCabinet key={revision} userName={userName} />
     <MechanicVehicleScanner />
+    <MechanicDiagnosticsArrivalBridge />
   </div>;
 }

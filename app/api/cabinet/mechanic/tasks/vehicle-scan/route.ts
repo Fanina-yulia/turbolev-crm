@@ -4,6 +4,7 @@ import { PERMISSIONS } from "@/src/security/permissions";
 import { getPrisma } from "@/src/lib/prisma";
 import { toPrismaJson } from "@/src/lib/prisma-json";
 import { getIntegrationCredential } from "@/src/services/integration-credentials.service";
+import { arrivePlannerAppointment } from "@/src/services/planner-arrival.service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -189,7 +190,7 @@ async function resolveNextAction(input: {
     if (task) return { type: "REPAIR", label: task.status === "IN_PROGRESS" ? "Продовжити роботу" : "Відкрити роботу", taskId: task.id };
   }
 
-  if (!diagnostic) return { type: "WAITING", label: "Очікує діагностику", reason: "Діагностика для цього авто ще не оформлена." };
+  if (!diagnostic) return { type: "WAITING", label: "Очікує підтвердження авто", reason: "Підтвердьте автомобіль скануванням номера — діагностика буде створена автоматично." };
   return { type: "WAITING", label: "Очікує оформлення ремонту", diagnosticId: diagnostic.id, reason: "Діагностика завершена, але ремонтні операції ще не призначені." };
 }
 
@@ -265,17 +266,54 @@ export async function POST(request: NextRequest) {
     }
 
     const assignedToMe = Boolean(appointment?.mechanicId && appointment.mechanicId === mechanic.id);
-    const nextAction = assignedToMe ? await resolveNextAction({
+    let nextAction: NextAction = assignedToMe ? await resolveNextAction({
       userId: access.context.user.id,
       mechanicId: mechanic.id,
       vehicleId: vehicle?.id || appointment?.vehicleId || null,
       workOrderId: appointment?.workOrderId || null,
-    }) : { type: "NONE", label: "Авто не закріплене за вами", reason: appointment?.mechanicId ? "Автомобіль призначений іншому механіку." : "Для автомобіля немає вашого активного призначення." } satisfies NextAction;
+    }) : { type: "NONE", label: "Авто не закріплене за вами", reason: appointment?.mechanicId ? "Автомобіль призначений іншому механіку." : "Для автомобіля немає вашого активного призначення." };
+
+    let finalAppointmentStatus = appointment?.status || null;
+    let arrivalApplied = false;
+    let diagnosticRequestId: string | null = nextAction.diagnosticId || null;
 
     if (confirm) {
       if (!assignedToMe || !appointment) {
         return NextResponse.json({ ok: false, error: "VEHICLE_NOT_ASSIGNED", message: "Цей автомобіль не закріплений за вами." }, { status: 403 });
       }
+
+      const shouldApplyArrival = appointment.status === "BOOKED" || appointment.status === "ARRIVED";
+      if (shouldApplyArrival) {
+        const arrival = await arrivePlannerAppointment(appointment.id, {});
+        if (!arrival.ok) {
+          const status = "notFound" in arrival && arrival.notFound ? 404 : "workflowBlocked" in arrival && arrival.workflowBlocked ? 409 : 400;
+          const message = "arrivalBlocked" in arrival && arrival.arrivalBlocked
+            ? arrival.message
+            : "Не вдалося підтвердити прибуття автомобіля. Перевірте дані запису.";
+          return NextResponse.json({ ok: false, error: "MECHANIC_ARRIVAL_FAILED", message }, { status });
+        }
+
+        arrivalApplied = true;
+        finalAppointmentStatus = arrival.appointment.status;
+        diagnosticRequestId = arrival.workflowAction.diagnosticRequestId || null;
+        const arrivalVehicleId = arrival.workflowAction.vehicleId || vehicle?.id || appointment.vehicleId || null;
+
+        if (arrivalVehicleId && arrivalVehicleId !== vehicle?.id) {
+          vehicle = await prisma.vehicle.findUnique({
+            where: { id: arrivalVehicleId },
+            select: { id: true, plateNumber: true, brand: true, model: true, year: true },
+          });
+        }
+
+        nextAction = await resolveNextAction({
+          userId: access.context.user.id,
+          mechanicId: mechanic.id,
+          vehicleId: arrivalVehicleId,
+          workOrderId: appointment.workOrderId || null,
+        });
+        diagnosticRequestId = nextAction.diagnosticId || diagnosticRequestId;
+      }
+
       await prisma.auditEvent.create({
         data: {
           actorId: access.context.user.id,
@@ -290,6 +328,9 @@ export async function POST(request: NextRequest) {
             vehicleId: vehicle?.id || appointment.vehicleId || null,
             workOrderId: appointment.workOrderId || null,
             postId: appointment.postId || null,
+            arrivalApplied,
+            appointmentStatus: finalAppointmentStatus,
+            diagnosticRequestId,
             nextAction: nextAction.type,
           }),
         },
@@ -301,11 +342,13 @@ export async function POST(request: NextRequest) {
       recognized: true,
       recognition: { raw: rawPlate, plate: normalized, confidence, source },
       vehicle: vehicle ? { id: vehicle.id, label: vehicleLabel(vehicle), plate: vehicle.plateNumber || normalized } : { id: null, label: appointment?.vehicleLabel || "Автомобіль", plate: appointment?.plateNumber || normalized },
-      appointment: appointment ? { id: appointment.id, status: appointment.status, post: appointment.post?.name || null, plannedStartAt: appointment.plannedStartAt } : null,
+      appointment: appointment ? { id: appointment.id, status: finalAppointmentStatus || appointment.status, post: appointment.post?.name || null, plannedStartAt: appointment.plannedStartAt } : null,
       assignedToMe,
       assignment: appointment ? { mechanicId: appointment.mechanicId || null, isAssigned: Boolean(appointment.mechanicId), isMine: assignedToMe } : null,
       nextAction,
       confirmed: confirm && assignedToMe,
+      arrivalApplied,
+      diagnosticRequestId,
     }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
     const code = error instanceof Error ? error.message : "UNKNOWN";
