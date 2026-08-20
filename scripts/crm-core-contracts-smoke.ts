@@ -15,6 +15,12 @@ import {
   parseVehicleDirectoryPayload,
   parseVehicleImageRefreshPayload,
 } from "@/src/lib/contracts/directory-payload.parsers";
+import {
+  parsePersonnelCatalogPayload,
+  parsePersonnelListPayload,
+  parsePersonnelOkPayload,
+  parsePersonnelSavePayload,
+} from "@/src/lib/contracts/personnel-payload.parsers";
 
 const now = "2026-08-20T12:00:00.000Z";
 
@@ -137,6 +143,7 @@ const employee = parseCrmEmployeeCore({
   firstName: "Іван",
   lastName: "Механік",
   birthDate: null,
+  hireDate: now,
   email: "ivan@example.com",
   phone: "+380671111111",
   phoneCountry: "UA",
@@ -150,8 +157,9 @@ const employee = parseCrmEmployeeCore({
 assert(employee);
 assert.equal(employee.position, "Механік");
 
-const personnel = parsePersonnelItem({
+const personnelSource = {
   ...employee,
+  employmentType: "STAFF",
   baseSalary: "20000",
   minimumSalary: null,
   workPercent: "35",
@@ -159,7 +167,7 @@ const personnel = parsePersonnelItem({
   partsMarginPercent: null,
   netProfitPercent: null,
   payrollRuleNote: null,
-  documents: [],
+  documents: [{ id: "doc-1", type: "PASSPORT", name: "Паспорт", status: "UPLOADED", fileUrl: "/files/doc-1" }],
   roleAssignments: [{
     id: "assignment-1",
     isPrimary: true,
@@ -183,9 +191,32 @@ const personnel = parsePersonnelItem({
       userId: "user-1",
     },
   },
-});
+};
+
+const personnel = parsePersonnelItem(personnelSource);
 assert(personnel);
 assert.equal(personnel.access?.roleCode, "MECHANIC");
+
+const personnelPayload = parsePersonnelListPayload({ ok: true, items: [personnelSource] });
+assert(personnelPayload);
+assert.equal(personnelPayload.items[0]?.employmentType, "STAFF");
+assert.equal(personnelPayload.items[0]?.documents[0]?.id, "doc-1");
+assert.equal(parsePersonnelListPayload({ ok: true, items: [{ id: "broken" }] }), null);
+
+const personnelCatalog = parsePersonnelCatalogPayload({
+  ok: true,
+  roles: [{ code: "MECHANIC", name: "Механік", category: "Механіки", economicsMode: "WORK_PERCENT", requiresLocation: true, description: null }],
+  locations: [{ id: "loc-1", name: "Глеваха" }],
+});
+assert(personnelCatalog);
+assert.equal(personnelCatalog.roles[0]?.requiresLocation, true);
+assert.equal(parsePersonnelCatalogPayload({ ok: true, roles: [{ code: "MECHANIC" }], locations: [] }), null);
+
+const personnelSave = parsePersonnelSavePayload({ ok: true, id: "employee-1", userId: "user-1" });
+assert(personnelSave);
+assert.equal(personnelSave.id, "employee-1");
+assert(parsePersonnelOkPayload({ ok: true }));
+assert.equal(parsePersonnelSavePayload({ ok: true }), null);
 
 const workOrderCore = parseCrmWorkOrderCore({
   id: "wo-1",
