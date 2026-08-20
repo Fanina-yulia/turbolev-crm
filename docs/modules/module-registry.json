@@ -1,0 +1,151 @@
+{
+  "version": 1,
+  "updated": "2026-08-20",
+  "rule": "Every production change must be assigned to at least one module. Start analysis from the module passport, then inspect declared dependencies only when the change can affect them.",
+  "modules": [
+    {
+      "id": "core-platform",
+      "title": "Core / Platform",
+      "description": "Authentication, shell, routing, shared libraries, security, database schema and deployment infrastructure.",
+      "keywords": ["auth", "login", "routing", "shell", "permissions", "security", "prisma", "migration", "deployment"],
+      "paths": ["app/layout.tsx", "app/page.tsx", "app/crm-shell.tsx", "app/auth/**", "app/cabinet-auto-router.tsx", "app/role-cabinet.tsx", "src/security/**", "src/lib/**", "prisma/**", "scripts/build-production.mjs"],
+      "dependencies": [],
+      "smokeChecks": ["application-build", "authentication-redirect", "production-migration-status"]
+    },
+    {
+      "id": "dashboard-analytics",
+      "title": "Dashboard / Analytics",
+      "description": "Station overview, operational indicators, KPI and analytics views.",
+      "keywords": ["dashboard", "analytics", "kpi", "overview", "metrics"],
+      "paths": ["app/analytics-dashboard*", "app/*dashboard*", "app/api/analytics/**", "src/services/*analytics*"],
+      "dependencies": ["finance", "work-orders", "planner", "personnel-access"],
+      "smokeChecks": ["dashboard-load", "metrics-no-5xx"]
+    },
+    {
+      "id": "clients-vehicles",
+      "title": "Clients & Vehicles",
+      "description": "Client records, vehicle cards, ownership data, VIN/plate lookup, appearance and vehicle directory.",
+      "keywords": ["client", "customer", "vehicle", "car", "vin", "plate", "owner", "color"],
+      "paths": ["app/client-*", "app/clients-*", "app/vehicles-*", "app/api/clients*/**", "app/api/vehicles/**", "src/services/vehicle-lookup*", "src/services/vehicle-registry-color*"],
+      "dependencies": ["leads-intake", "planner", "diagnostics", "work-orders", "vehicle-images"],
+      "smokeChecks": ["client-card-load", "vehicle-card-load", "plate-search", "vehicle-owner-consistency"]
+    },
+    {
+      "id": "leads-intake",
+      "title": "Leads & Intake",
+      "description": "Lead lifecycle, conversion, new requests, intake and initial creation of client/vehicle records.",
+      "keywords": ["lead", "intake", "request", "conversion", "arrival"],
+      "paths": ["app/leads-*", "app/*intake*", "app/new-request-*", "app/api/leads/**", "app/api/intake/**", "src/services/leads*", "src/services/intake*", "src/services/lead-arrival*"],
+      "dependencies": ["clients-vehicles", "planner", "diagnostics", "notifications", "communications"],
+      "smokeChecks": ["lead-create", "lead-convert", "intake-create", "no-duplicate-client-vehicle"]
+    },
+    {
+      "id": "planner",
+      "title": "Planner",
+      "description": "Daily/weekly scheduling, service posts, mechanic assignment, availability and arrival transitions.",
+      "keywords": ["planner", "schedule", "appointment", "post", "booking", "arrival"],
+      "paths": ["app/planner-*", "app/availability-picker*", "app/optional-mechanic-booking-bridge.tsx", "app/api/planner/**", "src/services/planner*"],
+      "dependencies": ["clients-vehicles", "leads-intake", "diagnostics", "mechanic-cabinet", "personnel-access"],
+      "smokeChecks": ["planner-day-load", "planner-week-load", "appointment-create-update", "arrival-flow"]
+    },
+    {
+      "id": "diagnostics",
+      "title": "Diagnostics",
+      "description": "Diagnostic requests, assignments, findings, confirmation and the gate before repair work orders.",
+      "keywords": ["diagnostic", "diagnostics", "finding", "inspection", "confirmation"],
+      "paths": ["app/diagnostic-*", "app/*diagnostics*", "app/api/diagnostic*/**", "src/services/diagnostic*"],
+      "dependencies": ["clients-vehicles", "planner", "mechanic-cabinet", "work-orders"],
+      "smokeChecks": ["diagnostic-create", "diagnostic-assignment", "diagnostic-confirmation", "work-order-gate"]
+    },
+    {
+      "id": "work-orders",
+      "title": "Work Orders",
+      "description": "Repair orders, line items, statuses, approvals, repair workflow and completion controls.",
+      "keywords": ["work order", "workorder", "repair", "line item", "quote", "approval", "status"],
+      "paths": ["app/work-order-*", "app/workorder-*", "app/api/work-orders/**", "app/api/workorders/**", "src/services/work-order*", "src/domain/workflow*"],
+      "dependencies": ["diagnostics", "parts-inventory", "finance", "mechanic-cabinet", "service-manager", "notifications"],
+      "smokeChecks": ["work-order-create", "status-transition", "line-items", "quality-gate", "payment-gate"]
+    },
+    {
+      "id": "service-manager",
+      "title": "Service Manager Cabinet",
+      "description": "Service-advisor workspace for customer communication, vehicle context, estimates, approvals and repair supervision.",
+      "keywords": ["service manager", "service advisor", "advisor cabinet", "customer approval"],
+      "paths": ["app/service-advisor-*", "app/*service-manager*", "app/api/cabinet/service*/**"],
+      "dependencies": ["clients-vehicles", "planner", "diagnostics", "work-orders", "parts-inventory", "notifications"],
+      "smokeChecks": ["service-cabinet-load", "vehicle-owner-visible", "estimate-approval-flow"]
+    },
+    {
+      "id": "mechanic-cabinet",
+      "title": "Mechanic Cabinet",
+      "description": "Mechanic mobile/live workspace, assigned vehicles, tasks, findings, clarifications and mechanic notifications.",
+      "keywords": ["mechanic", "mechanic cabinet", "assigned vehicles", "task", "finding", "clarification"],
+      "paths": ["app/mechanic-*", "app/api/cabinet/mechanic/**", "src/services/mechanic-*"],
+      "dependencies": ["planner", "diagnostics", "work-orders", "notifications", "personnel-access"],
+      "smokeChecks": ["mechanic-login-route", "assigned-vehicles", "task-update", "finding-create", "notification-read-close"]
+    },
+    {
+      "id": "parts-inventory",
+      "title": "Parts & Inventory",
+      "description": "Parts search, supplier offers, fitment, purchasing, stock and warehouse operations.",
+      "keywords": ["parts", "spare parts", "supplier", "inventory", "warehouse", "catalog", "oem", "vin search"],
+      "paths": ["app/parts-*", "app/*inventory*", "app/*warehouse*", "app/api/parts/**", "app/api/inventory/**", "src/services/parts*", "src/services/*supplier*", "src/services/*inventory*"],
+      "dependencies": ["clients-vehicles", "work-orders", "finance", "settings-integrations"],
+      "smokeChecks": ["parts-search-vin", "parts-search-plate", "supplier-offers", "work-order-parts-link"]
+    },
+    {
+      "id": "personnel-access",
+      "title": "Personnel & Access",
+      "description": "Employees, categories, positions, role assignments, cabinet routing and authorization matrix.",
+      "keywords": ["personnel", "employee", "staff", "position", "category", "role", "access", "permission"],
+      "paths": ["app/personnel*", "app/api/personnel/**", "app/api/access*/**", "src/services/personnel*", "src/security/**"],
+      "dependencies": ["core-platform", "planner", "mechanic-cabinet", "service-manager", "finance"],
+      "smokeChecks": ["personnel-list", "employee-card", "role-assignment", "cabinet-routing", "permission-denials"]
+    },
+    {
+      "id": "finance",
+      "title": "Finance",
+      "description": "Payments, cash, payroll/economics, financial core and work-order financial calculations.",
+      "keywords": ["finance", "payment", "cash", "payroll", "salary", "margin", "p&l", "balance"],
+      "paths": ["app/finance-*", "app/*payment*", "app/*payroll*", "app/api/finance/**", "app/api/payments/**", "src/services/finance*", "src/services/*payment*", "src/services/*payroll*"],
+      "dependencies": ["work-orders", "parts-inventory", "personnel-access", "dashboard-analytics"],
+      "smokeChecks": ["payment-create", "balance-due", "financial-totals", "payroll-access"]
+    },
+    {
+      "id": "vehicle-images",
+      "title": "Vehicle Images",
+      "description": "OpenAI image generation, shared model templates, color variants, optimization and image library administration.",
+      "keywords": ["vehicle image", "openai image", "template", "color variant", "recolor", "image library"],
+      "paths": ["app/vehicle-image-*", "app/api/vehicle-images/**", "app/api/internal/vehicle-image*/**", "src/services/vehicle-images/**", "prisma/migrations/*vehicle_image*"],
+      "dependencies": ["clients-vehicles", "settings-integrations"],
+      "smokeChecks": ["existing-template-reuse", "new-color-variant", "new-model-generation", "image-delivery", "image-library-admin"]
+    },
+    {
+      "id": "notifications",
+      "title": "Notifications",
+      "description": "In-app notifications, unread state, actionable notices and role/cabinet notification delivery.",
+      "keywords": ["notification", "alert", "unread", "message", "attention"],
+      "paths": ["app/*notification*", "app/api/*notification*/**", "src/services/*notification*"],
+      "dependencies": ["mechanic-cabinet", "service-manager", "work-orders", "leads-intake"],
+      "smokeChecks": ["notification-create", "notification-visible", "mark-read", "close-action"]
+    },
+    {
+      "id": "communications",
+      "title": "Communications",
+      "description": "Telephony, callbacks, call history and omnichannel communication bridges.",
+      "keywords": ["telephony", "call", "callback", "phone", "binotel", "viber", "whatsapp", "omnichannel"],
+      "paths": ["app/*telephony*", "app/*binotel*", "app/*communication*", "app/api/telephony/**", "app/api/calls/**", "src/services/*telephony*", "src/services/*call*", "integrations/**"],
+      "dependencies": ["leads-intake", "clients-vehicles", "settings-integrations"],
+      "smokeChecks": ["call-history", "incoming-event", "client-match", "integration-disabled-safe"]
+    },
+    {
+      "id": "settings-integrations",
+      "title": "Settings & Integrations",
+      "description": "System configuration, API credentials, integrations, cameras and operational settings.",
+      "keywords": ["settings", "integration", "api key", "camera", "configuration", "credential"],
+      "paths": ["app/settings-*", "app/*settings*", "app/api/settings/**", "src/services/integration-*", "src/services/*settings*"],
+      "dependencies": ["core-platform"],
+      "smokeChecks": ["settings-load", "credential-read-write", "integration-test"]
+    }
+  ]
+}
