@@ -1,11 +1,21 @@
 import "server-only";
 
+import { getPrisma } from "@/src/lib/prisma";
 import { getSqlPool } from "@/src/lib/sql";
 import { normalizeRegistrationPlate } from "@/src/domain/registration-plate";
 
 export type RegistryVehicleColor = {
   color: string;
   sourceYear: number;
+};
+
+export type ResolvedVehicleColor = {
+  exteriorColorName: string | null;
+  exteriorColorHex: string | null;
+  exteriorPaintCode: string | null;
+  exteriorColorSource: string;
+  exteriorColorConfirmed: true;
+  sourceYear: number | null;
 };
 
 function registrationPlateKey(plate: string): bigint | null {
@@ -43,4 +53,43 @@ export async function lookupRegistryVehicleColorByPlate(rawPlate: string | null 
     if (error instanceof Error && /column .*color.* does not exist|42703/i.test(error.message)) return null;
     throw error;
   }
+}
+
+export async function resolveVehicleColorByPlate(
+  rawPlate: string | null | undefined,
+  vehicleId?: string | null,
+): Promise<ResolvedVehicleColor | null> {
+  if (vehicleId) {
+    const vehicle = await getPrisma().vehicle.findUnique({
+      where: { id: vehicleId },
+      select: {
+        exteriorColorName: true,
+        exteriorColorHex: true,
+        exteriorPaintCode: true,
+        exteriorColorSource: true,
+        exteriorColorConfirmed: true,
+      },
+    });
+    if (vehicle?.exteriorColorConfirmed && (vehicle.exteriorColorName || vehicle.exteriorColorHex || vehicle.exteriorPaintCode)) {
+      return {
+        exteriorColorName: vehicle.exteriorColorName,
+        exteriorColorHex: vehicle.exteriorColorHex,
+        exteriorPaintCode: vehicle.exteriorPaintCode,
+        exteriorColorSource: vehicle.exteriorColorSource ? String(vehicle.exteriorColorSource) : "USER",
+        exteriorColorConfirmed: true,
+        sourceYear: null,
+      };
+    }
+  }
+
+  const registry = await lookupRegistryVehicleColorByPlate(rawPlate);
+  if (!registry) return null;
+  return {
+    exteriorColorName: registry.color,
+    exteriorColorHex: null,
+    exteriorPaintCode: null,
+    exteriorColorSource: "REGISTRY",
+    exteriorColorConfirmed: true,
+    sourceYear: registry.sourceYear,
+  };
 }
