@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "updated": "2026-08-20",
+  "externalTables": [
+    {
+      "name": "VehicleRegistryCompact",
+      "reason": "High-volume MVS registry cache is populated and maintained by the external import pipeline, not Prisma models."
+    },
+    {
+      "name": "VehicleImageLibraryAsset",
+      "reason": "Vehicle image binary/template library is intentionally managed through raw SQL services and migrations."
+    },
+    {
+      "name": "VehicleImageGenerationJob",
+      "reason": "Vehicle image generation queue is intentionally managed through raw SQL services and migrations."
+    }
+  ],
+  "externalConstraints": [
+    "DiagnosticAssignment_diagnosticRequestId_fkey",
+    "DiagnosticAssignment_locationId_fkey",
+    "DiagnosticAssignment_mechanicId_fkey",
+    "DiagnosticReview_diagnosticRequestId_fkey",
+    "DiagnosticReview_reviewerUserId_fkey",
+    "DiagnosticTemplateSection_templateId_fkey",
+    "DiagnosticTemplateItem_sectionId_fkey",
+    "DiagnosticInspection_diagnosticRequestId_fkey",
+    "DiagnosticInspection_mechanicId_fkey",
+    "DiagnosticInspection_templateId_fkey",
+    "DiagnosticCheck_inspectionId_fkey",
+    "DiagnosticCheck_templateItemId_fkey",
+    "DiagnosticFinding_checkId_fkey",
+    "DiagnosticMedia_findingId_fkey",
+    "UserUiPreference_userId_fkey"
+  ]
+}
