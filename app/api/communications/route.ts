@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ingestCommunicationInquiry, listCommunicationInquiries, type CommunicationChannel } from "@/src/services/communications-server.service";
+import { withCommunicationLifecycleState } from "@/src/services/communication-lifecycle.service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -16,7 +17,11 @@ export async function GET(request: NextRequest) {
       noReply: params.get("noReply") === "1",
       search: params.get("search") || undefined,
     });
-    return NextResponse.json({ ok: true, ...result });
+    return NextResponse.json({
+      ok: true,
+      ...result,
+      items: result.items.map((item) => withCommunicationLifecycleState(item)),
+    });
   } catch (error) {
     console.error("GET /api/communications failed", error);
     return NextResponse.json({ ok: false, error: "Communications database is not ready" }, { status: 503 });
@@ -48,7 +53,7 @@ export async function POST(request: NextRequest) {
       assignedUserId: body.assignedUserId,
       metadata: body.metadata,
     });
-    return NextResponse.json({ ok: true, inquiry }, { status: 201 });
+    return NextResponse.json({ ok: true, inquiry: withCommunicationLifecycleState(inquiry) }, { status: 201 });
   } catch (error) {
     console.error("POST /api/communications failed", error);
     return NextResponse.json({ ok: false, error: "Failed to create inquiry" }, { status: 500 });
