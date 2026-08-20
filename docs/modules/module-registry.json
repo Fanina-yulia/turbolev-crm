@@ -62,7 +62,7 @@
       "title": "Work Orders",
       "description": "Repair orders, line items, statuses, approvals, repair workflow and completion controls.",
       "keywords": ["work order", "workorder", "repair", "line item", "quote", "approval", "status"],
-      "paths": ["app/work-orders.tsx", "app/work-order-*", "app/workorder-*", "app/api/work-orders/**", "app/api/workorders/**", "src/services/work-order*", "src/domain/workflow*"],
+      "paths": ["app/work-orders.tsx", "app/work-order-*", "app/workorder-*", "app/qc-queue.tsx", "app/api/work-orders/**", "app/api/workorders/**", "app/api/qc/**", "src/services/work-order*", "src/domain/workflow/**"],
       "dependencies": ["diagnostics", "parts-inventory", "finance", "mechanic-cabinet", "service-manager", "notifications"],
       "smokeChecks": ["work-order-create", "status-transition", "line-items", "quality-gate", "payment-gate"]
     },
