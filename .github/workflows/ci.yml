@@ -55,14 +55,13 @@ jobs:
       - name: Validate Prisma schema
         run: npx prisma validate
 
-      - name: Bootstrap external-data tables for clean CI
-        # VehicleRegistryCompact is populated by the separate MVS import pipeline in
-        # production and is intentionally outside Prisma. A clean CI database must
-        # provide its empty structural fixture before replaying Prisma migrations.
-        run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f scripts/ci-bootstrap-external-tables.sql
-
       - name: Apply full migration history on clean PostgreSQL 18
-        run: npx prisma migrate deploy
+        # The helper attaches empty structural fixtures only after Prisma has
+        # initialized its migration metadata. Production MVS data stays external.
+        run: bash scripts/ci-migrate-with-external-fixtures.sh
+
+      - name: Remove external CI fixtures before Prisma drift check
+        run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c 'DROP TABLE IF EXISTS "VehicleRegistryCompact";'
 
       - name: Reject Prisma / migration schema drift
         run: npx prisma migrate diff --exit-code --from-config-datasource --to-schema prisma
