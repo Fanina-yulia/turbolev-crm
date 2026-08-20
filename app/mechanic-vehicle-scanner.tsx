@@ -313,7 +313,7 @@ export function MechanicVehicleScanner() {
       </div>
 
       <div className={styles.scannerInstruction}>
-        Для розпізнавання наведіть камеру на<br />держ. знак або VIN-номер
+        Для розпізнавання наведіть камеру на<br />державний номер автомобіля
       </div>
 
       <div className={`${styles.scanWindow} ${busy ? styles.scanWindowBusy : ""}`} aria-hidden="true">
