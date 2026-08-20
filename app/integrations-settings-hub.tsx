@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { BinotelCallbacksSettings } from "./binotel-callbacks-settings";
+import { VehicleGenerationCatalogPanel } from "./vehicle-generation-catalog-panel";
 import { VehicleImageLibrarySettingsPanel } from "./vehicle-image-library-settings-panel";
 import styles from "./integrations-settings-hub.module.css";
 
@@ -251,6 +252,10 @@ export function IntegrationsSettingsHub() {
           </section> : null}
 
           {active === "BINOTEL" ? <section className={styles.section}><h3>Callbacks та синхронізація</h3><BinotelCallbacksSettings/></section> : null}
+
+          {active === "VEHICLE_IMAGES" ? <section className={styles.section}>
+            <VehicleGenerationCatalogPanel/>
+          </section> : null}
 
           {active === "VEHICLE_IMAGES" ? <section className={styles.section}>
             <div className={styles.sectionHead}><div><h3>Бібліотека зображень авто</h3><p>Перегляд, затвердження, перегенерація та ручна заміна.</p></div><button type="button" className={styles.secondary} onClick={() => setLibraryOpen((value) => !value)}>{libraryOpen ? "Сховати" : "Відкрити бібліотеку"}</button></div>
