@@ -1,0 +1,2 @@
+ALTER TABLE "VehicleRegistryCompact"
+ADD COLUMN IF NOT EXISTS "color" VARCHAR(48);
