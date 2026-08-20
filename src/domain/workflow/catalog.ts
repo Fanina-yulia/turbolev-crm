@@ -93,7 +93,7 @@ export const HARD_GATE_LABELS: Record<HardGateCode, string> = {
   MECHANIC_ASSIGNED_BEFORE_REPAIR: "Для старту ремонту має бути призначений автомеханік",
   ADDITIONAL_WORK_REQUIRES_APPROVAL: "Додаткові платні роботи потребують нового погодження",
   QC_PASSED_BEFORE_READY: "Після ремонту автомобіль має пройти контроль якості",
-  ZERO_BALANCE_BEFORE_DELIVERY: "Статус «Готовий до видачі» доступний тільки після повної оплати",
+  ZERO_BALANCE_BEFORE_DELIVERY: "Видача автомобіля та закриття ЗН доступні тільки після повного розрахунку",
 };
 
 export const WORKFLOW_ACTION_LABELS: Record<WorkflowActionCode, string> = {

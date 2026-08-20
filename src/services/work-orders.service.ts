@@ -295,10 +295,10 @@ export async function transitionWorkOrder(id: string, toStatus: string, actorNam
   if (!preflight) throw new WorkOrderNotFoundError(id);
   const normalizedFrom = normalizeWorkflowStatus("WORK_ORDER", preflight.status);
 
-  // After QC passes, make the final invoice/receivable factual before the car enters payment queue.
-  // This happens before the status transition so finance errors cannot leave a WO waiting for payment
-  // without an actual receivable to settle.
-  if (normalizedFrom === "WAITING_QC" && requested === "WAITING_PAYMENT") {
+  // After QC passes, finalize the factual invoice/receivable before the car becomes ready for pickup.
+  // Payment remains a separate financial state; readiness describes the physical/service state of the car.
+  // Finalization happens first so finance errors cannot leave a false READY_FOR_PICKUP state.
+  if (normalizedFrom === "WAITING_QC" && requested === "READY_FOR_PICKUP") {
     const preGates = (await getWorkOrderCycleState(id)).gates;
     const preDecision = evaluateWorkOrderTransition(normalizedFrom, requested, preGates);
     if (!preDecision.allowed) throw new WorkOrderTransitionError(preDecision, unsupportedActions(preDecision.actions));
