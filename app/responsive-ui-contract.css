@@ -1,0 +1,149 @@
+/* Turbo LEV CRM — final responsive UI contract.
+   This layer is intentionally loaded last. It defines the minimum readable
+   interface scale and fluid desktop/tablet geometry for every CRM module. */
+
+:root{
+  --crm-font-meta:12px;
+  --crm-font-label:13px;
+  --crm-font-control:14px;
+  --crm-font-copy:15px;
+  --crm-sidebar-fluid:clamp(220px,14vw,265px);
+  --crm-gutter-x:clamp(14px,2vw,34px);
+  --crm-gutter-bottom:clamp(30px,4vw,60px);
+  --crm-layout-gap:clamp(10px,1.2vw,18px);
+}
+
+html{font-size:16px;min-width:0;max-width:100%;overflow-x:hidden}
+body{min-width:0;max-width:100%;font-size:var(--crm-font-copy)!important;line-height:1.5;overflow-x:hidden}
+
+/* Expanded desktop shell becomes fluid instead of jumping 265 -> 215px. */
+@media (min-width:761px){
+  .shell:not(:has(.sidebar > button[aria-controls="crm-primary-navigation"][aria-expanded="false"])){
+    --crm-sidebar-width:var(--crm-sidebar-fluid)!important;
+    grid-template-columns:var(--crm-sidebar-fluid) minmax(0,1fr)!important;
+  }
+}
+
+.workspace{
+  min-width:0!important;
+  max-width:100%!important;
+  padding-left:var(--crm-gutter-x)!important;
+  padding-right:var(--crm-gutter-x)!important;
+  padding-bottom:var(--crm-gutter-bottom)!important;
+  font-size:var(--crm-font-copy)!important;
+  line-height:1.5!important;
+}
+.workspace :where(main,section,article,header,footer,nav,div){min-width:0}
+.workspace :where(img,video,canvas){max-width:100%;height:auto}
+
+/* One typography scale for operational UI. Headings are intentionally exempt. */
+.workspace :where(button,input,select,textarea){
+  font-family:var(--ui-font)!important;
+  font-size:var(--crm-font-control)!important;
+  line-height:1.4!important;
+}
+.workspace :where(label){font-size:var(--crm-font-label)!important;line-height:1.4!important}
+.workspace :where(small,time,code,kbd,em){font-size:var(--crm-font-meta)!important;line-height:1.4!important}
+.workspace :where(table th){font-size:var(--crm-font-meta)!important;line-height:1.35!important}
+.workspace :where(table td){font-size:var(--crm-font-control)!important;line-height:1.45!important}
+
+/* CSS-module semantic text. New screens can use these names without ever
+   falling back to 7–11px copy. */
+.workspace :where(
+  [class*="_eyebrow__"],
+  [class*="_badge__"],
+  [class*="_status__"],
+  [class*="_meta__"],
+  [class*="_hint__"],
+  [class*="_caption__"],
+  [class*="_subtitle__"],
+  [class*="_description__"],
+  [class*="_source__"],
+  [class*="_preview__"],
+  [class*="_helper__"],
+  [class*="_empty__"],
+  [class*="_state__"],
+  [class*="_pill__"]
+){font-size:var(--crm-font-meta)!important;line-height:1.4!important}
+
+/* Known portals rendered outside .workspace. */
+.clientDrawer,.plannerEditEnhancerModal,.communicationVehicleDrawer,.tlCallPopup,.tlDockPanel{
+  font-family:var(--ui-font)!important;
+  font-size:var(--crm-font-copy)!important;
+  line-height:1.5!important;
+}
+.clientDrawer :where(small,time,code,em),
+.plannerEditEnhancerModal :where(small,time,code,em),
+.communicationVehicleDrawer :where(small,time,code,em),
+.tlCallPopup :where(small,time,code,em),
+.tlDockPanel :where(small,time,code,em){font-size:var(--crm-font-meta)!important;line-height:1.4!important}
+.clientDrawer :where(button,input,select,textarea),
+.plannerEditEnhancerModal :where(button,input,select,textarea),
+.communicationVehicleDrawer :where(button,input,select,textarea),
+.tlCallPopup :where(button,input,select,textarea),
+.tlDockPanel :where(button,input,select,textarea){font-size:var(--crm-font-control)!important;line-height:1.4!important}
+
+/* Existing modules that historically used 8–11px. */
+[class*="mechanic-mobile-cabinet-v2_"] :where(small,time),
+[class*="mechanic-standalone-cabinet_"] :where(small,time),
+[class*="camera-settings_"] :where(small,time),
+[class*="vehicle-image-library-settings-panel_"] :where(small,time){font-size:var(--crm-font-meta)!important;line-height:1.4!important}
+
+[class*="mechanic-mobile-cabinet-v2_"] :where(button,input,select,textarea),
+[class*="mechanic-standalone-cabinet_"] :where(button,input,select,textarea),
+[class*="camera-settings_"] :where(button,input,select,textarea),
+[class*="vehicle-image-library-settings-panel_"] :where(button,input,select,textarea){font-size:var(--crm-font-control)!important;line-height:1.4!important}
+
+[class*="mechanic-mobile-cabinet-v2_"] :where(
+  [class*="status"],[class*="Status"],[class*="meta"],[class*="Meta"],[class*="hint"],[class*="Hint"],[class*="eyebrow"],[class*="Eyebrow"]
+),
+[class*="mechanic-standalone-cabinet_"] :where(
+  [class*="status"],[class*="Status"],[class*="meta"],[class*="Meta"],[class*="hint"],[class*="Hint"],[class*="eyebrow"],[class*="Eyebrow"]
+){font-size:var(--crm-font-meta)!important;line-height:1.4!important}
+
+/* Wide data surfaces scroll inside their own region instead of widening CRM. */
+.workspace :where(
+  [class*="tableWrap"],[class*="TableWrap"],
+  [class*="weekBoard"],[class*="WeekBoard"],
+  [class*="kanban"],[class*="Kanban"]
+){max-width:100%;overflow-x:auto;overscroll-behavior-x:contain}
+
+/* Laptop range: save width gradually, not with a single harsh breakpoint. */
+@media (max-width:1600px){
+  :root{--crm-sidebar-fluid:clamp(220px,14vw,245px);--crm-gutter-x:clamp(16px,1.7vw,26px)}
+}
+@media (max-width:1366px){
+  :root{--crm-sidebar-fluid:220px;--crm-gutter-x:18px;--crm-layout-gap:12px}
+  .workspace{padding-bottom:40px!important}
+}
+@media (max-width:1180px){
+  :root{--crm-sidebar-fluid:215px;--crm-gutter-x:16px}
+  .topbar{gap:14px;flex-wrap:wrap}
+  .topActions{flex-wrap:wrap}
+  .kpis{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .pipeline{grid-template-columns:repeat(4,minmax(0,1fr))}
+}
+@media (max-width:900px){
+  :root{--crm-gutter-x:14px}
+  .gridTwo{grid-template-columns:1fr!important}
+  .pipeline{grid-template-columns:repeat(3,minmax(0,1fr))}
+}
+
+/* Mobile/tablet shell. Keep readable sizes; adapt geometry instead of shrinking text. */
+@media (max-width:760px){
+  :root{--crm-sidebar-fluid:0px;--crm-gutter-x:14px;--crm-gutter-bottom:28px}
+  .workspace{width:100%!important;max-width:100%!important}
+  .workspace :where(button,input,select,textarea){font-size:14px!important}
+  .workspace :where(small,time,code,kbd,em){font-size:12px!important}
+  .kpis{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .pipeline{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media (max-width:480px){
+  :root{--crm-gutter-x:12px}
+  .kpis,.pipeline{grid-template-columns:1fr}
+  .topActions{width:100%}
+  .topActions>button{min-width:0;flex:1 1 140px}
+}
+
+/* Plate artwork is the only intentional sub-12px visual exception. */
+.uaPlateCountry small{font-size:6px!important;line-height:1!important}
