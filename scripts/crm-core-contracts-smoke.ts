@@ -21,6 +21,13 @@ import {
   parsePersonnelOkPayload,
   parsePersonnelSavePayload,
 } from "@/src/lib/contracts/personnel-payload.parsers";
+import {
+  parseWorkOrderDetailPayload,
+  parseWorkOrderListPayload,
+  parseWorkOrderNumbersPayload,
+  parseWorkOrderTransitionFailurePayload,
+  parseWorkOrderTransitionPayload,
+} from "@/src/lib/contracts/work-order-payload.parsers";
 
 const now = "2026-08-20T12:00:00.000Z";
 
@@ -266,5 +273,68 @@ assert(workOrder);
 assert.equal(workOrder.number, 124);
 assert.equal(workOrder.vehicle.plateNumber, "AA1234AA");
 assert.equal(workOrder.transitions[0]?.to, "WAITING_QC");
+
+const { number: _workOrderNumber, ...workOrderApiItem } = workOrder;
+const workOrderListPayload = parseWorkOrderListPayload({ ok: true, workOrders: [workOrderApiItem] });
+assert(workOrderListPayload);
+assert.equal(workOrderListPayload.workOrders[0]?.number, null);
+assert.equal(workOrderListPayload.workOrders[0]?.statusLabel, "У ремонті");
+assert.equal(parseWorkOrderListPayload({
+  ok: true,
+  workOrders: [{
+    ...workOrderApiItem,
+    transitions: [{
+      ...workOrderApiItem.transitions[0],
+      requiredGates: [{ code: "ESTIMATE_APPROVED_BEFORE_REPAIR" }],
+    }],
+  }],
+}), null);
+
+const workOrderDetailPayload = parseWorkOrderDetailPayload({
+  ok: true,
+  workOrder: {
+    ...workOrderApiItem,
+    appointment: null,
+    recentCalls: [{
+      id: "call-1",
+      type: "INCOMING",
+      status: "ANSWERED",
+      duration: 45,
+      startedAt: now,
+      recordingUrl: null,
+    }],
+  },
+});
+assert(workOrderDetailPayload);
+assert.equal(workOrderDetailPayload.recentCalls[0]?.duration, 45);
+assert.equal(parseWorkOrderDetailPayload({
+  ok: true,
+  workOrder: {
+    ...workOrderApiItem,
+    appointment: null,
+    recentCalls: [{ id: "broken-call" }],
+  },
+}), null);
+
+const workOrderNumbersPayload = parseWorkOrderNumbersPayload({
+  ok: true,
+  rows: [{ workOrderId: "wo-1", number: 124 }],
+});
+assert(workOrderNumbersPayload);
+assert.equal(workOrderNumbersPayload.rows[0]?.number, 124);
+assert.equal(parseWorkOrderNumbersPayload({ ok: true, rows: [{ workOrderId: "wo-1", number: "124" }] }), null);
+
+const workOrderTransitionPayload = parseWorkOrderTransitionPayload({ ok: true, workOrder: workOrderApiItem });
+assert(workOrderTransitionPayload);
+assert.equal(workOrderTransitionPayload.status, "IN_REPAIR");
+
+const transitionFailure = parseWorkOrderTransitionFailurePayload({
+  ok: false,
+  error: "Перехід заблоковано Hard Gate.",
+  workflowDecision: { missingGates: ["ESTIMATE_APPROVED_BEFORE_REPAIR"] },
+});
+assert(transitionFailure);
+assert.deepEqual(transitionFailure.missingGates, ["ESTIMATE_APPROVED_BEFORE_REPAIR"]);
+assert.equal(parseWorkOrderTransitionFailurePayload({ error: "Помилка", workflowDecision: { missingGates: [123] } }), null);
 
 console.log("CRM core contracts smoke: OK");
