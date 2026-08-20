@@ -182,4 +182,6 @@ export function parsePlannerBoardPayload(value: unknown): PlannerBoardPayload | 
   return { status: "OK", locations, activeLocationId, appointments };
 }
 
-export { payloadMessage as plannerPayloadMessage };
+export function plannerPayloadMessage(value: unknown, fallback = "Не вдалося завантажити План робіт.") {
+  return payloadMessage(value, fallback);
+}
