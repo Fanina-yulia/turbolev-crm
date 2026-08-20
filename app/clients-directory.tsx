@@ -8,6 +8,7 @@ import {
   payloadMessage,
 } from "@/src/lib/contracts/directory-payload.parsers";
 import { CustomerCabinetCard } from "./customer-cabinet-card";
+import { TelegramClientLinkCard } from "./telegram-client-link-card";
 import { navigateCrm, readCrmRoute } from "./crm-route";
 import styles from "./directory-pages.module.css";
 
@@ -220,6 +221,9 @@ export function ClientsDirectory() {
                 <small>{vehicle.plateNumber || vehicle.vin || "Без номера"} · {vehicleStatus(vehicle)}</small>
                 <span>›</span>
               </button>)}</div> : <div className={styles.emptyInline}>Автомобілі ще не додані.</div>}
+            </section>
+            <section className={styles.panel}>
+              <TelegramClientLinkCard clientId={selected.id} />
             </section>
             <section className={styles.panel}>
               <CustomerCabinetCard clientId={selected.id} />
