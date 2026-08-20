@@ -1,0 +1,40 @@
+name: One-off separate cashier and scope parts
+
+on:
+  push:
+    branches:
+      - agent/personnel-role-delegation-fix
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/personnel-role-delegation-fix
+          fetch-depth: 0
+      - name: Apply cashier and parts scope policy
+        run: python3 scripts/one-off-separate-cashier-and-scope-parts.py
+      - name: Validate patch
+        run: |
+          git diff --check
+          git status --short
+      - name: Commit product changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- \
+            src/services/personnel-access.service.ts \
+            src/security/access-matrix-catalog.ts \
+            src/domain/workflow/types.ts \
+            src/domain/workflow/catalog.ts \
+            src/domain/workflow/operating-policy.ts \
+            prisma/migrations/20260820031500_complete_operational_role_catalog/migration.sql \
+            scripts/one-off-separate-cashier-and-scope-parts.py \
+            .github/workflows/one-off-separate-cashier-and-scope-parts.yml
+          git commit -m "Separate cashier and scope parts role"
+          git push origin HEAD:agent/personnel-role-delegation-fix
