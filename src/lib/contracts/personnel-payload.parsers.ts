@@ -63,6 +63,7 @@ export function parsePersonnelDirectoryItem(value: unknown): PersonnelDirectoryI
   if (!isRecord(value)) return null;
   const base = parsePersonnelItem(value);
   if (!base) return null;
+  if (!Array.isArray(value.roleAssignments) || base.roleAssignments.length !== value.roleAssignments.length) return null;
   const documents = parseArrayStrict(value.documents, (item): PersonnelDocumentItem | null => {
     if (!isRecord(item)) return null;
     const id = requiredString(item.id);
