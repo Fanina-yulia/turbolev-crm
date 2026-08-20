@@ -3,7 +3,7 @@ import { isRecord, parsePersonnelItem } from "./crm-core.parsers";
 
 export type PersonnelDocumentItem = EmployeeDocumentContract & { id: string };
 
-export type PersonnelDirectoryItem = PersonnelItemContract & {
+export type PersonnelDirectoryItem = Omit<PersonnelItemContract, "documents"> & {
   employmentType: string | null;
   documents: PersonnelDocumentItem[];
 };
