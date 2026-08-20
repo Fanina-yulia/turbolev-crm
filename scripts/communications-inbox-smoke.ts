@@ -116,7 +116,49 @@ const omnichannel = buildCommunicationConversations([
 assert.equal(omnichannel.length, 1);
 const replyConversation = omnichannel[0];
 assert.equal(replyConversation.representative.channel, "BINOTEL", "latest event can still be a phone call");
+assert.equal(replyConversation.activeChannel, "INSTAGRAM", "active channel follows the latest real inbound message rather than an unrelated system call");
 assert.equal(getDefaultCommunicationReplyInquiry(replyConversation).channel, "INSTAGRAM", "live messaging channel must be preferred for the composer");
 assert.deepEqual(getCommunicationReplyInquiries(replyConversation).map((item) => item.channel), ["INSTAGRAM", "BINOTEL"]);
+
+const websiteToTelegram = buildCommunicationConversations([
+  {
+    id: "website-origin",
+    channel: "WEBSITE",
+    state: "IN_WORK",
+    name: "Марійка Смірнова",
+    phone: "+380997436439",
+    subject: "Заявка із сайту",
+    preview: "Потрібна консультація",
+    unread: false,
+    answered: true,
+    receivedAt: "2026-08-20T18:00:00.000Z",
+    messages: [{ id: "web-in", direction: "in", text: "Потрібна консультація", at: "2026-08-20T18:00:00.000Z" }],
+  },
+  {
+    id: "telegram-legacy-website",
+    channel: "WEBSITE",
+    state: "NEW",
+    name: "Марійка Смірнова",
+    phone: "+380997436439",
+    handle: "@mariika",
+    subject: "Telegram · Марійка Смірнова",
+    preview: "привіт, як в тебе справи?",
+    unread: true,
+    answered: false,
+    receivedAt: "2026-08-20T21:06:00.000Z",
+    sourceDetail: "Telegram Bot",
+    lastInboundAt: "2026-08-20T21:06:00.000Z",
+    metadata: { source: "TELEGRAM", clientId: "client-1", chatId: "123" },
+    messages: [{ id: "tg-in", direction: "in", text: "привіт, як в тебе справи?", at: "2026-08-20T21:06:00.000Z", metadata: { source: "TELEGRAM" } }],
+  },
+]);
+assert.equal(websiteToTelegram.length, 1);
+const telegramConversation = websiteToTelegram[0];
+assert.equal(telegramConversation.sourceChannel, "WEBSITE", "the first acquisition/contact source must remain Website");
+assert.equal(telegramConversation.activeChannel, "TELEGRAM", "legacy Website+metadata Telegram inquiry must present as Telegram");
+assert.equal(telegramConversation.representative.channel, "TELEGRAM", "latest Telegram inquiry must no longer be mislabeled as Website");
+assert.deepEqual(telegramConversation.channels, ["TELEGRAM", "WEBSITE"]);
+assert.equal(getDefaultCommunicationReplyInquiry(telegramConversation).channel, "TELEGRAM", "composer must automatically reply through Telegram after a Telegram inbound message");
+assert.equal(telegramConversation.timeline.at(-1)?.channel, "TELEGRAM", "Telegram timeline messages must display their real transport channel");
 
 console.log("communications-inbox-smoke: ok");

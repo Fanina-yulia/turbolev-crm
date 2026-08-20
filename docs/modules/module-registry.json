@@ -134,7 +134,7 @@
       "title": "Communications",
       "description": "Telephony, callbacks, call history and omnichannel communication bridges.",
       "keywords": ["telephony", "call", "callback", "phone", "binotel", "viber", "whatsapp", "omnichannel"],
-      "paths": ["app/*telephony*", "app/*binotel*", "app/*communication*", "app/api/telephony/**", "app/api/calls/**", "src/services/*telephony*", "src/services/*call*", "integrations/**"],
+      "paths": ["app/*telephony*", "app/*binotel*", "app/*communication*", "app/api/telephony/**", "app/api/calls/**", "src/services/*telephony*", "src/services/*call*", "src/domain/communications-inbox.ts", "integrations/**"],
       "dependencies": ["leads-intake", "clients-vehicles", "settings-integrations"],
       "smokeChecks": ["call-history", "incoming-event", "client-match", "integration-disabled-safe"]
     },
