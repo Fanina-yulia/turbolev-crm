@@ -17,7 +17,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
     const result = await prisma.$transaction(async (tx) => {
       const current = await tx.communicationInquiry.findUnique({ where: { id } });
       if (!current) return { kind: "missing" as const };
-      if (![InquiryState.NEW, InquiryState.IN_WORK].includes(current.state)) return { kind: "closed" as const };
+      if (current.state !== InquiryState.NEW && current.state !== InquiryState.IN_WORK) return { kind: "closed" as const };
       if (current.assignedUserId && current.assignedUserId !== access.user!.id) return { kind: "assigned" as const };
       const inquiry = await tx.communicationInquiry.update({
         where: { id },
