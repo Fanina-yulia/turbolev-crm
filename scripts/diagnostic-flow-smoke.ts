@@ -140,7 +140,7 @@ async function main() {
     assert(arrival.workflowAction.diagnosticRequestId, "arrival must create a diagnostic request");
     const diagnosticId = arrival.workflowAction.diagnosticRequestId;
 
-    let diagnostic = await prisma.diagnosticRequest.findUnique({ where: { id: diagnosticId } });
+    const diagnostic = await prisma.diagnosticRequest.findUnique({ where: { id: diagnosticId } });
     assert(diagnostic);
     assert.equal(diagnostic.status, DiagnosticRequestStatus.PENDING);
 
@@ -194,9 +194,9 @@ async function main() {
 
     const report = await createDiagnosticReportShare(diagnosticId, `smoke_manager_${suffix}`);
     assert(report.token.length > 20, "diagnostic card must create a client share token");
-    diagnostic = await getDiagnostic(diagnosticId);
-    assert(diagnostic);
-    assert.equal(diagnostic.workflowState, "CARD_SENT", "active report share must expose Надіслана ДК business state");
+    const diagnosticView = await getDiagnostic(diagnosticId);
+    assert(diagnosticView);
+    assert.equal(diagnosticView.workflowState, "CARD_SENT", "active report share must expose Надіслана ДК business state");
 
     const workOrder = await createWorkOrderFromConfirmedDiagnostic(diagnosticId);
     assert.equal(workOrder.diagnosticRequestId, diagnosticId);
