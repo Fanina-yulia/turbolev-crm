@@ -464,10 +464,5 @@ export async function processTelegramUpdate(update: TelegramUpdate) {
     return { ok: true, action: "PROMPT_MANAGER" };
   }
 
-  await sendTelegramTextMessage({
-    chatId,
-    text: "✅ Повідомлення передано менеджеру Turbo LEV. Відповідь прийде сюди в Telegram.",
-    replyMarkup: mainMenuMarkup(),
-  });
   return { ok: true, action: "MESSAGE" };
 }
