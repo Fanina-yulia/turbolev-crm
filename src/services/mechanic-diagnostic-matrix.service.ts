@@ -33,7 +33,10 @@ export async function startMechanicDiagnosticByType(userId: string, diagnosticRe
     include: { lead: { select: { need: true, comment: true } } },
   });
   if (!diagnostic) throw new StructuredDiagnosticError("DIAGNOSTIC_NOT_FOUND", "Діагностику не знайдено.", 404);
-  if ([DiagnosticRequestStatus.CONFIRMED, DiagnosticRequestStatus.CANCELLED].includes(diagnostic.status)) {
+  if (
+    diagnostic.status === DiagnosticRequestStatus.CONFIRMED
+    || diagnostic.status === DiagnosticRequestStatus.CANCELLED
+  ) {
     throw new StructuredDiagnosticError("DIAGNOSTIC_LOCKED", "Ця діагностика вже закрита.", 409);
   }
 
