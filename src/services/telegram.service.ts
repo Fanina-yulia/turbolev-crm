@@ -2,9 +2,12 @@ import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { getPrisma } from "@/src/lib/prisma";
 import { getSqlPool } from "@/src/lib/sql";
 import { getIntegrationCredential } from "@/src/services/integration-credentials.service";
+import { getVehicleImageAsset, resolveVehicleImage } from "@/src/services/vehicle-images/vehicle-image.service";
+import { getVehicleLibraryAsset } from "@/src/services/vehicle-images/openai-library.service";
 
 const TELEGRAM_API = "https://api.telegram.org";
 const LINK_TTL_MS = 24 * 60 * 60 * 1000;
+const MAX_TELEGRAM_PHOTO_BYTES = 10 * 1024 * 1024;
 
 const STATUS_LABELS: Record<string, string> = {
   BOOKED: "Заплановано",
@@ -25,6 +28,21 @@ const STATUS_LABELS: Record<string, string> = {
   NO_SHOW: "Візит не відбувся",
   CANCELLED: "Запис скасовано",
   RESERVE: "Резерв",
+};
+
+const DIAGNOSTIC_STATUS_LABELS: Record<string, string> = {
+  PENDING: "Очікує початку",
+  IN_PROGRESS: "Триває діагностика",
+  CONFIRMED: "Діагностику завершено",
+  CANCELLED: "Діагностику скасовано",
+};
+
+const LINE_TYPE_LABELS: Record<string, string> = {
+  LABOR: "Робота",
+  PART: "Запчастина",
+  EXTERNAL: "Стороння послуга",
+  CONSUMABLE: "Матеріал",
+  OTHER: "Інше",
 };
 
 type TelegramConfig = {
@@ -69,6 +87,11 @@ type TelegramApiResponse<T> = {
   error_code?: number;
 };
 
+type TelegramPhoto = {
+  bytes: Buffer;
+  mimeType: string;
+};
+
 function makeId(prefix: string) {
   return `${prefix}_${randomUUID().replace(/-/g, "")}`;
 }
@@ -79,6 +102,27 @@ function tokenHash(token: string) {
 
 function normalizeUsername(value?: string | null) {
   return (value || "").trim().replace(/^@/, "");
+}
+
+function escapeHtml(value: unknown) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function formatMoney(value: number) {
+  return `${new Intl.NumberFormat("uk-UA", { maximumFractionDigits: 2 }).format(value)} грн`;
+}
+
+function formatDate(value: Date | null | undefined) {
+  if (!value) return "";
+  return new Intl.DateTimeFormat("uk-UA", { day: "2-digit", month: "2-digit", year: "numeric" }).format(value);
+}
+
+function vehicleTitle(vehicle: { brand?: string | null; model?: string | null; year?: number | null }) {
+  return [vehicle.brand, vehicle.model, vehicle.year].filter(Boolean).join(" ") || "Автомобіль";
 }
 
 async function config(): Promise<TelegramConfig> {
@@ -98,6 +142,23 @@ async function telegramApi<T>(method: string, body?: Record<string, unknown>): P
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body || {}),
+    cache: "no-store",
+  });
+  const payload = await response.json().catch(() => null) as TelegramApiResponse<T> | null;
+  if (!response.ok || !payload?.ok || payload.result === undefined) {
+    throw Object.assign(
+      new Error(payload?.description || `Telegram API HTTP ${response.status}`),
+      { code: payload?.error_code ? `TELEGRAM_${payload.error_code}` : "TELEGRAM_API_ERROR" },
+    );
+  }
+  return payload.result;
+}
+
+async function telegramMultipart<T>(method: string, form: FormData): Promise<T> {
+  const cfg = await config();
+  const response = await fetch(`${TELEGRAM_API}/bot${cfg.botToken}/${method}`, {
+    method: "POST",
+    body: form,
     cache: "no-store",
   });
   const payload = await response.json().catch(() => null) as TelegramApiResponse<T> | null;
@@ -167,11 +228,49 @@ export async function sendTelegramTextMessage(input: {
   };
 }
 
+async function sendTelegramPhotoMessage(input: {
+  chatId: string;
+  photo: TelegramPhoto;
+  caption: string;
+  replyMarkup?: Record<string, unknown>;
+}) {
+  const extension = input.photo.mimeType === "image/png" ? "png" : input.photo.mimeType === "image/webp" ? "webp" : "jpg";
+  const form = new FormData();
+  form.set("chat_id", input.chatId);
+  form.set("caption", input.caption);
+  form.set("parse_mode", "HTML");
+  form.set("photo", new Blob([new Uint8Array(input.photo.bytes)], { type: input.photo.mimeType }), `vehicle.${extension}`);
+  if (input.replyMarkup) form.set("reply_markup", JSON.stringify(input.replyMarkup));
+
+  const message = await telegramMultipart<TelegramMessage>("sendPhoto", form);
+  await getPrisma().telegramContact.updateMany({
+    where: { chatId: input.chatId },
+    data: { lastOutboundAt: new Date() },
+  });
+  return {
+    providerMessageId: String(message.message_id),
+    providerPayload: message,
+  };
+}
+
 function mainMenuMarkup() {
   return {
     keyboard: [
-      [{ text: "📍 Статус ремонту" }, { text: "💬 Написати менеджеру" }],
-      [{ text: "🚗 Мої авто" }, { text: "📞 Контакти СТО" }],
+      [{ text: "🚗 Мій автомобіль" }, { text: "📍 Статус ремонту" }],
+      [{ text: "🧾 Кошторис" }, { text: "📸 Діагностика" }],
+      [{ text: "💬 Менеджер" }, { text: "••• Ще" }],
+    ],
+    resize_keyboard: true,
+    is_persistent: true,
+  };
+}
+
+function moreMenuMarkup() {
+  return {
+    keyboard: [
+      [{ text: "📅 Записатися" }, { text: "📄 Історія робіт" }],
+      [{ text: "🛡 Гарантія" }, { text: "📞 Контакти СТО" }],
+      [{ text: "⭐ Залишити відгук" }, { text: "⬅️ Назад" }],
     ],
     resize_keyboard: true,
     is_persistent: true,
@@ -238,9 +337,8 @@ export async function unlinkTelegramClient(clientId: string) {
   return { ok: true };
 }
 
-async function latestClientStatus(clientId: string) {
-  const prisma = getPrisma();
-  const appointment = await prisma.serviceAppointment.findFirst({
+async function latestClientAppointment(clientId: string) {
+  return getPrisma().serviceAppointment.findFirst({
     where: {
       clientId,
       vehicleId: { not: null },
@@ -256,6 +354,22 @@ async function latestClientStatus(clientId: string) {
       mechanic: { select: { name: true } },
     },
   });
+}
+
+async function primaryVehicleId(clientId: string) {
+  const appointment = await latestClientAppointment(clientId);
+  if (appointment?.vehicleId) return appointment.vehicleId;
+  const vehicle = await getPrisma().vehicle.findFirst({
+    where: { clientId },
+    orderBy: { updatedAt: "desc" },
+    select: { id: true },
+  });
+  return vehicle?.id || null;
+}
+
+async function latestClientStatus(clientId: string) {
+  const prisma = getPrisma();
+  const appointment = await latestClientAppointment(clientId);
   if (!appointment) return "Активного запису або ремонту зараз немає.";
 
   const vehicle = appointment.vehicleId
@@ -267,21 +381,183 @@ async function latestClientStatus(clientId: string) {
   const label = [vehicle?.brand, vehicle?.model].filter(Boolean).join(" ") || appointment.vehicleLabel || "Ваш автомобіль";
   const plate = vehicle?.plateNumber || appointment.plateNumber;
   const status = STATUS_LABELS[appointment.status] || appointment.status;
-  const mechanic = appointment.mechanic?.name ? `\nМайстер: ${appointment.mechanic.name}` : "";
-  return `<b>${label}</b>${plate ? ` · ${plate}` : ""}\nСтатус: <b>${status}</b>${mechanic}`;
+  const mechanic = appointment.mechanic?.name ? `\nМайстер: ${escapeHtml(appointment.mechanic.name)}` : "";
+  return `<b>${escapeHtml(label)}</b>${plate ? ` · ${escapeHtml(plate)}` : ""}\nСтатус: <b>${escapeHtml(status)}</b>${mechanic}`;
 }
 
-async function clientVehicles(clientId: string) {
+async function loadVehiclePhoto(vehicleId: string): Promise<TelegramPhoto | null> {
+  try {
+    const resolved = await resolveVehicleImage(vehicleId);
+    if (!resolved?.assetId) return null;
+
+    const libraryAsset = await getVehicleLibraryAsset(resolved.assetId);
+    if (libraryAsset?.bytes?.length && libraryAsset.mimeType.startsWith("image/") && libraryAsset.bytes.length <= MAX_TELEGRAM_PHOTO_BYTES) {
+      return { bytes: libraryAsset.bytes, mimeType: libraryAsset.mimeType };
+    }
+
+    const asset = await getVehicleImageAsset(resolved.assetId);
+    if (!asset?.sourceUrl || (asset.status !== "READY" && asset.status !== "MANUAL")) return null;
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 12_000);
+    try {
+      const response = await fetch(asset.sourceUrl, {
+        cache: "no-store",
+        signal: controller.signal,
+        headers: { Accept: "image/webp,image/png,image/jpeg,image/*" },
+      });
+      const mimeType = response.headers.get("content-type")?.split(";")[0]?.trim() || "";
+      const contentLength = Number(response.headers.get("content-length") || 0);
+      if (!response.ok || !mimeType.startsWith("image/") || (contentLength && contentLength > MAX_TELEGRAM_PHOTO_BYTES)) return null;
+      const bytes = Buffer.from(await response.arrayBuffer());
+      if (!bytes.length || bytes.length > MAX_TELEGRAM_PHOTO_BYTES) return null;
+      return { bytes, mimeType };
+    } finally {
+      clearTimeout(timer);
+    }
+  } catch (error) {
+    console.warn("Telegram vehicle image unavailable", { vehicleId, message: error instanceof Error ? error.message : "unknown" });
+    return null;
+  }
+}
+
+async function vehicleCardCaption(clientId: string, vehicle: {
+  id: string;
+  brand: string | null;
+  model: string | null;
+  year: number | null;
+  plateNumber: string | null;
+  vin: string | null;
+}) {
+  const appointment = await getPrisma().serviceAppointment.findFirst({
+    where: {
+      clientId,
+      vehicleId: vehicle.id,
+      status: { notIn: ["RESERVE", "CANCELLED", "NO_SHOW"] },
+    },
+    orderBy: [{ actualArrivalAt: "desc" }, { plannedStartAt: "desc" }, { createdAt: "desc" }],
+    select: { status: true, mechanic: { select: { name: true } } },
+  });
+  const status = appointment ? STATUS_LABELS[appointment.status] || appointment.status : "Активного ремонту немає";
+  return [
+    `<b>${escapeHtml(vehicleTitle(vehicle))}</b>${vehicle.plateNumber ? ` · ${escapeHtml(vehicle.plateNumber)}` : ""}`,
+    vehicle.vin ? `VIN: ${escapeHtml(vehicle.vin)}` : null,
+    `Статус: <b>${escapeHtml(status)}</b>`,
+    appointment?.mechanic?.name ? `Майстер: ${escapeHtml(appointment.mechanic.name)}` : null,
+  ].filter(Boolean).join("\n");
+}
+
+async function sendClientVehicles(chatId: string, clientId: string) {
   const vehicles = await getPrisma().vehicle.findMany({
     where: { clientId },
     orderBy: { updatedAt: "desc" },
-    select: { brand: true, model: true, year: true, plateNumber: true, vin: true },
+    select: { id: true, brand: true, model: true, year: true, plateNumber: true, vin: true },
   });
-  if (!vehicles.length) return "У картці клієнта ще немає автомобілів.";
-  return vehicles.map((vehicle, index) => {
-    const label = [vehicle.brand, vehicle.model, vehicle.year].filter(Boolean).join(" ") || "Автомобіль";
-    return `${index + 1}. <b>${label}</b>\n${vehicle.plateNumber || vehicle.vin || "Без номера"}`;
-  }).join("\n\n");
+  if (!vehicles.length) {
+    await sendTelegramTextMessage({ chatId, text: "У вашій картці ще немає автомобілів.", replyMarkup: mainMenuMarkup() });
+    return;
+  }
+
+  for (const vehicle of vehicles) {
+    const caption = await vehicleCardCaption(clientId, vehicle);
+    const photo = await loadVehiclePhoto(vehicle.id);
+    if (photo) {
+      await sendTelegramPhotoMessage({ chatId, photo, caption, replyMarkup: mainMenuMarkup() });
+    } else {
+      await sendTelegramTextMessage({ chatId, text: caption, replyMarkup: mainMenuMarkup() });
+    }
+  }
+}
+
+async function latestEstimate(clientId: string) {
+  const vehicleId = await primaryVehicleId(clientId);
+  if (!vehicleId) return "У вашій картці ще немає автомобіля.";
+
+  const workOrder = await getPrisma().workOrder.findFirst({
+    where: { clientId, vehicleId },
+    orderBy: { updatedAt: "desc" },
+    select: {
+      status: true,
+      updatedAt: true,
+      vehicle: { select: { brand: true, model: true, plateNumber: true } },
+      lines: {
+        where: { status: { not: "CANCELLED" } },
+        orderBy: { sortOrder: "asc" },
+        select: {
+          type: true,
+          status: true,
+          description: true,
+          plannedQuantity: true,
+          plannedUnitPrice: true,
+          plannedDiscount: true,
+          actualQuantity: true,
+          actualUnitPrice: true,
+          actualDiscount: true,
+        },
+      },
+    },
+  });
+  if (!workOrder?.lines.length) return "Кошторис для цього автомобіля ще не сформовано.";
+
+  const rows = workOrder.lines.map((line) => {
+    const quantity = Number(line.actualQuantity ?? line.plannedQuantity);
+    const unitPrice = Number(line.actualUnitPrice ?? line.plannedUnitPrice);
+    const discount = Number(line.actualDiscount ?? line.plannedDiscount);
+    const amount = Math.max(0, quantity * unitPrice - discount);
+    return { line, amount };
+  });
+  const total = rows.reduce((sum, row) => sum + row.amount, 0);
+  const car = [workOrder.vehicle.brand, workOrder.vehicle.model].filter(Boolean).join(" ") || "Автомобіль";
+  const visible = rows.slice(0, 10).map(({ line, amount }, index) => {
+    const kind = LINE_TYPE_LABELS[String(line.type)] || "Позиція";
+    return `${index + 1}. ${escapeHtml(line.description)}\n   ${escapeHtml(kind)} · <b>${escapeHtml(formatMoney(amount))}</b>`;
+  });
+  const hidden = rows.length > visible.length ? `\n…ще ${rows.length - visible.length} поз.` : "";
+  return `<b>Кошторис · ${escapeHtml(car)}</b>${workOrder.vehicle.plateNumber ? ` · ${escapeHtml(workOrder.vehicle.plateNumber)}` : ""}\n\n${visible.join("\n\n")}${hidden}\n\nРазом: <b>${escapeHtml(formatMoney(total))}</b>`;
+}
+
+async function latestDiagnostics(clientId: string) {
+  const vehicleId = await primaryVehicleId(clientId);
+  if (!vehicleId) return "У вашій картці ще немає автомобіля.";
+
+  const diagnostic = await getPrisma().diagnosticRequest.findFirst({
+    where: { clientId, vehicleId },
+    orderBy: { updatedAt: "desc" },
+    select: {
+      status: true,
+      technicalConclusion: true,
+      updatedAt: true,
+      vehicle: { select: { brand: true, model: true, plateNumber: true } },
+    },
+  });
+  if (!diagnostic) return "Діагностику для цього автомобіля ще не створено.";
+
+  const car = [diagnostic.vehicle.brand, diagnostic.vehicle.model].filter(Boolean).join(" ") || "Автомобіль";
+  const status = DIAGNOSTIC_STATUS_LABELS[diagnostic.status] || diagnostic.status;
+  const conclusion = diagnostic.technicalConclusion?.trim();
+  return [
+    `<b>Діагностика · ${escapeHtml(car)}</b>${diagnostic.vehicle.plateNumber ? ` · ${escapeHtml(diagnostic.vehicle.plateNumber)}` : ""}`,
+    `Статус: <b>${escapeHtml(status)}</b>`,
+    conclusion ? `\nВисновок:\n${escapeHtml(conclusion.slice(0, 1800))}` : "\nВисновок механіка ще формується.",
+  ].join("\n");
+}
+
+async function clientServiceHistory(clientId: string) {
+  const appointments = await getPrisma().serviceAppointment.findMany({
+    where: {
+      clientId,
+      vehicleId: { not: null },
+      status: { notIn: ["RESERVE", "CANCELLED", "NO_SHOW"] },
+    },
+    orderBy: [{ plannedStartAt: "desc" }, { createdAt: "desc" }],
+    take: 5,
+    select: { vehicleLabel: true, plateNumber: true, status: true, plannedStartAt: true },
+  });
+  if (!appointments.length) return "Історія обслуговування поки порожня.";
+  return `<b>Останні візити Turbo LEV</b>\n\n${appointments.map((item, index) => {
+    const status = STATUS_LABELS[item.status] || item.status;
+    return `${index + 1}. ${escapeHtml(item.vehicleLabel || item.plateNumber || "Автомобіль")}\n   ${escapeHtml(formatDate(item.plannedStartAt))} · ${escapeHtml(status)}`;
+  }).join("\n\n")}`;
 }
 
 async function ensureTelegramInquiry(input: {
@@ -435,6 +711,55 @@ export async function processTelegramUpdate(update: TelegramUpdate) {
     },
   });
 
+  if (/^\/status$/i.test(text) || text === "📍 Статус ремонту") {
+    await sendTelegramTextMessage({ chatId, text: await latestClientStatus(contact.clientId), replyMarkup: mainMenuMarkup() });
+    return { ok: true, action: "STATUS" };
+  }
+  if (/^\/cars$/i.test(text) || text === "🚗 Мій автомобіль" || text === "🚗 Мої авто") {
+    await sendClientVehicles(chatId, contact.clientId);
+    return { ok: true, action: "CARS" };
+  }
+  if (/^\/menu$/i.test(text) || text === "⬅️ Назад") {
+    await sendTelegramTextMessage({ chatId, text: "Головне меню:", replyMarkup: mainMenuMarkup() });
+    return { ok: true, action: "MENU" };
+  }
+  if (text === "🧾 Кошторис") {
+    await sendTelegramTextMessage({ chatId, text: await latestEstimate(contact.clientId), replyMarkup: mainMenuMarkup() });
+    return { ok: true, action: "ESTIMATE" };
+  }
+  if (text === "📸 Діагностика") {
+    await sendTelegramTextMessage({ chatId, text: await latestDiagnostics(contact.clientId), replyMarkup: mainMenuMarkup() });
+    return { ok: true, action: "DIAGNOSTICS" };
+  }
+  if (text === "💬 Менеджер" || text === "💬 Написати менеджеру") {
+    await sendTelegramTextMessage({ chatId, text: "Напишіть ваше питання одним повідомленням. Воно одразу з’явиться у менеджера в CRM.", replyMarkup: mainMenuMarkup() });
+    return { ok: true, action: "PROMPT_MANAGER" };
+  }
+  if (text === "••• Ще") {
+    await sendTelegramTextMessage({ chatId, text: "Додаткові можливості:", replyMarkup: moreMenuMarkup() });
+    return { ok: true, action: "MORE" };
+  }
+  if (text === "📄 Історія робіт") {
+    await sendTelegramTextMessage({ chatId, text: await clientServiceHistory(contact.clientId), replyMarkup: moreMenuMarkup() });
+    return { ok: true, action: "HISTORY" };
+  }
+  if (text === "📅 Записатися") {
+    await sendTelegramTextMessage({ chatId, text: "Напишіть бажану дату, час і що потрібно зробити з автомобілем. Менеджер одразу побачить ваше повідомлення.", replyMarkup: moreMenuMarkup() });
+    return { ok: true, action: "BOOKING_PROMPT" };
+  }
+  if (text === "🛡 Гарантія") {
+    await sendTelegramTextMessage({ chatId, text: "Опишіть питання щодо гарантії та, за потреби, вкажіть автомобіль. Менеджер перевірить інформацію в CRM.", replyMarkup: moreMenuMarkup() });
+    return { ok: true, action: "WARRANTY_PROMPT" };
+  }
+  if (text === "⭐ Залишити відгук") {
+    await sendTelegramTextMessage({ chatId, text: "Дякуємо! Напишіть кілька слів про ваш досвід у Turbo LEV — відгук одразу побачить менеджер.", replyMarkup: moreMenuMarkup() });
+    return { ok: true, action: "REVIEW_PROMPT" };
+  }
+  if (text === "📞 Контакти СТО") {
+    await sendTelegramTextMessage({ chatId, text: "<b>Turbo LEV · автосервіс</b>\nНапишіть тут — повідомлення одразу побачить менеджер CRM.", replyMarkup: moreMenuMarkup() });
+    return { ok: true, action: "CONTACTS" };
+  }
+
   const inquiry = await ensureTelegramInquiry({
     clientId: contact.clientId,
     chatId,
@@ -442,27 +767,6 @@ export async function processTelegramUpdate(update: TelegramUpdate) {
     text,
   });
   await recordInboundMessage(inquiry.id, update, text);
-
-  if (/^\/status$/i.test(text) || text === "📍 Статус ремонту") {
-    await sendTelegramTextMessage({ chatId, text: await latestClientStatus(contact.clientId), replyMarkup: mainMenuMarkup() });
-    return { ok: true, action: "STATUS" };
-  }
-  if (/^\/cars$/i.test(text) || text === "🚗 Мої авто") {
-    await sendTelegramTextMessage({ chatId, text: await clientVehicles(contact.clientId), replyMarkup: mainMenuMarkup() });
-    return { ok: true, action: "CARS" };
-  }
-  if (/^\/menu$/i.test(text)) {
-    await sendTelegramTextMessage({ chatId, text: "Оберіть потрібну дію:", replyMarkup: mainMenuMarkup() });
-    return { ok: true, action: "MENU" };
-  }
-  if (text === "📞 Контакти СТО") {
-    await sendTelegramTextMessage({ chatId, text: "Turbo LEV · автосервіс\nНапишіть тут — повідомлення одразу побачить менеджер CRM.", replyMarkup: mainMenuMarkup() });
-    return { ok: true, action: "CONTACTS" };
-  }
-  if (text === "💬 Написати менеджеру") {
-    await sendTelegramTextMessage({ chatId, text: "Напишіть ваше питання одним повідомленням. Воно одразу з’явиться у менеджера в CRM.", replyMarkup: mainMenuMarkup() });
-    return { ok: true, action: "PROMPT_MANAGER" };
-  }
 
   return { ok: true, action: "MESSAGE" };
 }
