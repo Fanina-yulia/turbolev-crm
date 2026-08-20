@@ -15,7 +15,7 @@ import {
 
 function requestedTemplateCode(problem: string | null | undefined) {
   const text = (problem || "").toLocaleLowerCase("uk-UA");
-  if (/(ходов|підвіск|рульов|сайлент|кульов|стабіліз|амортиз|привід|шрус)/u.test(text)) return "SUSPENSION";
+  if (/(ходов|підвіск|рульов|сайлент|кульов|стабіліз|амортиз|привід|шрус)/u.test(text)) return "SUSPENSION_MATRIX";
   if (/(гальм|колод|супорт|гальмів|тормоз|диск)/u.test(text)) return "BRAKES";
   if (/(комп'ют|компют|check engine|помилк|електрон|діагностик.*двиг)/u.test(text)) return "COMPUTER_DIAGNOSTICS";
   return "BASIC_INSPECTION";
@@ -62,13 +62,15 @@ export async function startMechanicDiagnosticByType(userId: string, diagnosticRe
         templateId: template.id,
         ...(currentSectionCodes.length ? { code: { in: currentSectionCodes } } : {}),
       },
-      select: { id: true },
+      select: { id: true, code: true },
     });
+    const seedItemCodes = new Set(seed?.sections.flatMap((section) => section.items.map((item) => `${section.code}:${item.code}`)) ?? []);
+    const sectionCodeById = new Map(sections.map((section) => [section.id, section.code]));
     const items = sections.length
-      ? await prisma.diagnosticTemplateItem.findMany({
+      ? (await prisma.diagnosticTemplateItem.findMany({
           where: { sectionId: { in: sections.map((item) => item.id) } },
-          select: { id: true },
-        })
+          select: { id: true, code: true, sectionId: true },
+        })).filter((item) => !seedItemCodes.size || seedItemCodes.has(`${sectionCodeById.get(item.sectionId)}:${item.code}`))
       : [];
 
     await prisma.$transaction(async (tx) => {
@@ -101,7 +103,7 @@ export async function startMechanicDiagnosticByType(userId: string, diagnosticRe
         entityType: "DiagnosticRequest",
         entityId: diagnosticRequestId,
         action: "STATUS_PENDING_TO_IN_PROGRESS",
-        metadata: toPrismaJson({ source: "MECHANIC_DIAGNOSTIC_MATRIX", templateCode: requestedTemplateCode([diagnostic.lead?.need, diagnostic.lead?.comment].filter(Boolean).join(" · ")) }),
+        metadata: toPrismaJson({ source: "MECHANIC_DIAGNOSTIC_MATRIX" }),
       },
     }).catch(() => undefined);
   }
