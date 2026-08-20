@@ -1,6 +1,7 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import styles from "./mechanic-vehicle-scanner.module.css";
 
 type ScanAction = {
@@ -50,6 +51,15 @@ async function preparePhoto(file: File) {
   return blob ? new File([blob], "plate-scan.jpg", { type: "image/jpeg" }) : file;
 }
 
+function mechanicNav() {
+  return document.querySelector<HTMLElement>('nav[aria-label="Навігація механіка"]');
+}
+
+function mechanicHero() {
+  const notificationButton = document.querySelector<HTMLElement>('[data-mechanic-cabinet="true"] button[aria-label="Сповіщення"]');
+  return notificationButton?.closest("header") as HTMLElement | null;
+}
+
 export function MechanicVehicleScanner() {
   const fileRef = useRef<HTMLInputElement | null>(null);
   const [open, setOpen] = useState(false);
@@ -57,6 +67,25 @@ export function MechanicVehicleScanner() {
   const [manual, setManual] = useState("");
   const [error, setError] = useState("");
   const [result, setResult] = useState<ScanResult | null>(null);
+  const [navTarget, setNavTarget] = useState<HTMLElement | null>(null);
+  const [heroTarget, setHeroTarget] = useState<HTMLElement | null>(null);
+
+  useEffect(() => {
+    const syncTargets = () => {
+      setNavTarget((current) => {
+        const next = mechanicNav();
+        return current === next ? current : next;
+      });
+      setHeroTarget((current) => {
+        const next = mechanicHero();
+        return current === next ? current : next;
+      });
+    };
+    syncTargets();
+    const observer = new MutationObserver(syncTargets);
+    observer.observe(document.body, { childList: true, subtree: true });
+    return () => observer.disconnect();
+  }, []);
 
   function reset() {
     setResult(null);
@@ -75,6 +104,13 @@ export function MechanicVehicleScanner() {
     if (busy) return;
     setOpen(false);
     reset();
+  }
+
+  function openProfile() {
+    const nav = mechanicNav();
+    const profileButton = Array.from(nav?.querySelectorAll<HTMLButtonElement>("button") || [])
+      .find((button) => button.textContent?.includes("Профіль"));
+    profileButton?.click();
   }
 
   async function requestScan(input: File | string, confirm = false, existing?: ScanResult) {
@@ -127,10 +163,17 @@ export function MechanicVehicleScanner() {
     window.dispatchEvent(new CustomEvent("turbolev:mechanic-refresh"));
   }
 
+  const scanButton = <button type="button" className={styles.navScan} onClick={show} aria-label="Сканувати номер автомобіля">
+    <span>▣</span><b>Сканувати</b>
+  </button>;
+
+  const profileButton = <button type="button" className={styles.profileTop} onClick={openProfile} aria-label="Профіль механіка" title="Профіль">
+    <span>●</span>
+  </button>;
+
   return <>
-    <button type="button" className={styles.fab} onClick={show} aria-label="Сканувати номер автомобіля">
-      <span>▣</span><b>Сканувати авто</b>
-    </button>
+    {navTarget ? createPortal(scanButton, navTarget) : null}
+    {heroTarget ? createPortal(profileButton, heroTarget) : null}
     {open && <div className={styles.backdrop} role="dialog" aria-modal="true" aria-label="Сканування автомобіля" onMouseDown={(event) => { if (event.target === event.currentTarget) close(); }}>
       <section className={styles.sheet}>
         <header className={styles.head}>
