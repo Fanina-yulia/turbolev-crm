@@ -6,9 +6,12 @@ import {
   submitStructuredDiagnosticRespectingOptional,
 } from "@/src/services/diagnostic-completeness.service";
 import {
+  getMechanicDiagnosticMode,
+  getStructuredDiagnosticForMechanicReadOnly,
+} from "@/src/services/mechanic-diagnostics-read.service";
+import {
   addTemplateForMechanic,
   getStructuredDiagnostic,
-  getStructuredDiagnosticForMechanic,
   returnStructuredDiagnostic,
   setDiagnosticSectionAllOk,
   startStructuredDiagnostic,
@@ -40,10 +43,18 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
     const access = await authorize(PERMISSIONS.DIAGNOSTICS_READ, { request, minimumScope: "SELF" });
     if (!access.allowed) return access.response!;
     if (!access.context.user) return NextResponse.json({ ok: false, error: "UNAUTHENTICATED" }, { status: 401 });
-    const data = isMechanic(access)
-      ? await getStructuredDiagnosticForMechanic(access.context.user.id, id)
+
+    const mechanic = isMechanic(access);
+    const modeOnly = new URL(request.url).searchParams.get("mode") === "1";
+    if (mechanic && modeOnly) {
+      const mode = await getMechanicDiagnosticMode(access.context.user.id, id);
+      return NextResponse.json({ ok: true, ...mode }, { headers: { "Cache-Control": "private, max-age=15" } });
+    }
+
+    const data = mechanic
+      ? await getStructuredDiagnosticForMechanicReadOnly(access.context.user.id, id)
       : await getStructuredDiagnostic(id);
-    if (!isMechanic(access) && !(await managerLocationAllowed(access, id))) return NextResponse.json({ ok: false, error: "LOCATION_FORBIDDEN" }, { status: 403 });
+    if (!mechanic && !(await managerLocationAllowed(access, id))) return NextResponse.json({ ok: false, error: "LOCATION_FORBIDDEN" }, { status: 403 });
     return NextResponse.json({ ok: true, ...(await withCompletion(id, data)) }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
     if (error instanceof StructuredDiagnosticError) return NextResponse.json({ ok: false, error: error.code, message: error.message }, { status: error.status });
