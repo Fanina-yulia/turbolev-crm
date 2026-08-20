@@ -38,13 +38,13 @@ ON CONFLICT ("code") DO UPDATE SET
   "sortOrder" = EXCLUDED."sortOrder",
   "updatedAt" = NOW();
 
--- Service manager owns the client/vehicle process, may select parts and must see whether payment is closed.
+-- Service manager owns the client/vehicle process, may select/order parts and must see whether payment is closed.
 WITH target_role AS (
   SELECT id FROM "AccessRole" WHERE code = 'SERVICE_ADVISOR'
 ), target_permissions AS (
   SELECT id, code FROM "Permission" WHERE code IN ('PARTS.WRITE', 'PROCUREMENT.WRITE', 'PAYMENTS.READ')
 )
-INSERT INTO "AccessRolePermission" ("id", "roleId", "permissionId", "scope", "createdAt", "updatedAt")
+INSERT INTO "AccessRolePermission" ("id","roleId","permissionId","scope","createdAt","updatedAt")
 SELECT
   'arp_sa_' || LEFT(MD5(p.code), 20),
   r.id,
@@ -53,7 +53,7 @@ SELECT
   NOW(),
   NOW()
 FROM target_role r CROSS JOIN target_permissions p
-ON CONFLICT ("roleId", "permissionId") DO UPDATE SET
+ON CONFLICT ("roleId","permissionId") DO UPDATE SET
   "scope" = EXCLUDED."scope",
   "updatedAt" = NOW();
 
@@ -68,7 +68,7 @@ WITH target_role AS (
     'PARTS.READ', 'WARRANTY.READ'
   )
 )
-INSERT INTO "AccessRolePermission" ("id", "roleId", "permissionId", "scope", "createdAt", "updatedAt")
+INSERT INTO "AccessRolePermission" ("id","roleId","permissionId","scope","createdAt","updatedAt")
 SELECT
   'arp_shift_' || LEFT(MD5(p.code), 20),
   r.id,
@@ -77,7 +77,7 @@ SELECT
   NOW(),
   NOW()
 FROM target_role r CROSS JOIN target_permissions p
-ON CONFLICT ("roleId", "permissionId") DO UPDATE SET
+ON CONFLICT ("roleId","permissionId") DO UPDATE SET
   "scope" = EXCLUDED."scope",
   "updatedAt" = NOW();
 
@@ -86,7 +86,7 @@ WITH target_role AS (
 ), target_permission AS (
   SELECT id, code FROM "Permission" WHERE code = 'PAYROLL.SELF_READ'
 )
-INSERT INTO "AccessRolePermission" ("id", "roleId", "permissionId", "scope", "createdAt", "updatedAt")
+INSERT INTO "AccessRolePermission" ("id","roleId","permissionId","scope","createdAt","updatedAt")
 SELECT
   'arp_shift_' || LEFT(MD5(p.code), 20),
   r.id,
@@ -95,7 +95,7 @@ SELECT
   NOW(),
   NOW()
 FROM target_role r CROSS JOIN target_permission p
-ON CONFLICT ("roleId", "permissionId") DO UPDATE SET
+ON CONFLICT ("roleId","permissionId") DO UPDATE SET
   "scope" = EXCLUDED."scope",
   "updatedAt" = NOW();
 
@@ -129,4 +129,11 @@ UPDATE "AccessRole"
 SET "description" = 'Керівник операцій станції: бачить весь цикл і QC, але не підміняє Майстра зміни як виконавця QC.',
     "updatedAt" = NOW()
 WHERE code = 'STATION_MANAGER';
-\n\n-- Sales works with the lead funnel; the final WorkOrder estimate belongs to Service Advisor.\nDELETE FROM "AccessRolePermission" arp\nUSING "AccessRole" r, "Permission" p\nWHERE arp."roleId" = r.id\n  AND arp."permissionId" = p.id\n  AND r.code IN ('SALES', 'HEAD_OF_SALES')\n  AND p.code = 'WORK_ORDERS.ESTIMATE';\n
+
+-- Sales works with the lead funnel; the final WorkOrder estimate belongs to Service Advisor.
+DELETE FROM "AccessRolePermission" arp
+USING "AccessRole" r, "Permission" p
+WHERE arp."roleId" = r.id
+  AND arp."permissionId" = p.id
+  AND r.code IN ('SALES', 'HEAD_OF_SALES')
+  AND p.code = 'WORK_ORDERS.ESTIMATE';
