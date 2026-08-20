@@ -1,4 +1,7 @@
+import { deriveVehicleLifecycle } from "@/src/domain/vehicle-lifecycle";
+import { evaluateWorkflowTransition } from "@/src/domain/workflow";
 import { getPrisma } from "@/src/lib/prisma";
+import { getVehicleLifecycleMap } from "@/src/services/vehicle-lifecycle.service";
 
 export const PLANNER_BLOCKING_STATUSES = [
   "BOOKED",
@@ -76,6 +79,9 @@ export type PlannerResourceWarning = {
   parallelCount: number;
   message: string;
 };
+
+const DIRECT_APPOINTMENT_STATUS_TARGETS = new Set<PlannerStatus>(["BOOKED", "NO_SHOW", "CANCELLED", "RESERVE"]);
+const TERMINAL_APPOINTMENT_STATUSES = new Set<PlannerStatus>(["COMPLETED", "NO_SHOW", "CANCELLED"]);
 
 function clean(value: unknown, max = 500) {
   if (typeof value !== "string") return null;
@@ -171,7 +177,39 @@ export async function getPlannerBoard(from: Date, to: Date, locationId?: string 
       })
     : [];
 
-  return { locations, activeLocationId, appointments };
+  const vehicleIds = appointments.map((item) => item.vehicleId).filter((value): value is string => Boolean(value));
+  const lifecycleMap = await getVehicleLifecycleMap(vehicleIds);
+  const enrichedAppointments = appointments.map((appointment) => {
+    const rawStatus = parsePlannerStatus(appointment.status);
+    const globalLifecycle = appointment.vehicleId ? lifecycleMap.get(appointment.vehicleId) || null : null;
+    const lifecycle = rawStatus && TERMINAL_APPOINTMENT_STATUSES.has(rawStatus) && globalLifecycle?.appointmentId !== appointment.id
+      ? deriveVehicleLifecycle({
+          appointmentStatus: appointment.status,
+          appointmentPlannedStartAt: appointment.plannedStartAt,
+          appointmentPlannedEndAt: appointment.plannedEndAt,
+          appointmentActualArrivalAt: appointment.actualArrivalAt,
+        })
+      : globalLifecycle || deriveVehicleLifecycle({
+          appointmentStatus: appointment.status,
+          appointmentPlannedStartAt: appointment.plannedStartAt,
+          appointmentPlannedEndAt: appointment.plannedEndAt,
+          appointmentActualArrivalAt: appointment.actualArrivalAt,
+        });
+
+    return {
+      ...appointment,
+      lifecycle: lifecycle ? {
+        code: lifecycle.code,
+        label: lifecycle.label,
+        tone: lifecycle.tone,
+        order: lifecycle.order,
+        active: lifecycle.active,
+        flags: lifecycle.flags,
+      } : null,
+    };
+  });
+
+  return { locations, activeLocationId, appointments: enrichedAppointments };
 }
 
 export async function validatePlannerResources(input: AppointmentWrite, excludeId?: string) {
@@ -261,6 +299,16 @@ export async function updatePlannerAppointment(id: string, body: Record<string, 
   const existing = await prisma.serviceAppointment.findUnique({ where: { id } });
   if (!existing) return { ok: false as const, notFound: true as const };
 
+  const explicitStatus = Object.prototype.hasOwnProperty.call(body, "status");
+  const requestedStatus = explicitStatus ? parsePlannerStatus(body.status) : null;
+  if (explicitStatus && !requestedStatus) throw new Error("INVALID_APPOINTMENT_STATUS");
+  if (requestedStatus && requestedStatus !== existing.status) {
+    if (requestedStatus === "ARRIVED") throw new Error("ARRIVAL_REQUIRES_WORKFLOW");
+    if (!DIRECT_APPOINTMENT_STATUS_TARGETS.has(requestedStatus)) throw new Error("APPOINTMENT_STATUS_MANAGED_BY_WORKFLOW");
+    const decision = evaluateWorkflowTransition({ entity: "APPOINTMENT", from: existing.status, to: requestedStatus });
+    if (!decision.allowed) throw new Error("APPOINTMENT_STATUS_TRANSITION_BLOCKED");
+  }
+
   const current: AppointmentWrite = {
     locationId: existing.locationId,
     postId: existing.postId,
@@ -290,9 +338,6 @@ export async function updatePlannerAppointment(id: string, body: Record<string, 
   };
 
   const input = normalizeAppointmentPayload(body, current);
-  if (input.status === "ARRIVED" && !input.actualArrivalAt) input.actualArrivalAt = new Date();
-  if (input.status === "IN_REPAIR" && !input.actualStartAt) input.actualStartAt = new Date();
-  if (input.status === "COMPLETED" && !input.actualEndAt) input.actualEndAt = new Date();
   if (input.status === "NO_SHOW" && !input.noShowAt) input.noShowAt = new Date();
 
   const validation = await validatePlannerResources(input, id);
