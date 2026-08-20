@@ -44,6 +44,9 @@ export const STATION_MANAGER_DELEGATABLE_ROLE_CODES = new Set<PersonnelRoleCode>
   "SALES",
   "ADMINISTRATOR",
 ]);
+export const HR_MANAGER_DELEGATABLE_ROLE_CODES = new Set<PersonnelRoleCode>(
+  PERSONNEL_ROLE_CODES.filter((code) => !["OWNER", "EXECUTIVE_DIRECTOR", "CRM_ADMIN"].includes(code)),
+);
 
 export function personnelPositionByCode(code: string | null | undefined) {
   const normalized = String(code || "").trim().toUpperCase();
