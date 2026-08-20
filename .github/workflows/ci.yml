@@ -55,6 +55,12 @@ jobs:
       - name: Validate Prisma schema
         run: npx prisma validate
 
+      - name: Bootstrap external-data tables for clean CI
+        # VehicleRegistryCompact is populated by the separate MVS import pipeline in
+        # production and is intentionally outside Prisma. A clean CI database must
+        # provide its empty structural fixture before replaying Prisma migrations.
+        run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f scripts/ci-bootstrap-external-tables.sql
+
       - name: Apply full migration history on clean PostgreSQL 18
         run: npx prisma migrate deploy
 
