@@ -142,6 +142,9 @@ jobs:
       - name: Vehicle image resolver smoke test
         run: npx --no-install tsx scripts/vehicle-image-resolver-smoke.ts
 
+      - name: Vehicle generation catalog smoke test
+        run: npx --no-install tsx scripts/vehicle-generation-catalog-smoke.ts
+
       - name: Employee economics attribution smoke test
         run: npx --no-install tsx scripts/employee-economics-smoke.ts
 

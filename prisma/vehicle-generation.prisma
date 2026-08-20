@@ -1,0 +1,46 @@
+model VehicleModelPopularity {
+  id                String   @id
+  rank              Int
+  make              String
+  model             String
+  normalizedMake    String
+  normalizedModel   String
+  vehicleCount      BigInt
+  coveragePct       Decimal  @default(0) @db.Decimal(8, 4)
+  firstReliableYear Int?     @db.SmallInt
+  lastReliableYear  Int?     @db.SmallInt
+  topYears          Json     @default("[]")
+  sourceTotalRows   BigInt   @default(0)
+  status            String   @default("ACTIVE")
+  refreshedAt       DateTime @default(now()) @db.Timestamp(6)
+  createdAt         DateTime @default(now()) @db.Timestamp(6)
+  updatedAt         DateTime @default(now()) @db.Timestamp(6)
+
+  @@unique([normalizedMake, normalizedModel], map: "VehicleModelPopularity_normalized_unique")
+  @@index([rank], map: "VehicleModelPopularity_rank_idx")
+  @@index([vehicleCount(sort: Desc)], map: "VehicleModelPopularity_count_idx")
+}
+
+model VehicleGenerationReference {
+  id                 String   @id
+  make               String
+  model              String
+  normalizedMake     String
+  normalizedModel    String
+  generationCode     String
+  generationLabel    String
+  fromYear           Int      @db.SmallInt
+  toYear             Int      @db.SmallInt
+  confidence         Int      @default(90)
+  verificationStatus String   @default("CURATED")
+  sourceLabel        String?
+  sourceUrl          String?
+  notes              String?
+  isActive           Boolean  @default(true)
+  createdAt          DateTime @default(now()) @db.Timestamp(6)
+  updatedAt          DateTime @default(now()) @db.Timestamp(6)
+
+  @@unique([normalizedMake, normalizedModel, generationCode, fromYear, toYear], map: "VehicleGenerationReference_identity_unique")
+  @@index([normalizedMake, normalizedModel, fromYear, toYear], map: "VehicleGenerationReference_resolve_idx")
+  @@index([verificationStatus, confidence(sort: Desc)], map: "VehicleGenerationReference_status_idx")
+}
