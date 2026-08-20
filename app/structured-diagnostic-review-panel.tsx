@@ -33,7 +33,7 @@ type View = {
     client: { id: string; name: string | null; phone: string };
     vehicle: { id: string; label: string; plateNumber: string | null; vin: string | null; mileageKm: number | null };
     assignment: { locationId: string | null; mechanicId: string | null } | null;
-    review: { state: string; mechanicComment: string | null; managerComment: string | null; submittedAt: string | null; returnedAt: string | null; confirmedAt: string | null };
+    review: { state: string; reviewerUserId?: string | null; mechanicComment: string | null; managerComment: string | null; submittedAt: string | null; returnedAt: string | null; confirmedAt: string | null };
     workOrder: { id: string; status: string } | null;
   };
   inspections: Array<{ id: string; templateName: string; status: string; counts: Counts; sections: Section[] }>;
@@ -42,7 +42,7 @@ type View = {
 
 const actionLabels: Record<string, string> = { NONE: "Без дії", REPLACE: "Замінити", REPAIR: "Ремонтувати", ADJUST: "Відрегулювати", CLEAN: "Очистити / обслужити", ADDITIONAL_DIAGNOSTICS: "Додаткова діагностика" };
 const urgencyLabels: Record<string, string> = { INFO: "Рекомендація", SOON: "Найближчим часом", CRITICAL: "Критично" };
-const reviewLabels: Record<string, string> = { DRAFT: "В роботі", SUBMITTED: "Завершена діагностика", RETURNED: "Повернено механіку", CONFIRMED: "ДК сформована" };
+const reviewLabels: Record<string, string> = { DRAFT: "В роботі", SUBMITTED: "Завершена діагностика", RETURNED: "В роботі", CONFIRMED: "На перевірці менеджера" };
 const pad = (value: number) => String(value).padStart(2, "0");
 
 function tomorrowKey() {
@@ -117,7 +117,7 @@ export function StructuredDiagnosticReviewPanel({ diagnosticId, onChanged }: { d
       const reportBody = await reportResponse.json().catch(() => null);
       if (!reportResponse.ok || !reportBody?.ok) throw new Error(reportBody?.message || reportBody?.error || "Не вдалося створити діагностичну карту");
       setReportShare(reportBody.share as ReportShare);
-      setMessage("Діагностичну карту створено та надіслано в кабінет власника.");
+      setMessage("Діагностичну карту створено та надіслано в кабінет власника. Статус авто: «Очікує рішення клієнта».");
       await load();
       await onChanged();
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Помилка створення діагностичної карти"); }
@@ -172,7 +172,7 @@ export function StructuredDiagnosticReviewPanel({ diagnosticId, onChanged }: { d
       const body = await response.json().catch(() => null);
       if (!response.ok || !body?.ok) throw new Error(body?.message || body?.error || "Не вдалося записати авто на роботи");
       setBookingOpen(false);
-      setMessage("Автомобіль записано на наступні роботи. Запис створено у Планувальнику.");
+      setMessage("Автомобіль записано на наступні роботи. Статус авто: «Заплановано».");
       await load(); await onChanged();
       window.setTimeout(() => window.dispatchEvent(new CustomEvent("turbolev:navigate", { detail: "Планувальник" })), 250);
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Помилка запису на роботи"); }
@@ -191,7 +191,7 @@ export function StructuredDiagnosticReviewPanel({ diagnosticId, onChanged }: { d
       });
       const body = await response.json().catch(() => null);
       if (!response.ok || !body?.ok) throw new Error(body?.message || body?.error || "Не вдалося передати на підбір деталей");
-      setMessage("Рекомендації передано на підбір деталей.");
+      setMessage("Рекомендації передано на підбір деталей. Статус авто: «Підбір деталей».");
       await load(); await onChanged();
       window.setTimeout(() => window.dispatchEvent(new CustomEvent("turbolev:navigate", { detail: "Підбір запчастин" })), 250);
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Помилка передачі на підбір деталей"); }
@@ -203,11 +203,18 @@ export function StructuredDiagnosticReviewPanel({ diagnosticId, onChanged }: { d
   if (!view || !view.inspections.length) return null;
 
   const cardSent = Boolean(reportShare?.active && view.diagnostic.status === "CONFIRMED");
+  const managerReviewStarted = view.diagnostic.review.state === "SUBMITTED" && Boolean(view.diagnostic.review.reviewerUserId);
   const canCreateCard = (view.diagnostic.review.state === "SUBMITTED" && view.diagnostic.status === "IN_PROGRESS") || (view.diagnostic.status === "CONFIRMED" && !cardSent);
   const activeLocation = locations.find((item) => item.id === booking.locationId) || null;
+  const primaryStatus = cardSent
+    ? "Очікує рішення клієнта"
+    : managerReviewStarted || view.diagnostic.review.state === "CONFIRMED"
+      ? "На перевірці менеджера"
+      : reviewLabels[view.diagnostic.review.state] || view.diagnostic.review.state;
 
   return <section className={styles.panel}>
-    <div className={styles.head}><div><span>СТРУКТУРОВАНА ДІАГНОСТИКА</span><h3>Звіт автомеханіка</h3><p>{cardSent ? "Діагностичну карту надіслано власнику. Оберіть наступний маршрут." : view.diagnostic.review.state === "SUBMITTED" ? "Діагностика завершена. Перевірте результат і сформуйте Діагностичну карту." : view.diagnostic.review.state === "RETURNED" ? "Діагностику повернено механіку на уточнення." : view.diagnostic.review.state === "CONFIRMED" ? "Діагностику зафіксовано. Потрібно створити актуальну Діагностичну карту." : "Механік працює над діагностикою."}</p></div><b className={styles.reviewState}>{cardSent ? "Надіслана ДК" : reviewLabels[view.diagnostic.review.state] || view.diagnostic.review.state}</b></div>
+    <div className={styles.head}><div><span>СТРУКТУРОВАНА ДІАГНОСТИКА</span><h3>Звіт автомеханіка</h3><p>{cardSent ? "Діагностичну карту надіслано власнику. Авто очікує рішення клієнта." : managerReviewStarted ? "Сервіс-менеджер перевіряє завершену діагностику та готує ДК." : view.diagnostic.review.state === "SUBMITTED" ? "Діагностика завершена та очікує перевірки сервіс-менеджера." : view.diagnostic.review.state === "RETURNED" ? "Авто залишається в роботі; діагностику повернено механіку на уточнення." : view.diagnostic.review.state === "CONFIRMED" ? "Діагностику зафіксовано. Потрібно створити актуальну Діагностичну карту." : "Механік працює над діагностикою."}</p></div><b className={styles.reviewState}>{primaryStatus}</b></div>
+    {view.diagnostic.review.state === "RETURNED" && <div className={styles.state}>↩ Супутня ознака: повернено механіку на уточнення.</div>}
     {error && <div className={styles.error}>{error}</div>}
     {message && <div className={styles.state}>{message}</div>}
     <div className={styles.metrics}><div><span>Перевірено</span><strong>{view.counts.checked}/{view.counts.total}</strong></div><div className={styles.ok}><span>Норма</span><strong>{view.counts.ok}</strong></div><div className={styles.attention}><span>Увага</span><strong>{view.counts.attention}</strong></div><div className={styles.defect}><span>Дефекти</span><strong>{view.counts.defect}</strong></div></div>
@@ -229,7 +236,7 @@ export function StructuredDiagnosticReviewPanel({ diagnosticId, onChanged }: { d
     {view.diagnostic.review.state === "RETURNED" && <div className={styles.lock}>Очікуємо уточнення від автомеханіка. Після повторного завершення діагностика знову з’явиться на перевірці.</div>}
 
     {cardSent && <div className={styles.decision}>
-      <label><span>Наступний крок</span><small>Діагностична карта вже у кабінеті власника. Оберіть, що робимо з автомобілем далі.</small></label>
+      <label><span>Наступний крок</span><small>Діагностична карта вже у кабінеті власника. Поточний статус — «Очікує рішення клієнта». Оберіть маршрут далі.</small></label>
       <div><button className={styles.returnButton} type="button" disabled={busy} onClick={() => void openFollowupBooking()}>Запис на наступні роботи</button><button className={styles.confirmButton} type="button" disabled={busy} onClick={() => void sendToPartsSelection()}>Підбір деталей</button></div>
     </div>}
 
