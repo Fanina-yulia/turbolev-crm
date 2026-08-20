@@ -2,38 +2,13 @@
 
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
+import type {
+  ServiceAdvisorCabinetLinkedPayload,
+  ServiceAdvisorCabinetPayload,
+  ServiceAdvisorFindingContract as Finding,
+} from "@/src/lib/contracts/service-advisor";
+import { parseServiceAdvisorCabinetPayload, serviceAdvisorPayloadMessage } from "@/src/lib/contracts/service-advisor-payload.parsers";
 import styles from "./service-advisor-cabinet.module.css";
-
-type Finding = {
-  id: string;
-  workOrderId: string;
-  status: string;
-  resolutionCode: string | null;
-  estimateLineId: string | null;
-  urgency: string;
-  findingText: string;
-  recommendation: string | null;
-  managerComment: string | null;
-  mechanicReply: string | null;
-  mechanicRepliedAt: string | null;
-  submittedAt: string;
-  reviewedAt: string | null;
-  mechanic: string;
-  workDescription: string;
-  plate: string;
-  vehicle: string;
-  media: Array<{ id: string; fileName: string; mimeType: string; fileSize: number; url: string }>;
-};
-
-type Data = {
-  ok: boolean;
-  linked: boolean;
-  station?: { id: string; name: string };
-  kpis?: { today: number; arrived: number; approval: number; waitingParts: number; inRepair: number; mechanicFindings: number };
-  appointments?: Array<{ id: string; status: string; start: string; plate: string; vehicle: string; problem: string | null; post: string | null; mechanic: string | null }>;
-  diagnostics?: Array<{ id: string; status: string; plate: string; vehicle: string; client: string }>;
-  mechanicFindings?: Finding[];
-};
 
 type FindingAction = "APPROVE" | "REJECT" | "CLARIFY" | "ADD_TO_ESTIMATE";
 
@@ -58,11 +33,11 @@ function decisionLabel(value: string | null) {
   return "Потребує рішення";
 }
 
-function Dashboard({ data }: { data: Data }) {
-  const k = data.kpis!;
-  const appointments = data.appointments || [];
-  const diagnostics = data.diagnostics || [];
-  const findings = data.mechanicFindings || [];
+function Dashboard({ data }: { data: ServiceAdvisorCabinetLinkedPayload }) {
+  const k = data.kpis;
+  const appointments = data.appointments;
+  const diagnostics = data.diagnostics;
+  const findings = data.mechanicFindings;
   const [busyFinding, setBusyFinding] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState("");
   const [actionError, setActionError] = useState("");
@@ -107,7 +82,7 @@ function Dashboard({ data }: { data: Data }) {
 
   return <div className={styles.page}>
     <header className={styles.head}>
-      <div><span className={styles.eyebrow}>TURBO LEV · КАБІНЕТ СЕРВІС-МЕНЕДЖЕРА</span><h1>Приймання та супровід ремонту</h1><p>{data.station?.name} · клієнт → діагностика → кошторис → погодження → ремонт</p></div>
+      <div><span className={styles.eyebrow}>TURBO LEV · КАБІНЕТ СЕРВІС-МЕНЕДЖЕРА</span><h1>Приймання та супровід ремонту</h1><p>{data.station.name} · клієнт → діагностика → кошторис → погодження → ремонт</p></div>
       <button className={styles.primary} onClick={() => nav("Планувальник")}>Планувальник →</button>
     </header>
 
@@ -163,7 +138,7 @@ function Dashboard({ data }: { data: Data }) {
 export function ServiceAdvisorCabinetBridge() {
   const [target, setTarget] = useState<HTMLElement | null>(null);
   const [active, setActive] = useState(false);
-  const [data, setData] = useState<Data | null>(null);
+  const [data, setData] = useState<ServiceAdvisorCabinetPayload | null>(null);
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -182,8 +157,9 @@ export function ServiceAdvisorCabinetBridge() {
         if (workspace) { workspace.style.position = "relative"; setTarget(workspace); }
         setActive(true);
         const response = await fetch("/api/cabinet/service-advisor", { cache: "no-store" });
-        const body = await response.json();
-        if (!response.ok || !body.ok) throw new Error(body.error || "Не вдалося завантажити кабінет");
+        const raw = await response.json().catch(() => null);
+        const body = parseServiceAdvisorCabinetPayload(raw);
+        if (!response.ok || !body) throw new Error(serviceAdvisorPayloadMessage(raw));
         if (!cancelled) { setData(body); setError(""); }
       } catch (cause) {
         if (!cancelled) setError(cause instanceof Error ? cause.message : "Помилка кабінету");
@@ -213,5 +189,5 @@ export function ServiceAdvisorCabinetBridge() {
   }, [active, target]);
 
   if (!active || !target) return null;
-  return createPortal(<div style={{ position: "absolute", inset: 0, zIndex: 25, overflow: "auto", background: "var(--bg)", padding: "24px" }}>{error ? <div>{error}</div> : data?.linked && data.kpis ? <Dashboard data={data} /> : <div>Завантажую кабінет сервіс-менеджера…</div>}</div>, target);
+  return createPortal(<div style={{ position: "absolute", inset: 0, zIndex: 25, overflow: "auto", background: "var(--bg)", padding: "24px" }}>{error ? <div>{error}</div> : data?.linked ? <Dashboard data={data} /> : <div>Завантажую кабінет сервіс-менеджера…</div>}</div>, target);
 }
