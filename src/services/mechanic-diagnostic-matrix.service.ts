@@ -6,6 +6,12 @@ import {
 import { getPrisma } from "@/src/lib/prisma";
 import { toPrismaJson } from "@/src/lib/prisma-json";
 import { DIAGNOSTIC_TEMPLATE_SEEDS } from "@/src/services/diagnostic-template-seeds";
+import { ensureExtendedDiagnosticMatrix } from "@/src/services/extended-diagnostic-matrix.service";
+import {
+  getVehicleDiagnosticProfile,
+  isDiagnosticItemApplicable,
+  removeUnapplicableUncheckedChecks,
+} from "@/src/services/vehicle-diagnostic-applicability.service";
 import {
   ensureDefaultDiagnosticTemplates,
   getMechanicByUserId,
@@ -61,6 +67,7 @@ export async function startMechanicDiagnosticByType(userId: string, diagnosticRe
   }
 
   await ensureDefaultDiagnosticTemplates();
+  const profile = await getVehicleDiagnosticProfile(diagnosticRequestId);
   const inspectionCount = await prisma.diagnosticInspection.count({ where: { diagnosticRequestId } });
 
   if (!inspectionCount) {
@@ -85,7 +92,11 @@ export async function startMechanicDiagnosticByType(userId: string, diagnosticRe
       ? (await prisma.diagnosticTemplateItem.findMany({
           where: { sectionId: { in: sections.map((item) => item.id) } },
           select: { id: true, code: true, sectionId: true },
-        })).filter((item) => !seedItemCodes.size || seedItemCodes.has(`${sectionCodeById.get(item.sectionId)}:${item.code}`))
+        })).filter((item) => {
+          const sectionCode = sectionCodeById.get(item.sectionId) || "";
+          const seeded = !seedItemCodes.size || seedItemCodes.has(`${sectionCode}:${item.code}`);
+          return seeded && isDiagnosticItemApplicable(profile, sectionCode, item.code);
+        })
       : [];
 
     await prisma.$transaction(async (tx) => {
@@ -113,6 +124,7 @@ export async function startMechanicDiagnosticByType(userId: string, diagnosticRe
     where: { diagnosticRequestId },
     select: { id: true, templateId: true },
   });
+  let hasMatrixInspection = false;
   if (activeInspections.length) {
     const templates = await prisma.diagnosticTemplate.findMany({
       where: { id: { in: Array.from(new Set(activeInspections.map((inspection) => inspection.templateId))) } },
@@ -122,6 +134,7 @@ export async function startMechanicDiagnosticByType(userId: string, diagnosticRe
 
     for (const inspection of activeInspections) {
       const code = templateCodeById.get(inspection.templateId);
+      if (code === "SUSPENSION_MATRIX") hasMatrixInspection = true;
       const seed = DIAGNOSTIC_TEMPLATE_SEEDS.find((item) => item.code === code);
       if (!seed) continue;
       const currentSectionCodes = seed.sections.map((section) => section.code);
@@ -135,7 +148,11 @@ export async function startMechanicDiagnosticByType(userId: string, diagnosticRe
       const items = (await prisma.diagnosticTemplateItem.findMany({
         where: { sectionId: { in: sections.map((section) => section.id) } },
         select: { id: true, code: true, sectionId: true },
-      })).filter((item) => seedItemCodes.has(`${sectionCodeById.get(item.sectionId)}:${item.code}`));
+      })).filter((item) => {
+        const sectionCode = sectionCodeById.get(item.sectionId) || "";
+        return seedItemCodes.has(`${sectionCode}:${item.code}`)
+          && isDiagnosticItemApplicable(profile, sectionCode, item.code);
+      });
       if (items.length) {
         await prisma.diagnosticCheck.createMany({
           data: items.map((item) => ({ inspectionId: inspection.id, templateItemId: item.id })),
@@ -143,6 +160,11 @@ export async function startMechanicDiagnosticByType(userId: string, diagnosticRe
         });
       }
     }
+  }
+
+  if (hasMatrixInspection) {
+    await ensureExtendedDiagnosticMatrix(diagnosticRequestId);
+    await removeUnapplicableUncheckedChecks(diagnosticRequestId, profile);
   }
 
   if (diagnostic.status === DiagnosticRequestStatus.PENDING) {
@@ -156,7 +178,14 @@ export async function startMechanicDiagnosticByType(userId: string, diagnosticRe
         entityType: "DiagnosticRequest",
         entityId: diagnosticRequestId,
         action: "STATUS_PENDING_TO_IN_PROGRESS",
-        metadata: toPrismaJson({ source: "MECHANIC_DIAGNOSTIC_MATRIX" }),
+        metadata: toPrismaJson({
+          source: "MECHANIC_DIAGNOSTIC_MATRIX",
+          vehicleProfile: profile ? {
+            fuelKind: profile.fuelKind,
+            driveKind: profile.driveKind,
+            driveSource: profile.driveSource,
+          } : null,
+        }),
       },
     }).catch(() => undefined);
   }
