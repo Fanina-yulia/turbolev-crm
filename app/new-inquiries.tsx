@@ -84,10 +84,10 @@ export function NewInquiries() {
       const response = await fetch(`/api/communications/${encodeURIComponent(item.id)}/convert`, { method: "POST" });
       const raw: unknown = await response.json().catch(() => null);
       const body = parseInquiryMutationPayload(raw);
-      if (!response.ok || !body) throw new Error(inquiryPayloadMessage(raw, "Не вдалося створити лід"));
+      if (!response.ok || !body) throw new Error(inquiryPayloadMessage(raw, "Не вдалося додати в Активні"));
       setItems((current) => current.filter((entry) => entry.id !== item.id));
-      navigate("Ліди");
-    } catch (cause) { setError(cause instanceof Error ? cause.message : "Не вдалося створити лід"); }
+      navigate("Активні");
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "Не вдалося додати в Активні"); }
     finally { setBusyId(null); }
   }
 
@@ -114,7 +114,7 @@ export function NewInquiries() {
       <div><span>Критичних</span><strong className={styles.danger}>{stats?.critical ?? 0}</strong><small>реакція негайно</small></div>
       <div><span>Високий пріоритет</span><strong>{stats?.high ?? 0}</strong><small>потрібна швидка відповідь</small></div>
       <div><span>Відомі клієнти</span><strong>{stats?.existingClients ?? 0}</strong><small>CRM вже впізнала</small></div>
-      <div><span>Є активний лід</span><strong>{stats?.withActiveLead ?? 0}</strong><small>не створювати дублі</small></div>
+      <div><span>Вже в Активних</span><strong>{stats?.withActiveLead ?? 0}</strong><small>не створювати дублі</small></div>
     </section>
 
     <section className={styles.filters}>
@@ -127,7 +127,7 @@ export function NewInquiries() {
       <div className={styles.tableHead}><span>Звернення</span><span>Контакт</span><span>Автомобіль</span><span>Проблема</span><span>Пріоритет</span><span>Джерело</span><span>Дії</span></div>
       {loading ? <div className={styles.empty}>Завантажуємо нові звернення…</div> : filtered.length === 0 ? <div className={styles.empty}>Нових звернень за цими фільтрами немає.</div> : filtered.map((item) => <article className={styles.row} key={item.id}>
         <div className={styles.time}><strong>{timeLabel(item.receivedAt)}</strong><span className={`${styles.channel} ${styles[`channel${item.channel}`] || ""}`}>{channelLabel[item.channel] || item.channel}</span></div>
-        <div className={styles.contact}><strong>{item.name}</strong><span>{item.phone || item.handle || "Контакт уточнюється"}</span>{item.existingClient && <em>Постійний клієнт</em>}{item.existingLead && <button type="button" onClick={() => navigate("Ліди")}>Є активний лід · {item.existingLead.status}</button>}</div>
+        <div className={styles.contact}><strong>{item.name}</strong><span>{item.phone || item.handle || "Контакт уточнюється"}</span>{item.existingClient && <em>Постійний клієнт</em>}{item.existingLead && <button type="button" onClick={() => navigate("Активні")}>Вже в Активних · {item.existingLead.status}</button>}</div>
         <div className={styles.vehicle}><strong>{vehicleLabel(item)}</strong><span>{plateLabel(item)}</span>{item.vehicles[0]?.vin && <small>VIN {item.vehicles[0].vin}</small>}</div>
         <div className={styles.problem}><strong>{item.subject}</strong><span>{item.preview}</span>{item.campaign && <small>Кампанія: {item.campaign}</small>}</div>
         <div><span className={`${styles.priority} ${styles[`priority${item.priority}`] || ""}`}>{priorityLabel[item.priority] || item.priority}</span></div>
@@ -135,7 +135,7 @@ export function NewInquiries() {
         <div className={styles.actions}>
           <button type="button" className={styles.accept} disabled={busyId === item.id} onClick={() => void accept(item)}>✓ Прийняти</button>
           {item.phone && <a href={`tel:${item.phone}`}>☎ Подзвонити</a>}
-          <button type="button" disabled={busyId === item.id} onClick={() => item.existingLead ? navigate("Ліди") : void convert(item)}>{item.existingLead ? "Відкрити лід" : "Створити лід"}</button>
+          <button type="button" disabled={busyId === item.id} onClick={() => item.existingLead ? navigate("Активні") : void convert(item)}>{item.existingLead ? "Відкрити в Активних" : "Додати в Активні"}</button>
           <button type="button" onClick={() => navigate("Комунікації")}>Діалог</button>
           <button type="button" className={styles.spam} disabled={busyId === item.id} onClick={() => void spam(item)}>Спам</button>
         </div>
