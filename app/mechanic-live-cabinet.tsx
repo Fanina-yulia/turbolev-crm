@@ -37,6 +37,7 @@ const LEGACY_DISMISSED_FEED_KEY = "turbolev:mechanic-dismissed-assigned-feed";
 const MAX_DISMISSED_ITEMS = 500;
 const SWIPE_DISMISS_THRESHOLD = -64;
 const SWIPE_MAX_OFFSET = -96;
+const BACKGROUND_REFRESH_MS = 60_000;
 
 const statusLabels: Record<string, string> = {
   BOOKED: "Заплановано",
@@ -80,7 +81,6 @@ function readDismissedIds() {
       if (Array.isArray(parsed)) return parsed.filter((value): value is string => typeof value === "string");
     }
 
-    // Migrate previously closed feed so the same cars do not suddenly appear again after this update.
     const legacy = window.localStorage.getItem(LEGACY_DISMISSED_FEED_KEY) || "";
     if (!legacy) return [];
     return legacy
@@ -94,7 +94,6 @@ function readDismissedIds() {
 
 export function MechanicLiveCabinet({ userName }: { userName?: string | null }) {
   const [items, setItems] = useState<AssignedVehicle[]>([]);
-  const [revision, setRevision] = useState(0);
   const [lastKey, setLastKey] = useState("");
   const [expanded, setExpanded] = useState(true);
   const [dismissedIds, setDismissedIds] = useState<string[]>([]);
@@ -111,10 +110,7 @@ export function MechanicLiveCabinet({ userName }: { userName?: string | null }) 
       .sort()
       .join("|");
     setItems(nextItems);
-    setLastKey((current) => {
-      if (current && current !== nextKey) setRevision((value) => value + 1);
-      return nextKey;
-    });
+    setLastKey(nextKey);
   }, []);
 
   useEffect(() => {
@@ -130,10 +126,12 @@ export function MechanicLiveCabinet({ userName }: { userName?: string | null }) 
     }
 
     void load();
-    const timer = window.setInterval(() => void load(), 15000);
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === "visible") void load();
+    }, BACKGROUND_REFRESH_MS);
     const onFocus = () => void load();
     const onVisibility = () => { if (document.visibilityState === "visible") void load(); };
-    const onMechanicRefresh = () => { setRevision((value) => value + 1); void load(); };
+    const onMechanicRefresh = () => void load();
     window.addEventListener("focus", onFocus);
     window.addEventListener("turbolev:mechanic-refresh", onMechanicRefresh);
     document.addEventListener("visibilitychange", onVisibility);
@@ -262,7 +260,7 @@ export function MechanicLiveCabinet({ userName }: { userName?: string | null }) 
         <div style={{ padding: "8px 14px", fontSize: 10, opacity: .62, lineHeight: 1.35 }}>Проведіть по авто вліво, щоб прибрати сповіщення. Закриті сповіщення більше не з’являються.</div>
       </div>
     </section>}
-    <MechanicStandaloneCabinet key={revision} userName={userName} />
+    <MechanicStandaloneCabinet userName={userName} />
     <MechanicVehicleScanner />
     <MechanicDiagnosticsArrivalBridge />
   </div>;
