@@ -28,7 +28,7 @@ export async function ensureLeadArrivalInTransaction(
   leadId: string,
   actorName = "CRM / Планувальник",
 ) {
-  await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`lead-arrival:${leadId}`}))`;
+  await tx.$queryRaw<{ locked: string | null }[]>`SELECT pg_advisory_xact_lock(hashtext(${`lead-arrival:${leadId}`}))::text AS locked`;
 
   const lead = await tx.lead.findUnique({ where: { id: leadId } });
   if (!lead) throw new LeadArrivalNotFoundError(leadId);
