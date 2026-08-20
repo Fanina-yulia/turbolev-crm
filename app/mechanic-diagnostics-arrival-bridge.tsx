@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 type Appointment = {
@@ -79,14 +79,14 @@ function ensureHost(main: HTMLElement) {
 
 function openScanner() {
   const scan = document.querySelector<HTMLButtonElement>('button[aria-label="Сканувати номер автомобіля"]');
-  if (scan) scan.click();
-  else window.dispatchEvent(new CustomEvent("turbolev:mechanic-open-scanner"));
+  scan?.click();
 }
 
 export function MechanicDiagnosticsArrivalBridge() {
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [diagnostics, setDiagnostics] = useState<DiagnosticItem[]>([]);
   const [target, setTarget] = useState<HTMLElement | null>(null);
+  const diagnosticsKeyRef = useRef("");
 
   const load = useCallback(async () => {
     const [homeResponse, diagnosticsResponse] = await Promise.all([
@@ -98,7 +98,15 @@ export function MechanicDiagnosticsArrivalBridge() {
       diagnosticsResponse.json().catch(() => null) as Promise<DiagnosticsPayload | null>,
     ]);
     if (homeResponse.ok && home?.ok) setAppointments(home.appointments ?? []);
-    if (diagnosticsResponse.ok && diagnosticFeed?.ok) setDiagnostics(diagnosticFeed.items ?? []);
+    if (diagnosticsResponse.ok && diagnosticFeed?.ok) {
+      const items = diagnosticFeed.items ?? [];
+      setDiagnostics(items);
+      const nextKey = items.map((item) => `${item.id}:${item.workflowState}`).sort().join("|");
+      if (diagnosticsKeyRef.current && diagnosticsKeyRef.current !== nextKey) {
+        window.dispatchEvent(new CustomEvent("turbolev:mechanic-refresh"));
+      }
+      diagnosticsKeyRef.current = nextKey;
+    }
   }, []);
 
   useEffect(() => {
