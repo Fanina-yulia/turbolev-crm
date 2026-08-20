@@ -9,6 +9,7 @@ import {
 } from "@/src/lib/contracts/directory-payload.parsers";
 import { CustomerCabinetCard } from "./customer-cabinet-card";
 import { TelegramClientLinkCard } from "./telegram-client-link-card";
+import { BinotelClientCalls } from "./binotel-recordings";
 import { navigateCrm, readCrmRoute } from "./crm-route";
 import styles from "./directory-pages.module.css";
 
@@ -193,6 +194,9 @@ export function ClientsDirectory() {
                 <span><small>Остання активність</small><b>{dateText(selected.updatedAt)}</b></span>
                 <span><small>Останній візит</small><b>{lastVisit(selected)}</b></span>
               </div>
+            </section>
+            <section className={styles.panel}>
+              <BinotelClientCalls clientId={selected.id} phone={selected.phone} />
             </section>
             <section className={styles.panel}>
               <h3>Пов’язані автомобілі <span>{selected._count.vehicles}</span></h3>
