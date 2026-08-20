@@ -1,3 +1,4 @@
+import type { VehicleLifecycleCode, VehicleLifecycleFlag } from "@/src/domain/vehicle-lifecycle";
 import type { CrmDateTime } from "./crm-core";
 import type { PlannerStatusContract } from "./planner";
 
@@ -6,9 +7,16 @@ export type ServiceAdvisorStationReference = {
   name: string;
 };
 
+export type ServiceAdvisorLifecycleContract = {
+  code: VehicleLifecycleCode;
+  label: string;
+  flags: VehicleLifecycleFlag[];
+};
+
 export type ServiceAdvisorKpisContract = {
   today: number;
-  arrived: number;
+  inWork: number;
+  managerReview: number;
   approval: number;
   waitingParts: number;
   inRepair: number;
@@ -18,6 +26,7 @@ export type ServiceAdvisorKpisContract = {
 export type ServiceAdvisorAppointmentContract = {
   id: string;
   status: PlannerStatusContract;
+  lifecycle: ServiceAdvisorLifecycleContract | null;
   start: CrmDateTime;
   plate: string;
   vehicle: string;
@@ -28,7 +37,8 @@ export type ServiceAdvisorAppointmentContract = {
 
 export type ServiceAdvisorDiagnosticContract = {
   id: string;
-  status: "PENDING" | "IN_PROGRESS";
+  status: "PENDING" | "IN_PROGRESS" | "CONFIRMED";
+  lifecycle: ServiceAdvisorLifecycleContract;
   plate: string;
   vehicle: string;
   client: string;
