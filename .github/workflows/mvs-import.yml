@@ -12,6 +12,7 @@ on:
     paths:
       - ".github/workflows/mvs-import.yml"
       - "scripts/import-mvs-open-data.py"
+      - "scripts/import-mvs-colors.py"
   schedule:
     - cron: "17 3 2 * *"
 
@@ -69,3 +70,6 @@ jobs:
 
       - name: Import compact MVS vehicle registry
         run: python scripts/import-mvs-open-data.py
+
+      - name: Import official MVS vehicle colors
+        run: python scripts/import-mvs-colors.py
