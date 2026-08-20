@@ -1,50 +1,21 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import type { VehicleCardContract, VehicleDirectoryItem } from "@/src/lib/contracts/crm-core";
+import {
+  parseVehicleAppearancePayload,
+  parseVehicleCardPayload,
+  parseVehicleDirectoryPayload,
+  parseVehicleImageRefreshPayload,
+  payloadMessage,
+} from "@/src/lib/contracts/directory-payload.parsers";
 import { navigateCrm, readCrmRoute } from "./crm-route";
 import { VehicleBrandLogo } from "./vehicle-brand-logo";
 import { VehicleRender } from "./vehicle-render";
 import styles from "./directory-pages.module.css";
 
-type Vehicle = {
-  id: string;
-  clientId: string;
-  plateNumber: string | null;
-  vin: string | null;
-  brand: string | null;
-  model: string | null;
-  year: number | null;
-  mileageKm: number | null;
-  engineName: string | null;
-  engineVolumeCm3: number | null;
-  fuelType: string | null;
-  bodyType: string | null;
-  driveType: string | null;
-  vehicleType: string | null;
-  turboLevClass: string | null;
-  priceCoefficient: string | number;
-  vehicleDataSource: string | null;
-  vehicleDataConfidence: number | null;
-  exteriorColorName: string | null;
-  exteriorColorHex: string | null;
-  exteriorPaintCode: string | null;
-  exteriorColorSource: string | null;
-  exteriorColorConfirmed: boolean;
-  createdAt: string;
-  updatedAt: string;
-  client: { id: string; name: string | null; phone: string };
-  _count: { workOrders: number; diagnosticRequests: number };
-};
-
-type ListResponse = { ok: boolean; total: number; page: number; limit: number; pages: number; vehicles: Vehicle[]; error?: string };
-type VehicleCard = Omit<Vehicle, "client"> & {
-  classificationSource: string | null;
-  classificationConfidence: number | null;
-  lastVehicleLookupAt: string | null;
-  client: { id: string; name: string | null; phone: string };
-  diagnosticRequests: Array<{ id: string; status: string; technicalConclusion: string | null; confirmedAt: string | null; createdAt: string; updatedAt: string }>;
-  workOrders: Array<{ id: string; status: string; createdAt: string; updatedAt: string; closedAt: string | null }>;
-};
+type Vehicle = VehicleDirectoryItem;
+type VehicleCard = VehicleCardContract;
 
 const PAGE_SIZE = 24;
 
@@ -101,11 +72,12 @@ export function VehiclesDirectory() {
         const params = new URLSearchParams({ page: String(page), limit: String(PAGE_SIZE) });
         if (query.trim()) params.set("q", query.trim());
         const response = await fetch(`/api/vehicles?${params}`, { cache: "no-store", signal: controller.signal });
-        const data = await response.json() as ListResponse;
-        if (!response.ok || !data.ok) throw new Error(data.error || "Не вдалося завантажити автомобілі");
-        setVehicles(data.vehicles || []);
-        setTotal(data.total || 0);
-        setPages(data.pages || 1);
+        const payload: unknown = await response.json().catch(() => null);
+        const data = parseVehicleDirectoryPayload(payload);
+        if (!response.ok || !data) throw new Error(payloadMessage(payload, "Не вдалося завантажити автомобілі"));
+        setVehicles(data.vehicles);
+        setTotal(data.total);
+        setPages(data.pages);
         if (data.page !== page) setPage(data.page);
       } catch (cause) {
         if ((cause as Error).name !== "AbortError") setError(cause instanceof Error ? cause.message : "Помилка завантаження");
@@ -136,9 +108,10 @@ export function VehiclesDirectory() {
     void (async () => {
       try {
         const response = await fetch(`/api/vehicles/card?id=${encodeURIComponent(vehicleId)}`, { cache: "no-store", signal: controller.signal });
-        const data = await response.json() as { ok?: boolean; vehicle?: VehicleCard; error?: string };
-        if (!response.ok || !data.ok || !data.vehicle) throw new Error(data.error || "Не вдалося відкрити автомобіль");
-        setVehicleCard(data.vehicle);
+        const payload: unknown = await response.json().catch(() => null);
+        const vehicle = parseVehicleCardPayload(payload);
+        if (!response.ok || !vehicle) throw new Error(payloadMessage(payload, "Не вдалося відкрити автомобіль"));
+        setVehicleCard(vehicle);
       } catch (cause) {
         if ((cause as Error).name !== "AbortError") setError(cause instanceof Error ? cause.message : "Помилка картки авто");
       } finally {
@@ -318,10 +291,10 @@ function VehicleAppearanceEditor({ vehicle, onSaved }: { vehicle: VehicleCard; o
           exteriorColorConfirmed: confirmed,
         }),
       });
-      const data = await response.json() as { ok?: boolean; error?: string; vehicle?: Partial<VehicleCard> & { updatedAt?: string } };
-      if (!response.ok || !data.ok || !data.vehicle) throw new Error(data.error || "Не вдалося зберегти колір");
-      const next = { ...vehicle, ...data.vehicle } as VehicleCard;
-      onSaved(next);
+      const payload: unknown = await response.json().catch(() => null);
+      const patch = parseVehicleAppearancePayload(payload);
+      if (!response.ok || !patch || patch.id !== vehicle.id) throw new Error(payloadMessage(payload, "Не вдалося зберегти колір"));
+      onSaved({ ...vehicle, ...patch });
       setMessage("Колір збережено. Зображення авто оновиться автоматично.");
     } catch (cause) {
       setMessage(cause instanceof Error ? cause.message : "Помилка збереження");
@@ -339,8 +312,9 @@ function VehicleAppearanceEditor({ vehicle, onSaved }: { vehicle: VehicleCard; o
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({}),
       });
-      const data = await response.json() as { ok?: boolean; error?: string; fallback?: boolean };
-      if (!response.ok || !data.ok) throw new Error(data.error || "Не вдалося оновити зображення");
+      const payload: unknown = await response.json().catch(() => null);
+      const data = parseVehicleImageRefreshPayload(payload);
+      if (!response.ok || !data) throw new Error(payloadMessage(payload, "Не вдалося оновити зображення"));
       onSaved({ ...vehicle, updatedAt: new Date().toISOString() });
       setMessage(data.fallback ? "Точний render поки недоступний — показано безпечний силует." : "Render автомобіля оновлено.");
     } catch (cause) {
