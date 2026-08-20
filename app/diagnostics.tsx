@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { DiagnosticReportSharePanel } from "./diagnostic-report-share-panel";
 import { StructuredDiagnosticReviewPanel } from "./structured-diagnostic-review-panel";
 import styles from "./diagnostics.module.css";
 
@@ -58,6 +59,7 @@ export function Diagnostics(){
         {selected.lead?.need&&<div className={styles.problem}><span>Скарга / завдання</span><p>{selected.lead.need}</p></div>}
         <label className={styles.conclusion}><span>Технічний висновок</span><textarea rows={selected.structured?.inspections?5:8} value={conclusion} disabled={selected.status==="CANCELLED"||selected.status==="CONFIRMED"} placeholder={selected.structured?.inspections?"Якщо залишити порожнім, під час підтвердження система сформує висновок із структурованих дефектів.":"Опишіть підтверджені дефекти, результати перевірки та рекомендовані роботи…"} onChange={e=>setConclusion(e.target.value)}/><small>{selected.structured?.inspections?"Структурований звіт нижче є джерелом для автоматичного технічного висновку.":"Для legacy-діагностики перед підтвердженням заповніть висновок."}</small></label>
         {selected.workOrder&&<div className={styles.woCard}><div><span>Замовлення-наряд</span><strong>{selected.workOrder.id}</strong></div><span className={styles.woStatus}>{selected.workOrder.status}</span></div>}
+        {!selected.structured?.inspections&&["SUBMITTED","CONFIRMED"].includes(selected.reviewState||"")&&<DiagnosticReportSharePanel diagnosticId={selected.id} reviewState={selected.reviewState||workflowState(selected)} workOrder={selected.workOrder}/>} 
         {selected.structured?.inspections?<StructuredDiagnosticReviewPanel diagnosticId={selected.id} onChanged={load}/>:<div className={styles.actions}>{selected.status==="PENDING"&&<><button className={styles.primary} disabled={saving} onClick={()=>void transition("IN_PROGRESS")}>Почати legacy-діагностику</button><button className={styles.secondary} disabled={saving} onClick={()=>void transition("CANCELLED")}>Скасувати</button></>}{selected.status==="IN_PROGRESS"&&<><button className={styles.primary} disabled={saving||!conclusion.trim()} onClick={()=>void transition("CONFIRMED")}>{saving?"Підтверджую…":"Підтвердити та створити WorkOrder"}</button><button className={styles.secondary} disabled={saving} onClick={()=>void transition("CANCELLED")}>Скасувати</button></>}{selected.status==="CONFIRMED"&&<span className={styles.lockNote}>✓ Hard Gate пройдено. Діагностика зафіксована; WorkOrder не створюється повторно.</span>}{selected.status==="CANCELLED"&&<span className={styles.lockNote}>Діагностику закрито. Для нового огляду потрібен новий DiagnosticRequest.</span>}</div>}
       </>:<div className={styles.empty}>Оберіть діагностику зі списку.</div>}</aside>
     </div>

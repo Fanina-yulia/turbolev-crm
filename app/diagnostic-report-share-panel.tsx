@@ -120,7 +120,7 @@ export function DiagnosticReportSharePanel({ diagnosticId, reviewState, workOrde
       <div className={styles.shareBox}>
         <div className={styles.shareMeta}><span>Особистий кабінет</span>{share ? <><strong>{share.active ? "Доступний клієнту" : share.revokedAt ? "Відкликаний" : "Потрібно оновити"}</strong><small>Створено: {dateTime(share.createdAt)}{share.expiresAt ? ` · до ${dateTime(share.expiresAt)}` : ""}</small></> : <><strong>Ще не створений</strong><small>Створити можна після передачі діагностики менеджеру.</small></>}</div>
         <div className={styles.actions}>
-          <button className={styles.primary} type="button" disabled={busy} onClick={() => void createLink()}>{freshPath ? "Створити нове посилання" : share?.active ? "Перегенерувати посилання" : "Створити посилання"}</button>
+          <button className={styles.primary} type="button" disabled={busy} onClick={() => void createLink()}>{freshPath ? "Створити нове посилання" : "Створити посилання"}</button>
           {freshPath && <button className={styles.copy} type="button" disabled={busy} onClick={() => void copyLink()}>⧉ Копіювати</button>}
           {share?.active && <button className={styles.danger} type="button" disabled={busy} onClick={() => void revoke()}>Відкликати</button>}
         </div>
