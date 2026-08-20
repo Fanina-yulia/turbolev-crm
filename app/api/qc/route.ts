@@ -198,7 +198,9 @@ export async function POST(request: Request) {
     const note = typeof body.note === "string" ? body.note.trim().slice(0, 4000) : "";
 
     if (action === "MOVE_PAYMENT" || action === "MOVE_PICKUP" || action === "MOVE_REWORK") {
-      const target = action === "MOVE_REWORK" ? "REWORK" : "WAITING_PAYMENT";
+      // MOVE_PAYMENT is retained as a compatibility alias for older clients. Payment is financial state,
+      // while a QC-passed vehicle moves to the physical/service state READY_FOR_PICKUP.
+      const target = action === "MOVE_REWORK" ? "REWORK" : "READY_FOR_PICKUP";
       const workOrder = await transitionWorkOrder(workOrderId, target, actorName);
       return NextResponse.json({ ok: true, workOrder });
     }
@@ -208,7 +210,7 @@ export async function POST(request: Request) {
     let warning = null;
     if (action === "PASS" || action === "FAIL") {
       try {
-        workOrder = await transitionWorkOrder(workOrderId, action === "PASS" ? "WAITING_PAYMENT" : "REWORK", actorName);
+        workOrder = await transitionWorkOrder(workOrderId, action === "PASS" ? "READY_FOR_PICKUP" : "REWORK", actorName);
       } catch (error) {
         warning = transitionWarning(error);
       }

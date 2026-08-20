@@ -173,10 +173,10 @@ export function QcQueue() {
             <footer>
               <button type="button" className={styles.secondary} onClick={() => openWorkOrder(card)}>Відкрити QC у ЗН</button>
               {data.canWrite && card.category === "WAITING" && <button type="button" className={styles.primary} disabled={Boolean(busy)} onClick={() => void act(card, "START")}>{busy === `${card.id}:START` ? "…" : "Почати перевірку"}</button>}
-              {data.canWrite && card.category === "IN_PROGRESS" && <><button type="button" className={styles.pass} disabled={Boolean(busy)} onClick={() => void act(card, "PASS")}>{busy === `${card.id}:PASS` ? "…" : "Пройдено → до оплати"}</button><button type="button" className={styles.fail} disabled={Boolean(busy)} onClick={() => void act(card, "FAIL")}>{busy === `${card.id}:FAIL` ? "…" : "Не пройдено → доопрацювання"}</button></>}
+              {data.canWrite && card.category === "IN_PROGRESS" && <><button type="button" className={styles.pass} disabled={Boolean(busy)} onClick={() => void act(card, "PASS")}>{busy === `${card.id}:PASS` ? "…" : "Пройдено → готове до видачі"}</button><button type="button" className={styles.fail} disabled={Boolean(busy)} onClick={() => void act(card, "FAIL")}>{busy === `${card.id}:FAIL` ? "…" : "Не пройдено → доопрацювання"}</button></>}
               {data.canWrite && card.category === "FAILED" && card.workOrderStatus === "WAITING_QC" && <button type="button" className={styles.fail} disabled={Boolean(busy)} onClick={() => void act(card, "MOVE_REWORK")}>Передати на доопрацювання</button>}
               {card.category === "FAILED" && card.workOrderStatus === "REWORK" && <button type="button" className={styles.secondary} onClick={() => navigateCrm("Виробництво", { status: "REWORK" })}>Виробництво →</button>}
-              {data.canWrite && card.category === "PASSED" && card.workOrderStatus === "WAITING_QC" && <button type="button" className={styles.pass} disabled={Boolean(busy)} onClick={() => void act(card, "MOVE_PAYMENT")}>Передати до оплати</button>}
+              {data.canWrite && card.category === "PASSED" && card.workOrderStatus === "WAITING_QC" && <button type="button" className={styles.pass} disabled={Boolean(busy)} onClick={() => void act(card, "MOVE_PICKUP")}>Підтвердити готовність до видачі</button>}
             </footer>
           </article>) : <div className={styles.empty}>Черга порожня.</div>}</div>
         </section>;
