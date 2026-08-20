@@ -1,6 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import type { CabinetHomePayload, StationManagerAttentionContract, StationManagerCabinetPayload } from "@/src/lib/contracts/cabinet-home";
+import { cabinetHomePayloadMessage, parseCabinetHomePayload } from "@/src/lib/contracts/cabinet-home-payload.parsers";
 import { navigateCrm, type CrmRouteParams } from "./crm-route";
 import type { CrmAccessSnapshot } from "./use-crm-access";
 import { StationOverview } from "./station-overview";
@@ -8,29 +10,6 @@ import { MechanicMobileCabinet } from "./mechanic-mobile-cabinet";
 import type { CrmSectionLabel } from "./crm-navigation";
 import styles from "./role-cabinet.module.css";
 
-type MechanicPayload = {
-  ok: true;
-  cabinet: "MECHANIC";
-  linked: boolean;
-  reason?: string;
-  mechanic?: { id: string; name: string; station: { id: string; name: string } };
-  kpis?: { assigned: number; inProgress: number; completedToday: number; waitingParts: number };
-  tasks?: Array<{ id: string; workOrderId: string; description: string; status: string; type: string; laborHours: string | null; plate: string; vehicle: string; workOrderStatus: string; updatedAt: string }>;
-  appointments?: Array<{ id: string; status: string; plannedStartAt: string; plannedEndAt: string; plate: string; vehicle: string; problem: string | null; post: string | null }>;
-};
-
-type ManagerPayload = {
-  ok: true;
-  cabinet: "STATION_MANAGER";
-  linked: boolean;
-  reason?: string;
-  station?: { id: string; name: string };
-  kpis?: { carsToday: number; carsOnStation: number; inRepair: number; postsOccupied: number; postsTotal: number; mechanicsTotal: number; noShow: number };
-  flow?: { booked: number; diagnostics: number; approval: number; waitingParts: number; readyForRepair: number; inRepair: number; qc: number; ready: number };
-  attention?: Array<{ id: string; status: string; plate: string; vehicle: string; problem: string | null; plannedStartAt: string; post: string | null; mechanic: string | null }>;
-};
-
-type Payload = MechanicPayload | ManagerPayload;
 type FlowRoute = { label: string; value: number; section: CrmSectionLabel; params?: CrmRouteParams };
 
 const statusLabels: Record<string, string> = {
@@ -63,7 +42,7 @@ function LinkRequired() {
   </div>;
 }
 
-function attentionRoute(item: NonNullable<ManagerPayload["attention"]>[number]): { section: CrmSectionLabel; params: CrmRouteParams } {
+function attentionRoute(item: StationManagerAttentionContract): { section: CrmSectionLabel; params: CrmRouteParams } {
   if (item.status === "NO_SHOW") return { section: "Планувальник", params: { appointmentId: item.id, status: "NO_SHOW" } };
   if (item.status === "WAITING_QC") return { section: "Замовлення-наряди", params: { scope: "qc", plate: item.plate } };
   if (["WAITING_APPROVAL", "WAITING_PARTS", "READY_FOR_REPAIR", "IN_REPAIR", "READY_FOR_PICKUP"].includes(item.status)) {
@@ -72,8 +51,8 @@ function attentionRoute(item: NonNullable<ManagerPayload["attention"]>[number]):
   return { section: "Замовлення-наряди", params: { plate: item.plate } };
 }
 
-function StationManagerCabinet({ data, userName }: { data: ManagerPayload; userName?: string | null }) {
-  if (!data.linked || !data.station || !data.kpis || !data.flow) return <LinkRequired />;
+function StationManagerCabinet({ data, userName }: { data: StationManagerCabinetPayload; userName?: string | null }) {
+  if (!data.linked) return <LinkRequired />;
   const flow: FlowRoute[] = [
     { label: "Записані", value: data.flow.booked, section: "Планувальник", params: { status: "BOOKED" } },
     { label: "Приймання / діагностика", value: data.flow.diagnostics, section: "Діагностика" },
@@ -84,7 +63,7 @@ function StationManagerCabinet({ data, userName }: { data: ManagerPayload; userN
     { label: "QC", value: data.flow.qc, section: "Контроль якості", params: { scope: "waiting" } },
     { label: "До видачі", value: data.flow.ready, section: "Замовлення-наряди", params: { status: "READY_FOR_PICKUP" } },
   ];
-  const attention = data.attention ?? [];
+  const attention = data.attention;
   return <>
     <header className={styles.header}>
       <div><p className="eyebrow">TURBO LEV · КАБІНЕТ КЕРІВНИКА СТАНЦІЇ</p><h1>Операційний пульт станції</h1><span className="muted">{userName || "Керівник станції"} · {data.station.name} · без глобальних фінансів мережі</span></div>
@@ -132,7 +111,7 @@ function StationManagerCabinet({ data, userName }: { data: ManagerPayload; userN
 export function RoleAwareOverview({ access }: { access: CrmAccessSnapshot | null }) {
   const roleCodes = useMemo(() => new Set((access?.roles ?? []).map((role) => role.code).filter(Boolean)), [access?.roles]);
   const specialRole = roleCodes.has("STATION_MANAGER") ? "STATION_MANAGER" : roleCodes.has("MECHANIC") ? "MECHANIC" : null;
-  const [data, setData] = useState<Payload | null>(null);
+  const [data, setData] = useState<CabinetHomePayload | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -141,9 +120,10 @@ export function RoleAwareOverview({ access }: { access: CrmAccessSnapshot | null
     setLoading(true); setError("");
     try {
       const response = await fetch("/api/cabinet/home", { cache: "no-store", credentials: "include" });
-      const body = await response.json().catch(() => null);
-      if (!response.ok || !body?.ok) throw new Error(body?.error || "Не вдалося завантажити кабінет");
-      setData(body as Payload);
+      const raw = await response.json().catch(() => null);
+      const body = parseCabinetHomePayload(raw);
+      if (!response.ok || !body) throw new Error(cabinetHomePayloadMessage(raw));
+      setData(body);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Помилка кабінету");
     } finally {
