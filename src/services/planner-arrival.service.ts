@@ -1,4 +1,4 @@
-import { DiagnosticRequestStatus } from "@/src/generated/prisma/client";
+import { DiagnosticRequestStatus, LeadStatus } from "@/src/generated/prisma/client";
 import { evaluateWorkflowTransition } from "@/src/domain/workflow";
 import { getPrisma } from "@/src/lib/prisma";
 import { toPrismaJson } from "@/src/lib/prisma-json";
@@ -90,11 +90,7 @@ export async function arrivePlannerAppointment(id: string, body: Record<string, 
   const validation = await validatePlannerResources(input, id);
   if (validation.conflict) return { ok: false as const, conflict: validation.conflict };
 
-  const initialDecision = evaluateWorkflowTransition({
-    entity: "APPOINTMENT",
-    from: existing.status,
-    to: "ARRIVED",
-  });
+  const initialDecision = evaluateWorkflowTransition({ entity: "APPOINTMENT", from: existing.status, to: "ARRIVED" });
   if (existing.status !== "ARRIVED" && !initialDecision.allowed) {
     return { ok: false as const, workflowBlocked: true as const, workflowDecision: initialDecision };
   }
@@ -105,11 +101,7 @@ export async function arrivePlannerAppointment(id: string, body: Record<string, 
     const fresh = await tx.serviceAppointment.findUnique({ where: { id } });
     if (!fresh) return { ok: false as const, notFound: true as const };
 
-    const workflowDecision = evaluateWorkflowTransition({
-      entity: "APPOINTMENT",
-      from: fresh.status,
-      to: "ARRIVED",
-    });
+    const workflowDecision = evaluateWorkflowTransition({ entity: "APPOINTMENT", from: fresh.status, to: "ARRIVED" });
     if (fresh.status !== "ARRIVED" && !workflowDecision.allowed) {
       return { ok: false as const, workflowBlocked: true as const, workflowDecision };
     }
@@ -124,14 +116,47 @@ export async function arrivePlannerAppointment(id: string, body: Record<string, 
     let clientId = fresh.clientId;
     let vehicleId = fresh.vehicleId;
     let diagnosticRequestId: string | null = null;
+    let diagnosticStatus: DiagnosticRequestStatus | null = null;
     let leadUpdated = false;
     let reusedDiagnostic = false;
+    let followupWorkVisit = false;
 
-    if (fresh.leadId) {
+    if (fresh.workOrderId && clientId && vehicleId) {
+      const workOrder = await tx.workOrder.findUnique({
+        where: { id: fresh.workOrderId },
+        select: { id: true, clientId: true, vehicleId: true, diagnosticRequestId: true, diagnosticRequest: { select: { status: true } } },
+      });
+      if (!workOrder || workOrder.clientId !== clientId || workOrder.vehicleId !== vehicleId) {
+        return {
+          ok: false as const,
+          arrivalBlocked: true as const,
+          code: "WORK_ORDER_MISMATCH",
+          message: "Запис на роботи не відповідає клієнту або автомобілю. Потрібна перевірка сервіс-менеджера.",
+          workflowDecision,
+        };
+      }
+      diagnosticRequestId = workOrder.diagnosticRequestId;
+      diagnosticStatus = workOrder.diagnosticRequest.status;
+      reusedDiagnostic = true;
+      followupWorkVisit = true;
+      if (fresh.leadId) {
+        await tx.lead.update({
+          where: { id: fresh.leadId },
+          data: {
+            status: LeadStatus.ARRIVED,
+            nextContactAt: null,
+            nextAction: "Провести заплановані роботи",
+            lastActivityAt: new Date(),
+          },
+        });
+        leadUpdated = true;
+      }
+    } else if (fresh.leadId) {
       const conversion = await ensureLeadArrivalInTransaction(tx, fresh.leadId, "CRM / Планувальник");
       clientId = conversion.client.id;
       vehicleId = conversion.vehicle.id;
       diagnosticRequestId = conversion.diagnosticRequest.id;
+      diagnosticStatus = conversion.diagnosticRequest.status;
       leadUpdated = conversion.lead.status === "ARRIVED";
       reusedDiagnostic = conversion.reusedDiagnostic;
     } else if (clientId && vehicleId) {
@@ -141,39 +166,30 @@ export async function arrivePlannerAppointment(id: string, body: Record<string, 
 
       if (priorDiagnostic) {
         diagnosticRequestId = priorDiagnostic.id;
+        diagnosticStatus = priorDiagnostic.status;
         reusedDiagnostic = true;
       } else {
         const diagnostic = await tx.diagnosticRequest.create({
-          data: {
-            clientId,
-            vehicleId,
-            status: DiagnosticRequestStatus.PENDING,
-          },
+          data: { clientId, vehicleId, status: DiagnosticRequestStatus.PENDING },
         });
         diagnosticRequestId = diagnostic.id;
+        diagnosticStatus = diagnostic.status;
       }
     } else {
       return {
         ok: false as const,
         arrivalBlocked: true as const,
         code: "CLIENT_VEHICLE_REQUIRED",
-        message: "Перед відміткою «Приїхав» потрібно ідентифікувати клієнта та автомобіль або прив'язати запис до ліда.",
+        message: "Перед підтвердженням заїзду потрібно ідентифікувати клієнта та автомобіль або прив’язати запис до Активних.",
         workflowDecision,
       };
     }
 
-    if (diagnosticRequestId) {
+    if (diagnosticRequestId && !followupWorkVisit) {
       await tx.diagnosticAssignment.upsert({
         where: { diagnosticRequestId },
-        create: {
-          diagnosticRequestId,
-          locationId: input.locationId,
-          mechanicId: input.mechanicId,
-        },
-        update: {
-          locationId: input.locationId,
-          mechanicId: input.mechanicId,
-        },
+        create: { diagnosticRequestId, locationId: input.locationId, mechanicId: input.mechanicId },
+        update: { locationId: input.locationId, mechanicId: input.mechanicId },
       });
       await tx.diagnosticReview.upsert({
         where: { diagnosticRequestId },
@@ -210,11 +226,13 @@ export async function arrivePlannerAppointment(id: string, body: Record<string, 
             leadId: fresh.leadId,
             clientId,
             vehicleId,
+            workOrderId: fresh.workOrderId,
             diagnosticRequestId,
             leadUpdated,
             reusedDiagnostic,
-            diagnosticLocationId: input.locationId,
-            diagnosticMechanicId: input.mechanicId,
+            followupWorkVisit,
+            diagnosticLocationId: followupWorkVisit ? null : input.locationId,
+            diagnosticMechanicId: followupWorkVisit ? null : input.mechanicId,
             vehicleLocation: "RECEPTION",
             hardGate: "WORK_ORDER_AFTER_CONFIRMED_DIAGNOSTICS",
           }),
@@ -233,10 +251,12 @@ export async function arrivePlannerAppointment(id: string, body: Record<string, 
         leadId: fresh.leadId,
         clientId,
         vehicleId,
+        workOrderId: fresh.workOrderId,
         diagnosticRequestId,
-        diagnosticStatus: DiagnosticRequestStatus.PENDING,
+        diagnosticStatus,
         vehicleLocation: "RECEPTION" as const,
         reusedDiagnostic,
+        followupWorkVisit,
       },
     };
   });
