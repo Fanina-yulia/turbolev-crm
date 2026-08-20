@@ -1,0 +1,48 @@
+:root{
+  /* Shared semantic aliases for every CRM screen/component. Keep components from
+     falling back to light hard-coded colors while the application is in dark mode. */
+  --surface:var(--panel);
+  --surface-raised:var(--panel);
+  --surface-muted:var(--panel-2);
+  --surface-hover:color-mix(in srgb,var(--panel-2) 88%,var(--text) 12%);
+  --border:var(--line);
+  --border-subtle:color-mix(in srgb,var(--line) 78%,transparent);
+  --foreground:var(--text);
+  --text-primary:var(--text);
+  --text-secondary:var(--soft-text);
+  --text-muted:var(--muted);
+  --accent:var(--orange);
+  --accent-strong:var(--orange-2);
+  --success:var(--green);
+  --warning:var(--yellow);
+  --info:var(--blue);
+  --input-bg:var(--panel-2);
+  --input-text:var(--text);
+  --input-placeholder:var(--muted);
+}
+
+/* Native controls and browser autofill must follow the resolved CRM theme. */
+:root[data-theme="dark"] input,
+:root[data-theme="dark"] textarea,
+:root[data-theme="dark"] select{
+  color-scheme:dark;
+}
+:root[data-theme="light"] input,
+:root[data-theme="light"] textarea,
+:root[data-theme="light"] select{
+  color-scheme:light;
+}
+
+input::placeholder,
+textarea::placeholder{
+  color:var(--input-placeholder);
+  opacity:.72;
+}
+
+/* Disabled controls remain readable instead of becoming nearly white-on-white. */
+input:disabled,
+textarea:disabled,
+select:disabled,
+button:disabled{
+  -webkit-text-fill-color:currentColor;
+}
