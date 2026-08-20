@@ -1,3 +1,9 @@
+import {
+  VEHICLE_LIFECYCLE_CODES,
+  VEHICLE_LIFECYCLE_FLAGS,
+  type VehicleLifecycleCode,
+  type VehicleLifecycleFlag,
+} from "@/src/domain/vehicle-lifecycle";
 import { isRecord, payloadMessage } from "./crm-core.parsers";
 import { PLANNER_STATUS_VALUES, type PlannerStatusContract } from "./planner";
 import type {
@@ -9,12 +15,15 @@ import type {
   ServiceAdvisorFindingMediaContract,
   ServiceAdvisorFindingUrgency,
   ServiceAdvisorKpisContract,
+  ServiceAdvisorLifecycleContract,
   ServiceAdvisorStationReference,
 } from "./service-advisor";
 
 const PLANNER_STATUSES = new Set<string>(PLANNER_STATUS_VALUES);
-const DIAGNOSTIC_STATUSES = new Set(["PENDING", "IN_PROGRESS"]);
+const DIAGNOSTIC_STATUSES = new Set(["PENDING", "IN_PROGRESS", "CONFIRMED"]);
 const FINDING_URGENCIES = new Set(["INFO", "SOON", "CRITICAL"]);
+const LIFECYCLE_CODES = new Set<string>(VEHICLE_LIFECYCLE_CODES);
+const LIFECYCLE_FLAGS = new Set<string>(VEHICLE_LIFECYCLE_FLAGS);
 
 function requiredString(value: unknown) {
   if (typeof value !== "string") return null;
@@ -58,6 +67,19 @@ function parsePlannerStatus(value: unknown): PlannerStatusContract | null {
     : null;
 }
 
+function parseLifecycle(value: unknown): ServiceAdvisorLifecycleContract | null {
+  if (!isRecord(value)) return null;
+  const code = typeof value.code === "string" && LIFECYCLE_CODES.has(value.code) ? value.code as VehicleLifecycleCode : null;
+  const label = requiredString(value.label);
+  if (!Array.isArray(value.flags)) return null;
+  const flags: VehicleLifecycleFlag[] = [];
+  for (const raw of value.flags) {
+    if (typeof raw !== "string" || !LIFECYCLE_FLAGS.has(raw)) return null;
+    flags.push(raw as VehicleLifecycleFlag);
+  }
+  return code && label ? { code, label, flags } : null;
+}
+
 function parseStation(value: unknown): ServiceAdvisorStationReference | null {
   if (!isRecord(value)) return null;
   const id = requiredString(value.id);
@@ -68,27 +90,29 @@ function parseStation(value: unknown): ServiceAdvisorStationReference | null {
 function parseKpis(value: unknown): ServiceAdvisorKpisContract | null {
   if (!isRecord(value)) return null;
   const today = nonNegativeInteger(value.today);
-  const arrived = nonNegativeInteger(value.arrived);
+  const inWork = nonNegativeInteger(value.inWork);
+  const managerReview = nonNegativeInteger(value.managerReview);
   const approval = nonNegativeInteger(value.approval);
   const waitingParts = nonNegativeInteger(value.waitingParts);
   const inRepair = nonNegativeInteger(value.inRepair);
   const mechanicFindings = nonNegativeInteger(value.mechanicFindings);
-  if (today == null || arrived == null || approval == null || waitingParts == null || inRepair == null || mechanicFindings == null) return null;
-  return { today, arrived, approval, waitingParts, inRepair, mechanicFindings };
+  if (today == null || inWork == null || managerReview == null || approval == null || waitingParts == null || inRepair == null || mechanicFindings == null) return null;
+  return { today, inWork, managerReview, approval, waitingParts, inRepair, mechanicFindings };
 }
 
 function parseAppointment(value: unknown): ServiceAdvisorAppointmentContract | null {
   if (!isRecord(value)) return null;
   const id = requiredString(value.id);
   const status = parsePlannerStatus(value.status);
+  const lifecycle = value.lifecycle == null ? null : parseLifecycle(value.lifecycle);
   const start = dateString(value.start);
   const plate = requiredString(value.plate);
   const vehicle = requiredString(value.vehicle);
   const problem = nullableString(value.problem);
   const post = nullableString(value.post);
   const mechanic = nullableString(value.mechanic);
-  if (!id || !status || !start || !plate || !vehicle || problem === undefined || post === undefined || mechanic === undefined) return null;
-  return { id, status, start, plate, vehicle, problem, post, mechanic };
+  if (!id || !status || (value.lifecycle != null && !lifecycle) || !start || !plate || !vehicle || problem === undefined || post === undefined || mechanic === undefined) return null;
+  return { id, status, lifecycle, start, plate, vehicle, problem, post, mechanic };
 }
 
 function parseDiagnostic(value: unknown): ServiceAdvisorDiagnosticContract | null {
@@ -97,11 +121,12 @@ function parseDiagnostic(value: unknown): ServiceAdvisorDiagnosticContract | nul
   const status = typeof value.status === "string" && DIAGNOSTIC_STATUSES.has(value.status)
     ? value.status as ServiceAdvisorDiagnosticContract["status"]
     : null;
+  const lifecycle = parseLifecycle(value.lifecycle);
   const plate = requiredString(value.plate);
   const vehicle = requiredString(value.vehicle);
   const client = requiredString(value.client);
-  if (!id || !status || !plate || !vehicle || !client) return null;
-  return { id, status, plate, vehicle, client };
+  if (!id || !status || !lifecycle || !plate || !vehicle || !client) return null;
+  return { id, status, lifecycle, plate, vehicle, client };
 }
 
 function parseFindingMedia(value: unknown): ServiceAdvisorFindingMediaContract | null {
