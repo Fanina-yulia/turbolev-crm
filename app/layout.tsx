@@ -41,6 +41,7 @@ import { WorkPriceTableEnhancer } from "./work-price-table-enhancer";
 import { NewRequestContextBridge } from "./new-request-context-bridge";
 import { CrmScrollReset } from "./crm-scroll-reset";
 import { ActiveTerminologyBridge } from "./active-terminology-bridge";
+import { CanonicalStatusTextBridge } from "./canonical-status-text-bridge";
 import { TelephonyRealtimeBridge } from "./telephony-realtime-bridge";
 import { PlannerEditEnhancer } from "./planner-edit-enhancer";
 import { GlobalKeyboardShortcuts } from "./global-keyboard-shortcuts";
@@ -56,5 +57,5 @@ export const metadata: Metadata = { title: "Turbo LEV CRM", description: "Опе
 const themeBootstrap = `(function(){try{var saved=window.localStorage.getItem('turbolev-theme-mode')||window.localStorage.getItem('turbolev-theme')||'auto';if(saved!=='light'&&saved!=='dark'&&saved!=='auto')saved='auto';var resolved=saved==='light'||saved==='dark'?saved:(window.matchMedia('(prefers-color-scheme: light)').matches?'light':'dark');var root=document.documentElement;root.dataset.theme=resolved;root.dataset.themeMode=saved;root.style.colorScheme=resolved;}catch(e){}})();`;
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  return <html lang="uk" suppressHydrationWarning><head><script dangerouslySetInnerHTML={{ __html: themeBootstrap }} /></head><body><GlobalKeyboardShortcuts/><CabinetAutoRouter/><ServiceAdvisorCabinetBridge/><MechanicClarificationBridge/><CrmScrollReset/><ActiveTerminologyBridge/><PlannerEditEnhancer/><PhoneInputNormalizer/><LeadDetailsEnhancer/><VehicleConfigurationEnhancer/><WorkflowFilterEnhancer/><CrmDataBridge/><ClientsVehiclesRichCards/><WorkPriceTableEnhancer/><NewRequestContextBridge/><NewRequestVinDisplayEnhancer/><DiagnosticBookingEnhancer/><OptionalMechanicBookingBridge/><TelephonyRealtimeBridge/><CommunicationActivationDiagnosticsBridge/>{children}</body></html>;
+  return <html lang="uk" suppressHydrationWarning><head><script dangerouslySetInnerHTML={{ __html: themeBootstrap }} /></head><body><GlobalKeyboardShortcuts/><CabinetAutoRouter/><ServiceAdvisorCabinetBridge/><MechanicClarificationBridge/><CrmScrollReset/><ActiveTerminologyBridge/><CanonicalStatusTextBridge/><PlannerEditEnhancer/><PhoneInputNormalizer/><LeadDetailsEnhancer/><VehicleConfigurationEnhancer/><WorkflowFilterEnhancer/><CrmDataBridge/><ClientsVehiclesRichCards/><WorkPriceTableEnhancer/><NewRequestContextBridge/><NewRequestVinDisplayEnhancer/><DiagnosticBookingEnhancer/><OptionalMechanicBookingBridge/><TelephonyRealtimeBridge/><CommunicationActivationDiagnosticsBridge/>{children}</body></html>;
 }
