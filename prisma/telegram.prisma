@@ -1,0 +1,20 @@
+model TelegramContact {
+  id               String    @id
+  clientId         String    @unique
+  chatId           String?   @unique @db.VarChar(32)
+  telegramUserId   String?   @unique @db.VarChar(32)
+  username         String?   @db.VarChar(64)
+  firstName        String?   @db.VarChar(120)
+  lastName         String?   @db.VarChar(120)
+  linkTokenHash    String?   @unique @db.VarChar(64)
+  linkExpiresAt    DateTime? @db.Timestamp(6)
+  linkedAt         DateTime? @db.Timestamp(6)
+  lastInboundAt    DateTime? @db.Timestamp(6)
+  lastOutboundAt   DateTime? @db.Timestamp(6)
+  isActive         Boolean   @default(false)
+  createdAt        DateTime  @default(now()) @db.Timestamp(6)
+  updatedAt        DateTime  @default(now()) @updatedAt @db.Timestamp(6)
+
+  @@index([isActive, updatedAt])
+  @@index([linkExpiresAt])
+}
