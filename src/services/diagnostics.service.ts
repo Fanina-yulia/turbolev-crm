@@ -2,7 +2,6 @@ import { DiagnosticRequestStatus, DiagnosticReviewState } from "@/src/generated/
 import { evaluateWorkflowTransition, type WorkflowTransitionDecision } from "@/src/domain/workflow";
 import { getPrisma } from "@/src/lib/prisma";
 import { toPrismaJson } from "@/src/lib/prisma-json";
-import { createWorkOrderFromConfirmedDiagnostic } from "@/src/services/work-orders.service";
 import {
   buildStructuredTechnicalConclusion,
   getStructuredDiagnostic,
@@ -74,6 +73,28 @@ async function structuredMeta(ids: string[]) {
   return result;
 }
 
+async function reportShareMeta(ids: string[]) {
+  const prisma = getPrisma();
+  const result = new Map<string, { id: string; createdAt: Date; expiresAt: Date | null; revokedAt: Date | null; active: boolean }>();
+  if (!ids.length) return result;
+  const shares = await prisma.diagnosticReportShare.findMany({
+    where: { diagnosticRequestId: { in: ids } },
+    orderBy: [{ createdAt: "desc" }],
+    select: { id: true, diagnosticRequestId: true, createdAt: true, expiresAt: true, revokedAt: true },
+  });
+  for (const share of shares) {
+    if (result.has(share.diagnosticRequestId)) continue;
+    result.set(share.diagnosticRequestId, {
+      id: share.id,
+      createdAt: share.createdAt,
+      expiresAt: share.expiresAt,
+      revokedAt: share.revokedAt,
+      active: !share.revokedAt && (!share.expiresAt || share.expiresAt.getTime() > Date.now()),
+    });
+  }
+  return result;
+}
+
 export async function listDiagnostics(input?: { status?: DiagnosticRequestStatus | null; limit?: number }) {
   const prisma = getPrisma();
   const limit = Math.max(1, Math.min(500, input?.limit ?? 200));
@@ -88,17 +109,23 @@ export async function listDiagnostics(input?: { status?: DiagnosticRequestStatus
     orderBy: [{ updatedAt: "desc" }, { createdAt: "desc" }],
     take: limit,
   });
-  const meta = await structuredMeta(rows.map((row) => row.id));
+  const ids = rows.map((row) => row.id);
+  const [meta, reports] = await Promise.all([structuredMeta(ids), reportShareMeta(ids)]);
   return rows.map((row) => {
     const structured = meta.get(row.id);
-    return {
-      ...row,
-      reviewState: structured?.reviewState || DiagnosticReviewState.DRAFT,
-      workflowState: structured?.reviewState === DiagnosticReviewState.SUBMITTED
+    const reportShare = reports.get(row.id) || null;
+    const workflowState = row.status === DiagnosticRequestStatus.CONFIRMED && reportShare?.active
+      ? "CARD_SENT"
+      : structured?.reviewState === DiagnosticReviewState.SUBMITTED
         ? "SUBMITTED"
         : structured?.reviewState === DiagnosticReviewState.RETURNED
           ? "RETURNED"
-          : row.status,
+          : row.status;
+    return {
+      ...row,
+      reviewState: structured?.reviewState || DiagnosticReviewState.DRAFT,
+      workflowState,
+      reportShare,
       structured: {
         inspections: structured?.inspections || 0,
         checked: structured?.checked || 0,
@@ -121,20 +148,26 @@ export async function getDiagnostic(id: string) {
     },
   });
   if (!row) return null;
-  const meta = (await structuredMeta([id])).get(id);
+  const [meta, reports] = await Promise.all([structuredMeta([id]), reportShareMeta([id])]);
+  const structured = meta.get(id);
+  const reportShare = reports.get(id) || null;
+  const workflowState = row.status === DiagnosticRequestStatus.CONFIRMED && reportShare?.active
+    ? "CARD_SENT"
+    : structured?.reviewState === DiagnosticReviewState.SUBMITTED
+      ? "SUBMITTED"
+      : structured?.reviewState === DiagnosticReviewState.RETURNED
+        ? "RETURNED"
+        : row.status;
   return {
     ...row,
-    reviewState: meta?.reviewState || DiagnosticReviewState.DRAFT,
-    workflowState: meta?.reviewState === DiagnosticReviewState.SUBMITTED
-      ? "SUBMITTED"
-      : meta?.reviewState === DiagnosticReviewState.RETURNED
-        ? "RETURNED"
-        : row.status,
+    reviewState: structured?.reviewState || DiagnosticReviewState.DRAFT,
+    workflowState,
+    reportShare,
     structured: {
-      inspections: meta?.inspections || 0,
-      checked: meta?.checked || 0,
-      defects: meta?.defects || 0,
-      attention: meta?.attention || 0,
+      inspections: structured?.inspections || 0,
+      checked: structured?.checked || 0,
+      defects: structured?.defects || 0,
+      attention: structured?.attention || 0,
     },
   };
 }
@@ -153,11 +186,11 @@ export async function transitionDiagnostic(id: string, input: DiagnosticTransiti
   if (input.status === DiagnosticRequestStatus.CONFIRMED) {
     const structured = await getStructuredDiagnostic(id).catch(() => null);
     if (structured?.inspections.length && structured.diagnostic.review.state !== DiagnosticReviewState.SUBMITTED && structured.diagnostic.review.state !== DiagnosticReviewState.CONFIRMED) {
-      throw new DiagnosticValidationError("Автомеханік ще не передав структуровану діагностику сервіс-менеджеру.");
+      throw new DiagnosticValidationError("Автомеханік ще не завершив діагностику та не передав її сервіс-менеджеру.");
     }
     if (!conclusion && !current.technicalConclusion?.trim()) conclusion = await buildStructuredTechnicalConclusion(id).catch(() => null);
     if (!(conclusion || current.technicalConclusion?.trim())) {
-      throw new DiagnosticValidationError("Для підтвердження діагностики заповніть технічний висновок.");
+      throw new DiagnosticValidationError("Перед створенням діагностичної карти заповніть технічний висновок.");
     }
   }
 
@@ -190,6 +223,7 @@ export async function transitionDiagnostic(id: string, input: DiagnosticTransiti
             actions: freshDecision.actions,
             hardGate: "WORK_ORDER_AFTER_CONFIRMED_DIAGNOSTICS",
             structured: true,
+            workOrderCreationDeferred: input.status === DiagnosticRequestStatus.CONFIRMED,
           }),
         },
       });
@@ -210,26 +244,11 @@ export async function transitionDiagnostic(id: string, input: DiagnosticTransiti
     });
   }
 
-  let workOrder = current.workOrder;
   if (input.status === DiagnosticRequestStatus.CONFIRMED) {
-    const hadWorkOrder = Boolean(current.workOrder);
-    workOrder = await createWorkOrderFromConfirmedDiagnostic(id);
     await markStructuredDiagnosticConfirmed(id, input.reviewerUserId || null).catch(() => undefined);
-    if (!hadWorkOrder) {
-      await prisma.auditEvent.create({
-        data: {
-          actorName,
-          entityType: "WorkOrder",
-          entityId: workOrder.id,
-          action: "CREATE_AFTER_CONFIRMED_DIAGNOSTICS",
-          after: toPrismaJson(workOrder),
-          metadata: toPrismaJson({ diagnosticRequestId: id, hardGate: "WORK_ORDER_AFTER_CONFIRMED_DIAGNOSTICS", passed: true }),
-        },
-      }).catch(() => undefined);
-    }
   }
 
   const diagnostic = await getDiagnostic(id);
   if (!diagnostic) throw new DiagnosticNotFoundError(id);
-  return { diagnostic, workOrder: diagnostic.workOrder ?? workOrder, workflowDecision: decision };
+  return { diagnostic, workOrder: diagnostic.workOrder ?? current.workOrder, workflowDecision: decision };
 }
