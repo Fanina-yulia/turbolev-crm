@@ -67,6 +67,8 @@ export function scopeCovers(actual: AccessScopeCode | null | undefined, required
 
 export const NAV_PERMISSION: Record<string, PermissionCode> = {
   overview: PERMISSIONS.OVERVIEW_READ,
+  tasks: PERMISSIONS.OVERVIEW_READ,
+  inquiries: PERMISSIONS.COMMUNICATIONS_READ,
   communications: PERMISSIONS.COMMUNICATIONS_READ,
   leads: PERMISSIONS.LEADS_READ,
   clients: PERMISSIONS.CLIENTS_READ,
