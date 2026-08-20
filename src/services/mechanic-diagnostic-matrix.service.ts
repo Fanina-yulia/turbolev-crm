@@ -5,6 +5,7 @@ import {
 } from "@/src/generated/prisma/client";
 import { getPrisma } from "@/src/lib/prisma";
 import { toPrismaJson } from "@/src/lib/prisma-json";
+import { DIAGNOSTIC_TEMPLATE_SEEDS } from "@/src/services/diagnostic-template-seeds";
 import {
   ensureDefaultDiagnosticTemplates,
   getMechanicByUserId,
@@ -54,8 +55,13 @@ export async function startMechanicDiagnosticByType(userId: string, diagnosticRe
     const template = await prisma.diagnosticTemplate.findFirst({ where: { code, isActive: true } });
     if (!template) throw new StructuredDiagnosticError("TEMPLATE_NOT_FOUND", "Шаблон діагностики не знайдено.", 404);
 
+    const seed = DIAGNOSTIC_TEMPLATE_SEEDS.find((item) => item.code === code);
+    const currentSectionCodes = seed?.sections.map((section) => section.code) ?? [];
     const sections = await prisma.diagnosticTemplateSection.findMany({
-      where: { templateId: template.id },
+      where: {
+        templateId: template.id,
+        ...(currentSectionCodes.length ? { code: { in: currentSectionCodes } } : {}),
+      },
       select: { id: true },
     });
     const items = sections.length
@@ -95,7 +101,7 @@ export async function startMechanicDiagnosticByType(userId: string, diagnosticRe
         entityType: "DiagnosticRequest",
         entityId: diagnosticRequestId,
         action: "STATUS_PENDING_TO_IN_PROGRESS",
-        metadata: toPrismaJson({ source: "MECHANIC_DIAGNOSTIC_MATRIX" }),
+        metadata: toPrismaJson({ source: "MECHANIC_DIAGNOSTIC_MATRIX", templateCode: requestedTemplateCode([diagnostic.lead?.need, diagnostic.lead?.comment].filter(Boolean).join(" · ")) }),
       },
     }).catch(() => undefined);
   }
