@@ -38,11 +38,12 @@ export async function GET(request: Request) {
 
     const vehicleIds = Array.from(new Set(appointments.map((item) => item.vehicleId).filter((value): value is string => Boolean(value))));
     const workOrderIds = Array.from(new Set(appointments.map((item) => item.workOrderId).filter((value): value is string => Boolean(value))));
+    const clientIds = Array.from(new Set(appointments.map((item) => item.clientId).filter((value): value is string => Boolean(value))));
 
-    const [diagnostics, findings] = await Promise.all([
+    const [diagnostics, findings, appointmentClients] = await Promise.all([
       vehicleIds.length ? prisma.diagnosticRequest.findMany({
         where: { status: { in: ["PENDING", "IN_PROGRESS"] }, vehicleId: { in: vehicleIds } },
-        include: { vehicle: { select: { brand: true, model: true, plateNumber: true } }, client: { select: { name: true, phone: true } } },
+        include: { vehicle: { select: { brand: true, model: true, plateNumber: true } }, client: { select: { id: true, name: true, phone: true } } },
         orderBy: { updatedAt: "desc" },
         take: 12,
       }) : [],
@@ -52,8 +53,13 @@ export async function GET(request: Request) {
         orderBy: [{ urgency: "desc" }, { updatedAt: "desc" }],
         take: 20,
       }) : [],
+      clientIds.length ? prisma.client.findMany({
+        where: { id: { in: clientIds } },
+        select: { id: true, name: true, phone: true },
+      }) : [],
     ]);
 
+    const clientMap = new Map(appointmentClients.map((item) => [item.id, item]));
     const findingLineIds = Array.from(new Set(findings.map((item) => item.workOrderLineId)));
     const findingOrderIds = Array.from(new Set(findings.map((item) => item.workOrderId)));
     const findingUserIds = Array.from(new Set(findings.map((item) => item.mechanicUserId)));
@@ -79,22 +85,35 @@ export async function GET(request: Request) {
         inRepair: count("READY_FOR_REPAIR", "IN_REPAIR"),
         mechanicFindings: findings.length,
       },
-      appointments: appointments.map((x) => ({
-        id: x.id,
-        status: x.status,
-        start: x.plannedStartAt,
-        plate: x.plateNumber || "—",
-        vehicle: x.vehicleLabel || "Автомобіль",
-        problem: x.problem,
-        post: x.post?.name || null,
-        mechanic: x.mechanic?.name || null,
-      })),
+      appointments: appointments.map((x) => {
+        const client = x.clientId ? clientMap.get(x.clientId) : null;
+        return {
+          id: x.id,
+          status: x.status,
+          start: x.plannedStartAt,
+          plate: x.plateNumber || "—",
+          vehicle: x.vehicleLabel || "Автомобіль",
+          problem: x.problem,
+          post: x.post?.name || null,
+          mechanic: x.mechanic?.name || null,
+          owner: {
+            id: client?.id || x.clientId || null,
+            name: client?.name || x.customerName || null,
+            phone: client?.phone || x.phone || null,
+          },
+        };
+      }),
       diagnostics: diagnostics.map((x) => ({
         id: x.id,
         status: x.status,
         plate: x.vehicle.plateNumber || "—",
         vehicle: [x.vehicle.brand, x.vehicle.model].filter(Boolean).join(" ") || "Автомобіль",
-        client: x.client.name || x.client.phone,
+        client: [x.client.name, x.client.phone].filter(Boolean).join(" · ") || "Клієнт",
+        owner: {
+          id: x.client.id,
+          name: x.client.name,
+          phone: x.client.phone,
+        },
       })),
       mechanicFindings: findings.map((finding) => {
         const order = orderMap.get(finding.workOrderId);
