@@ -19,7 +19,7 @@ async function observePlannerTransition(id: string, requestedStatus: unknown) {
   if (!existing || existing.status === to) return null;
   const decision = evaluateWorkflowTransition({ entity: "APPOINTMENT", from: existing.status, to });
   if (!decision.allowed) {
-    console.warn("Planner workflow observe-mode deviation", {
+    console.warn("Planner workflow deviation blocked", {
       appointmentId: id,
       from: existing.status,
       to,
@@ -29,6 +29,34 @@ async function observePlannerTransition(id: string, requestedStatus: unknown) {
     });
   }
   return decision;
+}
+
+function workflowManagedStatusResponse(code: string) {
+  if (code === "ARRIVAL_REQUIRES_WORKFLOW") {
+    return NextResponse.json({
+      status: "WORKFLOW_ACTION_REQUIRED",
+      code,
+      message: "Факт заїзду підтверджується скануванням автомобіля в кабінеті механіка. Статус «В роботі» зміниться автоматично.",
+    }, { status: 409 });
+  }
+  if (code === "APPOINTMENT_STATUS_MANAGED_BY_WORKFLOW") {
+    return NextResponse.json({
+      status: "WORKFLOW_ACTION_REQUIRED",
+      code,
+      message: "Цей статус змінюється автоматично діями у діагностиці, підборі деталей, ремонті, контролі якості або оплаті.",
+    }, { status: 409 });
+  }
+  if (code === "APPOINTMENT_STATUS_TRANSITION_BLOCKED") {
+    return NextResponse.json({
+      status: "WORKFLOW_BLOCKED",
+      code,
+      message: "Такий перехід статусу не дозволений поточним етапом роботи з автомобілем.",
+    }, { status: 409 });
+  }
+  if (code === "INVALID_APPOINTMENT_STATUS") {
+    return NextResponse.json({ status: "INVALID_DATA", code, message: "Невідомий технічний статус запису." }, { status: 400 });
+  }
+  return null;
 }
 
 export async function PATCH(request: Request, context: { params: Promise<{ id: string }> }) {
@@ -47,7 +75,7 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
     if (!result.ok && "workflowBlocked" in result) {
       return NextResponse.json({
         status: "WORKFLOW_BLOCKED",
-        message: "Перехід у статус «Приїхав» заборонений поточним Workflow Runtime.",
+        message: "Заїзд не може бути підтверджений з поточного стану запису.",
         workflowDecision: result.workflowDecision,
       }, { status: 409 });
     }
@@ -96,7 +124,7 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
       return NextResponse.json({
         status: "ARRIVAL_BLOCKED",
         code: "LEAD_NOT_FOUND",
-        message: "Запис посилається на лід, якого вже немає в CRM. Потрібна ручна перевірка.",
+        message: "Запис посилається на активний запис, якого вже немає в CRM. Потрібна ручна перевірка.",
       }, { status: 409 });
     }
     if (error instanceof LeadArrivalConflictError) {
@@ -108,6 +136,8 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
     }
 
     const code = error instanceof Error ? error.message : "UNKNOWN";
+    const managed = workflowManagedStatusResponse(code);
+    if (managed) return managed;
     const message = code === "INVALID_TIME_RANGE"
       ? "Час завершення має бути пізніше часу початку."
       : code === "APPOINTMENT_TOO_LONG"
@@ -123,10 +153,17 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
 
 export async function DELETE(_request: Request, context: { params: Promise<{ id: string }> }) {
   const { id } = await context.params;
-  const workflowObservation = await observePlannerTransition(id, "CANCELLED");
-  const result = await updatePlannerAppointment(id, { status: "CANCELLED" });
-  if (!result.ok && "notFound" in result) {
-    return NextResponse.json({ status: "NOT_FOUND", message: "Запис не знайдено." }, { status: 404 });
+  try {
+    const workflowObservation = await observePlannerTransition(id, "CANCELLED");
+    const result = await updatePlannerAppointment(id, { status: "CANCELLED" });
+    if (!result.ok && "notFound" in result) {
+      return NextResponse.json({ status: "NOT_FOUND", message: "Запис не знайдено." }, { status: 404 });
+    }
+    return NextResponse.json({ status: "CANCELLED", appointment: result.ok ? result.appointment : null, workflowObservation });
+  } catch (error) {
+    const code = error instanceof Error ? error.message : "UNKNOWN";
+    const managed = workflowManagedStatusResponse(code);
+    if (managed) return managed;
+    return NextResponse.json({ status: "INVALID_DATA", message: "Не вдалося скасувати запис." }, { status: 400 });
   }
-  return NextResponse.json({ status: "CANCELLED", appointment: result.ok ? result.appointment : null, workflowObservation });
 }
