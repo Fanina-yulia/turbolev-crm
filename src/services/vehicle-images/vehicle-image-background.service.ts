@@ -6,6 +6,8 @@ import {
   getOpenAIVehicleImageConfig,
   getVehicleImageLibraryState,
 } from "./openai-library.service";
+import { normalizeThemePaint } from "./vehicle-color.service";
+import { getOpenAIVehiclePaint } from "./openai-vehicle-paint";
 
 const TARGET_IMAGE_BYTES = 100 * 1024;
 const OPENAI_IMAGES_URL = "https://api.openai.com/v1/images/generations";
@@ -74,7 +76,17 @@ async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs: numbe
 async function buildCompatibilityPrompt(vehicleId: string, themePaint?: string | null) {
   const vehicle = await getPrisma().vehicle.findUnique({
     where: { id: vehicleId },
-    select: { brand: true, model: true, year: true, bodyType: true },
+    select: {
+      brand: true,
+      model: true,
+      year: true,
+      bodyType: true,
+      exteriorColorName: true,
+      exteriorColorHex: true,
+      exteriorPaintCode: true,
+      exteriorColorSource: true,
+      exteriorColorConfirmed: true,
+    },
   });
   if (!vehicle?.brand?.trim() || !vehicle.model?.trim()) {
     throw new Error("Для резервної генерації потрібні марка і модель автомобіля.");
@@ -82,13 +94,20 @@ async function buildCompatibilityPrompt(vehicleId: string, themePaint?: string |
   const identity = [vehicle.brand.trim(), vehicle.model.trim(), vehicle.year || null, vehicle.bodyType?.trim() || null]
     .filter(Boolean)
     .join(" ");
-  const paint = themePaint?.trim() || "rich warm orange automotive paint";
+  const theme = normalizeThemePaint(themePaint, "Imagin-orange");
+  const paint = getOpenAIVehiclePaint({
+    exteriorColorName: vehicle.exteriorColorName,
+    exteriorColorHex: vehicle.exteriorColorHex,
+    exteriorPaintCode: vehicle.exteriorPaintCode,
+    exteriorColorSource: vehicle.exteriorColorSource ? String(vehicle.exteriorColorSource) : null,
+    exteriorColorConfirmed: vehicle.exteriorColorConfirmed,
+  }, theme);
   return [
     "Create exactly one photorealistic production vehicle cutout for a professional automotive service CRM card.",
     `Vehicle: ${identity}.`,
     "Match the real production generation, silhouette, body proportions, roofline, lights, grille, bumpers, wheel arches, glazing and door layout as closely as possible.",
     "Show the complete vehicle, facing right, in a clean front three-quarter side view, centered, with all tires visible and no cropping.",
-    `Use ${paint} while preserving realistic automotive materials and reflections.`,
+    paint.instruction,
     "Compatibility background rule: render the entire background as one perfectly uniform pure chroma-key magenta color #FF00FF.",
     "The magenta background must contain no floor, no road, no scenery, no studio wall, no gradient, no texture, no cast shadow and no reflected objects.",
     "Do not use magenta anywhere on the vehicle itself. Do not add people, text, captions, watermarks or readable license-plate text.",

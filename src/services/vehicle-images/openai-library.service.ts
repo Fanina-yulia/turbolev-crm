@@ -3,10 +3,11 @@ import { getPrisma } from "@/src/lib/prisma";
 import { getSqlPool } from "@/src/lib/sql";
 import { getIntegrationCredential } from "@/src/services/integration-credentials.service";
 import { normalizeThemePaint } from "./vehicle-color.service";
+import { getOpenAIVehiclePaint, type OpenAIVehiclePaintSpec } from "./openai-vehicle-paint";
 
 const OPENAI_IMAGES_URL = "https://api.openai.com/v1/images/generations";
 const OPENAI_MODELS_URL = "https://api.openai.com/v1/models";
-const PROMPT_VERSION = "vehicle-card-v3-transparent-png";
+const PROMPT_VERSION = "vehicle-card-v4-real-color-transparent-png";
 const GENERATION_LOCK_MS = 10 * 60 * 1000;
 const ERROR_RETRY_MS = 30 * 60 * 1000;
 const MAX_IMAGE_BYTES = 12 * 1024 * 1024;
@@ -28,6 +29,11 @@ type VehicleDescriptor = {
   model: string;
   year: number | null;
   bodyType: string | null;
+  exteriorColorName: string | null;
+  exteriorColorHex: string | null;
+  exteriorPaintCode: string | null;
+  exteriorColorSource: string | null;
+  exteriorColorConfirmed: boolean;
 };
 
 type LibraryAssetRow = {
@@ -64,17 +70,21 @@ export type VehicleImageLibraryState = {
 function cleanPart(value: string | null | undefined) {
   return (value || "").normalize("NFKC").trim().replace(/\s+/g, " ").replace(/[‐‑‒–—]/g, "-");
 }
+
 function keyPart(value: string | null | undefined) {
   return cleanPart(value).toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "-").replace(/^-+|-+$/g, "");
 }
+
 function parseBoolean(value: string | undefined, fallback: boolean) {
   if (!value?.trim()) return fallback;
   return !/^(0|false|off|no|ні)$/i.test(value.trim());
 }
+
 function parseQuality(value: string | undefined): ImageQuality {
   const quality = value?.trim().toLowerCase();
   return quality === "low" || quality === "medium" || quality === "high" || quality === "auto" ? quality : "medium";
 }
+
 function parseSize(value: string | undefined): ImageSize {
   return value === "1024x1024" || value === "1024x1536" || value === "1536x1024" ? value : "1536x1024";
 }
@@ -95,38 +105,52 @@ export async function getOpenAIVehicleImageConfig(): Promise<VehicleImageConfig 
 async function loadVehicleDescriptor(vehicleId: string): Promise<VehicleDescriptor | null> {
   const vehicle = await getPrisma().vehicle.findUnique({
     where: { id: vehicleId },
-    select: { id: true, brand: true, model: true, year: true, bodyType: true },
+    select: {
+      id: true,
+      brand: true,
+      model: true,
+      year: true,
+      bodyType: true,
+      exteriorColorName: true,
+      exteriorColorHex: true,
+      exteriorPaintCode: true,
+      exteriorColorSource: true,
+      exteriorColorConfirmed: true,
+    },
   });
   if (!vehicle) return null;
-  const make = cleanPart(vehicle.brand);
-  const model = cleanPart(vehicle.model);
-  if (!make || !model) return { vehicleId: vehicle.id, make, model, year: vehicle.year, bodyType: cleanPart(vehicle.bodyType) || null };
-  return { vehicleId: vehicle.id, make, model, year: vehicle.year, bodyType: cleanPart(vehicle.bodyType) || null };
+  return {
+    vehicleId: vehicle.id,
+    make: cleanPart(vehicle.brand),
+    model: cleanPart(vehicle.model),
+    year: vehicle.year,
+    bodyType: cleanPart(vehicle.bodyType) || null,
+    exteriorColorName: cleanPart(vehicle.exteriorColorName) || null,
+    exteriorColorHex: cleanPart(vehicle.exteriorColorHex) || null,
+    exteriorPaintCode: cleanPart(vehicle.exteriorPaintCode) || null,
+    exteriorColorSource: vehicle.exteriorColorSource ? String(vehicle.exteriorColorSource) : null,
+    exteriorColorConfirmed: vehicle.exteriorColorConfirmed,
+  };
 }
 
 function normalizedTheme(themePaint?: string | null) {
   return normalizeThemePaint(themePaint, "Imagin-orange");
 }
-function themeDescription(theme: string) {
-  const map: Record<string, string> = {
-    "Imagin-black": "deep glossy graphite-black paint",
-    "Imagin-grey": "clean metallic graphite-grey paint",
-    "Imagin-white": "clean pearl-white paint with subtle grey shading",
-    "Imagin-blue": "rich modern automotive blue paint",
-    "Imagin-yellow": "warm premium yellow-gold automotive paint",
-    "Imagin-red": "deep premium red automotive paint",
-    "Imagin-orange": "rich warm orange automotive paint, approximately #EF6B24",
-    "Imagin-green": "deep modern automotive green paint",
-  };
-  return map[theme] || map["Imagin-orange"];
-}
 
 function libraryKeyFor(vehicle: VehicleDescriptor, theme: string) {
-  const identity = [PROMPT_VERSION, keyPart(vehicle.make), keyPart(vehicle.model), vehicle.year == null ? "year-unknown" : String(vehicle.year), keyPart(vehicle.bodyType) || "body-unknown", theme.toLowerCase()].join("|");
+  const paint = getOpenAIVehiclePaint(vehicle, theme);
+  const identity = [
+    PROMPT_VERSION,
+    keyPart(vehicle.make),
+    keyPart(vehicle.model),
+    vehicle.year == null ? "year-unknown" : String(vehicle.year),
+    keyPart(vehicle.bodyType) || "body-unknown",
+    paint.signature,
+  ].join("|");
   return createHash("sha256").update(identity, "utf8").digest("hex");
 }
 
-function masterPrompt(vehicle: VehicleDescriptor, theme: string) {
+function masterPrompt(vehicle: VehicleDescriptor, paint: OpenAIVehiclePaintSpec) {
   const year = vehicle.year ? String(vehicle.year) : "model year not provided";
   const body = vehicle.bodyType ? ` Body type: ${vehicle.bodyType}.` : "";
   return [
@@ -135,7 +159,7 @@ function masterPrompt(vehicle: VehicleDescriptor, theme: string) {
     "The vehicle must visually match the real production make, model and model-year/generation as closely as possible. Preserve the generation-specific silhouette, body proportions, roofline, glazing, lights, grille, bumpers, wheel arches and door layout.",
     "Do not substitute a generic car, a different generation, a different body style or a visually similar model. If the model-year is supplied, prioritize generation accuracy over decorative styling.",
     "Composition standard for the whole library: full vehicle visible, facing right, clean front three-quarter side view, camera near belt-line height, natural realistic proportions, centered horizontally, tires fully visible, no cropping.",
-    `Paint the vehicle in ${themeDescription(theme)} so it harmonizes with the CRM theme while keeping realistic automotive reflections.`,
+    paint.instruction,
     "The background must be fully transparent alpha. Every pixel outside the vehicle must remain transparent: no white, grey or colored backdrop, no road, no scenery, no studio wall, no floor, no gradient panel and no environmental reflections that imply a background.",
     "No people, no text, no captions, no watermark and no readable license-plate text. Use a blank neutral plate area if a plate holder is visible.",
     "Avoid large cast shadows. At most, use a tiny soft contact shadow immediately beneath the tires; never create a visible studio floor or a shadow field around the vehicle.",
@@ -207,8 +231,11 @@ function openAIErrorMessage(payload: unknown, fallback: string) {
 async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs: number) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
-  try { return await fetch(url, { ...init, signal: controller.signal, cache: "no-store" }); }
-  finally { clearTimeout(timer); }
+  try {
+    return await fetch(url, { ...init, signal: controller.signal, cache: "no-store" });
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 async function generatePng(config: VehicleImageConfig, prompt: string) {
@@ -238,7 +265,7 @@ async function generatePng(config: VehicleImageConfig, prompt: string) {
   }
   if (!bytes?.length) throw new Error("OpenAI не повернув байти зображення.");
   if (bytes.length > MAX_IMAGE_BYTES) throw new Error(`PNG завеликий для CRM: ${Math.round(bytes.length / 1024)} KB.`);
-  const signature = Buffer.from([0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a]);
+  const signature = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
   if (bytes.length < signature.length || !bytes.subarray(0, signature.length).equals(signature)) throw new Error("OpenAI повернув файл, який не є PNG.");
   return bytes;
 }
@@ -267,14 +294,15 @@ export async function generateVehicleImageForVehicle(vehicleId: string, options?
   if (!vehicle.make || !vehicle.model) throw new Error("Для генерації зображення потрібні марка і модель автомобіля.");
 
   const theme = normalizedTheme(options?.themePaint);
+  const paint = getOpenAIVehiclePaint(vehicle, theme);
   const libraryKey = libraryKeyFor(vehicle, theme);
-  const prompt = masterPrompt(vehicle, theme);
+  const prompt = masterPrompt(vehicle, paint);
   const existing = await findAssetByKey(libraryKey);
   const now = Date.now();
 
-  if (!options?.force && existing?.status === "READY") return { state: "READY" as const, assetId: existing.id, libraryKey };
-  if (!options?.force && existing?.status === "GENERATING" && now - new Date(existing.updatedAt).getTime() < GENERATION_LOCK_MS) return { state: "GENERATING" as const, assetId: existing.id, libraryKey };
-  if (!options?.force && existing?.status === "ERROR" && now - new Date(existing.updatedAt).getTime() < ERROR_RETRY_MS) return { state: "ERROR" as const, assetId: existing.id, libraryKey, error: existing.lastError };
+  if (!options?.force && existing?.status === "READY") return { state: "READY" as const, assetId: existing.id, libraryKey, requestedColor: paint.requestedColor };
+  if (!options?.force && existing?.status === "GENERATING" && now - new Date(existing.updatedAt).getTime() < GENERATION_LOCK_MS) return { state: "GENERATING" as const, assetId: existing.id, libraryKey, requestedColor: paint.requestedColor };
+  if (!options?.force && existing?.status === "ERROR" && now - new Date(existing.updatedAt).getTime() < ERROR_RETRY_MS) return { state: "ERROR" as const, assetId: existing.id, libraryKey, error: existing.lastError, requestedColor: paint.requestedColor };
 
   const assetId = existing?.id || `vimg_${randomUUID().replace(/-/g, "")}`;
   const pool = getSqlPool();
@@ -295,7 +323,7 @@ export async function generateVehicleImageForVehicle(vehicleId: string, options?
       [claimed.id, config.model, png, png.length],
     );
     await finishJob(jobId, "DONE");
-    return { state: "READY" as const, assetId: claimed.id, libraryKey };
+    return { state: "READY" as const, assetId: claimed.id, libraryKey, requestedColor: paint.requestedColor };
   } catch (error) {
     const message = error instanceof Error ? error.message : "Помилка генерації зображення.";
     await pool.query(`UPDATE public."VehicleImageLibraryAsset" SET "status"='ERROR',"lastError"=$2,"updatedAt"=CURRENT_TIMESTAMP WHERE "id"=$1`, [claimed.id, message.slice(0, 4000)]).catch(() => undefined);
