@@ -25,13 +25,15 @@ type Finding = {
   media: Array<{ id: string; fileName: string; mimeType: string; fileSize: number; url: string }>;
 };
 
+type Owner = { id: string | null; name: string | null; phone: string | null };
+
 type Data = {
   ok: boolean;
   linked: boolean;
   station?: { id: string; name: string };
   kpis?: { today: number; arrived: number; approval: number; waitingParts: number; inRepair: number; mechanicFindings: number };
-  appointments?: Array<{ id: string; status: string; start: string; plate: string; vehicle: string; problem: string | null; post: string | null; mechanic: string | null }>;
-  diagnostics?: Array<{ id: string; status: string; plate: string; vehicle: string; client: string }>;
+  appointments?: Array<{ id: string; status: string; start: string; plate: string; vehicle: string; problem: string | null; post: string | null; mechanic: string | null; owner: Owner }>;
+  diagnostics?: Array<{ id: string; status: string; plate: string; vehicle: string; client: string; owner: Owner }>;
   mechanicFindings?: Finding[];
 };
 
@@ -43,6 +45,10 @@ function nav(section: string, filter = "", label = "") {
 
 function time(value: string) {
   return new Intl.DateTimeFormat("uk-UA", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Kyiv" }).format(new Date(value));
+}
+
+function ownerText(owner: Owner) {
+  return [owner.name?.trim(), owner.phone?.trim()].filter(Boolean).join(" · ") || "Власник не вказаний";
 }
 
 function urgencyLabel(value: string) {
@@ -126,7 +132,7 @@ function Dashboard({ data }: { data: Data }) {
     <div className={styles.columns}>
       <section className={styles.panel}>
         <div className={styles.panelHead}><div><span className={styles.eyebrow}>СЬОГОДНІ</span><h2>Черга автомобілів</h2></div></div>
-        <div className={styles.list}>{appointments.length ? appointments.map((a) => <button key={a.id} className={styles.row} onClick={() => nav("Планувальник", a.id, `${a.plate} · ${a.vehicle}`)}><time>{time(a.start)}</time><div><b>{a.plate} · {a.vehicle}</b><span>{a.problem || "Без опису звернення"}</span><small>{a.post || "Без поста"}{a.mechanic ? ` · ${a.mechanic}` : ""}</small></div><em className={styles.badge}>{a.status}</em></button>) : <div className={styles.empty}>Записів на сьогодні немає.</div>}</div>
+        <div className={styles.list}>{appointments.length ? appointments.map((a) => <button key={a.id} className={styles.row} onClick={() => nav("Планувальник", a.id, `${a.plate} · ${a.vehicle}`)}><time>{time(a.start)}</time><div><b>{a.plate} · {a.vehicle}</b><span>{a.problem || "Без опису звернення"}</span><small>Власник: {ownerText(a.owner)}</small><small>{a.post || "Без поста"}{a.mechanic ? ` · ${a.mechanic}` : ""}</small></div><em className={styles.badge}>{a.status}</em></button>) : <div className={styles.empty}>Записів на сьогодні немає.</div>}</div>
       </section>
 
       <aside className={styles.panel}>
@@ -152,7 +158,7 @@ function Dashboard({ data }: { data: Data }) {
         </article>) : <div className={styles.empty}>Нових зауважень від механіків немає.</div>}</div>
 
         <div className={styles.panelHead}><div><span className={styles.eyebrow}>ДІАГНОСТИКА</span><h2>Потребує опрацювання</h2></div></div>
-        <div className={styles.list}>{diagnostics.length ? diagnostics.map((d) => <button key={d.id} className={styles.row} onClick={() => nav("Діагностика", d.id, `${d.plate} · ${d.vehicle}`)}><div><b>{d.plate}</b></div><div><b>{d.vehicle}</b><small>{d.client}</small></div><em className={styles.badge}>{d.status}</em></button>) : <div className={styles.empty}>Активних діагностик немає.</div>}</div>
+        <div className={styles.list}>{diagnostics.length ? diagnostics.map((d) => <button key={d.id} className={styles.row} onClick={() => nav("Діагностика", d.id, `${d.plate} · ${d.vehicle}`)}><div><b>{d.plate}</b></div><div><b>{d.vehicle}</b><small>Власник: {ownerText(d.owner)}</small></div><em className={styles.badge}>{d.status}</em></button>) : <div className={styles.empty}>Активних діагностик немає.</div>}</div>
         <div className={styles.panelHead}><div><span className={styles.eyebrow}>ШВИДКІ ДІЇ</span></div></div>
         <div className={styles.quick}><button onClick={() => nav("Діагностика")}>Діагностика</button><button onClick={() => nav("Замовлення-наряди")}>Кошториси</button><button onClick={() => nav("Підбір запчастин")}>Запчастини</button><button onClick={() => nav("Клієнти")}>Клієнти</button></div>
       </aside>
