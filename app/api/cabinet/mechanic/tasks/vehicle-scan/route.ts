@@ -282,34 +282,37 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ ok: false, error: "VEHICLE_NOT_ASSIGNED", message: "Цей автомобіль не закріплений за вами." }, { status: 403 });
       }
 
-      const arrival = await arrivePlannerAppointment(appointment.id, {});
-      if (!arrival.ok) {
-        const status = "notFound" in arrival && arrival.notFound ? 404 : "workflowBlocked" in arrival && arrival.workflowBlocked ? 409 : 400;
-        const message = "arrivalBlocked" in arrival && arrival.arrivalBlocked
-          ? arrival.message
-          : "Не вдалося підтвердити прибуття автомобіля. Перевірте дані запису.";
-        return NextResponse.json({ ok: false, error: "MECHANIC_ARRIVAL_FAILED", message }, { status });
-      }
+      const shouldApplyArrival = appointment.status === "BOOKED" || appointment.status === "ARRIVED";
+      if (shouldApplyArrival) {
+        const arrival = await arrivePlannerAppointment(appointment.id, {});
+        if (!arrival.ok) {
+          const status = "notFound" in arrival && arrival.notFound ? 404 : "workflowBlocked" in arrival && arrival.workflowBlocked ? 409 : 400;
+          const message = "arrivalBlocked" in arrival && arrival.arrivalBlocked
+            ? arrival.message
+            : "Не вдалося підтвердити прибуття автомобіля. Перевірте дані запису.";
+          return NextResponse.json({ ok: false, error: "MECHANIC_ARRIVAL_FAILED", message }, { status });
+        }
 
-      arrivalApplied = true;
-      finalAppointmentStatus = arrival.appointment.status;
-      diagnosticRequestId = arrival.workflowAction.diagnosticRequestId || null;
-      const arrivalVehicleId = arrival.workflowAction.vehicleId || vehicle?.id || appointment.vehicleId || null;
+        arrivalApplied = true;
+        finalAppointmentStatus = arrival.appointment.status;
+        diagnosticRequestId = arrival.workflowAction.diagnosticRequestId || null;
+        const arrivalVehicleId = arrival.workflowAction.vehicleId || vehicle?.id || appointment.vehicleId || null;
 
-      if (arrivalVehicleId && arrivalVehicleId !== vehicle?.id) {
-        vehicle = await prisma.vehicle.findUnique({
-          where: { id: arrivalVehicleId },
-          select: { id: true, plateNumber: true, brand: true, model: true, year: true },
+        if (arrivalVehicleId && arrivalVehicleId !== vehicle?.id) {
+          vehicle = await prisma.vehicle.findUnique({
+            where: { id: arrivalVehicleId },
+            select: { id: true, plateNumber: true, brand: true, model: true, year: true },
+          });
+        }
+
+        nextAction = await resolveNextAction({
+          userId: access.context.user.id,
+          mechanicId: mechanic.id,
+          vehicleId: arrivalVehicleId,
+          workOrderId: appointment.workOrderId || null,
         });
+        diagnosticRequestId = nextAction.diagnosticId || diagnosticRequestId;
       }
-
-      nextAction = await resolveNextAction({
-        userId: access.context.user.id,
-        mechanicId: mechanic.id,
-        vehicleId: arrivalVehicleId,
-        workOrderId: appointment.workOrderId || null,
-      });
-      diagnosticRequestId = nextAction.diagnosticId || diagnosticRequestId;
 
       await prisma.auditEvent.create({
         data: {
@@ -322,7 +325,7 @@ export async function POST(request: NextRequest) {
             source,
             plate: normalized,
             confidence,
-            vehicleId: arrivalVehicleId,
+            vehicleId: vehicle?.id || appointment.vehicleId || null,
             workOrderId: appointment.workOrderId || null,
             postId: appointment.postId || null,
             arrivalApplied,
