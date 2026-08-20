@@ -1,5 +1,6 @@
 import { after, NextResponse } from "next/server";
 import { lookupVehicleByPlate, normalizeRegistrationPlate } from "@/src/services/vehicle-lookup.service";
+import { resolveVehicleColorByPlate } from "@/src/services/vehicle-registry-color.service";
 import { generateVehicleImageForConfirmedDescriptor } from "@/src/services/vehicle-images/vehicle-image-descriptor-background.service";
 import { authorize } from "@/src/security/authorize";
 import { PERMISSIONS } from "@/src/security/permissions";
@@ -42,6 +43,15 @@ export async function GET(request: Request) {
 
   try {
     const result = await lookupVehicleByPlate(plate);
+    const color = result.status === "FOUND"
+      ? await resolveVehicleColorByPlate(plate, result.vehicle?.id).catch((error) => {
+          console.warn("vehicle registry color lookup unavailable", {
+            plate,
+            message: error instanceof Error ? error.message : "unknown error",
+          });
+          return null;
+        })
+      : null;
     const normalizedResult = result.status === "FOUND" && result.vehicle?.make && result.vehicle.model
       ? {
           ...result,
@@ -49,6 +59,7 @@ export async function GET(request: Request) {
             ...result.vehicle,
             make: canonicalMake(result.vehicle.make, result.vehicle.model),
             model: cleanVehicleText(result.vehicle.model),
+            ...(color || {}),
           },
         }
       : result;
@@ -64,6 +75,11 @@ export async function GET(request: Request) {
           model: normalizedResult.vehicle.model,
           year: normalizedResult.vehicle.year,
           bodyType: normalizedResult.vehicle.bodyType,
+          exteriorColorName: color?.exteriorColorName || null,
+          exteriorColorHex: color?.exteriorColorHex || null,
+          exteriorPaintCode: color?.exteriorPaintCode || null,
+          exteriorColorSource: color?.exteriorColorSource || null,
+          exteriorColorConfirmed: color?.exteriorColorConfirmed === true,
         };
         after(async () => {
           try {
@@ -73,6 +89,7 @@ export async function GET(request: Request) {
               plate,
               make: descriptor.make,
               model: descriptor.model,
+              color: descriptor.exteriorColorName,
               message: error instanceof Error ? error.message : "unknown error",
             });
           }
