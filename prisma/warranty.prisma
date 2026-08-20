@@ -17,7 +17,7 @@ model WarrantyClaim {
   openedByName      String?             @db.VarChar(160)
   closedAt          DateTime?
   createdAt         DateTime            @default(now())
-  updatedAt         DateTime            @updatedAt
+  updatedAt         DateTime            @default(now()) @updatedAt
 
   workOrderLine WorkOrderLine @relation(fields: [workOrderLineId], references: [id], onDelete: Restrict)
 

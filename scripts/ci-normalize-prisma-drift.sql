@@ -33,7 +33,3 @@ ALTER TABLE IF EXISTS "DiagnosticCheck" DROP CONSTRAINT IF EXISTS "DiagnosticChe
 ALTER TABLE IF EXISTS "DiagnosticFinding" DROP CONSTRAINT IF EXISTS "DiagnosticFinding_checkId_fkey";
 ALTER TABLE IF EXISTS "DiagnosticMedia" DROP CONSTRAINT IF EXISTS "DiagnosticMedia_findingId_fkey";
 ALTER TABLE IF EXISTS "UserUiPreference" DROP CONSTRAINT IF EXISTS "UserUiPreference_userId_fkey";
-
--- WarrantyClaim.updatedAt has a historical SQL default while Prisma manages the
--- value through @updatedAt. Remove only the disposable DB default for comparison.
-ALTER TABLE IF EXISTS "WarrantyClaim" ALTER COLUMN "updatedAt" DROP DEFAULT;

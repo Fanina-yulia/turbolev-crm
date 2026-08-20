@@ -30,4 +30,4 @@ jobs:
           node-version: 24
 
       - name: Resolve impacted CRM modules
-        run: node scripts/module-scope.mjs --base "origin/${{ github.base_ref }}"
+        run: node scripts/module-scope.mjs --base "origin/${{ github.base_ref }}" --strict

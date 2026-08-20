@@ -13,6 +13,7 @@
     "start": "next start",
     "lint": "next lint",
     "module:scope": "node scripts/module-scope.mjs",
+    "module:ci": "node scripts/module-ci.mjs",
     "db:generate": "prisma generate",
     "db:push": "prisma db push",
     "db:migrate:dev": "prisma migrate dev",
