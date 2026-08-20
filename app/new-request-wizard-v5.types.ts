@@ -1,4 +1,8 @@
 import type { TurboLevClass, VehicleType } from "@/src/domain/vehicle-intelligence";
+import type {
+  NewRequestClientLookupContract,
+  NewRequestClientVehicleContract,
+} from "@/src/lib/contracts/new-request-wizard";
 
 export type LookupState = "idle" | "searching" | "found" | "not-found" | "unavailable";
 export type VehicleDataStatus = "UNKNOWN" | "AUTO" | "MANUAL" | "CONFIRMED";
@@ -56,36 +60,8 @@ export type VehicleCandidate = Partial<RequestForm> & {
   clientPhone?: string | null;
 };
 
-export type ClientVehicle = {
-  id: string;
-  plateNumber?: string | null;
-  vin?: string | null;
-  brand?: string | null;
-  model?: string | null;
-  year?: number | null;
-  mileageKm?: number | null;
-  engineName?: string | null;
-  engineVolumeCm3?: number | null;
-  fuelType?: string | null;
-  bodyType?: string | null;
-  grossWeightKg?: number | null;
-  driveType?: string | null;
-  vehicleType?: string | null;
-  turboLevClass?: string | null;
-  priceCoefficient?: number | string | null;
-  classificationSource?: string | null;
-  classificationConfidence?: number | null;
-  manualClassOverride?: boolean | null;
-  vehicleDataSource?: string | null;
-  vehicleDataConfidence?: number | null;
-};
-
-export type ClientLookup = {
-  id: string;
-  name?: string | null;
-  phone: string;
-  vehicles: ClientVehicle[];
-};
+export type ClientVehicle = NewRequestClientVehicleContract;
+export type ClientLookup = NewRequestClientLookupContract;
 
 export type MakeOption = { id: number | null; name: string };
 export type ModelOption = { id: number | null; name: string; makeName: string };
