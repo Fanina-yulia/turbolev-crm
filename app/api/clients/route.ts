@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { PlannerAppointmentStatus } from "@/src/generated/prisma/client";
 import { toClientDirectoryItem } from "@/src/lib/contracts/crm-core.server";
 import { getPrisma } from "@/src/lib/prisma";
 
@@ -36,6 +37,12 @@ const clientSelect = {
   },
 } as const;
 
+const NON_CLIENT_APPOINTMENT_STATUSES: PlannerAppointmentStatus[] = [
+  PlannerAppointmentStatus.RESERVE,
+  PlannerAppointmentStatus.CANCELLED,
+  PlannerAppointmentStatus.NO_SHOW,
+];
+
 export async function GET(request: NextRequest) {
   const prisma = getPrisma();
   const q = (request.nextUrl.searchParams.get("q") || "").trim();
@@ -53,16 +60,41 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const where = q ? {
-      OR: [
-        { name: { contains: q, mode: "insensitive" as const } },
-        { phone: { contains: q } },
-        { vehicles: { some: { plateNumber: { contains: q, mode: "insensitive" as const } } } },
-        { vehicles: { some: { vin: { contains: q, mode: "insensitive" as const } } } },
-        { vehicles: { some: { brand: { contains: q, mode: "insensitive" as const } } } },
-        { vehicles: { some: { model: { contains: q, mode: "insensitive" as const } } } },
-      ],
-    } : {};
+    // The client directory is intentionally narrower than the raw Client table.
+    // A contact becomes a CRM client here only after an actual vehicle is linked
+    // and that vehicle/client pair has entered the service planner.
+    const plannedClients = await prisma.serviceAppointment.findMany({
+      where: {
+        clientId: { not: null },
+        vehicleId: { not: null },
+        status: { notIn: NON_CLIENT_APPOINTMENT_STATUSES },
+      },
+      distinct: ["clientId"],
+      select: { clientId: true },
+    });
+    const plannedClientIds = plannedClients.flatMap((row) => row.clientId ? [row.clientId] : []);
+
+    if (!plannedClientIds.length) {
+      return NextResponse.json(
+        { ok: true, total: 0, page: 1, limit, pages: 1, clients: [] },
+        { headers: { "Cache-Control": "no-store" } },
+      );
+    }
+
+    const where = {
+      id: { in: plannedClientIds },
+      vehicles: { some: {} },
+      ...(q ? {
+        OR: [
+          { name: { contains: q, mode: "insensitive" as const } },
+          { phone: { contains: q } },
+          { vehicles: { some: { plateNumber: { contains: q, mode: "insensitive" as const } } } },
+          { vehicles: { some: { vin: { contains: q, mode: "insensitive" as const } } } },
+          { vehicles: { some: { brand: { contains: q, mode: "insensitive" as const } } } },
+          { vehicles: { some: { model: { contains: q, mode: "insensitive" as const } } } },
+        ],
+      } : {}),
+    };
 
     const total = await prisma.client.count({ where });
     const pages = Math.max(1, Math.ceil(total / limit));
