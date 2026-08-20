@@ -6,7 +6,7 @@ import {
 } from "@/src/services/leads.service";
 import { authorize } from "@/src/security/authorize";
 import { PERMISSIONS } from "@/src/security/permissions";
-import { generateVehicleImageInBackground } from "@/src/services/vehicle-images/vehicle-image-background.service";
+import { autoGenerateVehicleImage } from "@/src/services/vehicle-images/vehicle-image-auto.service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -25,7 +25,7 @@ export async function POST(request: Request, context: RouteContext) {
     if (result.vehicle.brand && result.vehicle.model) {
       after(async () => {
         try {
-          await generateVehicleImageInBackground(result.vehicle.id);
+          await autoGenerateVehicleImage(result.vehicle.id);
         } catch (error) {
           console.error("background vehicle image generation after lead conversion failed", {
             vehicleId: result.vehicle.id,
