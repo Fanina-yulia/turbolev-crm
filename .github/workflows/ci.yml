@@ -98,6 +98,10 @@ jobs:
     env:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/turbolev_ci
       DATABASE_URL_UNPOOLED: postgresql://postgres:postgres@localhost:5432/turbolev_ci
+      # Next imports the auth route while collecting build metadata. This URL is
+      # CI-only and is never called by the build; production uses the real Neon
+      # Auth endpoint from Vercel environment configuration.
+      NEON_AUTH_BASE_URL: https://auth.ci.invalid/auth
 
     steps:
       - name: Checkout repository
