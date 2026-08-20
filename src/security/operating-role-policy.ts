@@ -40,9 +40,18 @@ export const TURBO_LEV_ACCESS_ROLES: AccessRolePreset[] = [
         description: "Власник сервісного процесу: оформлення, клієнтська комунікація, кошторис, погодження, підбір деталей, допродаж і контроль авто до видачі.",
         add: [
           grant(PERMISSIONS.PARTS_WRITE, "LOCATION"),
+          grant(PERMISSIONS.PROCUREMENT_WRITE, "LOCATION"),
           grant(PERMISSIONS.PAYMENTS_READ, "LOCATION"),
         ],
         remove: [PERMISSIONS.QC_WRITE],
+      });
+    }
+    if (role.code === "HEAD_OF_SALES" || role.code === "SALES") {
+      return patchRole(role, {
+        description: role.code === "HEAD_OF_SALES"
+          ? "Керує воронкою продажів і командою. Фінальний кошторис Замовлення-наряду формує сервіс-менеджер."
+          : "Працює зі зверненнями, лідами й записом. Фінальний кошторис Замовлення-наряду формує сервіс-менеджер.",
+        remove: [PERMISSIONS.WORK_ORDERS_ESTIMATE],
       });
     }
     if (role.code === "MECHANIC") {

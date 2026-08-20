@@ -5,6 +5,7 @@ import { navigateCrm, type CrmRouteParams } from "./crm-route";
 import type { CrmAccessSnapshot } from "./use-crm-access";
 import { StationOverview } from "./station-overview";
 import { MechanicMobileCabinet } from "./mechanic-mobile-cabinet";
+import { QcQueue } from "./qc-queue";
 import type { CrmSectionLabel } from "./crm-navigation";
 import styles from "./role-cabinet.module.css";
 
@@ -46,6 +47,7 @@ const statusLabels: Record<string, string> = {
   READY_FOR_REPAIR: "Готовий до ремонту",
   IN_REPAIR: "У ремонті",
   WAITING_QC: "Очікує QC",
+  WAITING_PAYMENT: "Очікує оплату",
   READY_FOR_PICKUP: "Готовий до видачі",
   PAUSED: "Призупинено",
   NO_SHOW: "Не приїхав",
@@ -152,6 +154,7 @@ export function RoleAwareOverview({ access }: { access: CrmAccessSnapshot | null
 
   useEffect(() => { void load(); const handler = () => void load(); window.addEventListener("turbolev:data-changed", handler); return () => window.removeEventListener("turbolev:data-changed", handler); }, [load]);
 
+  if (roleCodes.has("SHIFT_MASTER") && access?.provisioningState === "ACTIVE") return <QcQueue />;
   if (roleCodes.has("OWNER") || roleCodes.has("EXECUTIVE_DIRECTOR") || !specialRole || access?.provisioningState !== "ACTIVE") return <StationOverview />;
   if (loading && !data) return <Loading />;
   if (error && !data) return <div className={styles.state}><strong>Не вдалося відкрити кабінет</strong><span>{error}</span><button type="button" onClick={() => void load()}>Повторити</button></div>;

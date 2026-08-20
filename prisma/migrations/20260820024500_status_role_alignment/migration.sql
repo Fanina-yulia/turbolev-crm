@@ -42,7 +42,7 @@ ON CONFLICT ("code") DO UPDATE SET
 WITH target_role AS (
   SELECT id FROM "AccessRole" WHERE code = 'SERVICE_ADVISOR'
 ), target_permissions AS (
-  SELECT id, code FROM "Permission" WHERE code IN ('PARTS.WRITE', 'PAYMENTS.READ')
+  SELECT id, code FROM "Permission" WHERE code IN ('PARTS.WRITE', 'PROCUREMENT.WRITE', 'PAYMENTS.READ')
 )
 INSERT INTO "AccessRolePermission" ("id", "roleId", "permissionId", "scope", "createdAt", "updatedAt")
 SELECT
@@ -129,3 +129,4 @@ UPDATE "AccessRole"
 SET "description" = 'Керівник операцій станції: бачить весь цикл і QC, але не підміняє Майстра зміни як виконавця QC.',
     "updatedAt" = NOW()
 WHERE code = 'STATION_MANAGER';
+\n\n-- Sales works with the lead funnel; the final WorkOrder estimate belongs to Service Advisor.\nDELETE FROM "AccessRolePermission" arp\nUSING "AccessRole" r, "Permission" p\nWHERE arp."roleId" = r.id\n  AND arp."permissionId" = p.id\n  AND r.code IN ('SALES', 'HEAD_OF_SALES')\n  AND p.code = 'WORK_ORDERS.ESTIMATE';\n

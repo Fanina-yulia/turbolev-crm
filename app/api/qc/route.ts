@@ -186,7 +186,7 @@ export async function POST(request: Request) {
     const body = await request.json().catch(() => ({})) as Record<string, unknown>;
     const workOrderId = typeof body.workOrderId === "string" ? body.workOrderId.trim() : "";
     const action = typeof body.action === "string" ? body.action.trim().toUpperCase() : "";
-    if (!workOrderId || !["START", "PASS", "FAIL", "RECHECK", "MOVE_PICKUP", "MOVE_REWORK"].includes(action)) {
+    if (!workOrderId || !["START", "PASS", "FAIL", "RECHECK", "MOVE_PAYMENT", "MOVE_PICKUP", "MOVE_REWORK"].includes(action)) {
       return NextResponse.json({ ok: false, error: "Некоректна дія контролю якості." }, { status: 400 });
     }
     const scope = await resolveQcScope(request, access.context);
@@ -197,8 +197,8 @@ export async function POST(request: Request) {
     const performedByName = typeof body.performedByName === "string" ? body.performedByName.trim().slice(0, 160) : actorName;
     const note = typeof body.note === "string" ? body.note.trim().slice(0, 4000) : "";
 
-    if (action === "MOVE_PICKUP" || action === "MOVE_REWORK") {
-      const target = action === "MOVE_PICKUP" ? "READY_FOR_PICKUP" : "REWORK";
+    if (action === "MOVE_PAYMENT" || action === "MOVE_PICKUP" || action === "MOVE_REWORK") {
+      const target = action === "MOVE_REWORK" ? "REWORK" : "WAITING_PAYMENT";
       const workOrder = await transitionWorkOrder(workOrderId, target, actorName);
       return NextResponse.json({ ok: true, workOrder });
     }
