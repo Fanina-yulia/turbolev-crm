@@ -1,0 +1,117 @@
+import type { CrmDateTime } from "./crm-core";
+import type { PlannerStatusContract } from "./planner";
+
+export type CabinetStationReference = {
+  id: string;
+  name: string;
+};
+
+export type MechanicHomeTaskContract = {
+  id: string;
+  workOrderId: string;
+  description: string;
+  status: string;
+  type: string;
+  laborHours: string | null;
+  plate: string;
+  vehicle: string;
+  workOrderStatus: string;
+  updatedAt: CrmDateTime;
+};
+
+export type MechanicHomeAppointmentContract = {
+  id: string;
+  workOrderId: string;
+  status: PlannerStatusContract;
+  workOrderStatus: string;
+  plannedStartAt: CrmDateTime;
+  plannedEndAt: CrmDateTime;
+  plate: string;
+  vehicle: string;
+  problem: string | null;
+  post: string | null;
+};
+
+export type MechanicHomeKpisContract = {
+  assigned: number;
+  scheduledToday: number;
+  inProgress: number;
+  completedToday: number;
+  waitingParts: number;
+};
+
+export type MechanicCabinetLinkedPayload = {
+  ok: true;
+  cabinet: "MECHANIC";
+  linked: true;
+  mechanic: {
+    id: string;
+    name: string;
+    station: CabinetStationReference;
+  };
+  kpis: MechanicHomeKpisContract;
+  tasks: MechanicHomeTaskContract[];
+  appointments: MechanicHomeAppointmentContract[];
+};
+
+export type MechanicCabinetUnlinkedPayload = {
+  ok: true;
+  cabinet: "MECHANIC";
+  linked: false;
+  reason?: string;
+};
+
+export type MechanicCabinetPayload = MechanicCabinetLinkedPayload | MechanicCabinetUnlinkedPayload;
+
+export type StationManagerKpisContract = {
+  carsToday: number;
+  carsOnStation: number;
+  inRepair: number;
+  postsOccupied: number;
+  postsTotal: number;
+  mechanicsTotal: number;
+  noShow: number;
+};
+
+export type StationManagerFlowContract = {
+  booked: number;
+  diagnostics: number;
+  approval: number;
+  waitingParts: number;
+  readyForRepair: number;
+  inRepair: number;
+  qc: number;
+  ready: number;
+};
+
+export type StationManagerAttentionContract = {
+  id: string;
+  status: PlannerStatusContract;
+  plate: string;
+  vehicle: string;
+  problem: string | null;
+  plannedStartAt: CrmDateTime;
+  post: string | null;
+  mechanic: string | null;
+};
+
+export type StationManagerCabinetLinkedPayload = {
+  ok: true;
+  cabinet: "STATION_MANAGER";
+  linked: true;
+  station: CabinetStationReference;
+  kpis: StationManagerKpisContract;
+  flow: StationManagerFlowContract;
+  attention: StationManagerAttentionContract[];
+};
+
+export type StationManagerCabinetUnlinkedPayload = {
+  ok: true;
+  cabinet: "STATION_MANAGER";
+  linked: false;
+  reason?: string;
+};
+
+export type StationManagerCabinetPayload = StationManagerCabinetLinkedPayload | StationManagerCabinetUnlinkedPayload;
+
+export type CabinetHomePayload = MechanicCabinetPayload | StationManagerCabinetPayload;
