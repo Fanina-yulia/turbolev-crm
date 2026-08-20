@@ -6,6 +6,7 @@ import {
   getClientPortalSnapshot,
 } from "@/src/services/client-portal.service";
 import { DiagnosticReportError } from "@/src/services/diagnostic-report.service";
+import { writeAuditEvent } from "@/src/services/audit.service";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -20,6 +21,13 @@ export default async function ClientPortalPage({ params }: { params: Promise<{ t
   const { token } = await params;
   try {
     const snapshot = await getClientPortalSnapshot(token);
+    await writeAuditEvent({
+      entityType: "DiagnosticRequest",
+      entityId: snapshot.share.diagnosticRequestId,
+      action: "CLIENT_PORTAL_OPENED",
+      actorName: "Клієнт / public link",
+      metadata: { shareId: snapshot.share.id, clientId: snapshot.client.id, vehicleId: snapshot.vehicle.id, source: "PUBLIC_CLIENT_PORTAL" },
+    }).catch(() => undefined);
     return <ClientPortal token={token} initialSnapshot={snapshot} />;
   } catch (error) {
     const message = error instanceof ClientPortalError || error instanceof DiagnosticReportError
