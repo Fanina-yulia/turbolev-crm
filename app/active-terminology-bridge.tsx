@@ -3,40 +3,90 @@
 import { useEffect } from "react";
 
 const exactReplacements = new Map<string, string>([
+  ["Ліди", "Активні"],
+  ["Лід", "Активні"],
   ["Лід створено", "Додано в Активні"],
   ["+ Лід", "В роботу"],
-  ["Лід", "Відкрити в Активних"],
+  ["Створити лід", "Додати в Активні"],
   ["Створити лід із цього звернення", "Додати в Активні"],
   ["Відкрити лід", "Відкрити в Активних"],
+  ["Є активний лід", "Є в Активних"],
+  ["живі ліди Neon", "активні заявки"],
+  ["Ліди → запис", "Активні → запис"],
+  ["Особиста черга дій із лідів, звернень та сервісних процесів.", "Особиста черга дій з Активних, звернень та сервісних процесів."],
   ["Для створення ліда потрібне серверне з'єднання", "Для передачі в Активні потрібне серверне з'єднання"],
   ["Звернення прив'язано до існуючого ліда", "Звернення прив'язано до наявного запису в Активних"],
   ["Не вдалося створити лід", "Не вдалося додати в Активні"],
+  ["Передано менеджеру", "Завершена діагностика"],
+  ["Повернено на уточнення", "Повернено механіку"],
+  ["CARD_SENT", "Надіслана ДК"],
 ]);
 
-function inScope(node: Node) {
+function isUiTextNode(node: Node) {
+  const element = node.nodeType === Node.ELEMENT_NODE ? node as Element : node.parentElement;
+  if (!element) return false;
+  return !element.closest("script, style, noscript, textarea, code, pre");
+}
+
+function inLegacyNavigationScope(node: Node) {
   const element = node.nodeType === Node.ELEMENT_NODE ? node as Element : node.parentElement;
   return Boolean(element?.closest(".msgPage, .clientDrawer"));
 }
 
+function isMechanicCabinet() {
+  const text = document.body?.textContent || "";
+  return text.includes("Кабінет механіка") || text.includes("Мої діагностики");
+}
+
+function preserveWhitespace(current: string, replacement: string) {
+  const leading = current.match(/^\s*/)?.[0] || "";
+  const trailing = current.match(/\s*$/)?.[0] || "";
+  return `${leading}${replacement}${trailing}`;
+}
+
+function rewriteLegacyLeadWords(value: string) {
+  return value
+    .replaceAll("Лідів", "Активних")
+    .replaceAll("лідів", "активних")
+    .replaceAll("Лідом", "записом в Активних")
+    .replaceAll("лідом", "записом в Активних")
+    .replaceAll("Ліда", "запису в Активних")
+    .replaceAll("ліда", "запису в Активних")
+    .replaceAll("Ліди", "Активні")
+    .replaceAll("ліди", "Активні")
+    .replaceAll("Лід", "Активні")
+    .replaceAll("лід", "активна заявка");
+}
+
 function rewriteTextNode(node: Text) {
-  if (!inScope(node)) return;
+  if (!isUiTextNode(node)) return;
   const current = node.nodeValue || "";
   const trimmed = current.trim();
   if (!trimmed) return;
 
   const exact = exactReplacements.get(trimmed);
   if (exact) {
-    const leading = current.match(/^\s*/)?.[0] || "";
-    const trailing = current.match(/\s*$/)?.[0] || "";
-    node.nodeValue = `${leading}${exact}${trailing}`;
+    node.nodeValue = preserveWhitespace(current, exact);
+    return;
+  }
+
+  if (trimmed === "Підтверджено" && isMechanicCabinet()) {
+    node.nodeValue = preserveWhitespace(current, "ДК сформована");
+    return;
+  }
+
+  if (/^Є активний лід(?:\s|·|$)/.test(trimmed)) {
+    node.nodeValue = preserveWhitespace(current, trimmed.replace(/^Є активний лід/, "Є в Активних"));
     return;
   }
 
   if (/^Лід\s+/.test(trimmed)) {
-    const leading = current.match(/^\s*/)?.[0] || "";
-    const trailing = current.match(/\s*$/)?.[0] || "";
-    node.nodeValue = `${leading}${trimmed.replace(/^Лід\s+/, "Активні · ")}${trailing}`;
+    node.nodeValue = preserveWhitespace(current, trimmed.replace(/^Лід\s+/, "Активні · "));
+    return;
   }
+
+  const rewritten = rewriteLegacyLeadWords(trimmed);
+  if (rewritten !== trimmed) node.nodeValue = preserveWhitespace(current, rewritten);
 }
 
 function rewrite(root: Node) {
@@ -67,7 +117,7 @@ export function ActiveTerminologyBridge() {
     const handleLegacyActiveNavigation = (event: MouseEvent) => {
       const target = event.target as Element | null;
       const button = target?.closest("button");
-      if (!button || !button.closest(".msgPage, .clientDrawer")) return;
+      if (!button || !inLegacyNavigationScope(button)) return;
       if (button.textContent?.trim() !== "Відкрити в Активних") return;
 
       event.preventDefault();
