@@ -220,3 +220,24 @@
 @media (prefers-reduced-motion: reduce) {
   .phoneShell * { scroll-behavior:auto!important; transition:none!important; animation:none!important; }
 }
+
+/* Neutral surfaces in this legacy mobile cabinet now inherit the active CRM theme.
+   Brand chrome and semantic status colors intentionally remain fixed. */
+.content{background:var(--bg);color:var(--text)}
+.greetingCard,.dayCard,.nextCard,.todayWorks,.workOrderCard,.vehicleDetail,.taskCard,.diagnosticCard,.emptyCard,.lifecycleCard,.findingForm,.scheduleList article{background:var(--panel);border-color:var(--line);color:var(--text)}
+.greetingCard p,.sectionHeading span,.metrics span,.vehicleRow p,.problemText,.jobMeta span,.detailMeta span,.emptyCard,.workList time,.workList small,.emptyInline,.pageIntro p,.taskCard>div b,.diagnosticCard>div b,.diagnosticCard small,.orderLines small,.orderLines em,.safeNote,.lifecycleEyebrow,.stateNotice span,.urgencyPicker span,.fileRow span,.scheduleList p,.scheduleList small,.salaryStats span{color:var(--muted)}
+.sectionHeading button,.emptyCard strong,.taskCard p,.diagnosticCard p,.fieldLabel{color:var(--text)}
+.metrics>div,.metrics b,.carBadge,.stateNotice,.fileRow,.salaryStats>div{background:var(--panel-2);border-color:var(--line)}
+.secondaryButton{background:var(--button-bg);color:var(--text);border-color:var(--line)}
+.workText,.workList>button,.detailMeta,.orderLines>div{border-color:var(--line)}
+.progress{background:var(--panel-2)}
+.textArea{background:var(--panel-2);color:var(--text);border-color:var(--line)}
+.urgencyPicker button{background:var(--button-bg);color:var(--text);border-color:var(--line)}
+.fileRow button{background:var(--button-bg);color:var(--muted)}
+.scheduleList p,.scheduleList small{color:var(--muted)}
+
+:global(:root[data-theme="dark"]) .statusMuted{background:var(--panel-2)!important;color:var(--muted)!important}
+:global(:root[data-theme="dark"]) .metricOrange,:global(:root[data-theme="dark"]) .statusPlanned,:global(:root[data-theme="dark"]) .statusWaiting,:global(:root[data-theme="dark"]) .findingCounter,:global(:root[data-theme="dark"]) .findingSummary,:global(:root[data-theme="dark"]) .pauseButton,:global(:root[data-theme="dark"]) .findingButton,:global(:root[data-theme="dark"]) .urgencyPicker .urgencyActive,:global(:root[data-theme="dark"]) .photoPicker,:global(:root[data-theme="dark"]) .toast{background:color-mix(in srgb,var(--orange) 16%,var(--panel))!important;color:#ffad76!important;border-color:color-mix(in srgb,var(--orange) 46%,var(--line))!important}
+:global(:root[data-theme="dark"]) .metricBlue,:global(:root[data-theme="dark"]) .statusActive,:global(:root[data-theme="dark"]) .findingTip{background:color-mix(in srgb,var(--blue) 16%,var(--panel))!important;color:#86c4ff!important;border-color:color-mix(in srgb,var(--blue) 42%,var(--line))!important}
+:global(:root[data-theme="dark"]) .metricGreen,:global(:root[data-theme="dark"]) .statusDone,:global(:root[data-theme="dark"]) .completeButton,:global(:root[data-theme="dark"]) .stateDone,:global(:root[data-theme="dark"]) .successToast{background:color-mix(in srgb,var(--green) 15%,var(--panel))!important;color:#77d9a9!important;border-color:color-mix(in srgb,var(--green) 42%,var(--line))!important}
+:global(:root[data-theme="dark"]) .urgencyPicker .urgencyActive[data-urgency="CRITICAL"]{background:color-mix(in srgb,#e66b6b 14%,var(--panel))!important;color:#ff9aa3!important;border-color:color-mix(in srgb,#e66b6b 48%,var(--line))!important}
