@@ -1,19 +1,20 @@
-/* Theme-aware compact Turbo LEV mark.
-   Transparent PNG assets avoid the old black square/badge and stay legible on
-   both light and dark CRM themes. Expanded sidebar keeps the full wordmark. */
+/* Screenshot-driven compact sidebar polish.
+   Render the mark on the stable .brand box (not the nested image wrapper),
+   tighten the collapse control, and remove the oversized workspace gutter. */
 @media (min-width: 761px) {
+  .sidebar:has(> button[aria-controls="crm-primary-navigation"][aria-expanded="false"]) {
+    padding: 10px 10px 14px !important;
+  }
+
   .sidebar:has(> button[aria-controls="crm-primary-navigation"][aria-expanded="false"]) .brand {
     display: flex !important;
     align-items: center !important;
     justify-content: center !important;
-  }
-
-  .sidebar:has(> button[aria-controls="crm-primary-navigation"][aria-expanded="false"]) .brandLogoWrap {
-    position: relative !important;
-    display: block !important;
     width: 44px !important;
     min-width: 44px !important;
     height: 44px !important;
+    padding: 0 !important;
+    margin: 0 0 2px !important;
     overflow: visible !important;
     background-color: transparent !important;
     background-image: url("/brand/turbo-lev-rail-light.png") !important;
@@ -23,9 +24,22 @@
     filter: drop-shadow(0 1px 1px rgba(17, 21, 26, .08));
   }
 
-  :root[data-theme="dark"] .sidebar:has(> button[aria-controls="crm-primary-navigation"][aria-expanded="false"]) .brandLogoWrap {
+  :root[data-theme="dark"] .sidebar:has(> button[aria-controls="crm-primary-navigation"][aria-expanded="false"]) .brand {
     background-image: url("/brand/turbo-lev-rail-dark.png") !important;
     filter: drop-shadow(0 1px 1px rgba(0, 0, 0, .24));
+  }
+
+  /* The compact artwork now lives on .brand. Keep the full wordmark DOM for
+     expanded mode, but make it inert and invisible only while collapsed. */
+  .sidebar:has(> button[aria-controls="crm-primary-navigation"][aria-expanded="false"]) .brandLogoWrap {
+    display: block !important;
+    width: 44px !important;
+    min-width: 44px !important;
+    height: 44px !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
+    background: none !important;
+    filter: none !important;
   }
 
   .sidebar:has(> button[aria-controls="crm-primary-navigation"][aria-expanded="false"]) .brandLogo {
@@ -35,5 +49,38 @@
   .sidebar:has(> button[aria-controls="crm-primary-navigation"][aria-expanded="false"]) .brandLogoWrap::after {
     content: none !important;
     display: none !important;
+  }
+
+  /* Center a smaller collapse/expand control directly below the logo. */
+  .sidebar:has(> button[aria-controls="crm-primary-navigation"][aria-expanded="false"]) > button[aria-controls="crm-primary-navigation"] {
+    top: 58px !important;
+    left: 14px !important;
+    right: auto !important;
+    width: 36px !important;
+    height: 36px !important;
+    padding: 0 !important;
+    border-radius: 10px !important;
+    border-color: var(--line) !important;
+    background: transparent !important;
+    color: var(--muted) !important;
+    box-shadow: none !important;
+  }
+
+  .sidebar:has(> button[aria-controls="crm-primary-navigation"][aria-expanded="false"]) > button[aria-controls="crm-primary-navigation"]:hover,
+  .sidebar:has(> button[aria-controls="crm-primary-navigation"][aria-expanded="false"]) > button[aria-controls="crm-primary-navigation"]:focus-visible {
+    color: var(--orange) !important;
+    border-color: rgba(255, 102, 0, .34) !important;
+    background: var(--panel-2) !important;
+  }
+
+  /* The old 58px nav spacer made the top of the rail look empty. */
+  .sidebar:has(> button[aria-controls="crm-primary-navigation"][aria-expanded="false"]) nav {
+    padding-top: 48px !important;
+  }
+
+  /* On a 64px rail, the desktop 34px workspace inset reads as a second empty
+     sidebar. Keep a small breathing space instead. */
+  .shell:has(.sidebar > button[aria-controls="crm-primary-navigation"][aria-expanded="false"]) > .workspace {
+    padding-left: 16px !important;
   }
 }
