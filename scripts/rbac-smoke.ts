@@ -26,6 +26,24 @@ assert.deepEqual(denied.deniedPermissions, ["FINANCE.READ"]);
 const databaseUrl = process.env.DATABASE_URL_UNPOOLED || process.env.DATABASE_URL;
 assert.ok(databaseUrl, "DATABASE_URL is required for the RBAC database smoke test");
 
+const canonicalRoleCodes = [
+  "OWNER",
+  "EXECUTIVE_DIRECTOR",
+  "STATION_MANAGER",
+  "SERVICE_ADVISOR",
+  "MECHANIC",
+  "PARTS_SPECIALIST",
+  "WAREHOUSE_KEEPER",
+  "HEAD_OF_SALES",
+  "SALES",
+  "ACCOUNTANT",
+  "MARKETING_DIRECTOR",
+  "MARKETER",
+  "HR_MANAGER",
+  "ADMINISTRATOR",
+  "CRM_ADMIN",
+] as const;
+
 const client = new pg.Client({ connectionString: databaseUrl });
 await client.connect();
 try {
@@ -35,8 +53,12 @@ try {
   assert.equal(config.rows[0].bootstrapCompleted, false);
   assert.equal(config.rows[0].allowSelfRegistration, false);
 
-  const roleCount = await client.query(`SELECT count(*)::int AS count FROM "AccessRole" WHERE "isActive"=true`);
-  assert.equal(roleCount.rows[0].count, 10);
+  const roles = await client.query(`SELECT code FROM "AccessRole" WHERE "isActive"=true ORDER BY code`);
+  assert.deepEqual(
+    roles.rows.map((row) => row.code).sort(),
+    [...canonicalRoleCodes].sort(),
+    "active RBAC roles must match the canonical personnel structure",
+  );
 
   const permissionCount = await client.query(`SELECT count(*)::int AS count FROM "Permission"`);
   assert.equal(permissionCount.rows[0].count, 45);
@@ -58,24 +80,47 @@ try {
     scopes.set(`${row.role_code}:${row.permission_code}`, row.scope);
   }
 
-  const roleCodes = ["OWNER","EXECUTIVE_DIRECTOR","HEAD_OF_SALES","SALES","PARTS_SPECIALIST","STATION_MANAGER","SERVICE_ADVISOR","MECHANIC","ACCOUNTANT","ADMINISTRATOR"];
-  for (const role of roleCodes) {
+  for (const role of canonicalRoleCodes) {
     assert.ok(matrix.get(role)?.has("PAYROLL.SELF_READ"), `${role} must be able to read own salary`);
   }
 
   assert.ok(matrix.get("ACCOUNTANT")?.has("PAYROLL.ALL_READ"));
   assert.ok(matrix.get("OWNER")?.has("PAYROLL.ALL_READ"));
   assert.ok(matrix.get("EXECUTIVE_DIRECTOR")?.has("PAYROLL.ALL_READ"));
-  assert.ok(!matrix.get("HEAD_OF_SALES")?.has("PAYROLL.ALL_READ"));
-  assert.ok(!matrix.get("STATION_MANAGER")?.has("PAYROLL.ALL_READ"));
-  assert.ok(!matrix.get("SERVICE_ADVISOR")?.has("PAYROLL.ALL_READ"));
-  assert.ok(!matrix.get("MECHANIC")?.has("PAYROLL.ALL_READ"));
-  assert.ok(!matrix.get("SALES")?.has("PAYROLL.ALL_READ"));
+  for (const role of [
+    "HEAD_OF_SALES",
+    "STATION_MANAGER",
+    "SERVICE_ADVISOR",
+    "MECHANIC",
+    "SALES",
+    "PARTS_SPECIALIST",
+    "WAREHOUSE_KEEPER",
+    "MARKETING_DIRECTOR",
+    "MARKETER",
+    "HR_MANAGER",
+    "ADMINISTRATOR",
+    "CRM_ADMIN",
+  ]) {
+    assert.ok(!matrix.get(role)?.has("PAYROLL.ALL_READ"), `${role} must not read all payroll`);
+  }
 
   for (const role of ["OWNER", "EXECUTIVE_DIRECTOR", "ACCOUNTANT"]) {
     assert.ok(matrix.get(role)?.has("PERSONNEL.COMPENSATION_READ"), `${role} should have compensation visibility`);
   }
-  for (const role of ["HEAD_OF_SALES", "SALES", "PARTS_SPECIALIST", "STATION_MANAGER", "SERVICE_ADVISOR", "MECHANIC", "ADMINISTRATOR"]) {
+  for (const role of [
+    "HEAD_OF_SALES",
+    "SALES",
+    "PARTS_SPECIALIST",
+    "WAREHOUSE_KEEPER",
+    "STATION_MANAGER",
+    "SERVICE_ADVISOR",
+    "MECHANIC",
+    "MARKETING_DIRECTOR",
+    "MARKETER",
+    "HR_MANAGER",
+    "ADMINISTRATOR",
+    "CRM_ADMIN",
+  ]) {
     assert.ok(!matrix.get(role)?.has("PERSONNEL.COMPENSATION_READ"), `${role} must not see other salaries`);
   }
 
@@ -86,9 +131,23 @@ try {
   assert.equal(scopes.get("SERVICE_ADVISOR:DIAGNOSTICS.CONFIRM"), "LOCATION");
   assert.ok(!matrix.get("SERVICE_ADVISOR")?.has("FINANCE.READ"));
 
-  assert.ok(matrix.get("OWNER")?.has("SECURITY.ACCESS_MANAGE"));
-  assert.ok(matrix.get("EXECUTIVE_DIRECTOR")?.has("SECURITY.ACCESS_MANAGE"));
-  for (const role of ["HEAD_OF_SALES", "SALES", "PARTS_SPECIALIST", "STATION_MANAGER", "SERVICE_ADVISOR", "MECHANIC", "ACCOUNTANT", "ADMINISTRATOR"]) {
+  for (const role of ["OWNER", "EXECUTIVE_DIRECTOR", "CRM_ADMIN"]) {
+    assert.ok(matrix.get(role)?.has("SECURITY.ACCESS_MANAGE"), `${role} must administer access`);
+  }
+  for (const role of [
+    "HEAD_OF_SALES",
+    "SALES",
+    "PARTS_SPECIALIST",
+    "WAREHOUSE_KEEPER",
+    "STATION_MANAGER",
+    "SERVICE_ADVISOR",
+    "MECHANIC",
+    "ACCOUNTANT",
+    "MARKETING_DIRECTOR",
+    "MARKETER",
+    "HR_MANAGER",
+    "ADMINISTRATOR",
+  ]) {
     assert.ok(!matrix.get(role)?.has("SECURITY.ACCESS_MANAGE"), `${role} must not administer access`);
   }
 

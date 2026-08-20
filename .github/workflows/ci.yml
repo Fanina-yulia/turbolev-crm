@@ -56,7 +56,15 @@ jobs:
         run: npx prisma validate
 
       - name: Apply full migration history on clean PostgreSQL 18
-        run: npx prisma migrate deploy
+        # VehicleRegistryCompact is populated outside Prisma in production. The
+        # helper attaches an empty CI-only fixture after Prisma initializes its
+        # migration metadata, preserving a true clean-database replay.
+        run: bash scripts/ci-migrate-with-external-fixtures.sh
+
+      - name: Normalize SQL-managed objects for Prisma drift check
+        # This mutates only the disposable CI database. Production keeps its MVS
+        # registry, SQL-managed image library and database-level integrity guards.
+        run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f scripts/ci-normalize-prisma-drift.sql
 
       - name: Reject Prisma / migration schema drift
         run: npx prisma migrate diff --exit-code --from-config-datasource --to-schema prisma

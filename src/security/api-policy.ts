@@ -1,6 +1,6 @@
 import { PERMISSIONS, type AccessScopeCode, type PermissionCode } from "@/src/security/permissions";
 
-export type ApiSecurityKind = "AUTH_PUBLIC" | "SESSION_STATUS" | "EXTERNAL_PROVIDER" | "PUBLIC_TOKEN" | "INTERNAL_RBAC";
+export type ApiSecurityKind = "AUTH_PUBLIC" | "SESSION_STATUS" | "EXTERNAL_PROVIDER" | "SERVICE_TOKEN" | "PUBLIC_TOKEN" | "INTERNAL_RBAC";
 
 export type ApiSecurityPolicy = {
   kind: ApiSecurityKind;
@@ -37,9 +37,12 @@ const RULES: Rule[] = [
   { match: exact("/api/auth/me"), resolve: () => ({ kind: "SESSION_STATUS", note: "Safe session/provisioning status; no secrets or business data." }) },
   { match: prefix("/api/auth"), resolve: () => ({ kind: "AUTH_PUBLIC", note: "Allowlisted Neon Auth transport only: sign-in, sign-out, get-session." }) },
   { match: prefix("/api/public/diagnostic-report"), resolve: () => ({ kind: "PUBLIC_TOKEN", note: "Client-facing immutable diagnostic report authenticated by a high-entropy single-purpose token stored only as SHA-256 hash; routes validate expiry, revision freshness and media membership." }) },
+  { match: exact("/api/internal/vehicle-image-backfill"), resolve: () => ({ kind: "SERVICE_TOKEN", note: "Internal vehicle-image backfill requires a dedicated server-side VEHICLE_IMAGE_BACKFILL_TOKEN and returns 404 when the token is absent or invalid." }) },
   { match: prefix("/api/webhooks"), resolve: () => ({ kind: "EXTERNAL_PROVIDER", note: "Inbound provider callback authenticated by provider/webhook controls, not employee session." }) },
   { match: exact("/api/integrations/olx/callback"), resolve: () => ({ kind: "EXTERNAL_PROVIDER", note: "OLX OAuth callback authenticated with signed short-lived state and provider authorization code." }) },
   { match: exact("/api/integrations/olx/connect"), resolve: () => internal(PERMISSIONS.SETTINGS_INTEGRATIONS, "ALL", "Starting OLX OAuth changes integration credentials and requires integration administration.", true) },
+  { match: exact("/api/integrations/meta/connect"), resolve: () => internal(PERMISSIONS.SETTINGS_INTEGRATIONS, "ALL", "Starting Meta OAuth requires strict integration administration before redirecting to the provider.", true) },
+  { match: exact("/api/integrations/tiktok/connect"), resolve: () => internal(PERMISSIONS.SETTINGS_INTEGRATIONS, "ALL", "Starting TikTok OAuth requires strict integration administration before redirecting to the provider.", true) },
   { match: (path) => path === "/api/integrations/olx/sync" || path === "/api/integrations/olx/poll", resolve: () => internal(PERMISSIONS.COMMUNICATIONS_WRITE, "TEAM", "OLX synchronization imports communication facts into the omnichannel inbox.", true) },
   { match: exact("/api/integrations/communications/status"), resolve: () => internal(PERMISSIONS.COMMUNICATIONS_READ, "TEAM", "Communication integration health is visible to authorized inbox operators without returning secrets.", true) },
   { match: exact("/api/telephony/binotel-webhook"), resolve: () => ({ kind: "EXTERNAL_PROVIDER", note: "Binotel callback authenticated with dedicated webhook token/provider contract." }) },
@@ -54,6 +57,9 @@ const RULES: Rule[] = [
   { match: exact("/api/me/ui-preferences"), resolve: () => internal(PERMISSIONS.OVERVIEW_READ, "SELF", "Authenticated employee can read and update only own accessibility/readability preferences.", true) },
   { match: exact("/api/cabinet/home"), resolve: () => internal(PERMISSIONS.OVERVIEW_READ, "LOCATION", "Authenticated role-specific cabinet. Response is narrowed server-side to assigned mechanic work or the manager's station and excludes global finance.", true) },
   { match: exact("/api/cabinet/mechanic/assigned-vehicles"), resolve: () => internal(PERMISSIONS.OVERVIEW_READ, "ASSIGNED", "Mechanic assignment feed returns only active service cases assigned to the caller's own mechanic resource.", true) },
+  { match: exact("/api/cabinet/mechanic/support"), resolve: (method) => method.toUpperCase() === "GET"
+    ? internal(PERMISSIONS.OVERVIEW_READ, "ASSIGNED", "Mechanic support lookup returns only the service-advisor contact for the caller's own station.", true)
+    : internal(PERMISSIONS.DIAGNOSTICS_WRITE, "ASSIGNED", "Mechanic support requests may be created only for WorkOrder lines assigned to the caller.", true) },
   { match: prefix("/api/cabinet/mechanic/tasks"), resolve: (method) => readWrite(method, PERMISSIONS.PRODUCTION_READ, PERMISSIONS.PRODUCTION_WRITE, "ASSIGNED", "Mechanic lifecycle controls are restricted to the caller's assigned WorkOrder lines and reuse canonical production transitions.") },
   { match: prefix("/api/cabinet/mechanic/notifications"), resolve: () => internal(PERMISSIONS.OVERVIEW_READ, "SELF", "Mechanic notification history is restricted to the caller's own mechanic resource; writes only mark owned events as read.", true) },
   { match: prefix("/api/cabinet/mechanic/findings"), resolve: (method) => readWrite(method, PERMISSIONS.DIAGNOSTICS_READ, PERMISSIONS.DIAGNOSTICS_WRITE, "ASSIGNED", "Mechanic findings may be created only against the caller's assigned WorkOrder lines and carry protected diagnostic-style media.") },

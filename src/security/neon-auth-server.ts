@@ -23,13 +23,28 @@ function getCookieSecret() {
     .digest("base64url");
 }
 
-const baseUrl = getNeonAuthBaseUrl();
-if (!baseUrl) throw new Error("Neon Auth is not configured");
+type NeonAuthServer = ReturnType<typeof createNeonAuth>;
+let cachedNeonAuth: NeonAuthServer | null = null;
 
-export const neonAuth = createNeonAuth({
-  baseUrl,
-  cookies: { secret: getCookieSecret() },
-});
+/**
+ * Resolve Neon Auth only when a request/session actually needs it.
+ *
+ * Next.js imports route modules while collecting build metadata. CI deliberately
+ * does not receive production auth secrets, so eager module-level initialization
+ * would make a valid application impossible to build. Runtime requests still fail
+ * closed if Neon Auth is not configured; this function does not provide a dummy
+ * auth provider or weaken authentication.
+ */
+export function getNeonAuth() {
+  if (cachedNeonAuth) return cachedNeonAuth;
+  const baseUrl = getNeonAuthBaseUrl();
+  if (!baseUrl) throw new Error("Neon Auth is not configured");
+  cachedNeonAuth = createNeonAuth({
+    baseUrl,
+    cookies: { secret: getCookieSecret() },
+  });
+  return cachedNeonAuth;
+}
 
 function asRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
@@ -45,7 +60,7 @@ function booleanOrNull(value: unknown) {
 
 export async function getNeonAuthSdkSession(): Promise<NeonAuthSession | null> {
   try {
-    const result = await neonAuth.getSession();
+    const result = await getNeonAuth().getSession();
     const resultRecord = asRecord(result);
     const payload = asRecord(resultRecord?.data);
     if (!payload) return null;
