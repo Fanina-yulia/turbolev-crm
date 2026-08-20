@@ -13,29 +13,57 @@ const exactReplacements = new Map<string, string>([
   ["Не вдалося створити лід", "Не вдалося додати в Активні"],
 ]);
 
-function inScope(node: Node) {
+const globalExactReplacements = new Map<string, string>([
+  ["Ліди → запис", "Активні → запис"],
+  ["Ліди", "Активні"],
+  ["Ліди / потенційні клієнти", "Активні"],
+  ["Конвертовано в Lead", "Додано в Активні"],
+  ["Прив'язано до існуючого Lead", "Прив'язано до запису в Активних"],
+]);
+
+function inLegacyScope(node: Node) {
   const element = node.nodeType === Node.ELEMENT_NODE ? node as Element : node.parentElement;
   return Boolean(element?.closest(".msgPage, .clientDrawer"));
 }
 
+function preserveWhitespace(current: string, replacement: string) {
+  const leading = current.match(/^\s*/)?.[0] || "";
+  const trailing = current.match(/\s*$/)?.[0] || "";
+  return `${leading}${replacement}${trailing}`;
+}
+
 function rewriteTextNode(node: Text) {
-  if (!inScope(node)) return;
   const current = node.nodeValue || "";
   const trimmed = current.trim();
   if (!trimmed) return;
 
+  const globalExact = globalExactReplacements.get(trimmed);
+  if (globalExact) {
+    node.nodeValue = preserveWhitespace(current, globalExact);
+    return;
+  }
+
+  // Analytics and explanatory copy can contain the old internal domain noun
+  // inside a longer sentence. Keep the technical field/API names unchanged,
+  // but never expose that noun to CRM users.
+  if (/\bліда\b/i.test(trimmed)) {
+    node.nodeValue = current.replace(/\bліда\b/gi, "активного запису");
+    return;
+  }
+  if (/\bлідів\b/i.test(trimmed)) {
+    node.nodeValue = current.replace(/\bлідів\b/gi, "активних записів");
+    return;
+  }
+
+  if (!inLegacyScope(node)) return;
   const exact = exactReplacements.get(trimmed);
   if (exact) {
-    const leading = current.match(/^\s*/)?.[0] || "";
-    const trailing = current.match(/\s*$/)?.[0] || "";
-    node.nodeValue = `${leading}${exact}${trailing}`;
+    node.nodeValue = preserveWhitespace(current, exact);
     return;
   }
 
   if (/^Лід\s+/.test(trimmed)) {
-    const leading = current.match(/^\s*/)?.[0] || "";
-    const trailing = current.match(/\s*$/)?.[0] || "";
-    node.nodeValue = `${leading}${trimmed.replace(/^Лід\s+/, "Активні · ")}${trailing}`;
+    node.nodeValue = preserveWhitespace(current, trimmed.replace(/^Лід\s+/, "Активні · "));
   }
 }
 
