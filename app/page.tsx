@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { getAccessContext } from "@/src/security/access-context";
 import { CrmShell } from "./crm-shell";
 import { MechanicLiveCabinet } from "./mechanic-live-cabinet";
+import { SidebarRail } from "./auth/sidebar-rail";
 
 type HomePageProps = {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
@@ -32,5 +33,5 @@ export default async function HomePage({ searchParams }: HomePageProps) {
 
   const section = first(params.section);
   const settingsTab = first(params.settingsTab);
-  return <CrmShell initialSection={section} initialSettingsTab={settingsTab} />;
+  return <><SidebarRail/><CrmShell initialSection={section} initialSettingsTab={settingsTab} /></>;
 }
