@@ -8,6 +8,7 @@ import {
 import { testTikTokConnection } from "@/src/services/integration-oauth.service";
 import { testMetaConnection } from "@/src/services/meta-communications.service";
 import { testOlxConnection } from "@/src/services/olx-communications.service";
+import { testTelegramConnection } from "@/src/services/telegram.service";
 import { bmPartsAdapter } from "@/src/services/suppliers/bm-parts.adapter";
 import { uniqueTradeAdapter } from "@/src/services/suppliers/unique-trade.adapter";
 import { testVehicleImageConnection } from "@/src/services/vehicle-images/vehicle-image.service";
@@ -38,6 +39,7 @@ async function testProvider(provider: IntegrationProvider, config?: Record<strin
   if (provider === "UNIQUE_TRADE") return uniqueTradeAdapter.testConnection();
   if (provider === "VEHICLE_IMAGES") return testVehicleImageConnection();
   if (provider === "TIKTOK") return testTikTokConnection();
+  if (provider === "TELEGRAM") return testTelegramConnection();
 
   if (provider === "AUTONOVA_D") return { ok: false, state: "MANUAL_SETUP", message: "Live API Автонова-Д не запускається без офіційного endpoint, способу авторизації та технічної документації постачальника." };
   if (provider === "ATL") return { ok: false, state: "MANUAL_SETUP", message: "Live API ATL не запускається без офіційного B2B/API endpoint та технічної документації постачальника." };
@@ -76,7 +78,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ pr
       return NextResponse.json({ ...result, checkedAt: new Date().toISOString() }, { status: 200, headers: { "Cache-Control": "no-store" } });
     }
 
-    const adapterManaged = provider === "BM_PARTS" || provider === "UNIQUE_TRADE" || provider === "VEHICLE_IMAGES" || provider === "TIKTOK";
+    const adapterManaged = provider === "BM_PARTS" || provider === "UNIQUE_TRADE" || provider === "VEHICLE_IMAGES" || provider === "TIKTOK" || provider === "TELEGRAM";
     const config = adapterManaged ? null : await getIntegrationCredential(provider);
     if (!adapterManaged && !config) return NextResponse.json({ ok: false, message: "Спочатку збережіть доступи." }, { status: 400 });
 
