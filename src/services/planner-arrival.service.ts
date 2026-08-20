@@ -100,7 +100,7 @@ export async function arrivePlannerAppointment(id: string, body: Record<string, 
   }
 
   return prisma.$transaction(async (tx) => {
-    await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`appointment-arrival:${id}`}))`;
+    await tx.$queryRaw<{ locked: string | null }[]>`SELECT pg_advisory_xact_lock(hashtext(${`appointment-arrival:${id}`}))::text AS locked`;
 
     const fresh = await tx.serviceAppointment.findUnique({ where: { id } });
     if (!fresh) return { ok: false as const, notFound: true as const };
