@@ -6,9 +6,15 @@ import { MechanicDiagnosticWorkspace as LegacyMechanicDiagnosticWorkspace } from
 
 type Mode = "MATRIX" | "LEGACY" | null;
 
-function isChassisDiagnostic(problem: string | null | undefined, templateNames: string[]) {
-  const source = [problem || "", ...templateNames].join(" ").toLocaleLowerCase("uk-UA");
-  return /(ходов|підвіск|рульов|сайлент|кульов|стабіліз|амортиз|привід|шрус)/u.test(source);
+function hasChassisIntent(problem: string | null | undefined) {
+  return /(ходов|підвіск|рульов|сайлент|кульов|стабіліз|амортиз|привід|шрус)/u.test((problem || "").toLocaleLowerCase("uk-UA"));
+}
+
+function diagnosticMode(problem: string | null | undefined, templateNames: string[]): Exclude<Mode, null> {
+  if (templateNames.length > 0) {
+    return templateNames.some((name) => /матриця ходової/iu.test(name)) ? "MATRIX" : "LEGACY";
+  }
+  return hasChassisIntent(problem) ? "MATRIX" : "LEGACY";
 }
 
 export function MechanicDiagnosticWorkspace({ diagnosticId, onBack, onChanged }: { diagnosticId: string; onBack: () => void; onChanged?: () => void }) {
@@ -22,7 +28,7 @@ export function MechanicDiagnosticWorkspace({ diagnosticId, onBack, onChanged }:
         const body = await response.json().catch(() => null);
         if (!response.ok || !body?.ok) throw new Error("LOAD_FAILED");
         const templateNames = Array.isArray(body.inspections) ? body.inspections.map((item: { templateName?: string }) => item.templateName || "") : [];
-        if (!cancelled) setMode(isChassisDiagnostic(body.diagnostic?.problem, templateNames) ? "MATRIX" : "LEGACY");
+        if (!cancelled) setMode(diagnosticMode(body.diagnostic?.problem, templateNames));
       })
       .catch(() => { if (!cancelled) setMode("LEGACY"); });
     return () => { cancelled = true; };
