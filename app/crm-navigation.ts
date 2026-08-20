@@ -1,7 +1,9 @@
 export const CRM_NAV = [
   { label: "Огляд станції", slug: "overview" },
-  { label: "Комунікації", slug: "communications" },
+  { label: "Мої задачі", slug: "tasks" },
+  { label: "Нові звернення", slug: "inquiries" },
   { label: "Ліди", slug: "leads" },
+  { label: "Комунікації", slug: "communications" },
   { label: "Клієнти", slug: "clients" },
   { label: "Авто", slug: "vehicles" },
   { label: "Планувальник", slug: "planner" },
@@ -26,6 +28,8 @@ type CrmNavGroup = { label: string; items: readonly CrmNavItem[] };
 
 const IMPLEMENTED_SLUGS = new Set<VisibleCrmSectionSlug>([
   "overview",
+  "tasks",
+  "inquiries",
   "communications",
   "leads",
   "clients",
@@ -56,9 +60,10 @@ function navItems(...slugs: VisibleCrmSectionSlug[]): CrmNavItem[] {
 }
 
 export const CRM_NAV_GROUPS: readonly CrmNavGroup[] = [
-  { label: "Головне", items: navItems("overview") },
-  { label: "Клієнти", items: navItems("communications", "leads", "clients", "vehicles") },
-  { label: "Сервіс", items: navItems("planner", "diagnostics", "work-orders") },
+  { label: "Робочий стіл", items: navItems("overview", "tasks") },
+  { label: "Звернення", items: navItems("inquiries", "leads", "communications", "planner") },
+  { label: "Клієнти та авто", items: navItems("clients", "vehicles") },
+  { label: "Сервіс", items: navItems("diagnostics", "work-orders") },
   { label: "Запчастини", items: navItems("parts", "procurement") },
   { label: "Фінанси", items: navItems("finance", "payments") },
   { label: "Управління", items: navItems("analytics", "settings") },
