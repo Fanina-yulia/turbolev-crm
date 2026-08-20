@@ -7,7 +7,7 @@ import {
 } from "@/src/services/lead-arrival.service";
 import { arrivePlannerAppointment } from "@/src/services/planner-arrival.service";
 import { parsePlannerStatus, updatePlannerAppointment } from "@/src/services/planner.service";
-import { generateVehicleImageInBackground } from "@/src/services/vehicle-images/vehicle-image-background.service";
+import { autoGenerateVehicleImage } from "@/src/services/vehicle-images/vehicle-image-auto.service";
 
 export const runtime = "nodejs";
 export const maxDuration = 100;
@@ -74,7 +74,7 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
       const vehicleId = result.workflowAction.vehicleId;
       after(async () => {
         try {
-          await generateVehicleImageInBackground(vehicleId);
+          await autoGenerateVehicleImage(vehicleId);
         } catch (error) {
           console.error("background vehicle image generation after planner arrival failed", {
             vehicleId,
