@@ -6,8 +6,12 @@ import { normalizeThemePaint } from "./vehicle-color.service";
 import { getOpenAIVehiclePaint, type OpenAIVehiclePaintSpec } from "./openai-vehicle-paint";
 
 const OPENAI_IMAGES_URL = "https://api.openai.com/v1/images/generations";
+const OPENAI_EDITS_URL = "https://api.openai.com/v1/images/edits";
 const OPENAI_MODELS_URL = "https://api.openai.com/v1/models";
-const PROMPT_VERSION = "vehicle-card-v4-real-color-transparent-png";
+const PROMPT_VERSION = "vehicle-card-v5-shared-template-color-variant";
+const TEMPLATE_VERSION = "vehicle-template-v1";
+const GENERATION_BAND_YEARS = 6;
+const GENERATION_BAND_ANCHOR = 1990;
 const GENERATION_LOCK_MS = 10 * 60 * 1000;
 const ERROR_RETRY_MS = 30 * 60 * 1000;
 const MAX_IMAGE_BYTES = 12 * 1024 * 1024;
@@ -36,6 +40,21 @@ type VehicleDescriptor = {
   exteriorColorConfirmed: boolean;
 };
 
+type GenerationBand = {
+  from: number | null;
+  to: number | null;
+  key: string;
+  label: string;
+};
+
+type ImageIdentity = {
+  templateKey: string;
+  variantKey: string;
+  normalizedColor: string;
+  generation: GenerationBand;
+  libraryKey: string;
+};
+
 type LibraryAssetRow = {
   id: string;
   libraryKey: string;
@@ -56,6 +75,25 @@ type LibraryAssetRow = {
   generatedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
+  templateKey?: string | null;
+  variantKey?: string | null;
+  normalizedColor?: string | null;
+  generationFrom?: number | null;
+  generationTo?: number | null;
+  sourceAssetId?: string | null;
+  generationMode?: string | null;
+};
+
+type ReferenceAssetRow = {
+  id: string;
+  make: string;
+  model: string;
+  year: number | null;
+  bodyType: string | null;
+  imageMimeType: string | null;
+  imageData: Buffer;
+  reviewStatus: string;
+  templateKey: string | null;
 };
 
 export type VehicleImageLibraryState = {
@@ -65,6 +103,10 @@ export type VehicleImageLibraryState = {
   autoGenerate: boolean;
   canGenerate: boolean;
   error: string | null;
+  templateKey?: string | null;
+  variantKey?: string | null;
+  normalizedColor?: string | null;
+  generationLabel?: string | null;
 };
 
 function cleanPart(value: string | null | undefined) {
@@ -73,6 +115,10 @@ function cleanPart(value: string | null | undefined) {
 
 function keyPart(value: string | null | undefined) {
   return cleanPart(value).toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "-").replace(/^-+|-+$/g, "");
+}
+
+function hashIdentity(parts: Array<string | number | null | undefined>) {
+  return createHash("sha256").update(parts.map((part) => String(part ?? "")).join("|"), "utf8").digest("hex");
 }
 
 function parseBoolean(value: string | undefined, fallback: boolean) {
@@ -137,52 +183,182 @@ function normalizedTheme(themePaint?: string | null) {
   return normalizeThemePaint(themePaint, "Imagin-orange");
 }
 
-function libraryKeyFor(vehicle: VehicleDescriptor, theme: string) {
-  const paint = getOpenAIVehiclePaint(vehicle, theme);
-  const identity = [
-    PROMPT_VERSION,
-    keyPart(vehicle.make),
-    keyPart(vehicle.model),
-    vehicle.year == null ? "year-unknown" : String(vehicle.year),
-    keyPart(vehicle.bodyType) || "body-unknown",
-    paint.signature,
-  ].join("|");
-  return createHash("sha256").update(identity, "utf8").digest("hex");
+function generationBand(year: number | null): GenerationBand {
+  if (!year || !Number.isInteger(year)) {
+    return { from: null, to: null, key: "generation-unknown", label: "Покоління не визначено" };
+  }
+  const offset = year - GENERATION_BAND_ANCHOR;
+  const from = GENERATION_BAND_ANCHOR + Math.floor(offset / GENERATION_BAND_YEARS) * GENERATION_BAND_YEARS;
+  const to = from + GENERATION_BAND_YEARS - 1;
+  return { from, to, key: `${from}-${to}`, label: `${from}–${to}` };
 }
 
-function masterPrompt(vehicle: VehicleDescriptor, paint: OpenAIVehiclePaintSpec) {
+function colorFamilyFromHex(value: string | null | undefined) {
+  const source = cleanPart(value).toUpperCase();
+  if (!/^#[0-9A-F]{6}$/.test(source)) return null;
+  const r = Number.parseInt(source.slice(1, 3), 16);
+  const g = Number.parseInt(source.slice(3, 5), 16);
+  const b = Number.parseInt(source.slice(5, 7), 16);
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  const delta = max - min;
+  const light = (max + min) / 2;
+  if (max < 58) return "black";
+  if (min > 226 && delta < 28) return "white";
+  if (delta < 24) return light > 158 ? "silver" : "grey";
+  let hue = 0;
+  if (max === r) hue = ((g - b) / delta) % 6;
+  else if (max === g) hue = (b - r) / delta + 2;
+  else hue = (r - g) / delta + 4;
+  hue = ((hue * 60) + 360) % 360;
+  if (hue < 15 || hue >= 345) return "red";
+  if (hue < 45) return light < 145 ? "brown" : "orange";
+  if (hue < 70) return "yellow";
+  if (hue < 165) return "green";
+  if (hue < 195) return "light-blue";
+  if (hue < 255) return "blue";
+  if (hue < 330) return "purple";
+  return "red";
+}
+
+function colorFamilyFromText(value: string | null | undefined) {
+  const source = cleanPart(value).toLowerCase();
+  if (!source) return null;
+  if (/чорн|black/.test(source)) return "black";
+  if (/бі(л|л)|white|ivory/.test(source)) return "white";
+  if (/сріб|silver/.test(source)) return "silver";
+  if (/сір|grey|gray|графіт|graphite/.test(source)) return "grey";
+  if (/блакит|light blue|cyan/.test(source)) return "light-blue";
+  if (/син|blue/.test(source)) return "blue";
+  if (/черв|red|бордо|burgundy/.test(source)) return "red";
+  if (/зелен|green/.test(source)) return "green";
+  if (/жовт|yellow/.test(source)) return "yellow";
+  if (/помаранч|orange/.test(source)) return "orange";
+  if (/беж|beige/.test(source)) return "beige";
+  if (/корич|brown/.test(source)) return "brown";
+  if (/фіолет|purple|violet/.test(source)) return "purple";
+  if (/золот|gold/.test(source)) return "gold";
+  return null;
+}
+
+function normalizedColorVariant(vehicle: VehicleDescriptor, paint: OpenAIVehiclePaintSpec, theme: string) {
+  if (paint.source === "THEME") {
+    const family = colorFamilyFromText(theme.replace(/^Imagin-/i, "")) || keyPart(theme) || "theme";
+    return { key: `theme:${family}`, normalizedColor: family };
+  }
+  const family = colorFamilyFromText(vehicle.exteriorColorName)
+    || colorFamilyFromHex(vehicle.exteriorColorHex)
+    || colorFamilyFromText(paint.requestedColor);
+  if (family) return { key: `real:${family}`, normalizedColor: family };
+  const fallback = keyPart(vehicle.exteriorPaintCode || paint.requestedColor).slice(0, 48) || "confirmed";
+  return { key: `real:${fallback}`, normalizedColor: fallback };
+}
+
+function imageIdentity(vehicle: VehicleDescriptor, theme: string, paint: OpenAIVehiclePaintSpec): ImageIdentity {
+  const generation = generationBand(vehicle.year);
+  const templateKey = hashIdentity([
+    TEMPLATE_VERSION,
+    keyPart(vehicle.make),
+    keyPart(vehicle.model),
+    keyPart(vehicle.bodyType) || "body-unknown",
+    generation.key,
+  ]);
+  const color = normalizedColorVariant(vehicle, paint, theme);
+  const libraryKey = hashIdentity([PROMPT_VERSION, templateKey, color.key]);
+  return {
+    templateKey,
+    variantKey: color.key,
+    normalizedColor: color.normalizedColor,
+    generation,
+    libraryKey,
+  };
+}
+
+function masterPrompt(vehicle: VehicleDescriptor, paint: OpenAIVehiclePaintSpec, generation: GenerationBand) {
   const year = vehicle.year ? String(vehicle.year) : "model year not provided";
   const body = vehicle.bodyType ? ` Body type: ${vehicle.bodyType}.` : "";
+  const generationRule = generation.from == null
+    ? "No model year is available, so match the named production model and body type conservatively."
+    : `Treat model years ${generation.label} as one reusable CRM generation family. Match the real production generation that best represents ${vehicle.year || generation.from} and do not cross into a visibly different generation.`;
   return [
-    "Create exactly one production-quality vehicle cutout for an automotive service CRM card and shared vehicle image library.",
+    "Create exactly one production-quality vehicle cutout for an automotive service CRM card and a shared model-template library.",
     `Vehicle: ${vehicle.make} ${vehicle.model}, ${year}.${body}`,
-    "The vehicle must visually match the real production make, model and model-year/generation as closely as possible. Preserve the generation-specific silhouette, body proportions, roofline, glazing, lights, grille, bumpers, wheel arches and door layout.",
-    "Do not substitute a generic car, a different generation, a different body style or a visually similar model. If the model-year is supplied, prioritize generation accuracy over decorative styling.",
+    generationRule,
+    "This image will be reused by many CRM vehicles of the same model generation. The vehicle must visually match the real production make, model and generation as closely as possible. Preserve the generation-specific silhouette, body proportions, roofline, glazing, lights, grille, bumpers, wheel arches and door layout.",
+    "Do not substitute a generic car, a different generation, a different body style or a visually similar model.",
     "Composition standard for the whole library: full vehicle visible, facing right, clean front three-quarter side view, camera near belt-line height, natural realistic proportions, centered horizontally, tires fully visible, no cropping.",
     paint.instruction,
     "The background must be fully transparent alpha. Every pixel outside the vehicle must remain transparent: no white, grey or colored backdrop, no road, no scenery, no studio wall, no floor, no gradient panel and no environmental reflections that imply a background.",
     "No people, no text, no captions, no watermark and no readable license-plate text. Use a blank neutral plate area if a plate holder is visible.",
     "Avoid large cast shadows. At most, use a tiny soft contact shadow immediately beneath the tires; never create a visible studio floor or a shadow field around the vehicle.",
-    "Style: photorealistic automotive catalog cutout, consistent neutral lighting, restrained reflections, clean edges, no exaggerated wide-angle distortion. Keep visual noise and unnecessary micro-detail low so the image remains clear when displayed as a small CRM card.",
+    "Style: photorealistic automotive catalog cutout, consistent neutral lighting, restrained reflections, clean edges, no exaggerated wide-angle distortion. Keep visual noise low so the image remains clear on a small CRM card.",
     "The final asset must contain exactly one car on transparency and be delivered as a PNG with alpha transparency.",
   ].join(" ");
 }
 
-function isMissingTableError(error: unknown) {
-  return error instanceof Error && /VehicleImageLibraryAsset|VehicleImageGenerationJob|does not exist|42P01/i.test(error.message);
+function recolorPrompt(vehicle: VehicleDescriptor, paint: OpenAIVehiclePaintSpec, generation: GenerationBand) {
+  return [
+    "Edit the supplied automotive CRM reference image. Preserve the exact same vehicle identity, generation, body shape, camera angle, crop, wheel design, glazing, lights, grille, bumpers and proportions.",
+    generation.from == null ? "Keep the same production generation shown in the reference." : `The reusable generation family is ${generation.label}; do not change the generation shown by the reference vehicle.`,
+    `The target vehicle is ${vehicle.make} ${vehicle.model}${vehicle.bodyType ? `, ${vehicle.bodyType}` : ""}.`,
+    "Change only the factory-painted exterior body panels to the requested body color. Do not recolor glass, tires, wheels, lights, grille, chrome, black trim, badges or the plate area.",
+    paint.instruction,
+    "Keep neutral catalog lighting and physically realistic paint reflections. Preserve a fully transparent alpha background with no road, floor, scenery, text, people or watermark.",
+    "Return exactly one complete vehicle cutout, facing right, with the same front three-quarter view as the reference.",
+  ].join(" ");
 }
+
+function isMissingTableError(error: unknown) {
+  return error instanceof Error && /VehicleImageLibraryAsset|VehicleImageGenerationJob|templateKey|variantKey|normalizedColor|generationFrom|generationTo|sourceAssetId|generationMode|does not exist|42P01|42703/i.test(error.message);
+}
+
+const ASSET_COLUMNS = `"id","libraryKey","make","model","year","bodyType","theme","provider","providerModel","promptVersion","promptText","status","imageMimeType","imageSizeBytes","lastError","generatedAt","createdAt","updatedAt","templateKey","variantKey","normalizedColor","generationFrom","generationTo","sourceAssetId","generationMode"`;
 
 async function findAssetByKey(libraryKey: string, includeBytes = false): Promise<LibraryAssetRow | null> {
   try {
-    const columns = includeBytes
-      ? `"id","libraryKey","make","model","year","bodyType","theme","provider","providerModel","promptVersion","promptText","status","imageMimeType","imageData","imageSizeBytes","lastError","generatedAt","createdAt","updatedAt"`
-      : `"id","libraryKey","make","model","year","bodyType","theme","provider","providerModel","promptVersion","promptText","status","imageMimeType","imageSizeBytes","lastError","generatedAt","createdAt","updatedAt"`;
+    const columns = includeBytes ? `${ASSET_COLUMNS},"imageData"` : ASSET_COLUMNS;
     const result = await getSqlPool().query(`SELECT ${columns} FROM public."VehicleImageLibraryAsset" WHERE "libraryKey"=$1 LIMIT 1`, [libraryKey]);
     return result.rowCount ? result.rows[0] as LibraryAssetRow : null;
   } catch (error) {
     if (isMissingTableError(error)) return null;
     throw error;
   }
+}
+
+async function findReferenceAsset(vehicle: VehicleDescriptor, identity: ImageIdentity, excludeAssetId?: string | null): Promise<ReferenceAssetRow | null> {
+  const params = [
+    identity.templateKey,
+    vehicle.make,
+    vehicle.model,
+    vehicle.bodyType,
+    identity.generation.from,
+    identity.generation.to,
+    excludeAssetId || null,
+  ];
+  const result = await getSqlPool().query(
+    `SELECT "id","make","model","year","bodyType","imageMimeType","imageData","reviewStatus","templateKey"
+       FROM public."VehicleImageLibraryAsset"
+      WHERE "status"='READY'
+        AND "imageData" IS NOT NULL
+        AND ($7::text IS NULL OR "id"<>$7)
+        AND (
+          "templateKey"=$1
+          OR (
+            "templateKey" IS NULL
+            AND lower("make")=lower($2)
+            AND lower("model")=lower($3)
+            AND ($4::text IS NULL OR lower(COALESCE("bodyType",''))=lower($4))
+            AND (
+              ($5::int IS NULL AND "year" IS NULL)
+              OR ($5::int IS NOT NULL AND ("year" BETWEEN $5 AND $6 OR "year" IS NULL))
+            )
+          )
+        )
+      ORDER BY ("templateKey"=$1) DESC, ("reviewStatus"='APPROVED') DESC, "updatedAt" DESC
+      LIMIT 1`,
+    params,
+  );
+  return result.rowCount ? result.rows[0] as ReferenceAssetRow : null;
 }
 
 export async function getVehicleLibraryAsset(assetId: string) {
@@ -208,13 +384,20 @@ export async function getVehicleImageLibraryState(vehicleId: string, themePaint?
   if (!vehicle.make || !vehicle.model) return { state: "MISSING_DATA", assetId: null, libraryKey: null, autoGenerate: config?.autoGenerate ?? false, canGenerate: false, error: "Для генерації потрібні марка і модель." };
 
   const theme = normalizedTheme(themePaint);
-  const libraryKey = libraryKeyFor(vehicle, theme);
-  const asset = await findAssetByKey(libraryKey);
-  if (asset?.status === "READY") return { state: "READY", assetId: asset.id, libraryKey, autoGenerate: config?.autoGenerate ?? false, canGenerate: Boolean(config), error: null };
-  if (asset?.status === "GENERATING") return { state: "GENERATING", assetId: asset.id, libraryKey, autoGenerate: config?.autoGenerate ?? false, canGenerate: Boolean(config), error: null };
-  if (asset?.status === "ERROR") return { state: "ERROR", assetId: asset.id, libraryKey, autoGenerate: config?.autoGenerate ?? false, canGenerate: Boolean(config), error: asset.lastError };
-  if (!config) return { state: "NOT_CONFIGURED", assetId: asset?.id ?? null, libraryKey, autoGenerate: false, canGenerate: false, error: "OpenAI API не налаштовано." };
-  return { state: "MISSING", assetId: asset?.id ?? null, libraryKey, autoGenerate: config.autoGenerate, canGenerate: true, error: null };
+  const paint = getOpenAIVehiclePaint(vehicle, theme);
+  const identity = imageIdentity(vehicle, theme, paint);
+  const extra = {
+    templateKey: identity.templateKey,
+    variantKey: identity.variantKey,
+    normalizedColor: identity.normalizedColor,
+    generationLabel: identity.generation.label,
+  };
+  const asset = await findAssetByKey(identity.libraryKey);
+  if (asset?.status === "READY") return { state: "READY", assetId: asset.id, libraryKey: identity.libraryKey, autoGenerate: config?.autoGenerate ?? false, canGenerate: Boolean(config), error: null, ...extra };
+  if (asset?.status === "GENERATING") return { state: "GENERATING", assetId: asset.id, libraryKey: identity.libraryKey, autoGenerate: config?.autoGenerate ?? false, canGenerate: Boolean(config), error: null, ...extra };
+  if (asset?.status === "ERROR") return { state: "ERROR", assetId: asset.id, libraryKey: identity.libraryKey, autoGenerate: config?.autoGenerate ?? false, canGenerate: Boolean(config), error: asset.lastError, ...extra };
+  if (!config) return { state: "NOT_CONFIGURED", assetId: asset?.id ?? null, libraryKey: identity.libraryKey, autoGenerate: false, canGenerate: false, error: "OpenAI API не налаштовано.", ...extra };
+  return { state: "MISSING", assetId: asset?.id ?? null, libraryKey: identity.libraryKey, autoGenerate: config.autoGenerate, canGenerate: true, error: null, ...extra };
 }
 
 function openAIErrorMessage(payload: unknown, fallback: string) {
@@ -238,6 +421,27 @@ async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs: numbe
   }
 }
 
+function assertGeneratedPng(bytes: Buffer) {
+  if (!bytes.length) throw new Error("OpenAI не повернув байти зображення.");
+  if (bytes.length > MAX_IMAGE_BYTES) throw new Error(`PNG завеликий для CRM: ${Math.round(bytes.length / 1024)} KB.`);
+  const signature = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+  if (bytes.length < signature.length || !bytes.subarray(0, signature.length).equals(signature)) throw new Error("OpenAI повернув файл, який не є PNG.");
+  return bytes;
+}
+
+async function imageBytesFromPayload(payload: { data?: Array<{ b64_json?: string; url?: string }> } | null) {
+  const item = payload?.data?.[0];
+  let bytes: Buffer | null = null;
+  if (item?.b64_json) bytes = Buffer.from(item.b64_json, "base64");
+  else if (item?.url) {
+    const imageResponse = await fetchWithTimeout(item.url, { headers: { Accept: "image/png,image/*" } }, 30_000);
+    if (!imageResponse.ok) throw new Error(`Не вдалося завантажити згенерований PNG: HTTP ${imageResponse.status}`);
+    bytes = Buffer.from(await imageResponse.arrayBuffer());
+  }
+  if (!bytes) throw new Error("OpenAI не повернув зображення.");
+  return assertGeneratedPng(bytes);
+}
+
 async function generatePng(config: VehicleImageConfig, prompt: string) {
   const response = await fetchWithTimeout(OPENAI_IMAGES_URL, {
     method: "POST",
@@ -253,21 +457,34 @@ async function generatePng(config: VehicleImageConfig, prompt: string) {
     }),
   }, 90_000);
 
-  const payload = await response.json().catch(() => null) as { data?: Array<{ b64_json?: string; url?: string }> } | null;
+  const payload = await response.json().catch(() => null) as { data?: Array<{ b64_json?: string; url?: string }>; error?: unknown } | null;
   if (!response.ok) throw new Error(openAIErrorMessage(payload, `OpenAI Images API: HTTP ${response.status}`));
-  const item = payload?.data?.[0];
-  let bytes: Buffer | null = null;
-  if (item?.b64_json) bytes = Buffer.from(item.b64_json, "base64");
-  else if (item?.url) {
-    const imageResponse = await fetchWithTimeout(item.url, { headers: { Accept: "image/png,image/*" } }, 30_000);
-    if (!imageResponse.ok) throw new Error(`Не вдалося завантажити згенерований PNG: HTTP ${imageResponse.status}`);
-    bytes = Buffer.from(await imageResponse.arrayBuffer());
-  }
-  if (!bytes?.length) throw new Error("OpenAI не повернув байти зображення.");
-  if (bytes.length > MAX_IMAGE_BYTES) throw new Error(`PNG завеликий для CRM: ${Math.round(bytes.length / 1024)} KB.`);
-  const signature = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
-  if (bytes.length < signature.length || !bytes.subarray(0, signature.length).equals(signature)) throw new Error("OpenAI повернув файл, який не є PNG.");
-  return bytes;
+  return imageBytesFromPayload(payload);
+}
+
+async function editPngFromReference(config: VehicleImageConfig, reference: ReferenceAssetRow, prompt: string) {
+  const form = new FormData();
+  form.set("model", config.model);
+  form.append(
+    "image[]",
+    new Blob([new Uint8Array(reference.imageData)], { type: reference.imageMimeType || "image/webp" }),
+    reference.imageMimeType === "image/png" ? "vehicle-template.png" : "vehicle-template.webp",
+  );
+  form.set("prompt", prompt);
+  form.set("n", "1");
+  form.set("size", config.imageSize);
+  form.set("quality", config.quality);
+  form.set("background", "transparent");
+  form.set("output_format", "png");
+
+  const response = await fetchWithTimeout(OPENAI_EDITS_URL, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${config.apiKey}`, Accept: "application/json" },
+    body: form,
+  }, 90_000);
+  const payload = await response.json().catch(() => null) as { data?: Array<{ b64_json?: string; url?: string }>; error?: unknown } | null;
+  if (!response.ok) throw new Error(openAIErrorMessage(payload, `OpenAI Image Edits API: HTTP ${response.status}`));
+  return imageBytesFromPayload(payload);
 }
 
 async function createJob(libraryKey: string, vehicleId: string, assetId: string) {
@@ -295,35 +512,102 @@ export async function generateVehicleImageForVehicle(vehicleId: string, options?
 
   const theme = normalizedTheme(options?.themePaint);
   const paint = getOpenAIVehiclePaint(vehicle, theme);
-  const libraryKey = libraryKeyFor(vehicle, theme);
-  const prompt = masterPrompt(vehicle, paint);
-  const existing = await findAssetByKey(libraryKey);
+  const identity = imageIdentity(vehicle, theme, paint);
+  const prompt = masterPrompt(vehicle, paint, identity.generation);
+  const existing = await findAssetByKey(identity.libraryKey);
   const now = Date.now();
 
-  if (!options?.force && existing?.status === "READY") return { state: "READY" as const, assetId: existing.id, libraryKey, requestedColor: paint.requestedColor };
-  if (!options?.force && existing?.status === "GENERATING" && now - new Date(existing.updatedAt).getTime() < GENERATION_LOCK_MS) return { state: "GENERATING" as const, assetId: existing.id, libraryKey, requestedColor: paint.requestedColor };
-  if (!options?.force && existing?.status === "ERROR" && now - new Date(existing.updatedAt).getTime() < ERROR_RETRY_MS) return { state: "ERROR" as const, assetId: existing.id, libraryKey, error: existing.lastError, requestedColor: paint.requestedColor };
+  if (!options?.force && existing?.status === "READY") {
+    return { state: "READY" as const, assetId: existing.id, libraryKey: identity.libraryKey, templateKey: identity.templateKey, variantKey: identity.variantKey, normalizedColor: identity.normalizedColor, requestedColor: paint.requestedColor, reused: true };
+  }
+  if (!options?.force && existing?.status === "GENERATING" && now - new Date(existing.updatedAt).getTime() < GENERATION_LOCK_MS) {
+    return { state: "GENERATING" as const, assetId: existing.id, libraryKey: identity.libraryKey, templateKey: identity.templateKey, variantKey: identity.variantKey, requestedColor: paint.requestedColor };
+  }
+  if (!options?.force && existing?.status === "ERROR" && now - new Date(existing.updatedAt).getTime() < ERROR_RETRY_MS) {
+    return { state: "ERROR" as const, assetId: existing.id, libraryKey: identity.libraryKey, templateKey: identity.templateKey, variantKey: identity.variantKey, error: existing.lastError, requestedColor: paint.requestedColor };
+  }
 
   const assetId = existing?.id || `vimg_${randomUUID().replace(/-/g, "")}`;
   const pool = getSqlPool();
   await pool.query(
-    `INSERT INTO public."VehicleImageLibraryAsset" ("id","libraryKey","make","model","year","bodyType","theme","provider","providerModel","promptVersion","promptText","status","lastError","createdAt","updatedAt") VALUES ($1,$2,$3,$4,$5,$6,$7,'OPENAI',$8,$9,$10,'GENERATING',NULL,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)
-     ON CONFLICT ("libraryKey") DO UPDATE SET "make"=EXCLUDED."make","model"=EXCLUDED."model","year"=EXCLUDED."year","bodyType"=EXCLUDED."bodyType","theme"=EXCLUDED."theme","provider"='OPENAI',"providerModel"=EXCLUDED."providerModel","promptVersion"=EXCLUDED."promptVersion","promptText"=EXCLUDED."promptText","status"='GENERATING',"lastError"=NULL,"updatedAt"=CURRENT_TIMESTAMP`,
-    [assetId, libraryKey, vehicle.make, vehicle.model, vehicle.year, vehicle.bodyType, theme, config.model, PROMPT_VERSION, prompt],
+    `INSERT INTO public."VehicleImageLibraryAsset"
+       ("id","libraryKey","make","model","year","bodyType","theme","provider","providerModel","promptVersion","promptText","status","lastError","templateKey","variantKey","normalizedColor","generationFrom","generationTo","sourceAssetId","generationMode","createdAt","updatedAt")
+     VALUES ($1,$2,$3,$4,$5,$6,$7,'OPENAI',$8,$9,$10,'GENERATING',NULL,$11,$12,$13,$14,$15,NULL,'PENDING',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)
+     ON CONFLICT ("libraryKey") DO UPDATE SET
+       "make"=EXCLUDED."make","model"=EXCLUDED."model","year"=EXCLUDED."year","bodyType"=EXCLUDED."bodyType","theme"=EXCLUDED."theme",
+       "provider"='OPENAI',"providerModel"=EXCLUDED."providerModel","promptVersion"=EXCLUDED."promptVersion","promptText"=EXCLUDED."promptText",
+       "status"='GENERATING',"lastError"=NULL,"templateKey"=EXCLUDED."templateKey","variantKey"=EXCLUDED."variantKey",
+       "normalizedColor"=EXCLUDED."normalizedColor","generationFrom"=EXCLUDED."generationFrom","generationTo"=EXCLUDED."generationTo",
+       "sourceAssetId"=NULL,"generationMode"='PENDING',"updatedAt"=CURRENT_TIMESTAMP`,
+    [
+      assetId,
+      identity.libraryKey,
+      vehicle.make,
+      vehicle.model,
+      vehicle.year,
+      vehicle.bodyType,
+      theme,
+      config.model,
+      PROMPT_VERSION,
+      prompt,
+      identity.templateKey,
+      identity.variantKey,
+      identity.normalizedColor,
+      identity.generation.from,
+      identity.generation.to,
+    ],
   );
 
-  const claimed = await findAssetByKey(libraryKey);
+  const claimed = await findAssetByKey(identity.libraryKey);
   if (!claimed) throw new Error("Не вдалося створити запис бібліотеки зображень.");
-  const jobId = await createJob(libraryKey, vehicleId, claimed.id);
+  const jobId = await createJob(identity.libraryKey, vehicleId, claimed.id);
 
   try {
-    const png = await generatePng(config, prompt);
+    const reference = await findReferenceAsset(vehicle, identity, claimed.id);
+    let png: Buffer;
+    let generationMode = "TEXT_GENERATION";
+    let sourceAssetId: string | null = null;
+
+    if (reference) {
+      try {
+        png = await editPngFromReference(config, reference, recolorPrompt(vehicle, paint, identity.generation));
+        generationMode = "REFERENCE_EDIT";
+        sourceAssetId = reference.id;
+      } catch (editError) {
+        console.warn("vehicle image reference recolor failed; falling back to text generation", {
+          vehicleId,
+          sourceAssetId: reference.id,
+          message: editError instanceof Error ? editError.message : "unknown",
+        });
+        png = await generatePng(config, prompt);
+        generationMode = "TEXT_GENERATION_FALLBACK";
+        sourceAssetId = reference.id;
+      }
+    } else {
+      png = await generatePng(config, prompt);
+    }
+
     await pool.query(
-      `UPDATE public."VehicleImageLibraryAsset" SET "provider"='OPENAI',"providerModel"=$2,"status"='READY',"imageMimeType"='image/png',"imageData"=$3,"imageSizeBytes"=$4,"lastError"=NULL,"generatedAt"=CURRENT_TIMESTAMP,"updatedAt"=CURRENT_TIMESTAMP WHERE "id"=$1`,
-      [claimed.id, config.model, png, png.length],
+      `UPDATE public."VehicleImageLibraryAsset"
+          SET "provider"='OPENAI',"providerModel"=$2,"status"='READY',"imageMimeType"='image/png',"imageData"=$3,"imageSizeBytes"=$4,
+              "lastError"=NULL,"generatedAt"=CURRENT_TIMESTAMP,"sourceAssetId"=$5,"generationMode"=$6,"updatedAt"=CURRENT_TIMESTAMP
+        WHERE "id"=$1`,
+      [claimed.id, config.model, png, png.length, sourceAssetId, generationMode],
     );
     await finishJob(jobId, "DONE");
-    return { state: "READY" as const, assetId: claimed.id, libraryKey, requestedColor: paint.requestedColor };
+    return {
+      state: "READY" as const,
+      assetId: claimed.id,
+      libraryKey: identity.libraryKey,
+      templateKey: identity.templateKey,
+      variantKey: identity.variantKey,
+      normalizedColor: identity.normalizedColor,
+      generationLabel: identity.generation.label,
+      requestedColor: paint.requestedColor,
+      reusedTemplate: Boolean(reference),
+      sourceAssetId,
+      generationMode,
+    };
   } catch (error) {
     const message = error instanceof Error ? error.message : "Помилка генерації зображення.";
     await pool.query(`UPDATE public."VehicleImageLibraryAsset" SET "status"='ERROR',"lastError"=$2,"updatedAt"=CURRENT_TIMESTAMP WHERE "id"=$1`, [claimed.id, message.slice(0, 4000)]).catch(() => undefined);
@@ -336,7 +620,7 @@ export async function listVehicleImageLibrary(limit = 100) {
   const safeLimit = Math.max(1, Math.min(250, Math.trunc(limit)));
   try {
     const result = await getSqlPool().query(
-      `SELECT "id","make","model","year","bodyType","theme","provider","providerModel","promptVersion","status","imageMimeType","imageSizeBytes","lastError","generatedAt","createdAt","updatedAt" FROM public."VehicleImageLibraryAsset" ORDER BY "updatedAt" DESC LIMIT $1`,
+      `SELECT "id","make","model","year","bodyType","theme","provider","providerModel","promptVersion","status","imageMimeType","imageSizeBytes","lastError","generatedAt","createdAt","updatedAt","templateKey","variantKey","normalizedColor","generationFrom","generationTo","sourceAssetId","generationMode" FROM public."VehicleImageLibraryAsset" ORDER BY "updatedAt" DESC LIMIT $1`,
       [safeLimit],
     );
     return result.rows;
