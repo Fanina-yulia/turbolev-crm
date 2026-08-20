@@ -39,6 +39,7 @@ const RULES: Rule[] = [
   { match: prefix("/api/public/diagnostic-report"), resolve: () => ({ kind: "PUBLIC_TOKEN", note: "Client-facing immutable diagnostic report authenticated by a high-entropy single-purpose token stored only as SHA-256 hash; routes validate expiry, revision freshness and media membership." }) },
   { match: exact("/api/internal/vehicle-image-backfill"), resolve: () => ({ kind: "SERVICE_TOKEN", note: "Internal vehicle-image backfill requires a dedicated server-side VEHICLE_IMAGE_BACKFILL_TOKEN and returns 404 when the token is absent or invalid." }) },
   { match: prefix("/api/webhooks"), resolve: () => ({ kind: "EXTERNAL_PROVIDER", note: "Inbound provider callback authenticated by provider/webhook controls, not employee session." }) },
+  { match: exact("/api/integrations/telegram/webhook"), resolve: () => ({ kind: "EXTERNAL_PROVIDER", note: "Telegram Bot API callback is authenticated by X-Telegram-Bot-Api-Secret-Token before update processing." }) },
   { match: exact("/api/integrations/olx/callback"), resolve: () => ({ kind: "EXTERNAL_PROVIDER", note: "OLX OAuth callback authenticated with signed short-lived state and provider authorization code." }) },
   { match: exact("/api/integrations/olx/connect"), resolve: () => internal(PERMISSIONS.SETTINGS_INTEGRATIONS, "ALL", "Starting OLX OAuth changes integration credentials and requires integration administration.", true) },
   { match: exact("/api/integrations/meta/connect"), resolve: () => internal(PERMISSIONS.SETTINGS_INTEGRATIONS, "ALL", "Starting Meta OAuth requires strict integration administration before redirecting to the provider.", true) },
@@ -58,6 +59,7 @@ const RULES: Rule[] = [
   { match: exact("/api/me/compensation"), resolve: () => internal(PERMISSIONS.PAYROLL_SELF_READ, "SELF", "Authenticated employee can read only own salary projection.", true) },
   { match: exact("/api/me/ui-preferences"), resolve: () => internal(PERMISSIONS.OVERVIEW_READ, "SELF", "Authenticated employee can read and update only own accessibility/readability preferences.", true) },
   { match: exact("/api/cabinet/home"), resolve: () => internal(PERMISSIONS.OVERVIEW_READ, "LOCATION", "Authenticated role-specific cabinet. Response is narrowed server-side to assigned mechanic work or the manager's station and excludes global finance.", true) },
+  { match: exact("/api/customer-cabinet/context"), resolve: () => internal(PERMISSIONS.DIAGNOSTICS_READ, "LOCATION", "Authenticated customer-cabinet context is a diagnostic read model; the route additionally filters diagnostic assignments to the caller's allowed locations.") },
   { match: exact("/api/cabinet/mechanic/assigned-vehicles"), resolve: () => internal(PERMISSIONS.OVERVIEW_READ, "ASSIGNED", "Mechanic assignment feed returns only active service cases assigned to the caller's own mechanic resource.", true) },
   { match: exact("/api/cabinet/mechanic/support"), resolve: (method) => method.toUpperCase() === "GET"
     ? internal(PERMISSIONS.OVERVIEW_READ, "ASSIGNED", "Mechanic support lookup returns only the service-advisor contact for the caller's own station.", true)

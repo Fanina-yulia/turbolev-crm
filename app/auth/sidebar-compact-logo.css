@@ -1,25 +1,31 @@
-/* Compact sidebar brand mark.
-   Use a real public WebP asset instead of a pseudo-element data URI so the mark
-   is rendered reliably. Expanded sidebar keeps the existing full wordmark. */
+/* Theme-aware compact Turbo LEV mark.
+   Transparent PNG assets avoid the old black square/badge and stay legible on
+   both light and dark CRM themes. Expanded sidebar keeps the full wordmark. */
 @media (min-width: 761px) {
   .sidebar:has(> button[aria-controls="crm-primary-navigation"][aria-expanded="false"]) .brand {
+    display: flex !important;
+    align-items: center !important;
     justify-content: center !important;
-    padding-left: 0 !important;
-    padding-right: 0 !important;
   }
 
   .sidebar:has(> button[aria-controls="crm-primary-navigation"][aria-expanded="false"]) .brandLogoWrap {
     position: relative !important;
+    display: block !important;
     width: 44px !important;
     min-width: 44px !important;
     height: 44px !important;
-    display: block !important;
     overflow: visible !important;
     background-color: transparent !important;
-    background-image: url("/brand/turbo-lev-compact.webp") !important;
+    background-image: url("/brand/turbo-lev-rail-light.png") !important;
     background-repeat: no-repeat !important;
     background-position: center !important;
     background-size: 42px 42px !important;
+    filter: drop-shadow(0 1px 1px rgba(17, 21, 26, .08));
+  }
+
+  :root[data-theme="dark"] .sidebar:has(> button[aria-controls="crm-primary-navigation"][aria-expanded="false"]) .brandLogoWrap {
+    background-image: url("/brand/turbo-lev-rail-dark.png") !important;
+    filter: drop-shadow(0 1px 1px rgba(0, 0, 0, .24));
   }
 
   .sidebar:has(> button[aria-controls="crm-primary-navigation"][aria-expanded="false"]) .brandLogo {
