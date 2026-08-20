@@ -9,9 +9,7 @@ const OPENAI_IMAGES_URL = "https://api.openai.com/v1/images/generations";
 const OPENAI_EDITS_URL = "https://api.openai.com/v1/images/edits";
 const OPENAI_MODELS_URL = "https://api.openai.com/v1/models";
 const PROMPT_VERSION = "vehicle-card-v5-shared-template-color-variant";
-const TEMPLATE_VERSION = "vehicle-template-v1";
-const GENERATION_BAND_YEARS = 6;
-const GENERATION_BAND_ANCHOR = 1990;
+const TEMPLATE_VERSION = "vehicle-template-v2-model-year";
 const GENERATION_LOCK_MS = 10 * 60 * 1000;
 const ERROR_RETRY_MS = 30 * 60 * 1000;
 const MAX_IMAGE_BYTES = 12 * 1024 * 1024;
@@ -40,60 +38,31 @@ type VehicleDescriptor = {
   exteriorColorConfirmed: boolean;
 };
 
-type GenerationBand = {
-  from: number | null;
-  to: number | null;
-  key: string;
-  label: string;
-};
-
-type ImageIdentity = {
+type TemplateIdentity = {
   templateKey: string;
   variantKey: string;
   normalizedColor: string;
-  generation: GenerationBand;
   libraryKey: string;
+  generationFrom: number | null;
+  generationTo: number | null;
+  generationLabel: string;
 };
 
 type LibraryAssetRow = {
   id: string;
   libraryKey: string;
-  make: string;
-  model: string;
-  year: number | null;
-  bodyType: string | null;
-  theme: string;
-  provider: string;
-  providerModel: string | null;
-  promptVersion: string;
-  promptText: string;
   status: string;
   imageMimeType: string | null;
   imageData?: Buffer | null;
   imageSizeBytes: number | null;
   lastError: string | null;
-  generatedAt: Date | null;
-  createdAt: Date;
   updatedAt: Date;
-  templateKey?: string | null;
-  variantKey?: string | null;
-  normalizedColor?: string | null;
-  generationFrom?: number | null;
-  generationTo?: number | null;
-  sourceAssetId?: string | null;
-  generationMode?: string | null;
 };
 
 type ReferenceAssetRow = {
   id: string;
-  make: string;
-  model: string;
-  year: number | null;
-  bodyType: string | null;
   imageMimeType: string | null;
   imageData: Buffer;
-  reviewStatus: string;
-  templateKey: string | null;
 };
 
 export type VehicleImageLibraryState = {
@@ -114,7 +83,7 @@ function cleanPart(value: string | null | undefined) {
 }
 
 function keyPart(value: string | null | undefined) {
-  return cleanPart(value).toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "-").replace(/^-+|-+$/g, "");
+  return cleanPart(value).toLowerCase().replace(/[^\p{L}\p{N}#._-]+/gu, "-").replace(/^-+|-+$/g, "");
 }
 
 function hashIdentity(parts: Array<string | number | null | undefined>) {
@@ -183,16 +152,6 @@ function normalizedTheme(themePaint?: string | null) {
   return normalizeThemePaint(themePaint, "Imagin-orange");
 }
 
-function generationBand(year: number | null): GenerationBand {
-  if (!year || !Number.isInteger(year)) {
-    return { from: null, to: null, key: "generation-unknown", label: "Покоління не визначено" };
-  }
-  const offset = year - GENERATION_BAND_ANCHOR;
-  const from = GENERATION_BAND_ANCHOR + Math.floor(offset / GENERATION_BAND_YEARS) * GENERATION_BAND_YEARS;
-  const to = from + GENERATION_BAND_YEARS - 1;
-  return { from, to, key: `${from}-${to}`, label: `${from}–${to}` };
-}
-
 function colorFamilyFromHex(value: string | null | undefined) {
   const source = cleanPart(value).toUpperCase();
   if (!/^#[0-9A-F]{6}$/.test(source)) return null;
@@ -244,63 +203,74 @@ function colorFamilyFromText(value: string | null | undefined) {
 function normalizedColorVariant(vehicle: VehicleDescriptor, paint: OpenAIVehiclePaintSpec, theme: string) {
   if (paint.source === "THEME") {
     const family = colorFamilyFromText(theme.replace(/^Imagin-/i, "")) || keyPart(theme) || "theme";
-    return { key: `theme:${family}`, normalizedColor: family };
+    return { variantKey: `theme:${family}`, normalizedColor: family };
   }
+
+  // Exact factory/user paint metadata wins. Broad registry colors intentionally share one variant.
+  const source = cleanPart(vehicle.exteriorColorSource).toUpperCase();
+  const paintCode = keyPart(vehicle.exteriorPaintCode);
+  const hex = cleanPart(vehicle.exteriorColorHex).toUpperCase();
+  if (paintCode) return { variantKey: `paint:${paintCode}`, normalizedColor: paintCode };
+  if (/^#[0-9A-F]{6}$/.test(hex) && source !== "REGISTRY") {
+    return { variantKey: `hex:${hex}`, normalizedColor: hex };
+  }
+
   const family = colorFamilyFromText(vehicle.exteriorColorName)
     || colorFamilyFromHex(vehicle.exteriorColorHex)
     || colorFamilyFromText(paint.requestedColor);
-  if (family) return { key: `real:${family}`, normalizedColor: family };
-  const fallback = keyPart(vehicle.exteriorPaintCode || paint.requestedColor).slice(0, 48) || "confirmed";
-  return { key: `real:${fallback}`, normalizedColor: fallback };
+  if (family) return { variantKey: `real:${family}`, normalizedColor: family };
+
+  const fallback = keyPart(paint.requestedColor).slice(0, 48) || "confirmed";
+  return { variantKey: `real:${fallback}`, normalizedColor: fallback };
 }
 
-function imageIdentity(vehicle: VehicleDescriptor, theme: string, paint: OpenAIVehiclePaintSpec): ImageIdentity {
-  const generation = generationBand(vehicle.year);
+function imageIdentity(vehicle: VehicleDescriptor, theme: string, paint: OpenAIVehiclePaintSpec): TemplateIdentity {
+  // Without an explicit generation field, model-year is the safe visual boundary.
+  // It still deduplicates every repeated vehicle of the same make/model/year/body while
+  // avoiding the much worse failure of reusing a previous/next generation across a facelift boundary.
+  const yearKey = vehicle.year == null ? "year-unknown" : String(vehicle.year);
   const templateKey = hashIdentity([
     TEMPLATE_VERSION,
     keyPart(vehicle.make),
     keyPart(vehicle.model),
+    yearKey,
     keyPart(vehicle.bodyType) || "body-unknown",
-    generation.key,
   ]);
   const color = normalizedColorVariant(vehicle, paint, theme);
-  const libraryKey = hashIdentity([PROMPT_VERSION, templateKey, color.key]);
   return {
     templateKey,
-    variantKey: color.key,
+    variantKey: color.variantKey,
     normalizedColor: color.normalizedColor,
-    generation,
-    libraryKey,
+    libraryKey: hashIdentity([PROMPT_VERSION, templateKey, color.variantKey]),
+    generationFrom: vehicle.year,
+    generationTo: vehicle.year,
+    generationLabel: vehicle.year == null ? "Рік не визначено" : String(vehicle.year),
   };
 }
 
-function masterPrompt(vehicle: VehicleDescriptor, paint: OpenAIVehiclePaintSpec, generation: GenerationBand) {
+function masterPrompt(vehicle: VehicleDescriptor, paint: OpenAIVehiclePaintSpec) {
   const year = vehicle.year ? String(vehicle.year) : "model year not provided";
   const body = vehicle.bodyType ? ` Body type: ${vehicle.bodyType}.` : "";
-  const generationRule = generation.from == null
-    ? "No model year is available, so match the named production model and body type conservatively."
-    : `Treat model years ${generation.label} as one reusable CRM generation family. Match the real production generation that best represents ${vehicle.year || generation.from} and do not cross into a visibly different generation.`;
   return [
     "Create exactly one production-quality vehicle cutout for an automotive service CRM card and a shared model-template library.",
     `Vehicle: ${vehicle.make} ${vehicle.model}, ${year}.${body}`,
-    generationRule,
-    "This image will be reused by many CRM vehicles of the same model generation. The vehicle must visually match the real production make, model and generation as closely as possible. Preserve the generation-specific silhouette, body proportions, roofline, glazing, lights, grille, bumpers, wheel arches and door layout.",
-    "Do not substitute a generic car, a different generation, a different body style or a visually similar model.",
+    "This image will be reused by CRM vehicles with the same make, model, model-year and body type. Match the real production generation for that model-year as closely as possible.",
+    "Preserve the generation-specific silhouette, body proportions, roofline, glazing, lights, grille, bumpers, wheel arches and door layout. Do not substitute a generic car, a different generation, a different body style or a visually similar model.",
     "Composition standard for the whole library: full vehicle visible, facing right, clean front three-quarter side view, camera near belt-line height, natural realistic proportions, centered horizontally, tires fully visible, no cropping.",
     paint.instruction,
     "The background must be fully transparent alpha. Every pixel outside the vehicle must remain transparent: no white, grey or colored backdrop, no road, no scenery, no studio wall, no floor, no gradient panel and no environmental reflections that imply a background.",
     "No people, no text, no captions, no watermark and no readable license-plate text. Use a blank neutral plate area if a plate holder is visible.",
     "Avoid large cast shadows. At most, use a tiny soft contact shadow immediately beneath the tires; never create a visible studio floor or a shadow field around the vehicle.",
-    "Style: photorealistic automotive catalog cutout, consistent neutral lighting, restrained reflections, clean edges, no exaggerated wide-angle distortion. Keep visual noise low so the image remains clear on a small CRM card.",
+    "Style: photorealistic automotive catalog cutout, consistent neutral lighting, restrained reflections, clean edges, no exaggerated wide-angle distortion.",
     "The final asset must contain exactly one car on transparency and be delivered as a PNG with alpha transparency.",
   ].join(" ");
 }
 
-function recolorPrompt(vehicle: VehicleDescriptor, paint: OpenAIVehiclePaintSpec, generation: GenerationBand) {
+function recolorPrompt(vehicle: VehicleDescriptor, paint: OpenAIVehiclePaintSpec) {
   return [
-    "Edit the supplied automotive CRM reference image. Preserve the exact same vehicle identity, generation, body shape, camera angle, crop, wheel design, glazing, lights, grille, bumpers and proportions.",
-    generation.from == null ? "Keep the same production generation shown in the reference." : `The reusable generation family is ${generation.label}; do not change the generation shown by the reference vehicle.`,
-    `The target vehicle is ${vehicle.make} ${vehicle.model}${vehicle.bodyType ? `, ${vehicle.bodyType}` : ""}.`,
+    "Edit the supplied automotive CRM reference image.",
+    "Preserve the exact same vehicle identity, production generation, body shape, camera angle, crop, wheels, glazing, lights, grille, bumpers and proportions.",
+    `The target vehicle is ${vehicle.make} ${vehicle.model}${vehicle.year ? ` model-year ${vehicle.year}` : ""}${vehicle.bodyType ? `, ${vehicle.bodyType}` : ""}.`,
     "Change only the factory-painted exterior body panels to the requested body color. Do not recolor glass, tires, wheels, lights, grille, chrome, black trim, badges or the plate area.",
     paint.instruction,
     "Keep neutral catalog lighting and physically realistic paint reflections. Preserve a fully transparent alpha background with no road, floor, scenery, text, people or watermark.",
@@ -312,12 +282,14 @@ function isMissingTableError(error: unknown) {
   return error instanceof Error && /VehicleImageLibraryAsset|VehicleImageGenerationJob|templateKey|variantKey|normalizedColor|generationFrom|generationTo|sourceAssetId|generationMode|does not exist|42P01|42703/i.test(error.message);
 }
 
-const ASSET_COLUMNS = `"id","libraryKey","make","model","year","bodyType","theme","provider","providerModel","promptVersion","promptText","status","imageMimeType","imageSizeBytes","lastError","generatedAt","createdAt","updatedAt","templateKey","variantKey","normalizedColor","generationFrom","generationTo","sourceAssetId","generationMode"`;
+const ASSET_COLUMNS = `"id","libraryKey","status","imageMimeType","imageSizeBytes","lastError","updatedAt"`;
 
-async function findAssetByKey(libraryKey: string, includeBytes = false): Promise<LibraryAssetRow | null> {
+async function findAssetByKey(libraryKey: string): Promise<LibraryAssetRow | null> {
   try {
-    const columns = includeBytes ? `${ASSET_COLUMNS},"imageData"` : ASSET_COLUMNS;
-    const result = await getSqlPool().query(`SELECT ${columns} FROM public."VehicleImageLibraryAsset" WHERE "libraryKey"=$1 LIMIT 1`, [libraryKey]);
+    const result = await getSqlPool().query(
+      `SELECT ${ASSET_COLUMNS} FROM public."VehicleImageLibraryAsset" WHERE "libraryKey"=$1 LIMIT 1`,
+      [libraryKey],
+    );
     return result.rowCount ? result.rows[0] as LibraryAssetRow : null;
   } catch (error) {
     if (isMissingTableError(error)) return null;
@@ -325,22 +297,13 @@ async function findAssetByKey(libraryKey: string, includeBytes = false): Promise
   }
 }
 
-async function findReferenceAsset(vehicle: VehicleDescriptor, identity: ImageIdentity, excludeAssetId?: string | null): Promise<ReferenceAssetRow | null> {
-  const params = [
-    identity.templateKey,
-    vehicle.make,
-    vehicle.model,
-    vehicle.bodyType,
-    identity.generation.from,
-    identity.generation.to,
-    excludeAssetId || null,
-  ];
+async function findReferenceAsset(vehicle: VehicleDescriptor, identity: TemplateIdentity, excludeAssetId?: string | null): Promise<ReferenceAssetRow | null> {
   const result = await getSqlPool().query(
-    `SELECT "id","make","model","year","bodyType","imageMimeType","imageData","reviewStatus","templateKey"
+    `SELECT "id","imageMimeType","imageData"
        FROM public."VehicleImageLibraryAsset"
       WHERE "status"='READY'
         AND "imageData" IS NOT NULL
-        AND ($7::text IS NULL OR "id"<>$7)
+        AND ($6::text IS NULL OR "id"<>$6)
         AND (
           "templateKey"=$1
           OR (
@@ -348,15 +311,12 @@ async function findReferenceAsset(vehicle: VehicleDescriptor, identity: ImageIde
             AND lower("make")=lower($2)
             AND lower("model")=lower($3)
             AND ($4::text IS NULL OR lower(COALESCE("bodyType",''))=lower($4))
-            AND (
-              ($5::int IS NULL AND "year" IS NULL)
-              OR ($5::int IS NOT NULL AND ("year" BETWEEN $5 AND $6 OR "year" IS NULL))
-            )
+            AND (($5::int IS NULL AND "year" IS NULL) OR "year"=$5)
           )
         )
       ORDER BY ("templateKey"=$1) DESC, ("reviewStatus"='APPROVED') DESC, "updatedAt" DESC
       LIMIT 1`,
-    params,
+    [identity.templateKey, vehicle.make, vehicle.model, vehicle.bodyType, vehicle.year, excludeAssetId || null],
   );
   return result.rowCount ? result.rows[0] as ReferenceAssetRow : null;
 }
@@ -390,7 +350,7 @@ export async function getVehicleImageLibraryState(vehicleId: string, themePaint?
     templateKey: identity.templateKey,
     variantKey: identity.variantKey,
     normalizedColor: identity.normalizedColor,
-    generationLabel: identity.generation.label,
+    generationLabel: identity.generationLabel,
   };
   const asset = await findAssetByKey(identity.libraryKey);
   if (asset?.status === "READY") return { state: "READY", assetId: asset.id, libraryKey: identity.libraryKey, autoGenerate: config?.autoGenerate ?? false, canGenerate: Boolean(config), error: null, ...extra };
@@ -456,7 +416,6 @@ async function generatePng(config: VehicleImageConfig, prompt: string) {
       output_format: "png",
     }),
   }, 90_000);
-
   const payload = await response.json().catch(() => null) as { data?: Array<{ b64_json?: string; url?: string }>; error?: unknown } | null;
   if (!response.ok) throw new Error(openAIErrorMessage(payload, `OpenAI Images API: HTTP ${response.status}`));
   return imageBytesFromPayload(payload);
@@ -513,7 +472,7 @@ export async function generateVehicleImageForVehicle(vehicleId: string, options?
   const theme = normalizedTheme(options?.themePaint);
   const paint = getOpenAIVehiclePaint(vehicle, theme);
   const identity = imageIdentity(vehicle, theme, paint);
-  const prompt = masterPrompt(vehicle, paint, identity.generation);
+  const prompt = masterPrompt(vehicle, paint);
   const existing = await findAssetByKey(identity.libraryKey);
   const now = Date.now();
 
@@ -553,8 +512,8 @@ export async function generateVehicleImageForVehicle(vehicleId: string, options?
       identity.templateKey,
       identity.variantKey,
       identity.normalizedColor,
-      identity.generation.from,
-      identity.generation.to,
+      identity.generationFrom,
+      identity.generationTo,
     ],
   );
 
@@ -570,7 +529,7 @@ export async function generateVehicleImageForVehicle(vehicleId: string, options?
 
     if (reference) {
       try {
-        png = await editPngFromReference(config, reference, recolorPrompt(vehicle, paint, identity.generation));
+        png = await editPngFromReference(config, reference, recolorPrompt(vehicle, paint));
         generationMode = "REFERENCE_EDIT";
         sourceAssetId = reference.id;
       } catch (editError) {
@@ -602,7 +561,7 @@ export async function generateVehicleImageForVehicle(vehicleId: string, options?
       templateKey: identity.templateKey,
       variantKey: identity.variantKey,
       normalizedColor: identity.normalizedColor,
-      generationLabel: identity.generation.label,
+      generationLabel: identity.generationLabel,
       requestedColor: paint.requestedColor,
       reusedTemplate: Boolean(reference),
       sourceAssetId,
