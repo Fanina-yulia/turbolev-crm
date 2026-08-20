@@ -136,6 +136,9 @@ jobs:
       - name: Reject Prisma / migration schema drift
         run: npx prisma migrate diff --exit-code --from-config-datasource --to-schema prisma
 
+      - name: Canonical CRM contracts smoke test
+        run: npm run contracts:smoke
+
       - name: Vehicle pricing classifier smoke test
         run: npx --no-install tsx scripts/vehicle-classifier-smoke.ts
 
