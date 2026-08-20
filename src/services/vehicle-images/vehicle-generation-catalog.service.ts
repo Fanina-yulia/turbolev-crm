@@ -1,5 +1,3 @@
-import "server-only";
-
 import { getSqlPool } from "@/src/lib/sql";
 
 const CACHE_TTL_MS = 10 * 60 * 1000;
@@ -42,6 +40,25 @@ export type VehicleModelPopularityRow = {
 };
 
 type CachedResolution = { expiresAt: number; value: VehicleGenerationResolution };
+type PopularityDbRow = {
+  id: unknown;
+  rank: unknown;
+  make: unknown;
+  model: unknown;
+  normalizedMake: unknown;
+  normalizedModel: unknown;
+  vehicleCount: unknown;
+  coveragePct: unknown;
+  firstReliableYear: unknown;
+  lastReliableYear: unknown;
+  topYears: unknown;
+  sourceTotalRows: unknown;
+  status: unknown;
+  refreshedAt: unknown;
+  generationCount: unknown;
+};
+type TopYearDbValue = { year?: unknown; count?: unknown };
+
 const resolutionCache = new Map<string, CachedResolution>();
 
 function clean(value: string | null | undefined) {
@@ -64,10 +81,8 @@ export function normalizeVehicleGenerationIdentity(makeInput: string | null | un
   if (make === "ŠKODA") make = "SKODA";
   if (make === "MERCEDES BENZ") make = "MERCEDES-BENZ";
 
-  // Common MVS rows duplicate model inside the make field, e.g. "DAEWOO LANOS / LANOS".
   if (model && make.endsWith(` ${model}`)) make = make.slice(0, -(model.length + 1)).trim();
 
-  // Registry variants that are actually generation/trim labels of one canonical model.
   if (make === "SKODA" && (model === "OCTAVIA A5" || model === "OCTAVIA TOUR")) model = "OCTAVIA";
   if (make === "MERCEDES-BENZ" && /^SPRINTER\b/.test(model)) model = "SPRINTER";
   if (make === "TOYOTA" && model === "RAV 4") model = "RAV4";
@@ -85,7 +100,11 @@ function tableMissing(error: unknown) {
   return error instanceof Error && /VehicleModelPopularity|VehicleGenerationReference|VehicleRegistryCompact|does not exist|42P01/i.test(error.message);
 }
 
-export async function resolveVehicleGeneration(input: { make: string | null | undefined; model: string | null | undefined; year: number | null | undefined }): Promise<VehicleGenerationResolution> {
+export async function resolveVehicleGeneration(input: {
+  make: string | null | undefined;
+  model: string | null | undefined;
+  year: number | null | undefined;
+}): Promise<VehicleGenerationResolution> {
   const identity = normalizeVehicleGenerationIdentity(input.make, input.model);
   const year = Number.isInteger(input.year) ? Number(input.year) : null;
   if (!identity.make || !identity.model || year == null) return { state: "NO_MATCH", candidates: [] };
@@ -108,7 +127,7 @@ export async function resolveVehicleGeneration(input: { make: string | null | un
         ORDER BY "confidence" DESC,"fromYear" DESC`,
       [identity.normalizedMake, identity.normalizedModel, year, MIN_RESOLUTION_CONFIDENCE],
     );
-    const candidates = result.rows.map((row) => ({
+    const candidates: VehicleGenerationCandidate[] = result.rows.map((row: Record<string, unknown>) => ({
       id: String(row.id),
       make: String(row.make),
       model: String(row.model),
@@ -118,10 +137,8 @@ export async function resolveVehicleGeneration(input: { make: string | null | un
       toYear: Number(row.toYear),
       confidence: Number(row.confidence),
       verificationStatus: String(row.verificationStatus),
-    } satisfies VehicleGenerationCandidate));
+    }));
 
-    // A transition model-year can legitimately be present in two generations depending on market/build date.
-    // Never guess in that case: keep the existing model-year-specific image identity.
     if (candidates.length === 1) value = { state: "RESOLVED", generation: candidates[0] };
     else if (candidates.length > 1) value = { state: "AMBIGUOUS", candidates };
     else value = { state: "NO_MATCH", candidates: [] };
@@ -140,55 +157,44 @@ export async function resolveVehicleGeneration(input: { make: string | null | un
 
 export async function refreshTopVehicleModelPopularity(limit = 100) {
   const safeLimit = Math.max(10, Math.min(250, Math.trunc(limit)));
-  const pool = getSqlPool();
-  const client = await pool.connect();
+  const client = await getSqlPool().connect();
   try {
     await client.query("BEGIN");
     await client.query(`UPDATE public."VehicleModelPopularity" SET "status"='INACTIVE',"updatedAt"=CURRENT_TIMESTAMP WHERE "status"='ACTIVE'`);
     const result = await client.query(
       `WITH raw AS MATERIALIZED (
-         SELECT
-           upper(regexp_replace(trim("brand"), '\\s+', ' ', 'g')) AS raw_make,
-           upper(regexp_replace(trim("model"), '\\s+', ' ', 'g')) AS raw_model,
-           "makeYear"::int AS make_year
+         SELECT upper(regexp_replace(trim("brand"), '\\s+', ' ', 'g')) AS raw_make,
+                upper(regexp_replace(trim("model"), '\\s+', ' ', 'g')) AS raw_model,
+                "makeYear"::int AS make_year
          FROM public."VehicleRegistryCompact"
          WHERE trim(COALESCE("brand",''))<>'' AND trim(COALESCE("model",''))<>''
        ), normalized AS MATERIALIZED (
-         SELECT
-           CASE
-             WHEN base_make='VW' THEN 'VOLKSWAGEN'
-             WHEN base_make='ŠKODA' THEN 'SKODA'
-             WHEN base_make='MERCEDES BENZ' THEN 'MERCEDES-BENZ'
-             ELSE base_make
-           END AS make,
-           CASE
-             WHEN base_make IN ('SKODA','ŠKODA') AND raw_model IN ('OCTAVIA A5','OCTAVIA TOUR') THEN 'OCTAVIA'
-             WHEN base_make IN ('MERCEDES-BENZ','MERCEDES BENZ') AND raw_model LIKE 'SPRINTER %' THEN 'SPRINTER'
-             WHEN base_make='TOYOTA' AND raw_model='RAV 4' THEN 'RAV4'
-             WHEN base_make='NISSAN' AND raw_model='X TRAIL' THEN 'X-TRAIL'
-             ELSE raw_model
-           END AS model,
-           make_year
+         SELECT CASE WHEN base_make='VW' THEN 'VOLKSWAGEN'
+                     WHEN base_make='ŠKODA' THEN 'SKODA'
+                     WHEN base_make='MERCEDES BENZ' THEN 'MERCEDES-BENZ'
+                     ELSE base_make END AS make,
+                CASE WHEN base_make IN ('SKODA','ŠKODA') AND raw_model IN ('OCTAVIA A5','OCTAVIA TOUR') THEN 'OCTAVIA'
+                     WHEN base_make IN ('MERCEDES-BENZ','MERCEDES BENZ') AND raw_model LIKE 'SPRINTER %' THEN 'SPRINTER'
+                     WHEN base_make='TOYOTA' AND raw_model='RAV 4' THEN 'RAV4'
+                     WHEN base_make='NISSAN' AND raw_model='X TRAIL' THEN 'X-TRAIL'
+                     ELSE raw_model END AS model,
+                make_year
          FROM (
            SELECT raw_make,raw_model,make_year,
-             CASE WHEN raw_make LIKE '% ' || raw_model
-                  THEN trim(left(raw_make, length(raw_make)-length(raw_model)))
-                  ELSE raw_make END AS base_make
+                  CASE WHEN raw_make LIKE '% ' || raw_model
+                       THEN trim(left(raw_make,length(raw_make)-length(raw_model)))
+                       ELSE raw_make END AS base_make
            FROM raw
          ) x
        ), counts AS MATERIALIZED (
-         SELECT make,model,count(*)::bigint AS vehicle_count
-         FROM normalized GROUP BY make,model
+         SELECT make,model,count(*)::bigint AS vehicle_count FROM normalized GROUP BY make,model
        ), totals AS (
          SELECT sum(vehicle_count)::bigint AS total_rows FROM counts
        ), ranked AS (
-         SELECT make,model,vehicle_count,row_number() OVER (ORDER BY vehicle_count DESC,make,model) AS rank
-         FROM counts
+         SELECT make,model,vehicle_count,row_number() OVER (ORDER BY vehicle_count DESC,make,model) AS rank FROM counts
        ), year_counts AS MATERIALIZED (
          SELECT make,model,make_year,count(*)::bigint AS year_count
-         FROM normalized
-         WHERE make_year BETWEEN 1950 AND 2035
-         GROUP BY make,model,make_year
+         FROM normalized WHERE make_year BETWEEN 1950 AND 2035 GROUP BY make,model,make_year
        ), reliable AS (
          SELECT make,model,
                 min(make_year) FILTER (WHERE year_count>=500) AS first_reliable_year,
@@ -212,10 +218,9 @@ export async function refreshTopVehicleModelPopularity(limit = 100) {
        )
        INSERT INTO public."VehicleModelPopularity"
          ("id","rank","make","model","normalizedMake","normalizedModel","vehicleCount","coveragePct","firstReliableYear","lastReliableYear","topYears","sourceTotalRows","status","refreshedAt","createdAt","updatedAt")
-       SELECT
-         'model:' || md5(lower(make)||'|'||lower(model)),rank,make,model,lower(make),lower(model),vehicle_count,
-         CASE WHEN total_rows>0 THEN round((vehicle_count::numeric*100)/total_rows,4) ELSE 0 END,
-         first_reliable_year,last_reliable_year,top_years,total_rows,'ACTIVE',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP
+       SELECT 'model:' || md5(lower(make)||'|'||lower(model)),rank,make,model,lower(make),lower(model),vehicle_count,
+              CASE WHEN total_rows>0 THEN round((vehicle_count::numeric*100)/total_rows,4) ELSE 0 END,
+              first_reliable_year,last_reliable_year,top_years,total_rows,'ACTIVE',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP
        FROM selected
        ON CONFLICT ("normalizedMake","normalizedModel") DO UPDATE SET
          "rank"=EXCLUDED."rank","make"=EXCLUDED."make","model"=EXCLUDED."model","vehicleCount"=EXCLUDED."vehicleCount",
@@ -235,6 +240,12 @@ export async function refreshTopVehicleModelPopularity(limit = 100) {
   }
 }
 
+function parseTopYears(value: unknown): Array<{ year: number; count: number }> {
+  if (!Array.isArray(value)) return [];
+  return value.map((item: TopYearDbValue) => ({ year: Number(item.year), count: Number(item.count) }))
+    .filter((item) => Number.isFinite(item.year) && Number.isFinite(item.count));
+}
+
 export async function listVehicleGenerationCatalog(limit = 100): Promise<VehicleModelPopularityRow[]> {
   const safeLimit = Math.max(1, Math.min(250, Math.trunc(limit)));
   try {
@@ -251,18 +262,24 @@ export async function listVehicleGenerationCatalog(limit = 100): Promise<Vehicle
         ORDER BY p."rank" ASC`,
       [safeLimit, MIN_RESOLUTION_CONFIDENCE],
     );
-    return result.rows.map((row) => ({
-      ...row,
+    return (result.rows as PopularityDbRow[]).map((row) => ({
+      id: String(row.id),
       rank: Number(row.rank),
+      make: String(row.make),
+      model: String(row.model),
+      normalizedMake: String(row.normalizedMake),
+      normalizedModel: String(row.normalizedModel),
       vehicleCount: String(row.vehicleCount),
       coveragePct: String(row.coveragePct),
       firstReliableYear: row.firstReliableYear == null ? null : Number(row.firstReliableYear),
       lastReliableYear: row.lastReliableYear == null ? null : Number(row.lastReliableYear),
-      topYears: Array.isArray(row.topYears) ? row.topYears.map((item) => ({ year: Number(item.year), count: Number(item.count) })) : [],
+      topYears: parseTopYears(row.topYears),
       sourceTotalRows: String(row.sourceTotalRows),
+      status: String(row.status),
+      refreshedAt: row.refreshedAt instanceof Date ? row.refreshedAt : new Date(String(row.refreshedAt)),
       generationCount: Number(row.generationCount || 0),
       generationStatus: Number(row.generationCount || 0) > 0 ? "READY" : "NEEDS_REVIEW",
-    })) as VehicleModelPopularityRow[];
+    }));
   } catch (error) {
     if (tableMissing(error)) return [];
     throw error;
@@ -279,32 +296,30 @@ export async function getVehicleGenerationCatalogStats() {
          FROM public."VehicleGenerationReference"
          WHERE "isActive"=TRUE AND "verificationStatus" IN ('VERIFIED','CURATED') AND "confidence">=$1
        )
-       SELECT
-         count(*)::int AS "models",
-         count(*) FILTER (WHERE m."normalizedMake" IS NOT NULL)::int AS "mappedModels",
-         COALESCE(sum(a."vehicleCount"),0)::bigint AS "vehiclesInTop100",
-         COALESCE(sum(a."vehicleCount") FILTER (WHERE m."normalizedMake" IS NOT NULL),0)::bigint AS "vehiclesWithGenerationMap",
-         COALESCE(max(a."sourceTotalRows"),0)::bigint AS "sourceTotalRows",
-         COALESCE(sum(a."coveragePct"),0)::numeric AS "top100CoveragePct",
-         COALESCE(sum(a."coveragePct") FILTER (WHERE m."normalizedMake" IS NOT NULL),0)::numeric AS "mappedCoveragePct"
-       FROM active a
-       LEFT JOIN mapped m USING("normalizedMake","normalizedModel")`,
+       SELECT count(*)::int AS "models",
+              count(*) FILTER (WHERE m."normalizedMake" IS NOT NULL)::int AS "mappedModels",
+              COALESCE(sum(a."vehicleCount"),0)::bigint AS "vehiclesInTop100",
+              COALESCE(sum(a."vehicleCount") FILTER (WHERE m."normalizedMake" IS NOT NULL),0)::bigint AS "vehiclesWithGenerationMap",
+              COALESCE(max(a."sourceTotalRows"),0)::bigint AS "sourceTotalRows",
+              COALESCE(sum(a."coveragePct"),0)::numeric AS "top100CoveragePct",
+              COALESCE(sum(a."coveragePct") FILTER (WHERE m."normalizedMake" IS NOT NULL),0)::numeric AS "mappedCoveragePct"
+       FROM active a LEFT JOIN mapped m USING("normalizedMake","normalizedModel")`,
       [MIN_RESOLUTION_CONFIDENCE],
     );
-    const row = result.rows[0] || {};
+    const row = result.rows[0] as Record<string, unknown> | undefined;
     const generations = await getSqlPool().query(
       `SELECT count(*)::int AS count FROM public."VehicleGenerationReference" WHERE "isActive"=TRUE AND "verificationStatus" IN ('VERIFIED','CURATED') AND "confidence">=$1`,
       [MIN_RESOLUTION_CONFIDENCE],
     );
     return {
-      models: Number(row.models || 0),
-      mappedModels: Number(row.mappedModels || 0),
-      generations: Number(generations.rows[0]?.count || 0),
-      vehiclesInTop100: String(row.vehiclesInTop100 || 0),
-      vehiclesWithGenerationMap: String(row.vehiclesWithGenerationMap || 0),
-      sourceTotalRows: String(row.sourceTotalRows || 0),
-      top100CoveragePct: Number(row.top100CoveragePct || 0),
-      mappedCoveragePct: Number(row.mappedCoveragePct || 0),
+      models: Number(row?.models || 0),
+      mappedModels: Number(row?.mappedModels || 0),
+      generations: Number((generations.rows[0] as Record<string, unknown> | undefined)?.count || 0),
+      vehiclesInTop100: String(row?.vehiclesInTop100 || 0),
+      vehiclesWithGenerationMap: String(row?.vehiclesWithGenerationMap || 0),
+      sourceTotalRows: String(row?.sourceTotalRows || 0),
+      top100CoveragePct: Number(row?.top100CoveragePct || 0),
+      mappedCoveragePct: Number(row?.mappedCoveragePct || 0),
     };
   } catch (error) {
     if (tableMissing(error)) return { models: 0, mappedModels: 0, generations: 0, vehiclesInTop100: "0", vehiclesWithGenerationMap: "0", sourceTotalRows: "0", top100CoveragePct: 0, mappedCoveragePct: 0 };
