@@ -33,6 +33,7 @@ model ServiceLocation {
   posts                   ServicePost[]
   mechanics               ServiceMechanic[]
   appointments            ServiceAppointment[]
+  diagnosticAssignments   DiagnosticAssignment[]
   employeeRoleAssignments EmployeeRoleAssignment[]
   performanceEvents       PerformanceEvent[]
   roleCapacityStandards   RoleCapacityStandard[]
@@ -72,8 +73,10 @@ model ServiceMechanic {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  location     ServiceLocation      @relation(fields: [locationId], references: [id], onDelete: Cascade)
-  appointments ServiceAppointment[]
+  location              ServiceLocation        @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  appointments          ServiceAppointment[]
+  diagnosticAssignments DiagnosticAssignment[]
+  diagnosticInspections DiagnosticInspection[]
 
   @@unique([locationId, employeeId])
   @@index([locationId, isActive, sortOrder])
