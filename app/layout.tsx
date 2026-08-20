@@ -33,6 +33,7 @@ import "./personnel-wizard-polish.css";
 import "./typography-final.css";
 import "./auth/sidebar-rail-width-fix.css";
 import "./auth/sidebar-compact-logo.css";
+import "./responsive-ui-contract.css";
 import { PhoneInputNormalizer } from "./phone-input-normalizer";
 import { LeadDetailsEnhancer } from "./lead-details-enhancer";
 import { VehicleConfigurationEnhancer } from "./vehicle-configuration-enhancer";
