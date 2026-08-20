@@ -1,30 +1,20 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import type { VehicleCardContract as VehicleCard } from "@/src/lib/contracts/crm-core";
+import type {
+  ClientVehiclesClientContract as Client,
+  ClientVehiclesVehicleContract as Vehicle,
+} from "@/src/lib/contracts/clients-vehicles";
+import {
+  clientsVehiclesPayloadMessage,
+  parseClientsVehiclesPayload,
+} from "@/src/lib/contracts/clients-vehicles-payload.parsers";
+import { parseVehicleCardPayload, payloadMessage } from "@/src/lib/contracts/directory-payload.parsers";
 import styles from "./clients-vehicles.module.css";
 import { VehicleBrandLogo } from "./vehicle-brand-logo";
 
 type ViewMode = "cards" | "rows";
-type Vehicle = {
-  id:string; plateNumber:string|null; vin:string|null; brand:string|null; model:string|null; year:number|null; mileageKm:number|null;
-  engineName:string|null; engineVolumeCm3:number|null; fuelType:string|null; bodyType:string|null; driveType:string|null; vehicleType:string|null;
-  turboLevClass:string|null; priceCoefficient:string|number; vehicleDataSource:string|null; vehicleDataConfidence:number|null; createdAt:string; updatedAt:string;
-  _count:{workOrders:number; diagnosticRequests:number};
-};
-type Client = {
-  id:string; name:string|null; phone:string; createdAt:string; updatedAt:string;
-  _count:{vehicles:number; workOrders:number; diagnosticRequests:number};
-  workOrders:Array<{id:string;status:string;createdAt:string;updatedAt:string;closedAt:string|null}>;
-  vehicles:Vehicle[];
-};
-type ListResponse = {ok:boolean;total:number;clients:Client[];error?:string};
-type VehicleCard = Vehicle & {
-  clientId:string; classificationSource:string|null; classificationConfidence:number|null; lastVehicleLookupAt:string|null;
-  client:{id:string;name:string|null;phone:string};
-  diagnosticRequests:Array<{id:string;status:string;technicalConclusion:string|null;confirmedAt:string|null;createdAt:string;updatedAt:string}>;
-  workOrders:Array<{id:string;status:string;createdAt:string;updatedAt:string;closedAt:string|null}>;
-  _count:{workOrders:number;diagnosticRequests:number};
-};
 
 const VIEW_KEY="turbolev-clients-view";
 
@@ -34,7 +24,7 @@ function vehicleTitle(v:Vehicle|VehicleCard){return [v.brand,v.model,v.year].fil
 function dateText(value:string|null|undefined){if(!value)return"—";const d=new Date(value);return Number.isNaN(d.getTime())?"—":new Intl.DateTimeFormat("uk-UA",{day:"2-digit",month:"2-digit",year:"numeric"}).format(d);}
 function lastVisit(client:Client){const row=client.workOrders[0];return row?dateText(row.closedAt||row.updatedAt||row.createdAt):"—";}
 function engineText(v:Vehicle|VehicleCard){if(v.engineName)return v.engineName;if(v.engineVolumeCm3)return `${(v.engineVolumeCm3/1000).toFixed(1)} л`;return"—";}
-function moneyCoefficient(value:string|number){const n=Number(value);return Number.isFinite(n)?`×${n.toFixed(2)}`:"×1.00";}
+function moneyCoefficient(value:Vehicle["priceCoefficient"]){const n=Number(value);return Number.isFinite(n)?`×${n.toFixed(2)}`:"×1.00";}
 
 export function ClientsVehicles(){
   const [view,setView]=useState<ViewMode>("cards");
@@ -49,8 +39,8 @@ export function ClientsVehicles(){
   const [vehicleLoading,setVehicleLoading]=useState(false);
 
   useEffect(()=>{const saved=window.localStorage.getItem(VIEW_KEY);if(saved==="cards"||saved==="rows")setView(saved);},[]);
-  useEffect(()=>{const controller=new AbortController();const timer=window.setTimeout(async()=>{setLoading(true);setError("");try{const params=new URLSearchParams({limit:"100"});if(query.trim())params.set("q",query.trim());const response=await fetch(`/api/clients-vehicles?${params}`,{cache:"no-store",signal:controller.signal});const data=await response.json() as ListResponse;if(!response.ok||!data.ok)throw new Error(data.error||"Не вдалося завантажити клієнтів");setClients(data.clients||[]);setTotal(data.total||0);}catch(e){if((e as Error).name!=="AbortError")setError(e instanceof Error?e.message:"Помилка завантаження");}finally{if(!controller.signal.aborted)setLoading(false);}},220);return()=>{controller.abort();window.clearTimeout(timer);};},[query]);
-  useEffect(()=>{if(!vehicleId){setVehicleCard(null);return;}const controller=new AbortController();setVehicleLoading(true);void(async()=>{try{const response=await fetch(`/api/vehicles/card?id=${encodeURIComponent(vehicleId)}`,{cache:"no-store",signal:controller.signal});const data=await response.json() as {ok?:boolean;vehicle?:VehicleCard;error?:string};if(!response.ok||!data.ok||!data.vehicle)throw new Error(data.error||"Не вдалося відкрити автомобіль");setVehicleCard(data.vehicle);}catch(e){if((e as Error).name!=="AbortError")setError(e instanceof Error?e.message:"Помилка картки авто");}finally{if(!controller.signal.aborted)setVehicleLoading(false);}})();return()=>controller.abort();},[vehicleId]);
+  useEffect(()=>{const controller=new AbortController();const timer=window.setTimeout(async()=>{setLoading(true);setError("");try{const params=new URLSearchParams({limit:"100"});if(query.trim())params.set("q",query.trim());const response=await fetch(`/api/clients-vehicles?${params}`,{cache:"no-store",signal:controller.signal});const raw:unknown=await response.json().catch(()=>null);const data=parseClientsVehiclesPayload(raw);if(!response.ok||!data)throw new Error(clientsVehiclesPayloadMessage(raw,"Не вдалося завантажити клієнтів"));setClients(data.clients);setTotal(data.total);}catch(e){if((e as Error).name!=="AbortError")setError(e instanceof Error?e.message:"Помилка завантаження");}finally{if(!controller.signal.aborted)setLoading(false);}},220);return()=>{controller.abort();window.clearTimeout(timer);};},[query]);
+  useEffect(()=>{if(!vehicleId){setVehicleCard(null);return;}const controller=new AbortController();setVehicleLoading(true);void(async()=>{try{const response=await fetch(`/api/vehicles/card?id=${encodeURIComponent(vehicleId)}`,{cache:"no-store",signal:controller.signal});const raw:unknown=await response.json().catch(()=>null);const vehicle=parseVehicleCardPayload(raw);if(!response.ok||!vehicle)throw new Error(payloadMessage(raw,"Не вдалося відкрити автомобіль"));setVehicleCard(vehicle);}catch(e){if((e as Error).name!=="AbortError")setError(e instanceof Error?e.message:"Помилка картки авто");}finally{if(!controller.signal.aborted)setVehicleLoading(false);}})();return()=>controller.abort();},[vehicleId]);
 
   const vehicleCount=useMemo(()=>clients.reduce((sum,c)=>sum+c.vehicles.length,0),[clients]);
   function changeView(next:ViewMode){setView(next);window.localStorage.setItem(VIEW_KEY,next);}
