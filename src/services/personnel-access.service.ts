@@ -4,38 +4,27 @@ import type { Prisma } from "@/src/generated/prisma/client";
 import { getPrisma } from "@/src/lib/prisma";
 import type { AccessContext } from "@/src/security/access-context";
 import type { AccessScopeCode } from "@/src/security/permissions";
+import {
+  GLOBAL_PERSONNEL_ROLE_CODES,
+  HR_MANAGER_DELEGATABLE_ROLE_CODES,
+  PERSONNEL_ROLE_CODES,
+  STATION_MANAGER_DELEGATABLE_ROLE_CODES,
+  personnelPositionByCode,
+  type PersonnelRoleCode,
+} from "@/src/security/personnel-org-structure";
 import { writeAuditEvent } from "@/src/services/audit.service";
 import {
   deactivateEmployeePlannerResources,
   syncEmployeeOperationalContext,
 } from "@/src/services/personnel-resource-sync.service";
 
-const SYSTEM_ROLE_CODES = [
-  "OWNER",
-  "EXECUTIVE_DIRECTOR",
-  "HEAD_OF_SALES",
-  "SALES",
-  "PARTS_SPECIALIST",
-  "STATION_MANAGER",
-  "MECHANIC",
-  "ACCOUNTANT",
-  "ADMINISTRATOR",
-] as const;
-
-type SystemRoleCode = (typeof SYSTEM_ROLE_CODES)[number];
+type SystemRoleCode = PersonnelRoleCode;
 type Tx = Prisma.TransactionClient;
 
-const GLOBAL_ROLES = new Set<SystemRoleCode>([
-  "OWNER",
-  "EXECUTIVE_DIRECTOR",
-  "HEAD_OF_SALES",
-  "ACCOUNTANT",
-]);
-const STATION_MANAGER_DELEGATION = new Set<SystemRoleCode>([
-  "MECHANIC",
-  "PARTS_SPECIALIST",
-  "ADMINISTRATOR",
-]);
+const SYSTEM_ROLE_CODES = PERSONNEL_ROLE_CODES;
+const GLOBAL_ROLES = GLOBAL_PERSONNEL_ROLE_CODES;
+const STATION_MANAGER_DELEGATION = STATION_MANAGER_DELEGATABLE_ROLE_CODES;
+const HR_MANAGER_DELEGATION = HR_MANAGER_DELEGATABLE_ROLE_CODES;
 
 export class PersonnelAccessError extends Error {
   code: string;
@@ -65,13 +54,14 @@ export function delegatableRoleCodes(context: AccessContext): SystemRoleCode[] {
   const roles = roleCodes(context);
   if (roles.has("OWNER")) return [...SYSTEM_ROLE_CODES];
   if (roles.has("EXECUTIVE_DIRECTOR")) return SYSTEM_ROLE_CODES.filter((code) => code !== "OWNER");
+  if (roles.has("HR_MANAGER")) return SYSTEM_ROLE_CODES.filter((code) => HR_MANAGER_DELEGATION.has(code));
   if (roles.has("STATION_MANAGER")) return SYSTEM_ROLE_CODES.filter((code) => STATION_MANAGER_DELEGATION.has(code));
   return [];
 }
 
 function hasGlobalPersonnelAuthority(context: AccessContext, grantedScope: AccessScopeCode | null) {
   const roles = roleCodes(context);
-  return grantedScope === "ALL" && (roles.has("OWNER") || roles.has("EXECUTIVE_DIRECTOR"));
+  return grantedScope === "ALL" && (roles.has("OWNER") || roles.has("EXECUTIVE_DIRECTOR") || roles.has("HR_MANAGER"));
 }
 
 function allowedLocationIds(context: AccessContext, grantedScope: AccessScopeCode | null) {
@@ -83,7 +73,7 @@ function assertRoleDelegation(context: AccessContext, roleCode: string) {
     throw new PersonnelAccessError("UNKNOWN_ROLE", "Невідома системна посада.");
   }
   if (!delegatableRoleCodes(context).includes(roleCode)) {
-    throw new PersonnelAccessError("ROLE_DELEGATION_FORBIDDEN", "Ваша роль не може призначати цю посаду.", 403);
+    throw new PersonnelAccessError("ROLE_DELEGATION_FORBIDDEN", "Ваша посада не дозволяє призначати цю посаду.", 403);
   }
   return roleCode;
 }
@@ -133,7 +123,7 @@ export async function getPersonnelAccessCatalog(context: AccessContext, grantedS
   if (!allowedCodes.length) {
     throw new PersonnelAccessError(
       "PERSONNEL_DELEGATION_FORBIDDEN",
-      "Для Вашої ролі не налаштовано делеговане додавання працівників.",
+      "Для Вашої посади не налаштовано делеговане додавання працівників.",
       403,
     );
   }
@@ -324,14 +314,20 @@ export async function configureEmployeeAccessTx(
   },
 ) {
   const roleCode = assertRoleDelegation(args.context, normalizeRoleCode(args.roleCode));
+  const position = personnelPositionByCode(roleCode);
+  if (!position) throw new PersonnelAccessError("UNKNOWN_ROLE", "Невідома системна посада.");
   const locationId = GLOBAL_ROLES.has(roleCode) ? null : args.locationId ? String(args.locationId) : null;
-  const employee = await tx.employeeProfile.findUnique({ where: { id: args.employeeId } });
+  let employee = await tx.employeeProfile.findUnique({ where: { id: args.employeeId } });
   if (!employee) throw new PersonnelAccessError("EMPLOYEE_NOT_FOUND", "Працівника не знайдено.", 404);
   await assertTargetWithinManagerScope(tx, employee.id, args.context, args.grantedScope);
   await assertLocation(tx, args.context, args.grantedScope, roleCode, locationId);
   if (args.cabinetEnabled && !employee.isActive) {
     throw new PersonnelAccessError("CABINET_REQUIRES_ACTIVE_EMPLOYEE", "Спочатку активуйте кадровий профіль працівника.", 409);
   }
+  employee = await tx.employeeProfile.update({
+    where: { id: employee.id },
+    data: { position: position.name, personnelCategory: position.category },
+  });
 
   const operational = await syncEmployeeOperationalContext(tx, {
     employeeId: employee.id,

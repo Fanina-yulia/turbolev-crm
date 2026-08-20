@@ -5,7 +5,6 @@ import { navigateCrm, type CrmRouteParams } from "./crm-route";
 import type { CrmAccessSnapshot } from "./use-crm-access";
 import { StationOverview } from "./station-overview";
 import { MechanicMobileCabinet } from "./mechanic-mobile-cabinet";
-import { QcQueue } from "./qc-queue";
 import type { CrmSectionLabel } from "./crm-navigation";
 import styles from "./role-cabinet.module.css";
 
@@ -59,7 +58,7 @@ function Loading() {
 
 function LinkRequired() {
   return <div className={styles.state}>
-    <strong>Кабінет завідувача створений, але станція ще не призначена</strong>
+    <strong>Кабінет Керівника станції створений, але станція ще не призначена</strong>
     <span>Призначте станцію працівнику в «Персонал». Після цього пульт покаже тільки її операційні дані.</span>
   </div>;
 }
@@ -88,7 +87,7 @@ function StationManagerCabinet({ data, userName }: { data: ManagerPayload; userN
   const attention = data.attention ?? [];
   return <>
     <header className={styles.header}>
-      <div><p className="eyebrow">TURBO LEV · КАБІНЕТ ЗАВІДУВАЧА</p><h1>Операційний пульт станції</h1><span className="muted">{userName || "Завідувач станцією"} · {data.station.name} · без глобальних фінансів мережі</span></div>
+      <div><p className="eyebrow">TURBO LEV · КАБІНЕТ КЕРІВНИКА СТАНЦІЇ</p><h1>Операційний пульт станції</h1><span className="muted">{userName || "Керівник станції"} · {data.station.name} · без глобальних фінансів мережі</span></div>
       <button className={styles.primaryAction} type="button" onClick={() => navigateCrm("Виробництво", { scope: "posts" })}>Виробництво зараз →</button>
     </header>
 
@@ -96,7 +95,7 @@ function StationManagerCabinet({ data, userName }: { data: ManagerPayload; userN
       <button type="button" onClick={() => navigateCrm("Планувальник")}><span>Авто сьогодні</span><strong>{data.kpis.carsToday}</strong><small>{data.kpis.carsOnStation} у потоці станції</small></button>
       <button type="button" onClick={() => navigateCrm("Виробництво", { status: "IN_REPAIR" })}><span>У ремонті</span><strong>{data.kpis.inRepair}</strong><small>активних авто</small></button>
       <button type="button" onClick={() => navigateCrm("Виробництво", { scope: "posts" })}><span>Пости</span><strong>{data.kpis.postsOccupied}/{data.kpis.postsTotal}</strong><small>зайнято зараз</small></button>
-      <button type="button" onClick={() => navigateCrm("Виробництво", { scope: "mechanics" })}><span>Автомеханіки</span><strong>{data.kpis.mechanicsTotal}</strong><small>активних на станції</small></button>
+      <button type="button" onClick={() => navigateCrm("Виробництво", { scope: "mechanics" })}><span>Механіки</span><strong>{data.kpis.mechanicsTotal}</strong><small>активних на станції</small></button>
     </section>
 
     <section className={styles.panel}>
@@ -154,7 +153,6 @@ export function RoleAwareOverview({ access }: { access: CrmAccessSnapshot | null
 
   useEffect(() => { void load(); const handler = () => void load(); window.addEventListener("turbolev:data-changed", handler); return () => window.removeEventListener("turbolev:data-changed", handler); }, [load]);
 
-  if (roleCodes.has("SHIFT_MASTER") && access?.provisioningState === "ACTIVE") return <QcQueue />;
   if (roleCodes.has("OWNER") || roleCodes.has("EXECUTIVE_DIRECTOR") || !specialRole || access?.provisioningState !== "ACTIVE") return <StationOverview />;
   if (loading && !data) return <Loading />;
   if (error && !data) return <div className={styles.state}><strong>Не вдалося відкрити кабінет</strong><span>{error}</span><button type="button" onClick={() => void load()}>Повторити</button></div>;
