@@ -13,22 +13,23 @@ import styles from "./role-cabinet.module.css";
 type FlowRoute = { label: string; value: number; section: CrmSectionLabel; params?: CrmRouteParams };
 
 const statusLabels: Record<string, string> = {
-  DRAFT: "Чернетка",
-  APPROVED: "Погоджено",
+  DRAFT: "Очікує погодження",
+  APPROVED: "Готовий до ремонту",
   IN_PROGRESS: "В роботі",
-  COMPLETED: "Завершено",
-  BOOKED: "Записаний",
-  ARRIVED: "Приїхав",
-  DIAGNOSTICS: "Діагностика",
+  COMPLETED: "Видано",
+  BOOKED: "Заплановано",
+  ARRIVED: "В роботі",
+  DIAGNOSTICS: "В роботі",
   WAITING_APPROVAL: "Очікує погодження",
   WAITING_PARTS: "Очікує деталі",
   READY_FOR_REPAIR: "Готовий до ремонту",
   IN_REPAIR: "У ремонті",
-  WAITING_QC: "Очікує QC",
+  WAITING_QC: "Контроль якості",
   WAITING_PAYMENT: "Очікує оплату",
   READY_FOR_PICKUP: "Готовий до видачі",
-  PAUSED: "Призупинено",
-  NO_SHOW: "Не приїхав",
+  PAUSED: "У ремонті",
+  NO_SHOW: "Скасовано",
+  CANCELLED: "Скасовано",
 };
 
 function Loading() {
@@ -42,31 +43,39 @@ function LinkRequired() {
   </div>;
 }
 
+function attentionLabel(item: StationManagerAttentionContract) {
+  if (!item.lifecycle) return statusLabels[item.status] || item.status;
+  return item.lifecycle.flags.includes("OVERDUE") ? `Протерміновано · ${item.lifecycle.label}` : item.lifecycle.label;
+}
+
 function attentionRoute(item: StationManagerAttentionContract): { section: CrmSectionLabel; params: CrmRouteParams } {
-  if (item.status === "NO_SHOW") return { section: "Планувальник", params: { appointmentId: item.id, status: "NO_SHOW" } };
-  if (item.status === "WAITING_QC") return { section: "Замовлення-наряди", params: { scope: "qc", plate: item.plate } };
-  if (["WAITING_APPROVAL", "WAITING_PARTS", "READY_FOR_REPAIR", "IN_REPAIR", "READY_FOR_PICKUP"].includes(item.status)) {
-    return { section: "Замовлення-наряди", params: { status: item.status, plate: item.plate } };
+  const code = item.lifecycle?.code;
+  if (item.status === "NO_SHOW" || code === "CANCELLED") return { section: "Планувальник", params: { appointmentId: item.id } };
+  if (code === "PLANNED") return { section: "Планувальник", params: { appointmentId: item.id } };
+  if (["IN_WORK", "DIAGNOSTIC_COMPLETED", "MANAGER_REVIEW", "CLIENT_DECISION"].includes(code || "")) {
+    return { section: "Діагностика", params: { plate: item.plate } };
   }
+  if (["PARTS_SELECTION", "WAITING_PARTS"].includes(code || "")) return { section: "Підбір запчастин", params: { plate: item.plate } };
+  if (code === "QUALITY_CONTROL") return { section: "Замовлення-наряди", params: { scope: "qc", plate: item.plate } };
   return { section: "Замовлення-наряди", params: { plate: item.plate } };
 }
 
 function StationManagerCabinet({ data, userName }: { data: StationManagerCabinetPayload; userName?: string | null }) {
   if (!data.linked) return <LinkRequired />;
   const flow: FlowRoute[] = [
-    { label: "Записані", value: data.flow.booked, section: "Планувальник", params: { status: "BOOKED" } },
-    { label: "Приймання / діагностика", value: data.flow.diagnostics, section: "Діагностика" },
-    { label: "Погодження", value: data.flow.approval, section: "Замовлення-наряди", params: { status: "WAITING_APPROVAL" } },
-    { label: "Очікують деталі", value: data.flow.waitingParts, section: "Виробництво", params: { status: "WAITING_PARTS" } },
-    { label: "Готові до ремонту", value: data.flow.readyForRepair, section: "Виробництво", params: { status: "READY_FOR_REPAIR" } },
+    { label: "Заплановано", value: data.flow.booked, section: "Планувальник", params: { status: "PLANNED" } },
+    { label: "В роботі / діагностика", value: data.flow.diagnostics, section: "Діагностика" },
+    { label: "Очікує рішення / погодження", value: data.flow.approval, section: "Замовлення-наряди" },
+    { label: "Підбір / очікування деталей", value: data.flow.waitingParts, section: "Підбір запчастин" },
+    { label: "Готовий до ремонту", value: data.flow.readyForRepair, section: "Виробництво", params: { status: "READY_FOR_REPAIR" } },
     { label: "У ремонті", value: data.flow.inRepair, section: "Виробництво", params: { status: "IN_REPAIR" } },
-    { label: "QC", value: data.flow.qc, section: "Контроль якості", params: { scope: "waiting" } },
-    { label: "До видачі", value: data.flow.ready, section: "Замовлення-наряди", params: { status: "READY_FOR_PICKUP" } },
+    { label: "Контроль якості", value: data.flow.qc, section: "Контроль якості", params: { scope: "waiting" } },
+    { label: "Оплата / видача", value: data.flow.ready, section: "Замовлення-наряди" },
   ];
   const attention = data.attention;
   return <>
     <header className={styles.header}>
-      <div><p className="eyebrow">TURBO LEV · КАБІНЕТ КЕРІВНИКА СТАНЦІЇ</p><h1>Операційний пульт станції</h1><span className="muted">{userName || "Керівник станції"} · {data.station.name} · без глобальних фінансів мережі</span></div>
+      <div><p className="eyebrow">TURBO LEV · КАБІНЕТ КЕРІВНИКА СТАНЦІЇ</p><h1>Операційний пульт станції</h1><span className="muted">{userName || "Керівник станції"} · {data.station.name} · єдиний статус авто в усій CRM</span></div>
       <button className={styles.primaryAction} type="button" onClick={() => navigateCrm("Виробництво", { scope: "posts" })}>Виробництво зараз →</button>
     </header>
 
@@ -78,7 +87,7 @@ function StationManagerCabinet({ data, userName }: { data: StationManagerCabinet
     </section>
 
     <section className={styles.panel}>
-      <div className={styles.panelHead}><div><p className="eyebrow">ВИРОБНИЧИЙ ПОТІК</p><h2>Що відбувається на станції</h2></div><span className="muted">без виручки та глобального P&amp;L</span></div>
+      <div className={styles.panelHead}><div><p className="eyebrow">ВИРОБНИЧИЙ ПОТІК</p><h2>Що відбувається на станції</h2></div><span className="muted">статуси розраховані з фактичних дій у CRM</span></div>
       <div className={styles.flow}>{flow.map((item) => <button type="button" key={item.label} onClick={() => navigateCrm(item.section, item.params)}><span>{item.label}</span><strong>{item.value}</strong><em>Відкрити →</em></button>)}</div>
     </section>
 
@@ -88,7 +97,7 @@ function StationManagerCabinet({ data, userName }: { data: StationManagerCabinet
         {attention.length ? <div className={styles.list}>{attention.map((item) => {
           const route = attentionRoute(item);
           return <button className={styles.attention} type="button" key={item.id} onClick={() => navigateCrm(route.section, route.params)}>
-            <b>{item.plate}</b><div><strong>{item.vehicle}</strong><span>{item.problem || "Без примітки"}</span><small>{item.mechanic || "Механік не призначений"}{item.post ? ` · ${item.post}` : ""}</small></div><em>{statusLabels[item.status] || item.status}</em>
+            <b>{item.plate}</b><div><strong>{item.vehicle}</strong><span>{item.problem || "Без примітки"}</span><small>{item.mechanic || "Механік не призначений"}{item.post ? ` · ${item.post}` : ""}</small></div><em>{attentionLabel(item)}</em>
           </button>;
         })}</div> : <div className={styles.empty}>Критичних блокерів на сьогодні немає.</div>}
       </section>
@@ -96,8 +105,8 @@ function StationManagerCabinet({ data, userName }: { data: StationManagerCabinet
       <aside className={styles.panel}>
         <div className={styles.panelHead}><div><p className="eyebrow">ШВИДКИЙ ДОСТУП</p><h2>Керування станцією</h2></div></div>
         <div className={styles.quickGrid}>
-          <button type="button" onClick={() => navigateCrm("Діагностика")}>Діагностика<span>черга та підтвердження →</span></button>
-          <button type="button" onClick={() => navigateCrm("Замовлення-наряди")}>Замовлення-наряди<span>кошториси та статуси →</span></button>
+          <button type="button" onClick={() => navigateCrm("Діагностика")}>Діагностика<span>завершення та перевірка →</span></button>
+          <button type="button" onClick={() => navigateCrm("Замовлення-наряди")}>Замовлення-наряди<span>кошториси та ремонт →</span></button>
           <button type="button" onClick={() => navigateCrm("Виробництво", { status: "IN_REPAIR" })}>Ремонт у роботі<span>пости та активні роботи →</span></button>
           <button type="button" onClick={() => navigateCrm("Контроль якості")}>Контроль якості<span>черга QC та результати →</span></button>
           <button type="button" onClick={() => navigateCrm("Підбір запчастин")}>Запчастини<span>підбір і постачальники →</span></button>
