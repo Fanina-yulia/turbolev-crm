@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { PlannerAppointmentStatus } from "@/src/generated/prisma/client";
 import { toClientDirectoryItem } from "@/src/lib/contracts/crm-core.server";
 import { getPrisma } from "@/src/lib/prisma";
+import { getVehicleLifecycleMap } from "@/src/services/vehicle-lifecycle.service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -49,6 +50,19 @@ const qualifyingAppointmentWhere = {
   status: { notIn: NON_CLIENT_APPOINTMENT_STATUSES },
 } as const;
 
+function withVehicleLifecycle<T extends ReturnType<typeof toClientDirectoryItem>>(
+  client: T,
+  lifecycleMap: Awaited<ReturnType<typeof getVehicleLifecycleMap>>,
+) {
+  return {
+    ...client,
+    vehicles: client.vehicles.map((vehicle) => ({
+      ...vehicle,
+      lifecycle: lifecycleMap.get(vehicle.id) || null,
+    })),
+  };
+}
+
 export async function GET(request: NextRequest) {
   const prisma = getPrisma();
   const q = (request.nextUrl.searchParams.get("q") || "").trim();
@@ -67,8 +81,10 @@ export async function GET(request: NextRequest) {
       }
       const client = await prisma.client.findUnique({ where: { id }, select: clientSelect });
       if (!client) return NextResponse.json({ ok: false, error: "Клієнта не знайдено." }, { status: 404 });
+      const mapped = toClientDirectoryItem(client);
+      const lifecycleMap = await getVehicleLifecycleMap(mapped.vehicles.map((vehicle) => vehicle.id));
       return NextResponse.json(
-        { ok: true, client: toClientDirectoryItem(client) },
+        { ok: true, client: withVehicleLifecycle(mapped, lifecycleMap) },
         { headers: { "Cache-Control": "no-store" } },
       );
     }
@@ -115,9 +131,11 @@ export async function GET(request: NextRequest) {
       take: limit,
       select: clientSelect,
     });
+    const mappedClients = clients.map(toClientDirectoryItem);
+    const lifecycleMap = await getVehicleLifecycleMap(mappedClients.flatMap((client) => client.vehicles.map((vehicle) => vehicle.id)));
 
     return NextResponse.json(
-      { ok: true, total, page: safePage, limit, pages, clients: clients.map(toClientDirectoryItem) },
+      { ok: true, total, page: safePage, limit, pages, clients: mappedClients.map((client) => withVehicleLifecycle(client, lifecycleMap)) },
       { headers: { "Cache-Control": "no-store" } },
     );
   } catch (error) {
