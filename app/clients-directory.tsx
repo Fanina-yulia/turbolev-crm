@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { ClientDirectoryItem } from "@/src/lib/contracts/crm-core";
+import type { ClientDirectoryLifecycleItem } from "@/src/lib/contracts/directory-payload.parsers";
 import {
   parseClientDirectoryItemPayload,
   parseClientDirectoryPayload,
@@ -11,9 +11,24 @@ import { CustomerCabinetCard } from "./customer-cabinet-card";
 import { navigateCrm, readCrmRoute } from "./crm-route";
 import styles from "./directory-pages.module.css";
 
-type Client = ClientDirectoryItem;
+type Client = ClientDirectoryLifecycleItem;
 
 const PAGE_SIZE = 24;
+const workOrderLabels: Record<string, string> = {
+  PARTS_REVIEW: "Підбір деталей",
+  WAITING_APPROVAL: "Очікує погодження",
+  WAITING_PARTS: "Очікує деталі",
+  READY_FOR_REPAIR: "Готовий до ремонту",
+  IN_REPAIR: "У ремонті",
+  PAUSED: "У ремонті · призупинено",
+  REWORK: "У ремонті · доопрацювання",
+  WARRANTY: "У ремонті · гарантійне звернення",
+  WAITING_QC: "Контроль якості",
+  WAITING_PAYMENT: "Очікує оплату",
+  READY_FOR_PICKUP: "Готовий до видачі",
+  CLOSED: "Видано",
+  CANCELLED: "Скасовано",
+};
 
 function initials(name: string | null) {
   const source = (name || "Клієнт").trim();
@@ -34,6 +49,11 @@ function dateText(value: string | null | undefined) {
 function lastVisit(client: Client) {
   const row = client.workOrders[0];
   return row ? dateText(row.closedAt || row.updatedAt || row.createdAt) : "—";
+}
+
+function vehicleStatus(vehicle: Client["vehicles"][number]) {
+  if (!vehicle.lifecycle) return "Поза активним сервісним процесом";
+  return vehicle.lifecycle.flags.includes("OVERDUE") ? `Протерміновано · ${vehicle.lifecycle.label}` : vehicle.lifecycle.label;
 }
 
 export function ClientsDirectory() {
@@ -197,7 +217,7 @@ export function ClientsDirectory() {
               <h3>Пов’язані автомобілі <span>{selected._count.vehicles}</span></h3>
               {selected.vehicles.length ? <div className={styles.relatedList}>{selected.vehicles.map((vehicle) => <button key={vehicle.id} onClick={() => navigateCrm("Авто", { vehicleId: vehicle.id })}>
                 <strong>{[vehicle.brand, vehicle.model, vehicle.year].filter(Boolean).join(" ") || "Автомобіль"}</strong>
-                <small>{vehicle.plateNumber || vehicle.vin || "Без номера"}</small>
+                <small>{vehicle.plateNumber || vehicle.vin || "Без номера"} · {vehicleStatus(vehicle)}</small>
                 <span>›</span>
               </button>)}</div> : <div className={styles.emptyInline}>Автомобілі ще не додані.</div>}
             </section>
@@ -207,7 +227,7 @@ export function ClientsDirectory() {
             <section className={styles.panel}>
               <h3>Замовлення-наряди <span>{selected._count.workOrders}</span></h3>
               {selected.workOrders.length ? <div className={styles.relatedList}>{selected.workOrders.map((workOrder) => <button key={workOrder.id} onClick={() => navigateCrm("Замовлення-наряди", { workOrderId: workOrder.id })}>
-                <strong>{workOrder.status}</strong>
+                <strong>{workOrderLabels[workOrder.status] || workOrder.status}</strong>
                 <small>{dateText(workOrder.closedAt || workOrder.updatedAt || workOrder.createdAt)}</small>
                 <span>›</span>
               </button>)}</div> : <div className={styles.emptyInline}>Замовлень-нарядів ще немає.</div>}
