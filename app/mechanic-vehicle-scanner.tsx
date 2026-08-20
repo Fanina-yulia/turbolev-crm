@@ -66,6 +66,7 @@ export function MechanicVehicleScanner() {
   const streamRef = useRef<MediaStream | null>(null);
   const autoTimerRef = useRef<number | null>(null);
   const autoTriedRef = useRef(false);
+  const scanAbortRef = useRef<AbortController | null>(null);
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [manual, setManual] = useState("");
@@ -119,12 +120,15 @@ export function MechanicVehicleScanner() {
   }
 
   function show() {
+    scanAbortRef.current?.abort();
+    scanAbortRef.current = null;
     reset();
     setOpen(true);
   }
 
   function close() {
-    if (busy) return;
+    scanAbortRef.current?.abort();
+    scanAbortRef.current = null;
     stopCamera();
     setOpen(false);
     reset();
@@ -138,6 +142,9 @@ export function MechanicVehicleScanner() {
   }
 
   async function requestScan(input: File | string, confirm = false, existing?: ScanResult, silent = false) {
+    scanAbortRef.current?.abort();
+    const controller = new AbortController();
+    scanAbortRef.current = controller;
     setBusy(true);
     if (!silent) setError("");
     setScanHint("");
@@ -147,7 +154,12 @@ export function MechanicVehicleScanner() {
         const prepared = await preparePhoto(input);
         const form = new FormData();
         form.append("image", prepared);
-        response = await fetch("/api/cabinet/mechanic/tasks/vehicle-scan", { method: "POST", credentials: "include", body: form });
+        response = await fetch("/api/cabinet/mechanic/tasks/vehicle-scan", {
+          method: "POST",
+          credentials: "include",
+          body: form,
+          signal: controller.signal,
+        });
       } else {
         const plate = typeof input === "string" ? input : existing?.recognition?.plate || "";
         response = await fetch("/api/cabinet/mechanic/tasks/vehicle-scan", {
@@ -155,21 +167,27 @@ export function MechanicVehicleScanner() {
           credentials: "include",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ plate, confirm, source: existing?.recognition?.source || "MANUAL" }),
+          signal: controller.signal,
         });
       }
       const body = await response.json().catch(() => null) as ScanResult | null;
       if (!response.ok || !body?.ok) throw new Error(body?.message || body?.error || "Не вдалося перевірити авто");
+      if (controller.signal.aborted) return null;
       setResult(body);
       stopCamera();
       if (body.recognition?.plate) setManual(body.recognition.plate);
       return body;
     } catch (cause) {
+      if (controller.signal.aborted || (cause instanceof DOMException && cause.name === "AbortError")) return null;
       const message = cause instanceof Error ? cause.message : "Не вдалося перевірити авто";
       if (silent) setScanHint(message);
       else setError(message);
       return null;
     } finally {
-      setBusy(false);
+      if (scanAbortRef.current === controller) {
+        scanAbortRef.current = null;
+        setBusy(false);
+      }
     }
   }
 
@@ -256,7 +274,7 @@ export function MechanicVehicleScanner() {
     autoTimerRef.current = window.setTimeout(() => {
       autoTimerRef.current = null;
       void scanLiveFrame(true);
-    }, 1400);
+    }, 1800);
     return () => {
       if (autoTimerRef.current != null) {
         window.clearTimeout(autoTimerRef.current);
@@ -265,7 +283,10 @@ export function MechanicVehicleScanner() {
     };
   }, [busy, cameraReady, manualMode, open, result, scanLiveFrame]);
 
-  useEffect(() => () => stopCamera(), [stopCamera]);
+  useEffect(() => () => {
+    scanAbortRef.current?.abort();
+    stopCamera();
+  }, [stopCamera]);
 
   async function confirmVehicle() {
     if (!result?.assignedToMe || !result.recognition?.plate || !result.nextAction) return;
@@ -302,7 +323,7 @@ export function MechanicVehicleScanner() {
       <div className={styles.cameraShade} />
 
       <div className={styles.scannerTop}>
-        <button type="button" className={styles.backButton} onClick={close} disabled={busy} aria-label="Назад">‹</button>
+        <button type="button" className={styles.backButton} onClick={close} aria-label="Назад">‹</button>
         <label className={styles.galleryButton} aria-label="Вибрати фото з галереї">
           <span>▧</span>
           <input ref={galleryRef} type="file" accept="image/*" disabled={busy} onChange={(event) => {
@@ -334,7 +355,7 @@ export function MechanicVehicleScanner() {
 
       <div className={styles.scannerBottom}>
         <button type="button" className={styles.manualLink} onClick={() => { setManualMode(true); setScanHint(""); }} disabled={busy}>Ввести номер вручну</button>
-        <button type="button" className={styles.cancelCamera} onClick={close} disabled={busy}>СКАСУВАТИ</button>
+        <button type="button" className={styles.cancelCamera} onClick={close}>СКАСУВАТИ</button>
       </div>
 
       {manualMode && <div className={styles.manualOverlay}>
