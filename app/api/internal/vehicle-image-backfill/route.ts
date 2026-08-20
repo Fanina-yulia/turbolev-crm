@@ -2,10 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { getPrisma } from "@/src/lib/prisma";
 import { getOpenAIVehicleImageConfig } from "@/src/services/vehicle-images/openai-library.service";
 import { generateVehicleImageInBackground } from "@/src/services/vehicle-images/vehicle-image-background.service";
-import {
-  getGenerationCampaignStatus,
-  runGenerationCampaignBatch,
-} from "@/src/services/vehicle-images/vehicle-generation-image-campaign.service";
+import { getGenerationCampaignStatus } from "@/src/services/vehicle-images/vehicle-generation-image-campaign.service";
+import { runGenerationCampaignBatchWithFallback } from "@/src/services/vehicle-images/vehicle-generation-image-campaign-fallback.service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -36,7 +34,7 @@ async function handleCampaign(request: NextRequest) {
   }
 
   const batch = Number(request.nextUrl.searchParams.get("batch") || 3);
-  const result = await runGenerationCampaignBatch(campaignId, token, batch);
+  const result = await runGenerationCampaignBatchWithFallback(campaignId, token, batch);
   return result
     ? NextResponse.json(result, { headers: { "Cache-Control": "no-store" } })
     : hidden();
