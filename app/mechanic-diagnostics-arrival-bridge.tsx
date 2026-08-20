@@ -123,6 +123,23 @@ export function MechanicDiagnosticsArrivalBridge() {
   }, [load]);
 
   useEffect(() => {
+    const openSelectedVehicleDiagnostic = (event: MouseEvent) => {
+      const source = event.target instanceof Element ? event.target : null;
+      const button = source?.closest<HTMLButtonElement>("button");
+      if (!button) return;
+      const label = (button.textContent || "").replace(/\s+/g, " ").trim();
+      if (label !== "До діагностики →") return;
+
+      event.preventDefault();
+      event.stopPropagation();
+      openScanner();
+    };
+
+    document.addEventListener("click", openSelectedVehicleDiagnostic, true);
+    return () => document.removeEventListener("click", openSelectedVehicleDiagnostic, true);
+  }, []);
+
+  useEffect(() => {
     const sync = () => {
       const main = findDiagnosticsMain();
       setTarget((current) => {
