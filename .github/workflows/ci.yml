@@ -56,12 +56,7 @@ jobs:
         run: npx prisma validate
 
       - name: Apply full migration history on clean PostgreSQL 18
-        # The helper attaches empty structural fixtures only after Prisma has
-        # initialized its migration metadata. Production MVS data stays external.
-        run: bash scripts/ci-migrate-with-external-fixtures.sh
-
-      - name: Remove external CI fixtures before Prisma drift check
-        run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c 'DROP TABLE IF EXISTS "VehicleRegistryCompact";'
+        run: npx prisma migrate deploy
 
       - name: Reject Prisma / migration schema drift
         run: npx prisma migrate diff --exit-code --from-config-datasource --to-schema prisma
