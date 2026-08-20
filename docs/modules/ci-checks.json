@@ -8,13 +8,14 @@
     "vehicle-images"
   ],
   "checks": {
+    "crm-contracts": "npm run contracts:smoke",
     "vehicle-classifier": "npx --no-install tsx scripts/vehicle-classifier-smoke.ts",
     "vehicle-image-resolver": "npx --no-install tsx scripts/vehicle-image-resolver-smoke.ts"
   },
   "moduleChecks": {
     "dashboard-analytics": [],
-    "clients-vehicles": ["vehicle-classifier", "vehicle-image-resolver"],
+    "clients-vehicles": ["crm-contracts", "vehicle-classifier", "vehicle-image-resolver"],
     "parts-inventory": ["vehicle-classifier"],
-    "vehicle-images": ["vehicle-image-resolver"]
+    "vehicle-images": ["crm-contracts", "vehicle-image-resolver"]
   }
 }

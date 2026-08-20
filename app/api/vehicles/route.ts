@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { toVehicleDirectoryItem } from "@/src/lib/contracts/crm-core.server";
 import { getPrisma } from "@/src/lib/prisma";
 
 export const runtime = "nodejs";
@@ -70,7 +71,7 @@ export async function GET(request: NextRequest) {
     });
 
     return NextResponse.json(
-      { ok: true, total, page: safePage, limit, pages, vehicles },
+      { ok: true, total, page: safePage, limit, pages, vehicles: vehicles.map(toVehicleDirectoryItem) },
       { headers: { "Cache-Control": "no-store" } },
     );
   } catch (error) {
