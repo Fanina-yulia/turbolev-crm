@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { MechanicStandaloneCabinet } from "./mechanic-standalone-cabinet";
+import { MechanicVehicleScanner } from "./mechanic-vehicle-scanner";
 
 type AssignedVehicle = {
   id: string;
@@ -42,11 +43,6 @@ const statusLabels: Record<string, string> = {
   WAITING_PAYMENT: "Очікує оплату",
   WARRANTY: "Гарантійне звернення",
 };
-
-function time(value?: string | null) {
-  if (!value) return "—";
-  return new Intl.DateTimeFormat("uk-UA", { timeZone: "Europe/Kyiv", hour: "2-digit", minute: "2-digit" }).format(new Date(value));
-}
 
 function dateTime(value?: string | null) {
   if (!value) return "—";
@@ -93,11 +89,14 @@ export function MechanicLiveCabinet({ userName }: { userName?: string | null }) 
     const timer = window.setInterval(() => void load(), 15000);
     const onFocus = () => void load();
     const onVisibility = () => { if (document.visibilityState === "visible") void load(); };
+    const onMechanicRefresh = () => { setRevision((value) => value + 1); void load(); };
     window.addEventListener("focus", onFocus);
+    window.addEventListener("turbolev:mechanic-refresh", onMechanicRefresh);
     document.addEventListener("visibilitychange", onVisibility);
     return () => {
       window.clearInterval(timer);
       window.removeEventListener("focus", onFocus);
+      window.removeEventListener("turbolev:mechanic-refresh", onMechanicRefresh);
       document.removeEventListener("visibilitychange", onVisibility);
     };
   }, [load]);
@@ -161,5 +160,6 @@ export function MechanicLiveCabinet({ userName }: { userName?: string | null }) 
       </div>
     </section>}
     <MechanicStandaloneCabinet key={revision} userName={userName} />
+    <MechanicVehicleScanner />
   </div>;
 }
