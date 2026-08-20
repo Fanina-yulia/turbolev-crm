@@ -246,7 +246,7 @@ export function MechanicDiagnosticMatrix({ diagnosticId, onBack, onChanged }: { 
 
   async function submit() {
     if (!data?.canSubmit) return;
-    if (!window.confirm("Передати діагностичну карту сервіс-менеджеру? Після передачі редагування буде заблоковано.")) return;
+    if (!window.confirm("Завершити діагностику? Після цього вона буде передана сервіс-менеджеру, а редагування механіком буде заблоковано.")) return;
     setBusy("submit"); setError(""); setMessage("");
     try {
       const response = await fetch(`/api/diagnostics/${encodeURIComponent(diagnosticId)}/structured`, {
@@ -256,12 +256,12 @@ export function MechanicDiagnosticMatrix({ diagnosticId, onBack, onChanged }: { 
         body: JSON.stringify({ action: "SUBMIT", mechanicComment: comment.trim() || null }),
       });
       const body = await response.json().catch(() => null) as DiagnosticPayload | null;
-      if (!response.ok || !body?.ok) throw new Error(body?.message || body?.error || "Не вдалося передати діагностику");
+      if (!response.ok || !body?.ok) throw new Error(body?.message || body?.error || "Не вдалося завершити діагностику");
       setData(body);
-      setMessage("Діагностичну карту передано сервіс-менеджеру.");
+      setMessage("Діагностику завершено. Результат передано сервіс-менеджеру.");
       onChanged?.();
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Не вдалося передати діагностику");
+      setError(cause instanceof Error ? cause.message : "Не вдалося завершити діагностику");
     } finally { setBusy(""); }
   }
 
@@ -353,9 +353,9 @@ export function MechanicDiagnosticMatrix({ diagnosticId, onBack, onChanged }: { 
         {!locked && <section className={styles.submitCard}>
           <label><span>Примітка механіка <small>(необов’язково)</small></span><textarea rows={2} value={comment} onChange={(event) => setComment(event.target.value)} placeholder="За потреби додайте коротке уточнення" /></label>
           {!data.canSubmit && <div className={styles.incomplete}>Щоб завершити діагностику, підтвердьте всі вузли. Залишилось пунктів: <b>{remaining}</b>.</div>}
-          <button type="button" disabled={Boolean(busy) || !data.canSubmit} onClick={() => void submit()}>{busy === "submit" ? "Передаю…" : "Передати сервіс-менеджеру →"}</button>
+          <button type="button" disabled={Boolean(busy) || !data.canSubmit} onClick={() => void submit()}>{busy === "submit" ? "Завершую…" : "Завершити діагностику"}</button>
         </section>}
-        {locked && <div className={styles.locked}>✓ Діагностичну карту передано. Редагування заблоковано.</div>}
+        {locked && <div className={styles.locked}>✓ Діагностика завершена. Результат передано сервіс-менеджеру.</div>}
       </>}
     </main>
   </div>;
