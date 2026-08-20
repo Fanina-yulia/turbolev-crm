@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getPrisma } from "@/src/lib/prisma";
+import { normalizePhone } from "@/src/lib/phone";
 import { authorize } from "@/src/security/authorize";
 import { PERMISSIONS } from "@/src/security/permissions";
 import { getTelegramClientState } from "@/src/services/telegram.service";
@@ -13,15 +14,40 @@ export async function GET(request: NextRequest) {
 
   const rawClientId = (request.nextUrl.searchParams.get("clientId") || "").trim();
   const vehicleId = (request.nextUrl.searchParams.get("vehicleId") || "").trim();
-  if (!rawClientId && !vehicleId) return NextResponse.json({ ok: false, error: "CLIENT_OR_VEHICLE_REQUIRED" }, { status: 400 });
+  const rawPhone = (request.nextUrl.searchParams.get("phone") || "").trim();
+  const phoneNormalized = normalizePhone(rawPhone);
+  if (!rawClientId && !vehicleId && !phoneNormalized) {
+    return NextResponse.json({ ok: false, error: "CLIENT_VEHICLE_OR_PHONE_REQUIRED" }, { status: 400 });
+  }
 
   try {
     const prisma = getPrisma();
-    const vehicle = vehicleId ? await prisma.vehicle.findUnique({ where: { id: vehicleId }, select: { id: true, clientId: true } }) : null;
-    const clientId = rawClientId || vehicle?.clientId || "";
+    const vehicle = vehicleId
+      ? await prisma.vehicle.findUnique({ where: { id: vehicleId }, select: { id: true, clientId: true } })
+      : null;
+
+    let clientId = rawClientId || vehicle?.clientId || "";
+    if (!clientId && phoneNormalized) {
+      const direct = await prisma.client.findUnique({
+        where: { phoneNormalized },
+        select: { id: true },
+      });
+      if (direct?.id) {
+        clientId = direct.id;
+      } else {
+        const phoneRecord = await prisma.clientPhone.findUnique({
+          where: { phoneNormalized },
+          select: { clientId: true },
+        });
+        clientId = phoneRecord?.clientId || "";
+      }
+    }
     if (!clientId) return NextResponse.json({ ok: false, error: "CLIENT_NOT_FOUND" }, { status: 404 });
 
-    const client = await prisma.client.findUnique({ where: { id: clientId }, select: { id: true, phone: true, phoneNormalized: true } });
+    const client = await prisma.client.findUnique({
+      where: { id: clientId },
+      select: { id: true, phone: true, phoneNormalized: true },
+    });
     if (!client) return NextResponse.json({ ok: false, error: "CLIENT_NOT_FOUND" }, { status: 404 });
 
     const diagnostics = await prisma.diagnosticRequest.findMany({
@@ -31,17 +57,21 @@ export async function GET(request: NextRequest) {
       select: { id: true, vehicleId: true },
     });
     const diagnosticIds = diagnostics.map((item) => item.id);
-    const reviews = diagnosticIds.length ? await prisma.diagnosticReview.findMany({
-      where: { diagnosticRequestId: { in: diagnosticIds }, state: { in: ["SUBMITTED", "CONFIRMED"] } },
-      select: { diagnosticRequestId: true },
-    }) : [];
+    const reviews = diagnosticIds.length
+      ? await prisma.diagnosticReview.findMany({
+          where: { diagnosticRequestId: { in: diagnosticIds }, state: { in: ["SUBMITTED", "CONFIRMED"] } },
+          select: { diagnosticRequestId: true },
+        })
+      : [];
     const shareableIds = new Set(reviews.map((item) => item.diagnosticRequestId));
     const cabinetDiagnostic = diagnostics.find((item) => shareableIds.has(item.id)) || null;
-    const cabinetOpened = cabinetDiagnostic ? await prisma.auditEvent.findFirst({
-      where: { entityType: "DiagnosticRequest", entityId: cabinetDiagnostic.id, action: "CLIENT_PORTAL_OPENED" },
-      orderBy: { createdAt: "desc" },
-      select: { createdAt: true },
-    }) : null;
+    const cabinetOpened = cabinetDiagnostic
+      ? await prisma.auditEvent.findFirst({
+          where: { entityType: "DiagnosticRequest", entityId: cabinetDiagnostic.id, action: "CLIENT_PORTAL_OPENED" },
+          orderBy: { createdAt: "desc" },
+          select: { createdAt: true },
+        })
+      : null;
 
     const [telegram, viberIdentity, lastCall] = await Promise.all([
       getTelegramClientState(clientId).catch(() => ({ configured: false, linked: false, contact: null })),
@@ -50,13 +80,19 @@ export async function GET(request: NextRequest) {
         orderBy: { updatedAt: "desc" },
         select: { handle: true, updatedAt: true },
       }).catch(() => null),
-      prisma.callHistory.findFirst({ where: { clientId }, orderBy: { createdAt: "desc" }, select: { createdAt: true } }),
+      prisma.callHistory.findFirst({
+        where: { clientId },
+        orderBy: { createdAt: "desc" },
+        select: { createdAt: true },
+      }),
     ]);
 
     const phone = client.phone || (client.phoneNormalized ? `+${client.phoneNormalized}` : "");
     const digits = String(client.phoneNormalized || phone).replace(/\D/g, "");
     const viberChatUri = process.env.VIBER_BOT_CHAT_URI?.trim() || "";
-    const viberBotHref = viberChatUri ? `viber://pa?chatURI=${encodeURIComponent(viberChatUri)}&context=${encodeURIComponent(`client_${clientId}`)}` : null;
+    const viberBotHref = viberChatUri
+      ? `viber://pa?chatURI=${encodeURIComponent(viberChatUri)}&context=${encodeURIComponent(`client_${clientId}`)}`
+      : null;
     const viberDirectHref = digits ? `viber://chat?number=${encodeURIComponent(`+${digits}`)}` : null;
 
     return NextResponse.json({
@@ -78,7 +114,11 @@ export async function GET(request: NextRequest) {
         connected: Boolean(telegram.linked),
         active: Boolean(telegram.linked),
         username: telegram.contact?.username || null,
-        lastActivityAt: telegram.contact?.lastInboundAt || telegram.contact?.lastOutboundAt || telegram.contact?.linkedAt || null,
+        lastActivityAt:
+          telegram.contact?.lastInboundAt ||
+          telegram.contact?.lastOutboundAt ||
+          telegram.contact?.linkedAt ||
+          null,
       },
       cabinet: {
         available: Boolean(cabinetDiagnostic),
