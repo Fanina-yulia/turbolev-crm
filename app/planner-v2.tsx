@@ -1,19 +1,20 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState, type CSSProperties, type DragEvent } from "react";
+import type {
+  PlannerAppointmentContract as Appointment,
+  PlannerLocationContract as Location,
+  PlannerPostContract as Post,
+  PlannerStatusContract as Status,
+} from "@/src/lib/contracts/planner";
+import { parsePlannerBoardPayload, plannerPayloadMessage } from "@/src/lib/contracts/planner-payload.parsers";
 import { zonedDateTimeToDate } from "@/src/lib/zoned-time";
 import { AvailabilityPicker } from "./availability-picker";
 import { navigateCrm, readCrmRoute } from "./crm-route";
 import { PlannerDayView } from "./planner-day-view";
 import styles from "./planner-v2.module.css";
 
-type Status = "BOOKED"|"ARRIVED"|"DIAGNOSTICS"|"WAITING_PARTS_SELECTION"|"WAITING_CALCULATION"|"WAITING_APPROVAL"|"WAITING_PARTS"|"READY_FOR_REPAIR"|"IN_REPAIR"|"WAITING_QC"|"WAITING_PAYMENT"|"READY_FOR_PICKUP"|"COMPLETED"|"WARRANTY"|"PAUSED"|"NO_SHOW"|"CANCELLED"|"RESERVE";
 type ViewMode="day"|"week";
-type Post={id:string;name:string;sortOrder:number;capabilities:string[]};
-type Mechanic={id:string;name:string;sortOrder:number};
-type Location={id:string;name:string;timezone:string;openMinute:number;closeMinute:number;posts:Post[];mechanics:Mechanic[]};
-type Appointment={id:string;locationId:string;postId:string|null;mechanicId:string|null;status:Status;workOrderId?:string|null;customerName:string|null;phone:string|null;vehicleLabel:string|null;plateNumber:string|null;problem:string|null;comment:string|null;source:string|null;estimatedAmount:string|number|null;priority:number;plannedStartAt:string;plannedEndAt:string;actualArrivalAt:string|null;actualStartAt:string|null;actualEndAt:string|null;partsEtaAt:string|null;post?:Post|null;mechanic?:Mechanic|null};
-type BoardResponse={status:string;locations:Location[];activeLocationId:string|null;appointments:Appointment[];message?:string};
 type EditState={id:string;date:string;status:Status;postId:string;mechanicId:string;start:string;duration:string};
 
 const KYIV_TZ="Europe/Kyiv";
@@ -40,7 +41,7 @@ export function PlannerV2(){
  const location=useMemo(()=>locations.find(x=>x.id===locationId)??locations[0]??null,[locations,locationId]);
  const timeZone=location?.timezone||KYIV_TZ;
  const today=dateKey(new Date(),timeZone);
- const load=useCallback(async(nextLocationId?:string)=>{setBusy(true);try{const selectedLocationId=nextLocationId??locationId;const zone=locations.find(x=>x.id===selectedLocationId)?.timezone||timeZone;const fromDay=anchorDay;const toDay=view==="day"?addDays(anchorDay,1):addDays(anchorDay,7);const params=new URLSearchParams({from:zonedDateTimeToDate(fromDay,"00:00",zone).toISOString(),to:zonedDateTimeToDate(toDay,"00:00",zone).toISOString()});if(selectedLocationId)params.set("locationId",selectedLocationId);const response=await fetch(`/api/planner?${params}`,{cache:"no-store"});const data=await response.json() as BoardResponse;if(!response.ok)throw new Error(data.message||"Не вдалося завантажити План робіт.");setLocations(data.locations||[]);setLocationId(data.activeLocationId||selectedLocationId||"");setAppointments(data.appointments||[]);setMessage("План робіт синхронізовано з сервером.");}catch(error){setMessage(error instanceof Error?error.message:"План робіт недоступний.");}finally{setBusy(false);}},[anchorDay,locationId,locations,timeZone,view]);
+ const load=useCallback(async(nextLocationId?:string)=>{setBusy(true);try{const selectedLocationId=nextLocationId??locationId;const zone=locations.find(x=>x.id===selectedLocationId)?.timezone||timeZone;const fromDay=anchorDay;const toDay=view==="day"?addDays(anchorDay,1):addDays(anchorDay,7);const params=new URLSearchParams({from:zonedDateTimeToDate(fromDay,"00:00",zone).toISOString(),to:zonedDateTimeToDate(toDay,"00:00",zone).toISOString()});if(selectedLocationId)params.set("locationId",selectedLocationId);const response=await fetch(`/api/planner?${params}`,{cache:"no-store"});const raw=await response.json().catch(()=>null);const data=parsePlannerBoardPayload(raw);if(!response.ok||!data)throw new Error(plannerPayloadMessage(raw)||"Не вдалося завантажити План робіт.");setLocations(data.locations);setLocationId(data.activeLocationId||selectedLocationId||"");setAppointments(data.appointments);setMessage("План робіт синхронізовано з сервером.");}catch(error){setMessage(error instanceof Error?error.message:"План робіт недоступний.");}finally{setBusy(false);}},[anchorDay,locationId,locations,timeZone,view]);
  useEffect(()=>{void load();},[anchorDay,view]);useEffect(()=>{const timer=window.setInterval(()=>void load(),60000);return()=>window.clearInterval(timer);},[load]);
  useEffect(()=>{const sync=()=>{const route=readCrmRoute();const nextView:ViewMode=route.scope==="week"?"week":"day";setView(nextView);if(route.date&&route.date!==anchorDay)setAnchorDay(route.date);setStatusFilter(isStatus(route.status)?route.status:"");if(route.appointmentId){const item=appointments.find(x=>x.id===route.appointmentId);if(item){const itemDay=dateKey(new Date(item.plannedStartAt),timeZone);if(itemDay!==anchorDay)setAnchorDay(itemDay);setEdit(editState(item,timeZone));}}else setEdit(null);};sync();window.addEventListener("popstate",sync);return()=>window.removeEventListener("popstate",sync);},[appointments,anchorDay,timeZone]);
  const filtered=useMemo(()=>{const q=search.trim().toLocaleLowerCase("uk-UA");return appointments.filter(x=>x.status!=="CANCELLED").filter(x=>!statusFilter||x.status===statusFilter).filter(x=>!mechanicFilter||x.mechanicId===mechanicFilter).filter(x=>!postFilter||(postFilter==="__RECEPTION__"?!x.postId:x.postId===postFilter)).filter(x=>!q||[x.id,x.workOrderId,x.customerName,x.phone,x.vehicleLabel,x.plateNumber,x.problem].filter(Boolean).join(" ").toLocaleLowerCase("uk-UA").includes(q));},[appointments,statusFilter,mechanicFilter,postFilter,search]);
