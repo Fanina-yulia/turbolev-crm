@@ -33,6 +33,11 @@ function decisionLabel(value: string | null) {
   return "Потребує рішення";
 }
 
+function lifecycleLabel(lifecycle: { label: string; flags: string[] } | null, fallback: string) {
+  if (!lifecycle) return fallback;
+  return lifecycle.flags.includes("OVERDUE") ? `Протерміновано · ${lifecycle.label}` : lifecycle.label;
+}
+
 function Dashboard({ data }: { data: ServiceAdvisorCabinetLinkedPayload }) {
   const k = data.kpis;
   const appointments = data.appointments;
@@ -82,7 +87,7 @@ function Dashboard({ data }: { data: ServiceAdvisorCabinetLinkedPayload }) {
 
   return <div className={styles.page}>
     <header className={styles.head}>
-      <div><span className={styles.eyebrow}>TURBO LEV · КАБІНЕТ СЕРВІС-МЕНЕДЖЕРА</span><h1>Приймання та супровід ремонту</h1><p>{data.station.name} · клієнт → діагностика → кошторис → погодження → ремонт</p></div>
+      <div><span className={styles.eyebrow}>TURBO LEV · КАБІНЕТ СЕРВІС-МЕНЕДЖЕРА</span><h1>Приймання та супровід ремонту</h1><p>{data.station.name} · єдиний статус авто від запису до видачі</p></div>
       <button className={styles.primary} onClick={() => nav("Планувальник")}>Планувальник →</button>
     </header>
 
@@ -91,17 +96,18 @@ function Dashboard({ data }: { data: ServiceAdvisorCabinetLinkedPayload }) {
 
     <section className={styles.kpis}>
       <button onClick={() => nav("Планувальник", "today", "Сьогодні")}><span>Авто сьогодні</span><strong>{k.today}</strong><small>у плані станції</small></button>
-      <button onClick={() => nav("Діагностика", "active", "На діагностиці")}><span>Приймання / діагностика</span><strong>{k.arrived}</strong><small>потребують уваги</small></button>
-      <button onClick={() => nav("Замовлення-наряди", "approval", "Очікують погодження")}><span>Погодження</span><strong>{k.approval}</strong><small>кошториси клієнтів</small></button>
-      <button onClick={() => nav("Підбір запчастин", "waiting-parts", "Очікують деталі")}><span>Запчастини</span><strong>{k.waitingParts}</strong><small>у підборі / очікуванні</small></button>
-      <button onClick={() => nav("Виробництво", "in-repair", "Ремонт")}><span>У ремонті</span><strong>{k.inRepair}</strong><small>готові або в роботі</small></button>
+      <button onClick={() => nav("Діагностика", "active", "В роботі")}><span>В роботі</span><strong>{k.inWork}</strong><small>заїзд підтверджено</small></button>
+      <button className={k.managerReview ? styles.alertKpi : ""} onClick={() => nav("Діагностика")}><span>Завершена діагностика</span><strong>{k.managerReview}</strong><small>потребує менеджера</small></button>
+      <button onClick={() => nav("Замовлення-наряди", "approval", "Очікує погодження")}><span>Погодження</span><strong>{k.approval}</strong><small>рішення клієнта</small></button>
+      <button onClick={() => nav("Підбір запчастин", "waiting-parts", "Підбір / очікування деталей")}><span>Деталі</span><strong>{k.waitingParts}</strong><small>підбір / очікування</small></button>
+      <button onClick={() => nav("Виробництво", "in-repair", "Ремонт")}><span>Ремонт</span><strong>{k.inRepair}</strong><small>готові / ремонт / QC</small></button>
       <button className={k.mechanicFindings ? styles.alertKpi : ""}><span>Виявлено механіком</span><strong>{k.mechanicFindings}</strong><small>потребують рішення</small></button>
     </section>
 
     <div className={styles.columns}>
       <section className={styles.panel}>
         <div className={styles.panelHead}><div><span className={styles.eyebrow}>СЬОГОДНІ</span><h2>Черга автомобілів</h2></div></div>
-        <div className={styles.list}>{appointments.length ? appointments.map((a) => <button key={a.id} className={styles.row} onClick={() => nav("Планувальник", a.id, `${a.plate} · ${a.vehicle}`)}><time>{time(a.start)}</time><div><b>{a.plate} · {a.vehicle}</b><span>{a.problem || "Без опису звернення"}</span><small>{a.post || "Без поста"}{a.mechanic ? ` · ${a.mechanic}` : ""}</small></div><em className={styles.badge}>{a.status}</em></button>) : <div className={styles.empty}>Записів на сьогодні немає.</div>}</div>
+        <div className={styles.list}>{appointments.length ? appointments.map((a) => <button key={a.id} className={styles.row} onClick={() => nav("Планувальник", a.id, `${a.plate} · ${a.vehicle}`)}><time>{time(a.start)}</time><div><b>{a.plate} · {a.vehicle}</b><span>{a.problem || "Без опису звернення"}</span><small>{a.post || "Без поста"}{a.mechanic ? ` · ${a.mechanic}` : ""}</small></div><em className={styles.badge}>{lifecycleLabel(a.lifecycle, a.status)}</em></button>) : <div className={styles.empty}>Записів на сьогодні немає.</div>}</div>
       </section>
 
       <aside className={styles.panel}>
@@ -127,7 +133,7 @@ function Dashboard({ data }: { data: ServiceAdvisorCabinetLinkedPayload }) {
         </article>) : <div className={styles.empty}>Нових зауважень від механіків немає.</div>}</div>
 
         <div className={styles.panelHead}><div><span className={styles.eyebrow}>ДІАГНОСТИКА</span><h2>Потребує опрацювання</h2></div></div>
-        <div className={styles.list}>{diagnostics.length ? diagnostics.map((d) => <button key={d.id} className={styles.row} onClick={() => nav("Діагностика", d.id, `${d.plate} · ${d.vehicle}`)}><div><b>{d.plate}</b></div><div><b>{d.vehicle}</b><small>{d.client}</small></div><em className={styles.badge}>{d.status}</em></button>) : <div className={styles.empty}>Активних діагностик немає.</div>}</div>
+        <div className={styles.list}>{diagnostics.length ? diagnostics.map((d) => <button key={d.id} className={styles.row} onClick={() => nav("Діагностика", d.id, `${d.plate} · ${d.vehicle}`)}><div><b>{d.plate}</b></div><div><b>{d.vehicle}</b><small>{d.client}</small></div><em className={styles.badge}>{lifecycleLabel(d.lifecycle, d.status)}</em></button>) : <div className={styles.empty}>Діагностик, що потребують дії, немає.</div>}</div>
         <div className={styles.panelHead}><div><span className={styles.eyebrow}>ШВИДКІ ДІЇ</span></div></div>
         <div className={styles.quick}><button onClick={() => nav("Діагностика")}>Діагностика</button><button onClick={() => nav("Замовлення-наряди")}>Кошториси</button><button onClick={() => nav("Підбір запчастин")}>Запчастини</button><button onClick={() => nav("Клієнти")}>Клієнти</button></div>
       </aside>
