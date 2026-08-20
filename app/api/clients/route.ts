@@ -43,6 +43,12 @@ const NON_CLIENT_APPOINTMENT_STATUSES: PlannerAppointmentStatus[] = [
   PlannerAppointmentStatus.NO_SHOW,
 ];
 
+const qualifyingAppointmentWhere = {
+  clientId: { not: null },
+  vehicleId: { not: null },
+  status: { notIn: NON_CLIENT_APPOINTMENT_STATUSES },
+} as const;
+
 export async function GET(request: NextRequest) {
   const prisma = getPrisma();
   const q = (request.nextUrl.searchParams.get("q") || "").trim();
@@ -52,6 +58,13 @@ export async function GET(request: NextRequest) {
 
   try {
     if (id) {
+      const qualifyingAppointment = await prisma.serviceAppointment.findFirst({
+        where: { ...qualifyingAppointmentWhere, clientId: id },
+        select: { id: true },
+      });
+      if (!qualifyingAppointment) {
+        return NextResponse.json({ ok: false, error: "Клієнта не знайдено." }, { status: 404 });
+      }
       const client = await prisma.client.findUnique({ where: { id }, select: clientSelect });
       if (!client) return NextResponse.json({ ok: false, error: "Клієнта не знайдено." }, { status: 404 });
       return NextResponse.json(
@@ -64,11 +77,7 @@ export async function GET(request: NextRequest) {
     // A contact becomes a CRM client here only after an actual vehicle is linked
     // and that vehicle/client pair has entered the service planner.
     const plannedClients = await prisma.serviceAppointment.findMany({
-      where: {
-        clientId: { not: null },
-        vehicleId: { not: null },
-        status: { notIn: NON_CLIENT_APPOINTMENT_STATUSES },
-      },
+      where: qualifyingAppointmentWhere,
       distinct: ["clientId"],
       select: { clientId: true },
     });
