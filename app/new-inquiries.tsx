@@ -1,30 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import type { InquiryItemContract as Inquiry, InquiryStatsContract } from "@/src/lib/contracts/inquiries";
+import {
+  inquiryPayloadMessage,
+  parseInquiriesPayload,
+  parseInquiryMutationPayload,
+} from "@/src/lib/contracts/inquiries-payload.parsers";
 import styles from "./new-inquiries.module.css";
-
-type Vehicle = { id: string; brand: string | null; model: string | null; year: number | null; plateNumber: string | null; vin: string | null };
-type Inquiry = {
-  id: string;
-  channel: string;
-  state: string;
-  name: string;
-  phone: string | null;
-  handle: string | null;
-  subject: string;
-  preview: string;
-  vehicle: string | null;
-  plate: string | null;
-  receivedAt: string;
-  sourceDetail: string | null;
-  campaign: string | null;
-  assignedUser: { id: string; name: string } | null;
-  priority: "CRITICAL" | "HIGH" | "MEDIUM" | "LOW" | string;
-  existingClient: { id: string; name: string | null } | null;
-  vehicles: Vehicle[];
-  existingLead: { id: string; name: string | null; status: string; assignedUserId: string | null } | null;
-};
-type Payload = { ok?: boolean; items?: Inquiry[]; stats?: { total: number; critical: number; high: number; existingClients: number; withActiveLead: number }; error?: string };
 
 const channelLabel: Record<string, string> = { BINOTEL: "Телефон", WEBSITE: "Сайт", INSTAGRAM: "Instagram", FACEBOOK: "Facebook", TIKTOK: "TikTok", OLX: "OLX" };
 const priorityLabel: Record<string, string> = { CRITICAL: "Критичний", HIGH: "Високий", MEDIUM: "Середній", LOW: "Низький" };
@@ -46,7 +29,7 @@ function navigate(section: string) { window.dispatchEvent(new CustomEvent("turbo
 
 export function NewInquiries() {
   const [items, setItems] = useState<Inquiry[]>([]);
-  const [stats, setStats] = useState<Payload["stats"]>();
+  const [stats, setStats] = useState<InquiryStatsContract | null>(null);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState("");
@@ -58,9 +41,10 @@ export function NewInquiries() {
     setLoading(true); setError("");
     try {
       const response = await fetch("/api/inquiries", { cache: "no-store" });
-      const body = await response.json() as Payload;
-      if (!response.ok || !body.ok) throw new Error(body.error || "Не вдалося завантажити звернення");
-      setItems(body.items || []); setStats(body.stats);
+      const raw: unknown = await response.json().catch(() => null);
+      const body = parseInquiriesPayload(raw);
+      if (!response.ok || !body) throw new Error(inquiryPayloadMessage(raw, "Не вдалося завантажити звернення"));
+      setItems(body.items); setStats(body.stats);
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Не вдалося завантажити звернення"); }
     finally { setLoading(false); }
   }, []);
@@ -80,8 +64,9 @@ export function NewInquiries() {
     setBusyId(item.id); setError("");
     try {
       const response = await fetch(`/api/inquiries/${encodeURIComponent(item.id)}/accept`, { method: "POST" });
-      const body = await response.json() as { ok?: boolean; error?: string };
-      if (!response.ok || !body.ok) throw new Error(body.error || "Не вдалося прийняти звернення");
+      const raw: unknown = await response.json().catch(() => null);
+      const body = parseInquiryMutationPayload(raw);
+      if (!response.ok || !body) throw new Error(inquiryPayloadMessage(raw, "Не вдалося прийняти звернення"));
       setItems((current) => current.filter((entry) => entry.id !== item.id));
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Не вдалося прийняти звернення"); }
     finally { setBusyId(null); }
@@ -92,12 +77,14 @@ export function NewInquiries() {
     try {
       if (!item.assignedUser) {
         const acceptResponse = await fetch(`/api/inquiries/${encodeURIComponent(item.id)}/accept`, { method: "POST" });
-        const accepted = await acceptResponse.json() as { ok?: boolean; error?: string };
-        if (!acceptResponse.ok || !accepted.ok) throw new Error(accepted.error || "Спочатку прийміть звернення");
+        const rawAccepted: unknown = await acceptResponse.json().catch(() => null);
+        const accepted = parseInquiryMutationPayload(rawAccepted);
+        if (!acceptResponse.ok || !accepted) throw new Error(inquiryPayloadMessage(rawAccepted, "Спочатку прийміть звернення"));
       }
       const response = await fetch(`/api/communications/${encodeURIComponent(item.id)}/convert`, { method: "POST" });
-      const body = await response.json() as { ok?: boolean; error?: string };
-      if (!response.ok || !body.ok) throw new Error(body.error || "Не вдалося створити лід");
+      const raw: unknown = await response.json().catch(() => null);
+      const body = parseInquiryMutationPayload(raw);
+      if (!response.ok || !body) throw new Error(inquiryPayloadMessage(raw, "Не вдалося створити лід"));
       setItems((current) => current.filter((entry) => entry.id !== item.id));
       navigate("Ліди");
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Не вдалося створити лід"); }
@@ -110,8 +97,9 @@ export function NewInquiries() {
       const response = await fetch(`/api/communications/${encodeURIComponent(item.id)}`, {
         method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ state: "SPAM", unread: false }),
       });
-      const body = await response.json() as { ok?: boolean; error?: string };
-      if (!response.ok || !body.ok) throw new Error(body.error || "Не вдалося закрити звернення");
+      const raw: unknown = await response.json().catch(() => null);
+      const body = parseInquiryMutationPayload(raw);
+      if (!response.ok || !body) throw new Error(inquiryPayloadMessage(raw, "Не вдалося закрити звернення"));
       setItems((current) => current.filter((entry) => entry.id !== item.id));
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Не вдалося закрити звернення"); }
     finally { setBusyId(null); }
