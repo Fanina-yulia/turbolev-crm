@@ -7,6 +7,7 @@ import {
   VEHICLE_LOCATION_LABELS,
   WORKFLOW_ACTION_LABELS,
 } from "./catalog";
+import { personnelPositionByCode } from "@/src/security/personnel-org-structure";
 import { applyTurboLevOperatingPolicy } from "./operating-policy";
 import { WORKFLOW_DEFINITIONS } from "./registry";
 import type { WorkflowDefinition, WorkflowEntity, WorkflowStatusDefinition, WorkflowTransitionDefinition } from "./types";
@@ -14,6 +15,12 @@ import type { WorkflowDefinition, WorkflowEntity, WorkflowStatusDefinition, Work
 const effectiveDefinitions = Object.fromEntries(
   Object.entries(WORKFLOW_DEFINITIONS).map(([key, definition]) => [key, applyTurboLevOperatingPolicy(definition)]),
 ) as Readonly<Record<string, WorkflowDefinition>>;
+
+const operationalRoleLabels = Object.fromEntries(
+  Object.entries(OPERATIONAL_WORKFLOW_ROLE_LABELS)
+    .filter(([code]) => code !== "SHIFT_MASTER")
+    .map(([code, fallback]) => [code, personnelPositionByCode(code)?.name ?? fallback]),
+);
 
 export function getWorkflowDefinition(entity: WorkflowEntity): WorkflowDefinition {
   const definition = effectiveDefinitions[entity];
@@ -83,7 +90,7 @@ export function getWorkflowCatalog() {
       automationsAreDeclarativeUntilImplemented: true,
     },
     masterStages: MASTER_SERVICE_STAGES,
-    roles: OPERATIONAL_WORKFLOW_ROLE_LABELS,
+    roles: operationalRoleLabels,
     blockers: BLOCKER_LABELS,
     vehicleLocations: VEHICLE_LOCATION_LABELS,
     hardGates: HARD_GATE_LABELS,
