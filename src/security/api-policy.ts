@@ -51,6 +51,7 @@ const RULES: Rule[] = [
   { match: prefix("/api/telephony/binotel-employees"), resolve: () => internal(PERMISSIONS.SETTINGS_INTEGRATIONS, "ALL", "Binotel employee/extension mapping is integration administration.", true) },
   { match: exact("/api/telephony/call"), resolve: () => internal(PERMISSIONS.COMMUNICATIONS_WRITE, "TEAM", "Authenticated click-to-call through the caller's own mapped Binotel extension.", true) },
   { match: exact("/api/telephony/live"), resolve: () => internal(PERMISSIONS.COMMUNICATIONS_READ, "TEAM", "Authenticated live incoming-call feed for CRM popup.", true) },
+  { match: exact("/api/telephony/calls"), resolve: () => internal(PERMISSIONS.COMMUNICATIONS_READ, "TEAM", "Authenticated Binotel call history for authorized communication staff; handler enforces the same strict team-scoped permission.", true) },
   { match: exact("/api/telephony/recordings/sync"), resolve: () => internal(PERMISSIONS.COMMUNICATIONS_WRITE, "TEAM", "Reconcile missing Binotel recording links for authorized communication staff.", true) },
   { match: prefix("/api/telephony/recordings"), resolve: () => internal(PERMISSIONS.COMMUNICATIONS_READ, "TEAM", "Protected access to Binotel call recordings.", true) },
   { match: prefix("/api/inquiries"), resolve: (method) => readWrite(method, PERMISSIONS.COMMUNICATIONS_READ, PERMISSIONS.COMMUNICATIONS_WRITE, "TEAM", "Operational inquiry queue follows the existing communications read/write authority and preserves handler-level ownership checks.") },
