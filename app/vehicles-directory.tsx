@@ -154,7 +154,16 @@ export function VehiclesDirectory() {
   }
 
   function openNewRequest() {
-    window.dispatchEvent(new CustomEvent("turbolev:open-new-request", { detail: { source: "CLIENTS" } }));
+    const detail = vehicleCard
+      ? {
+          source: "Інше",
+          plate: vehicleCard.plateNumber || "",
+          vin: vehicleCard.vin || "",
+          name: vehicleCard.client.name || "",
+          phone: vehicleCard.client.phone || "",
+        }
+      : { source: "Інше" };
+    window.dispatchEvent(new CustomEvent("turbolev:open-new-request", { detail }));
   }
 
   function openVehicle(id: string) {
