@@ -1,4 +1,8 @@
 import { getPrisma } from "@/src/lib/prisma";
+import {
+  getVehicleDiagnosticProfile,
+  isDiagnosticItemApplicable,
+} from "@/src/services/vehicle-diagnostic-applicability.service";
 
 type ExtraItem = {
   code: string;
@@ -29,9 +33,9 @@ const EXTRA_MATRIX_SECTIONS: ExtraSection[] = [
   },
   {
     code: "TRANSMISSION_LEAKS",
-    name: "КПП / трансмісія — підтікання",
+    name: "Трансмісія / редуктор — підтікання",
     items: [
-      { code: "GEARBOX_BODY_LEAK", name: "Корпус / стики КПП", work: "Усунення підтікання КПП" },
+      { code: "GEARBOX_BODY_LEAK", name: "Корпус / стики трансмісії", work: "Усунення підтікання трансмісії" },
       { code: "GEARBOX_PAN_LEAK", name: "Піддон КПП", work: "Усунення підтікання піддона КПП" },
       { code: "GEARBOX_INPUT_SEAL", name: "Сальник первинного валу КПП", work: "Заміна сальника первинного валу КПП", part: "Сальник первинного валу КПП" },
     ],
@@ -80,8 +84,8 @@ const EXTRA_MATRIX_SECTIONS: ExtraSection[] = [
       { code: "BRAKE_FLUID_CONDITION", name: "Стан гальмівної рідини", work: "Заміна гальмівної рідини" },
       { code: "POWER_STEERING_LEVEL", name: "Рівень рідини ГПК" },
       { code: "POWER_STEERING_CONDITION", name: "Стан рідини ГПК", work: "Заміна рідини ГПК" },
-      { code: "GEARBOX_OIL_LEVEL", name: "Рівень оливи КПП" },
-      { code: "GEARBOX_OIL_CONDITION", name: "Стан оливи КПП", work: "Заміна оливи КПП" },
+      { code: "GEARBOX_OIL_LEVEL", name: "Рівень оливи трансмісії / редуктора" },
+      { code: "GEARBOX_OIL_CONDITION", name: "Стан оливи трансмісії / редуктора", work: "Заміна оливи трансмісії / редуктора" },
     ],
   },
 ];
@@ -91,6 +95,7 @@ export async function ensureExtendedDiagnosticMatrix(diagnosticRequestId: string
   const template = await prisma.diagnosticTemplate.findUnique({ where: { code: "SUSPENSION_MATRIX" } });
   if (!template) return;
 
+  const profile = await getVehicleDiagnosticProfile(diagnosticRequestId);
   const itemIds: string[] = [];
   for (let sectionIndex = 0; sectionIndex < EXTRA_MATRIX_SECTIONS.length; sectionIndex += 1) {
     const seed = EXTRA_MATRIX_SECTIONS[sectionIndex];
@@ -126,7 +131,7 @@ export async function ensureExtendedDiagnosticMatrix(diagnosticRequestId: string
           sortOrder: (itemIndex + 1) * 10,
         },
       });
-      itemIds.push(saved.id);
+      if (isDiagnosticItemApplicable(profile, seed.code, item.code)) itemIds.push(saved.id);
     }
   }
 
