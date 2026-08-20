@@ -51,6 +51,7 @@ export async function GET(request: NextRequest) {
             orderBy: { updatedAt: "desc" },
             select: {
               id: true,
+              clientId: true,
               plateNumber: true,
               vin: true,
               brand: true,
