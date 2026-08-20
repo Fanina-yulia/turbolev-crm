@@ -1,19 +1,15 @@
 "use client";
 
 import { useEffect } from "react";
+import type {
+  ClientVehiclesClientContract as Client,
+  ClientVehiclesVehicleContract as Vehicle,
+} from "@/src/lib/contracts/clients-vehicles";
+import { parseClientsVehiclesPayload } from "@/src/lib/contracts/clients-vehicles-payload.parsers";
 import visualStyles from "./clients-vehicles-rich-cards.module.css";
 
-type Vehicle = {
-  id:string; plateNumber:string|null; vin:string|null; brand:string|null; model:string|null; year:number|null; mileageKm:number|null;
-  engineName:string|null; engineVolumeCm3:number|null; fuelType:string|null; bodyType:string|null; driveType:string|null; vehicleType:string|null;
-  turboLevClass:string|null; priceCoefficient:string|number; vehicleDataSource:string|null; vehicleDataConfidence:number|null; updatedAt:string;
-  exteriorColorName?:string|null; exteriorColorHex?:string|null; exteriorColorConfirmed?:boolean;
-  _count?:{workOrders?:number;diagnosticRequests?:number};
-};
-type Client = {id:string;name:string|null;phone:string;vehicles:Vehicle[];_count?:{workOrders?:number;diagnosticRequests?:number;vehicles?:number}};
-
 function norm(value:string){return value.replace(/\s+/g,"").toLowerCase();}
-function coefficient(value:string|number){const n=Number(value);return Number.isFinite(n)?`×${n.toFixed(2)}`:"×1.00";}
+function coefficient(value:Vehicle["priceCoefficient"]){const n=Number(value);return Number.isFinite(n)?`×${n.toFixed(2)}`:"×1.00";}
 function engine(v:Vehicle){if(v.engineName)return v.engineName;if(v.engineVolumeCm3)return `${(v.engineVolumeCm3/1000).toFixed(1)} л`;return "—";}
 function findVehicle(client:Client, text:string){const hay=norm(text);return client.vehicles.find(v=>[v.plateNumber,v.vin,[v.brand,v.model,v.year].filter(Boolean).join(" ")].filter(Boolean).some(x=>hay.includes(norm(String(x)))))||client.vehicles[0];}
 
@@ -81,7 +77,7 @@ function buildRichVehicle(v:Vehicle){
   tags.className=visualStyles.richTags;
   const source=v.vehicleDataSource||'CRM';
   const confidence=v.vehicleDataConfidence?`${v.vehicleDataConfidence}%`:'—';
-  const tagValues=[v.turboLevClass||'',coefficient(v.priceCoefficient),`${source} · ${confidence}`,`ЗН ${v._count?.workOrders??0}`,`Діагн. ${v._count?.diagnosticRequests??0}`];
+  const tagValues=[v.turboLevClass||'',coefficient(v.priceCoefficient),`${source} · ${confidence}`,`ЗН ${v._count.workOrders}`,`Діагн. ${v._count.diagnosticRequests}`];
   tagValues.filter(Boolean).forEach((value,index)=>{
     const tag=document.createElement('span');
     tag.textContent=value;
@@ -119,8 +115,8 @@ export function ClientsVehiclesRichCards(){
           const meta=document.createElement('div');
           meta.dataset.richClientMeta='1';
           meta.className=visualStyles.richClientMeta;
-          const diagnostics=document.createElement('span'); diagnostics.append('Діагностики '); const diagnosticsValue=document.createElement('b'); diagnosticsValue.textContent=String(client._count?.diagnosticRequests??0); diagnostics.appendChild(diagnosticsValue);
-          const activity=document.createElement('span'); activity.append('Активність '); const activityValue=document.createElement('b'); activityValue.textContent=`${client._count?.workOrders??0} нарядів`; activity.appendChild(activityValue);
+          const diagnostics=document.createElement('span'); diagnostics.append('Діагностики '); const diagnosticsValue=document.createElement('b'); diagnosticsValue.textContent=String(client._count.diagnosticRequests); diagnostics.appendChild(diagnosticsValue);
+          const activity=document.createElement('span'); activity.append('Активність '); const activityValue=document.createElement('b'); activityValue.textContent=`${client._count.workOrders} нарядів`; activity.appendChild(activityValue);
           meta.append(diagnostics,activity);
           identity.insertAdjacentElement('afterend',meta);
         }
@@ -136,7 +132,10 @@ export function ClientsVehiclesRichCards(){
     };
 
     const schedule=()=>{if(timer)window.clearTimeout(timer);timer=window.setTimeout(render,80);};
-    fetch('/api/clients-vehicles?limit=100',{cache:'no-store'}).then(r=>r.json()).then(data=>{clients=(data.clients||[]) as Client[];render();}).catch(()=>{});
+    fetch('/api/clients-vehicles?limit=100',{cache:'no-store'})
+      .then(response=>response.json().catch(()=>null))
+      .then(raw=>{const data=parseClientsVehiclesPayload(raw);if(!data)return;clients=data.clients;render();})
+      .catch(()=>{});
     const observer=new MutationObserver(schedule);
     observer.observe(document.documentElement,{childList:true,subtree:true,attributes:true,attributeFilter:['data-theme','data-accent-color','data-vehicle-paint','style','class']});
     return()=>{stopped=true;observer.disconnect();if(timer)window.clearTimeout(timer);};
