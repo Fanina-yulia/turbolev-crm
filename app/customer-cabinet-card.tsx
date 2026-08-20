@@ -59,7 +59,7 @@ export function CustomerCabinetCard({ clientId, vehicleId }: { clientId?: string
     setError("");
     void (async () => {
       try {
-        const response = await fetch(`/api/customer-cabinet/context?${query}`, {
+        const response = await fetch(`/api/diagnostics/customer-cabinet/context?${query}`, {
           cache: "no-store",
           credentials: "include",
           signal: controller.signal,
