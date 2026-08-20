@@ -2,26 +2,12 @@ import { NextResponse } from "next/server";
 import { getPrisma } from "@/src/lib/prisma";
 import { getAccessContext, hasPermission } from "@/src/security/access-context";
 import { PERMISSIONS } from "@/src/security/permissions";
-import { effectiveAssignmentStatus, listActiveMechanicAssignments } from "@/src/services/mechanic-assignments.service";
+import { listActiveMechanicAssignments } from "@/src/services/mechanic-assignments.service";
+import { getVehicleLifecycleMap } from "@/src/services/vehicle-lifecycle.service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
-
-const ACTIVE_STATION_STATUSES = [
-  "ARRIVED",
-  "DIAGNOSTICS",
-  "WAITING_PARTS_SELECTION",
-  "WAITING_CALCULATION",
-  "WAITING_APPROVAL",
-  "WAITING_PARTS",
-  "READY_FOR_REPAIR",
-  "IN_REPAIR",
-  "WAITING_QC",
-  "READY_FOR_PICKUP",
-  "PAUSED",
-  "WARRANTY",
-] as const;
 
 async function kyivDayRange() {
   const prisma = getPrisma();
@@ -35,6 +21,17 @@ async function kyivDayRange() {
 
 function vehicleLabel(vehicle: { brand: string | null; model: string | null; year: number | null }) {
   return [vehicle.brand, vehicle.model, vehicle.year].filter(Boolean).join(" ") || "Автомобіль";
+}
+
+function lifecyclePayload(lifecycle: Awaited<ReturnType<typeof getVehicleLifecycleMap>> extends Map<string, infer T> ? T : never) {
+  return lifecycle ? {
+    code: lifecycle.code,
+    label: lifecycle.label,
+    tone: lifecycle.tone,
+    order: lifecycle.order,
+    active: lifecycle.active,
+    flags: lifecycle.flags,
+  } : null;
 }
 
 export async function GET(request: Request) {
@@ -53,6 +50,7 @@ export async function GET(request: Request) {
     const roleCodes = new Set(context.roles.map((role) => role.code));
     const prisma = getPrisma();
     const { startAt, endAt } = await kyivDayRange();
+    const now = new Date();
 
     if (roleCodes.has("STATION_MANAGER")) {
       const stationRole = context.roles.find((role) => role.code === "STATION_MANAGER");
@@ -84,21 +82,44 @@ export async function GET(request: Request) {
         prisma.serviceMechanic.findMany({ where: { locationId, isActive: true }, select: { id: true, name: true }, orderBy: { sortOrder: "asc" } }),
       ]);
 
-      const statusCount = (status: string) => appointments.filter((item) => item.status === status).length;
-      const inRepair = statusCount("IN_REPAIR");
+      const vehicleIds = appointments.map((item) => item.vehicleId).filter((value): value is string => Boolean(value));
+      const lifecycleMap = await getVehicleLifecycleMap(vehicleIds, now);
+      const lifecycleFor = (vehicleId: string | null) => vehicleId ? lifecycleMap.get(vehicleId) || null : null;
+      const lifecycleCount = (...codes: string[]) => appointments.filter((item) => {
+        const lifecycle = lifecycleFor(item.vehicleId);
+        return lifecycle && codes.includes(lifecycle.code);
+      }).length;
+      const noShow = appointments.filter((item) => item.status === "NO_SHOW").length;
+      const inRepair = lifecycleCount("IN_REPAIR");
+      const carsOnStation = appointments.filter((item) => {
+        const lifecycle = lifecycleFor(item.vehicleId);
+        return lifecycle?.active && !["PLANNED", "DELIVERED", "CANCELLED"].includes(lifecycle.code);
+      }).length;
       const occupiedPostIds = new Set(
         appointments
-          .filter((item) => item.status === "IN_REPAIR" && item.postId)
+          .filter((item) => item.postId && lifecycleFor(item.vehicleId)?.code === "IN_REPAIR")
           .map((item) => item.postId as string),
       );
-      const carsOnStation = appointments.filter((item) => ACTIVE_STATION_STATUSES.includes(item.status as (typeof ACTIVE_STATION_STATUSES)[number])).length;
-      const attentionStatuses = new Set(["WAITING_APPROVAL", "WAITING_PARTS", "PAUSED", "NO_SHOW", "WAITING_QC", "READY_FOR_PICKUP"]);
       const attention = appointments
-        .filter((item) => attentionStatuses.has(item.status))
+        .filter((item) => {
+          const lifecycle = lifecycleFor(item.vehicleId);
+          if (!lifecycle) return item.status === "NO_SHOW";
+          return lifecycle.flags.includes("NEEDS_ATTENTION") || [
+            "DIAGNOSTIC_COMPLETED",
+            "MANAGER_REVIEW",
+            "CLIENT_DECISION",
+            "WAITING_APPROVAL",
+            "WAITING_PARTS",
+            "QUALITY_CONTROL",
+            "WAITING_PAYMENT",
+            "READY_FOR_PICKUP",
+          ].includes(lifecycle.code);
+        })
         .slice(0, 12)
         .map((item) => ({
           id: item.id,
           status: item.status,
+          lifecycle: lifecyclePayload(lifecycleFor(item.vehicleId)),
           plate: item.plateNumber || "—",
           vehicle: item.vehicleLabel || "Автомобіль",
           problem: item.problem,
@@ -119,17 +140,17 @@ export async function GET(request: Request) {
           postsOccupied: occupiedPostIds.size,
           postsTotal: posts.length,
           mechanicsTotal: mechanics.length,
-          noShow: statusCount("NO_SHOW"),
+          noShow,
         },
         flow: {
-          booked: statusCount("BOOKED"),
-          diagnostics: statusCount("DIAGNOSTICS") + statusCount("ARRIVED"),
-          approval: statusCount("WAITING_APPROVAL") + statusCount("WAITING_CALCULATION"),
-          waitingParts: statusCount("WAITING_PARTS") + statusCount("WAITING_PARTS_SELECTION"),
-          readyForRepair: statusCount("READY_FOR_REPAIR"),
+          booked: lifecycleCount("PLANNED"),
+          diagnostics: lifecycleCount("IN_WORK", "DIAGNOSTIC_COMPLETED", "MANAGER_REVIEW"),
+          approval: lifecycleCount("CLIENT_DECISION", "WAITING_APPROVAL"),
+          waitingParts: lifecycleCount("PARTS_SELECTION", "WAITING_PARTS"),
+          readyForRepair: lifecycleCount("READY_FOR_REPAIR"),
           inRepair,
-          qc: statusCount("WAITING_QC"),
-          ready: statusCount("READY_FOR_PICKUP"),
+          qc: lifecycleCount("QUALITY_CONTROL"),
+          ready: lifecycleCount("WAITING_PAYMENT", "READY_FOR_PICKUP"),
         },
         attention,
       }, { headers: { "Cache-Control": "no-store" } });
@@ -173,11 +194,13 @@ export async function GET(request: Request) {
         listActiveMechanicAssignments(mechanic.id),
       ]);
 
+      const assignmentVehicleIds = activeAssignments.map((item) => item.vehicleId).filter((value): value is string => Boolean(value));
+      const lifecycleMap = await getVehicleLifecycleMap(assignmentVehicleIds, now);
+      const lifecycleFor = (vehicleId: string | null) => vehicleId ? lifecycleMap.get(vehicleId) || null : null;
       const activeLines = lines.filter((line) => line.status !== "COMPLETED");
-      const assignmentStatuses = activeAssignments.map(effectiveAssignmentStatus);
-      const scheduledToday = activeAssignments.filter((item) => item.plannedStartAt >= startAt && item.plannedStartAt < endAt).length;
-      const inProgressAssignments = assignmentStatuses.filter((status) => status === "IN_REPAIR" || status === "REWORK").length;
-      const waitingPartsAssignments = assignmentStatuses.filter((status) => status === "WAITING_PARTS" || status === "WAITING_PARTS_SELECTION").length;
+      const scheduledToday = activeAssignments.filter((item) => item.plannedStartAt >= startAt && item.plannedStartAt < endAt && lifecycleFor(item.vehicleId)?.code === "PLANNED").length;
+      const inProgressAssignments = activeAssignments.filter((item) => ["IN_WORK", "IN_REPAIR"].includes(lifecycleFor(item.vehicleId)?.code || "")).length;
+      const waitingPartsAssignments = activeAssignments.filter((item) => ["PARTS_SELECTION", "WAITING_PARTS"].includes(lifecycleFor(item.vehicleId)?.code || "")).length;
 
       return NextResponse.json({
         ok: true,
@@ -208,6 +231,7 @@ export async function GET(request: Request) {
           workOrderId: item.workOrderId,
           status: item.appointmentStatus,
           workOrderStatus: item.workOrderStatus,
+          lifecycle: lifecyclePayload(lifecycleFor(item.vehicleId)),
           plannedStartAt: item.plannedStartAt,
           plannedEndAt: item.plannedEndAt,
           plate: item.plateNumber || "—",
