@@ -1,74 +1,27 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import type {
+  WorkOrderDetailContract,
+  WorkOrderListItemContract,
+  WorkOrderTransitionContract,
+} from "@/src/lib/contracts/crm-core";
+import {
+  parseWorkOrderDetailPayload,
+  parseWorkOrderListPayload,
+  parseWorkOrderNumbersPayload,
+  parseWorkOrderTransitionFailurePayload,
+  parseWorkOrderTransitionPayload,
+  payloadMessage,
+} from "@/src/lib/contracts/work-order-payload.parsers";
 import { formatWorkOrderNumber } from "@/src/domain/work-order-number";
 import { navigateCrm, readCrmRoute, type CrmRouteParams } from "./crm-route";
 import { WorkOrderCommercialPanel, type WorkOrderCommercialSummary, type WorkOrderCommercialView } from "./work-order-commercial-panel";
 import styles from "./work-orders.module.css";
 
-type GateItem = { code: string; label: string };
-type ActionItem = { code: string; label: string };
-type Transition = {
-  to: string;
-  label: string;
-  allowed: boolean;
-  code: string;
-  requiredGates: GateItem[];
-  missingGates: GateItem[];
-  actions: ActionItem[];
-  unsupportedActions: ActionItem[];
-};
-
-type WorkOrderRow = {
-  id: string;
-  number: number | null;
-  status: string;
-  statusLabel: string;
-  statusTone: string;
-  stage: string | null;
-  createdAt: string;
-  updatedAt: string;
-  closedAt: string | null;
-  client: { id: string; name: string | null; phone: string };
-  vehicle: {
-    id: string;
-    brand: string | null;
-    model: string | null;
-    year: number | null;
-    plateNumber: string | null;
-    vin: string | null;
-    mileageKm: number | null;
-    turboLevClass: string | null;
-  };
-  diagnosticRequest: {
-    id: string;
-    status: string;
-    technicalConclusion: string | null;
-    confirmedAt: string | null;
-    leadId: string | null;
-    createdAt: string;
-  };
-  transitions: Transition[];
-};
-
-type WorkOrderDetail = Omit<WorkOrderRow, "number"> & {
-  appointment: null | {
-    id: string;
-    status: string;
-    plannedStartAt: string;
-    actualArrivalAt: string | null;
-    post: { name: string } | null;
-    mechanic: { name: string } | null;
-  };
-  recentCalls: Array<{
-    id: string;
-    type: string;
-    status: string | null;
-    duration: number;
-    startedAt: string | null;
-    recordingUrl: string | null;
-  }>;
-};
+type WorkOrderRow = WorkOrderListItemContract;
+type WorkOrderDetail = WorkOrderDetailContract;
+type Transition = WorkOrderTransitionContract;
 
 type WorkOrderTab = "overview" | "diagnostic" | "works" | "parts" | "estimate" | "qc" | "payment" | "history";
 
@@ -192,15 +145,17 @@ export function WorkOrders() {
     setLoading(true);
     try {
       const response = await fetch("/api/work-orders", { cache: "no-store" });
-      const payload = await response.json();
-      if (!response.ok || !payload.ok) throw new Error(payload.error || "Не вдалося завантажити замовлення-наряди.");
-      const rawRows = Array.isArray(payload.workOrders) ? payload.workOrders as Array<Omit<WorkOrderRow, "number">> : [];
+      const rawPayload: unknown = await response.json();
+      const payload = parseWorkOrderListPayload(rawPayload);
+      if (!response.ok || !payload) throw new Error(payloadMessage(rawPayload, "Не вдалося завантажити замовлення-наряди."));
+      const rawRows = payload.workOrders;
       let numberMap = new Map<string, number>();
       if (rawRows.length) {
         const numberResponse = await fetch(`/api/work-orders/numbers?ids=${encodeURIComponent(rawRows.map((row) => row.id).join(","))}`, { cache: "no-store" });
-        const numberPayload = await numberResponse.json();
-        if (numberResponse.ok && numberPayload.ok && Array.isArray(numberPayload.rows)) {
-          numberMap = new Map(numberPayload.rows.map((item: { workOrderId: string; number: number }) => [item.workOrderId, item.number]));
+        const rawNumberPayload: unknown = await numberResponse.json();
+        const numberPayload = parseWorkOrderNumbersPayload(rawNumberPayload);
+        if (numberResponse.ok && numberPayload) {
+          numberMap = new Map(numberPayload.rows.map((item) => [item.workOrderId, item.number]));
         }
       }
       const nextRows: WorkOrderRow[] = rawRows.map((row) => ({ ...row, number: numberMap.get(row.id) ?? null }));
@@ -217,9 +172,10 @@ export function WorkOrders() {
     setDetailLoading(true);
     try {
       const response = await fetch(`/api/work-orders/${encodeURIComponent(id)}`, { cache: "no-store" });
-      const payload = await response.json();
-      if (!response.ok || !payload.ok) throw new Error(payload.error || "Не вдалося завантажити наряд.");
-      setDetail(payload.workOrder);
+      const rawPayload: unknown = await response.json();
+      const workOrder = parseWorkOrderDetailPayload(rawPayload);
+      if (!response.ok || !workOrder) throw new Error(payloadMessage(rawPayload, "Не вдалося завантажити наряд."));
+      setDetail(workOrder);
     } catch (error) {
       setDetail(null);
       setMessage({ kind: "error", text: error instanceof Error ? error.message : "Помилка завантаження картки." });
@@ -292,12 +248,15 @@ export function WorkOrders() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status: transition.to, actorName: "CRM / WorkOrder Center" }),
       });
-      const payload = await response.json();
-      if (!response.ok || !payload.ok) {
-        const missing = payload.workflowDecision?.missingGates as string[] | undefined;
-        throw new Error(missing?.length ? `${payload.error} ${missing.join(", ")}` : payload.error || "Перехід не виконано.");
+      const rawPayload: unknown = await response.json();
+      if (!response.ok) {
+        const failure = parseWorkOrderTransitionFailurePayload(rawPayload);
+        const errorText = failure?.error || payloadMessage(rawPayload, "Перехід не виконано.");
+        throw new Error(failure?.missingGates.length ? `${errorText} ${failure.missingGates.join(", ")}` : errorText);
       }
-      setMessage({ kind: "success", text: `Статус змінено: ${payload.workOrder.statusLabel}.` });
+      const workOrder = parseWorkOrderTransitionPayload(rawPayload);
+      if (!workOrder) throw new Error(payloadMessage(rawPayload, "Перехід не виконано."));
+      setMessage({ kind: "success", text: `Статус змінено: ${workOrder.statusLabel}.` });
       await Promise.all([loadRows(), loadDetail(detail.id)]);
     } catch (error) {
       setMessage({ kind: "error", text: error instanceof Error ? error.message : "Не вдалося змінити статус." });
