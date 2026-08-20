@@ -9,6 +9,7 @@ import {
   parseVehicleImageRefreshPayload,
   payloadMessage,
 } from "@/src/lib/contracts/directory-payload.parsers";
+import { CustomerCabinetCard } from "./customer-cabinet-card";
 import { navigateCrm, readCrmRoute } from "./crm-route";
 import { VehicleBrandLogo } from "./vehicle-brand-logo";
 import { VehicleRender } from "./vehicle-render";
@@ -225,6 +226,9 @@ export function VehiclesDirectory() {
               <button className={styles.ownerButton} onClick={() => navigateCrm("Клієнти", { clientId: vehicleCard.client.id })}>
                 <span><strong>{vehicleCard.client.name || "Клієнт без імені"}</strong><small>{vehicleCard.client.phone}</small></span><span>›</span>
               </button>
+            </section>
+            <section className={styles.panel}>
+              <CustomerCabinetCard clientId={vehicleCard.client.id} vehicleId={vehicleCard.id} />
             </section>
             <section className={styles.panel}>
               <h3>Технічні дані</h3>
