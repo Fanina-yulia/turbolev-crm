@@ -114,11 +114,11 @@
     {
       "id": "vehicle-images",
       "title": "Vehicle Images",
-      "description": "OpenAI image generation, shared model templates, color variants, optimization and image library administration.",
-      "keywords": ["vehicle image", "openai image", "template", "color variant", "recolor", "image library"],
-      "paths": ["app/vehicle-image-*", "app/api/vehicle-images/**", "app/api/internal/vehicle-image*/**", "src/services/vehicle-images/**", "prisma/migrations/*vehicle_image*"],
+      "description": "OpenAI image generation, shared model templates, generation catalog, color variants, optimization and image library administration.",
+      "keywords": ["vehicle image", "openai image", "template", "generation", "color variant", "recolor", "image library"],
+      "paths": ["app/vehicle-image-*", "app/vehicle-generation-*", "app/api/vehicle-images/**", "app/api/internal/vehicle-image*/**", "src/services/vehicle-images/**", "prisma/migrations/*vehicle_image*", "prisma/migrations/*vehicle_generation*"],
       "dependencies": ["clients-vehicles", "settings-integrations"],
-      "smokeChecks": ["existing-template-reuse", "new-color-variant", "new-model-generation", "image-delivery", "image-library-admin"]
+      "smokeChecks": ["existing-template-reuse", "new-color-variant", "new-model-generation", "generation-resolution", "image-delivery", "image-library-admin"]
     },
     {
       "id": "notifications",
