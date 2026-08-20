@@ -2,7 +2,7 @@ import "server-only";
 
 import { getPrisma } from "@/src/lib/prisma";
 import { getSqlPool } from "@/src/lib/sql";
-import { generateVehicleImageInBackground } from "./vehicle-image-background.service";
+import { generateVehicleImageInBackground, optimizeVehicleImageAsset } from "./vehicle-image-background.service";
 import { getVehicleImageLibraryState } from "./openai-library.service";
 
 const MAX_IMAGE_BYTES = 12 * 1024 * 1024;
@@ -109,11 +109,17 @@ export async function replaceVehicleImageLibraryAsset(assetId: string, bytes: Bu
            "generationMode"='MANUAL',
            "updatedAt"=CURRENT_TIMESTAMP
      WHERE "id"=$1
-     RETURNING ${ADMIN_COLUMNS}`,
+     RETURNING "id"`,
     [assetId, bytes, bytes.length, userId],
   );
   if (!result.rowCount) throw new Error("Зображення бібліотеки не знайдено.");
-  return result.rows[0] as VehicleImageLibraryAdminAsset;
+
+  // Delivery endpoint serves compact transparent WebP assets. Manual replacements
+  // therefore pass through the same validated optimizer as OpenAI generations.
+  await optimizeVehicleImageAsset(assetId);
+  const optimized = await getVehicleImageLibraryAdminAsset(assetId);
+  if (!optimized) throw new Error("Зображення бібліотеки не знайдено після оптимізації.");
+  return optimized;
 }
 
 export async function regenerateVehicleImageLibraryAsset(assetId: string) {
