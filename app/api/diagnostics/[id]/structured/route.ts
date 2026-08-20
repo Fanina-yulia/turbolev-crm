@@ -5,6 +5,7 @@ import {
   getRequiredDiagnosticCompletion,
   submitStructuredDiagnosticRespectingOptional,
 } from "@/src/services/diagnostic-completeness.service";
+import { claimDiagnosticManagerReview } from "@/src/services/diagnostic-manager-review.service";
 import {
   addTemplateForMechanic,
   getStructuredDiagnostic,
@@ -40,10 +41,18 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
     const access = await authorize(PERMISSIONS.DIAGNOSTICS_READ, { request, minimumScope: "SELF" });
     if (!access.allowed) return access.response!;
     if (!access.context.user) return NextResponse.json({ ok: false, error: "UNAUTHENTICATED" }, { status: 401 });
-    const data = isMechanic(access)
-      ? await getStructuredDiagnosticForMechanic(access.context.user.id, id)
-      : await getStructuredDiagnostic(id);
-    if (!isMechanic(access) && !(await managerLocationAllowed(access, id))) return NextResponse.json({ ok: false, error: "LOCATION_FORBIDDEN" }, { status: 403 });
+
+    if (isMechanic(access)) {
+      const data = await getStructuredDiagnosticForMechanic(access.context.user.id, id);
+      return NextResponse.json({ ok: true, ...(await withCompletion(id, data)) }, { headers: { "Cache-Control": "no-store" } });
+    }
+
+    if (!(await managerLocationAllowed(access, id))) return NextResponse.json({ ok: false, error: "LOCATION_FORBIDDEN" }, { status: 403 });
+
+    // Opening a completed diagnostic in the service-manager context is the
+    // business event that moves the user-facing state to "На перевірці менеджера".
+    await claimDiagnosticManagerReview(id, access.context.user.id, access.context.user.name);
+    const data = await getStructuredDiagnostic(id);
     return NextResponse.json({ ok: true, ...(await withCompletion(id, data)) }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
     if (error instanceof StructuredDiagnosticError) return NextResponse.json({ ok: false, error: error.code, message: error.message }, { status: error.status });
