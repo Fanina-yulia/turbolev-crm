@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { getPrisma } from "@/src/lib/prisma";
 import { authorize } from "@/src/security/authorize";
 import { PERMISSIONS, type AccessScopeCode, type PermissionCode } from "@/src/security/permissions";
-import { DEFAULT_ACCESS_ROLES, PERMISSION_PRESENTATION } from "@/src/security/access-matrix-catalog";
+import { PERMISSION_PRESENTATION } from "@/src/security/access-matrix-catalog";
+import { TURBO_LEV_ACCESS_ROLES } from "@/src/security/operating-role-policy";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -21,7 +22,7 @@ function fallbackCatalog(authConfigured = false) {
     reason: "SECURITY_SCHEMA_NOT_DEPLOYED",
     config: { enforcementMode: "SHADOW", bootstrapCompleted: false, allowSelfRegistration: false },
     authConfigured,
-    roles: DEFAULT_ACCESS_ROLES,
+    roles: TURBO_LEV_ACCESS_ROLES,
     permissions,
     assignmentCount: 0,
     userCount: 0,
@@ -77,7 +78,7 @@ export async function GET(request: Request) {
       reason: null,
       config: config ?? { enforcementMode: "SHADOW", bootstrapCompleted: false, allowSelfRegistration: false },
       authConfigured: auth.context.authConfigured,
-      roles: roles.length ? roles : DEFAULT_ACCESS_ROLES,
+      roles: roles.length ? roles : TURBO_LEV_ACCESS_ROLES,
       permissions: permissions.length ? permissions : fallbackCatalog(auth.context.authConfigured).permissions,
       assignmentCount,
       userCount,

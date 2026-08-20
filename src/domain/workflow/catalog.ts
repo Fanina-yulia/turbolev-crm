@@ -1,6 +1,6 @@
 import type { BlockerCode, HardGateCode, VehicleLocationCode, WorkflowActionCode, WorkflowRole, WorkflowStage } from "./types";
 
-export const STATUS_ARCHITECTURE_VERSION = "1.0.0" as const;
+export const STATUS_ARCHITECTURE_VERSION = "1.1.0" as const;
 
 export const MASTER_SERVICE_STAGES: ReadonlyArray<{ code: WorkflowStage; label: string; order: number }> = [
   { code: "INQUIRY", label: "Звернення", order: 10 },
@@ -8,7 +8,7 @@ export const MASTER_SERVICE_STAGES: ReadonlyArray<{ code: WorkflowStage; label: 
   { code: "BOOKING", label: "Запис", order: 30 },
   { code: "INTAKE", label: "Приймання", order: 40 },
   { code: "DIAGNOSTICS", label: "Діагностика", order: 50 },
-  { code: "ESTIMATE", label: "Калькуляція", order: 60 },
+  { code: "ESTIMATE", label: "Кошторис", order: 60 },
   { code: "APPROVAL", label: "Погодження", order: 70 },
   { code: "PARTS", label: "Запчастини", order: 80 },
   { code: "READY_FOR_REPAIR", label: "Готовий до ремонту", order: 90 },
@@ -24,14 +24,36 @@ export const MASTER_SERVICE_STAGES: ReadonlyArray<{ code: WorkflowStage; label: 
 export const WORKFLOW_ROLE_LABELS: Record<WorkflowRole, string> = {
   OWNER: "Власник",
   EXECUTIVE_DIRECTOR: "Виконавчий директор",
-  SALES: "Продажі",
-  SERVICE_MANAGER: "Сервіс-менеджмент",
-  PARTS_MANAGER: "Підбір / запчастини",
+  HEAD_OF_SALES: "Керівник відділу продажів",
+  SALES: "Продавець",
+  SERVICE_ADVISOR: "Сервіс-менеджер",
+  PARTS_SPECIALIST: "Підборщик запчастин",
+  STATION_MANAGER: "Завідувач станцією",
+  SHIFT_MASTER: "Майстер зміни",
   MECHANIC: "Автомеханік",
-  QUALITY_CONTROLLER: "Контроль якості",
-  CASHIER_ACCOUNTING: "Каса / бухгалтерія",
-  ADMIN: "Адміністратор CRM",
+  ACCOUNTANT: "Бухгалтер / каса",
+  ADMINISTRATOR: "Адміністратор",
+  SERVICE_MANAGER: "Сервіс-менеджмент (legacy)",
+  PARTS_MANAGER: "Запчастини (legacy)",
+  QUALITY_CONTROLLER: "Контроль якості (legacy)",
+  CASHIER_ACCOUNTING: "Каса / бухгалтерія (legacy)",
+  ADMIN: "Адміністратор CRM (legacy)",
 };
+
+/** Roles that may be selected in current workflow responsibility settings. */
+export const OPERATIONAL_WORKFLOW_ROLE_LABELS = {
+  OWNER: WORKFLOW_ROLE_LABELS.OWNER,
+  EXECUTIVE_DIRECTOR: WORKFLOW_ROLE_LABELS.EXECUTIVE_DIRECTOR,
+  HEAD_OF_SALES: WORKFLOW_ROLE_LABELS.HEAD_OF_SALES,
+  SALES: WORKFLOW_ROLE_LABELS.SALES,
+  SERVICE_ADVISOR: WORKFLOW_ROLE_LABELS.SERVICE_ADVISOR,
+  PARTS_SPECIALIST: WORKFLOW_ROLE_LABELS.PARTS_SPECIALIST,
+  STATION_MANAGER: WORKFLOW_ROLE_LABELS.STATION_MANAGER,
+  SHIFT_MASTER: WORKFLOW_ROLE_LABELS.SHIFT_MASTER,
+  MECHANIC: WORKFLOW_ROLE_LABELS.MECHANIC,
+  ACCOUNTANT: WORKFLOW_ROLE_LABELS.ACCOUNTANT,
+  ADMINISTRATOR: WORKFLOW_ROLE_LABELS.ADMINISTRATOR,
+} as const;
 
 export const BLOCKER_LABELS: Record<BlockerCode, string> = {
   CUSTOMER_REPLY: "Очікуємо відповідь клієнта",
@@ -64,14 +86,14 @@ export const VEHICLE_LOCATION_LABELS: Record<VehicleLocationCode, string> = {
 };
 
 export const HARD_GATE_LABELS: Record<HardGateCode, string> = {
-  WORK_ORDER_AFTER_CONFIRMED_DIAGNOSTICS: "WorkOrder створюється тільки після підтвердженої діагностики",
-  ESTIMATE_APPROVED_BEFORE_REPAIR: "Ремонт тільки після погодженої калькуляції",
+  WORK_ORDER_AFTER_CONFIRMED_DIAGNOSTICS: "ЗН створюється тільки після підтвердженої діагностики",
+  ESTIMATE_APPROVED_BEFORE_REPAIR: "Ремонт тільки після погодженого кошторису",
   PARTS_PAYMENT_BEFORE_ORDER: "Замовлення деталей тільки після підтвердженої оплати, якщо вона потрібна",
   REQUIRED_PARTS_READY_BEFORE_REPAIR: "Для старту ремонту всі обов'язкові деталі мають бути доступні",
   MECHANIC_ASSIGNED_BEFORE_REPAIR: "Для старту ремонту має бути призначений автомеханік",
   ADDITIONAL_WORK_REQUIRES_APPROVAL: "Додаткові платні роботи потребують нового погодження",
-  QC_PASSED_BEFORE_READY: "Готовність до видачі тільки після успішного контролю якості",
-  ZERO_BALANCE_BEFORE_DELIVERY: "Видача автомобіля тільки після закриття обов'язкового балансу",
+  QC_PASSED_BEFORE_READY: "Після ремонту автомобіль має пройти контроль якості",
+  ZERO_BALANCE_BEFORE_DELIVERY: "Статус «Готовий до видачі» доступний тільки після повної оплати",
 };
 
 export const WORKFLOW_ACTION_LABELS: Record<WorkflowActionCode, string> = {
@@ -81,7 +103,7 @@ export const WORKFLOW_ACTION_LABELS: Record<WorkflowActionCode, string> = {
   SET_VEHICLE_LOCATION_RECEPTION: "Перемістити авто в зону приймання",
   CREATE_DIAGNOSTIC_REQUEST: "Створити DiagnosticRequest",
   CREATE_WORK_ORDER: "Створити WorkOrder",
-  CREATE_ESTIMATE: "Створити калькуляцію",
+  CREATE_ESTIMATE: "Створити кошторис",
   OPEN_PARTS_REQUEST: "Відкрити запит на деталі",
   CREATE_QC_TASK: "Створити завдання контролю якості",
   SET_VEHICLE_LOCATION_QC: "Перемістити авто в зону QC",
