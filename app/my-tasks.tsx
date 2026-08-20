@@ -29,7 +29,7 @@ type TaskContext = { section: CrmSectionLabel; params?: CrmRouteParams };
 
 const priorityLabel: Record<string, string> = { LOW: "Низький", MEDIUM: "Середній", HIGH: "Високий", CRITICAL: "Критичний" };
 const sourceLabel: Record<string, string> = {
-  MANUAL: "Ручна задача", INQUIRY: "Звернення", LEAD: "Лід", APPOINTMENT: "Запис", DIAGNOSTIC: "Діагностика",
+  MANUAL: "Ручна задача", INQUIRY: "Звернення", LEAD: "Активні", APPOINTMENT: "Запис", DIAGNOSTIC: "Діагностика",
   ESTIMATE: "Кошторис", WORK_ORDER: "Замовлення-наряд", PARTS_REQUEST: "Запчастини", PAYMENT: "Оплата", QC: "Контроль якості", WARRANTY: "Гарантія",
 };
 
@@ -60,7 +60,7 @@ function workOrderContext(task: Task, fallbackTab: string): TaskContext | null {
 }
 function taskContext(task: Task): TaskContext | null {
   if (task.sourceType === "INQUIRY") return { section: "Нові звернення" };
-  if (task.sourceType === "LEAD") return { section: "Ліди" };
+  if (task.sourceType === "LEAD") return { section: "Активні" };
   if (task.sourceType === "APPOINTMENT") return { section: "Планувальник", params: task.sourceId ? { appointmentId: task.sourceId } : {} };
   if (task.sourceType === "DIAGNOSTIC") return workOrderContext(task, "diagnostic") || { section: "Діагностика", params: task.vehicleId ? { vehicleId: task.vehicleId } : {} };
   if (task.sourceType === "ESTIMATE") return workOrderContext(task, "estimate") || { section: "Замовлення-наряди" };
@@ -162,7 +162,7 @@ export function MyTasks() {
 
   return <div className={styles.page}>
     <header className={styles.header}>
-      <div><p className={styles.eyebrow}>РОБОЧИЙ СТІЛ</p><h1>Мої задачі</h1><p>Особиста черга дій із лідів, звернень та сервісних процесів.</p></div>
+      <div><p className={styles.eyebrow}>РОБОЧИЙ СТІЛ</p><h1>Мої задачі</h1><p>Особиста черга дій з активних звернень, комунікацій та сервісних процесів.</p></div>
       <button className={styles.primary} type="button" onClick={() => setShowCreate((value) => !value)}>+ Створити задачу</button>
     </header>
 
@@ -189,7 +189,7 @@ export function MyTasks() {
       </main>
       <aside className={styles.sideColumn}>
         <section className={styles.panel}><div className={styles.panelHead}><h2>Наступні</h2><span>{upcoming.length}</span></div>{upcoming.length ? upcoming.map((task) => <button className={styles.upcoming} key={task.id} type="button" onClick={() => openTaskContext(task)}><strong>{task.title}</strong><span>{dueLabel(task.dueAt)}</span></button>) : <div className={styles.empty}>Черга вільна.</div>}</section>
-        <section className={styles.panel}><div className={styles.panelHead}><h2>Швидкі дії</h2></div><div className={styles.quick}><button onClick={() => navigate("Нові звернення")}>Нові звернення</button><button onClick={() => navigate("Ліди")}>Ліди</button><button onClick={() => navigate("Комунікації")}>Комунікації</button><button onClick={() => navigate("Планувальник")}>Запис на СТО</button></div></section>
+        <section className={styles.panel}><div className={styles.panelHead}><h2>Швидкі дії</h2></div><div className={styles.quick}><button onClick={() => navigate("Нові звернення")}>Нові звернення</button><button onClick={() => navigate("Активні")}>Активні</button><button onClick={() => navigate("Комунікації")}>Комунікації</button><button onClick={() => navigate("Планувальник")}>Запис на СТО</button></div></section>
       </aside>
     </div>}
   </div>;
