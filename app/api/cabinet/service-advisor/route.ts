@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
+import { deriveVehicleLifecycle } from "@/src/domain/vehicle-lifecycle";
 import { getAccessContext } from "@/src/security/access-context";
 import { getPrisma } from "@/src/lib/prisma";
+import { getVehicleLifecycleMap } from "@/src/services/vehicle-lifecycle.service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -12,6 +14,10 @@ async function dayRange() {
 
 function vehicleLabel(vehicle: { brand: string | null; model: string | null; year: number | null }) {
   return [vehicle.brand, vehicle.model, vehicle.year].filter(Boolean).join(" ") || "Автомобіль";
+}
+
+function lifecyclePayload(value: ReturnType<typeof deriveVehicleLifecycle>) {
+  return value ? { code: value.code, label: value.label, flags: value.flags } : null;
 }
 
 export async function GET(request: Request) {
@@ -26,6 +32,7 @@ export async function GET(request: Request) {
     const prisma = getPrisma();
     const range = await dayRange();
     if (!range) throw new Error("DAY_RANGE_FAILED");
+    const now = new Date();
 
     const [location, appointments] = await Promise.all([
       prisma.serviceLocation.findUnique({ where: { id: locationId }, select: { id: true, name: true } }),
@@ -38,13 +45,14 @@ export async function GET(request: Request) {
 
     const vehicleIds = Array.from(new Set(appointments.map((item) => item.vehicleId).filter((value): value is string => Boolean(value))));
     const workOrderIds = Array.from(new Set(appointments.map((item) => item.workOrderId).filter((value): value is string => Boolean(value))));
+    const lifecycleMap = await getVehicleLifecycleMap(vehicleIds, now);
 
-    const [diagnostics, findings] = await Promise.all([
+    const [diagnosticRows, findings] = await Promise.all([
       vehicleIds.length ? prisma.diagnosticRequest.findMany({
-        where: { status: { in: ["PENDING", "IN_PROGRESS"] }, vehicleId: { in: vehicleIds } },
-        include: { vehicle: { select: { brand: true, model: true, plateNumber: true } }, client: { select: { name: true, phone: true } } },
+        where: { status: { not: "CANCELLED" }, vehicleId: { in: vehicleIds } },
+        include: { vehicle: { select: { id: true, brand: true, model: true, plateNumber: true } }, client: { select: { name: true, phone: true } } },
         orderBy: { updatedAt: "desc" },
-        take: 12,
+        take: 30,
       }) : [],
       workOrderIds.length ? prisma.mechanicWorkFinding.findMany({
         where: { workOrderId: { in: workOrderIds }, status: { in: ["SUBMITTED", "REVIEWED"] } },
@@ -53,6 +61,54 @@ export async function GET(request: Request) {
         take: 20,
       }) : [],
     ]);
+
+    const diagnosticIds = diagnosticRows.map((item) => item.id);
+    const [diagnosticReviews, diagnosticShares] = await Promise.all([
+      diagnosticIds.length ? prisma.diagnosticReview.findMany({
+        where: { diagnosticRequestId: { in: diagnosticIds } },
+        select: { diagnosticRequestId: true, state: true, reviewerUserId: true },
+      }) : [],
+      diagnosticIds.length ? prisma.diagnosticReportShare.findMany({
+        where: { diagnosticRequestId: { in: diagnosticIds } },
+        select: { diagnosticRequestId: true, revokedAt: true, expiresAt: true, createdAt: true },
+        orderBy: { createdAt: "desc" },
+      }) : [],
+    ]);
+    const reviewByDiagnostic = new Map(diagnosticReviews.map((item) => [item.diagnosticRequestId, item]));
+    const shareByDiagnostic = new Map<string, (typeof diagnosticShares)[number]>();
+    for (const share of diagnosticShares) if (!shareByDiagnostic.has(share.diagnosticRequestId)) shareByDiagnostic.set(share.diagnosticRequestId, share);
+
+    const appointmentByVehicle = new Map<string, (typeof appointments)[number]>();
+    for (const appointment of appointments) {
+      if (!appointment.vehicleId) continue;
+      const current = appointmentByVehicle.get(appointment.vehicleId);
+      if (!current || (appointment.actualArrivalAt && !current.actualArrivalAt)) appointmentByVehicle.set(appointment.vehicleId, appointment);
+    }
+
+    const diagnostics = diagnosticRows.flatMap((diagnostic) => {
+      const review = reviewByDiagnostic.get(diagnostic.id) || null;
+      const share = shareByDiagnostic.get(diagnostic.id) || null;
+      const appointment = appointmentByVehicle.get(diagnostic.vehicle.id) || null;
+      const shareActive = Boolean(share && !share.revokedAt && (!share.expiresAt || share.expiresAt.getTime() > now.getTime()));
+      const lifecycle = deriveVehicleLifecycle({
+        appointmentStatus: appointment?.status || null,
+        appointmentActualArrivalAt: appointment?.actualArrivalAt || null,
+        appointmentPlannedEndAt: appointment?.plannedEndAt || null,
+        diagnosticStatus: diagnostic.status,
+        diagnosticReviewState: review?.state || null,
+        diagnosticReviewerUserId: review?.reviewerUserId || null,
+        diagnosticCardSent: shareActive,
+      }, now);
+      if (!lifecycle || !["IN_WORK", "DIAGNOSTIC_COMPLETED", "MANAGER_REVIEW"].includes(lifecycle.code)) return [];
+      return [{
+        id: diagnostic.id,
+        status: diagnostic.status,
+        lifecycle: lifecyclePayload(lifecycle)!,
+        plate: diagnostic.vehicle.plateNumber || "—",
+        vehicle: [diagnostic.vehicle.brand, diagnostic.vehicle.model].filter(Boolean).join(" ") || "Автомобіль",
+        client: diagnostic.client.name || diagnostic.client.phone,
+      }];
+    });
 
     const findingLineIds = Array.from(new Set(findings.map((item) => item.workOrderLineId)));
     const findingOrderIds = Array.from(new Set(findings.map((item) => item.workOrderId)));
@@ -66,36 +122,38 @@ export async function GET(request: Request) {
     const orderMap = new Map(findingOrders.map((item) => [item.id, item]));
     const userMap = new Map(findingUsers.map((item) => [item.id, item.name]));
 
-    const count = (...statuses: string[]) => appointments.filter((x) => statuses.includes(x.status)).length;
+    const appointmentLifecycle = appointments.map((appointment) => appointment.vehicleId ? lifecycleMap.get(appointment.vehicleId) || null : null);
+    const countLifecycle = (...codes: string[]) => appointmentLifecycle.filter((lifecycle) => lifecycle && codes.includes(lifecycle.code)).length;
+    const managerReview = diagnostics.filter((item) => ["DIAGNOSTIC_COMPLETED", "MANAGER_REVIEW"].includes(item.lifecycle.code)).length;
+
     return NextResponse.json({
       ok: true,
       linked: true,
       station: location || { id: locationId, name: "Станція" },
       kpis: {
         today: appointments.length,
-        arrived: count("ARRIVED", "DIAGNOSTICS"),
-        approval: count("WAITING_CALCULATION", "WAITING_APPROVAL"),
-        waitingParts: count("WAITING_PARTS_SELECTION", "WAITING_PARTS"),
-        inRepair: count("READY_FOR_REPAIR", "IN_REPAIR"),
+        inWork: countLifecycle("IN_WORK"),
+        managerReview,
+        approval: countLifecycle("CLIENT_DECISION", "WAITING_APPROVAL"),
+        waitingParts: countLifecycle("PARTS_SELECTION", "WAITING_PARTS"),
+        inRepair: countLifecycle("READY_FOR_REPAIR", "IN_REPAIR", "QUALITY_CONTROL"),
         mechanicFindings: findings.length,
       },
-      appointments: appointments.map((x) => ({
-        id: x.id,
-        status: x.status,
-        start: x.plannedStartAt,
-        plate: x.plateNumber || "—",
-        vehicle: x.vehicleLabel || "Автомобіль",
-        problem: x.problem,
-        post: x.post?.name || null,
-        mechanic: x.mechanic?.name || null,
-      })),
-      diagnostics: diagnostics.map((x) => ({
-        id: x.id,
-        status: x.status,
-        plate: x.vehicle.plateNumber || "—",
-        vehicle: [x.vehicle.brand, x.vehicle.model].filter(Boolean).join(" ") || "Автомобіль",
-        client: x.client.name || x.client.phone,
-      })),
+      appointments: appointments.map((appointment) => {
+        const lifecycle = appointment.vehicleId ? lifecycleMap.get(appointment.vehicleId) || null : null;
+        return {
+          id: appointment.id,
+          status: appointment.status,
+          lifecycle: lifecyclePayload(lifecycle),
+          start: appointment.plannedStartAt,
+          plate: appointment.plateNumber || "—",
+          vehicle: appointment.vehicleLabel || "Автомобіль",
+          problem: appointment.problem,
+          post: appointment.post?.name || null,
+          mechanic: appointment.mechanic?.name || null,
+        };
+      }),
+      diagnostics,
       mechanicFindings: findings.map((finding) => {
         const order = orderMap.get(finding.workOrderId);
         return {
