@@ -139,6 +139,9 @@ jobs:
       - name: Canonical CRM contracts smoke test
         run: npm run contracts:smoke
 
+      - name: Diagnostic workflow smoke test
+        run: npx --no-install tsx scripts/diagnostic-flow-smoke.ts
+
       - name: Vehicle pricing classifier smoke test
         run: npx --no-install tsx scripts/vehicle-classifier-smoke.ts
 
