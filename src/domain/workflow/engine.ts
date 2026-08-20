@@ -7,6 +7,7 @@ import {
   VEHICLE_LOCATION_LABELS,
   WORKFLOW_ACTION_LABELS,
 } from "./catalog";
+import { deriveVehicleLifecycle } from "@/src/domain/vehicle-lifecycle";
 import { personnelPositionByCode } from "@/src/security/personnel-org-structure";
 import { applyTurboLevOperatingPolicy } from "./operating-policy";
 import { WORKFLOW_DEFINITIONS } from "./registry";
@@ -22,6 +23,16 @@ const operationalRoleLabels = Object.fromEntries(
     .map(([code, fallback]) => [code, personnelPositionByCode(code)?.name ?? fallback]),
 );
 
+function canonicalVehicleStatusLabel(entity: WorkflowEntity, status: string, fallback: string) {
+  if (entity === "WORK_ORDER") {
+    return deriveVehicleLifecycle({ workOrderStatus: status })?.label ?? fallback;
+  }
+  if (entity === "APPOINTMENT") {
+    return deriveVehicleLifecycle({ appointmentStatus: status })?.label ?? fallback;
+  }
+  return fallback;
+}
+
 export function getWorkflowDefinition(entity: WorkflowEntity): WorkflowDefinition {
   const definition = effectiveDefinitions[entity];
   if (!definition) throw new Error(`Unknown workflow entity: ${entity}`);
@@ -36,9 +47,11 @@ export function normalizeWorkflowStatus(entity: WorkflowEntity, status: string):
 export function getWorkflowStatus(entity: WorkflowEntity, status: string): WorkflowStatusDefinition | null {
   const definition = getWorkflowDefinition(entity);
   const exact = definition.statuses.find((item) => item.code === status);
-  if (exact) return exact;
-  const normalized = normalizeWorkflowStatus(entity, status);
-  return definition.statuses.find((item) => item.code === normalized) ?? null;
+  const normalized = exact ? status : normalizeWorkflowStatus(entity, status);
+  const found = exact ?? definition.statuses.find((item) => item.code === normalized) ?? null;
+  if (!found) return null;
+  const label = canonicalVehicleStatusLabel(entity, found.code, found.label);
+  return label === found.label ? found : { ...found, label };
 }
 
 export function getWorkflowStatusLabel(entity: WorkflowEntity, status: string): string {
@@ -95,6 +108,12 @@ export function getWorkflowCatalog() {
     vehicleLocations: VEHICLE_LOCATION_LABELS,
     hardGates: HARD_GATE_LABELS,
     actions: WORKFLOW_ACTION_LABELS,
-    entities: Object.values(effectiveDefinitions),
+    entities: Object.values(effectiveDefinitions).map((definition) => ({
+      ...definition,
+      statuses: definition.statuses.map((status) => ({
+        ...status,
+        label: canonicalVehicleStatusLabel(definition.entity, status.code, status.label),
+      })),
+    })),
   };
 }
