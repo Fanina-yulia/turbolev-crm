@@ -34,8 +34,8 @@
       "id": "leads-intake",
       "title": "Leads & Intake",
       "description": "Lead lifecycle, conversion, new requests, intake and initial creation of client/vehicle records.",
-      "keywords": ["lead", "intake", "request", "conversion", "arrival"],
-      "paths": ["app/leads-*", "app/*intake*", "app/new-request-*", "app/api/leads/**", "app/api/intake/**", "src/services/leads*", "src/services/intake*", "src/services/lead-arrival*"],
+      "keywords": ["lead", "intake", "request", "inquiry", "conversion", "arrival"],
+      "paths": ["app/leads-*", "app/*intake*", "app/new-inquiries*", "app/new-request-*", "app/api/leads/**", "app/api/intake/**", "src/services/leads*", "src/services/intake*", "src/services/lead-arrival*"],
       "dependencies": ["clients-vehicles", "planner", "diagnostics", "notifications", "communications"],
       "smokeChecks": ["lead-create", "lead-convert", "intake-create", "no-duplicate-client-vehicle"]
     },
