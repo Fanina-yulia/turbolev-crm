@@ -241,7 +241,7 @@ export const WORKFLOW_DEFINITIONS: Readonly<Record<string, WorkflowDefinition>> 
     ],
   },
   PARTS_REQUEST: {
-    entity: "PARTS_REQUEST", label: "Запит на деталі", kind: "PROCESS", description: "Підбір/погодження/отримання деталей.", statuses: partsRequestStatuses,
+    entity: "PARTS_REQUEST", label: "Запит на деталі", kind: "PROCESS", description: "Підбір, погодження, замовлення, отримання та встановлення потрібних деталей.", statuses: partsRequestStatuses,
     transitions: [transition("NEW", "SELECTING"), transition("SELECTING", "SELECTED"), transition("SELECTING", "CANCELLED"), transition("SELECTED", "WAITING_APPROVAL"), transition("SELECTED", "APPROVED"), transition("WAITING_APPROVAL", "APPROVED"), transition("WAITING_APPROVAL", "SELECTING"), transition("WAITING_APPROVAL", "CANCELLED"), transition("APPROVED", "ORDER_REQUIRED"), transition("APPROVED", "RECEIVED"), transition("ORDER_REQUIRED", "ORDERED", { gates: ["PARTS_PAYMENT_BEFORE_ORDER"] }), transition("ORDERED", "PARTIALLY_RECEIVED"), transition("ORDERED", "RECEIVED"), transition("PARTIALLY_RECEIVED", "RECEIVED"), transition("RECEIVED", "INSTALLED"), transition("RECEIVED", "RETURNED")],
   },
   SUPPLIER_ORDER: {
