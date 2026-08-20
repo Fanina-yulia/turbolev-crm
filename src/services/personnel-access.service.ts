@@ -4,38 +4,24 @@ import type { Prisma } from "@/src/generated/prisma/client";
 import { getPrisma } from "@/src/lib/prisma";
 import type { AccessContext } from "@/src/security/access-context";
 import type { AccessScopeCode } from "@/src/security/permissions";
+import {
+  GLOBAL_PERSONNEL_ROLE_CODES,
+  PERSONNEL_ROLE_CODES,
+  STATION_MANAGER_DELEGATABLE_ROLE_CODES,
+  type PersonnelRoleCode,
+} from "@/src/security/personnel-org-structure";
 import { writeAuditEvent } from "@/src/services/audit.service";
 import {
   deactivateEmployeePlannerResources,
   syncEmployeeOperationalContext,
 } from "@/src/services/personnel-resource-sync.service";
 
-const SYSTEM_ROLE_CODES = [
-  "OWNER",
-  "EXECUTIVE_DIRECTOR",
-  "HEAD_OF_SALES",
-  "SALES",
-  "PARTS_SPECIALIST",
-  "STATION_MANAGER",
-  "MECHANIC",
-  "ACCOUNTANT",
-  "ADMINISTRATOR",
-] as const;
-
-type SystemRoleCode = (typeof SYSTEM_ROLE_CODES)[number];
+type SystemRoleCode = PersonnelRoleCode;
 type Tx = Prisma.TransactionClient;
 
-const GLOBAL_ROLES = new Set<SystemRoleCode>([
-  "OWNER",
-  "EXECUTIVE_DIRECTOR",
-  "HEAD_OF_SALES",
-  "ACCOUNTANT",
-]);
-const STATION_MANAGER_DELEGATION = new Set<SystemRoleCode>([
-  "MECHANIC",
-  "PARTS_SPECIALIST",
-  "ADMINISTRATOR",
-]);
+const SYSTEM_ROLE_CODES = PERSONNEL_ROLE_CODES;
+const GLOBAL_ROLES = GLOBAL_PERSONNEL_ROLE_CODES;
+const STATION_MANAGER_DELEGATION = STATION_MANAGER_DELEGATABLE_ROLE_CODES;
 
 export class PersonnelAccessError extends Error {
   code: string;
