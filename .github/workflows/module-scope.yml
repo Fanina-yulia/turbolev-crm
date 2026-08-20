@@ -1,0 +1,33 @@
+name: Module Scope
+
+on:
+  pull_request:
+    paths:
+      - "app/**"
+      - "src/**"
+      - "prisma/**"
+      - "integrations/**"
+      - "scripts/**"
+      - "docs/modules/**"
+      - "docs/CRM-MODULE-MAP.md"
+      - "package.json"
+
+permissions:
+  contents: read
+
+jobs:
+  module-scope:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Resolve impacted CRM modules
+        run: node scripts/module-scope.mjs --base "origin/${{ github.base_ref }}"
