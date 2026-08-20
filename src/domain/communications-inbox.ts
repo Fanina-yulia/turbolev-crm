@@ -1,5 +1,6 @@
 export type CommunicationChannel = "FACEBOOK" | "INSTAGRAM" | "TIKTOK" | "BINOTEL" | "OLX" | "WEBSITE";
-export type CommunicationInquiryState = "NEW" | "IN_WORK" | "CONVERTED" | "LINKED" | "SPAM";
+export type CommunicationLifecycleState = "NEW" | "IN_WORK" | "WAITING_CLIENT" | "CLOSED" | "SPAM";
+export type CommunicationInquiryState = CommunicationLifecycleState | "CONVERTED" | "LINKED";
 export type CommunicationMessage = {
   id: string;
   direction: "in" | "out" | "system";
@@ -30,6 +31,7 @@ export type CommunicationInquiry = {
   replyAllowedUntil?: string;
   lastInboundAt?: string;
   lastOutboundAt?: string;
+  metadata?: unknown;
   messages: CommunicationMessage[];
 };
 
@@ -58,12 +60,31 @@ export type CommunicationConversation = {
   unresolvedMissedCount: number;
   hasMessages: boolean;
   actionState: ConversationActionState;
+  lifecycleState: CommunicationLifecycleState;
   existingLeadId?: string;
   duplicateLead?: { id: string; name?: string | null } | null;
 };
 
 function isObject(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+export function getCommunicationLifecycleState(inquiry: CommunicationInquiry): CommunicationLifecycleState {
+  if (inquiry.state === "SPAM") return "SPAM";
+  if (inquiry.state === "CLOSED") return "CLOSED";
+  if (isObject(inquiry.metadata) && inquiry.metadata.lifecycleClosedAt) return "CLOSED";
+  if (inquiry.state === "WAITING_CLIENT") return "WAITING_CLIENT";
+  if (inquiry.state === "NEW") return "NEW";
+  if (inquiry.answered) return "WAITING_CLIENT";
+  return "IN_WORK";
+}
+
+export function getCommunicationLifecycleLabel(state: CommunicationLifecycleState) {
+  if (state === "NEW") return "Нове";
+  if (state === "IN_WORK") return "У роботі";
+  if (state === "WAITING_CLIENT") return "Очікує клієнта";
+  if (state === "CLOSED") return "Закрито";
+  return "Спам";
 }
 
 export function normalizeCommunicationPhone(value?: string | null) {
@@ -156,10 +177,20 @@ function latestHandledAt(inquiries: CommunicationInquiry[]) {
   return latest;
 }
 
+function conversationLifecycleState(inquiries: CommunicationInquiry[]): CommunicationLifecycleState {
+  const states = inquiries.map(getCommunicationLifecycleState);
+  if (states.every((state) => state === "CLOSED")) return "CLOSED";
+  if (states.some((state) => state === "NEW")) return "NEW";
+  if (states.some((state) => state === "IN_WORK")) return "IN_WORK";
+  if (states.some((state) => state === "WAITING_CLIENT")) return "WAITING_CLIENT";
+  if (states.every((state) => state === "SPAM")) return "SPAM";
+  return "IN_WORK";
+}
+
 export function buildCommunicationConversations(source: CommunicationInquiry[]) {
   const groups = new Map<string, CommunicationInquiry[]>();
   for (const inquiry of source) {
-    if (inquiry.state === "SPAM") continue;
+    if (getCommunicationLifecycleState(inquiry) === "SPAM") continue;
     const key = getCommunicationConversationKey(inquiry);
     const group = groups.get(key) || [];
     group.push(inquiry);
@@ -174,6 +205,7 @@ export function buildCommunicationConversations(source: CommunicationInquiry[]) 
     const unreadInquiryIds = inquiries.filter((item) => item.unread).map((item) => item.id);
     const unresolvedMissed = missed.filter((item) => !item.answered && toMillis(item.receivedAt) > handledAt);
     const unanswered = inquiries.filter((item) => {
+      if (getCommunicationLifecycleState(item) === "CLOSED") return false;
       if (item.answered || toMillis(item.receivedAt) <= handledAt) return false;
       return item.messages.some((message) => message.direction === "in") || isMissedCommunicationInquiry(item);
     });
@@ -217,6 +249,7 @@ export function buildCommunicationConversations(source: CommunicationInquiry[]) 
       unresolvedMissedCount,
       hasMessages: inquiries.some((item) => item.channel !== "BINOTEL" || item.messages.some((message) => message.direction !== "system")),
       actionState,
+      lifecycleState: conversationLifecycleState(inquiries),
       existingLeadId,
       duplicateLead,
     } satisfies CommunicationConversation;
