@@ -107,6 +107,44 @@ export async function startMechanicDiagnosticByType(userId: string, diagnosticRe
     });
   }
 
+  // Шаблон може змінитися, поки діагностика вже в роботі. Додаємо нові
+  // пункти до активного огляду, не скидаючи вже зроблені механіком відмітки.
+  const activeInspections = await prisma.diagnosticInspection.findMany({
+    where: { diagnosticRequestId },
+    select: { id: true, templateId: true },
+  });
+  if (activeInspections.length) {
+    const templates = await prisma.diagnosticTemplate.findMany({
+      where: { id: { in: Array.from(new Set(activeInspections.map((inspection) => inspection.templateId))) } },
+      select: { id: true, code: true },
+    });
+    const templateCodeById = new Map(templates.map((template) => [template.id, template.code]));
+
+    for (const inspection of activeInspections) {
+      const code = templateCodeById.get(inspection.templateId);
+      const seed = DIAGNOSTIC_TEMPLATE_SEEDS.find((item) => item.code === code);
+      if (!seed) continue;
+      const currentSectionCodes = seed.sections.map((section) => section.code);
+      const sections = await prisma.diagnosticTemplateSection.findMany({
+        where: { templateId: inspection.templateId, code: { in: currentSectionCodes } },
+        select: { id: true, code: true },
+      });
+      if (!sections.length) continue;
+      const sectionCodeById = new Map(sections.map((section) => [section.id, section.code]));
+      const seedItemCodes = new Set(seed.sections.flatMap((section) => section.items.map((item) => `${section.code}:${item.code}`)));
+      const items = (await prisma.diagnosticTemplateItem.findMany({
+        where: { sectionId: { in: sections.map((section) => section.id) } },
+        select: { id: true, code: true, sectionId: true },
+      })).filter((item) => seedItemCodes.has(`${sectionCodeById.get(item.sectionId)}:${item.code}`));
+      if (items.length) {
+        await prisma.diagnosticCheck.createMany({
+          data: items.map((item) => ({ inspectionId: inspection.id, templateItemId: item.id })),
+          skipDuplicates: true,
+        });
+      }
+    }
+  }
+
   if (diagnostic.status === DiagnosticRequestStatus.PENDING) {
     await prisma.diagnosticRequest.update({
       where: { id: diagnosticRequestId },
