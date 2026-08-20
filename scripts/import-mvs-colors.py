@@ -240,6 +240,79 @@ def import_year(conn, year, primary_url, temp_dir, stage_table):
     raise RuntimeError(" | ".join(errors[-4:]) or "all color source candidates failed")
 
 
+def backfill_crm_vehicle_colors(conn):
+    with conn.cursor() as cur:
+        cur.execute(
+            '''
+            SELECT id, "plateNormalized", "plateNumber",
+                   "exteriorColorName", "exteriorColorHex", "exteriorPaintCode",
+                   "exteriorColorSource"::text, "exteriorColorConfirmed"
+              FROM "Vehicle"
+             WHERE COALESCE("plateNormalized", "plateNumber") IS NOT NULL
+            '''
+        )
+        vehicles = cur.fetchall()
+
+    candidates = []
+    for row in vehicles:
+        vehicle_id, plate_normalized, plate_number, color_name, color_hex, paint_code, source, confirmed = row
+        has_user_color = source == "USER" and any((color_name, color_hex, paint_code))
+        protected_confirmed = confirmed and source in ("USER", "VIN", "PROVIDER")
+        if has_user_color or protected_confirmed:
+            continue
+        plate = base.normalize_plate(plate_normalized or plate_number)
+        key = base.plate_key(plate)
+        if key is not None:
+            candidates.append((vehicle_id, key))
+
+    if not candidates:
+        print("CRM color backfill: no eligible vehicles", flush=True)
+        return 0
+
+    keys = list({key for _, key in candidates})
+    with conn.cursor() as cur:
+        cur.execute(
+            '''
+            SELECT "plateKey", color
+              FROM "VehicleRegistryCompact"
+             WHERE "plateKey" = ANY(%s)
+               AND color IS NOT NULL
+               AND btrim(color) <> ''
+            ''',
+            (keys,),
+        )
+        color_by_key = {int(row[0]): clean_color(row[1]) for row in cur.fetchall() if clean_color(row[1])}
+
+    updates = [(color_by_key[key], vehicle_id) for vehicle_id, key in candidates if key in color_by_key]
+    if not updates:
+        print("CRM color backfill: registry has no matching colors yet", flush=True)
+        return 0
+
+    with conn.cursor() as cur:
+        cur.executemany(
+            '''
+            UPDATE "Vehicle"
+               SET "exteriorColorName"=%s,
+                   "exteriorColorSource"='REGISTRY',
+                   "exteriorColorConfirmed"=true,
+                   "updatedAt"=CURRENT_TIMESTAMP
+             WHERE id=%s
+               AND NOT (
+                 "exteriorColorSource"='USER'
+                 AND ("exteriorColorName" IS NOT NULL OR "exteriorColorHex" IS NOT NULL OR "exteriorPaintCode" IS NOT NULL)
+               )
+               AND NOT (
+                 "exteriorColorConfirmed"=true
+                 AND "exteriorColorSource" IN ('USER','VIN','PROVIDER')
+               )
+            ''',
+            updates,
+        )
+    conn.commit()
+    print(f"CRM color backfill: prepared {len(updates):,} vehicle update(s)", flush=True)
+    return len(updates)
+
+
 def main():
     database_url = os.environ.get("DATABASE_URL", "").strip()
     if not database_url:
@@ -266,6 +339,8 @@ def main():
                         print(f"{year}: COLOR IMPORT FAILED: {exc}", file=sys.stderr, flush=True)
         finally:
             drop_stage_table(conn, stage_table)
+
+        backfill_crm_vehicle_colors(conn)
 
     if failures:
         print(f"Color import incomplete: {len(failures)} year(s) failed", file=sys.stderr, flush=True)
