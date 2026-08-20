@@ -5,6 +5,7 @@ import { getPrisma } from "@/src/lib/prisma";
 import { toPrismaJson } from "@/src/lib/prisma-json";
 import { getIntegrationCredential } from "@/src/services/integration-credentials.service";
 import { arrivePlannerAppointment } from "@/src/services/planner-arrival.service";
+import { startStructuredDiagnostic } from "@/src/services/structured-diagnostics.service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -151,12 +152,12 @@ async function resolveNextAction(input: {
     if (diagnosticOpen) {
       return {
         type: "DIAGNOSTIC",
-        label: diagnostic.status === "PENDING" ? "Почати діагностику" : "Продовжити діагностику",
+        label: diagnostic.status === "PENDING" ? "Відкрити діагностику" : "Продовжити діагностику",
         diagnosticId: diagnostic.id,
       };
     }
     if (review?.state === "SUBMITTED") {
-      return { type: "WAITING", label: "Діагностика передана", diagnosticId: diagnostic.id, reason: "Очікується рішення сервіс-менеджера." };
+      return { type: "WAITING", label: "Діагностика завершена", diagnosticId: diagnostic.id, reason: "Очікується перевірка сервіс-менеджера." };
     }
   }
 
@@ -191,7 +192,7 @@ async function resolveNextAction(input: {
   }
 
   if (!diagnostic) return { type: "WAITING", label: "Очікує підтвердження авто", reason: "Підтвердьте автомобіль скануванням номера — діагностика буде створена автоматично." };
-  return { type: "WAITING", label: "Очікує оформлення ремонту", diagnosticId: diagnostic.id, reason: "Діагностика завершена, але ремонтні операції ще не призначені." };
+  return { type: "WAITING", label: "Очікує наступного кроку", diagnosticId: diagnostic.id, reason: "Діагностика завершена. Сервіс-менеджер має обрати наступний маршрут." };
 }
 
 export async function POST(request: NextRequest) {
@@ -314,6 +315,17 @@ export async function POST(request: NextRequest) {
         diagnosticRequestId = nextAction.diagnosticId || diagnosticRequestId;
       }
 
+      if (diagnosticRequestId && nextAction.type === "DIAGNOSTIC") {
+        await startStructuredDiagnostic(access.context.user.id, diagnosticRequestId);
+        nextAction = await resolveNextAction({
+          userId: access.context.user.id,
+          mechanicId: mechanic.id,
+          vehicleId: vehicle?.id || appointment.vehicleId || null,
+          workOrderId: appointment.workOrderId || null,
+        });
+        diagnosticRequestId = nextAction.diagnosticId || diagnosticRequestId;
+      }
+
       await prisma.auditEvent.create({
         data: {
           actorId: access.context.user.id,
@@ -332,6 +344,7 @@ export async function POST(request: NextRequest) {
             appointmentStatus: finalAppointmentStatus,
             diagnosticRequestId,
             nextAction: nextAction.type,
+            diagnosticAutoStarted: Boolean(diagnosticRequestId && nextAction.type === "DIAGNOSTIC"),
           }),
         },
       }).catch(() => undefined);
