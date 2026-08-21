@@ -43,6 +43,7 @@ const vehicleOwnerWhere = {
 export async function GET(request: NextRequest) {
   const prisma = getPrisma();
   const q = (request.nextUrl.searchParams.get("q") || "").trim();
+  const phoneDigits = q.replace(/\D/g, "");
   const id = (request.nextUrl.searchParams.get("id") || "").trim();
   const limit = clampInt(request.nextUrl.searchParams.get("limit"), 24, 1, 100);
   const page = clampInt(request.nextUrl.searchParams.get("page"), 1, 1, 100_000);
@@ -69,7 +70,7 @@ export async function GET(request: NextRequest) {
         OR: [
           { name: { contains: q, mode: "insensitive" as const } },
           { phone: { contains: q } },
-          { phoneNormalized: { contains: q.replace(/\D/g, "") } },
+          ...(phoneDigits ? [{ phoneNormalized: { contains: phoneDigits } }] : []),
           { vehicles: { some: { plateNumber: { contains: q, mode: "insensitive" as const } } } },
           { vehicles: { some: { vin: { contains: q, mode: "insensitive" as const } } } },
           { vehicles: { some: { brand: { contains: q, mode: "insensitive" as const } } } },
