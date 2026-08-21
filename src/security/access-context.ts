@@ -29,6 +29,8 @@ export type AccessContext = {
   locationIds: string[];
 };
 
+const LAST_SEEN_TOUCH_INTERVAL_MS = 120_000;
+
 function emptyContext(mode: EnforcementMode, authConfigured: boolean): AccessContext {
   return {
     enforcementMode: mode,
@@ -67,14 +69,27 @@ async function getSecurityMode(): Promise<EnforcementMode> {
   }
 }
 
+async function touchLastSeenIfStale(user: { id: string; lastSeenAt: Date | null }) {
+  const cutoff = new Date(Date.now() - LAST_SEEN_TOUCH_INTERVAL_MS);
+  if (user.lastSeenAt && user.lastSeenAt >= cutoff) return;
+
+  await getPrisma().user.updateMany({
+    where: {
+      id: user.id,
+      OR: [{ lastSeenAt: null }, { lastSeenAt: { lt: cutoff } }],
+    },
+    data: { lastSeenAt: new Date() },
+  }).catch(() => undefined);
+}
+
 async function findOrClaimAppUser(session: NeonAuthSession) {
   const prisma = getPrisma();
-  let appUser = await prisma.user.findUnique({
+  const appUser = await prisma.user.findUnique({
     where: { authUserId: session.user.id },
     include: { employeeProfile: true },
   });
   if (appUser) {
-    await prisma.user.update({ where: { id: appUser.id }, data: { lastSeenAt: new Date() } }).catch(() => undefined);
+    await touchLastSeenIfStale(appUser);
     return appUser;
   }
 
@@ -127,7 +142,7 @@ export async function getAccessContext(input?: Request | Headers): Promise<Acces
         include: { employeeProfile: true },
       });
       if (appUser) {
-        await prisma.user.update({ where: { id: appUser.id }, data: { lastSeenAt: new Date() } }).catch(() => undefined);
+        await touchLastSeenIfStale(appUser);
         authIdentity = {
           id: `local:${appUser.id}`,
           email: appUser.email,
