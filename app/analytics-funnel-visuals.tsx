@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { navigateCrm } from "./crm-route";
 import styles from "./analytics-funnel-visuals.module.css";
 
@@ -47,7 +48,6 @@ function paramsFor(from: string, to: string, locationId: string) {
   if (locationId) params.set("locationId", locationId);
   return params.toString();
 }
-
 function makePath(rows: TimelineRow[], field: "scheduled" | "arrived" | "completed", maxValue: number) {
   const left = 42;
   const right = 704;
@@ -74,6 +74,7 @@ export function AnalyticsFunnelVisuals({ funnel, from, to, locationId, variant =
   const [timeline, setTimeline] = useState<TimelineRow[]>([]);
   const [loading, setLoading] = useState(needsTimeline);
   const [error, setError] = useState("");
+  const [portalTarget, setPortalTarget] = useState<HTMLDivElement | null>(null);
 
   useEffect(() => {
     if (!needsTimeline) {
@@ -96,6 +97,87 @@ export function AnalyticsFunnelVisuals({ funnel, from, to, locationId, variant =
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   }, [from, to, locationId, needsTimeline]);
+
+  useEffect(() => {
+    if (variant !== "all") return;
+    const sections = Array.from(document.querySelectorAll<HTMLElement>("section"));
+    const pathSection = sections.find((section) => section.querySelector("h2")?.textContent?.trim() === "Повний шлях") || null;
+    const conversionSection = sections.find((section) => section.querySelector("h2")?.textContent?.trim() === "Конверсія етапів") || null;
+    if (!pathSection || !conversionSection) return;
+
+    const restore: Array<() => void> = [];
+    const rememberStyle = (element: HTMLElement) => {
+      const previous = element.getAttribute("style");
+      restore.push(() => previous == null ? element.removeAttribute("style") : element.setAttribute("style", previous));
+    };
+
+    const grid = pathSection.parentElement as HTMLElement | null;
+    if (grid) {
+      rememberStyle(grid);
+      grid.style.gridTemplateColumns = "minmax(0,1.04fr) minmax(430px,.96fr)";
+      grid.style.alignItems = "start";
+    }
+
+    const flow = pathSection.querySelector<HTMLElement>('div[class*="funnelFlow"]');
+    if (flow) {
+      rememberStyle(flow);
+      flow.style.alignItems = "flex-start";
+      flow.style.maxWidth = "none";
+      flow.style.margin = "0";
+      flow.style.padding = "4px 0 2px";
+    }
+
+    const wraps = Array.from(pathSection.querySelectorAll<HTMLElement>('div[class*="funnelStageWrap"]'));
+    wraps.forEach((wrap) => {
+      rememberStyle(wrap);
+      wrap.style.alignItems = "flex-start";
+    });
+
+    const losses = Array.from(pathSection.querySelectorAll<HTMLElement>('div[class*="stageLoss"]'));
+    losses.forEach((loss) => {
+      rememberStyle(loss);
+      loss.style.justifyContent = "flex-start";
+      loss.style.paddingLeft = "10px";
+      loss.style.height = "34px";
+    });
+
+    const buttons = Array.from(pathSection.querySelectorAll<HTMLButtonElement>('button[class*="funnelStage"]'));
+    const counts = buttons.map((button) => Number((button.querySelector("strong")?.textContent || "0").replace(/\s/g, "")) || 0);
+    const maxCount = Math.max(1, ...counts);
+    buttons.forEach((button, index) => {
+      rememberStyle(button);
+      const count = counts[index] || 0;
+      const width = count > 0 ? Math.max(32, Math.min(100, 32 + (count / maxCount) * 68)) : 28;
+      button.style.width = `${width}%`;
+      button.style.minWidth = "0";
+      button.style.borderLeft = "3px solid var(--orange)";
+      button.style.borderRadius = "11px 6px 6px 11px";
+      button.style.background = "linear-gradient(90deg,color-mix(in srgb,var(--orange) 15%,var(--panel-2)),color-mix(in srgb,var(--orange) 4%,var(--panel-2)))";
+    });
+
+    const originalChildren = Array.from(conversionSection.children).filter((child): child is HTMLElement => child instanceof HTMLElement);
+    originalChildren.forEach((child) => {
+      rememberStyle(child);
+      child.style.display = "none";
+    });
+    rememberStyle(conversionSection);
+    conversionSection.style.padding = "0";
+    conversionSection.style.border = "0";
+    conversionSection.style.background = "transparent";
+    conversionSection.style.marginBottom = "0";
+
+    const mount = document.createElement("div");
+    mount.dataset.analyticsFunnelSide = "true";
+    mount.style.minWidth = "0";
+    conversionSection.appendChild(mount);
+    setPortalTarget(mount);
+
+    return () => {
+      setPortalTarget(null);
+      if (mount.parentElement) mount.parentElement.removeChild(mount);
+      restore.reverse().forEach((fn) => fn());
+    };
+  }, [variant, funnel]);
 
   const transitions = useMemo<Transition[]>(() => {
     const rows: Transition[] = [];
@@ -146,7 +228,7 @@ export function AnalyticsFunnelVisuals({ funnel, from, to, locationId, variant =
   const yAt = (value: number) => 210 - (Math.max(0, value) / timelineMax) * 192;
   const yTicks = [0, .25, .5, .75, 1].map((ratio) => Math.round(timelineMax * ratio));
 
-  const lossesPanel = <section className={`${styles.panel} ${variant === "side" ? styles.compactPanel : ""}`}>
+  const lossesPanel = <section className={`${styles.panel} ${variant === "side" || portalTarget ? styles.compactPanel : ""}`}>
     <header className={styles.header}><div><small>ВТРАТИ</small><h3>Де губимо клієнтів</h3></div><span>Не перейшли на наступний етап</span></header>
     <div className={styles.lossList}>
       {lossRows.map((row) => <button type="button" key={row.key} className={`${styles.lossRow} ${row.lost === 0 ? styles.zeroLoss : ""}`} onClick={row.open} title={`Було ${row.from}, перейшло ${row.to}, втрачено ${row.lost}`}>
@@ -157,9 +239,9 @@ export function AnalyticsFunnelVisuals({ funnel, from, to, locationId, variant =
     {worstLoss && <div className={styles.insight}><span>Найбільший провал</span><b>{worstLoss.label}: −{worstLoss.lost}</b></div>}
   </section>;
 
-  const conversionPanel = <section className={`${styles.panel} ${variant === "side" ? styles.compactPanel : ""}`}>
+  const conversionPanel = <section className={`${styles.panel} ${variant === "side" || portalTarget ? styles.compactPanel : ""}`}>
     <header className={styles.header}><div><small>КОНВЕРСІЯ</small><h3>Етапи у відсотках</h3></div><span>Нижчий стовпчик = слабша ланка</span></header>
-    <div className={`${styles.conversionChart} ${variant === "side" ? styles.compactConversion : ""}`}>
+    <div className={`${styles.conversionChart} ${variant === "side" || portalTarget ? styles.compactConversion : ""}`}>
       {visibleConversions.map((row) => <button type="button" key={row.key} className={styles.conversionItem} onClick={row.open} title={`${row.label}: ${pct(row.conversionPct)} (${row.from} → ${row.to})`}>
         <b className={styles.conversionValue}>{pct(row.conversionPct)}</b>
         <span className={styles.conversionTrack}><i className={styles.conversionBar} style={{ height: `${Math.max(2, Math.min(100, row.conversionPct))}%` }} /></span>
@@ -199,5 +281,6 @@ export function AnalyticsFunnelVisuals({ funnel, from, to, locationId, variant =
 
   if (variant === "side") return <div className={styles.sideVisuals}>{lossesPanel}{conversionPanel}</div>;
   if (variant === "timeline") return <div className={styles.timelineOnly}>{timelinePanel}</div>;
+  if (portalTarget) return <>{createPortal(<div className={styles.sideVisuals}>{lossesPanel}{conversionPanel}</div>, portalTarget)}<div className={styles.timelineOnly}>{timelinePanel}</div></>;
   return <div className={styles.visuals}>{lossesPanel}{conversionPanel}{timelinePanel}</div>;
 }
