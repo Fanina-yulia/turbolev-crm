@@ -8,6 +8,7 @@ import {
   parseInquiryMutationPayload,
 } from "@/src/lib/contracts/inquiries-payload.parsers";
 import { navigateCrm } from "./crm-route";
+import { VehicleRender } from "./vehicle-render";
 import styles from "./new-inquiries.module.css";
 
 const channelLabel: Record<string, string> = {
@@ -220,7 +221,7 @@ export function NewInquiries() {
           <div className={styles.contextGrid}>
             <section><p>Канал</p><strong>{channelLabel[selected.channel] || selected.channel}</strong><span>{selected.channel === "BINOTEL" ? "Телефонний контакт" : "Повідомлення / заявка"}</span></section>
             <section><p>Джерело</p><strong>{sourceLabel(selected)}</strong><span>{selected.campaign ? `Кампанія: ${selected.campaign}` : "Без кампанії"}</span></section>
-            <section><p>Автомобіль</p><strong>{vehicleLabel(selected)}</strong><span>{plateLabel(selected)}</span>{selected.vehicles[0]?.vin && <small>VIN {selected.vehicles[0].vin}</small>}</section>
+            <section><p>Автомобіль</p>{selected.vehicles[0] && <VehicleRender id={selected.vehicles[0].id} brand={selected.vehicles[0].brand} model={selected.vehicles[0].model} year={selected.vehicles[0].year} size="mini" eager />}<strong>{vehicleLabel(selected)}</strong><span>{plateLabel(selected)}</span>{selected.vehicles[0]?.vin && <small>VIN {selected.vehicles[0].vin}</small>}</section>
             <section><p>CRM-контекст</p><strong>{selected.existingClient ? "Постійний клієнт" : "Клієнта ще не визначено"}</strong><span>{selected.existingLead ? `Активний лід · ${selected.existingLead.status}` : "Активного ліда немає"}</span></section>
           </div>
 
