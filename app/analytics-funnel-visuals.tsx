@@ -23,6 +23,7 @@ type FunnelSnapshot = {
 
 type TimelineRow = { date: string; scheduled: number; arrived: number; completed: number };
 type TimelinePayload = { ok: boolean; timeline?: TimelineRow[]; error?: string };
+type VisualVariant = "all" | "side" | "timeline";
 
 type Transition = {
   key: string;
@@ -62,17 +63,24 @@ function makePath(rows: TimelineRow[], field: "scheduled" | "arrived" | "complet
   }).join(" ");
 }
 
-export function AnalyticsFunnelVisuals({ funnel, from, to, locationId }: {
+export function AnalyticsFunnelVisuals({ funnel, from, to, locationId, variant = "all" }: {
   funnel: FunnelSnapshot;
   from: string;
   to: string;
   locationId: string;
+  variant?: VisualVariant;
 }) {
+  const needsTimeline = variant !== "side";
   const [timeline, setTimeline] = useState<TimelineRow[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(needsTimeline);
   const [error, setError] = useState("");
 
   useEffect(() => {
+    if (!needsTimeline) {
+      setLoading(false);
+      setError("");
+      return;
+    }
     let cancelled = false;
     setLoading(true);
     setError("");
@@ -87,7 +95,7 @@ export function AnalyticsFunnelVisuals({ funnel, from, to, locationId }: {
       })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [from, to, locationId]);
+  }, [from, to, locationId, needsTimeline]);
 
   const transitions = useMemo<Transition[]>(() => {
     const rows: Transition[] = [];
@@ -130,6 +138,7 @@ export function AnalyticsFunnelVisuals({ funnel, from, to, locationId }: {
     open: () => navigateCrm("Планувальник", { status: "COMPLETED", date: to, scope: "week" }),
   }];
   const visibleConversions = conversionRows.slice(-6);
+  const noShowPct = funnel.scheduled > 0 ? (funnel.noShow / funnel.scheduled) * 100 : 0;
 
   const timelineMax = Math.max(1, ...timeline.flatMap((row) => [row.scheduled, row.arrived, row.completed]));
   const labelStep = Math.max(1, Math.ceil(timeline.length / 7));
@@ -137,52 +146,58 @@ export function AnalyticsFunnelVisuals({ funnel, from, to, locationId }: {
   const yAt = (value: number) => 210 - (Math.max(0, value) / timelineMax) * 192;
   const yTicks = [0, .25, .5, .75, 1].map((ratio) => Math.round(timelineMax * ratio));
 
-  return <div className={styles.visuals}>
-    <section className={styles.panel}>
-      <header className={styles.header}><div><small>ВТРАТИ</small><h3>Де губимо клієнтів</h3></div><span>Кількість і частка клієнтів, які не перейшли на наступний етап</span></header>
-      <div className={styles.lossList}>
-        {lossRows.map((row) => <button type="button" key={row.key} className={`${styles.lossRow} ${row.lost === 0 ? styles.zeroLoss : ""}`} onClick={row.open} title={`Було ${row.from}, перейшло ${row.to}, втрачено ${row.lost}`}>
-          <div className={styles.lossMeta}><span>{row.label}</span><b>−{row.lost}</b><em>{row.lost ? pct(row.lossPct) : "без втрат"}</em></div>
-          <div className={styles.lossTrack}><i style={{ width: `${row.lost ? Math.max(4, (row.lost / maxLoss) * 100) : 2}%` }} /></div>
-        </button>)}
-      </div>
-      {worstLoss && <div className={styles.insight}><span>Найбільша втрата за вибраний період</span><b>{worstLoss.label}: −{worstLoss.lost}</b></div>}
-    </section>
+  const lossesPanel = <section className={`${styles.panel} ${variant === "side" ? styles.compactPanel : ""}`}>
+    <header className={styles.header}><div><small>ВТРАТИ</small><h3>Де губимо клієнтів</h3></div><span>Не перейшли на наступний етап</span></header>
+    <div className={styles.lossList}>
+      {lossRows.map((row) => <button type="button" key={row.key} className={`${styles.lossRow} ${row.lost === 0 ? styles.zeroLoss : ""}`} onClick={row.open} title={`Було ${row.from}, перейшло ${row.to}, втрачено ${row.lost}`}>
+        <div className={styles.lossMeta}><span>{row.label}</span><b>−{row.lost}</b><em>{row.lost ? pct(row.lossPct) : "без втрат"}</em></div>
+        <div className={styles.lossTrack}><i style={{ width: `${row.lost ? Math.max(4, (row.lost / maxLoss) * 100) : 2}%` }} /></div>
+      </button>)}
+    </div>
+    {worstLoss && <div className={styles.insight}><span>Найбільший провал</span><b>{worstLoss.label}: −{worstLoss.lost}</b></div>}
+  </section>;
 
-    <section className={styles.panel}>
-      <header className={styles.header}><div><small>КОНВЕРСІЯ</small><h3>Етапи у відсотках</h3></div><span>Чим нижчий стовпчик, тим сильніший провал між етапами</span></header>
-      <div className={styles.conversionChart}>
-        {visibleConversions.map((row) => <button type="button" key={row.key} className={styles.conversionItem} onClick={row.open} title={`${row.label}: ${pct(row.conversionPct)} (${row.from} → ${row.to})`}>
-          <b className={styles.conversionValue}>{pct(row.conversionPct)}</b>
-          <span className={styles.conversionTrack}><i className={styles.conversionBar} style={{ height: `${Math.max(2, Math.min(100, row.conversionPct))}%` }} /></span>
-          <span className={styles.conversionLabel}>{row.shortLabel}</span>
-        </button>)}
-      </div>
-    </section>
+  const conversionPanel = <section className={`${styles.panel} ${variant === "side" ? styles.compactPanel : ""}`}>
+    <header className={styles.header}><div><small>КОНВЕРСІЯ</small><h3>Етапи у відсотках</h3></div><span>Нижчий стовпчик = слабша ланка</span></header>
+    <div className={`${styles.conversionChart} ${variant === "side" ? styles.compactConversion : ""}`}>
+      {visibleConversions.map((row) => <button type="button" key={row.key} className={styles.conversionItem} onClick={row.open} title={`${row.label}: ${pct(row.conversionPct)} (${row.from} → ${row.to})`}>
+        <b className={styles.conversionValue}>{pct(row.conversionPct)}</b>
+        <span className={styles.conversionTrack}><i className={styles.conversionBar} style={{ height: `${Math.max(2, Math.min(100, row.conversionPct))}%` }} /></span>
+        <span className={styles.conversionLabel}>{row.shortLabel}</span>
+      </button>)}
+    </div>
+    <div className={styles.quickStats}>
+      <div><span>Запис → завершено</span><b>{pct(funnel.bookingToCompletedPct)}</b></div>
+      <div className={funnel.noShow > 0 ? styles.quickDanger : ""}><span>No-show</span><b>{funnel.noShow} · {pct(noShowPct)}</b></div>
+    </div>
+  </section>;
 
-    <section className={`${styles.panel} ${styles.timelinePanel}`}>
-      <header className={styles.header}><div><small>ДИНАМІКА</small><h3>Записано → приїхало → завершено</h3></div><span>Когортно за датою запланованого візиту · {from} — {to}</span></header>
-      {loading && <div className={styles.loading}>Завантажую графік…</div>}
-      {!loading && error && <div className={styles.empty}>{error}</div>}
-      {!loading && !error && timeline.length === 0 && <div className={styles.empty}>У вибраному періоді ще немає записів.</div>}
-      {!loading && !error && timeline.length > 0 && <div className={styles.timelineWrap}>
-        <div className={styles.timelineLegend}><span><i className={styles.legendBooked}/>Записано</span><span><i className={styles.legendArrived}/>Приїхало</span><span><i className={styles.legendCompleted}/>Завершено</span></div>
-        <svg className={styles.timelineSvg} viewBox="0 0 720 250" role="img" aria-label="Динаміка воронки по днях">
-          {yTicks.map((tick) => {
-            const y = yAt(tick);
-            return <g key={`y-${tick}`}><line className={styles.gridLine} x1="42" x2="704" y1={y} y2={y}/><text className={styles.axisText} x="4" y={y + 3}>{tick}</text></g>;
-          })}
-          <path className={styles.bookedPath} d={makePath(timeline, "scheduled", timelineMax)} />
-          <path className={styles.arrivedPath} d={makePath(timeline, "arrived", timelineMax)} />
-          <path className={styles.completedPath} d={makePath(timeline, "completed", timelineMax)} />
-          {timeline.map((row, index) => <g key={row.date}>
-            <circle className={styles.bookedPoint} cx={xAt(index)} cy={yAt(row.scheduled)} r="3.2"><title>{`${dateLabel(row.date)} · записано ${row.scheduled}`}</title></circle>
-            <circle className={styles.arrivedPoint} cx={xAt(index)} cy={yAt(row.arrived)} r="3"><title>{`${dateLabel(row.date)} · приїхало ${row.arrived}`}</title></circle>
-            <circle className={styles.completedPoint} cx={xAt(index)} cy={yAt(row.completed)} r="3"><title>{`${dateLabel(row.date)} · завершено ${row.completed}`}</title></circle>
-            {(index % labelStep === 0 || index === timeline.length - 1) && <text className={styles.axisText} x={xAt(index)} y="238" textAnchor="middle">{dateLabel(row.date)}</text>}
-          </g>)}
-        </svg>
-      </div>}
-    </section>
-  </div>;
+  const timelinePanel = <section className={`${styles.panel} ${styles.timelinePanel}`}>
+    <header className={styles.header}><div><small>ДИНАМІКА</small><h3>Записано → приїхало → завершено</h3></div><span>Когортно за датою запланованого візиту · {from} — {to}</span></header>
+    {loading && <div className={styles.loading}>Завантажую графік…</div>}
+    {!loading && error && <div className={styles.empty}>{error}</div>}
+    {!loading && !error && timeline.length === 0 && <div className={styles.empty}>У вибраному періоді ще немає записів.</div>}
+    {!loading && !error && timeline.length > 0 && <div className={styles.timelineWrap}>
+      <div className={styles.timelineLegend}><span><i className={styles.legendBooked}/>Записано</span><span><i className={styles.legendArrived}/>Приїхало</span><span><i className={styles.legendCompleted}/>Завершено</span></div>
+      <svg className={styles.timelineSvg} viewBox="0 0 720 250" role="img" aria-label="Динаміка воронки по днях">
+        {yTicks.map((tick) => {
+          const y = yAt(tick);
+          return <g key={`y-${tick}`}><line className={styles.gridLine} x1="42" x2="704" y1={y} y2={y}/><text className={styles.axisText} x="4" y={y + 3}>{tick}</text></g>;
+        })}
+        <path className={styles.bookedPath} d={makePath(timeline, "scheduled", timelineMax)} />
+        <path className={styles.arrivedPath} d={makePath(timeline, "arrived", timelineMax)} />
+        <path className={styles.completedPath} d={makePath(timeline, "completed", timelineMax)} />
+        {timeline.map((row, index) => <g key={row.date}>
+          <circle className={styles.bookedPoint} cx={xAt(index)} cy={yAt(row.scheduled)} r="3.2"><title>{`${dateLabel(row.date)} · записано ${row.scheduled}`}</title></circle>
+          <circle className={styles.arrivedPoint} cx={xAt(index)} cy={yAt(row.arrived)} r="3"><title>{`${dateLabel(row.date)} · приїхало ${row.arrived}`}</title></circle>
+          <circle className={styles.completedPoint} cx={xAt(index)} cy={yAt(row.completed)} r="3"><title>{`${dateLabel(row.date)} · завершено ${row.completed}`}</title></circle>
+          {(index % labelStep === 0 || index === timeline.length - 1) && <text className={styles.axisText} x={xAt(index)} y="238" textAnchor="middle">{dateLabel(row.date)}</text>}
+        </g>)}
+      </svg>
+    </div>}
+  </section>;
+
+  if (variant === "side") return <div className={styles.sideVisuals}>{lossesPanel}{conversionPanel}</div>;
+  if (variant === "timeline") return <div className={styles.timelineOnly}>{timelinePanel}</div>;
+  return <div className={styles.visuals}>{lossesPanel}{conversionPanel}{timelinePanel}</div>;
 }
