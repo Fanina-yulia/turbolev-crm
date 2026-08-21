@@ -58,6 +58,9 @@ function runMigrationWithRetry() {
   }
 }
 
+console.log("[build] Verifying complete API security policy inventory before migrations and compilation.");
+run(["tsx", "scripts/api-security-policy-smoke.ts"]);
+
 if (process.env.VERCEL_ENV === "production") {
   console.log("[build] Production deployment: applying pending Prisma migrations before build.");
   runMigrationWithRetry();

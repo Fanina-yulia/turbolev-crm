@@ -6,11 +6,26 @@ const root = process.cwd();
 const checks = [
   { path: "app/api/clients/route.ts", all: ["CLIENTS_READ", "authorize("] },
   { path: "app/api/dashboard/route.ts", all: ["OVERVIEW_READ", "authorize("] },
-  { path: "app/api/planner/route.ts", all: ["PLANNER_READ", "PLANNER_WRITE", "authorize("] },
-  { path: "app/api/planner/[id]/route.ts", all: ["PLANNER_WRITE", "authorize("] },
-  { path: "app/api/diagnostics/route.ts", all: ["DIAGNOSTICS_READ", "authorize("] },
-  { path: "app/api/work-orders/route.ts", all: ["WORK_ORDERS_READ", "authorize("] },
-  { path: "app/api/work-orders/[id]/route.ts", all: ["WORK_ORDERS_READ", "WORK_ORDERS_WRITE", "authorize("] },
+  {
+    path: "app/api/planner/route.ts",
+    all: ["PLANNER_READ", "PLANNER_WRITE", "authorize(", "minimumScope: \"ASSIGNED\"", "resolvePlannerReadScope"],
+  },
+  {
+    path: "app/api/planner/[id]/route.ts",
+    all: ["PLANNER_WRITE", "authorize(", "minimumScope: \"ASSIGNED\"", "verifyPlannerWriteAccess"],
+  },
+  {
+    path: "app/api/diagnostics/route.ts",
+    all: ["DIAGNOSTICS_READ", "authorize(", "strict: true", "minimumScope: \"SELF\"", "diagnosticAssignment", "grantedScope !== \"ALL\""],
+  },
+  {
+    path: "app/api/work-orders/route.ts",
+    all: ["WORK_ORDERS_READ", "authorize(", "minimumScope: \"ASSIGNED\"", "resolveVisibleWorkOrderIds"],
+  },
+  {
+    path: "app/api/work-orders/[id]/route.ts",
+    all: ["WORK_ORDERS_READ", "WORK_ORDERS_WRITE", "authorize(", "canAccessWorkOrder", "minimumScope: \"ASSIGNED\"", "minimumScope: \"LOCATION\""],
+  },
   { path: "app/api/finance/summary/route.ts", all: ["FINANCE_READ"], any: ["authorize(", "authorizeScopedLocation("] },
   { path: "app/api/finance/details/route.ts", all: ["FINANCE_READ"], any: ["authorize(", "authorizeScopedLocation("] },
   { path: "app/api/finance/accounts/route.ts", all: ["FINANCE_READ", "FINANCE_WRITE"], any: ["authorize(", "authorizeScopedLocation("] },
@@ -50,4 +65,4 @@ if (failures.length) {
   process.exit(1);
 }
 
-console.log(`[api-security-guard] OK — ${checks.length} critical API routes retain explicit security gates.`);
+console.log(`[api-security-guard] OK — ${checks.length} critical API routes retain explicit security gates and row-scope markers.`);
