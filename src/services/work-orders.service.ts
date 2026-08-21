@@ -187,14 +187,20 @@ const workOrderInclude = {
   },
 } as const;
 
-export async function listWorkOrders(input?: { status?: string | null; limit?: number }) {
+export async function listWorkOrders(input?: { status?: string | null; limit?: number; ids?: string[] | null }) {
   const prisma = getPrisma();
   const limit = Math.max(1, Math.min(500, input?.limit ?? 200));
   const rawStatus = input?.status?.trim().toUpperCase() || null;
   const canonicalStatus = rawStatus ? normalizeWorkflowStatus("WORK_ORDER", rawStatus) : null;
   if (canonicalStatus && !getWorkflowStatus("WORK_ORDER", canonicalStatus)) return [];
+  if (Array.isArray(input?.ids) && input.ids.length === 0) return [];
+
+  const filters: Prisma.WorkOrderWhereInput[] = [];
+  if (canonicalStatus) filters.push({ status: canonicalStatus });
+  if (Array.isArray(input?.ids)) filters.push({ id: { in: input.ids } });
+
   const rows = await prisma.workOrder.findMany({
-    where: canonicalStatus ? { status: canonicalStatus } : undefined,
+    where: filters.length ? { AND: filters } : undefined,
     include: workOrderInclude,
     orderBy: [{ closedAt: "asc" }, { updatedAt: "desc" }],
     take: limit,
