@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { navigateCrm } from "./crm-route";
 import styles from "./analytics-dashboard.module.css";
 
@@ -89,6 +89,15 @@ type PartsAnalytics = {
 type Preset = "today" | "7d" | "30d" | "month" | "year" | "custom";
 type AnalyticsTab = "overview" | "funnel" | "workshop" | "diagnostics" | "finance" | "parts";
 
+const TAB_LABELS: Record<AnalyticsTab, string> = {
+  overview: "Загальне",
+  funnel: "Воронка",
+  workshop: "СТО / Виробництво",
+  diagnostics: "Діагностика",
+  finance: "Фінанси",
+  parts: "Запчастини",
+};
+
 function kyivDateString(date = new Date()) {
   return new Intl.DateTimeFormat("en-CA", { timeZone: KYIV_TZ, year: "numeric", month: "2-digit", day: "2-digit" }).format(date);
 }
@@ -169,21 +178,20 @@ function KpiCard({ label, value, hint, current, previous, onClick, tone = "defau
   tone?: "default" | "good" | "warn" | "danger";
 }) {
   const className = `${styles.kpiCard} ${styles[`tone_${tone}`]} ${onClick ? styles.kpiClickable : ""}`;
-  const content = <>
-    <div className={styles.kpiTop}><small>{label}</small>{current !== undefined && <DeltaBadge current={current} previous={previous} />}</div>
-    <strong>{value}</strong><span>{hint}</span>
-  </>;
+  const content = <><div className={styles.kpiTop}><small>{label}</small>{current !== undefined && <DeltaBadge current={current} previous={previous} />}</div><strong>{value}</strong><span>{hint}</span></>;
   return onClick ? <button type="button" className={className} onClick={onClick}>{content}</button> : <article className={className}>{content}</article>;
 }
 function MiniProgress({ value, danger = false }: { value: number; danger?: boolean }) {
   return <div className={`${styles.miniProgress} ${danger ? styles.progressDanger : ""}`}><i style={{ width: `${Math.max(0, Math.min(100, value))}%` }} /></div>;
 }
-function Restricted({ text }: { text: string }) {
-  return <div className={styles.state}>{text}</div>;
-}
+function Restricted({ text }: { text: string }) { return <div className={styles.state}>{text}</div>; }
 function LoadingDetail() { return <div className={styles.state}>Завантажую детальну аналітику…</div>; }
-function PanelTitle({ eyebrow, title, right }: { eyebrow: string; title: string; right?: React.ReactNode }) {
+function PanelTitle({ eyebrow, title, right }: { eyebrow: string; title: string; right?: ReactNode }) {
   return <header><div><small>{eyebrow}</small><h2>{title}</h2></div>{right}</header>;
+}
+function MixRows({ rows }: { rows: Array<{ label: string; value: number }> }) {
+  const total = rows.reduce((sum, row) => sum + Math.max(0, row.value), 0);
+  return <div className={styles.mixRows}>{rows.map((row) => <div key={row.label}><div><span>{row.label}</span><b>{money(row.value)}</b></div><MiniProgress value={total > 0 ? (Math.max(0, row.value) / total) * 100 : 0} /></div>)}</div>;
 }
 
 export function AnalyticsDashboard() {
@@ -215,10 +223,10 @@ export function AnalyticsDashboard() {
   }, [from, to, locationId]);
 
   const loadDetail = useCallback(async (target: AnalyticsTab = tab) => {
-    if (!["diagnostics", "finance", "parts"].includes(target)) return;
+    if (target !== "diagnostics" && target !== "finance" && target !== "parts") return;
     setDetailLoading(true); setDetailError("");
     try {
-      const endpoint = target === "diagnostics" ? "diagnostics" : target === "finance" ? "finance" : "parts";
+      const endpoint = target;
       const response = await fetch(`/api/analytics/${endpoint}?${paramsFor(from, to, locationId)}`, { cache: "no-store" });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok || !payload?.ok) throw new Error(payload?.error || "Не вдалося завантажити деталізацію");
@@ -231,9 +239,9 @@ export function AnalyticsDashboard() {
   }, [tab, from, to, locationId]);
 
   useEffect(() => { void loadCore(); }, [loadCore]);
-  useEffect(() => { if (["diagnostics", "finance", "parts"].includes(tab)) void loadDetail(tab); }, [tab, loadDetail]);
+  useEffect(() => { if (tab === "diagnostics" || tab === "finance" || tab === "parts") void loadDetail(tab); }, [tab, loadDetail]);
 
-  const refresh = async () => { await loadCore(); if (["diagnostics", "finance", "parts"].includes(tab)) await loadDetail(tab); };
+  const refresh = async () => { await loadCore(); if (tab === "diagnostics" || tab === "finance" || tab === "parts") await loadDetail(tab); };
   const applyPreset = (next: Preset) => {
     setPreset(next); if (next === "custom") return;
     const range = presetRange(next); setFrom(range.from); setTo(range.to);
@@ -263,13 +271,7 @@ export function AnalyticsDashboard() {
     </header>
 
     <nav className={styles.tabs} aria-label="Розділи аналітики">
-      {([[
-        "overview", "Загальне"], ["funnel", "Воронка"], ["workshop", "СТО / Виробництво"], ["diagnostics", "Діагностика"], ["finance", "Фінанси"], ["parts", "Запчастини"
-      ]] as Array<[AnalyticsTab, string]>).flat().map(() => null)}
-      {(["overview", "funnel", "workshop", "diagnostics", "finance", "parts"] as AnalyticsTab[]).map((item) => {
-        const labels: Record<AnalyticsTab, string> = { overview: "Загальне", funnel: "Воронка", workshop: "СТО / Виробництво", diagnostics: "Діагностика", finance: "Фінанси", parts: "Запчастини" };
-        return <button key={item} type="button" className={tab === item ? styles.tabActive : ""} onClick={() => setTab(item)}>{labels[item]}</button>;
-      })}
+      {(Object.keys(TAB_LABELS) as AnalyticsTab[]).map((item) => <button key={item} type="button" className={tab === item ? styles.tabActive : ""} onClick={() => setTab(item)}>{TAB_LABELS[item]}</button>)}
       <span className={styles.nextModules}>Далі: Персонал · Клієнти · Канали · Якість</span>
     </nav>
 
@@ -319,27 +321,30 @@ export function AnalyticsDashboard() {
         <section className={styles.panel}><PanelTitle eyebrow="ДИНАМІКА" title="Закриті ЗН за днями" right={<span>{from} — {to}</span>} />
           {(data.trend?.length || 0) === 0 ? <p className={styles.note}>У періоді ще немає закритих ЗН.</p> : <div className={styles.trend}>{data.trend!.map((row) => <div className={styles.trendRow} key={row.date}><time>{dateLabel(row.date)}</time><div className={styles.barTrack}><i style={{ width: `${Math.max(3, (Math.max(row.closed, (row.revenue || 0) / 1000) / maxTrend) * 100)}%` }} /></div><b>{row.closed} ЗН</b>{data.permissions?.financial && <span>{money(row.revenue)}</span>}</div>)}</div>}
         </section>
-        <section className={styles.panel}><PanelTitle eyebrow="КЛІЄНТИ" title="Повторні клієнти" />
-          <div className={styles.bigStat}><strong>{percent(data.retention?.repeatClientPct)}</strong><span>{data.retention?.returningClients || 0} повторних із {data.retention?.servedClients || 0} обслугованих у періоді</span></div>
-        </section>
+        <section className={styles.panel}><PanelTitle eyebrow="КЛІЄНТИ" title="Повторні клієнти" /><div className={styles.bigStat}><strong>{percent(data.retention?.repeatClientPct)}</strong><span>{data.retention?.returningClients || 0} повторних із {data.retention?.servedClients || 0} обслугованих у періоді</span></div></section>
       </div>
     </>}
 
     {data && !data.emptyScope && tab === "funnel" && <>
       <div className={styles.sectionIntro}><div><h2>Воронка</h2><span>Де саме губляться клієнти між зверненням і завершеним ремонтом.</span></div><button className={styles.secondaryButton} onClick={() => navigateCrm("Ліди")}>Відкрити ліди →</button></div>
       <section className={styles.funnelSummary}><article><small>Записів</small><strong>{funnel?.scheduled || 0}</strong><span>за період</span></article><article><small>Приїхало</small><strong>{funnel?.arrived || 0}</strong><span>{percent(funnel?.bookingToArrivalPct)}</span></article><article><small>Завершено</small><strong>{funnel?.completed || 0}</strong><span>{percent(funnel?.bookingToCompletedPct)} від записів</span></article><article className={(funnel?.noShow || 0) ? styles.summaryDanger : ""}><small>No-show</small><strong>{funnel?.noShow || 0}</strong><span>втрачений візит</span></article></section>
-      <div className={styles.twoColumnsWide}><section className={styles.panel}><PanelTitle eyebrow="КОНВЕРСІЯ" title="Повний шлях" />
-        <div className={styles.funnelFlow}>{funnelStages.map((stage, index) => { const previousStage = index > 0 ? funnelStages[index - 1] : null; const loss = previousStage ? Math.max(0, previousStage.count - stage.count) : 0; return <div className={styles.funnelStageWrap} key={stage.key}>{previousStage && <div className={styles.stageLoss}><span>↓ {stage.conversion == null ? "—" : percent(stage.conversion)}</span><b>{loss ? `−${loss}` : "без втрат"}</b></div>}<button type="button" className={styles.funnelStage} disabled={!stage.route} onClick={stage.route} style={{ width: `${Math.max(44, (stage.count / funnelMax) * 100)}%` }}><span>{stage.label}</span><strong>{stage.count}</strong><small>{stage.route ? "натисніть, щоб відкрити" : "верх воронки"}</small></button></div>; })}</div>
-      </section><section className={styles.panel}><PanelTitle eyebrow="ПЕРЕХОДИ" title="Конверсія етапів" /><div className={styles.conversionList}><div><span>Запис → візит</span><b>{percent(funnel?.bookingToArrivalPct)}</b></div><div><span>Візит → діагностика</span><b>{percent(funnel?.arrivalToDiagnosticsPct)}</b></div><div><span>Діагностика → ЗН</span><b>{percent(funnel?.diagnosticsToWorkOrderPct)}</b></div><div><span>ЗН → ремонт</span><b>{percent(funnel?.workOrderToRepairPct)}</b></div><div><span>Ремонт → завершено</span><b>{percent(funnel?.repairToCompletedPct)}</b></div><div><span>Запис → завершено</span><b>{percent(funnel?.bookingToCompletedPct)}</b></div></div></section></div>
+      <div className={styles.twoColumnsWide}>
+        <section className={styles.panel}><PanelTitle eyebrow="КОНВЕРСІЯ" title="Повний шлях" /><div className={styles.funnelFlow}>{funnelStages.map((stage, index) => { const previousStage = index > 0 ? funnelStages[index - 1] : null; const loss = previousStage ? Math.max(0, previousStage.count - stage.count) : 0; return <div className={styles.funnelStageWrap} key={stage.key}>{previousStage && <div className={styles.stageLoss}><span>↓ {stage.conversion == null ? "—" : percent(stage.conversion)}</span><b>{loss ? `−${loss}` : "без втрат"}</b></div>}<button type="button" className={styles.funnelStage} disabled={!stage.route} onClick={stage.route} style={{ width: `${Math.max(44, (stage.count / funnelMax) * 100)}%` }}><span>{stage.label}</span><strong>{stage.count}</strong><small>{stage.route ? "натисніть, щоб відкрити" : "верх воронки"}</small></button></div>; })}</div></section>
+        <section className={styles.panel}><PanelTitle eyebrow="ПЕРЕХОДИ" title="Конверсія етапів" /><div className={styles.conversionList}><div><span>Запис → візит</span><b>{percent(funnel?.bookingToArrivalPct)}</b></div><div><span>Візит → діагностика</span><b>{percent(funnel?.arrivalToDiagnosticsPct)}</b></div><div><span>Діагностика → ЗН</span><b>{percent(funnel?.diagnosticsToWorkOrderPct)}</b></div><div><span>ЗН → ремонт</span><b>{percent(funnel?.workOrderToRepairPct)}</b></div><div><span>Ремонт → завершено</span><b>{percent(funnel?.repairToCompletedPct)}</b></div><div><span>Запис → завершено</span><b>{percent(funnel?.bookingToCompletedPct)}</b></div></div></section>
+      </div>
     </>}
 
     {data && !data.emptyScope && tab === "workshop" && <>
       <div className={styles.sectionIntro}><div><h2>СТО / Виробництво</h2><span>Поточний стан, завантаження постів, цикл авто і причини затримок.</span></div><button className={styles.secondaryButton} onClick={() => navigateCrm("Виробництво")}>Відкрити виробництво →</button></div>
       <section className={styles.liveCards}><button onClick={() => navigateCrm("Виробництво")}><small>У роботі</small><strong>{operations?.activeNow || 0}</strong><span>усі активні</span></button><button onClick={() => navigateCrm("Виробництво", { status: "IN_REPAIR" })}><small>У ремонті</small><strong>{operations?.inRepairNow || 0}</strong><span>зараз</span></button><button onClick={() => navigateCrm("Закупівлі та склад", { scope: "ordered" })}><small>Чекають запчастини</small><strong>{operations?.waitingPartsNow || 0}</strong><span>блокер</span></button><button onClick={() => navigateCrm("Виробництво", { status: "WAITING_APPROVAL" })}><small>Погодження</small><strong>{operations?.waitingApprovalNow || 0}</strong><span>клієнт / калькуляція</span></button><button onClick={() => navigateCrm("Замовлення-наряди", { status: "READY_FOR_PICKUP" })}><small>До видачі</small><strong>{operations?.readyNow || 0}</strong><span>готові</span></button><button className={(operations?.overdueNow || 0) ? styles.liveCardDanger : ""}><small>Прострочено</small><strong>{operations?.overdueNow || 0}</strong><span>потребує уваги</span></button></section>
-      <div className={styles.twoColumnsWide}><section className={styles.panel}><PanelTitle eyebrow="ПОСТИ" title="Завантаження" right={<strong>{percent(data.utilization?.utilizationPct)}</strong>} /><div className={styles.postList}>{(data.utilization?.posts || []).map((post) => <div className={styles.postRow} key={post.postId}><div className={styles.postTitle}><span><b>{post.name}</b><small>{post.locationName}</small></span><strong>{percent(post.utilizationPct)}</strong></div><MiniProgress value={post.utilizationPct} /><div className={styles.postMeta}><span>{post.appointments} записів</span><span>{hoursFromMinutes(post.bookedMinutes)} зайнято</span><span>{hoursFromMinutes(post.capacityMinutes)} доступно</span></div></div>)}</div></section>
-        <section className={styles.panel}><PanelTitle eyebrow="ШВИДКІСТЬ" title="Цикл автомобіля" /><div className={styles.cycleCards}><div><small>Середній цикл</small><strong>{durationLabel(operations?.averageCycleMinutes)}</strong><span>від фактичного прибуття до завершення</span></div><div><small>Вчасно завершено</small><strong>{percent(operations?.onTimeCompletedPct)}</strong><span>{operations?.timedCompleted || 0} авто з фактичним часом</span></div></div><div className={styles.statusCloud}>{(operations?.liveStatusBreakdown || []).map((row) => <span key={row.status}>{row.label} <b>{row.count}</b></span>)}</div></section></div>
-      <div className={styles.twoColumns}><section className={styles.panel}><PanelTitle eyebrow="ЗАТРИМКИ" title="Причини прострочень" /><div className={styles.reasonList}>{(operations?.delayReasons || []).length === 0 ? <p className={styles.note}>Активних прострочень немає.</p> : operations!.delayReasons.map((row) => <div key={row.code}><div><span>{row.label}</span><b>{row.count}</b></div><div className={styles.reasonTrack}><i style={{ width: `${(row.count / maxDelay) * 100}%` }} /></div></div>)}</div></section>
-        <section className={styles.panel}><PanelTitle eyebrow="КОНТРОЛЬ" title="Прострочені авто" /><div className={styles.overdueList}>{(operations?.overdue || []).length === 0 ? <p className={styles.note}>Немає прострочених активних автомобілів.</p> : operations!.overdue.map((row) => <button key={row.appointmentId} type="button" onClick={() => navigateCrm("Планувальник", { appointmentId: row.appointmentId, date: dateKeyFromIso(row.plannedStartAt), scope: "day" })}><div><strong>{row.vehicleLabel}</strong><span>{row.plateNumber || row.customerName}</span></div><div><b>{row.statusLabel}</b><span>план до {dateTimeLabel(row.plannedEndAt)}</span></div><em>+{durationLabel(row.delayMinutes)}</em></button>)}</div></section></div>
+      <div className={styles.twoColumnsWide}>
+        <section className={styles.panel}><PanelTitle eyebrow="ПОСТИ" title="Завантаження" right={<strong>{percent(data.utilization?.utilizationPct)}</strong>} /><div className={styles.postList}>{(data.utilization?.posts || []).map((post) => <div className={styles.postRow} key={post.postId}><div className={styles.postTitle}><span><b>{post.name}</b><small>{post.locationName}</small></span><strong>{percent(post.utilizationPct)}</strong></div><MiniProgress value={post.utilizationPct} /><div className={styles.postMeta}><span>{post.appointments} записів</span><span>{hoursFromMinutes(post.bookedMinutes)} зайнято</span><span>{hoursFromMinutes(post.capacityMinutes)} доступно</span></div></div>)}</div></section>
+        <section className={styles.panel}><PanelTitle eyebrow="ШВИДКІСТЬ" title="Цикл автомобіля" /><div className={styles.cycleCards}><div><small>Середній цикл</small><strong>{durationLabel(operations?.averageCycleMinutes)}</strong><span>від фактичного прибуття до завершення</span></div><div><small>Вчасно завершено</small><strong>{percent(operations?.onTimeCompletedPct)}</strong><span>{operations?.timedCompleted || 0} авто з фактичним часом</span></div></div><div className={styles.statusCloud}>{(operations?.liveStatusBreakdown || []).map((row) => <span key={row.status}>{row.label} <b>{row.count}</b></span>)}</div></section>
+      </div>
+      <div className={styles.twoColumns}>
+        <section className={styles.panel}><PanelTitle eyebrow="ЗАТРИМКИ" title="Причини прострочень" /><div className={styles.reasonList}>{(operations?.delayReasons || []).length === 0 ? <p className={styles.note}>Активних прострочень немає.</p> : operations!.delayReasons.map((row) => <div key={row.code}><div><span>{row.label}</span><b>{row.count}</b></div><div className={styles.reasonTrack}><i style={{ width: `${(row.count / maxDelay) * 100}%` }} /></div></div>)}</div></section>
+        <section className={styles.panel}><PanelTitle eyebrow="КОНТРОЛЬ" title="Прострочені авто" /><div className={styles.overdueList}>{(operations?.overdue || []).length === 0 ? <p className={styles.note}>Немає прострочених активних автомобілів.</p> : operations!.overdue.map((row) => <button key={row.appointmentId} type="button" onClick={() => navigateCrm("Планувальник", { appointmentId: row.appointmentId, date: dateKeyFromIso(row.plannedStartAt), scope: "day" })}><div><strong>{row.vehicleLabel}</strong><span>{row.plateNumber || row.customerName}</span></div><div><b>{row.statusLabel}</b><span>план до {dateTimeLabel(row.plannedEndAt)}</span></div><em>+{durationLabel(row.delayMinutes)}</em></button>)}</div></section>
+      </div>
       {data.permissions?.personnel && <section className={styles.panel}><PanelTitle eyebrow="КОМАНДА" title="Продуктивність механіків" right={<span>нормогодини / фактичний час</span>} /><div className={styles.tableWrap}><table><thead><tr><th>Механік</th><th>Робіт</th><th>ЗН</th><th>Нормогодини</th><th>Факт. год</th><th>Ефективність</th></tr></thead><tbody>{(data.mechanics || []).map((row) => <tr key={row.mechanicId}><td>{row.name}</td><td>{row.completedJobs}</td><td>{row.workOrders}</td><td>{row.normHours}</td><td>{row.actualHours}</td><td><strong>{percent(row.efficiencyPct)}</strong></td></tr>)}</tbody></table></div></section>}
     </>}
 
@@ -347,24 +352,32 @@ export function AnalyticsDashboard() {
       <div className={styles.sectionIntro}><div><h2>Діагностика</h2><span>Скільки перевірок виконано, що знаходять найчастіше і скільки діагностик переходить у ремонт.</span></div><button className={styles.secondaryButton} onClick={() => navigateCrm("Діагностика")}>Відкрити діагностику →</button></div>
       {detailLoading && !diagnostics && <LoadingDetail />}
       {diagnostics && !diagnostics.permitted && <Restricted text="Для Вашої ролі недоступна деталізація діагностики." />}
-      {diagnostics?.permitted && diagnostics.diagnostics && (() => { const d = diagnostics.diagnostics; const issueCount = d.checks.attention + d.checks.defect; const issuePct = d.checks.checked ? (issueCount / d.checks.checked) * 100 : 0; return <>
-        <section className={styles.kpisSix}><KpiCard label="Діагностик" value={number(d.created)} hint="створено за період" onClick={() => navigateCrm("Діагностика")} /><KpiCard label="Завершено" value={number(d.completed)} hint={`${d.confirmed} підтверджено`} /><KpiCard label="Зауважень" value={number(issueCount)} hint={`${percent(issuePct)} перевірених пунктів`} tone={issueCount ? "warn" : "good"} /><KpiCard label="Критичних" value={number(d.checks.critical)} hint="urgency CRITICAL" tone={d.checks.critical ? "danger" : "good"} /><KpiCard label="Діагностика → ЗН" value={percent(d.conversionPct)} hint={`${d.convertedToWorkOrder} ЗН створено`} onClick={() => navigateCrm("Замовлення-наряди")} /><KpiCard label="Середній час" value={durationLabel(d.averageInspectionMinutes)} hint="старт → завершення" /></section>
-        <section className={styles.checkBand}><div><small>Перевірено пунктів</small><b>{d.checks.checked}</b></div><div className={styles.okStat}><small>Норма</small><b>{d.checks.ok}</b></div><div className={styles.warnStat}><small>Увага</small><b>{d.checks.attention}</b></div><div className={styles.dangerStat}><small>Дефект</small><b>{d.checks.defect}</b></div></section>
-        <div className={styles.twoColumnsWide}><section className={styles.panel}><PanelTitle eyebrow="ТОП НЕСПРАВНОСТЕЙ" title="Що знаходимо найчастіше" /><div className={styles.tableWrap}><table><thead><tr><th>Вузол / деталь</th><th>Увага</th><th>Дефект</th><th>Всього</th></tr></thead><tbody>{d.topIssues.length ? d.topIssues.map((row) => <tr key={row.name}><td>{row.name}</td><td>{row.attention}</td><td>{row.defect}</td><td><strong>{row.total}</strong></td></tr>) : <tr><td colSpan={4}>Зауважень у періоді немає.</td></tr>}</tbody></table></div></section>
-          <section className={styles.panel}><PanelTitle eyebrow="ДИНАМІКА" title="Діагностики по днях" /><div className={styles.compactSeries}>{d.daily.length ? d.daily.map((row) => { const max = Math.max(1, ...d.daily.map((x) => Math.max(x.created, x.completed, x.issues))); return <div key={row.date}><time>{dateLabel(row.date)}</time><div><span>Створено {row.created}</span><MiniProgress value={(row.created / max) * 100} /></div><div><span>Завершено {row.completed}</span><MiniProgress value={(row.completed / max) * 100} /></div><div><span>Зауважень {row.issues}</span><MiniProgress value={(row.issues / max) * 100} danger /></div></div>; }) : <p className={styles.note}>Немає даних за днями.</p>}</div></section></div>
-        <div className={styles.twoColumns}><section className={styles.panel}><PanelTitle eyebrow="ЗАПЧАСТИНИ" title="Що діагностика рекомендує" /><div className={styles.rankList}>{d.topSuggestedParts.length ? d.topSuggestedParts.map((row, i) => <div key={row.name}><span><i>{i + 1}</i>{row.name}</span><b>{row.count}</b></div>) : <p className={styles.note}>Рекомендованих деталей ще немає.</p>}</div></section><section className={styles.panel}><PanelTitle eyebrow="РОБОТИ" title="Що рекомендують виконати" /><div className={styles.rankList}>{d.topSuggestedWorks.length ? d.topSuggestedWorks.map((row, i) => <div key={row.name}><span><i>{i + 1}</i>{row.name}</span><b>{row.count}</b></div>) : <p className={styles.note}>Рекомендованих робіт ще немає.</p>}</div></section></div>
-      </>; })()}
+      {diagnostics?.permitted && diagnostics.diagnostics && (() => {
+        const d = diagnostics.diagnostics; const issueCount = d.checks.attention + d.checks.defect; const issuePct = d.checks.checked ? (issueCount / d.checks.checked) * 100 : 0;
+        const dailyMax = Math.max(1, ...d.daily.map((row) => Math.max(row.created, row.completed, row.issues)));
+        return <>
+          <section className={styles.kpisSix}><KpiCard label="Діагностик" value={number(d.created)} hint="створено за період" onClick={() => navigateCrm("Діагностика")} /><KpiCard label="Завершено" value={number(d.completed)} hint={`${d.confirmed} підтверджено`} /><KpiCard label="Зауважень" value={number(issueCount)} hint={`${percent(issuePct)} перевірених пунктів`} tone={issueCount ? "warn" : "good"} /><KpiCard label="Критичних" value={number(d.checks.critical)} hint="urgency CRITICAL" tone={d.checks.critical ? "danger" : "good"} /><KpiCard label="Діагностика → ЗН" value={percent(d.conversionPct)} hint={`${d.convertedToWorkOrder} ЗН створено`} onClick={() => navigateCrm("Замовлення-наряди")} /><KpiCard label="Середній час" value={durationLabel(d.averageInspectionMinutes)} hint="старт → завершення" /></section>
+          <section className={styles.checkBand}><div><small>Перевірено пунктів</small><b>{d.checks.checked}</b></div><div className={styles.okStat}><small>Норма</small><b>{d.checks.ok}</b></div><div className={styles.warnStat}><small>Увага</small><b>{d.checks.attention}</b></div><div className={styles.dangerStat}><small>Дефект</small><b>{d.checks.defect}</b></div></section>
+          <div className={styles.twoColumnsWide}>
+            <section className={styles.panel}><PanelTitle eyebrow="ТОП НЕСПРАВНОСТЕЙ" title="Що знаходимо найчастіше" /><div className={styles.tableWrap}><table><thead><tr><th>Вузол / деталь</th><th>Увага</th><th>Дефект</th><th>Всього</th></tr></thead><tbody>{d.topIssues.length ? d.topIssues.map((row) => <tr key={row.name}><td>{row.name}</td><td>{row.attention}</td><td>{row.defect}</td><td><strong>{row.total}</strong></td></tr>) : <tr><td colSpan={4}>Зауважень у періоді немає.</td></tr>}</tbody></table></div></section>
+            <section className={styles.panel}><PanelTitle eyebrow="ДИНАМІКА" title="Діагностики по днях" /><div className={styles.compactSeries}>{d.daily.length ? d.daily.map((row) => <div key={row.date}><time>{dateLabel(row.date)}</time><div><span>Створено {row.created}</span><MiniProgress value={(row.created / dailyMax) * 100} /></div><div><span>Завершено {row.completed}</span><MiniProgress value={(row.completed / dailyMax) * 100} /></div><div><span>Зауважень {row.issues}</span><MiniProgress value={(row.issues / dailyMax) * 100} danger /></div></div>) : <p className={styles.note}>Немає даних за днями.</p>}</div></section>
+          </div>
+          <div className={styles.twoColumns}><section className={styles.panel}><PanelTitle eyebrow="ЗАПЧАСТИНИ" title="Що діагностика рекомендує" /><div className={styles.rankList}>{d.topSuggestedParts.length ? d.topSuggestedParts.map((row, i) => <div key={row.name}><span><i>{i + 1}</i>{row.name}</span><b>{row.count}</b></div>) : <p className={styles.note}>Рекомендованих деталей ще немає.</p>}</div></section><section className={styles.panel}><PanelTitle eyebrow="РОБОТИ" title="Що рекомендують виконати" /><div className={styles.rankList}>{d.topSuggestedWorks.length ? d.topSuggestedWorks.map((row, i) => <div key={row.name}><span><i>{i + 1}</i>{row.name}</span><b>{row.count}</b></div>) : <p className={styles.note}>Рекомендованих робіт ще немає.</p>}</div></section></div>
+        </>;
+      })()}
     </>}
 
     {tab === "finance" && <>
-      <div className={styles.sectionIntro}><div><h2>Фінанси</h2><span>P&amp;L, cash flow, оборотний капітал і фактична економіка закритих замовлень.</span></div><button className={styles.secondaryButton} onClick={() => navigateCrm("Фінанси")}>Відкрити фінанси →</button></div>
+      <div className={styles.sectionIntro}><div><h2>Фінанси</h2><span>P&amp;L, cash flow, оборотний капітал і фактична економіка закритих замовлень.</span></div><button className={styles.secondaryButton} onClick={() => navigateCrm("Фінансовий центр")}>Відкрити фінанси →</button></div>
       {detailLoading && !finance && <LoadingDetail />}
       {finance && !finance.permitted && <Restricted text="Фінансові показники приховані для Вашої ролі." />}
       {finance?.permitted && !finance.finance && <Restricted text="Для вибраної станції фінансових даних немає." />}
       {finance?.permitted && finance.finance && (() => { const f = finance.finance; return <>
         <section className={styles.kpisSix}><KpiCard label="Доходи P&L" value={money(f.pnl.revenue)} hint="проведені фінансові події" /><KpiCard label="Валовий прибуток" value={money(f.pnl.grossProfit)} hint={`маржа ${percent(f.pnl.grossMarginPct)}`} /><KpiCard label="Чистий прибуток" value={money(f.pnl.netProfit)} hint={`чиста маржа ${percent(f.pnl.netMarginPct)}`} tone={f.pnl.netProfit >= 0 ? "good" : "danger"} /><KpiCard label="Грошовий потік" value={money(f.cashFlow.net)} hint={`${money(f.cashFlow.inflow)} вхід / ${money(f.cashFlow.outflow)} вихід`} tone={f.cashFlow.net >= 0 ? "good" : "warn"} /><KpiCard label="Дебіторка" value={money(f.workingCapital.receivables)} hint={`прострочено ${money(f.workingCapital.overdueReceivables)}`} tone={f.workingCapital.overdueReceivables ? "warn" : "default"} /><KpiCard label="Кредиторка" value={money(f.workingCapital.payables)} hint={`прострочено ${money(f.workingCapital.overduePayables)}`} tone={f.workingCapital.overduePayables ? "danger" : "default"} /></section>
-        <div className={styles.twoColumnsWide}><section className={styles.panel}><PanelTitle eyebrow="P&L" title="Прибутки та витрати" /><div className={styles.pnlList}><div><span>Доходи</span><b>{money(f.pnl.revenue)}</b></div><div><span>− Собівартість</span><b>{money(f.pnl.cogs)}</b></div><div className={styles.pnlStrong}><span>= Валовий прибуток</span><b>{money(f.pnl.grossProfit)}</b></div><div><span>− Операційні витрати</span><b>{money(f.pnl.opex)}</b></div><div><span>= Операційний прибуток</span><b>{money(f.pnl.operatingProfit)}</b></div><div><span>Інші доходи / витрати</span><b>{money(f.pnl.otherIncome - f.pnl.otherExpense)}</b></div><div><span>− Податки</span><b>{money(f.pnl.tax)}</b></div><div className={`${styles.pnlStrong} ${f.pnl.netProfit < 0 ? styles.pnlNegative : ""}`}><span>= Чистий прибуток</span><b>{money(f.pnl.netProfit)}</b></div></div></section>
-          <section className={styles.panel}><PanelTitle eyebrow="ЗН · ACTUAL" title="Економіка замовлень" /><div className={styles.financeCards}><div><small>Фіналізовано ЗН</small><strong>{f.orderEconomics.finalizedOrders}</strong></div><div><small>Виручка</small><strong>{money(f.orderEconomics.grossRevenue)}</strong></div><div><small>Середній чек</small><strong>{money(f.orderEconomics.averageCheck)}</strong></div><div><small>Валова маржа</small><strong>{percent(f.orderEconomics.grossMarginPct)}</strong></div></div><p className={styles.note}>Цей блок рахується тільки з ACTUAL finance snapshot закритих ЗН вибраного періоду.</p></section></div>
+        <div className={styles.twoColumnsWide}>
+          <section className={styles.panel}><PanelTitle eyebrow="P&L" title="Прибутки та витрати" /><div className={styles.pnlList}><div><span>Доходи</span><b>{money(f.pnl.revenue)}</b></div><div><span>− Собівартість</span><b>{money(f.pnl.cogs)}</b></div><div className={styles.pnlStrong}><span>= Валовий прибуток</span><b>{money(f.pnl.grossProfit)}</b></div><div><span>− Операційні витрати</span><b>{money(f.pnl.opex)}</b></div><div><span>= Операційний прибуток</span><b>{money(f.pnl.operatingProfit)}</b></div><div><span>Інші доходи / витрати</span><b>{money(f.pnl.otherIncome - f.pnl.otherExpense)}</b></div><div><span>− Податки</span><b>{money(f.pnl.tax)}</b></div><div className={`${styles.pnlStrong} ${f.pnl.netProfit < 0 ? styles.pnlNegative : ""}`}><span>= Чистий прибуток</span><b>{money(f.pnl.netProfit)}</b></div></div></section>
+          <section className={styles.panel}><PanelTitle eyebrow="ЗН · ACTUAL" title="Економіка замовлень" /><div className={styles.financeCards}><div><small>Фіналізовано ЗН</small><strong>{f.orderEconomics.finalizedOrders}</strong></div><div><small>Виручка</small><strong>{money(f.orderEconomics.grossRevenue)}</strong></div><div><small>Середній чек</small><strong>{money(f.orderEconomics.averageCheck)}</strong></div><div><small>Валова маржа</small><strong>{percent(f.orderEconomics.grossMarginPct)}</strong></div></div><p className={styles.note}>Цей блок рахується тільки з ACTUAL finance snapshot закритих ЗН вибраного періоду.</p></section>
+        </div>
         <div className={styles.twoColumns}><section className={styles.panel}><PanelTitle eyebrow="СТРУКТУРА ВИРУЧКИ" title="За типом доходу" /><MixRows rows={[{ label: "Роботи", value: f.orderEconomics.revenueMix.labor }, { label: "Запчастини", value: f.orderEconomics.revenueMix.parts }, { label: "Зовнішні роботи", value: f.orderEconomics.revenueMix.external }, { label: "Інше", value: f.orderEconomics.revenueMix.other }]} /></section><section className={styles.panel}><PanelTitle eyebrow="ПРЯМІ ВИТРАТИ" title="За типом собівартості" /><MixRows rows={[{ label: "Запчастини", value: f.orderEconomics.costMix.parts }, { label: "Праця", value: f.orderEconomics.costMix.labor }, { label: "Зовнішні", value: f.orderEconomics.costMix.external }, { label: "Матеріали", value: f.orderEconomics.costMix.consumables }, { label: "Інше", value: f.orderEconomics.costMix.other }]} /></section></div>
         <div className={styles.twoColumns}><section className={styles.panel}><PanelTitle eyebrow="CASH FLOW" title="Рух грошей" /><div className={styles.cashGrid}><div><small>Надходження</small><b>{money(f.cashFlow.inflow)}</b></div><div><small>Вибуття</small><b>{money(f.cashFlow.outflow)}</b></div><div><small>Операційний</small><b>{money(f.cashFlow.operating)}</b></div><div><small>Інвестиційний</small><b>{money(f.cashFlow.investing)}</b></div><div><small>Фінансовий</small><b>{money(f.cashFlow.financing)}</b></div><div><small>Чистий потік</small><b>{money(f.cashFlow.net)}</b></div></div></section><section className={styles.panel}><PanelTitle eyebrow="ОБОРОТНИЙ КАПІТАЛ" title="Борги та зобов'язання" /><div className={styles.cashGrid}><div><small>Дебіторка</small><b>{money(f.workingCapital.receivables)}</b></div><div><small>Прострочена дебіторка</small><b>{money(f.workingCapital.overdueReceivables)}</b></div><div><small>Кредиторка</small><b>{money(f.workingCapital.payables)}</b></div><div><small>Прострочена кредиторка</small><b>{money(f.workingCapital.overduePayables)}</b></div></div></section></div>
       </>; })()}
@@ -384,9 +397,4 @@ export function AnalyticsDashboard() {
       </>; })()}
     </>}
   </div>;
-}
-
-function MixRows({ rows }: { rows: Array<{ label: string; value: number }> }) {
-  const total = rows.reduce((sum, row) => sum + Math.max(0, row.value), 0);
-  return <div className={styles.mixRows}>{rows.map((row) => <div key={row.label}><div><span>{row.label}</span><b>{money(row.value)}</b></div><MiniProgress value={total > 0 ? (Math.max(0, row.value) / total) * 100 : 0} /></div>)}</div>;
 }
