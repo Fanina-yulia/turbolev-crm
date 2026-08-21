@@ -1,9 +1,14 @@
 import "server-only";
 
 import { getAccessContext, hasPermission, type AccessContext } from "@/src/security/access-context";
-import { PERMISSIONS, scopeCovers, type AccessScopeCode, type PermissionCode } from "@/src/security/permissions";
+import { scopeCovers, type AccessScopeCode, type PermissionCode } from "@/src/security/permissions";
 
 type AuthorizationOptions = {
+  /**
+   * Retained for compatibility with security-sensitive callers. Authorization
+   * now fails closed in every global mode; in SHADOW this flag only controls
+   * whether a denied request is emitted to the diagnostic shadow log.
+   */
   strict?: boolean;
   request?: Request | Headers;
   /**
@@ -17,16 +22,15 @@ type AuthorizationOptions = {
 export type AuthorizationResult = {
   allowed: boolean;
   wouldAllow: boolean;
+  /**
+   * Compatibility field for existing response telemetry. A denied request is
+   * never bypassed, so this value is always false.
+   */
   shadowBypass: boolean;
   context: AccessContext;
   grantedScope: AccessScopeCode | null;
   response: Response | null;
 };
-
-const ALWAYS_ENFORCED_PERMISSIONS = new Set<string>([
-  PERMISSIONS.SECURITY_ACCESS_MANAGE,
-  PERMISSIONS.PAYROLL_SELF_READ,
-]);
 
 function denialResponse(context: AccessContext, permission: string, requiredScope: AccessScopeCode) {
   if (!context.authenticated) {
@@ -60,27 +64,24 @@ export async function authorize(
     return { allowed: true, wouldAllow: true, shadowBypass: false, context, grantedScope, response: null };
   }
 
-  const mustEnforce = options.strict === true
-    || ALWAYS_ENFORCED_PERMISSIONS.has(permission)
-    || context.enforcementMode === "ENFORCED";
-  if (mustEnforce) {
-    return {
-      allowed: false,
-      wouldAllow: false,
-      shadowBypass: false,
-      context,
+  if (context.enforcementMode === "SHADOW" && options.strict !== true) {
+    console.info("[security-shadow] permission denied", {
+      permission,
       grantedScope,
-      response: denialResponse(context, permission, requiredScope),
-    };
+      requiredScope,
+      provisioningState: context.provisioningState,
+      authenticated: context.authenticated,
+      userId: context.user?.id ?? null,
+      roles: context.roles.map((role) => role.code),
+    });
   }
 
-  console.info("[security-shadow] permission would be denied", {
-    permission,
+  return {
+    allowed: false,
+    wouldAllow: false,
+    shadowBypass: false,
+    context,
     grantedScope,
-    requiredScope,
-    provisioningState: context.provisioningState,
-    userId: context.user?.id ?? null,
-    roles: context.roles.map((role) => role.code),
-  });
-  return { allowed: true, wouldAllow: false, shadowBypass: true, context, grantedScope, response: null };
+    response: denialResponse(context, permission, requiredScope),
+  };
 }

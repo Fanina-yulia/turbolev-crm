@@ -1,6 +1,24 @@
 import assert from "node:assert/strict";
+import { promises as fs } from "node:fs";
 import pg from "pg";
 import { computeEffectivePermissions } from "../src/security/rbac-engine";
+
+const authorizeSource = await fs.readFile("src/security/authorize.ts", "utf8");
+assert.doesNotMatch(
+  authorizeSource,
+  /allowed:\s*true,\s*wouldAllow:\s*false/,
+  "authorization must never allow a request that RBAC would deny",
+);
+assert.doesNotMatch(
+  authorizeSource,
+  /shadowBypass:\s*true/,
+  "SHADOW must never bypass server-side authorization",
+);
+assert.match(
+  authorizeSource,
+  /response:\s*denialResponse\(context,\s*permission,\s*requiredScope\)/,
+  "denied authorization must return an explicit denial response",
+);
 
 const direct = computeEffectivePermissions(
   [
