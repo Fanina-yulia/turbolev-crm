@@ -139,7 +139,7 @@ export function ClientsDirectory() {
       <div>
         <p className={styles.eyebrow}>TURBO LEV · CRM-КЛІЄНТІВ</p>
         <h1>Клієнти</h1>
-        <span>Лише реальні клієнти СТО: додано авто та створено запис у планувальнику</span>
+        <span>Власники автомобілів, доданих у CRM. Дзвінки та звернення без авто залишаються в «Комунікаціях».</span>
       </div>
       <button className={styles.primary} onClick={openNewRequest}>+ Записати авто на СТО</button>
     </header>
@@ -154,7 +154,7 @@ export function ClientsDirectory() {
 
     <div className={styles.summary}>Знайдено клієнтів: <b>{total}</b>{total > 0 && <span> · сторінка {page} з {pages}</span>}</div>
     {error && <div className={styles.error}>{error}</div>}
-    {loading ? <div className={styles.state}>Завантажую клієнтів…</div> : !clients.length ? <div className={styles.state}>Немає клієнтів, які вже записані у планувальник.</div> : <div className={styles.grid}>
+    {loading ? <div className={styles.state}>Завантажую клієнтів…</div> : !clients.length ? <div className={styles.state}>Немає клієнтів із доданими автомобілями.</div> : <div className={styles.grid}>
       {clients.map((client) => <button key={client.id} className={styles.card} onClick={() => openClient(client)}>
         <div className={styles.identity}>
           <span className={styles.avatar}>{initials(client.name)}</span>
