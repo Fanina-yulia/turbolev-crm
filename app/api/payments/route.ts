@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { formatWorkOrderNumber, parseWorkOrderNumber } from "@/src/domain/work-order-number";
 import { getWorkflowStatusLabel } from "@/src/domain/workflow";
 import { getPrisma } from "@/src/lib/prisma";
-import { getAccessContext, hasPermission, type AccessContext } from "@/src/security/access-context";
-import { PERMISSIONS, type AccessScopeCode } from "@/src/security/permissions";
+import { PERMISSIONS } from "@/src/security/permissions";
+import { authorizeScopedLocation } from "@/src/security/scoped-location-access";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -16,10 +16,6 @@ const OPEN_STATUSES = ["OPEN", "PARTIALLY_PAID", "OVERDUE"] as const;
 function decimal(value: unknown) {
   const number = Number(value ?? 0);
   return Number.isFinite(number) ? Math.round(number * 100) / 100 : 0;
-}
-
-function paymentScope(context: AccessContext) {
-  return context.permissions[PERMISSIONS.PAYMENTS_READ] as AccessScopeCode | undefined;
 }
 
 function kyivParts(date = new Date()) {
@@ -62,27 +58,14 @@ function todayRange(now = new Date()) {
   return { from, to: kyivDateStartUtc(next.year, next.month, next.day) };
 }
 
-function locationFilter(scope: AccessScopeCode | undefined, context: AccessContext) {
-  if (!scope || scope === "ALL") return {};
-  if ((scope === "LOCATION" || scope === "TEAM") && context.locationIds.length) {
-    return { locationId: { in: context.locationIds } };
-  }
-  return { locationId: "__NO_PAYMENT_LOCATION__" };
-}
-
 export async function GET(request: NextRequest) {
-  const context = await getAccessContext(request);
-  if (context.enforcementMode === "ENFORCED" && context.provisioningState !== "ACTIVE") {
-    return NextResponse.json({ ok: false, error: context.authenticated ? "Доступ до CRM не активований." : "Потрібна авторизація." }, { status: context.authenticated ? 403 : 401 });
-  }
-  if (context.enforcementMode === "ENFORCED" && !hasPermission(context, PERMISSIONS.PAYMENTS_READ)) {
-    return NextResponse.json({ ok: false, error: "Немає доступу до каси." }, { status: 403 });
-  }
+  const requestedLocationId = request.nextUrl.searchParams.get("locationId")?.trim() || null;
+  const access = await authorizeScopedLocation(PERMISSIONS.PAYMENTS_READ, request, requestedLocationId);
+  if (!access.ok) return access.response;
 
   const prisma = getPrisma();
   const q = (request.nextUrl.searchParams.get("q") || "").trim().slice(0, 120);
-  const scope = context.enforcementMode === "ENFORCED" ? paymentScope(context) : "ALL";
-  const scopedLocation = locationFilter(scope, context);
+  const scopedLocation = access.locationWhere;
   const { from, to } = todayRange();
 
   try {
@@ -182,8 +165,8 @@ export async function GET(request: NextRequest) {
         where: {
           isActive: true,
           currency: "UAH",
-          ...((scope === "LOCATION" || scope === "TEAM") && context.locationIds.length
-            ? { OR: [{ locationId: null }, { locationId: { in: context.locationIds } }] }
+          ...(access.grantedScope === "LOCATION"
+            ? { OR: [{ locationId: null }, { locationId: { in: access.allowedLocationIds || [] } }] }
             : {}),
         },
         orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
