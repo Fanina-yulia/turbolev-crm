@@ -12,6 +12,7 @@ import { TelegramClientLinkCard } from "./telegram-client-link-card";
 import { BinotelClientCalls } from "./binotel-recordings";
 import { navigateCrm, readCrmRoute } from "./crm-route";
 import { VehicleRender } from "./vehicle-render";
+import ownerVehicleStyles from "./client-owner-vehicle-card.module.css";
 import styles from "./directory-pages.module.css";
 
 type Client = ClientDirectoryItem;
@@ -37,10 +38,6 @@ function dateText(value: string | null | undefined) {
 function lastVisit(client: Client) {
   const row = client.workOrders[0];
   return row ? dateText(row.closedAt || row.updatedAt || row.createdAt) : "—";
-}
-
-function vehicleName(vehicle: Client["vehicles"][number]) {
-  return [vehicle.brand, vehicle.model].filter(Boolean).join(" ") || "Автомобіль";
 }
 
 export function ClientsDirectory() {
@@ -193,13 +190,21 @@ export function ClientsDirectory() {
           <div className={styles.drawerBody}>
             <section className={styles.panel}>
               <h3>Пов’язані автомобілі <span>{selected._count.vehicles}</span></h3>
-              {selected.vehicles.length ? <div className={styles.clientVehicleList}>{selected.vehicles.map((vehicle, index) => <button className={styles.clientVehicleCard} key={vehicle.id} onClick={() => navigateCrm("Авто", { vehicleId: vehicle.id })}>
-                <VehicleRender id={vehicle.id} brand={vehicle.brand} model={vehicle.model} year={vehicle.year} size="mini" eager={index < 2} />
-                <span className={styles.clientVehicleInfo}>
-                  <strong>{vehicleName(vehicle)}</strong>
-                  <small className={styles.clientVehiclePlate}>{vehicle.plateNumber || "Без держномера"}</small>
+              {selected.vehicles.length ? <div className={styles.clientVehicleList}>{selected.vehicles.map((vehicle, index) => <button className={ownerVehicleStyles.card} key={vehicle.id} onClick={() => navigateCrm("Авто", { vehicleId: vehicle.id })}>
+                <VehicleRender
+                  id={vehicle.id}
+                  brand={vehicle.brand}
+                  model={vehicle.model}
+                  year={vehicle.year}
+                  size="card"
+                  eager={index < 2}
+                />
+                <span className={ownerVehicleStyles.info}>
+                  <span className={ownerVehicleStyles.make}>{vehicle.brand || "Марка не вказана"}</span>
+                  <strong className={ownerVehicleStyles.model}>{vehicle.model || "Модель не вказана"}</strong>
+                  <small className={ownerVehicleStyles.plate}>{vehicle.plateNumber || "Без держномера"}</small>
                 </span>
-                <span className={styles.clientVehicleChevron}>›</span>
+                <span className={ownerVehicleStyles.chevron}>›</span>
               </button>)}</div> : <div className={styles.emptyInline}>Автомобілі ще не додані.</div>}
             </section>
             <section className={styles.panel}>

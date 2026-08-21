@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import styles from "./vehicle-render.module.css";
 
 export type VehicleRenderSize = "mini" | "card" | "drawer" | "hero";
@@ -74,6 +74,7 @@ export function VehicleRender(props: VehicleRenderProps) {
   const [themePaint, setThemePaint] = useState<ThemePaint>("Imagin-orange");
   const [failed, setFailed] = useState(false);
   const [libraryVersion, setLibraryVersion] = useState(0);
+  const forcedRetryRef = useRef<string | null>(null);
 
   useEffect(() => {
     const sync = () => setThemePaint(readThemePaint());
@@ -108,12 +109,20 @@ export function VehicleRender(props: VehicleRenderProps) {
           schedulePoll();
           return;
         }
-        if (library?.state !== "MISSING" || !library.autoGenerate || !library.canGenerate) return;
+
+        const retryKey = `${props.id}:${themePaint}`;
+        const retryFailedGeneration = library?.state === "ERROR"
+          && library.autoGenerate
+          && library.canGenerate
+          && forcedRetryRef.current !== retryKey;
+        const startMissingGeneration = library?.state === "MISSING" && library.autoGenerate && library.canGenerate;
+        if (!retryFailedGeneration && !startMissingGeneration) return;
+        if (retryFailedGeneration) forcedRetryRef.current = retryKey;
 
         const generation = await fetch(`/api/vehicles/${encodeURIComponent(props.id)}/image`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ themePaint }),
+          body: JSON.stringify({ themePaint, force: retryFailedGeneration }),
         });
         const result = await generation.json().catch(() => null) as { ok?: boolean; image?: unknown; generation?: { state?: string } } | null;
         if (cancelled) return;
@@ -123,7 +132,7 @@ export function VehicleRender(props: VehicleRenderProps) {
         }
         if (result?.generation?.state === "GENERATING") schedulePoll();
       } catch {
-        // The card keeps its local placeholder when generation is unavailable.
+        // Never replace a missing real asset with a fake vehicle illustration.
       }
     };
 
@@ -142,8 +151,13 @@ export function VehicleRender(props: VehicleRenderProps) {
 
   useEffect(() => setFailed(false), [src]);
 
-  return <span className={`${styles.root} ${styles[size]} ${failed ? styles.failed : ""} ${props.className || ""}`} data-vehicle-render="true">
-    {!failed ? <img src={src} alt={vehicleTitle(props)} loading={props.eager ? "eager" : "lazy"} decoding="async" onError={() => setFailed(true)}/> : <span className={styles.localFallback} aria-label={vehicleTitle(props)}><span className={styles.carGlyph}>▰</span><small>{[props.brand, props.model].filter(Boolean).join(" ") || "Авто"}</small></span>}
+  return <span
+    className={`${styles.root} ${styles[size]} ${failed ? styles.failed : ""} ${props.className || ""}`}
+    data-vehicle-render="true"
+    data-vehicle-image-state={failed ? "missing" : "ready"}
+    aria-label={vehicleTitle(props)}
+  >
+    {!failed ? <img src={src} alt={vehicleTitle(props)} loading={props.eager ? "eager" : "lazy"} decoding="async" onError={() => setFailed(true)}/> : null}
     {props.exteriorColorConfirmed && props.exteriorColorName ? <span className={styles.realColor} title={`Підтверджений колір: ${props.exteriorColorName}`}><i className={styles.colorDot} style={props.exteriorColorHex ? { backgroundColor: props.exteriorColorHex } : undefined}/></span> : null}
   </span>;
 }
