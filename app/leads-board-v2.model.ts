@@ -1,20 +1,17 @@
 import type {
   Lead,
+  LeadBusinessStatus,
   LeadStatus,
   PlannerLocation,
   PlannerResource,
+  RejectReasonCode,
   UserOption,
 } from "./leads-board-v2.types";
 
-export const leadColumns: Array<{ key: LeadStatus; label: string }> = [
-  { key: "NEW", label: "Нові" },
-  { key: "CONTACTED", label: "Контакт" },
-  { key: "QUALIFIED", label: "Потреба" },
-  { key: "ESTIMATE", label: "Прорахунок" },
-  { key: "WAITING", label: "Думає / очікує" },
-  { key: "NO_ANSWER", label: "Не додзвонились" },
-  { key: "BOOKED", label: "Записані" },
-  { key: "LOST", label: "Неуспішні" },
+export const leadColumns: Array<{ key: LeadBusinessStatus; label: string; statusLabel: string }> = [
+  { key: "NEW", label: "Нові", statusLabel: "Нове" },
+  { key: "BOOKED", label: "Записані", statusLabel: "Записаний" },
+  { key: "CANCELLED", label: "Скасовані", statusLabel: "Скасоване" },
 ];
 
 export const leadSourceLabels: Record<string, string> = {
@@ -34,6 +31,15 @@ export const leadSourceLabels: Record<string, string> = {
   OTHER: "Інше",
 };
 
+export const rejectReasonLabels: Record<RejectReasonCode, string> = {
+  TOO_EXPENSIVE: "Дорого",
+  NO_CAPACITY_NO_TIME: "Немає зручного часу / місця",
+  SERVICE_NOT_PROVIDED: "Послугу не надаємо",
+  WRONG_NUMBER: "Помилковий номер",
+  SPAM_ADS: "Спам / реклама",
+  OTHER: "Інше",
+};
+
 const LEAD_STATUS_SET = new Set<LeadStatus>([
   "NEW",
   "CONTACTED",
@@ -47,6 +53,9 @@ const LEAD_STATUS_SET = new Set<LeadStatus>([
   "SPAM_WRONG",
   "SUPPLIER_PARTNER",
 ]);
+const REJECT_REASON_SET = new Set<RejectReasonCode>(Object.keys(rejectReasonLabels) as RejectReasonCode[]);
+const OPEN_LEAD_STATUSES = new Set<LeadStatus>(["NEW", "CONTACTED", "QUALIFIED", "ESTIMATE", "WAITING", "NO_ANSWER"]);
+const CANCELLED_LEAD_STATUSES = new Set<LeadStatus>(["LOST", "SPAM_WRONG", "SUPPLIER_PARTNER"]);
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -71,6 +80,28 @@ function numberValue(value: unknown, fallback = 0) {
 
 export function isLeadStatus(value: unknown): value is LeadStatus {
   return typeof value === "string" && LEAD_STATUS_SET.has(value as LeadStatus);
+}
+
+function rejectReasonValue(value: unknown): RejectReasonCode | null {
+  return typeof value === "string" && REJECT_REASON_SET.has(value as RejectReasonCode) ? value as RejectReasonCode : null;
+}
+
+export function leadBusinessStatus(value: Lead | LeadStatus): LeadBusinessStatus | "HANDOFF" {
+  const status = typeof value === "string" ? value : value.status;
+  if (OPEN_LEAD_STATUSES.has(status)) return "NEW";
+  if (status === "BOOKED") return "BOOKED";
+  if (CANCELLED_LEAD_STATUSES.has(status)) return "CANCELLED";
+  return "HANDOFF";
+}
+
+export function isLeadInBusinessInbox(lead: Lead) {
+  return leadBusinessStatus(lead) !== "HANDOFF";
+}
+
+export function businessStatusLabel(lead: Lead) {
+  const state = leadBusinessStatus(lead);
+  if (state === "HANDOFF") return "Передано в сервіс";
+  return leadColumns.find((column) => column.key === state)?.statusLabel || state;
 }
 
 function parseUserOption(value: unknown): UserOption | null {
@@ -110,6 +141,7 @@ function parseLead(value: unknown): Lead | null {
     phone,
     phoneNormalized,
     status: value.status,
+    rejectReason: rejectReasonValue(value.rejectReason),
     source: stringValue(value.source, "OTHER"),
     carBrand: nullableString(value.carBrand),
     carModel: nullableString(value.carModel),
@@ -183,7 +215,7 @@ export function carLabel(lead: Lead) {
 }
 
 export function isOverdue(lead: Lead, slaMinutes: number) {
-  if (["BOOKED", "ARRIVED", "LOST", "SPAM_WRONG", "SUPPLIER_PARTNER"].includes(lead.status)) return false;
+  if (leadBusinessStatus(lead) !== "NEW") return false;
   const stale = Date.now() - new Date(lead.lastActivityAt).getTime() > slaMinutes * 60_000;
   const followup = lead.nextContactAt ? new Date(lead.nextContactAt).getTime() < Date.now() : false;
   return stale || followup;
