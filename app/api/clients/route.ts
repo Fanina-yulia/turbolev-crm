@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { toClientDirectoryItem } from "@/src/lib/contracts/crm-core.server";
 import { getPrisma } from "@/src/lib/prisma";
+import { authorize } from "@/src/security/authorize";
+import { PERMISSIONS } from "@/src/security/permissions";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -40,7 +42,93 @@ const vehicleOwnerWhere = {
   vehicles: { some: {} },
 } as const;
 
+async function scopedClientIds(
+  scope: string | null,
+  context: Awaited<ReturnType<typeof authorize>>["context"],
+) {
+  if (scope === "ALL") return null;
+  const prisma = getPrisma();
+  const ids = new Set<string>();
+
+  if (scope === "LOCATION") {
+    if (!context.locationIds.length) return [];
+    const [appointments, assignments] = await Promise.all([
+      prisma.serviceAppointment.findMany({
+        where: { locationId: { in: context.locationIds }, clientId: { not: null } },
+        select: { clientId: true },
+        distinct: ["clientId"],
+        take: 5000,
+      }),
+      prisma.diagnosticAssignment.findMany({
+        where: { locationId: { in: context.locationIds } },
+        select: { diagnosticRequestId: true },
+        take: 5000,
+      }),
+    ]);
+    for (const row of appointments) if (row.clientId) ids.add(row.clientId);
+    if (assignments.length) {
+      const diagnostics = await prisma.diagnosticRequest.findMany({
+        where: { id: { in: assignments.map((row) => row.diagnosticRequestId) } },
+        select: { clientId: true },
+        distinct: ["clientId"],
+        take: 5000,
+      });
+      for (const row of diagnostics) ids.add(row.clientId);
+    }
+    return [...ids];
+  }
+
+  if (scope === "TEAM") {
+    const userId = context.user?.id;
+    if (!userId) return [];
+    const [leadPhones, appointments, calls, diagnostics] = await Promise.all([
+      prisma.lead.findMany({
+        where: { assignedUserId: userId },
+        select: { phoneNormalized: true },
+        distinct: ["phoneNormalized"],
+        take: 5000,
+      }),
+      prisma.serviceAppointment.findMany({
+        where: { createdById: userId, clientId: { not: null } },
+        select: { clientId: true },
+        distinct: ["clientId"],
+        take: 5000,
+      }),
+      prisma.callHistory.findMany({
+        where: { managerId: userId, clientId: { not: null } },
+        select: { clientId: true },
+        distinct: ["clientId"],
+        take: 5000,
+      }),
+      prisma.diagnosticRequest.findMany({
+        where: { lead: { assignedUserId: userId } },
+        select: { clientId: true },
+        distinct: ["clientId"],
+        take: 5000,
+      }),
+    ]);
+    for (const row of appointments) if (row.clientId) ids.add(row.clientId);
+    for (const row of calls) if (row.clientId) ids.add(row.clientId);
+    for (const row of diagnostics) ids.add(row.clientId);
+    const phones = leadPhones.map((row) => row.phoneNormalized).filter(Boolean);
+    if (phones.length) {
+      const clients = await prisma.client.findMany({
+        where: { phoneNormalized: { in: phones } },
+        select: { id: true },
+        take: 5000,
+      });
+      for (const row of clients) ids.add(row.id);
+    }
+    return [...ids];
+  }
+
+  return [];
+}
+
 export async function GET(request: NextRequest) {
+  const access = await authorize(PERMISSIONS.CLIENTS_READ, { strict: true, request, minimumScope: "TEAM" });
+  if (!access.allowed) return access.response!;
+
   const prisma = getPrisma();
   const q = (request.nextUrl.searchParams.get("q") || "").trim();
   const phoneDigits = q.replace(/\D/g, "");
@@ -49,9 +137,12 @@ export async function GET(request: NextRequest) {
   const page = clampInt(request.nextUrl.searchParams.get("page"), 1, 1, 100_000);
 
   try {
+    const allowedClientIds = await scopedClientIds(access.grantedScope, access.context);
+    const scopeWhere = allowedClientIds === null ? {} : { id: { in: allowedClientIds } };
+
     if (id) {
       const client = await prisma.client.findFirst({
-        where: { id, ...vehicleOwnerWhere },
+        where: { AND: [{ id }, vehicleOwnerWhere, scopeWhere] },
         select: clientSelect,
       });
       if (!client) return NextResponse.json({ ok: false, error: "Клієнта не знайдено." }, { status: 404 });
@@ -64,20 +155,18 @@ export async function GET(request: NextRequest) {
     // A contact belongs in the client directory as soon as an actual vehicle is
     // linked to that Client. Call-only / price-only contacts without a vehicle
     // stay in Communications/Leads and do not pollute the customer directory.
-    const where = {
-      ...vehicleOwnerWhere,
-      ...(q ? {
-        OR: [
-          { name: { contains: q, mode: "insensitive" as const } },
-          { phone: { contains: q } },
-          ...(phoneDigits ? [{ phoneNormalized: { contains: phoneDigits } }] : []),
-          { vehicles: { some: { plateNumber: { contains: q, mode: "insensitive" as const } } } },
-          { vehicles: { some: { vin: { contains: q, mode: "insensitive" as const } } } },
-          { vehicles: { some: { brand: { contains: q, mode: "insensitive" as const } } } },
-          { vehicles: { some: { model: { contains: q, mode: "insensitive" as const } } } },
-        ],
-      } : {}),
-    };
+    const queryWhere = q ? {
+      OR: [
+        { name: { contains: q, mode: "insensitive" as const } },
+        { phone: { contains: q } },
+        ...(phoneDigits ? [{ phoneNormalized: { contains: phoneDigits } }] : []),
+        { vehicles: { some: { plateNumber: { contains: q, mode: "insensitive" as const } } } },
+        { vehicles: { some: { vin: { contains: q, mode: "insensitive" as const } } } },
+        { vehicles: { some: { brand: { contains: q, mode: "insensitive" as const } } } },
+        { vehicles: { some: { model: { contains: q, mode: "insensitive" as const } } } },
+      ],
+    } : {};
+    const where = { AND: [vehicleOwnerWhere, scopeWhere, queryWhere] };
 
     const total = await prisma.client.count({ where });
     const pages = Math.max(1, Math.ceil(total / limit));
