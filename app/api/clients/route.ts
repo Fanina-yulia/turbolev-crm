@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import { PlannerAppointmentStatus } from "@/src/generated/prisma/client";
 import { toClientDirectoryItem } from "@/src/lib/contracts/crm-core.server";
 import { getPrisma } from "@/src/lib/prisma";
 
@@ -37,35 +36,24 @@ const clientSelect = {
   },
 } as const;
 
-const NON_CLIENT_APPOINTMENT_STATUSES: PlannerAppointmentStatus[] = [
-  PlannerAppointmentStatus.RESERVE,
-  PlannerAppointmentStatus.CANCELLED,
-  PlannerAppointmentStatus.NO_SHOW,
-];
-
-const qualifyingAppointmentWhere = {
-  clientId: { not: null },
-  vehicleId: { not: null },
-  status: { notIn: NON_CLIENT_APPOINTMENT_STATUSES },
+const vehicleOwnerWhere = {
+  vehicles: { some: {} },
 } as const;
 
 export async function GET(request: NextRequest) {
   const prisma = getPrisma();
   const q = (request.nextUrl.searchParams.get("q") || "").trim();
+  const phoneDigits = q.replace(/\D/g, "");
   const id = (request.nextUrl.searchParams.get("id") || "").trim();
   const limit = clampInt(request.nextUrl.searchParams.get("limit"), 24, 1, 100);
   const page = clampInt(request.nextUrl.searchParams.get("page"), 1, 1, 100_000);
 
   try {
     if (id) {
-      const qualifyingAppointment = await prisma.serviceAppointment.findFirst({
-        where: { ...qualifyingAppointmentWhere, clientId: id },
-        select: { id: true },
+      const client = await prisma.client.findFirst({
+        where: { id, ...vehicleOwnerWhere },
+        select: clientSelect,
       });
-      if (!qualifyingAppointment) {
-        return NextResponse.json({ ok: false, error: "Клієнта не знайдено." }, { status: 404 });
-      }
-      const client = await prisma.client.findUnique({ where: { id }, select: clientSelect });
       if (!client) return NextResponse.json({ ok: false, error: "Клієнта не знайдено." }, { status: 404 });
       return NextResponse.json(
         { ok: true, client: toClientDirectoryItem(client) },
@@ -73,30 +61,16 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // The client directory is intentionally narrower than the raw Client table.
-    // A contact becomes a CRM client here only after an actual vehicle is linked
-    // and that vehicle/client pair has entered the service planner.
-    const plannedClients = await prisma.serviceAppointment.findMany({
-      where: qualifyingAppointmentWhere,
-      distinct: ["clientId"],
-      select: { clientId: true },
-    });
-    const plannedClientIds = plannedClients.flatMap((row) => row.clientId ? [row.clientId] : []);
-
-    if (!plannedClientIds.length) {
-      return NextResponse.json(
-        { ok: true, total: 0, page: 1, limit, pages: 1, clients: [] },
-        { headers: { "Cache-Control": "no-store" } },
-      );
-    }
-
+    // A contact belongs in the client directory as soon as an actual vehicle is
+    // linked to that Client. Call-only / price-only contacts without a vehicle
+    // stay in Communications/Leads and do not pollute the customer directory.
     const where = {
-      id: { in: plannedClientIds },
-      vehicles: { some: {} },
+      ...vehicleOwnerWhere,
       ...(q ? {
         OR: [
           { name: { contains: q, mode: "insensitive" as const } },
           { phone: { contains: q } },
+          ...(phoneDigits ? [{ phoneNormalized: { contains: phoneDigits } }] : []),
           { vehicles: { some: { plateNumber: { contains: q, mode: "insensitive" as const } } } },
           { vehicles: { some: { vin: { contains: q, mode: "insensitive" as const } } } },
           { vehicles: { some: { brand: { contains: q, mode: "insensitive" as const } } } },
