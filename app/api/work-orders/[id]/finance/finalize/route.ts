@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { WorkOrderFinanceValidationError } from "@/src/domain/work-order-finance";
+import { PERMISSIONS } from "@/src/security/permissions";
+import { authorizeWorkOrderRecord } from "@/src/security/work-order-scope";
 import {
   finalizeWorkOrderFinance,
   WorkOrderFinanceError,
@@ -31,19 +33,20 @@ function errorResponse(error: unknown) {
 
 export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
   const { id } = await context.params;
+  const access = await authorizeWorkOrderRecord(PERMISSIONS.FINANCE_WRITE, request, id);
+  if (!access.allowed) return access.response;
+
   try {
     const body = (await request.json()) as Record<string, unknown>;
-    const actorName = typeof body.actorName === "string" && body.actorName.trim()
-      ? body.actorName.trim().slice(0, 120)
-      : "CRM / Сервіс-менеджер";
-
-    const result = await hasWorkOrderLines(id)
+    const actorName = access.context.user?.name || access.context.user?.email || "CRM / Фінанси";
+    const usesLines = await hasWorkOrderLines(id);
+    const result = usesLines
       ? await finalizeWorkOrderFinanceFromLines(id, body, actorName)
       : await finalizeWorkOrderFinance(id, body, actorName);
 
     return NextResponse.json({
       ok: true,
-      sourceOfTruth: await hasWorkOrderLines(id) ? "WORK_ORDER_LINES" : "LEGACY_FINANCE_INPUT",
+      sourceOfTruth: usesLines ? "WORK_ORDER_LINES" : "LEGACY_FINANCE_INPUT",
       ...result,
     });
   } catch (error) {
