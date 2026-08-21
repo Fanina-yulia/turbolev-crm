@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAccessContext, hasPermission } from "@/src/security/access-context";
 import { PERMISSIONS, type AccessScopeCode, type PermissionCode } from "@/src/security/permissions";
+import { supplementAttentionCenter } from "@/src/services/attention-center-supplement.service";
 import { buildAttentionCenter } from "@/src/services/attention-center.service";
 import { createManualTask, listTasksForUser } from "@/src/services/tasks.service";
 
@@ -37,17 +38,25 @@ export async function GET(request: NextRequest) {
     if (!auth.ok) return NextResponse.json({ ok: false, error: "Access denied" }, { status: auth.status });
 
     const tasks = await listTasksForUser(auth.userId);
-    const attention = await buildAttentionCenter({
+    const canPlanner = can(context, PERMISSIONS.PLANNER_READ);
+    const plannerLocationIds = locationIdsFor(context, PERMISSIONS.PLANNER_READ);
+    const canPayrollNetwork = hasNetworkPayrollAccess(context);
+    const baseAttention = await buildAttentionCenter({
       userId: auth.userId,
       tasks,
       canCommunications: can(context, PERMISSIONS.COMMUNICATIONS_READ),
-      canPlanner: can(context, PERMISSIONS.PLANNER_READ),
+      canPlanner,
       canProcurement: can(context, PERMISSIONS.PROCUREMENT_READ),
       canFinance: can(context, PERMISSIONS.FINANCE_READ),
-      canPayrollNetwork: hasNetworkPayrollAccess(context),
-      plannerLocationIds: locationIdsFor(context, PERMISSIONS.PLANNER_READ),
+      canPayrollNetwork,
+      plannerLocationIds,
       procurementLocationIds: locationIdsFor(context, PERMISSIONS.PROCUREMENT_READ),
       financeLocationIds: locationIdsFor(context, PERMISSIONS.FINANCE_READ),
+    });
+    const attention = await supplementAttentionCenter(baseAttention, {
+      canPlanner,
+      plannerLocationIds,
+      canPayrollNetwork,
     });
 
     return NextResponse.json({
