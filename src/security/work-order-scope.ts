@@ -1,5 +1,6 @@
 import "server-only";
 
+import type { Prisma } from "@/src/generated/prisma/client";
 import { getPrisma } from "@/src/lib/prisma";
 import type { AccessContext } from "@/src/security/access-context";
 import type { AccessScopeCode } from "@/src/security/permissions";
@@ -47,7 +48,7 @@ export async function resolveVisibleWorkOrderIds(context: AccessContext, scope: 
     const mechanicIds = mechanics.map((row) => row.id);
     const leadIds = assignedLeads.map((row) => row.id);
 
-    const assignmentClauses: Array<Record<string, unknown>> = [{ createdById: userId }];
+    const assignmentClauses: Prisma.ServiceAppointmentWhereInput[] = [{ createdById: userId }];
     if (leadIds.length) assignmentClauses.push({ leadId: { in: leadIds } });
     if (mechanicIds.length) assignmentClauses.push({ mechanicId: { in: mechanicIds } });
 
@@ -64,7 +65,7 @@ export async function resolveVisibleWorkOrderIds(context: AccessContext, scope: 
             select: { id: true },
             take: 10000,
           })
-        : Promise.resolve([]),
+        : Promise.resolve([] as Array<{ id: string }>),
     ]);
 
     for (const row of appointments) if (row.workOrderId) ids.add(row.workOrderId);
