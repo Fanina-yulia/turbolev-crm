@@ -350,16 +350,16 @@ export async function getClientGarageSnapshot(clientId: string): Promise<ClientG
     const activeAppointment = vehicleAppointments.find((item) => !["COMPLETED", "CANCELLED", "NO_SHOW"].includes(String(item.status))) || null;
 
     let statusCode = "OUTSIDE_SERVICE";
-    let status = { label: "Поза СТО", tone: "neutral" as const };
+    let status: { label: string; tone: ClientGarageVehicle["status"]["tone"] } = { label: "Поза СТО", tone: "neutral" };
     if (activeWorkOrder) {
       statusCode = activeWorkOrder.status;
-      status = WORK_ORDER_STATUS[statusCode] || { label: "В роботі", tone: "info" as const };
+      status = WORK_ORDER_STATUS[statusCode] || { label: "В роботі", tone: "info" };
     } else if (activeDiagnostic) {
       statusCode = String(activeDiagnostic.status);
-      status = DIAGNOSTIC_STATUS[statusCode] || { label: "Діагностика", tone: "info" as const };
+      status = DIAGNOSTIC_STATUS[statusCode] || { label: "Діагностика", tone: "info" };
     } else if (activeAppointment) {
       statusCode = String(activeAppointment.status);
-      status = APPOINTMENT_STATUS[statusCode] || { label: "Заплановано", tone: "info" as const };
+      status = APPOINTMENT_STATUS[statusCode] || { label: "Заплановано", tone: "info" };
     }
 
     const appointmentForCurrent = activeWorkOrder
