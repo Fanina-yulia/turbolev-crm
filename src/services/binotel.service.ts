@@ -1,3 +1,4 @@
+import { PRIMARY_BINOTEL_PBX_NUMBER } from "@/src/domain/binotel-config";
 import { getIntegrationCredential } from "@/src/services/integration-credentials.service";
 
 export type BinotelJson = Record<string, unknown>;
@@ -11,7 +12,6 @@ export interface BinotelApiResponse extends BinotelJson {
 export interface SendCallInput {
   internalNumber: string;
   externalNumber: string;
-  pbxNumber?: string | null;
   async?: boolean;
 }
 
@@ -35,7 +35,6 @@ export type BinotelServiceConfig = {
   wsKey?: string;
   wsSecret?: string;
   wsUrl?: string;
-  outboundPbxNumber?: string;
 };
 
 export class BinotelConfigurationError extends Error {
@@ -99,7 +98,6 @@ export class BinotelService {
   private readonly wsKey?: string;
   private readonly wsSecret?: string;
   private readonly wsUrl: string;
-  private readonly outboundPbxNumber?: string;
 
   readonly companyId: string | undefined;
 
@@ -113,7 +111,6 @@ export class BinotelService {
     this.wsKey = config.wsKey?.trim() || undefined;
     this.wsSecret = config.wsSecret?.trim() || undefined;
     this.wsUrl = config.wsUrl?.trim() || process.env.BINOTEL_WS_URL?.trim() || "wss://ws.binotel.com:9002";
-    this.outboundPbxNumber = config.outboundPbxNumber?.trim() || undefined;
   }
 
   private async request<T extends BinotelApiResponse>(method: string, params: BinotelJson = {}): Promise<T> {
@@ -147,15 +144,14 @@ export class BinotelService {
     }
   }
 
-  async sendCall({ internalNumber, externalNumber, pbxNumber, async = true }: SendCallInput) {
+  async sendCall({ internalNumber, externalNumber, async = true }: SendCallInput) {
     if (!internalNumber.trim()) throw new TypeError("internalNumber is required");
     const normalizedExternalNumber = normalizePhone(externalNumber);
     if (!normalizedExternalNumber) throw new TypeError("externalNumber is required");
-    const outboundNumber = pbxNumber?.trim() || this.outboundPbxNumber;
     return this.request<BinotelApiResponse>("calls/internal-number-to-external-number", {
       internalNumber: internalNumber.trim(),
       externalNumber: normalizedExternalNumber,
-      ...(outboundNumber ? { pbxNumber: outboundNumber } : {}),
+      pbxNumber: PRIMARY_BINOTEL_PBX_NUMBER,
       async,
     });
   }
@@ -238,7 +234,6 @@ async function configuredService() {
     wsKey: stored?.wsKey || process.env.BINOTEL_WS_KEY,
     wsSecret: stored?.wsSecret || process.env.BINOTEL_WS_SECRET,
     wsUrl: process.env.BINOTEL_WS_URL,
-    outboundPbxNumber: stored?.pbxNumber || process.env.BINOTEL_PBX_NUMBER,
   });
 }
 
