@@ -1,8 +1,11 @@
 import assert from "node:assert/strict";
+import { PRIMARY_BINOTEL_PBX_NUMBER } from "@/src/domain/binotel-config";
 import { CallType } from "@/src/generated/prisma/client";
 import { BinotelService } from "@/src/services/binotel.service";
 import { inflateBinotelFormEntries, requiresBinotelSuccessAck } from "@/src/services/binotel-webhook-payload";
 import { parseBinotelWebhook } from "@/src/services/binotel-webhook.service";
+
+assert.equal(PRIMARY_BINOTEL_PBX_NUMBER, "0983415646", "CRM must use the approved single Binotel PBX number");
 
 const completedBody = new URLSearchParams(
   "requestType=apiCallCompleted&attemptsCounter=3&callDetails%5BcompanyID%5D=32860&callDetails%5BgeneralCallID%5D=3141127535&callDetails%5BcallID%5D=3141127535&callDetails%5BstartTime%5D=1639667705&callDetails%5BcallType%5D=0&callDetails%5BinternalNumber%5D=901&callDetails%5BexternalNumber%5D=0689532858&callDetails%5Bbillsec%5D=0&callDetails%5Bdisposition%5D=CANCEL&callDetails%5BemployeeData%5D%5Bemail%5D=manager%40alta-profil.ua&callDetails%5BhistoryData%5D%5B0%5D%5Bwaitsec%5D=30&callDetails%5BhistoryData%5D%5B0%5D%5Bdisposition%5D=CANCEL",
@@ -59,7 +62,6 @@ try {
     apiSecret: "test-secret",
     apiBaseUrl: "https://api.example.test/api",
     apiVersion: "4.0",
-    outboundPbxNumber: "0440000000",
   });
 
   await service.sendCall({ internalNumber: "901", externalNumber: "+38 (067) 123-45-67" });
@@ -73,7 +75,7 @@ try {
   assert.match(requests[0].url, /calls\/internal-number-to-external-number\.json$/);
   assert.equal(requests[0].payload.internalNumber, "901");
   assert.equal(requests[0].payload.externalNumber, "+380671234567");
-  assert.equal(requests[0].payload.pbxNumber, "0440000000");
+  assert.equal(requests[0].payload.pbxNumber, PRIMARY_BINOTEL_PBX_NUMBER);
   assert.equal(requests[0].payload.async, true);
 
   assert.match(requests[1].url, /calls\/hangup-call\.json$/);
