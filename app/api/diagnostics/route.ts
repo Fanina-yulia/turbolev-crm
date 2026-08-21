@@ -10,7 +10,7 @@ export const maxDuration = 30;
 
 export async function GET(request: NextRequest) {
   try {
-    const access = await authorize(PERMISSIONS.DIAGNOSTICS_READ, { request, minimumScope: "SELF" });
+    const access = await authorize(PERMISSIONS.DIAGNOSTICS_READ, { strict: true, request, minimumScope: "SELF" });
     if (!access.allowed) return access.response!;
     const rawStatus = request.nextUrl.searchParams.get("status");
     const status = rawStatus ? parseDiagnosticStatus(rawStatus) : null;
@@ -18,7 +18,7 @@ export async function GET(request: NextRequest) {
     const limitRaw = Number(request.nextUrl.searchParams.get("limit") || 200);
     let diagnostics = await listDiagnostics({ status, limit: Number.isFinite(limitRaw) ? limitRaw : 200 });
 
-    if (!access.shadowBypass && access.grantedScope !== "ALL") {
+    if (access.grantedScope !== "ALL") {
       const prisma = getPrisma();
       if (access.context.roles.some((role) => role.code === "MECHANIC") && access.context.user) {
         const mechanic = await prisma.serviceMechanic.findFirst({ where: { userId: access.context.user.id, isActive: true }, select: { id: true } });
