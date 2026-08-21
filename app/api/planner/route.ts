@@ -15,7 +15,7 @@ function invalidDate(message: string) {
   return NextResponse.json({ status: "INVALID_RANGE", message }, { status: 400 });
 }
 
-async function resolvePlannerScope(access: Awaited<ReturnType<typeof authorize>>) {
+async function resolvePlannerReadScope(access: Awaited<ReturnType<typeof authorize>>) {
   if (access.grantedScope === "ALL") {
     return { allowedLocationIds: null as string[] | null, mechanicIds: null as string[] | null };
   }
@@ -41,6 +41,10 @@ async function resolvePlannerScope(access: Awaited<ReturnType<typeof authorize>>
   return { allowedLocationIds: [] as string[], mechanicIds: [] as string[] };
 }
 
+function allowedWriteLocations(access: Awaited<ReturnType<typeof authorize>>) {
+  return access.grantedScope === "ALL" ? null : access.context.locationIds;
+}
+
 function scopeDenied(message = "Ця локація не входить до Вашого доступу.") {
   return NextResponse.json({ status: "FORBIDDEN", message }, { status: 403 });
 }
@@ -58,7 +62,7 @@ export async function GET(request: Request) {
     return invalidDate("Передайте коректний часовий діапазон планувальника.");
   }
 
-  const scope = await resolvePlannerScope(access);
+  const scope = await resolvePlannerReadScope(access);
   if (scope.allowedLocationIds !== null && !scope.allowedLocationIds.length) {
     return NextResponse.json({ status: "OK", locations: [], activeLocationId: null, appointments: [] }, { headers: { "Cache-Control": "no-store" } });
   }
@@ -90,9 +94,9 @@ export async function POST(request: Request) {
   try {
     const body = (await request.json()) as Record<string, unknown>;
     const input = normalizeAppointmentPayload(body);
-    const scope = await resolvePlannerScope(access);
+    const locations = allowedWriteLocations(access);
 
-    if (scope.allowedLocationIds !== null && !scope.allowedLocationIds.includes(input.locationId)) {
+    if (locations !== null && !locations.includes(input.locationId)) {
       return scopeDenied();
     }
 
