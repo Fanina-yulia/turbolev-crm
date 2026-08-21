@@ -94,7 +94,11 @@ export async function appendWalkInAttention(center: AttentionCenterResult, optio
         select: { sourceEntityId: true, amount: true, currency: true, occurredAt: true },
       })
     : [];
-  const payments = new Map(paymentRows.map((row) => [row.sourceEntityId.replace(/:payment$/, ""), row]));
+  const payments = new Map(
+    paymentRows.flatMap((row) => row.sourceEntityId
+      ? [[row.sourceEntityId.replace(/:payment$/, ""), row] as const]
+      : []),
+  );
   const existingIds = new Set(center.signals.map((signal) => signal.id));
   const extras: AttentionSignal[] = [];
 
