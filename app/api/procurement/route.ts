@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { getPrisma } from "@/src/lib/prisma";
-import { getAccessContext, hasPermission, type AccessContext } from "@/src/security/access-context";
+import { hasPermission, type AccessContext } from "@/src/security/access-context";
 import { PERMISSIONS, type AccessScopeCode } from "@/src/security/permissions";
+import { authorizeScopedLocation, type ScopedLocationAccess } from "@/src/security/scoped-location-access";
 import { transitionPartsRequest, updatePartsRequest, updatePartsRequestItem, WorkOrderCommercialError } from "@/src/services/work-order-commercial.service";
 
 export const runtime = "nodejs";
@@ -17,7 +18,7 @@ const TARGETS: Record<string, string> = {
   MARK_ORDERED: "ORDERED",
 };
 
-function scopeRank(scope: AccessScopeCode | undefined) {
+function scopeRank(scope: AccessScopeCode | undefined | null) {
   return scope === "ALL" ? 5 : scope === "LOCATION" ? 4 : scope === "TEAM" ? 3 : scope === "ASSIGNED" ? 2 : scope === "SELF" ? 1 : 0;
 }
 
@@ -38,32 +39,34 @@ function category(status: string) {
   return "RECEIVED";
 }
 
-async function verifyProcurementAccess(request: Request, write = false) {
-  const context = await getAccessContext(request);
-  const permission = write ? PERMISSIONS.PROCUREMENT_WRITE : PERMISSIONS.PROCUREMENT_READ;
-  if (context.enforcementMode === "ENFORCED") {
-    if (!context.authenticated) return { context, error: NextResponse.json({ ok: false, error: "UNAUTHENTICATED" }, { status: 401 }) };
-    if (context.provisioningState !== "ACTIVE" || !context.user) return { context, error: NextResponse.json({ ok: false, error: "ACCESS_PROFILE_INACTIVE" }, { status: 403 }) };
-    if (!hasPermission(context, permission)) return { context, error: NextResponse.json({ ok: false, error: "FORBIDDEN" }, { status: 403 }) };
-  }
-  return { context, error: null };
+function requestedLocation(request: Request) {
+  return new URL(request.url).searchParams.get("locationId")?.trim() || null;
 }
 
-async function resolveScope(request: Request, context: AccessContext) {
+async function verifyProcurementAccess(request: Request, write = false) {
+  const permission = write ? PERMISSIONS.PROCUREMENT_WRITE : PERMISSIONS.PROCUREMENT_READ;
+  const decision = await authorizeScopedLocation(permission, request, requestedLocation(request));
+  if (!decision.ok) return { access: null, error: decision.response };
+  return { access: decision, error: null };
+}
+
+async function resolveScope(access: ScopedLocationAccess) {
   const prisma = getPrisma();
-  const requestedLocationId = new URL(request.url).searchParams.get("locationId")?.trim() || null;
-  const scope = context.permissions[PERMISSIONS.PROCUREMENT_READ] as AccessScopeCode | undefined;
-  const activeUser = context.provisioningState === "ACTIVE" && context.user ? context.user : null;
-  const canSeeAll = !activeUser || scopeRank(scope) >= scopeRank("ALL");
-  const allowedIds = new Set(context.locationIds);
   const allLocations = await prisma.serviceLocation.findMany({
     where: { isActive: true },
     select: { id: true, name: true, timezone: true },
     orderBy: { sortOrder: "asc" },
   });
-  const locations = canSeeAll ? allLocations : allLocations.filter((location) => allowedIds.has(location.id));
-  const locationId = requestedLocationId && locations.some((location) => location.id === requestedLocationId) ? requestedLocationId : locations[0]?.id ?? null;
+  const allowedIds = access.allowedLocationIds ? new Set(access.allowedLocationIds) : null;
+  const locations = allowedIds ? allLocations.filter((location) => allowedIds.has(location.id)) : allLocations;
+  const locationId = access.requestedLocationId ?? locations[0]?.id ?? null;
   return { locationId, locations };
+}
+
+function canWriteProcurement(context: AccessContext) {
+  if (!hasPermission(context, PERMISSIONS.PROCUREMENT_WRITE)) return false;
+  const scope = context.permissions[PERMISSIONS.PROCUREMENT_WRITE] as AccessScopeCode | undefined;
+  return scopeRank(scope) >= scopeRank("LOCATION");
 }
 
 async function verifyRequestLocation(partsRequestId: string, locationId: string) {
@@ -76,10 +79,11 @@ async function verifyRequestLocation(partsRequestId: string, locationId: string)
 
 export async function GET(request: Request) {
   try {
-    const access = await verifyProcurementAccess(request, false);
-    if (access.error) return access.error;
+    const guard = await verifyProcurementAccess(request, false);
+    if (guard.error || !guard.access) return guard.error!;
+    const access = guard.access;
     const prisma = getPrisma();
-    const scope = await resolveScope(request, access.context);
+    const scope = await resolveScope(access);
     if (!scope.locationId) return NextResponse.json({ ok: true, location: null, locations: [], cards: [], canWrite: false });
     const location = scope.locations.find((item) => item.id === scope.locationId)!;
 
@@ -92,7 +96,7 @@ export async function GET(request: Request) {
     const appointmentMap = new Map<string, (typeof appointments)[number]>();
     for (const appointment of appointments) if (appointment.workOrderId && !appointmentMap.has(appointment.workOrderId)) appointmentMap.set(appointment.workOrderId, appointment);
     const workOrderIds = [...appointmentMap.keys()];
-    if (!workOrderIds.length) return NextResponse.json({ ok: true, location, locations: scope.locations, cards: [], canWrite: access.context.enforcementMode !== "ENFORCED" || hasPermission(access.context, PERMISSIONS.PROCUREMENT_WRITE) });
+    if (!workOrderIds.length) return NextResponse.json({ ok: true, location, locations: scope.locations, cards: [], canWrite: canWriteProcurement(access.context) });
 
     const partsRequests = await prisma.partsRequest.findMany({
       where: { workOrderId: { in: workOrderIds }, status: { in: [...ACTIVE_STATUSES] } },
@@ -110,7 +114,7 @@ export async function GET(request: Request) {
     ]);
     const workOrderMap = new Map(workOrders.map((item) => [item.id, item]));
     const numberMap = new Map(numberRows.map((item) => [item.workOrderId, item.number]));
-    const supplierIds = [...new Set(partsRequests.flatMap((request) => request.items.map((item) => item.supplierId).filter((id): id is string => Boolean(id))))];
+    const supplierIds = [...new Set(partsRequests.flatMap((requestRow) => requestRow.items.map((item) => item.supplierId).filter((id): id is string => Boolean(id))))];
     const suppliers = supplierIds.length ? await prisma.supplier.findMany({ where: { id: { in: supplierIds } }, select: { id: true, name: true, code: true } }) : [];
     const supplierMap = new Map(suppliers.map((supplier) => [supplier.id, supplier]));
 
@@ -159,7 +163,7 @@ export async function GET(request: Request) {
       location,
       locations: scope.locations,
       cards,
-      canWrite: access.context.enforcementMode !== "ENFORCED" || hasPermission(access.context, PERMISSIONS.PROCUREMENT_WRITE),
+      canWrite: canWriteProcurement(access.context),
     }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
     console.error("GET /api/procurement failed", error instanceof Error ? error.message : "unknown");
@@ -169,13 +173,14 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const access = await verifyProcurementAccess(request, true);
-    if (access.error) return access.error;
+    const guard = await verifyProcurementAccess(request, true);
+    if (guard.error || !guard.access) return guard.error!;
+    const access = guard.access;
     const body = await request.json().catch(() => ({})) as Record<string, unknown>;
     const partsRequestId = typeof body.partsRequestId === "string" ? body.partsRequestId.trim() : "";
     const action = typeof body.action === "string" ? body.action.trim().toUpperCase() : "";
     if (!partsRequestId || !action) return NextResponse.json({ ok: false, error: "Некоректна складська дія." }, { status: 400 });
-    const scope = await resolveScope(request, access.context);
+    const scope = await resolveScope(access);
     if (!scope.locationId || !(await verifyRequestLocation(partsRequestId, scope.locationId))) return NextResponse.json({ ok: false, error: "Ця заявка не входить до Вашої станції." }, { status: 403 });
     const actorName = access.context.user?.employeeName || access.context.user?.name || "CRM / Закупівлі та склад";
 

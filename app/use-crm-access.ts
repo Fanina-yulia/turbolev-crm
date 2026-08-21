@@ -31,10 +31,12 @@ export function useCrmAccess(){
   const enforced=snapshot?.enforcementMode==="ENFORCED";
   const activeUser=snapshot?.provisioningState==="ACTIVE";
   const can=useMemo(()=>((permission:PermissionCode)=>{
-    if(!enforced)return true;
+    // Security is fail-closed in both SHADOW and ENFORCED. SHADOW is now only
+    // a diagnostic logging mode, so the navigation must never expose modules
+    // that the server would deny for the current user.
     if(!activeUser)return false;
     return Boolean(snapshot?.permissions?.[permission]);
-  }),[enforced,activeUser,snapshot]);
+  }),[activeUser,snapshot]);
   const canOpenCabinet=(slug:string)=>{const permission=NAV_PERMISSION[slug];return permission?can(permission):true;};
   const primaryRole=snapshot?.roles.find(role=>role.isPrimary)||snapshot?.roles[0]||null;
   return {snapshot,loaded,enforced:Boolean(enforced),activeUser:Boolean(activeUser),primaryRole,can,canOpenCabinet};
