@@ -8,7 +8,7 @@
       "title": "Core / Platform",
       "description": "Authentication, shell, routing, shared libraries, security, database schema and deployment infrastructure.",
       "keywords": ["auth", "login", "routing", "shell", "permissions", "security", "prisma", "migration", "deployment", "task workspace", "terminology"],
-      "paths": ["app/layout.tsx", "app/page.tsx", "app/crm-shell.tsx", "app/active-terminology-bridge.tsx", "app/my-tasks*", "app/api/tasks/**", "app/auth/**", "app/cabinet-auto-router.tsx", "app/role-cabinet.tsx", "src/security/**", "src/lib/**", "src/services/attention-center*", "prisma/**", "scripts/build-production.mjs"],
+      "paths": ["app/layout.tsx", "app/page.tsx", "app/crm-shell.tsx", "app/active-terminology-bridge.tsx", "app/security-enforcement-control.tsx", "app/my-tasks*", "app/api/tasks/**", "app/auth/**", "app/cabinet-auto-router.tsx", "app/role-cabinet.tsx", "src/security/**", "src/lib/**", "src/services/attention-center*", "prisma/**", "scripts/build-production.mjs"],
       "dependencies": [],
       "smokeChecks": ["application-build", "authentication-redirect", "production-migration-status"]
     },
@@ -107,7 +107,7 @@
       "title": "Personnel & Access",
       "description": "Employees, categories, positions, role assignments, cabinet routing and authorization matrix.",
       "keywords": ["personnel", "employee", "staff", "position", "category", "role", "access", "permission"],
-      "paths": ["app/personnel*", "app/api/personnel/**", "app/api/access*/**", "src/services/personnel*", "src/security/**"],
+      "paths": ["app/personnel*", "app/security-enforcement-control.tsx", "app/api/personnel/**", "app/api/access*/**", "src/services/personnel*", "src/security/**"],
       "dependencies": ["core-platform", "planner", "mechanic-cabinet", "service-manager", "finance"],
       "smokeChecks": ["personnel-list", "employee-card", "role-assignment", "cabinet-routing", "permission-denials"]
     },
