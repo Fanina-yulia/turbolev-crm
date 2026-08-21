@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAccessContext, hasPermission } from "@/src/security/access-context";
-import { PERMISSIONS } from "@/src/security/permissions";
+import { PERMISSIONS, type AccessScopeCode, type PermissionCode } from "@/src/security/permissions";
+import { buildAttentionCenter } from "@/src/services/attention-center.service";
 import { createManualTask, listTasksForUser } from "@/src/services/tasks.service";
 
 export const runtime = "nodejs";
@@ -12,16 +13,52 @@ function authorizeTasks(context: Awaited<ReturnType<typeof getAccessContext>>) {
   return { ok: true as const, userId: context.user.id };
 }
 
+function can(context: Awaited<ReturnType<typeof getAccessContext>>, permission: PermissionCode) {
+  return context.enforcementMode !== "ENFORCED" || hasPermission(context, permission);
+}
+
+function locationIdsFor(context: Awaited<ReturnType<typeof getAccessContext>>, permission: PermissionCode): string[] | null {
+  if (context.enforcementMode !== "ENFORCED") return null;
+  const scope = context.permissions[permission] as AccessScopeCode | undefined;
+  if (scope === "ALL") return null;
+  return context.locationIds;
+}
+
+function hasNetworkPayrollAccess(context: Awaited<ReturnType<typeof getAccessContext>>) {
+  if (context.enforcementMode !== "ENFORCED") return true;
+  const candidates: PermissionCode[] = [PERMISSIONS.PAYROLL_ALL_READ, PERMISSIONS.PAYROLL_WRITE, PERMISSIONS.PAYROLL_CLOSE];
+  return candidates.some((permission) => hasPermission(context, permission) && context.permissions[permission] === "ALL");
+}
+
 export async function GET(request: NextRequest) {
   try {
     const context = await getAccessContext(request);
     const auth = authorizeTasks(context);
     if (!auth.ok) return NextResponse.json({ ok: false, error: "Access denied" }, { status: auth.status });
+
     const tasks = await listTasksForUser(auth.userId);
-    return NextResponse.json({ ok: true, tasks, serverTime: new Date().toISOString() });
+    const attention = await buildAttentionCenter({
+      userId: auth.userId,
+      tasks,
+      canCommunications: can(context, PERMISSIONS.COMMUNICATIONS_READ),
+      canPlanner: can(context, PERMISSIONS.PLANNER_READ),
+      canProcurement: can(context, PERMISSIONS.PROCUREMENT_READ),
+      canFinance: can(context, PERMISSIONS.FINANCE_READ),
+      canPayrollNetwork: hasNetworkPayrollAccess(context),
+      plannerLocationIds: locationIdsFor(context, PERMISSIONS.PLANNER_READ),
+      procurementLocationIds: locationIdsFor(context, PERMISSIONS.PROCUREMENT_READ),
+      financeLocationIds: locationIdsFor(context, PERMISSIONS.FINANCE_READ),
+    });
+
+    return NextResponse.json({
+      ok: true,
+      tasks,
+      attention,
+      serverTime: new Date().toISOString(),
+    }, { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) {
     console.error("GET /api/tasks failed", error);
-    return NextResponse.json({ ok: false, error: "Не вдалося завантажити задачі" }, { status: 500 });
+    return NextResponse.json({ ok: false, error: "Не вдалося завантажити центр уваги" }, { status: 500 });
   }
 }
 
