@@ -23,7 +23,7 @@ const checks = [
   { path: "app/api/analytics/diagnostics/route.ts", all: ["getAccessContext", "ANALYTICS_READ"] },
   { path: "app/api/analytics/finance/route.ts", all: ["getAccessContext", "ANALYTICS_READ", "ANALYTICS_FINANCIAL_READ"] },
   { path: "app/api/analytics/parts/route.ts", all: ["getAccessContext", "ANALYTICS_READ"] },
-  { path: "app/api/analytics/funnel-visuals/route.ts", all: ["ANALYTICS_READ", "authorize("] },
+  { path: "app/api/analytics/funnel-visuals/route.ts", all: ["ANALYTICS_READ", "authorizeScopedLocation("] },
 ];
 
 const failures = [];
