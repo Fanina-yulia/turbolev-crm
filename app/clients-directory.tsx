@@ -12,6 +12,7 @@ import { TelegramClientLinkCard } from "./telegram-client-link-card";
 import { BinotelClientCalls } from "./binotel-recordings";
 import { navigateCrm, readCrmRoute } from "./crm-route";
 import { VehicleRender } from "./vehicle-render";
+import ownerVehicleStyles from "./client-owner-vehicle-card.module.css";
 import styles from "./directory-pages.module.css";
 
 type Client = ClientDirectoryItem;
@@ -189,7 +190,7 @@ export function ClientsDirectory() {
           <div className={styles.drawerBody}>
             <section className={styles.panel}>
               <h3>Пов’язані автомобілі <span>{selected._count.vehicles}</span></h3>
-              {selected.vehicles.length ? <div className={styles.clientVehicleList}>{selected.vehicles.map((vehicle, index) => <button className={styles.clientVehicleCard} key={vehicle.id} onClick={() => navigateCrm("Авто", { vehicleId: vehicle.id })}>
+              {selected.vehicles.length ? <div className={styles.clientVehicleList}>{selected.vehicles.map((vehicle, index) => <button className={ownerVehicleStyles.card} key={vehicle.id} onClick={() => navigateCrm("Авто", { vehicleId: vehicle.id })}>
                 <VehicleRender
                   id={vehicle.id}
                   brand={vehicle.brand}
@@ -198,12 +199,12 @@ export function ClientsDirectory() {
                   size="card"
                   eager={index < 2}
                 />
-                <span className={styles.clientVehicleInfo}>
-                  <span className={styles.clientVehicleMake}>{vehicle.brand || "Марка не вказана"}</span>
-                  <strong className={styles.clientVehicleModel}>{vehicle.model || "Модель не вказана"}</strong>
-                  <small className={styles.clientVehiclePlate}>{vehicle.plateNumber || "Без держномера"}</small>
+                <span className={ownerVehicleStyles.info}>
+                  <span className={ownerVehicleStyles.make}>{vehicle.brand || "Марка не вказана"}</span>
+                  <strong className={ownerVehicleStyles.model}>{vehicle.model || "Модель не вказана"}</strong>
+                  <small className={ownerVehicleStyles.plate}>{vehicle.plateNumber || "Без держномера"}</small>
                 </span>
-                <span className={styles.clientVehicleChevron}>›</span>
+                <span className={ownerVehicleStyles.chevron}>›</span>
               </button>)}</div> : <div className={styles.emptyInline}>Автомобілі ще не додані.</div>}
             </section>
             <section className={styles.panel}>
