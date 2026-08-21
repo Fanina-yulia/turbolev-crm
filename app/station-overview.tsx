@@ -22,26 +22,63 @@ type DashboardData = {
     status:string;
     problem:string|null;
     plannedStartAt:string;
+    plannedEndAt:string;
     post:string|null;
     mechanic:string|null;
+    attentionLevel:"CRITICAL"|"HIGH"|"MEDIUM";
+    attentionTitle:string;
+    attentionReason:string;
+    nextAction:string;
+    attentionAt:string;
+    issueCount:number;
+    issues:Array<{code:string;title:string;reason:string;action:string;level:string;dueAt:string}>;
   }>;
 };
 
 type WorkflowRoute = { name:string; value:number|string; sub:string; section:CrmSectionLabel; params?:CrmRouteParams };
 
-const statusLabels: Record<string,string> = { BOOKED:"Записаний", WAITING_APPROVAL:"Погодження", WAITING_PARTS:"Очікує деталі", IN_REPAIR:"У ремонті", WAITING_QC:"Контроль якості", READY_FOR_PICKUP:"Готовий до видачі", NO_SHOW:"No-show" };
-const statusAction: Record<string,string> = { BOOKED:"Підтвердити заїзд", WAITING_APPROVAL:"Отримати погодження", WAITING_PARTS:"Контроль ETA деталей", IN_REPAIR:"Контроль виконання робіт", WAITING_QC:"Провести QC", READY_FOR_PICKUP:"Підготувати до видачі", NO_SHOW:"Зв'язатися з клієнтом" };
+const statusLabels: Record<string,string> = {
+  BOOKED:"Записаний",
+  ARRIVED:"Прибув",
+  DIAGNOSTICS:"Діагностика",
+  WAITING_PARTS_SELECTION:"Підбір деталей",
+  WAITING_CALCULATION:"Розрахунок",
+  WAITING_APPROVAL:"Погодження",
+  WAITING_PARTS:"Очікує деталі",
+  READY_FOR_REPAIR:"Готовий до ремонту",
+  IN_REPAIR:"У ремонті",
+  WAITING_QC:"Контроль якості",
+  WAITING_PAYMENT:"Очікує оплату",
+  READY_FOR_PICKUP:"Готовий до видачі",
+  WARRANTY:"Гарантія",
+  PAUSED:"Пауза",
+  NO_SHOW:"No-show",
+};
 
 function money(value:number|null){ return value == null ? "—" : new Intl.NumberFormat("uk-UA",{style:"currency",currency:"UAH",maximumFractionDigits:0}).format(value); }
 function parseVehicle(label:string){ const parts=label.trim().split(/\s+/).filter(Boolean); const yearToken=parts.find((x)=>/^20\d{2}$|^19\d{2}$/.test(x)); const year=yearToken?Number(yearToken):new Date().getFullYear(); const brand=parts[0]||"Авто"; const model=parts.slice(1).filter((x)=>x!==yearToken).join(" ")||""; return {brand,model,year}; }
-function tone(status:string): AttentionCar["tone"] { if(status==="NO_SHOW") return "warn"; if(status==="IN_REPAIR") return "active"; if(status==="WAITING_PARTS"||status==="WAITING_APPROVAL") return "waiting"; return "good"; }
-function urgency(status:string){return status==="NO_SHOW"?0:status==="WAITING_APPROVAL"?1:status==="WAITING_PARTS"?2:status==="WAITING_QC"?3:status==="IN_REPAIR"?4:5;}
+function tone(level:DashboardData["attention"][number]["attentionLevel"]): AttentionCar["tone"] { if(level==="CRITICAL"||level==="HIGH")return "warn"; return "waiting"; }
+function urgency(level:DashboardData["attention"][number]["attentionLevel"]){return level==="CRITICAL"?0:level==="HIGH"?1:2;}
 
 function attentionRoute(item: DashboardData["attention"][number]): { section: CrmSectionLabel; params: CrmRouteParams } {
-  if (["BOOKED", "NO_SHOW"].includes(item.status)) {
+  if (["BOOKED", "NO_SHOW", "ARRIVED"].includes(item.status)) {
     return { section: "Планувальник", params: { appointmentId: item.appointmentId, status: item.status } };
   }
-  if (item.workOrderId) return { section: "Замовлення-наряди", params: { workOrderId: item.workOrderId } };
+  if (item.status === "DIAGNOSTICS" && item.vehicleId && !item.workOrderId) {
+    return { section: "Діагностика", params: { vehicleId: item.vehicleId } };
+  }
+  if (item.workOrderId) {
+    const tab = item.status === "WAITING_PARTS" || item.status === "WAITING_PARTS_SELECTION"
+      ? "parts"
+      : item.status === "WAITING_QC"
+        ? "qc"
+        : item.status === "WAITING_PAYMENT"
+          ? "payment"
+          : ["WAITING_CALCULATION","WAITING_APPROVAL"].includes(item.status)
+            ? "estimate"
+            : "overview";
+    return { section: "Замовлення-наряди", params: { workOrderId: item.workOrderId, workOrderTab: tab } };
+  }
   if (item.vehicleId) return { section: "Авто", params: { vehicleId: item.vehicleId } };
   return { section: "Планувальник", params: { appointmentId: item.appointmentId } };
 }
@@ -52,7 +89,7 @@ export function StationOverview(){
   useEffect(()=>{void load();const handler=()=>void load();window.addEventListener("turbolev:data-changed",handler);const timer=window.setInterval(()=>void load(),60_000);return()=>{window.removeEventListener("turbolev:data-changed",handler);window.clearInterval(timer);};},[load]);
 
   const pipeline=useMemo<WorkflowRoute[]>(()=>data?[
-    {name:"Нові заявки",value:data.pipeline.newLeads,sub:"живі ліди Neon",section:"Ліди"},
+    {name:"Нові заявки",value:data.pipeline.newLeads,sub:"активні заявки Neon",section:"Ліди"},
     {name:"Записані",value:data.pipeline.booked,sub:"є запис у планувальнику",section:"Планувальник",params:{status:"BOOKED"}},
     {name:"На діагностиці",value:data.pipeline.diagnostics,sub:"активні заявки",section:"Діагностика"},
     {name:"Погодження",value:data.pipeline.approval,sub:"очікують рішення",section:"Замовлення-наряди",params:{status:"WAITING_APPROVAL"}},
@@ -68,12 +105,33 @@ export function StationOverview(){
     {name:"Валовий прибуток",value:money(data?.kpis.grossProfit??null),sub:"виручка мінус прямі витрати",section:"Фінансовий центр"},
   ],[data]);
 
-  const cars=useMemo<AttentionCar[]>(()=>data?[...data.attention].sort((a,b)=>urgency(a.status)-urgency(b.status)||new Date(a.plannedStartAt).getTime()-new Date(b.plannedStartAt).getTime()).map((item)=>{const car=parseVehicle(item.vehicle);const route=attentionRoute(item);return{id:item.id,plate:item.plate,brand:car.brand,model:car.model,year:car.year,status:statusLabels[item.status]||item.status,action:statusAction[item.status]||item.problem||"Відкрити картку",owner:item.mechanic||item.post||"Не призначено",problem:item.problem,plannedStartAt:item.plannedStartAt,tone:tone(item.status),section:route.section,routeParams:Object.fromEntries(Object.entries(route.params).filter((entry):entry is [string,string]=>typeof entry[1]==="string"&&Boolean(entry[1])))};}):[],[data]);
+  const cars=useMemo<AttentionCar[]>(()=>data?[...data.attention]
+    .sort((a,b)=>urgency(a.attentionLevel)-urgency(b.attentionLevel)||new Date(a.attentionAt).getTime()-new Date(b.attentionAt).getTime())
+    .map((item)=>{
+      const car=parseVehicle(item.vehicle);
+      const route=attentionRoute(item);
+      const extra=item.issueCount>1?` · ще ${item.issueCount-1} ${item.issueCount-1===1?"проблема":"проблеми"}`:"";
+      return {
+        id:item.id,
+        plate:item.plate,
+        brand:car.brand,
+        model:car.model,
+        year:car.year,
+        status:statusLabels[item.status]||item.status,
+        action:item.nextAction,
+        owner:item.mechanic||item.post||"Не призначено",
+        problem:`${item.attentionReason}${extra}`,
+        plannedStartAt:item.attentionAt,
+        tone:tone(item.attentionLevel),
+        section:route.section,
+        routeParams:Object.fromEntries(Object.entries(route.params).filter((entry):entry is [string,string]=>typeof entry[1]==="string"&&Boolean(entry[1]))),
+      };
+    }):[],[data]);
 
   const blockers:WorkflowRoute[]=[
     {name:"Погодження клієнта",value:data?.blockers.approval??0,sub:"активних авто",section:"Замовлення-наряди",params:{status:"WAITING_APPROVAL"}},
     {name:"Очікування деталей",value:data?.blockers.waitingParts??0,sub:"авто заблоковано деталями",section:"Замовлення-наряди",params:{status:"WAITING_PARTS"}},
-    {name:"No-show",value:data?.blockers.noShow??0,sub:"потрібен контакт із клієнтом",section:"Планувальник",params:{status:"NO_SHOW"}},
+    {name:"Не приїхали / no-show",value:data?.blockers.noShow??0,sub:"потрібен контакт із клієнтом",section:"Планувальник",params:{status:"NO_SHOW"}},
   ];
 
   return <>
