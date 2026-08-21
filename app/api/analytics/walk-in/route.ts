@@ -69,6 +69,7 @@ export async function GET(request: NextRequest) {
   if (from >= to) return NextResponse.json({ ok: false, error: "INVALID_DATE_RANGE" }, { status: 400 });
 
   const analyticsScope = context.enforcementMode === "ENFORCED" ? (context.permissions[PERMISSIONS.ANALYTICS_READ] as AccessScopeCode | undefined) : "ALL";
+  const canFinancial = context.enforcementMode !== "ENFORCED" || hasPermission(context, PERMISSIONS.ANALYTICS_FINANCIAL_READ);
   const prisma = getPrisma();
   const locations = await prisma.serviceLocation.findMany({ where: { isActive: true }, select: { id: true, name: true }, orderBy: [{ sortOrder: "asc" }, { name: "asc" }] });
   const allowedLocations = analyticsScope === "ALL" || context.enforcementMode !== "ENFORCED" ? locations : locations.filter((location) => context.locationIds.includes(location.id));
@@ -77,7 +78,7 @@ export async function GET(request: NextRequest) {
   const effectiveLocationIds = selectedLocationId ? [selectedLocationId] : analyticsScope === "ALL" || context.enforcementMode !== "ENFORCED" ? null : allowedLocations.map((location) => location.id);
 
   if (effectiveLocationIds && effectiveLocationIds.length === 0) {
-    return NextResponse.json({ ok: true, permitted: true, emptyScope: true, range: { from: dayKey(from), to: dayKey(new Date(to.getTime() - 1)), timezone: KYIV_TZ }, walkIn: null }, { headers: { "Cache-Control": "no-store" } });
+    return NextResponse.json({ ok: true, permitted: true, financial: canFinancial, emptyScope: true, range: { from: dayKey(from), to: dayKey(new Date(to.getTime() - 1)), timezone: KYIV_TZ }, walkIn: null }, { headers: { "Cache-Control": "no-store" } });
   }
 
   const appointments = await prisma.serviceAppointment.findMany({
@@ -124,6 +125,7 @@ export async function GET(request: NextRequest) {
   return NextResponse.json({
     ok: true,
     permitted: true,
+    financial: canFinancial,
     range: { from: dayKey(from), to: dayKey(new Date(to.getTime() - 1)), timezone: KYIV_TZ },
     scope: { analyticsScope, selectedLocationId, locationIds: effectiveLocationIds },
     walkIn: {
@@ -139,9 +141,9 @@ export async function GET(request: NextRequest) {
       diagnosticToPaidPct: pct(paid, diagnosticsReached),
       diagnosticToRepairPct: pct(sentToRepair, diagnosticsReached),
       visitToCompletedPct: pct(completed, appointments.length),
-      diagnosticRevenue: round(diagnosticRevenue, 2),
-      averageDiagnosticCheck: payments.length ? round(diagnosticRevenue / payments.length, 2) : 0,
-      currency: payments[0]?.currency || "UAH",
+      diagnosticRevenue: canFinancial ? round(diagnosticRevenue, 2) : null,
+      averageDiagnosticCheck: canFinancial ? (payments.length ? round(diagnosticRevenue / payments.length, 2) : 0) : null,
+      currency: canFinancial ? payments[0]?.currency || "UAH" : null,
       daily: [...dailyMap.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([date, row]) => ({ date, ...row })),
     },
   }, { headers: { "Cache-Control": "no-store" } });
