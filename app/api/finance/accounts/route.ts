@@ -1,6 +1,8 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { Prisma } from "@/src/generated/prisma/client";
 import { getPrisma } from "@/src/lib/prisma";
+import { PERMISSIONS } from "@/src/security/permissions";
+import { authorizeScopedLocation } from "@/src/security/scoped-location-access";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -30,10 +32,15 @@ function parseOpeningBalance(value: unknown) {
   }
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const requestedLocationId = request.nextUrl.searchParams.get("locationId")?.trim() || null;
+  const access = await authorizeScopedLocation(PERMISSIONS.FINANCE_READ, request, requestedLocationId);
+  if (!access.ok) return access.response;
+
   try {
     const prisma = getPrisma();
     const accounts = await prisma.moneyAccount.findMany({
+      where: access.locationWhere,
       orderBy: [{ isActive: "desc" }, { sortOrder: "asc" }, { name: "asc" }],
     });
     return NextResponse.json({ ok: true, accounts }, { headers: { "Cache-Control": "no-store" } });
@@ -61,6 +68,9 @@ export async function POST(request: Request) {
       ? new Date(body.openingBalanceAt)
       : new Date();
 
+    const access = await authorizeScopedLocation(PERMISSIONS.FINANCE_WRITE, request, locationId);
+    if (!access.ok) return access.response;
+
     if (!name) return NextResponse.json({ ok: false, error: "NAME_REQUIRED" }, { status: 400 });
     if (!isAccountType(type)) return NextResponse.json({ ok: false, error: "INVALID_ACCOUNT_TYPE" }, { status: 400 });
     if (!/^[A-Z]{3}$/.test(currency)) return NextResponse.json({ ok: false, error: "INVALID_CURRENCY" }, { status: 400 });
@@ -85,7 +95,7 @@ export async function POST(request: Request) {
 
     await prisma.auditEvent.create({
       data: {
-        actorName: typeof body.actorName === "string" && body.actorName.trim() ? body.actorName.trim().slice(0, 120) : "CRM / Фінанси",
+        actorName: access.context.user?.name || access.context.user?.email || "CRM / Фінанси",
         entityType: "MoneyAccount",
         entityId: account.id,
         action: "MONEY_ACCOUNT_CREATED",
