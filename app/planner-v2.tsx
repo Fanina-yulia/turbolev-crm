@@ -15,12 +15,13 @@ import { PlannerDayView } from "./planner-day-view";
 import styles from "./planner-v2.module.css";
 
 type ViewMode="day"|"week";
+type PlannerEditableStatus="BOOKED"|"ARRIVED"|"NO_SHOW"|"CANCELLED"|"RESERVE";
 type EditState={id:string;date:string;status:Status;postId:string;mechanicId:string;start:string;duration:string};
 
 const KYIV_TZ="Europe/Kyiv";
 const STATUS_META:Record<Status,{label:string;tone:string}>={BOOKED:{label:"Записаний",tone:"blue"},ARRIVED:{label:"Приїхав",tone:"green"},DIAGNOSTICS:{label:"Діагностика",tone:"violet"},WAITING_PARTS_SELECTION:{label:"Підбір деталей",tone:"amber"},WAITING_CALCULATION:{label:"Калькуляція",tone:"amber"},WAITING_APPROVAL:{label:"Погодження",tone:"orange"},WAITING_PARTS:{label:"Очікує деталі",tone:"amber"},READY_FOR_REPAIR:{label:"Готовий до ремонту",tone:"green"},IN_REPAIR:{label:"У ремонті",tone:"orange"},WAITING_QC:{label:"Контроль якості",tone:"cyan"},WAITING_PAYMENT:{label:"Очікує оплату",tone:"amber"},READY_FOR_PICKUP:{label:"Готовий до видачі",tone:"green"},COMPLETED:{label:"Виданий",tone:"gray"},WARRANTY:{label:"Гарантія",tone:"pink"},PAUSED:{label:"Пауза",tone:"gray"},NO_SHOW:{label:"Не приїхав",tone:"red"},CANCELLED:{label:"Скасований",tone:"gray"},RESERVE:{label:"Резерв",tone:"gray"}};
-const PLANNER_STATUS_OPTIONS:Status[]=["BOOKED","ARRIVED","NO_SHOW","CANCELLED","RESERVE"];
-const PLANNER_STATUS_SET=new Set<Status>(PLANNER_STATUS_OPTIONS);
+const PLANNER_STATUS_OPTIONS:PlannerEditableStatus[]=["BOOKED","ARRIVED","NO_SHOW","CANCELLED","RESERVE"];
+const PLANNER_STATUS_SET=new Set<PlannerEditableStatus>(PLANNER_STATUS_OPTIONS);
 const FALLBACK_COLORS=["#FF5A1F","#2F80ED","#7C3AED","#16A34A","#D97706","#0891B2","#DB2777"];
 const pad=(n:number)=>String(n).padStart(2,"0");
 function dateKey(date=new Date(),timeZone=KYIV_TZ){const parts=new Intl.DateTimeFormat("en-CA",{timeZone,year:"numeric",month:"2-digit",day:"2-digit"}).formatToParts(date);const map=Object.fromEntries(parts.map(p=>[p.type,p.value]));return `${map.year}-${map.month}-${map.day}`;}
@@ -33,7 +34,7 @@ function duration(item:Appointment){return Math.max(30,Math.round((+new Date(ite
 function amount(value:Appointment["estimatedAmount"]){const n=Number(value);return value!=null&&value!==""&&Number.isFinite(n)?new Intl.NumberFormat("uk-UA",{style:"currency",currency:"UAH",maximumFractionDigits:0}).format(n):"";}
 function colorFromPost(post:Post,index:number){return post.capabilities.find(x=>x.startsWith("COLOR:"))?.slice(6)||FALLBACK_COLORS[index%FALLBACK_COLORS.length];}
 function postType(post:Post){const type=post.capabilities.find(x=>x.startsWith("TYPE:"))?.slice(5);return type==="PIT"?"Яма":type==="ALIGNMENT"?"Розвал-сходження":type==="NO_LIFT"?"Без підйомника":"Підйомник";}
-function isPlannerStatus(value:string|undefined):value is Status{return Boolean(value&&PLANNER_STATUS_SET.has(value as Status));}
+function isPlannerStatus(value:string|undefined):value is PlannerEditableStatus{return Boolean(value&&PLANNER_STATUS_SET.has(value as PlannerEditableStatus));}
 function editState(item:Appointment,timeZone:string):EditState{return{id:item.id,date:dateKey(new Date(item.plannedStartAt),timeZone),status:item.status,postId:item.postId||"",mechanicId:item.mechanicId||"",start:clock(item.plannedStartAt,timeZone),duration:String(duration(item))};}
 
 export function PlannerV2(){
