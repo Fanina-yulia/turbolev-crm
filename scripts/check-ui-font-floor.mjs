@@ -5,7 +5,9 @@ import { spawnSync } from "node:child_process";
 const ROOTS = ["app", "src"];
 const EXTENSIONS = new Set([".css", ".scss", ".tsx", ".ts", ".jsx", ".js"]);
 const MIN_FONT_PX = 12;
-const changedOnly = process.env.VERCEL === "1" || process.argv.includes("--changed");
+const changedOnly = process.env.VERCEL === "1"
+  || process.env.GITHUB_ACTIONS === "true"
+  || process.argv.includes("--changed");
 
 const patterns = [
   /font-size\s*:\s*(\d+(?:\.\d+)?)px/gi,
@@ -36,13 +38,38 @@ async function walk(dir) {
   return files;
 }
 
-function changedUiFiles() {
-  const result = spawnSync("git", ["diff", "--name-only", "HEAD^", "HEAD", "--", ...ROOTS], { encoding: "utf8" });
+function gitOutput(args, label) {
+  const result = spawnSync("git", args, { encoding: "utf8" });
   if (result.status !== 0) {
-    console.warn("[ui-font-floor] Could not resolve changed files; skipping ratchet check for this build.");
-    return [];
+    const detail = String(result.stderr || result.stdout || "git command failed").trim();
+    throw new Error(`[ui-font-floor] ${label}: ${detail}`);
   }
-  return result.stdout.split(/\r?\n/).map((item) => item.trim()).filter(Boolean).filter((file) => EXTENSIONS.has(extname(file)));
+  return result.stdout.trim();
+}
+
+function changedUiFiles() {
+  let fromRef = "HEAD^";
+  let toRef = "HEAD";
+
+  // GitHub pull_request jobs check out a synthetic merge commit:
+  // parent 1 = current base branch, parent 2 = PR head. Compare those parents
+  // so the ratchet sees only the PR delta instead of unrelated historical UI.
+  if (process.env.GITHUB_EVENT_NAME === "pull_request") {
+    const commitLine = gitOutput(["rev-list", "--parents", "-n", "1", "HEAD"], "Could not inspect PR merge parents");
+    const [, baseParent, prParent] = commitLine.split(/\s+/);
+    if (!baseParent || !prParent) {
+      throw new Error("[ui-font-floor] Expected a two-parent GitHub pull request merge commit.");
+    }
+    fromRef = baseParent;
+    toRef = prParent;
+  }
+
+  const output = gitOutput(["diff", "--name-only", fromRef, toRef, "--", ...ROOTS], "Could not resolve changed UI files");
+  return output
+    .split(/\r?\n/)
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .filter((file) => EXTENSIONS.has(extname(file)));
 }
 
 let files = [];

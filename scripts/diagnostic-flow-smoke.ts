@@ -68,6 +68,16 @@ async function cleanup() {
     await prisma.diagnosticInspection.deleteMany({ where: { diagnosticRequestId: { in: diagnosticIds } } }).catch(() => undefined);
     await prisma.diagnosticReview.deleteMany({ where: { diagnosticRequestId: { in: diagnosticIds } } }).catch(() => undefined);
     await prisma.diagnosticAssignment.deleteMany({ where: { diagnosticRequestId: { in: diagnosticIds } } }).catch(() => undefined);
+    const cards = await prisma.diagnosticCard.findMany({
+      where: { diagnosticRequestId: { in: diagnosticIds } },
+      select: { id: true },
+    }).catch(() => []);
+    const cardIds = cards.map((card) => card.id);
+    if (cardIds.length) {
+      await prisma.diagnosticCardRevision.deleteMany({ where: { diagnosticCardId: { in: cardIds } } }).catch(() => undefined);
+      await prisma.auditEvent.deleteMany({ where: { entityId: { in: cardIds } } }).catch(() => undefined);
+    }
+    await prisma.diagnosticCard.deleteMany({ where: { diagnosticRequestId: { in: diagnosticIds } } }).catch(() => undefined);
     await prisma.auditEvent.deleteMany({ where: { entityId: { in: diagnosticIds } } }).catch(() => undefined);
     await prisma.diagnosticRequest.deleteMany({ where: { id: { in: diagnosticIds } } }).catch(() => undefined);
   } else {

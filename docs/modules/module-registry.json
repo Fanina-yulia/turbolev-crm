@@ -61,10 +61,10 @@
       "id": "diagnostics",
       "title": "Diagnostics",
       "description": "Diagnostic requests, assignments, findings, confirmation and the gate before repair work orders.",
-      "keywords": ["diagnostic", "diagnostics", "finding", "inspection", "confirmation"],
-      "paths": ["app/diagnostic-*", "app/*diagnostics*", "app/api/diagnostic*/**", "src/services/diagnostic*"],
-      "dependencies": ["clients-vehicles", "planner", "mechanic-cabinet", "work-orders"],
-      "smokeChecks": ["diagnostic-create", "diagnostic-assignment", "diagnostic-confirmation", "work-order-gate"]
+      "keywords": ["diagnostic", "diagnostics", "finding", "inspection", "confirmation", "walk-in", "позаплановий заїзд"],
+      "paths": ["app/diagnostic-*", "app/*diagnostics*", "app/api/diagnostic*/**", "src/services/diagnostic*", "src/services/walk-in-diagnostic-*"],
+      "dependencies": ["clients-vehicles", "planner", "mechanic-cabinet", "work-orders", "finance"],
+      "smokeChecks": ["diagnostic-create", "diagnostic-assignment", "diagnostic-confirmation", "work-order-gate", "walk-in-diagnostic-flow"]
     },
     {
       "id": "work-orders",

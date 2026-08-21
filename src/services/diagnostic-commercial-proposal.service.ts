@@ -42,7 +42,7 @@ export async function createCommercialProposalFromDiagnostic(
 
   const prisma = getPrisma();
   const commercial = await prisma.$transaction(async (tx) => {
-    await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`diagnostic-commercial-proposal:${diagnosticRequestId}`}))`;
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`diagnostic-commercial-proposal:${diagnosticRequestId}`}))`;
     const estimateState = await ensureEstimateSnapshotTx(tx, workOrder.id, { actorName });
     const partsRequest = handoff.counts.parts > 0
       ? await ensurePartsRequestTx(tx, workOrder.id, `${actorName} / Підбір запчастин`)

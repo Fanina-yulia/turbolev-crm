@@ -18,6 +18,7 @@ import {
   startStructuredDiagnostic,
   StructuredDiagnosticError,
 } from "@/src/services/structured-diagnostics.service";
+import { markWalkInDiagnosticCompleted } from "@/src/services/walk-in-diagnostic-settlement.service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -104,6 +105,9 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
     }
     if (action === "SUBMIT") {
       const data = await submitStructuredDiagnosticRespectingOptional(access.context.user.id, id, typeof body.mechanicComment === "string" ? body.mechanicComment : null);
+      await markWalkInDiagnosticCompleted(access.context.user.id, id).catch((error) => {
+        console.error("walk-in diagnostic completion hook failed", error);
+      });
       return NextResponse.json({ ok: true, ...(await withCompletion(id, data)) });
     }
     return NextResponse.json({ ok: false, error: "UNKNOWN_ACTION" }, { status: 400 });

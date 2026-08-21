@@ -20,6 +20,7 @@ const LAT_TO_CYR: Record<string, string> = {
   A: "А", B: "В", E: "Е", I: "І", K: "К", M: "М", H: "Н", O: "О", P: "Р", C: "С", T: "Т", X: "Х", Y: "У",
 };
 
+type ScanScenario = "ASSIGNED" | "ASSIGNED_TO_OTHER" | "WALK_IN_EXISTING_VEHICLE" | "WALK_IN_NEW_VEHICLE";
 type NextAction = {
   type: "DIAGNOSTIC" | "REPAIR" | "WAITING" | "NONE";
   label: string;
@@ -252,27 +253,62 @@ export async function POST(request: NextRequest) {
     });
     const appointment = appointments.find((item) => canonicalPlate(item.plateNumber) === normalized) || null;
 
+    const vehicleSelect = {
+      id: true,
+      plateNumber: true,
+      brand: true,
+      model: true,
+      year: true,
+      mileageKm: true,
+      client: { select: { id: true, name: true, phone: true } },
+    } as const;
+
     let vehicle = appointment?.vehicleId ? await prisma.vehicle.findUnique({
       where: { id: appointment.vehicleId },
-      select: { id: true, plateNumber: true, brand: true, model: true, year: true },
+      select: vehicleSelect,
     }) : null;
 
     if (!vehicle) {
       const candidates = plateCandidates(rawPlate, normalized);
       vehicle = await prisma.vehicle.findFirst({
-        where: { OR: candidates.map((plate) => ({ plateNumber: { equals: plate, mode: "insensitive" as const } })) },
-        select: { id: true, plateNumber: true, brand: true, model: true, year: true },
+        where: {
+          OR: [
+            { plateNormalized: normalized },
+            ...candidates.map((plate) => ({ plateNumber: { equals: plate, mode: "insensitive" as const } })),
+          ],
+        },
+        select: vehicleSelect,
         orderBy: { updatedAt: "desc" },
       });
     }
 
     const assignedToMe = Boolean(appointment?.mechanicId && appointment.mechanicId === mechanic.id);
-    let nextAction: NextAction = assignedToMe ? await resolveNextAction({
-      userId: access.context.user.id,
-      mechanicId: mechanic.id,
-      vehicleId: vehicle?.id || appointment?.vehicleId || null,
-      workOrderId: appointment?.workOrderId || null,
-    }) : { type: "NONE", label: "Авто не закріплене за вами", reason: appointment?.mechanicId ? "Автомобіль призначений іншому механіку." : "Для автомобіля немає вашого активного призначення." };
+    const scenario: ScanScenario = appointment
+      ? (assignedToMe ? "ASSIGNED" : "ASSIGNED_TO_OTHER")
+      : (vehicle ? "WALK_IN_EXISTING_VEHICLE" : "WALK_IN_NEW_VEHICLE");
+
+    let nextAction: NextAction = assignedToMe
+      ? await resolveNextAction({
+          userId: access.context.user.id,
+          mechanicId: mechanic.id,
+          vehicleId: vehicle?.id || appointment?.vehicleId || null,
+          workOrderId: appointment?.workOrderId || null,
+        })
+      : !appointment
+        ? {
+            type: "WAITING",
+            label: "Позаплановий заїзд",
+            reason: vehicle
+              ? "Автомобіль є в базі, але активного запису немає. Можна оформити позапланову діагностику."
+              : "Автомобіль не знайдено в базі та активних записах. Можна оформити позапланову діагностику.",
+          }
+        : {
+            type: "NONE",
+            label: "Авто не закріплене за вами",
+            reason: appointment.mechanicId
+              ? `Автомобіль призначений іншому механіку${appointment.mechanic?.name ? `: ${appointment.mechanic.name}` : ""}.`
+              : "Автомобіль має активний запис, але не призначений вам.",
+          };
 
     let finalAppointmentStatus = appointment?.status || null;
     let arrivalApplied = false;
@@ -302,7 +338,7 @@ export async function POST(request: NextRequest) {
         if (arrivalVehicleId && arrivalVehicleId !== vehicle?.id) {
           vehicle = await prisma.vehicle.findUnique({
             where: { id: arrivalVehicleId },
-            select: { id: true, plateNumber: true, brand: true, model: true, year: true },
+            select: vehicleSelect,
           });
         }
 
@@ -353,11 +389,22 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       ok: true,
       recognized: true,
+      scenario,
       recognition: { raw: rawPlate, plate: normalized, confidence, source },
-      vehicle: vehicle ? { id: vehicle.id, label: vehicleLabel(vehicle), plate: vehicle.plateNumber || normalized } : { id: null, label: appointment?.vehicleLabel || "Автомобіль", plate: appointment?.plateNumber || normalized },
-      appointment: appointment ? { id: appointment.id, status: finalAppointmentStatus || appointment.status, post: appointment.post?.name || null, plannedStartAt: appointment.plannedStartAt } : null,
+      vehicle: vehicle
+        ? { id: vehicle.id, label: vehicleLabel(vehicle), plate: vehicle.plateNumber || normalized, mileageKm: vehicle.mileageKm }
+        : { id: null, label: appointment?.vehicleLabel || "Автомобіль", plate: appointment?.plateNumber || normalized, mileageKm: null },
+      appointment: appointment
+        ? { id: appointment.id, status: finalAppointmentStatus || appointment.status, post: appointment.post?.name || null, plannedStartAt: appointment.plannedStartAt, mechanic: appointment.mechanic?.name || null }
+        : null,
       assignedToMe,
       assignment: appointment ? { mechanicId: appointment.mechanicId || null, isAssigned: Boolean(appointment.mechanicId), isMine: assignedToMe } : null,
+      walkIn: !appointment ? {
+        eligible: true,
+        existingVehicle: Boolean(vehicle),
+        existingClient: vehicle?.client ? { id: vehicle.client.id, name: vehicle.client.name, phone: vehicle.client.phone } : null,
+        mileageKm: vehicle?.mileageKm ?? null,
+      } : { eligible: false, existingVehicle: false, existingClient: null, mileageKm: null },
       nextAction,
       confirmed: confirm && assignedToMe,
       arrivalApplied,

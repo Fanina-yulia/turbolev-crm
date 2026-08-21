@@ -127,11 +127,13 @@ export async function listDiagnostics(input?: { status?: DiagnosticRequestStatus
     const structured = meta.get(row.id);
     const reportShare = reports.get(row.id) || null;
     const diagnosticCard = cards.get(row.id) || null;
-    const workflowState = structured?.reviewState === DiagnosticReviewState.SUBMITTED
-      ? "SUBMITTED"
-      : structured?.reviewState === DiagnosticReviewState.RETURNED
-        ? "RETURNED"
-        : row.status;
+    const workflowState = reportShare?.active
+      ? "CARD_SENT"
+      : structured?.reviewState === DiagnosticReviewState.SUBMITTED
+        ? "SUBMITTED"
+        : structured?.reviewState === DiagnosticReviewState.RETURNED
+          ? "RETURNED"
+          : row.status;
     return {
       ...row,
       reviewState: structured?.reviewState || DiagnosticReviewState.DRAFT,
@@ -164,11 +166,13 @@ export async function getDiagnostic(id: string) {
   const structured = meta.get(id);
   const reportShare = reports.get(id) || null;
   const diagnosticCard = cards.get(id) || null;
-  const workflowState = structured?.reviewState === DiagnosticReviewState.SUBMITTED
-    ? "SUBMITTED"
-    : structured?.reviewState === DiagnosticReviewState.RETURNED
-      ? "RETURNED"
-      : row.status;
+  const workflowState = reportShare?.active
+    ? "CARD_SENT"
+    : structured?.reviewState === DiagnosticReviewState.SUBMITTED
+      ? "SUBMITTED"
+      : structured?.reviewState === DiagnosticReviewState.RETURNED
+        ? "RETURNED"
+        : row.status;
   return {
     ...row,
     reviewState: structured?.reviewState || DiagnosticReviewState.DRAFT,
