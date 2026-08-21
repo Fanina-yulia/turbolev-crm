@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { WorkOrderFinanceValidationError } from "@/src/domain/work-order-finance";
+import { PERMISSIONS } from "@/src/security/permissions";
+import { authorizeWorkOrderRecord } from "@/src/security/work-order-scope";
 import {
   getWorkOrderFinance,
   savePlannedWorkOrderFinance,
@@ -30,8 +32,11 @@ function errorResponse(error: unknown) {
   return NextResponse.json({ ok: false, code: "INTERNAL_ERROR", error: "Financial operation failed" }, { status: 500 });
 }
 
-export async function GET(_request: Request, context: { params: Promise<{ id: string }> }) {
+export async function GET(request: Request, context: { params: Promise<{ id: string }> }) {
   const { id } = await context.params;
+  const access = await authorizeWorkOrderRecord(PERMISSIONS.FINANCE_READ, request, id);
+  if (!access.allowed) return access.response;
+
   try {
     const result = await getWorkOrderFinance(id);
     const lineItems = await hasWorkOrderLines(id);
@@ -46,11 +51,12 @@ export async function GET(_request: Request, context: { params: Promise<{ id: st
 
 export async function PUT(request: Request, context: { params: Promise<{ id: string }> }) {
   const { id } = await context.params;
+  const access = await authorizeWorkOrderRecord(PERMISSIONS.FINANCE_WRITE, request, id);
+  if (!access.allowed) return access.response;
+
   try {
     const body = (await request.json()) as Record<string, unknown>;
-    const actorName = typeof body.actorName === "string" && body.actorName.trim()
-      ? body.actorName.trim().slice(0, 120)
-      : "CRM / Сервіс-менеджер";
+    const actorName = access.context.user?.name || access.context.user?.email || "CRM / Фінанси";
 
     if (await hasWorkOrderLines(id)) {
       const result = await rebuildPlannedSnapshotFromLines(id, actorName);
