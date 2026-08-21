@@ -6,6 +6,7 @@ import {
 } from "@/src/generated/prisma/client";
 import { getPrisma } from "@/src/lib/prisma";
 import { toPrismaJson } from "@/src/lib/prisma-json";
+import { ensureDiagnosticCardReviewRevision } from "@/src/services/diagnostic-card.service";
 import {
   getMechanicByUserId,
   getStructuredDiagnostic,
@@ -137,8 +138,13 @@ export async function submitStructuredDiagnosticRespectingOptional(
   if (view.diagnostic.status === DiagnosticRequestStatus.CONFIRMED || view.diagnostic.status === DiagnosticRequestStatus.CANCELLED) {
     throw new StructuredDiagnosticError("DIAGNOSTIC_LOCKED", "Ця діагностика вже закрита.", 409);
   }
-  if (view.diagnostic.review.state === DiagnosticReviewState.SUBMITTED || view.diagnostic.review.state === DiagnosticReviewState.CONFIRMED) {
-    throw new StructuredDiagnosticError("DIAGNOSTIC_LOCKED", "Діагностика вже передана на перевірку.", 409);
+  if (view.diagnostic.review.state === DiagnosticReviewState.CONFIRMED) {
+    throw new StructuredDiagnosticError("DIAGNOSTIC_LOCKED", "Діагностичну карту вже підтверджено.", 409);
+  }
+  if (view.diagnostic.review.state === DiagnosticReviewState.SUBMITTED) {
+    const mechanic = await getMechanicByUserId(userId);
+    await ensureDiagnosticCardReviewRevision(diagnosticRequestId, userId, mechanic.name);
+    return getStructuredDiagnostic(diagnosticRequestId);
   }
 
   let completion = await getRequiredDiagnosticCompletion(diagnosticRequestId);
@@ -198,5 +204,6 @@ export async function submitStructuredDiagnosticRespectingOptional(
     });
   });
 
+  await ensureDiagnosticCardReviewRevision(diagnosticRequestId, userId, mechanic.name);
   return getStructuredDiagnostic(diagnosticRequestId);
 }
