@@ -28,11 +28,18 @@ function UkrainianPlate({ plate }: { plate: string }) {
   );
 }
 
-function timeText(value?: string | null){
-  if(!value)return "Без планового часу";
+function attentionTimeText(value?: string | null){
+  if(!value)return "потребує дії";
   const d=new Date(value);
-  if(Number.isNaN(d.getTime()))return "Без планового часу";
-  return new Intl.DateTimeFormat("uk-UA",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"}).format(d);
+  if(Number.isNaN(d.getTime()))return "потребує дії";
+  const delta=Date.now()-d.getTime();
+  if(delta<=0)return `до ${new Intl.DateTimeFormat("uk-UA",{hour:"2-digit",minute:"2-digit"}).format(d)}`;
+  const minutes=Math.max(1,Math.floor(delta/60_000));
+  if(minutes<60)return `прострочено ${minutes} хв`;
+  const hours=Math.floor(minutes/60);
+  if(hours<24)return `прострочено ${hours} год`;
+  const days=Math.floor(hours/24);
+  return `прострочено ${days} д`;
 }
 
 export function WorkOrderCockpit({ cars,onOpen,onAll }: { cars: AttentionCar[]; onOpen:(car:AttentionCar)=>void; onAll:()=>void }) {
@@ -42,13 +49,13 @@ export function WorkOrderCockpit({ cars,onOpen,onAll }: { cars: AttentionCar[]; 
         <div><p className="eyebrow">WORKORDER COCKPIT</p><h2>Авто, що потребують уваги</h2></div>
         <button className="linkButton" onClick={onAll}>Всі авто →</button>
       </div>
-      {!cars.length?<div className="attentionEmpty"><strong>Немає авто з критичною наступною дією</strong><span>Тут автоматично з’являться автомобілі з простроченим або блокуючим етапом: погодження, деталі, ремонт, QC чи no-show.</span></div>:<div className="carList">
+      {!cars.length?<div className="attentionEmpty"><strong>Зараз немає авто, де потрібне втручання</strong><span>Система контролює всі незакриті авто: запізнення на запис, завислі етапи, відсутнього механіка або поста, деталі й ETA, ремонт, QC, оплату, видачу, паузи та гарантійні кейси.</span></div>:<div className="carList">
         {cars.map((item) => (
           <button type="button" className="carRow attentionCarButton" key={item.id||item.plate} onClick={()=>onOpen(item)}>
             <UkrainianPlate plate={item.plate} />
             <div className="carInfo"><strong>{item.brand} {item.model} · {item.year}</strong><span className={`badge ${item.tone}`}>{item.status}</span>{item.problem&&<small className="attentionProblem">{item.problem}</small>}</div>
             <div className="carBrandLogo" title={item.brand}>{getCarLogo(item.brand)}</div>
-            <div className="next"><small>Наступна дія</small><strong>{item.action}</strong><span>{item.owner} · {timeText(item.plannedStartAt)}</span></div>
+            <div className="next"><small>Потрібна дія</small><strong>{item.action}</strong><span>{item.owner} · {attentionTimeText(item.plannedStartAt)}</span></div>
             <span className="rowArrow" aria-hidden="true">→</span>
           </button>
         ))}

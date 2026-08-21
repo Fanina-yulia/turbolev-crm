@@ -75,6 +75,7 @@ export function AnalyticsFunnelVisuals({ funnel, from, to, locationId, variant =
   const [loading, setLoading] = useState(needsTimeline);
   const [error, setError] = useState("");
   const [portalTarget, setPortalTarget] = useState<HTMLDivElement | null>(null);
+  const [outcomeTarget, setOutcomeTarget] = useState<HTMLDivElement | null>(null);
 
   useEffect(() => {
     if (!needsTimeline) {
@@ -111,6 +112,7 @@ export function AnalyticsFunnelVisuals({ funnel, from, to, locationId, variant =
       restore.push(() => previous == null ? element.removeAttribute("style") : element.setAttribute("style", previous));
     };
 
+    const desktop = window.matchMedia("(min-width: 1051px)").matches;
     const grid = pathSection.parentElement as HTMLElement | null;
     if (grid) {
       rememberStyle(grid);
@@ -125,6 +127,7 @@ export function AnalyticsFunnelVisuals({ funnel, from, to, locationId, variant =
       flow.style.maxWidth = "none";
       flow.style.margin = "0";
       flow.style.padding = "4px 0 2px";
+      if (desktop) flow.style.width = "58%";
     }
 
     const wraps = Array.from(pathSection.querySelectorAll<HTMLElement>('div[class*="funnelStageWrap"]'));
@@ -155,6 +158,16 @@ export function AnalyticsFunnelVisuals({ funnel, from, to, locationId, variant =
       button.style.background = "linear-gradient(90deg,color-mix(in srgb,var(--orange) 15%,var(--panel-2)),color-mix(in srgb,var(--orange) 4%,var(--panel-2)))";
     });
 
+    if (desktop) {
+      rememberStyle(pathSection);
+      pathSection.style.position = "relative";
+    }
+    const outcomeMount = document.createElement("div");
+    outcomeMount.dataset.analyticsFunnelOutcome = "true";
+    outcomeMount.className = desktop ? styles.outcomeMount : styles.outcomeMountMobile;
+    pathSection.appendChild(outcomeMount);
+    setOutcomeTarget(outcomeMount);
+
     const originalChildren = Array.from(conversionSection.children).filter((child): child is HTMLElement => child instanceof HTMLElement);
     originalChildren.forEach((child) => {
       rememberStyle(child);
@@ -174,7 +187,9 @@ export function AnalyticsFunnelVisuals({ funnel, from, to, locationId, variant =
 
     return () => {
       setPortalTarget(null);
+      setOutcomeTarget(null);
       if (mount.parentElement) mount.parentElement.removeChild(mount);
+      if (outcomeMount.parentElement) outcomeMount.parentElement.removeChild(outcomeMount);
       restore.reverse().forEach((fn) => fn());
     };
   }, [variant, funnel]);
@@ -222,11 +237,44 @@ export function AnalyticsFunnelVisuals({ funnel, from, to, locationId, variant =
   const visibleConversions = conversionRows.slice(-6);
   const noShowPct = funnel.scheduled > 0 ? (funnel.noShow / funnel.scheduled) * 100 : 0;
 
+  const bookedCount = Math.max(0, funnel.scheduled);
+  const arrivedCount = Math.max(0, Math.min(bookedCount, funnel.arrived));
+  const noShowCount = Math.max(0, Math.min(Math.max(0, bookedCount - arrivedCount), funnel.noShow));
+  const withoutVisitCount = Math.max(0, bookedCount - arrivedCount - noShowCount);
+  const arrivedShare = bookedCount > 0 ? (arrivedCount / bookedCount) * 100 : 0;
+  const noShowShare = bookedCount > 0 ? (noShowCount / bookedCount) * 100 : 0;
+  const withoutVisitShare = bookedCount > 0 ? (withoutVisitCount / bookedCount) * 100 : 0;
+  const repairShare = bookedCount > 0 ? (Math.min(bookedCount, funnel.repairReached) / bookedCount) * 100 : 0;
+  const completedShare = bookedCount > 0 ? (Math.min(bookedCount, funnel.completed) / bookedCount) * 100 : 0;
+  const outcomeBackground = bookedCount > 0
+    ? `conic-gradient(#65d5a0 0 ${arrivedShare}%, #ff7373 ${arrivedShare}% ${arrivedShare + noShowShare}%, var(--orange) ${arrivedShare + noShowShare}% 100%)`
+    : "var(--panel-2)";
+
   const timelineMax = Math.max(1, ...timeline.flatMap((row) => [row.scheduled, row.arrived, row.completed]));
   const labelStep = Math.max(1, Math.ceil(timeline.length / 7));
   const xAt = (index: number) => timeline.length === 1 ? 373 : 42 + (index / Math.max(1, timeline.length - 1)) * 662;
   const yAt = (value: number) => 210 - (Math.max(0, value) / timelineMax) * 192;
   const yTicks = [0, .25, .5, .75, 1].map((ratio) => Math.round(timelineMax * ratio));
+
+  const outcomePanel = <section className={styles.outcomePanel}>
+    <header className={styles.outcomeHeader}>
+      <div><small>ЗАПИСИ</small><h3>Результат записів</h3></div>
+      <span>Що сталося із записами за вибраний період</span>
+    </header>
+    <div className={styles.outcomeRing} style={{ background: outcomeBackground }} aria-label={`Приїхало ${arrivedCount} із ${bookedCount}`}>
+      <div className={styles.outcomeCenter}><strong>{arrivedCount}/{bookedCount}</strong><span>{pct(arrivedShare)} приїхало</span></div>
+    </div>
+    <div className={styles.outcomeLegend}>
+      <div><i className={styles.dotArrived}/><span>Приїхали</span><b>{arrivedCount} · {pct(arrivedShare)}</b></div>
+      <div><i className={styles.dotNoShow}/><span>No-show</span><b>{noShowCount} · {pct(noShowShare)}</b></div>
+      <div><i className={styles.dotNoVisit}/><span>Без зафіксованого візиту</span><b>{withoutVisitCount} · {pct(withoutVisitShare)}</b></div>
+    </div>
+    <div className={styles.outcomeDepth}>
+      <div><div><span>Дійшли до ремонту</span><b>{pct(repairShare)}</b></div><div className={styles.outcomeTrack}><i style={{ width: `${Math.max(0, Math.min(100, repairShare))}%` }}/></div></div>
+      <div><div><span>Завершено від записів</span><b>{pct(completedShare)}</b></div><div className={styles.outcomeTrack}><i style={{ width: `${Math.max(0, Math.min(100, completedShare))}%` }}/></div></div>
+    </div>
+    <button type="button" className={styles.outcomeAction} onClick={() => navigateCrm("Планувальник", { date: to, scope: "week" })}>Переглянути записи →</button>
+  </section>;
 
   const lossesPanel = <section className={`${styles.panel} ${variant === "side" || portalTarget ? styles.compactPanel : ""}`}>
     <header className={styles.header}><div><small>ВТРАТИ</small><h3>Де губимо клієнтів</h3></div><span>Не перейшли на наступний етап</span></header>
@@ -281,6 +329,6 @@ export function AnalyticsFunnelVisuals({ funnel, from, to, locationId, variant =
 
   if (variant === "side") return <div className={styles.sideVisuals}>{lossesPanel}{conversionPanel}</div>;
   if (variant === "timeline") return <div className={styles.timelineOnly}>{timelinePanel}</div>;
-  if (portalTarget) return <>{createPortal(<div className={styles.sideVisuals}>{lossesPanel}{conversionPanel}</div>, portalTarget)}<div className={styles.timelineOnly}>{timelinePanel}</div></>;
+  if (portalTarget || outcomeTarget) return <>{outcomeTarget && createPortal(outcomePanel, outcomeTarget)}{portalTarget && createPortal(<div className={styles.sideVisuals}>{lossesPanel}{conversionPanel}</div>, portalTarget)}<div className={styles.timelineOnly}>{timelinePanel}</div></>;
   return <div className={styles.visuals}>{lossesPanel}{conversionPanel}{timelinePanel}</div>;
 }

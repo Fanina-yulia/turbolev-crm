@@ -16,8 +16,8 @@
       "id": "dashboard-analytics",
       "title": "Dashboard / Analytics",
       "description": "Station overview, operational indicators, KPI and analytics views.",
-      "keywords": ["dashboard", "analytics", "kpi", "overview", "metrics"],
-      "paths": ["app/analytics-dashboard*", "app/*dashboard*", "app/api/analytics/**", "src/services/*analytics*"],
+      "keywords": ["dashboard", "analytics", "kpi", "overview", "metrics", "attention vehicles", "station attention"],
+      "paths": ["app/analytics-dashboard*", "app/*dashboard*", "app/station-overview*", "app/api/analytics/**", "app/api/dashboard/**", "src/components/work-order-cockpit*", "src/services/*analytics*", "src/services/station-vehicle-attention*"],
       "dependencies": ["finance", "work-orders", "planner", "personnel-access"],
       "smokeChecks": ["dashboard-load", "metrics-no-5xx"]
     },

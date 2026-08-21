@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { LeadStatus } from "@/src/generated/prisma/client";
 import { getPrisma } from "@/src/lib/prisma";
+import { listStationAttentionVehicles } from "@/src/services/station-vehicle-attention.service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -17,30 +18,19 @@ function kyivDayRange(now = new Date()) {
 export async function GET() {
   const prisma = getPrisma();
   const { from, to } = kyivDayRange();
-  const [appointments, leadCounts, diagnostics, workOrderGroups] = await Promise.all([
+  const [appointments, leadCounts, diagnostics, workOrderGroups, attention] = await Promise.all([
     prisma.serviceAppointment.findMany({ where: { plannedStartAt: { gte: from, lt: to }, status: { not: "CANCELLED" } }, include: { post: true, mechanic: true }, orderBy: [{ priority: "desc" }, { plannedStartAt: "asc" }] }),
     prisma.lead.groupBy({ by: ["status"], _count: { _all: true } }),
     prisma.diagnosticRequest.groupBy({ by: ["status"], where: { status: { in: ["PENDING","IN_PROGRESS"] } }, _count: { _all: true } }),
     prisma.workOrder.groupBy({ by: ["status"], where: { closedAt: null }, _count: { _all: true } }),
+    listStationAttentionVehicles(),
   ]);
   const leadMap = Object.fromEntries(leadCounts.map((x)=>[x.status,x._count._all]));
   const diagnosticMap = Object.fromEntries(diagnostics.map((x)=>[x.status,x._count._all]));
   const workMap = Object.fromEntries(workOrderGroups.map((x)=>[x.status,x._count._all]));
   const countStatus = (...statuses: string[]) => appointments.filter((x)=>statuses.includes(x.status)).length;
-  const attention = appointments.filter((x)=>["BOOKED","WAITING_APPROVAL","WAITING_PARTS","IN_REPAIR","WAITING_QC","READY_FOR_PICKUP","NO_SHOW"].includes(x.status)).slice(0, 8).map((x)=>({
-    id:x.id,
-    appointmentId:x.id,
-    clientId:x.clientId,
-    vehicleId:x.vehicleId,
-    workOrderId:x.workOrderId,
-    plate:x.plateNumber||"БЕЗ НОМЕРА",
-    vehicle:x.vehicleLabel||"Автомобіль",
-    status:x.status,
-    problem:x.problem,
-    plannedStartAt:x.plannedStartAt,
-    post:x.post?.name||null,
-    mechanic:x.mechanic?.name||null,
-  }));
+  const attentionCountStatus = (...statuses: string[]) => attention.filter((x)=>statuses.includes(x.status)).length;
+  const attentionHasIssue = (code:string) => attention.filter((x)=>x.issues.some((issue)=>issue.code===code)).length;
 
   return NextResponse.json({
     ok: true,
@@ -64,9 +54,9 @@ export async function GET() {
       qcReady: countStatus("WAITING_QC","READY_FOR_PICKUP"),
     },
     blockers: {
-      approval: countStatus("WAITING_APPROVAL"),
-      waitingParts: countStatus("WAITING_PARTS"),
-      noShow: countStatus("NO_SHOW"),
+      approval: attentionCountStatus("WAITING_APPROVAL"),
+      waitingParts: attentionCountStatus("WAITING_PARTS"),
+      noShow: attentionCountStatus("NO_SHOW") + attentionHasIssue("MISSED_ARRIVAL"),
     },
     attention,
   }, { headers: { "Cache-Control": "no-store" } });
