@@ -35,12 +35,17 @@ export async function GET(request: Request) {
     }
 
     const rows = await listActiveMechanicAssignments(mechanic.id);
+    const uniqueVehicleRows = new Map<string, (typeof rows)[number]>();
+    for (const row of rows) {
+      const key = row.vehicleId ? `vehicle:${row.vehicleId}` : `case:${row.caseKey}`;
+      if (!uniqueVehicleRows.has(key)) uniqueVehicleRows.set(key, row);
+    }
 
     return NextResponse.json({
       ok: true,
       linked: true,
       mechanic: { id: mechanic.id, name: mechanic.name },
-      items: rows.map((row) => ({
+      items: [...uniqueVehicleRows.values()].map((row) => ({
         id: row.id,
         caseKey: row.caseKey,
         vehicleId: row.vehicleId,
