@@ -1,7 +1,9 @@
-import { getCarLogo } from "@/src/ui/car-logo";
+import { VehicleRender } from "@/app/vehicle-render";
+import styles from "./work-order-cockpit.module.css";
 
 export type AttentionCar = {
   id: string;
+  vehicleId?: string | null;
   plate: string;
   brand: string;
   model: string;
@@ -15,18 +17,6 @@ export type AttentionCar = {
   section: string;
   routeParams?: Record<string, string>;
 };
-
-function UkrainianPlate({ plate }: { plate: string }) {
-  return (
-    <div className="uaPlate" aria-label={`Державний номер ${plate}`}>
-      <span className="uaPlateCountry" aria-hidden="true">
-        <span className="uaFlag"><span className="uaFlagBlue" /><span className="uaFlagYellow" /></span>
-        <small>UA</small>
-      </span>
-      <span className="uaPlateText">{plate}</span>
-    </div>
-  );
-}
 
 function attentionTimeText(value?: string | null){
   if(!value)return "потребує дії";
@@ -42,6 +32,20 @@ function attentionTimeText(value?: string | null){
   return `прострочено ${days} д`;
 }
 
+function VehicleVisual({ item }: { item: AttentionCar }) {
+  if (!item.vehicleId) {
+    return <span className={styles.noImage} aria-label="Зображення авто недоступне">Фото авто</span>;
+  }
+  return <VehicleRender
+    id={item.vehicleId}
+    brand={item.brand}
+    model={item.model}
+    year={item.year}
+    size="mini"
+    className={styles.vehicleRender}
+  />;
+}
+
 export function WorkOrderCockpit({ cars,onOpen,onAll }: { cars: AttentionCar[]; onOpen:(car:AttentionCar)=>void; onAll:()=>void }) {
   return (
     <div className="panel attentionPanel">
@@ -49,14 +53,20 @@ export function WorkOrderCockpit({ cars,onOpen,onAll }: { cars: AttentionCar[]; 
         <div><p className="eyebrow">WORKORDER COCKPIT</p><h2>Авто, що потребують уваги</h2></div>
         <button className="linkButton" onClick={onAll}>Всі авто →</button>
       </div>
-      {!cars.length?<div className="attentionEmpty"><strong>Зараз немає авто, де потрібне втручання</strong><span>Система контролює всі незакриті авто: запізнення на запис, завислі етапи, відсутнього механіка або поста, деталі й ETA, ремонт, QC, оплату, видачу, паузи та гарантійні кейси.</span></div>:<div className="carList">
+      {!cars.length?<div className="attentionEmpty"><strong>Зараз немає авто, де потрібне втручання</strong><span>Система контролює всі незакриті авто: запізнення на запис, завислі етапи, відсутнього механіка або поста, деталі й ETA, ремонт, QC, оплату, видачу, паузи та гарантійні кейси.</span></div>:<div className={styles.list}>
         {cars.map((item) => (
-          <button type="button" className="carRow attentionCarButton" key={item.id||item.plate} onClick={()=>onOpen(item)}>
-            <UkrainianPlate plate={item.plate} />
-            <div className="carInfo"><strong>{item.brand} {item.model} · {item.year}</strong><span className={`badge ${item.tone}`}>{item.status}</span>{item.problem&&<small className="attentionProblem">{item.problem}</small>}</div>
-            <div className="carBrandLogo" title={item.brand}>{getCarLogo(item.brand)}</div>
-            <div className="next"><small>Потрібна дія</small><strong>{item.action}</strong><span>{item.owner} · {attentionTimeText(item.plannedStartAt)}</span></div>
-            <span className="rowArrow" aria-hidden="true">→</span>
+          <button type="button" className={styles.row} key={item.id||item.plate} onClick={()=>onOpen(item)}>
+            <div className={styles.visual}><VehicleVisual item={item}/></div>
+            <div className={styles.identity}>
+              <strong className={styles.title}>{item.brand} {item.model} · {item.year}</strong>
+              <div className={styles.meta}>
+                <span className={styles.plate} aria-label={`Державний номер ${item.plate}`}>{item.plate}</span>
+                <span className={`badge ${item.tone}`}>{item.status}</span>
+              </div>
+              {item.problem&&<small className={styles.problem}>{item.problem}</small>}
+            </div>
+            <div className={styles.next}><small>Потрібна дія</small><strong>{item.action}</strong><span>{item.owner} · {attentionTimeText(item.plannedStartAt)}</span></div>
+            <span className={styles.arrow} aria-hidden="true">→</span>
           </button>
         ))}
       </div>}

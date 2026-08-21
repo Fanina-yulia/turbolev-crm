@@ -113,6 +113,7 @@ export function StationOverview(){
       const extra=item.issueCount>1?` · ще ${item.issueCount-1} ${item.issueCount-1===1?"проблема":"проблеми"}`:"";
       return {
         id:item.id,
+        vehicleId:item.vehicleId,
         plate:item.plate,
         brand:car.brand,
         model:car.model,
