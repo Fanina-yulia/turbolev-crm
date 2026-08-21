@@ -21,7 +21,14 @@ export function SidebarRailIcons() {
         const iconKey = GROUP_ICON_KEY[label];
         if (iconKey) node.dataset.railIcon = iconKey;
         else delete node.dataset.railIcon;
-        if (label) node.setAttribute("aria-label", label);
+        if (label) {
+          node.dataset.railGroupLabel = label;
+          node.setAttribute("aria-label", label);
+          node.setAttribute("title", label);
+        } else {
+          delete node.dataset.railGroupLabel;
+          node.removeAttribute("title");
+        }
       });
     };
 

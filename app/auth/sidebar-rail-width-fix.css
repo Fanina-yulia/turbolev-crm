@@ -1,42 +1,45 @@
-/* Final compact desktop rail geometry.
-   Keep the compact sidebar physically narrow and aligned to 44px controls. */
+/* Compact desktop rail geometry.
+   Final target: 56px rail, 36px controls, 18px icons. */
 @media (min-width: 761px) {
   .shell:has(.sidebar > button[aria-controls="crm-primary-navigation"][aria-expanded="false"]) {
-    --crm-sidebar-width: 64px;
-    grid-template-columns: 64px minmax(0, 1fr) !important;
+    --crm-sidebar-width: 56px;
+    grid-template-columns: 56px minmax(0, 1fr) !important;
   }
 
   .sidebar:has(> button[aria-controls="crm-primary-navigation"][aria-expanded="false"]) {
-    width: 64px !important;
-    min-width: 64px !important;
-    max-width: 64px !important;
-    padding: 14px 10px 16px !important;
+    width: 56px !important;
+    min-width: 56px !important;
+    max-width: 56px !important;
+    padding: 10px 10px 14px !important;
     overflow: visible !important;
   }
 
   .sidebar:has(> button[aria-controls="crm-primary-navigation"][aria-expanded="false"]) .brand {
-    width: 44px !important;
-    min-width: 44px !important;
-    height: 48px !important;
-    padding: 0 0 4px !important;
-    margin: 0 !important;
+    width: 36px !important;
+    min-width: 36px !important;
+    height: 38px !important;
+    padding: 0 !important;
+    margin: 0 0 2px !important;
     justify-content: center !important;
     overflow: visible !important;
   }
 
   .sidebar:has(> button[aria-controls="crm-primary-navigation"][aria-expanded="false"]) .brandLogoWrap {
-    width: 44px !important;
-    min-width: 44px !important;
-    height: 44px !important;
+    width: 36px !important;
+    min-width: 36px !important;
+    height: 36px !important;
   }
 
   .sidebar:has(> button[aria-controls="crm-primary-navigation"][aria-expanded="false"]) > button[aria-controls="crm-primary-navigation"] {
-    top: 70px !important;
     left: 10px !important;
     right: auto !important;
-    width: 44px !important;
-    height: 40px !important;
-    border-radius: 11px !important;
+    width: 36px !important;
+    height: 34px !important;
+    border-radius: 9px !important;
+  }
+
+  .sidebar:has(> button[aria-controls="crm-primary-navigation"][aria-expanded="false"]) > button[aria-controls="crm-primary-navigation"] > span::before {
+    font-size: 18px !important;
   }
 
   .sidebar:has(> button[aria-controls="crm-primary-navigation"][aria-expanded="false"]) [data-global-search-host] {
@@ -44,34 +47,44 @@
   }
 
   .sidebar:has(> button[aria-controls="crm-primary-navigation"][aria-expanded="false"]) nav {
-    width: 44px !important;
-    max-width: 44px !important;
+    width: 36px !important;
+    max-width: 36px !important;
     align-items: center !important;
-    gap: 7px !important;
-    padding: 58px 0 0 !important;
+    gap: 6px !important;
     overflow: visible !important;
   }
 
   .sidebar:has(> button[aria-controls="crm-primary-navigation"][aria-expanded="false"]) nav > section {
-    width: 44px !important;
-    max-width: 44px !important;
+    width: 36px !important;
+    max-width: 36px !important;
     margin: 0 !important;
   }
 
   .sidebar:has(> button[aria-controls="crm-primary-navigation"][aria-expanded="false"]) nav > section > button {
-    width: 44px !important;
-    min-width: 44px !important;
-    max-width: 44px !important;
-    min-height: 44px !important;
-    height: 44px !important;
+    width: 36px !important;
+    min-width: 36px !important;
+    max-width: 36px !important;
+    min-height: 36px !important;
+    height: 36px !important;
     padding: 0 !important;
     justify-content: center !important;
-    border-radius: 12px !important;
+    border-radius: 10px !important;
   }
 
-  /* Stable icon identity by semantic group name. These important custom
-     properties override the older nth-child fallback in SidebarRail, so RBAC
-     hiding a group can never shift the remaining icons. */
+  .sidebar:has(> button[aria-controls="crm-primary-navigation"][aria-expanded="false"]) nav > section > button::before {
+    width: 18px !important;
+    height: 18px !important;
+    flex-basis: 18px !important;
+    -webkit-mask-size: 18px 18px !important;
+    mask-size: 18px 18px !important;
+  }
+
+  .sidebar:has(> button[aria-controls="crm-primary-navigation"][aria-expanded="false"]) nav > section > button > span:first-child {
+    left: 44px !important;
+  }
+
+  /* Stable icon identity by semantic group name. RBAC can hide any group
+     without shifting icon meaning. */
   .sidebar nav > section > button[data-rail-icon="dashboard"] {
     --rail-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect x='3' y='3' width='7' height='7' rx='2' fill='black'/%3E%3Crect x='14' y='3' width='7' height='7' rx='2' fill='black'/%3E%3Crect x='3' y='14' width='7' height='7' rx='2' fill='black'/%3E%3Crect x='14' y='14' width='7' height='7' rx='2' fill='black'/%3E%3C/svg%3E") !important;
   }
@@ -95,17 +108,17 @@
   }
 
   .sidebar:has(> button[aria-controls="crm-primary-navigation"][aria-expanded="false"]) nav > section:has(button[aria-current="page"]) > button {
-    background: rgba(255, 102, 0, .09) !important;
+    background: rgba(255, 102, 0, .085) !important;
     color: var(--orange) !important;
-    border-color: rgba(255, 102, 0, .24) !important;
-    box-shadow: inset 3px 0 0 var(--orange) !important;
+    border-color: rgba(255, 102, 0, .22) !important;
+    box-shadow: inset 2px 0 0 var(--orange) !important;
   }
 
   .sidebar:has(> button[aria-controls="crm-primary-navigation"][aria-expanded="false"]) .sidebarFoot {
-    width: 44px !important;
-    min-width: 44px !important;
-    min-height: 42px !important;
-    padding: 12px 0 0 !important;
+    width: 36px !important;
+    min-width: 36px !important;
+    min-height: 38px !important;
+    padding: 10px 0 0 !important;
     margin-top: auto !important;
     justify-content: center !important;
     font-size: 0 !important;
@@ -115,8 +128,8 @@
   }
 
   .sidebar:has(> button[aria-controls="crm-primary-navigation"][aria-expanded="false"]) .sidebarFoot .liveDot {
-    width: 9px !important;
-    height: 9px !important;
+    width: 8px !important;
+    height: 8px !important;
     margin: 0 !important;
   }
 }
