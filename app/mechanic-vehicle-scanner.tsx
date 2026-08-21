@@ -109,20 +109,56 @@ export function MechanicVehicleScanner() {
   );
 
   useEffect(() => {
+    let cancelled = false;
+    let frame: number | null = null;
+    let boundNav: HTMLElement | null = null;
+
     const syncTargets = () => {
-      setNavTarget((current) => {
-        const next = mechanicNav();
-        return current === next ? current : next;
-      });
-      setHeroTarget((current) => {
-        const next = mechanicHero();
-        return current === next ? current : next;
-      });
+      const nextNav = mechanicNav();
+      const nextHero = mechanicHero();
+      setNavTarget((current) => current === nextNav ? current : nextNav);
+      setHeroTarget((current) => current === nextHero ? current : nextHero);
+      return Boolean(nextNav);
     };
-    syncTargets();
-    const observer = new MutationObserver(syncTargets);
-    observer.observe(document.body, { childList: true, subtree: true });
-    return () => observer.disconnect();
+
+    const locateAfterNavigation = () => {
+      let attempts = 0;
+      const locate = () => {
+        if (cancelled) return;
+        syncTargets();
+        attempts += 1;
+        if (attempts < 20 && !mechanicHero()) frame = window.requestAnimationFrame(locate);
+        else frame = null;
+      };
+      if (frame != null) window.cancelAnimationFrame(frame);
+      frame = window.requestAnimationFrame(locate);
+    };
+
+    const onNavClick = () => locateAfterNavigation();
+    let attempts = 0;
+    const bind = () => {
+      if (cancelled) return;
+      const found = syncTargets();
+      const nav = mechanicNav();
+      if (nav && nav !== boundNav) {
+        boundNav?.removeEventListener("click", onNavClick);
+        boundNav = nav;
+        boundNav.addEventListener("click", onNavClick);
+      }
+      attempts += 1;
+      if (!found && attempts < 60) frame = window.requestAnimationFrame(bind);
+      else frame = null;
+    };
+    bind();
+
+    const onRefresh = () => locateAfterNavigation();
+    window.addEventListener("turbolev:mechanic-refresh", onRefresh);
+    return () => {
+      cancelled = true;
+      if (frame != null) window.cancelAnimationFrame(frame);
+      boundNav?.removeEventListener("click", onNavClick);
+      window.removeEventListener("turbolev:mechanic-refresh", onRefresh);
+    };
   }, []);
 
   const stopCamera = useCallback(() => {
