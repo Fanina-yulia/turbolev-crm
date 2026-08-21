@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { getAccessContext } from "@/src/security/access-context";
 import { CrmShell } from "./crm-shell";
 import { MechanicLiveCabinet } from "./mechanic-live-cabinet";
+import { MechanicRequestCoordinator } from "./mechanic-request-coordinator";
 import { SidebarRail } from "./auth/sidebar-rail";
 import { SidebarRailIcons } from "./auth/sidebar-rail-icons";
 import { BinotelRecordingProvider } from "./binotel-recordings";
@@ -30,7 +31,7 @@ export default async function HomePage({ searchParams }: HomePageProps) {
 
   const primaryRole = access.roles.find((role) => role.isPrimary) ?? access.roles[0] ?? null;
   if (access.provisioningState === "ACTIVE" && primaryRole?.code === "MECHANIC") {
-    return <MechanicLiveCabinet userName={access.user?.employeeName || access.user?.name} />;
+    return <MechanicRequestCoordinator><MechanicLiveCabinet userName={access.user?.employeeName || access.user?.name} /></MechanicRequestCoordinator>;
   }
 
   const section = first(params.section);
