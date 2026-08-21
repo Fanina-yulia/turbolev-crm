@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { DiagnosticCardRevisionKind, DiagnosticReviewState } from "@/src/generated/prisma/client";
+import { DiagnosticCardRevisionKind, DiagnosticReviewState, Prisma } from "@/src/generated/prisma/client";
 import { getPrisma } from "@/src/lib/prisma";
 import { toPrismaJson } from "@/src/lib/prisma-json";
 import { getStructuredDiagnostic } from "@/src/services/structured-diagnostics.service";
@@ -176,7 +176,7 @@ async function buildCardSource(
   };
 }
 
-async function nextCardNumber(tx: ReturnType<typeof getPrisma>) {
+async function nextCardNumber(tx: Prisma.TransactionClient) {
   const rows = await tx.$queryRaw<Array<{ value: bigint }>>`SELECT nextval('diagnostic_card_number_seq') AS value`;
   const sequence = Number(rows[0]?.value || 0);
   const year = new Date().getFullYear();
@@ -203,7 +203,7 @@ export async function ensureDiagnosticCardReviewRevision(
     await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`diagnostic-card:${diagnosticRequestId}`}))`;
     let card = await tx.diagnosticCard.findUnique({ where: { diagnosticRequestId } });
     if (!card) {
-      const number = await nextCardNumber(tx as unknown as ReturnType<typeof getPrisma>);
+      const number = await nextCardNumber(tx);
       card = await tx.diagnosticCard.create({ data: { diagnosticRequestId, number, currentRevision: 0 } });
     }
     const latest = await tx.diagnosticCardRevision.findFirst({ where: { diagnosticCardId: card.id }, orderBy: { revision: "desc" } });
@@ -243,7 +243,8 @@ export async function finalizeDiagnosticCard(
 ) {
   const prisma = getPrisma();
   const view = await getStructuredDiagnostic(diagnosticRequestId);
-  if (![DiagnosticReviewState.SUBMITTED, DiagnosticReviewState.CONFIRMED].includes(view.diagnostic.review.state as DiagnosticReviewState)) {
+  const reviewState = view.diagnostic.review.state;
+  if (reviewState !== DiagnosticReviewState.SUBMITTED && reviewState !== DiagnosticReviewState.CONFIRMED) {
     throw new DiagnosticCardError("DIAGNOSTIC_NOT_SUBMITTED", "Спочатку автомеханік має завершити діагностику та передати її на перевірку.", 409);
   }
   const built = await buildCardSource(diagnosticRequestId, { reviewerUserId: input.reviewerUserId, technicalConclusion: input.technicalConclusion });
@@ -253,7 +254,7 @@ export async function finalizeDiagnosticCard(
     await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`diagnostic-card:${diagnosticRequestId}`}))`;
     let card = await tx.diagnosticCard.findUnique({ where: { diagnosticRequestId } });
     if (!card) {
-      const number = await nextCardNumber(tx as unknown as ReturnType<typeof getPrisma>);
+      const number = await nextCardNumber(tx);
       card = await tx.diagnosticCard.create({ data: { diagnosticRequestId, number, currentRevision: 0 } });
     }
     const latest = await tx.diagnosticCardRevision.findFirst({ where: { diagnosticCardId: card.id }, orderBy: { revision: "desc" } });
@@ -317,7 +318,7 @@ export async function getDiagnosticCard(diagnosticRequestId: string) {
 
 export async function getFinalDiagnosticCardSnapshot(diagnosticRequestId: string) {
   const state = await getDiagnosticCard(diagnosticRequestId);
-  return state?.final?.snapshot as DiagnosticCardSnapshot | undefined ?? null;
+  return (state?.final?.snapshot as DiagnosticCardSnapshot | undefined) ?? null;
 }
 
 export type { DiagnosticCardSnapshot };
