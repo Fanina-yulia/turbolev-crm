@@ -1,0 +1,37 @@
+enum DiagnosticCardRevisionKind {
+  REVIEW
+  FINAL
+}
+
+model DiagnosticCard {
+  id                  String   @id @default(cuid())
+  diagnosticRequestId String   @unique
+  number              String   @unique @db.VarChar(32)
+  currentRevision     Int      @default(0)
+  finalizedAt         DateTime?
+  confirmedByUserId   String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  revisions DiagnosticCardRevision[]
+
+  @@index([finalizedAt, updatedAt])
+  @@index([confirmedByUserId])
+}
+
+model DiagnosticCardRevision {
+  id                String                     @id @default(cuid())
+  diagnosticCardId  String
+  revision          Int
+  kind              DiagnosticCardRevisionKind
+  sourceFingerprint String                     @db.VarChar(64)
+  snapshot          Json
+  createdByUserId   String?
+  createdAt         DateTime                   @default(now())
+
+  card DiagnosticCard @relation(fields: [diagnosticCardId], references: [id], onDelete: Cascade)
+
+  @@unique([diagnosticCardId, revision])
+  @@index([diagnosticCardId, kind, createdAt])
+  @@index([sourceFingerprint])
+}
