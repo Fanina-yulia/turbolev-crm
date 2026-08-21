@@ -39,10 +39,6 @@ function lastVisit(client: Client) {
   return row ? dateText(row.closedAt || row.updatedAt || row.createdAt) : "—";
 }
 
-function vehicleName(vehicle: Client["vehicles"][number]) {
-  return [vehicle.brand, vehicle.model].filter(Boolean).join(" ") || "Автомобіль";
-}
-
 export function ClientsDirectory() {
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(1);
@@ -194,9 +190,20 @@ export function ClientsDirectory() {
             <section className={styles.panel}>
               <h3>Пов’язані автомобілі <span>{selected._count.vehicles}</span></h3>
               {selected.vehicles.length ? <div className={styles.clientVehicleList}>{selected.vehicles.map((vehicle, index) => <button className={styles.clientVehicleCard} key={vehicle.id} onClick={() => navigateCrm("Авто", { vehicleId: vehicle.id })}>
-                <VehicleRender id={vehicle.id} brand={vehicle.brand} model={vehicle.model} year={vehicle.year} size="mini" eager={index < 2} />
+                <VehicleRender
+                  id={vehicle.id}
+                  brand={vehicle.brand}
+                  model={vehicle.model}
+                  year={vehicle.year}
+                  exteriorColorName={vehicle.exteriorColorName}
+                  exteriorColorHex={vehicle.exteriorColorHex}
+                  exteriorColorConfirmed={vehicle.exteriorColorConfirmed}
+                  size="card"
+                  eager={index < 2}
+                />
                 <span className={styles.clientVehicleInfo}>
-                  <strong>{vehicleName(vehicle)}</strong>
+                  <span className={styles.clientVehicleMake}>{vehicle.brand || "Марка не вказана"}</span>
+                  <strong className={styles.clientVehicleModel}>{vehicle.model || "Модель не вказана"}</strong>
                   <small className={styles.clientVehiclePlate}>{vehicle.plateNumber || "Без держномера"}</small>
                 </span>
                 <span className={styles.clientVehicleChevron}>›</span>
