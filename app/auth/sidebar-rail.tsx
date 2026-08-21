@@ -1,7 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { CRM_NAV_GROUPS, sectionFromSlug, type CrmSectionLabel } from "../crm-navigation";
+import { CRM_ROUTE_KEYS } from "../crm-route";
+import { type SettingsTab, isSettingsTab } from "../settings-tabs";
 import { useCrmAccess } from "../use-crm-access";
 import { PERMISSIONS } from "@/src/security/permissions";
 
@@ -11,50 +13,157 @@ type RailFlyout = {
   left: number;
 } | null;
 
+type SettingsNavItem = { id: SettingsTab; label: string };
+
+const DESKTOP_QUERY = "(min-width: 761px)";
+const DESKTOP_EXPANDED_KEY = "turbolev:desktop-sidebar-expanded:v1";
+const SIDEBAR_TOGGLE_SELECTOR = '.sidebar > button[aria-controls="crm-primary-navigation"]';
+const GROUP_BUTTON_SELECTOR = '.sidebar nav > section > button[aria-expanded]';
+
+const SETTINGS_NAV_ITEMS: SettingsNavItem[] = [
+  { id: "schedule", label: "Графік" },
+  { id: "personnel", label: "Персонал" },
+  { id: "suppliers", label: "Постачальники" },
+  { id: "warehouse", label: "Склад" },
+  { id: "workPrices", label: "Прайс робіт" },
+  { id: "posts", label: "Пости" },
+  { id: "markup", label: "Націнка" },
+  { id: "cash", label: "Каса" },
+  { id: "integrations", label: "Інтеграції" },
+  { id: "cameras", label: "Камери" },
+  { id: "diagnosticTemplates", label: "Шаблони діагностики" },
+  { id: "appearance", label: "Оформлення" },
+  { id: "workflow", label: "Процеси та статуси" },
+  { id: "security", label: "Ролі та доступи" },
+];
+
+function isDesktop() {
+  return window.matchMedia(DESKTOP_QUERY).matches;
+}
+
+function sidebarToggle() {
+  const node = document.querySelector(SIDEBAR_TOGGLE_SELECTOR);
+  return node instanceof HTMLButtonElement ? node : null;
+}
+
+function readDesktopExpandedPreference() {
+  try {
+    return window.localStorage.getItem(DESKTOP_EXPANDED_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function writeDesktopExpandedPreference(expanded: boolean) {
+  try {
+    window.localStorage.setItem(DESKTOP_EXPANDED_KEY, expanded ? "1" : "0");
+  } catch {
+    // Keep the in-memory preference if storage is unavailable.
+  }
+}
+
+function blurActiveElement() {
+  requestAnimationFrame(() => {
+    const active = document.activeElement;
+    if (active instanceof HTMLElement) active.blur();
+  });
+}
+
 export function SidebarRail() {
   const access = useCrmAccess();
   const [flyout, setFlyout] = useState<RailFlyout>(null);
   const [activeLabel, setActiveLabel] = useState<CrmSectionLabel | null>(null);
+  const [activeSettingsTab, setActiveSettingsTab] = useState<SettingsTab>("schedule");
+  const desiredDesktopExpanded = useRef(false);
+  const reconcilingDesktopState = useRef(false);
 
-  const canOpenSettings = !access.enforced
-    || access.can(PERMISSIONS.SETTINGS_READ)
-    || access.can(PERMISSIONS.PERSONNEL_READ)
-    || access.can(PERMISSIONS.FINANCE_READ)
-    || access.can(PERMISSIONS.SETTINGS_INTEGRATIONS)
-    || access.can(PERMISSIONS.SECURITY_ACCESS_MANAGE);
+  const canSettingsTab = useCallback((tab: SettingsTab) => {
+    if (!access.enforced) return true;
+    if (tab === "personnel") return access.can(PERMISSIONS.PERSONNEL_READ);
+    if (tab === "cash") return access.can(PERMISSIONS.FINANCE_READ);
+    if (tab === "integrations") return access.can(PERMISSIONS.SETTINGS_INTEGRATIONS);
+    if (tab === "security") return access.can(PERMISSIONS.SECURITY_ACCESS_MANAGE);
+    return access.can(PERMISSIONS.SETTINGS_READ);
+  }, [access]);
 
-  const selectedGroup = flyout ? CRM_NAV_GROUPS.find((group) => group.label === flyout.groupLabel) ?? null : null;
+  const visibleSettingsItems = SETTINGS_NAV_ITEMS.filter((item) => canSettingsTab(item.id));
+  const canOpenSettings = visibleSettingsItems.length > 0;
+
+  const selectedGroup = flyout
+    ? CRM_NAV_GROUPS.find((group) => group.label === flyout.groupLabel) ?? null
+    : null;
   const flyoutItems = selectedGroup?.items.filter((item) => {
     if (!access.enforced) return true;
     if (item.slug === "settings") return canOpenSettings;
     return access.canOpenCabinet(item.slug);
   }) ?? [];
 
-  useEffect(() => {
-    const isDesktopCompact = () => window.matchMedia("(min-width: 761px)").matches
-      && Boolean(document.querySelector('.sidebar > button[aria-controls="crm-primary-navigation"][aria-expanded="false"]'));
+  const syncLocationState = useCallback(() => {
+    const url = new URL(window.location.href);
+    setActiveLabel(sectionFromSlug(url.searchParams.get("section")));
+    const settingsTab = url.searchParams.get("settingsTab");
+    setActiveSettingsTab(isSettingsTab(settingsTab) ? settingsTab : "schedule");
+  }, []);
 
-    const syncActive = () => {
-      const url = new URL(window.location.href);
-      setActiveLabel(sectionFromSlug(url.searchParams.get("section")));
+  const reconcileDesktopExpansion = useCallback(() => {
+    if (!isDesktop() || reconcilingDesktopState.current) return;
+    const button = sidebarToggle();
+    if (!button) return;
+    const actualExpanded = button.getAttribute("aria-expanded") === "true";
+    const desiredExpanded = desiredDesktopExpanded.current;
+    if (actualExpanded === desiredExpanded) return;
+
+    reconcilingDesktopState.current = true;
+    button.click();
+    requestAnimationFrame(() => {
+      reconcilingDesktopState.current = false;
+    });
+  }, []);
+
+  const queueDesktopReconcile = useCallback(() => {
+    requestAnimationFrame(() => requestAnimationFrame(reconcileDesktopExpansion));
+  }, [reconcileDesktopExpansion]);
+
+  useEffect(() => {
+    desiredDesktopExpanded.current = readDesktopExpandedPreference();
+
+    const isDesktopCompact = () => isDesktop()
+      && sidebarToggle()?.getAttribute("aria-expanded") === "false";
+
+    const groupLabelFromButton = (button: HTMLButtonElement) => {
+      const semantic = button.dataset.railGroupLabel?.trim();
+      if (semantic && CRM_NAV_GROUPS.some((group) => group.label === semantic)) return semantic;
+      const fallback = button.querySelector("span")?.textContent?.trim() ?? "";
+      return CRM_NAV_GROUPS.some((group) => group.label === fallback) ? fallback : "";
     };
 
     const onClickCapture = (event: MouseEvent) => {
-      if (!isDesktopCompact()) return;
       const target = event.target;
       if (!(target instanceof Element)) return;
-      const button = target.closest('.sidebar nav > section > button[aria-expanded]');
-      if (!(button instanceof HTMLButtonElement)) return;
 
-      const label = button.querySelector("span")?.textContent?.trim();
-      if (!label || !CRM_NAV_GROUPS.some((group) => group.label === label)) return;
+      const toggle = target.closest(SIDEBAR_TOGGLE_SELECTOR);
+      if (toggle instanceof HTMLButtonElement && isDesktop()) {
+        if (!reconcilingDesktopState.current) {
+          const nextExpanded = toggle.getAttribute("aria-expanded") !== "true";
+          desiredDesktopExpanded.current = nextExpanded;
+          writeDesktopExpandedPreference(nextExpanded);
+          setFlyout(null);
+        }
+        return;
+      }
+
+      if (!isDesktopCompact()) return;
+      const button = target.closest(GROUP_BUTTON_SELECTOR);
+      if (!(button instanceof HTMLButtonElement)) return;
+      const label = groupLabelFromButton(button);
+      if (!label) return;
 
       event.preventDefault();
       event.stopPropagation();
-      syncActive();
+      syncLocationState();
       const rect = button.getBoundingClientRect();
-      const top = Math.max(8, Math.min(rect.top - 6, window.innerHeight - 230));
-      const left = Math.min(rect.right + 10, window.innerWidth - 250);
+      const top = Math.max(8, Math.min(rect.top - 6, window.innerHeight - 180));
+      const left = Math.max(8, Math.min(rect.right + 8, window.innerWidth - 292));
       setFlyout((current) => current?.groupLabel === label ? null : { groupLabel: label, top, left });
     };
 
@@ -62,7 +171,7 @@ export function SidebarRail() {
       const target = event.target;
       if (!(target instanceof Element)) return;
       if (target.closest(".crmRailFlyout")) return;
-      if (target.closest('.sidebar nav > section > button[aria-expanded]')) return;
+      if (target.closest(GROUP_BUTTON_SELECTOR)) return;
       setFlyout(null);
     };
 
@@ -70,24 +179,56 @@ export function SidebarRail() {
       if (event.key === "Escape") setFlyout(null);
     };
 
-    const closeFlyout = () => setFlyout(null);
+    const onScroll = (event: Event) => {
+      const target = event.target;
+      if (target instanceof Element && target.closest(".crmRailFlyout")) return;
+      setFlyout(null);
+    };
 
-    syncActive();
+    const onRouteChanged = () => {
+      syncLocationState();
+      setFlyout(null);
+      queueDesktopReconcile();
+    };
+
+    const onResize = () => {
+      setFlyout(null);
+      queueDesktopReconcile();
+    };
+
+    syncLocationState();
+    queueDesktopReconcile();
+
+    const sidebar = document.querySelector(".sidebar");
+    const observer = new MutationObserver(() => queueDesktopReconcile());
+    if (sidebar) {
+      observer.observe(sidebar, {
+        attributes: true,
+        attributeFilter: ["aria-expanded"],
+        childList: true,
+        subtree: true,
+      });
+    }
+
     document.addEventListener("click", onClickCapture, true);
     document.addEventListener("pointerdown", onPointerDown, true);
     window.addEventListener("keydown", onEscape);
-    window.addEventListener("resize", closeFlyout);
-    window.addEventListener("scroll", closeFlyout, true);
-    window.addEventListener("popstate", syncActive);
+    window.addEventListener("resize", onResize);
+    window.addEventListener("scroll", onScroll, true);
+    window.addEventListener("popstate", onRouteChanged);
+    window.addEventListener("turbolev:navigate", onRouteChanged as EventListener);
+
     return () => {
+      observer.disconnect();
       document.removeEventListener("click", onClickCapture, true);
       document.removeEventListener("pointerdown", onPointerDown, true);
       window.removeEventListener("keydown", onEscape);
-      window.removeEventListener("resize", closeFlyout);
-      window.removeEventListener("scroll", closeFlyout, true);
-      window.removeEventListener("popstate", syncActive);
+      window.removeEventListener("resize", onResize);
+      window.removeEventListener("scroll", onScroll, true);
+      window.removeEventListener("popstate", onRouteChanged);
+      window.removeEventListener("turbolev:navigate", onRouteChanged as EventListener);
     };
-  }, []);
+  }, [queueDesktopReconcile, syncLocationState]);
 
   useEffect(() => {
     document.body.classList.toggle("crm-rail-flyout-open", Boolean(flyout));
@@ -98,11 +239,28 @@ export function SidebarRail() {
     setActiveLabel(label);
     setFlyout(null);
     window.dispatchEvent(new CustomEvent("turbolev:navigate", { detail: label }));
-    requestAnimationFrame(() => {
-      const active = document.activeElement;
-      if (active instanceof HTMLElement) active.blur();
-    });
+    blurActiveElement();
   };
+
+  const openSettings = (tab: SettingsTab) => {
+    const url = new URL(window.location.href);
+    url.searchParams.set("section", "settings");
+    url.searchParams.set("settingsTab", tab);
+    url.searchParams.delete("filter");
+    url.searchParams.delete("filterLabel");
+    for (const key of CRM_ROUTE_KEYS) url.searchParams.delete(key);
+
+    setActiveLabel("Налаштування");
+    setActiveSettingsTab(tab);
+    setFlyout(null);
+    window.history.pushState({}, "", `${url.pathname}${url.search}${url.hash}`);
+    window.dispatchEvent(new PopStateEvent("popstate"));
+    blurActiveElement();
+  };
+
+  const preferredSettingsTab = visibleSettingsItems.some((item) => item.id === activeSettingsTab)
+    ? activeSettingsTab
+    : visibleSettingsItems[0]?.id;
 
   return <>
     {flyout && selectedGroup && flyoutItems.length > 0 && <div
@@ -112,27 +270,45 @@ export function SidebarRail() {
       style={{ top: flyout.top, left: flyout.left }}
     >
       <div className="crmRailFlyoutTitle">{selectedGroup.label}</div>
-      {flyoutItems.map((item) => <button
-        key={item.slug}
-        type="button"
-        role="menuitem"
-        className={activeLabel === item.label ? "crmRailFlyoutItem crmRailFlyoutItemActive" : "crmRailFlyoutItem"}
-        onClick={() => openSection(item.label)}
-      >
-        <span className="crmRailFlyoutDot" aria-hidden="true"/>
-        <span>{item.label === "Планувальник" ? "Записи на СТО" : item.label}</span>
-        {item.label === "Нові звернення" && <small>NEW</small>}
-      </button>)}
+      {flyoutItems.map((item) => <div className="crmRailFlyoutEntry" key={item.slug}>
+        <button
+          type="button"
+          role="menuitem"
+          className={activeLabel === item.label ? "crmRailFlyoutItem crmRailFlyoutItemActive" : "crmRailFlyoutItem"}
+          onClick={() => item.slug === "settings" && preferredSettingsTab
+            ? openSettings(preferredSettingsTab)
+            : openSection(item.label)}
+        >
+          <span className="crmRailFlyoutDot" aria-hidden="true"/>
+          <span>{item.label === "Планувальник" ? "Записи на СТО" : item.label}</span>
+          {item.label === "Нові звернення" && <small>NEW</small>}
+        </button>
+        {item.slug === "settings" && visibleSettingsItems.length > 0 && <div
+          className="crmRailSettingsList"
+          role="group"
+          aria-label="Підпункти налаштувань"
+        >
+          {visibleSettingsItems.map((settingsItem) => <button
+            key={settingsItem.id}
+            type="button"
+            className={activeLabel === "Налаштування" && activeSettingsTab === settingsItem.id
+              ? "crmRailSettingsItem crmRailSettingsItemActive"
+              : "crmRailSettingsItem"}
+            onClick={() => openSettings(settingsItem.id)}
+          >{settingsItem.label}</button>)}
+        </div>}
+      </div>)}
     </div>}
     <style jsx global>{`
       .crmRailFlyout {
         position: fixed;
         z-index: 2600;
         width: max-content;
-        min-width: 210px;
-        max-width: 250px;
+        min-width: 220px;
+        max-width: 284px;
         max-height: calc(100vh - 16px);
         overflow-y: auto;
+        overscroll-behavior: contain;
         padding: 7px;
         border: 1px solid var(--line);
         border-radius: 12px;
@@ -154,6 +330,8 @@ export function SidebarRail() {
         letter-spacing: .08em;
         text-transform: uppercase;
       }
+
+      .crmRailFlyoutEntry { display: block; }
 
       .crmRailFlyoutItem {
         width: 100%;
@@ -207,14 +385,46 @@ export function SidebarRail() {
         letter-spacing: .06em;
       }
 
-      @media (min-width: 761px) {
-        .shell {
-          transition: grid-template-columns .2s ease;
-        }
+      .crmRailSettingsList {
+        display: grid;
+        gap: 2px;
+        margin: 2px 0 6px 16px;
+        padding: 3px 0 3px 9px;
+        border-left: 1px solid var(--line);
+      }
 
+      .crmRailSettingsItem {
+        width: 100%;
+        min-height: 32px;
+        padding: 6px 8px;
+        border: 1px solid transparent;
+        border-radius: 7px;
+        background: transparent;
+        color: var(--muted);
+        cursor: pointer;
+        text-align: left;
+        font-size: 12px;
+        font-weight: 550;
+      }
+
+      .crmRailSettingsItem:hover,
+      .crmRailSettingsItem:focus-visible {
+        outline: none;
+        color: var(--text);
+        background: var(--panel-2);
+        border-color: var(--line);
+      }
+
+      .crmRailSettingsItemActive {
+        color: var(--orange);
+        background: rgba(255,102,0,.07);
+      }
+
+      @media (min-width: 761px) {
+        .shell { transition: grid-template-columns .18s ease; }
         .sidebar {
           overflow: visible;
-          transition: padding .2s ease, background .18s ease, border-color .18s ease;
+          transition: padding .18s ease, background .18s ease, border-color .18s ease;
         }
 
         .sidebar > button[aria-controls="crm-primary-navigation"] {
@@ -234,7 +444,7 @@ export function SidebarRail() {
           box-shadow: none;
           cursor: pointer;
           line-height: 1;
-          transition: background .16s ease, color .16s ease, border-color .16s ease, transform .16s ease;
+          transition: background .16s ease, color .16s ease, border-color .16s ease;
         }
 
         .sidebar > button[aria-controls="crm-primary-navigation"]:hover {
@@ -248,91 +458,26 @@ export function SidebarRail() {
           box-shadow: 0 0 0 3px rgba(255,102,0,.18);
         }
 
-        .sidebar > button[aria-controls="crm-primary-navigation"] > span {
-          font-size: 0;
-        }
-
+        .sidebar > button[aria-controls="crm-primary-navigation"] > span { font-size: 0; }
         .sidebar > button[aria-controls="crm-primary-navigation"] > span::before {
           content: "‹";
           display: block;
-          font-size: 22px;
+          font-size: 20px;
           font-weight: 600;
           transform: translateY(-1px);
         }
-
-        .sidebar > button[aria-controls="crm-primary-navigation"][aria-expanded="false"] > span::before {
-          content: "›";
-        }
-
-        .shell:has(.sidebar > button[aria-controls="crm-primary-navigation"][aria-expanded="false"]) {
-          grid-template-columns: 72px minmax(0, 1fr);
-        }
-
-        .sidebar:has(> button[aria-controls="crm-primary-navigation"][aria-expanded="false"]) {
-          padding: 16px 10px 18px;
-        }
-
-        .sidebar:has(> button[aria-controls="crm-primary-navigation"][aria-expanded="false"]) .brand {
-          justify-content: center;
-          padding: 0 0 12px;
-        }
-
-        .sidebar:has(> button[aria-controls="crm-primary-navigation"][aria-expanded="false"]) .brandLogoWrap {
-          position: relative;
-          width: 44px !important;
-          min-width: 44px !important;
-          height: 52px !important;
-          display: block !important;
-          overflow: hidden !important;
-        }
-
-        .sidebar:has(> button[aria-controls="crm-primary-navigation"][aria-expanded="false"]) .brandLogo {
-          width: 118px !important;
-          max-width: none !important;
-          height: auto !important;
-          margin: 0 !important;
-          transform: none !important;
-          object-fit: contain !important;
-          object-position: left center !important;
-        }
-
-        .sidebar:has(> button[aria-controls="crm-primary-navigation"][aria-expanded="false"]) > button[aria-controls="crm-primary-navigation"] {
-          top: 76px;
-          right: 10px;
-          width: 28px;
-          height: 28px;
-          border-radius: 8px;
-          background: transparent;
-        }
-
-        .sidebar:has(> button[aria-controls="crm-primary-navigation"][aria-expanded="false"]) [data-global-search-host] {
-          display: none !important;
-        }
-
-        .sidebar:has(> button[aria-controls="crm-primary-navigation"][aria-expanded="false"]) nav {
-          align-items: center;
-          overflow: visible;
-          padding: 40px 0 0;
-          gap: 8px;
-        }
+        .sidebar > button[aria-controls="crm-primary-navigation"][aria-expanded="false"] > span::before { content: "›"; }
 
         .sidebar:has(> button[aria-controls="crm-primary-navigation"][aria-expanded="false"]) nav > section {
           position: relative;
-          width: 48px;
-          margin: 0;
         }
 
         .sidebar:has(> button[aria-controls="crm-primary-navigation"][aria-expanded="false"]) nav > section > button {
           --rail-icon: none;
           position: relative;
           z-index: 2;
-          width: 44px !important;
-          min-height: 44px !important;
-          justify-content: center !important;
           gap: 0 !important;
-          padding: 0 !important;
           border: 1px solid transparent !important;
-          border-radius: 12px !important;
           background: transparent !important;
           color: var(--muted) !important;
           overflow: visible;
@@ -341,52 +486,24 @@ export function SidebarRail() {
 
         .sidebar:has(> button[aria-controls="crm-primary-navigation"][aria-expanded="false"]) nav > section > button::before {
           content: "";
-          width: 21px;
-          height: 21px;
-          flex: 0 0 21px;
+          width: 18px;
+          height: 18px;
+          flex: 0 0 18px;
           background: currentColor;
-          -webkit-mask: var(--rail-icon) center / 21px 21px no-repeat;
-          mask: var(--rail-icon) center / 21px 21px no-repeat;
-        }
-
-        .sidebar:has(> button[aria-controls="crm-primary-navigation"][aria-expanded="false"]) nav > section:nth-child(1) > button {
-          --rail-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect x='3' y='3' width='7' height='7' rx='2' fill='black'/%3E%3Crect x='14' y='3' width='7' height='7' rx='2' fill='black'/%3E%3Crect x='3' y='14' width='7' height='7' rx='2' fill='black'/%3E%3Crect x='14' y='14' width='7' height='7' rx='2' fill='black'/%3E%3C/svg%3E");
-        }
-
-        .sidebar:has(> button[aria-controls="crm-primary-navigation"][aria-expanded="false"]) nav > section:nth-child(2) > button {
-          --rail-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M4 4h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Zm0 2v8h4.1l1.4 2h5l1.4-2H20V6H4Z' fill='black'/%3E%3C/svg%3E");
-        }
-
-        .sidebar:has(> button[aria-controls="crm-primary-navigation"][aria-expanded="false"]) nav > section:nth-child(3) > button {
-          --rail-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M7 3a4 4 0 1 1 0 8 4 4 0 0 1 0-8Zm10 1a3 3 0 1 1 0 6 3 3 0 0 1 0-6ZM1.5 20a5.5 5.5 0 0 1 11 0v1h-11v-1Zm12.2 1c.2-.7.3-1.4.3-2.1 0-1.5-.5-2.9-1.3-4a4.8 4.8 0 0 1 8.8 2.6V21h-7.8Z' fill='black'/%3E%3C/svg%3E");
-        }
-
-        .sidebar:has(> button[aria-controls="crm-primary-navigation"][aria-expanded="false"]) nav > section:nth-child(4) > button {
-          --rail-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M21.2 5.1a6 6 0 0 1-7.6 7.7l-6.8 6.8a2.5 2.5 0 1 1-3.5-3.5l6.8-6.8a6 6 0 0 1 7.7-7.6l-3.5 3.5 2.5 2.5 4.4-2.6Z' fill='black'/%3E%3C/svg%3E");
-        }
-
-        .sidebar:has(> button[aria-controls="crm-primary-navigation"][aria-expanded="false"]) nav > section:nth-child(5) > button {
-          --rail-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='m12 2 9 4.5v11L12 22l-9-4.5v-11L12 2Zm0 2.3L6.2 7.2 12 10l5.8-2.8L12 4.3ZM5 9v7.3l6 3v-7.4L5 9Zm8 10.3 6-3V9l-6 2.9v7.4Z' fill='black'/%3E%3C/svg%3E");
-        }
-
-        .sidebar:has(> button[aria-controls="crm-primary-navigation"][aria-expanded="false"]) nav > section:nth-child(6) > button {
-          --rail-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M4 4h14a3 3 0 0 1 3 3v1h-5a4 4 0 0 0 0 8h5v1a3 3 0 0 1-3 3H4a3 3 0 0 1-3-3V7a3 3 0 0 1 3-3Zm12 6h6v4h-6a2 2 0 1 1 0-4Z' fill='black'/%3E%3C/svg%3E");
-        }
-
-        .sidebar:has(> button[aria-controls="crm-primary-navigation"][aria-expanded="false"]) nav > section:nth-child(7) > button {
-          --rail-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M3 20h18v2H3v-2Zm2-8h3v6H5v-6Zm5-5h3v11h-3V7Zm5 3h3v8h-3v-8Zm4-6h2v14h-2V4Z' fill='black'/%3E%3C/svg%3E");
+          -webkit-mask: var(--rail-icon) center / 18px 18px no-repeat;
+          mask: var(--rail-icon) center / 18px 18px no-repeat;
         }
 
         .sidebar:has(> button[aria-controls="crm-primary-navigation"][aria-expanded="false"]) nav > section > button > span:first-child {
           position: absolute;
-          left: 54px;
+          left: 44px;
           top: 50%;
           z-index: 180;
           width: max-content;
           max-width: 230px;
-          padding: 8px 10px;
+          padding: 7px 9px;
           border: 1px solid var(--line);
-          border-radius: 9px;
+          border-radius: 8px;
           background: var(--panel);
           color: var(--text);
           box-shadow: 0 10px 28px rgba(0,0,0,.20);
@@ -403,9 +520,7 @@ export function SidebarRail() {
           transition: opacity .12s ease, transform .12s ease, visibility .12s ease;
         }
 
-        .sidebar:has(> button[aria-controls="crm-primary-navigation"][aria-expanded="false"]) nav > section > button > i {
-          display: none;
-        }
+        .sidebar:has(> button[aria-controls="crm-primary-navigation"][aria-expanded="false"]) nav > section > button > i { display: none; }
 
         .sidebar:has(> button[aria-controls="crm-primary-navigation"][aria-expanded="false"]) nav > section > button:hover,
         .sidebar:has(> button[aria-controls="crm-primary-navigation"][aria-expanded="false"]) nav > section > button:focus-visible {
@@ -427,31 +542,18 @@ export function SidebarRail() {
           visibility: hidden !important;
         }
 
-        .sidebar:has(> button[aria-controls="crm-primary-navigation"][aria-expanded="false"]) nav > section:has(button[aria-current="page"]) > button {
-          background: rgba(255,102,0,.09) !important;
-          color: var(--orange) !important;
-          border-color: rgba(255,102,0,.18) !important;
-          box-shadow: inset 3px 0 0 var(--orange);
-        }
-
-        .sidebar:has(> button[aria-controls="crm-primary-navigation"][aria-expanded="false"]) nav > section > div {
-          display: none !important;
-        }
+        .sidebar:has(> button[aria-controls="crm-primary-navigation"][aria-expanded="false"]) nav > section > div { display: none !important; }
 
         .sidebar:has(> button[aria-controls="crm-primary-navigation"][aria-expanded="false"]) .sidebarFoot {
           display: flex;
           align-items: center;
           justify-content: center;
-          min-height: 42px;
-          padding: 12px 0 0;
           border-top: 1px solid var(--line);
           text-align: center;
           font-size: 0;
         }
 
         .sidebar:has(> button[aria-controls="crm-primary-navigation"][aria-expanded="false"]) .liveDot {
-          width: 9px;
-          height: 9px;
           margin-right: 0;
           box-shadow: 0 0 0 4px rgba(43,182,115,.08);
         }

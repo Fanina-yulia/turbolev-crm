@@ -1,18 +1,16 @@
-/* Screenshot-driven compact sidebar polish.
-   Render the mark on the stable .brand box (not the nested image wrapper),
-   tighten the collapse control, and remove the oversized workspace gutter. */
+/* Compact sidebar visual polish for the 56px desktop rail. */
 @media (min-width: 761px) {
   .sidebar:has(> button[aria-controls="crm-primary-navigation"][aria-expanded="false"]) {
-    padding: 10px 10px 14px !important;
+    padding: 8px 10px 12px !important;
   }
 
   .sidebar:has(> button[aria-controls="crm-primary-navigation"][aria-expanded="false"]) .brand {
     display: flex !important;
     align-items: center !important;
     justify-content: center !important;
-    width: 44px !important;
-    min-width: 44px !important;
-    height: 44px !important;
+    width: 36px !important;
+    min-width: 36px !important;
+    height: 36px !important;
     padding: 0 !important;
     margin: 0 0 2px !important;
     overflow: visible !important;
@@ -20,7 +18,7 @@
     background-image: url("/brand/turbo-lev-rail-light.png") !important;
     background-repeat: no-repeat !important;
     background-position: center !important;
-    background-size: 42px 42px !important;
+    background-size: 34px 34px !important;
     filter: drop-shadow(0 1px 1px rgba(17, 21, 26, .08));
   }
 
@@ -29,13 +27,11 @@
     filter: drop-shadow(0 1px 1px rgba(0, 0, 0, .24));
   }
 
-  /* The compact artwork now lives on .brand. Keep the full wordmark DOM for
-     expanded mode, but make it inert and invisible only while collapsed. */
   .sidebar:has(> button[aria-controls="crm-primary-navigation"][aria-expanded="false"]) .brandLogoWrap {
     display: block !important;
-    width: 44px !important;
-    min-width: 44px !important;
-    height: 44px !important;
+    width: 36px !important;
+    min-width: 36px !important;
+    height: 36px !important;
     opacity: 0 !important;
     pointer-events: none !important;
     background: none !important;
@@ -51,15 +47,14 @@
     display: none !important;
   }
 
-  /* Center a smaller collapse/expand control directly below the logo. */
   .sidebar:has(> button[aria-controls="crm-primary-navigation"][aria-expanded="false"]) > button[aria-controls="crm-primary-navigation"] {
-    top: 58px !important;
-    left: 14px !important;
+    top: 48px !important;
+    left: 10px !important;
     right: auto !important;
     width: 36px !important;
-    height: 36px !important;
+    height: 34px !important;
     padding: 0 !important;
-    border-radius: 10px !important;
+    border-radius: 9px !important;
     border-color: var(--line) !important;
     background: transparent !important;
     color: var(--muted) !important;
@@ -73,14 +68,11 @@
     background: var(--panel-2) !important;
   }
 
-  /* The old 58px nav spacer made the top of the rail look empty. */
   .sidebar:has(> button[aria-controls="crm-primary-navigation"][aria-expanded="false"]) nav {
-    padding-top: 48px !important;
+    padding-top: 42px !important;
   }
 
-  /* On a 64px rail, the desktop 34px workspace inset reads as a second empty
-     sidebar. Keep a small breathing space instead. */
   .shell:has(.sidebar > button[aria-controls="crm-primary-navigation"][aria-expanded="false"]) > .workspace {
-    padding-left: 16px !important;
+    padding-left: 12px !important;
   }
 }
