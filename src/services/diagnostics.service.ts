@@ -188,6 +188,7 @@ export async function transitionDiagnostic(id: string, input: DiagnosticTransiti
   const prisma = getPrisma();
   const actorName = clean(input.actorName, 160) || "CRM";
   let conclusion = clean(input.technicalConclusion, 10000);
+  let structuredForConfirmation: Awaited<ReturnType<typeof getStructuredDiagnostic>> | null = null;
 
   const current = await prisma.diagnosticRequest.findUnique({ where: { id }, include: { workOrder: true } });
   if (!current) throw new DiagnosticNotFoundError(id);
@@ -196,13 +197,15 @@ export async function transitionDiagnostic(id: string, input: DiagnosticTransiti
   if (!decision.allowed) throw new DiagnosticTransitionError(decision);
 
   if (input.status === DiagnosticRequestStatus.CONFIRMED) {
-    const structured = await getStructuredDiagnostic(id).catch(() => null);
-    if (structured?.inspections.length && structured.diagnostic.review.state !== DiagnosticReviewState.SUBMITTED && structured.diagnostic.review.state !== DiagnosticReviewState.CONFIRMED) {
+    structuredForConfirmation = await getStructuredDiagnostic(id).catch(() => null);
+    if (structuredForConfirmation?.inspections.length && structuredForConfirmation.diagnostic.review.state !== DiagnosticReviewState.SUBMITTED && structuredForConfirmation.diagnostic.review.state !== DiagnosticReviewState.CONFIRMED) {
       throw new DiagnosticValidationError("Автомеханік ще не завершив діагностику та не передав її сервіс-менеджеру.");
     }
-    if (!conclusion && !current.technicalConclusion?.trim()) conclusion = await buildStructuredTechnicalConclusion(id).catch(() => null);
+    if (!conclusion && !current.technicalConclusion?.trim() && structuredForConfirmation?.inspections.length) {
+      conclusion = await buildStructuredTechnicalConclusion(id).catch(() => null);
+    }
     if (!(conclusion || current.technicalConclusion?.trim())) {
-      throw new DiagnosticValidationError("Перед підтвердженням діагностичної карти перевірте технічний висновок.");
+      throw new DiagnosticValidationError(structuredForConfirmation?.inspections.length ? "Перед підтвердженням Діагностичної карти перевірте технічний висновок." : "Перед підтвердженням діагностики заповніть технічний висновок.");
     }
   }
 
@@ -234,8 +237,8 @@ export async function transitionDiagnostic(id: string, input: DiagnosticTransiti
             workflowDecision: freshDecision.code,
             actions: freshDecision.actions,
             hardGate: "WORK_ORDER_AFTER_CONFIRMED_DIAGNOSTICS",
-            structured: true,
-            diagnosticCardRequired: input.status === DiagnosticRequestStatus.CONFIRMED,
+            structured: Boolean(structuredForConfirmation?.inspections.length),
+            diagnosticCardRequired: input.status === DiagnosticRequestStatus.CONFIRMED && Boolean(structuredForConfirmation?.inspections.length),
             workOrderCreationDeferred: input.status === DiagnosticRequestStatus.CONFIRMED,
           }),
         },
@@ -259,11 +262,13 @@ export async function transitionDiagnostic(id: string, input: DiagnosticTransiti
 
   if (input.status === DiagnosticRequestStatus.CONFIRMED) {
     await markStructuredDiagnosticConfirmed(id, input.reviewerUserId || null);
-    await finalizeDiagnosticCard(id, {
-      reviewerUserId: input.reviewerUserId || null,
-      technicalConclusion: conclusion || current.technicalConclusion,
-      actorName,
-    });
+    if (structuredForConfirmation?.inspections.length) {
+      await finalizeDiagnosticCard(id, {
+        reviewerUserId: input.reviewerUserId || null,
+        technicalConclusion: conclusion || current.technicalConclusion,
+        actorName,
+      });
+    }
   }
 
   const diagnostic = await getDiagnostic(id);
