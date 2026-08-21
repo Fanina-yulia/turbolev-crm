@@ -7,7 +7,7 @@ import {
   parseProductFitmentCheckRequest,
   parseVehicleResolveConfirmRequest,
   parseVehicleResolveRequest,
-} from "../src/contracts/integration/v1/index";
+} from "../src/lib/contracts/integration/v1/index";
 
 function expectContractError(run: () => unknown, code: ContractValidationError["code"]) {
   assert.throws(run, (error: unknown) => {
