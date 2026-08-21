@@ -3,7 +3,7 @@ import { getPrisma } from "@/src/lib/prisma";
 import { getAccessContext, hasPermission } from "@/src/security/access-context";
 import { PERMISSIONS } from "@/src/security/permissions";
 import { effectiveAssignmentStatus, listActiveMechanicAssignments } from "@/src/services/mechanic-assignments.service";
-import { listMechanicDiagnosticsReadOnly } from "@/src/services/mechanic-diagnostics-read.service";
+import { listMechanicDiagnosticsForSnapshot } from "@/src/services/mechanic-diagnostics-snapshot.service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -33,9 +33,21 @@ async function kyivDayRange() {
   return rows[0] ?? { startAt: new Date(Date.now() - 12 * 60 * 60 * 1000), endAt: new Date(Date.now() + 36 * 60 * 60 * 1000) };
 }
 
+function durationMs(startedAt: number) {
+  return Math.max(0, Date.now() - startedAt);
+}
+
+function timingHeader(parts: Record<string, number>) {
+  return Object.entries(parts).map(([name, duration]) => `${name};dur=${Math.round(duration)}`).join(", ");
+}
+
 export async function GET(request: Request) {
+  const totalStartedAt = Date.now();
+  const timings: Record<string, number> = {};
   try {
+    const authStartedAt = Date.now();
     const access = await getAccessContext(request);
+    timings.auth = durationMs(authStartedAt);
     if (!access.authenticated) return NextResponse.json({ ok: false, error: "UNAUTHENTICATED" }, { status: 401 });
     if (access.provisioningState !== "ACTIVE" || !access.user) {
       return NextResponse.json({ ok: false, error: "ACCESS_PROFILE_INACTIVE" }, { status: 403 });
@@ -50,12 +62,15 @@ export async function GET(request: Request) {
     }
 
     const prisma = getPrisma();
+    const mechanicStartedAt = Date.now();
     const mechanic = await prisma.serviceMechanic.findFirst({
       where: { userId: access.user.id, isActive: true },
       include: { location: { select: { id: true, name: true } } },
     });
+    timings.mechanic = durationMs(mechanicStartedAt);
     if (!mechanic) {
       const empty = { ok: true, linked: false, items: [] as unknown[] };
+      timings.total = durationMs(totalStartedAt);
       return NextResponse.json({
         ok: true,
         linked: false,
@@ -65,9 +80,10 @@ export async function GET(request: Request) {
         notifications: { ...empty, unreadCount: 0 },
         findings: { ...empty },
         assignedVehicles: { ...empty },
-      }, { headers: { "Cache-Control": "private, no-store" } });
+      }, { headers: { "Cache-Control": "private, no-store", "Server-Timing": timingHeader(timings) } });
     }
 
+    const coreStartedAt = Date.now();
     const { startAt, endAt } = await kyivDayRange();
     const mechanicIds = [mechanic.id, access.user.id];
 
@@ -86,7 +102,7 @@ export async function GET(request: Request) {
         take: 60,
       }),
       listActiveMechanicAssignments(mechanic.id),
-      listMechanicDiagnosticsReadOnly(access.user.id),
+      listMechanicDiagnosticsForSnapshot(mechanic.id),
       prisma.mechanicNotification.findMany({
         where: { mechanicId: mechanic.id },
         orderBy: [{ createdAt: "desc" }, { id: "desc" }],
@@ -106,7 +122,9 @@ export async function GET(request: Request) {
         take: 20,
       }),
     ]);
+    timings.core = durationMs(coreStartedAt);
 
+    const enrichStartedAt = Date.now();
     const findingRows = lines.length ? await prisma.mechanicWorkFinding.findMany({
       where: { workOrderLineId: { in: lines.map((line) => line.id) } },
       select: { workOrderLineId: true, status: true },
@@ -238,6 +256,8 @@ export async function GET(request: Request) {
         vehicle: order ? vehicleLabel(order.vehicle) : "Автомобіль",
       };
     });
+    timings.enrich = durationMs(enrichStartedAt);
+    timings.total = durationMs(totalStartedAt);
 
     return NextResponse.json({
       ok: true,
@@ -257,7 +277,7 @@ export async function GET(request: Request) {
       notifications: { ok: true, linked: true, unreadCount, items: notificationItems },
       findings: { ok: true, linked: true, items: clarificationItems },
       assignedVehicles: { ok: true, linked: true, mechanic: { id: mechanic.id, name: mechanic.name }, items: assignedItems },
-    }, { headers: { "Cache-Control": "private, no-store" } });
+    }, { headers: { "Cache-Control": "private, no-store", "Server-Timing": timingHeader(timings) } });
   } catch (error) {
     console.error("GET mechanic snapshot failed", error);
     return NextResponse.json({ ok: false, error: "MECHANIC_SNAPSHOT_LOAD_FAILED", message: "Не вдалося завантажити кабінет механіка." }, { status: 500 });
