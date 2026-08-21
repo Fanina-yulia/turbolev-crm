@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
+import { decimalToNumber, outstandingAmount, roundMoney } from "@/src/domain/finance";
 import { FinancialObligationDirection, FinancialPnlSection } from "@/src/generated/prisma/client";
 import { getPrisma } from "@/src/lib/prisma";
-import { decimalToNumber, outstandingAmount, roundMoney } from "@/src/domain/finance";
+import { PERMISSIONS } from "@/src/security/permissions";
+import { authorizeScopedLocation } from "@/src/security/scoped-location-access";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -33,14 +35,18 @@ function endUtc(value: string | null) {
 function workOrderLabel(number: number | undefined) { return number ? `ЗН-${String(number).padStart(6, "0")}` : null; }
 
 export async function GET(request: NextRequest) {
-  const prisma = getPrisma();
   const metric = request.nextUrl.searchParams.get("metric") || "revenue";
   const currency = (request.nextUrl.searchParams.get("currency") || "UAH").toUpperCase().slice(0, 3);
   const from = startUtc(request.nextUrl.searchParams.get("from"));
   const to = endUtc(request.nextUrl.searchParams.get("to"));
   const locationId = request.nextUrl.searchParams.get("locationId")?.trim() || null;
   if (!from || !to || from >= to) return NextResponse.json({ ok: false, error: "INVALID_DATE_RANGE" }, { status: 400 });
-  const locationWhere = locationId ? { locationId } : {};
+
+  const access = await authorizeScopedLocation(PERMISSIONS.FINANCE_READ, request, locationId);
+  if (!access.ok) return access.response;
+
+  const prisma = getPrisma();
+  const locationWhere = access.locationWhere;
 
   if (["revenue", "grossProfit", "netProfit"].includes(metric)) {
     const pnlSections: FinancialPnlSection[] = metric === "revenue"
@@ -60,11 +66,11 @@ export async function GET(request: NextRequest) {
   }
 
   if (metric === "currentCash") {
-    const accounts = await prisma.moneyAccount.findMany({ where: { isActive: true, currency, ...(locationId ? { locationId } : {}), NOT: { id: { startsWith: "demo_" } } }, select: { id: true, name: true, openingBalance: true } });
+    const accounts = await prisma.moneyAccount.findMany({ where: { isActive: true, currency, ...locationWhere, NOT: { id: { startsWith: "demo_" } } }, select: { id: true, name: true, openingBalance: true } });
     const rows = await Promise.all(accounts.map(async (account) => {
       const [incoming, outgoing] = await Promise.all([
-        prisma.cashTransaction.aggregate({ where: { status: "POSTED", currency, toAccountId: account.id, ...NON_DEMO_WORK_ORDER }, _sum: { amount: true } }),
-        prisma.cashTransaction.aggregate({ where: { status: "POSTED", currency, fromAccountId: account.id, ...NON_DEMO_WORK_ORDER }, _sum: { amount: true } }),
+        prisma.cashTransaction.aggregate({ where: { status: "POSTED", currency, toAccountId: account.id, ...locationWhere, ...NON_DEMO_WORK_ORDER }, _sum: { amount: true } }),
+        prisma.cashTransaction.aggregate({ where: { status: "POSTED", currency, fromAccountId: account.id, ...locationWhere, ...NON_DEMO_WORK_ORDER }, _sum: { amount: true } }),
       ]);
       const balance = decimalToNumber(account.openingBalance) + decimalToNumber(incoming._sum.amount) - decimalToNumber(outgoing._sum.amount);
       return { id: account.id, type: "ACCOUNT", date: null, amount: roundMoney(balance), description: account.name, workOrderId: null, workOrderLabel: null };
