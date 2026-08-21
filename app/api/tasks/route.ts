@@ -157,8 +157,8 @@ async function appendWalkInAttention(attention: AttentionCenterResult, plannerLo
       amount: payment ? Number(payment.amount) : null,
       currency: payment?.currency || null,
       counterparty: row.customerName || null,
-      action: diagnosticId
-        ? { label: payment ? "Обрати наступний крок" : "Закрити оплату", section: "Діагностика", params: { diagnosticId } }
+      action: row.vehicleId
+        ? { label: payment ? "Обрати наступний крок" : "Закрити оплату", section: "Діагностика", params: { vehicleId: row.vehicleId } }
         : { label: "Відкрити запис", section: "Планувальник", params: { appointmentId: row.id } },
       metadata: {
         walkIn: true,
