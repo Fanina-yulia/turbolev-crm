@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { PRIMARY_BINOTEL_PBX_NUMBER_DISPLAY } from "@/src/domain/binotel-config";
 import styles from "./binotel-callbacks-settings.module.css";
 
 type CallbackPayload = {
@@ -87,6 +88,10 @@ export function BinotelCallbacksSettings() {
   }
 
   return <section className={styles.panel} aria-label="Binotel — синхронізація та webhook">
+    <div className={styles.syncBox}>
+      <div><strong>Основний номер Binotel</strong><p>{PRIMARY_BINOTEL_PBX_NUMBER_DISPLAY} · CRM використовує тільки цей номер АТС для вихідних дзвінків.</p></div>
+    </div>
+
     <div className={styles.syncBox}>
       <div><strong>Синхронізація дзвінків Binotel</strong><p>Перевіряє останні 90 хвилин через REST API та додає дзвінки, які не прийшли webhook-ом.</p></div>
       <button type="button" className={styles.syncButton} disabled={syncing} onClick={() => void syncCalls()}>{syncing ? "Синхронізація…" : "Синхронізувати дзвінки зараз"}</button>
