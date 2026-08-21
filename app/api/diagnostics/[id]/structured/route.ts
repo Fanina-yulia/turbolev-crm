@@ -11,6 +11,7 @@ import {
 } from "@/src/services/mechanic-diagnostics-read.service";
 import {
   addTemplateForMechanic,
+  buildStructuredTechnicalConclusion,
   getStructuredDiagnostic,
   returnStructuredDiagnostic,
   setDiagnosticSectionAllOk,
@@ -32,9 +33,12 @@ async function managerLocationAllowed(access: Awaited<ReturnType<typeof authoriz
   return Boolean(locationId && access.context.locationIds.includes(locationId));
 }
 
-async function withCompletion<T extends Awaited<ReturnType<typeof getStructuredDiagnostic>>>(diagnosticRequestId: string, data: T) {
+async function withCompletion<T extends Awaited<ReturnType<typeof getStructuredDiagnostic>>>(diagnosticRequestId: string, data: T, includeSuggestedConclusion = false) {
   const completion = await getRequiredDiagnosticCompletion(diagnosticRequestId);
-  return { ...data, canSubmit: completion.canSubmit, completion };
+  const suggestedTechnicalConclusion = includeSuggestedConclusion && !data.diagnostic.technicalConclusion
+    ? await buildStructuredTechnicalConclusion(diagnosticRequestId).catch(() => null)
+    : null;
+  return { ...data, canSubmit: completion.canSubmit, completion, suggestedTechnicalConclusion };
 }
 
 export async function GET(request: Request, context: { params: Promise<{ id: string }> }) {
@@ -55,7 +59,7 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
       ? await getStructuredDiagnosticForMechanicReadOnly(access.context.user.id, id)
       : await getStructuredDiagnostic(id);
     if (!mechanic && !(await managerLocationAllowed(access, id))) return NextResponse.json({ ok: false, error: "LOCATION_FORBIDDEN" }, { status: 403 });
-    return NextResponse.json({ ok: true, ...(await withCompletion(id, data)) }, { headers: { "Cache-Control": "no-store" } });
+    return NextResponse.json({ ok: true, ...(await withCompletion(id, data, !mechanic)) }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
     if (error instanceof StructuredDiagnosticError) return NextResponse.json({ ok: false, error: error.code, message: error.message }, { status: error.status });
     console.error("GET structured diagnostic failed", error);
@@ -74,7 +78,7 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
       if (!access.context.user) return NextResponse.json({ ok: false, error: "UNAUTHENTICATED" }, { status: 401 });
       if (!(await managerLocationAllowed(access, id))) return NextResponse.json({ ok: false, error: "LOCATION_FORBIDDEN" }, { status: 403 });
       const data = await returnStructuredDiagnostic(id, access.context.user.id, typeof body.managerComment === "string" ? body.managerComment : null);
-      return NextResponse.json({ ok: true, ...(await withCompletion(id, data)) });
+      return NextResponse.json({ ok: true, ...(await withCompletion(id, data, true)) });
     }
 
     const access = await authorize(PERMISSIONS.DIAGNOSTICS_WRITE, { request, minimumScope: "ASSIGNED" });
