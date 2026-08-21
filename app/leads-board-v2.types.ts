@@ -11,7 +11,16 @@ export type LeadStatus =
   | "SPAM_WRONG"
   | "SUPPLIER_PARTNER";
 
-export type KpiKey = "new" | "unanswered" | "overdue" | "booked" | "conversion";
+export type LeadBusinessStatus = "NEW" | "BOOKED" | "CANCELLED";
+export type RejectReasonCode =
+  | "TOO_EXPENSIVE"
+  | "NO_CAPACITY_NO_TIME"
+  | "SERVICE_NOT_PROVIDED"
+  | "WRONG_NUMBER"
+  | "SPAM_ADS"
+  | "OTHER";
+
+export type KpiKey = "new" | "overdue" | "booked" | "cancelled" | "conversion";
 
 export type UserOption = {
   id: string;
@@ -25,6 +34,7 @@ export type Lead = {
   phone: string;
   phoneNormalized: string;
   status: LeadStatus;
+  rejectReason: RejectReasonCode | null;
   source: string;
   carBrand: string | null;
   carModel: string | null;
@@ -66,7 +76,9 @@ export type BookingState = {
 
 export type LeadPatch = {
   status?: LeadStatus;
+  rejectReason?: RejectReasonCode | null;
   assignedUserId?: string | null;
+  comment?: string | null;
   nextAction?: string | null;
   nextContactAt?: string | null;
 };
