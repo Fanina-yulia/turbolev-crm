@@ -39,15 +39,15 @@ export async function GET(request: NextRequest, context: { params: Promise<{ cal
     });
     if (!call) return NextResponse.json({ ok: false, error: "CALL_NOT_FOUND" }, { status: 404 });
 
-    // Binotel call-record URLs are short-lived. Never hand a previously cached
-    // URL to the browser as if it were permanent; resolve a fresh provider URL
-    // every time an authorized CRM user opens a recording.
-    let url: string | null = null;
+    // Binotel call-record URLs are short-lived. Resolve a fresh provider URL to
+    // confirm availability, but never expose that temporary S3 URL to the
+    // browser. Playback goes through the authenticated same-origin stream route.
+    let available = false;
     if (call.status === CallStatus.ANSWERED && call.endedAt) {
       try {
         const media = await getBinotelService().getMediaFileLink(call.binotelCallId);
         if (media.url) {
-          url = media.url;
+          available = true;
           if (media.url !== call.recordingUrl) {
             await prisma.callHistory.update({
               where: { id: call.id },
@@ -66,8 +66,8 @@ export async function GET(request: NextRequest, context: { params: Promise<{ cal
     return NextResponse.json({
       ok: true,
       callId: call.binotelCallId,
-      available: Boolean(url),
-      url,
+      available,
+      url: available ? `/api/telephony/recordings/${encodeURIComponent(call.binotelCallId)}/stream` : null,
     }, { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) {
     console.error("GET Binotel recording failed", error);

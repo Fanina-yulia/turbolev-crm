@@ -11,6 +11,7 @@ import { CustomerCabinetCard } from "./customer-cabinet-card";
 import { TelegramClientLinkCard } from "./telegram-client-link-card";
 import { BinotelClientCalls } from "./binotel-recordings";
 import { navigateCrm, readCrmRoute } from "./crm-route";
+import { VehicleRender } from "./vehicle-render";
 import styles from "./directory-pages.module.css";
 
 type Client = ClientDirectoryItem;
@@ -36,6 +37,10 @@ function dateText(value: string | null | undefined) {
 function lastVisit(client: Client) {
   const row = client.workOrders[0];
   return row ? dateText(row.closedAt || row.updatedAt || row.createdAt) : "—";
+}
+
+function vehicleName(vehicle: Client["vehicles"][number]) {
+  return [vehicle.brand, vehicle.model].filter(Boolean).join(" ") || "Автомобіль";
 }
 
 export function ClientsDirectory() {
@@ -187,24 +192,18 @@ export function ClientsDirectory() {
           </header>
           <div className={styles.drawerBody}>
             <section className={styles.panel}>
-              <h3>Основні дані</h3>
-              <div className={styles.facts}>
-                <span><small>Телефон</small><b>{selected.phone}</b></span>
-                <span><small>Створено</small><b>{dateText(selected.createdAt)}</b></span>
-                <span><small>Остання активність</small><b>{dateText(selected.updatedAt)}</b></span>
-                <span><small>Останній візит</small><b>{lastVisit(selected)}</b></span>
-              </div>
+              <h3>Пов’язані автомобілі <span>{selected._count.vehicles}</span></h3>
+              {selected.vehicles.length ? <div className={styles.clientVehicleList}>{selected.vehicles.map((vehicle, index) => <button className={styles.clientVehicleCard} key={vehicle.id} onClick={() => navigateCrm("Авто", { vehicleId: vehicle.id })}>
+                <VehicleRender id={vehicle.id} brand={vehicle.brand} model={vehicle.model} year={vehicle.year} size="mini" eager={index < 2} />
+                <span className={styles.clientVehicleInfo}>
+                  <strong>{vehicleName(vehicle)}</strong>
+                  <small className={styles.clientVehiclePlate}>{vehicle.plateNumber || "Без держномера"}</small>
+                </span>
+                <span className={styles.clientVehicleChevron}>›</span>
+              </button>)}</div> : <div className={styles.emptyInline}>Автомобілі ще не додані.</div>}
             </section>
             <section className={styles.panel}>
               <BinotelClientCalls clientId={selected.id} phone={selected.phone} />
-            </section>
-            <section className={styles.panel}>
-              <h3>Пов’язані автомобілі <span>{selected._count.vehicles}</span></h3>
-              {selected.vehicles.length ? <div className={styles.relatedList}>{selected.vehicles.map((vehicle) => <button key={vehicle.id} onClick={() => navigateCrm("Авто", { vehicleId: vehicle.id })}>
-                <strong>{[vehicle.brand, vehicle.model, vehicle.year].filter(Boolean).join(" ") || "Автомобіль"}</strong>
-                <small>{vehicle.plateNumber || vehicle.vin || "Без номера"}</small>
-                <span>›</span>
-              </button>)}</div> : <div className={styles.emptyInline}>Автомобілі ще не додані.</div>}
             </section>
             <section className={styles.panel}>
               <TelegramClientLinkCard clientId={selected.id} />

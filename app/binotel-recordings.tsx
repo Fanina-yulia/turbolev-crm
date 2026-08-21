@@ -225,15 +225,18 @@ export function BinotelRecordingProvider({ children }: { children: ReactNode }) 
 
 export function BinotelPlayButton({ call, compact = false }: { call: BinotelCallItem; compact?: boolean }) {
   const player = usePlayer();
+  if (!call.recordingEligible) {
+    return <span className={styles.noRecording} title="Binotel не створив аудіозапис для цього дзвінка">Запису немає</span>;
+  }
   const isActive = player.active?.callId === call.callId;
   const busy = isActive && player.loading;
   const label = busy ? "Завантажую…" : isActive && player.playing ? "Пауза" : "Прослухати";
   return <button
     type="button"
     className={`${styles.playButton} ${compact ? styles.playButtonCompact : ""} ${isActive ? styles.playButtonActive : ""}`}
-    disabled={!call.recordingEligible || busy}
+    disabled={busy}
     onClick={() => void player.playCall(call)}
-    title={call.recordingEligible ? "Прослухати запис Binotel" : "Запис недоступний для цього дзвінка"}
+    title="Прослухати запис Binotel"
   >{busy ? "…" : isActive && player.playing ? "Ⅱ" : "▶"}<span>{label}</span></button>;
 }
 
@@ -242,6 +245,7 @@ export function BinotelClientCalls({ clientId, phone, limit = 8 }: { clientId: s
   const [items, setItems] = useState<BinotelCallItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [expanded, setExpanded] = useState(true);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -265,23 +269,47 @@ export function BinotelClientCalls({ clientId, phone, limit = 8 }: { clientId: s
     return () => window.removeEventListener("turbolev:data-changed", refresh);
   }, [load]);
 
-  return <div className={styles.clientCalls}>
-    <div className={styles.clientCallsHead}>
-      <div><h3>Дзвінки Binotel <span>{items.length}</span></h3><p>{phone || "Історія телефонних розмов клієнта"}</p></div>
-      <div className={styles.clientCallActions}><button type="button" onClick={() => void load()} disabled={loading}>↻</button><button type="button" onClick={player.openJournal}>Весь журнал</button></div>
+  function toggleExpanded() {
+    setExpanded((value) => !value);
+  }
+
+  return <div className={`${styles.clientCalls} ${expanded ? styles.clientCallsExpanded : styles.clientCallsCollapsed}`}>
+    <div
+      className={styles.clientCallsHead}
+      role="button"
+      tabIndex={0}
+      aria-expanded={expanded}
+      onClick={toggleExpanded}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          toggleExpanded();
+        }
+      }}
+    >
+      <div className={styles.clientCallsTitle}>
+        <span className={styles.collapseChevron} aria-hidden="true">{expanded ? "⌄" : "›"}</span>
+        <div><h3>Дзвінки Binotel <span>{items.length}</span></h3><p>{phone || "Історія телефонних розмов клієнта"}</p></div>
+      </div>
+      <div className={styles.clientCallActions} onClick={(event) => event.stopPropagation()} onKeyDown={(event) => event.stopPropagation()}>
+        <button type="button" onClick={() => void load()} disabled={loading} aria-label="Оновити дзвінки">↻</button>
+        <button type="button" onClick={player.openJournal}>Весь журнал</button>
+      </div>
     </div>
-    {loading ? <div className={styles.empty}>Завантажую дзвінки…</div> : error ? <div className={styles.errorBox}>{error}</div> : !items.length ? <div className={styles.empty}>Дзвінків цього клієнта в CRM ще немає.</div> : <div className={styles.callList}>
+    {expanded && (loading ? <div className={styles.empty}>Завантажую дзвінки…</div> : error ? <div className={styles.errorBox}>{error}</div> : !items.length ? <div className={styles.empty}>Дзвінків цього клієнта в CRM ще немає.</div> : <div className={styles.callList}>
       {items.map((call) => <CallRow key={call.id} call={call} compact />)}
-    </div>}
+    </div>)}
   </div>;
 }
 
 function CallRow({ call, compact = false }: { call: BinotelCallItem; compact?: boolean }) {
+  const compactTitle = call.status === "MISSED" ? "Пропущений дзвінок" : call.status === "BUSY" ? "Зайнято" : `${directionLabel(call.direction)} дзвінок`;
+  const duration = call.status === "ANSWERED" ? durationText(call.duration) : "без розмови";
   return <div className={`${styles.callRow} ${compact ? styles.callRowCompact : ""}`} data-status={call.status || "UNKNOWN"}>
     <span className={styles.direction} data-direction={call.direction}>{call.direction === "INCOMING" ? "↙" : "↗"}</span>
     <div className={styles.callMain}>
-      <strong>{compact ? `${directionLabel(call.direction)} дзвінок` : displayName(call)}</strong>
-      <small>{fmtDateTime(call.startedAt)} · {durationText(call.duration)}{call.manager?.name ? ` · ${call.manager.name}` : call.internalNumber ? ` · вн. ${call.internalNumber}` : ""}</small>
+      <strong>{compact ? compactTitle : displayName(call)}</strong>
+      <small>{fmtDateTime(call.startedAt)} · {duration}{call.manager?.name ? ` · ${call.manager.name}` : call.internalNumber ? ` · вн. ${call.internalNumber}` : ""}</small>
     </div>
     {!compact && <span className={styles.statusBadge} data-status={call.status || "UNKNOWN"}>{statusLabel(call.status)}</span>}
     <BinotelPlayButton call={call} compact={compact}/>
