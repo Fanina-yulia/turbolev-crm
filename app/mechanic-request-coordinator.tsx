@@ -1,6 +1,6 @@
 "use client";
 
-import { type ReactNode, useEffect } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 
 type CachedResponse = {
   status: number;
@@ -116,6 +116,8 @@ function isMechanicMutation(path: string, method: string) {
  * It is intentionally mounted only for the MECHANIC role.
  */
 export function MechanicRequestCoordinator({ children }: { children: ReactNode }) {
+  const [ready, setReady] = useState(false);
+
   useEffect(() => {
     const originalFetch = window.fetch.bind(window);
     const cache = new Map<string, CachedResponse>();
@@ -232,6 +234,7 @@ export function MechanicRequestCoordinator({ children }: { children: ReactNode }
     window.addEventListener("turbolev:mechanic-refresh", onRefresh);
     window.addEventListener("online", onRefresh);
     document.addEventListener("visibilitychange", onVisible);
+    setReady(true);
 
     return () => {
       disposed = true;
@@ -246,6 +249,10 @@ export function MechanicRequestCoordinator({ children }: { children: ReactNode }
       inflight.clear();
     };
   }, []);
+
+  if (!ready) {
+    return <div style={{ minHeight: "100dvh", display: "grid", placeItems: "center", background: "#0f141a", color: "#aab4bf", fontSize: 14 }}>Відкриваю кабінет механіка…</div>;
+  }
 
   return <>{children}</>;
 }
