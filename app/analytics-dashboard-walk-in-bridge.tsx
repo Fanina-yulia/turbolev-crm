@@ -17,12 +17,12 @@ type WalkInData = {
   diagnosticToPaidPct: number;
   diagnosticToRepairPct: number;
   visitToCompletedPct: number;
-  diagnosticRevenue: number;
-  averageDiagnosticCheck: number;
-  currency: string;
+  diagnosticRevenue: number | null;
+  averageDiagnosticCheck: number | null;
+  currency: string | null;
 };
 
-type Payload = { ok?: boolean; error?: string; walkIn?: WalkInData | null };
+type Payload = { ok?: boolean; error?: string; financial?: boolean; walkIn?: WalkInData | null };
 
 function analyticsRoot() {
   const heading = [...document.querySelectorAll("h1")].find((node) => node.textContent?.trim() === "Аналітика");
@@ -45,7 +45,8 @@ function paramsFrom(root: HTMLElement) {
   return params.toString();
 }
 
-function money(value: number, currency: string) {
+function money(value: number | null, currency: string | null) {
+  if (value == null || !currency) return "Обмежено";
   if (currency === "UAH") return `${new Intl.NumberFormat("uk-UA", { maximumFractionDigits: 0 }).format(value)} ₴`;
   return `${new Intl.NumberFormat("uk-UA", { maximumFractionDigits: 0 }).format(value)} ${currency}`;
 }
@@ -57,6 +58,7 @@ function percent(value: number) {
 export function AnalyticsDashboardWalkInBridge() {
   const [root, setRoot] = useState<HTMLElement | null>(null);
   const [data, setData] = useState<WalkInData | null>(null);
+  const [financial, setFinancial] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [revision, setRevision] = useState(0);
@@ -96,6 +98,7 @@ export function AnalyticsDashboardWalkInBridge() {
       const response = await fetch(`/api/analytics/walk-in${query ? `?${query}` : ""}`, { cache: "no-store", credentials: "include" });
       const body = await response.json().catch(() => ({})) as Payload;
       if (!response.ok || !body.ok) throw new Error(body.error || "Не вдалося завантажити WALK-IN аналітику");
+      setFinancial(body.financial !== false);
       setData(body.walkIn || null);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Не вдалося завантажити WALK-IN аналітику");
@@ -137,8 +140,8 @@ export function AnalyticsDashboardWalkInBridge() {
           <article className={data.awaitingRoute ? styles.warn : ""}><small>Оплачено, без рішення</small><strong>{data.awaitingRoute}</strong><span>потрібен наступний маршрут</span></article>
         </div>
         <div className={styles.finance}>
-          <div><small>Виручка WALK-IN діагностики</small><strong>{money(data.diagnosticRevenue, data.currency)}</strong></div>
-          <div><small>Середній чек діагностики</small><strong>{money(data.averageDiagnosticCheck, data.currency)}</strong></div>
+          <div><small>Виручка WALK-IN діагностики</small><strong>{money(data.diagnosticRevenue, data.currency)}</strong><span>{financial ? "фактичні проведені оплати" : "немає фінансового доступу"}</span></div>
+          <div><small>Середній чек діагностики</small><strong>{money(data.averageDiagnosticCheck, data.currency)}</strong><span>{financial ? "за оплаченими діагностиками" : "немає фінансового доступу"}</span></div>
         </div>
       </>}
     </section>,
