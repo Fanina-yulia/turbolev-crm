@@ -7,6 +7,7 @@ type CachedResponse = {
   statusText: string;
   headers: Array<[string, string]>;
   body: string;
+  jsonValue?: unknown;
   savedAt: number;
 };
 
@@ -22,8 +23,8 @@ const GET_TTLS: Array<[RegExp, number]> = [
   [/^\/api\/diagnostics\/me(?:\?|$)/, 55_000],
   [/^\/api\/cabinet\/mechanic\/assigned-vehicles(?:\?|$)/, 55_000],
   [/^\/api\/cabinet\/mechanic\/tasks(?:\?|$)/, 25_000],
-  [/^\/api\/cabinet\/mechanic\/notifications(?:\?|$)/, 30_000],
-  [/^\/api\/cabinet\/mechanic\/findings(?:\?|$)/, 30_000],
+  [/^\/api\/cabinet\/mechanic\/notifications(?:\?|$)/, 55_000],
+  [/^\/api\/cabinet\/mechanic\/findings(?:\?|$)/, 55_000],
 ];
 
 function relativeUrl(input: RequestInfo | URL) {
@@ -48,20 +49,38 @@ function ttlFor(path: string) {
 }
 
 function makeResponse(snapshot: CachedResponse) {
-  return new Response(snapshot.body, {
+  const response = new Response(snapshot.body, {
     status: snapshot.status,
     statusText: snapshot.statusText,
     headers: snapshot.headers,
   });
+  if (snapshot.jsonValue !== undefined) {
+    Object.defineProperty(response, "json", {
+      configurable: true,
+      value: async () => snapshot.jsonValue,
+    });
+  }
+  return response;
 }
 
 async function snapshotResponse(response: Response): Promise<CachedResponse> {
   const clone = response.clone();
+  const headers = Array.from(clone.headers.entries());
+  const body = await clone.text();
+  let jsonValue: unknown = undefined;
+  if ((clone.headers.get("content-type") || "").toLowerCase().includes("json") && body) {
+    try {
+      jsonValue = JSON.parse(body) as unknown;
+    } catch {
+      jsonValue = undefined;
+    }
+  }
   return {
     status: clone.status,
     statusText: clone.statusText,
-    headers: Array.from(clone.headers.entries()),
-    body: await clone.text(),
+    headers,
+    body,
+    jsonValue,
     savedAt: Date.now(),
   };
 }
@@ -92,7 +111,8 @@ function isMechanicMutation(path: string, method: string) {
  *
  * Several legacy mechanic widgets still refresh the same resources independently.
  * This coordinator deduplicates concurrent GETs, applies short per-resource TTLs,
- * and coalesces the tap-first matrix's compact OK writes into one batch request.
+ * reuses parsed JSON identities to avoid no-op React rerenders, and coalesces the
+ * tap-first matrix's compact OK writes into one batch request.
  * It is intentionally mounted only for the MECHANIC role.
  */
 export function MechanicRequestCoordinator({ children }: { children: ReactNode }) {
