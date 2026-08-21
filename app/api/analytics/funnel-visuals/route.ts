@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getPrisma } from "@/src/lib/prisma";
-import { getAccessContext, hasPermission } from "@/src/security/access-context";
-import { PERMISSIONS, type AccessScopeCode } from "@/src/security/permissions";
+import { PERMISSIONS } from "@/src/security/permissions";
+import { authorizeScopedLocation } from "@/src/security/scoped-location-access";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -79,16 +79,9 @@ function addUtcDays(date: Date, days: number) {
 
 export async function GET(request: NextRequest) {
   try {
-    const context = await getAccessContext(request);
-    if (context.enforcementMode === "ENFORCED" && context.provisioningState !== "ACTIVE") {
-      return NextResponse.json(
-        { ok: false, error: context.authenticated ? "Доступ до CRM не активований." : "Потрібна авторизація." },
-        { status: context.authenticated ? 403 : 401 },
-      );
-    }
-    if (context.enforcementMode === "ENFORCED" && !hasPermission(context, PERMISSIONS.ANALYTICS_READ)) {
-      return NextResponse.json({ ok: false, error: "Немає доступу до аналітики." }, { status: 403 });
-    }
+    const requestedLocationId = request.nextUrl.searchParams.get("locationId")?.trim() || null;
+    const access = await authorizeScopedLocation(PERMISSIONS.ANALYTICS_READ, request, requestedLocationId);
+    if (!access.ok) return access.response;
 
     const defaults = currentMonthRange();
     const from = parseKyivDate(request.nextUrl.searchParams.get("from")) ?? defaults.from;
@@ -96,26 +89,9 @@ export async function GET(request: NextRequest) {
     if (from >= to) return NextResponse.json({ ok: false, error: "INVALID_DATE_RANGE" }, { status: 400 });
 
     const prisma = getPrisma();
-    const analyticsScope = context.enforcementMode === "ENFORCED"
-      ? (context.permissions[PERMISSIONS.ANALYTICS_READ] as AccessScopeCode | undefined)
-      : "ALL";
-
-    const allLocations = await prisma.serviceLocation.findMany({
-      where: { isActive: true },
-      select: { id: true },
-    });
-    const allowedLocations = analyticsScope === "ALL" || context.enforcementMode !== "ENFORCED"
-      ? allLocations
-      : allLocations.filter((location) => context.locationIds.includes(location.id));
-    const requestedLocationId = request.nextUrl.searchParams.get("locationId")?.trim() || null;
-    const selectedLocationId = requestedLocationId && allowedLocations.some((location) => location.id === requestedLocationId)
-      ? requestedLocationId
-      : null;
-    const effectiveLocationIds = selectedLocationId
-      ? [selectedLocationId]
-      : analyticsScope === "ALL" || context.enforcementMode !== "ENFORCED"
-        ? null
-        : allowedLocations.map((location) => location.id);
+    const effectiveLocationIds = requestedLocationId
+      ? [requestedLocationId]
+      : access.allowedLocationIds;
 
     if (effectiveLocationIds && effectiveLocationIds.length === 0) {
       return NextResponse.json({ ok: true, timeline: [], totals: { scheduled: 0, arrived: 0, completed: 0 } }, { headers: { "Cache-Control": "no-store" } });
