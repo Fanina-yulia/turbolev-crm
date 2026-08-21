@@ -1,33 +1,80 @@
-/* Approved Analytics → Funnel layout.
-   Loaded after responsive-ui-contract.css so this is the final visual contract
-   for the funnel tab only. It deliberately uses existing Turbo LEV theme tokens. */
+/* Analytics → Funnel — stable approved Turbo LEV layout.
+   Loaded LAST. This contract deliberately avoids display:contents and absolute
+   positioning for the three analytical columns. The existing portal mounts stay
+   inside their normal parent sections and are laid out by CSS grid. */
 
 .workspace [class*="_page__"]:has([class*="_funnelFlow__"]){
   --ag-panel:color-mix(in srgb,var(--panel) 97%,transparent);
   --ag-panel-2:color-mix(in srgb,var(--panel-2) 96%,transparent);
   --ag-line:color-mix(in srgb,var(--line) 92%,transparent);
-  --ag-shadow:0 16px 40px rgba(0,0,0,.13),inset 0 1px 0 rgba(255,255,255,.018);
+  --ag-shadow:0 16px 40px rgba(0,0,0,.13),inset 0 1px 0 rgba(255,255,255,.02);
+  --ag-gap:14px;
+  max-width:1720px!important;
+  padding-top:14px!important;
 }
 
-/* Keep the top of the page compact, as in the approved reference. */
-.workspace [class*="_page__"]:has([class*="_funnelFlow__"]) [class*="_sectionIntro__"]{
-  margin:0 0 10px!important;
-  padding:6px 2px!important;
+/* Header / tabs / filters: compact, readable, no overlap. */
+.workspace [class*="_page__"]:has([class*="_funnelFlow__"]) [class*="_header__"]{
+  margin-bottom:10px!important;
 }
+.workspace [class*="_page__"]:has([class*="_funnelFlow__"]) [class*="_header__"] h1{
+  font-size:34px!important;
+  line-height:1.06!important;
+  letter-spacing:-.04em!important;
+}
+.workspace [class*="_page__"]:has([class*="_funnelFlow__"]) [class*="_tabs__"]{
+  gap:8px!important;
+  margin-bottom:10px!important;
+}
+.workspace [class*="_page__"]:has([class*="_funnelFlow__"]) [class*="_tabs__"]>button{
+  padding:9px 12px!important;
+}
+.workspace [class*="_page__"]:has([class*="_funnelFlow__"]) [class*="_filters__"]{
+  position:relative!important;
+  z-index:1!important;
+  margin-bottom:10px!important;
+  padding:9px 10px!important;
+  gap:9px!important;
+  border-color:var(--ag-line)!important;
+  background:var(--ag-panel)!important;
+  box-shadow:0 12px 30px rgba(0,0,0,.10)!important;
+}
+.workspace [class*="_page__"]:has([class*="_funnelFlow__"]) [class*="_sectionIntro__"]{
+  position:relative!important;
+  z-index:1!important;
+  margin:0 0 9px!important;
+  padding:5px 2px!important;
+  align-items:center!important;
+}
+.workspace [class*="_page__"]:has([class*="_funnelFlow__"]) [class*="_sectionIntro__"] h2{
+  font-size:22px!important;
+}
+
+/* KPI row: always above analytics and never covered by outcome panel. */
 .workspace [class*="_page__"]:has([class*="_funnelFlow__"]) [class*="_funnelSummary__"]{
+  position:relative!important;
+  z-index:1!important;
+  display:grid!important;
+  grid-template-columns:repeat(4,minmax(0,1fr))!important;
   gap:12px!important;
   margin-bottom:14px!important;
 }
 .workspace [class*="_page__"]:has([class*="_funnelFlow__"]) [class*="_funnelSummary__"] article{
+  position:relative!important;
+  min-width:0!important;
   min-height:90px!important;
-  padding:13px 16px 12px 70px!important;
+  padding:13px 16px 12px 68px!important;
+  overflow:hidden!important;
+  border:1px solid var(--ag-line)!important;
   border-radius:13px!important;
+  background:linear-gradient(145deg,color-mix(in srgb,var(--panel) 97%,white 1%),var(--panel))!important;
+  box-shadow:0 12px 28px rgba(0,0,0,.11)!important;
 }
 .workspace [class*="_page__"]:has([class*="_funnelFlow__"]) [class*="_funnelSummary__"] article::before{
+  left:15px!important;
+  top:17px!important;
   width:36px!important;
   height:36px!important;
-  left:16px!important;
-  top:17px!important;
   border-radius:11px!important;
   font-size:19px!important;
 }
@@ -35,35 +82,55 @@
   font-size:29px!important;
   margin:6px 0 4px!important;
 }
-
-/* TRUE three-column composition: Path | Booking outcome | Losses + conversion.
-   The existing JS portal remains intact; display:contents promotes its children
-   into the parent grid instead of nesting the outcome card inside the path card. */
-.workspace [class*="_page__"]:has([class*="_funnelFlow__"])
-  [class*="_twoColumnsWide__"]:has([data-analytics-funnel-outcome="true"]){
-  display:grid!important;
-  grid-template-columns:minmax(330px,1.04fr) minmax(285px,.80fr) minmax(400px,1.10fr)!important;
-  grid-template-rows:auto 1fr!important;
-  column-gap:14px!important;
-  row-gap:0!important;
-  align-items:stretch!important;
-  margin-bottom:0!important;
+.workspace [class*="_page__"]:has([class*="_funnelFlow__"]) [class*="_funnelSummary__"] small,
+.workspace [class*="_page__"]:has([class*="_funnelFlow__"]) [class*="_funnelSummary__"] span{
+  font-size:13px!important;
 }
 
+/* OUTER GRID: first DOM section contains Path + Outcome; second section is right stack. */
+.workspace [class*="_page__"]:has([class*="_funnelFlow__"])
+  [class*="_twoColumnsWide__"]:has([data-analytics-funnel-outcome="true"]){
+  position:relative!important;
+  z-index:0!important;
+  display:grid!important;
+  grid-template-columns:minmax(0,1.86fr) minmax(390px,1.14fr)!important;
+  gap:var(--ag-gap)!important;
+  align-items:stretch!important;
+  margin:0!important;
+}
+
+/* LEFT COMPOSITE: native nested grid, no display:contents. */
 .workspace [class*="_page__"]:has([class*="_funnelFlow__"])
   [class*="_twoColumnsWide__"]:has([data-analytics-funnel-outcome="true"])
   >section:has(>[data-analytics-funnel-outcome="true"]){
-  display:contents!important;
+  position:relative!important;
+  inset:auto!important;
+  z-index:auto!important;
+  display:grid!important;
+  grid-template-columns:minmax(360px,1.14fr) minmax(300px,.86fr)!important;
+  grid-template-rows:auto 1fr!important;
+  column-gap:var(--ag-gap)!important;
+  row-gap:0!important;
+  min-width:0!important;
+  min-height:0!important;
+  margin:0!important;
+  padding:0!important;
+  overflow:visible!important;
+  border:0!important;
+  border-radius:0!important;
+  background:transparent!important;
+  box-shadow:none!important;
 }
 
-/* Left card: its header and flow visually form one card, but remain separate grid items. */
+/* Path header + flow become one visual card in column 1. */
 .workspace [class*="_page__"]:has([class*="_funnelFlow__"])
   [class*="_twoColumnsWide__"]:has([data-analytics-funnel-outcome="true"])
   >section:has(>[data-analytics-funnel-outcome="true"])>header{
   grid-column:1!important;
   grid-row:1!important;
+  position:static!important;
   margin:0!important;
-  padding:15px 16px 8px!important;
+  padding:14px 15px 8px!important;
   border:1px solid var(--ag-line)!important;
   border-bottom:0!important;
   border-radius:14px 14px 0 0!important;
@@ -75,8 +142,10 @@
   >section:has(>[data-analytics-funnel-outcome="true"])>[class*="_funnelFlow__"]{
   grid-column:1!important;
   grid-row:2!important;
-  width:auto!important;
+  position:static!important;
+  width:100%!important;
   max-width:none!important;
+  min-width:0!important;
   min-height:0!important;
   margin:0!important;
   padding:2px 12px 14px!important;
@@ -88,7 +157,7 @@
   box-shadow:0 18px 40px rgba(0,0,0,.12)!important;
 }
 
-/* Compact seven-step path exactly like the approved mockup. */
+/* Seven compact path stages. */
 .workspace [class*="_page__"]:has([class*="_funnelFlow__"]) [class*="_funnelStageWrap__"]{
   width:100%!important;
   align-items:stretch!important;
@@ -99,12 +168,15 @@
   padding:0 6px 0 10px!important;
   gap:7px!important;
   justify-content:flex-start!important;
+  font-size:12px!important;
   line-height:17px!important;
 }
 .workspace [class*="_page__"]:has([class*="_funnelFlow__"]) [class*="_funnelStage__"]{
+  position:relative!important;
   width:100%!important;
-  min-height:56px!important;
-  padding:9px 12px 9px 52px!important;
+  min-width:0!important;
+  min-height:55px!important;
+  padding:8px 12px 8px 51px!important;
   border-radius:10px!important;
   grid-template-columns:minmax(0,1fr) auto!important;
   gap:2px 10px!important;
@@ -128,57 +200,94 @@
   display:none!important;
 }
 
-/* Middle card: booking result is now an independent column, not nested in the path card. */
-.workspace [class*="_page__"]:has([class*="_funnelFlow__"])
-  [data-analytics-funnel-outcome="true"]{
+/* Outcome mount: column 2 INSIDE the first section. Critical: never absolute. */
+.workspace [class*="_page__"]:has([class*="_funnelFlow__"]) [data-analytics-funnel-outcome="true"]{
   grid-column:2!important;
   grid-row:1 / span 2!important;
   position:static!important;
   inset:auto!important;
-  width:auto!important;
+  top:auto!important;
+  right:auto!important;
+  bottom:auto!important;
+  left:auto!important;
+  z-index:auto!important;
+  width:100%!important;
+  max-width:none!important;
   min-width:0!important;
+  height:auto!important;
   margin:0!important;
+  padding:0!important;
+  transform:none!important;
   display:block!important;
+  overflow:visible!important;
 }
 .workspace [class*="_page__"]:has([class*="_funnelFlow__"]) [class*="_outcomePanel__"]{
+  position:static!important;
+  width:100%!important;
   height:100%!important;
+  min-width:0!important;
   min-height:0!important;
-  padding:16px!important;
+  margin:0!important;
+  padding:15px!important;
+  overflow:hidden!important;
   border:1px solid var(--ag-line)!important;
   border-radius:14px!important;
   background:linear-gradient(180deg,var(--ag-panel),var(--panel))!important;
   box-shadow:var(--ag-shadow)!important;
 }
 .workspace [class*="_page__"]:has([class*="_funnelFlow__"]) [class*="_outcomeHeader__"]{
-  margin-bottom:8px!important;
+  margin-bottom:7px!important;
 }
 .workspace [class*="_page__"]:has([class*="_funnelFlow__"]) [class*="_outcomeHeader__"] span{
   display:none!important;
 }
 .workspace [class*="_page__"]:has([class*="_funnelFlow__"]) [class*="_outcomeRing__"]{
-  width:184px!important;
-  height:184px!important;
-  margin:16px auto 18px!important;
+  width:176px!important;
+  height:176px!important;
+  margin:14px auto 16px!important;
 }
 .workspace [class*="_page__"]:has([class*="_funnelFlow__"]) [class*="_outcomeCenter__"] strong{
-  font-size:35px!important;
+  font-size:34px!important;
+}
+.workspace [class*="_page__"]:has([class*="_funnelFlow__"]) [class*="_outcomeLegend__"]{
+  gap:0!important;
 }
 .workspace [class*="_page__"]:has([class*="_funnelFlow__"]) [class*="_outcomeLegend__"]>div{
-  min-height:37px!important;
+  min-height:36px!important;
   border-bottom:1px solid var(--ag-line)!important;
 }
+.workspace [class*="_page__"]:has([class*="_funnelFlow__"]) [class*="_outcomeDepth__"]{
+  margin-top:8px!important;
+}
 .workspace [class*="_page__"]:has([class*="_funnelFlow__"]) [class*="_outcomeAction__"]{
+  position:static!important;
+  width:100%!important;
+  min-height:42px!important;
   margin-top:auto!important;
-  min-height:44px!important;
   border-color:color-mix(in srgb,var(--orange) 55%,var(--line))!important;
 }
 
-/* Right column occupies the full height and contains two stacked cards. */
+/* RIGHT STACK: second DOM section, also never overlaying siblings. */
 .workspace [class*="_page__"]:has([class*="_funnelFlow__"])
   [class*="_twoColumnsWide__"]:has([data-analytics-funnel-outcome="true"])>section+section{
-  grid-column:3!important;
-  grid-row:1 / span 2!important;
+  position:static!important;
+  inset:auto!important;
+  z-index:auto!important;
+  min-width:0!important;
   min-height:0!important;
+  width:auto!important;
+  height:auto!important;
+  margin:0!important;
+  padding:0!important;
+  overflow:visible!important;
+  border:0!important;
+  background:transparent!important;
+  box-shadow:none!important;
+}
+.workspace [class*="_page__"]:has([class*="_funnelFlow__"]) [data-analytics-funnel-side="true"]{
+  position:static!important;
+  width:100%!important;
+  min-width:0!important;
   margin:0!important;
 }
 .workspace [class*="_page__"]:has([class*="_funnelFlow__"])
@@ -187,12 +296,15 @@
   display:grid!important;
   grid-template-columns:1fr!important;
   grid-template-rows:minmax(0,1fr) auto!important;
-  gap:14px!important;
+  gap:var(--ag-gap)!important;
 }
 .workspace [class*="_page__"]:has([class*="_funnelFlow__"])
   [data-analytics-funnel-side="true"] [class*="_panel__"]{
+  position:static!important;
+  min-width:0!important;
   margin:0!important;
-  padding:16px!important;
+  padding:15px!important;
+  overflow:hidden!important;
   border:1px solid var(--ag-line)!important;
   border-radius:14px!important;
   background:linear-gradient(180deg,var(--ag-panel),var(--panel))!important;
@@ -201,54 +313,67 @@
 .workspace [class*="_page__"]:has([class*="_funnelFlow__"]) [class*="_lossList__"]{
   gap:8px!important;
 }
+.workspace [class*="_page__"]:has([class*="_funnelFlow__"]) [class*="_lossMeta__"]{
+  margin-bottom:4px!important;
+}
 .workspace [class*="_page__"]:has([class*="_funnelFlow__"]) [class*="_lossTrack__"]{
   height:7px!important;
 }
 .workspace [class*="_page__"]:has([class*="_funnelFlow__"]) [class*="_insight__"]{
-  min-height:42px!important;
-  margin-top:10px!important;
+  min-height:40px!important;
+  margin-top:9px!important;
 }
 .workspace [class*="_page__"]:has([class*="_funnelFlow__"]) [class*="_conversionChart__"]{
-  height:184px!important;
+  height:180px!important;
   padding-top:0!important;
   gap:8px!important;
 }
 .workspace [class*="_page__"]:has([class*="_funnelFlow__"]) [class*="_conversionTrack__"]{
-  height:112px!important;
-  max-width:54px!important;
+  height:108px!important;
+  max-width:52px!important;
 }
 .workspace [class*="_page__"]:has([class*="_funnelFlow__"]) [class*="_quickStats__"]>div{
-  min-height:42px!important;
+  min-height:40px!important;
 }
 
-/* The approved screen does not show the extra timeline underneath this composition. */
+/* Old conversion list is intentionally hidden by the visuals component; keep it out. */
+.workspace [class*="_page__"]:has([class*="_funnelFlow__"])
+  [class*="_twoColumnsWide__"]:has([data-analytics-funnel-outcome="true"])>section+section>header,
+.workspace [class*="_page__"]:has([class*="_funnelFlow__"])
+  [class*="_twoColumnsWide__"]:has([data-analytics-funnel-outcome="true"])>section+section>[class*="_conversionList__"]{
+  display:none!important;
+}
+
+/* Approved reference does not show the separate timeline underneath. */
 .workspace [class*="_page__"]:has([class*="_funnelFlow__"]) [class*="_timelineOnly__"]{
   display:none!important;
 }
 
-/* Tablet/laptop: keep the path and outcome side-by-side, then make the right stack full width. */
-@media (max-width:1280px){
+/* Keep global Binotel journal away from the bottom-right floating phone control on Analytics. */
+body:has(.workspace [class*="_page__"]:has([class*="_funnelFlow__"])) [class*="_journalLauncher__"]{
+  right:82px!important;
+  bottom:18px!important;
+}
+
+/* Wide desktop: target the approved three-column visual proportions. */
+@media (min-width:1451px){
   .workspace [class*="_page__"]:has([class*="_funnelFlow__"])
     [class*="_twoColumnsWide__"]:has([data-analytics-funnel-outcome="true"]){
-    grid-template-columns:minmax(320px,1fr) minmax(280px,.82fr)!important;
-    grid-template-rows:auto 1fr auto!important;
-    column-gap:14px!important;
-    row-gap:14px!important;
+    grid-template-columns:minmax(0,1.92fr) minmax(420px,1.08fr)!important;
   }
   .workspace [class*="_page__"]:has([class*="_funnelFlow__"])
     [class*="_twoColumnsWide__"]:has([data-analytics-funnel-outcome="true"])
-    >section:has(>[data-analytics-funnel-outcome="true"])>header{grid-column:1!important;grid-row:1!important}
-  .workspace [class*="_page__"]:has([class*="_funnelFlow__"])
-    [class*="_twoColumnsWide__"]:has([data-analytics-funnel-outcome="true"])
-    >section:has(>[data-analytics-funnel-outcome="true"])>[class*="_funnelFlow__"]{grid-column:1!important;grid-row:2!important}
-  .workspace [class*="_page__"]:has([class*="_funnelFlow__"]) [data-analytics-funnel-outcome="true"]{
-    grid-column:2!important;
-    grid-row:1 / span 2!important;
+    >section:has(>[data-analytics-funnel-outcome="true"]){
+    grid-template-columns:minmax(390px,1.16fr) minmax(305px,.84fr)!important;
   }
+}
+
+/* Laptop: path + outcome remain side-by-side, right stack moves underneath. */
+@media (max-width:1450px){
   .workspace [class*="_page__"]:has([class*="_funnelFlow__"])
-    [class*="_twoColumnsWide__"]:has([data-analytics-funnel-outcome="true"])>section+section{
-    grid-column:1 / -1!important;
-    grid-row:3!important;
+    [class*="_twoColumnsWide__"]:has([data-analytics-funnel-outcome="true"]){
+    grid-template-columns:1fr!important;
+    gap:14px!important;
   }
   .workspace [class*="_page__"]:has([class*="_funnelFlow__"])
     [data-analytics-funnel-side="true"] [class*="_sideVisuals__"]{
@@ -257,31 +382,53 @@
   }
 }
 
-/* Mobile: one readable column; geometry adapts, typography does not shrink. */
-@media (max-width:820px){
+/* Tablet: all cards become a clean single column. */
+@media (max-width:980px){
+  .workspace [class*="_page__"]:has([class*="_funnelFlow__"]) [class*="_funnelSummary__"]{
+    grid-template-columns:repeat(2,minmax(0,1fr))!important;
+  }
   .workspace [class*="_page__"]:has([class*="_funnelFlow__"])
-    [class*="_twoColumnsWide__"]:has([data-analytics-funnel-outcome="true"]){
+    [class*="_twoColumnsWide__"]:has([data-analytics-funnel-outcome="true"])
+    >section:has(>[data-analytics-funnel-outcome="true"]){
     grid-template-columns:1fr!important;
-    grid-template-rows:auto!important;
+    grid-template-rows:auto auto auto!important;
     row-gap:12px!important;
   }
   .workspace [class*="_page__"]:has([class*="_funnelFlow__"])
     [class*="_twoColumnsWide__"]:has([data-analytics-funnel-outcome="true"])
-    >section:has(>[data-analytics-funnel-outcome="true"])>header,
+    >section:has(>[data-analytics-funnel-outcome="true"])>header{
+    grid-column:1!important;
+    grid-row:1!important;
+  }
   .workspace [class*="_page__"]:has([class*="_funnelFlow__"])
     [class*="_twoColumnsWide__"]:has([data-analytics-funnel-outcome="true"])
-    >section:has(>[data-analytics-funnel-outcome="true"])>[class*="_funnelFlow__"],
-  .workspace [class*="_page__"]:has([class*="_funnelFlow__"]) [data-analytics-funnel-outcome="true"],
-  .workspace [class*="_page__"]:has([class*="_funnelFlow__"])
-    [class*="_twoColumnsWide__"]:has([data-analytics-funnel-outcome="true"])>section+section{
+    >section:has(>[data-analytics-funnel-outcome="true"])>[class*="_funnelFlow__"]{
     grid-column:1!important;
-    grid-row:auto!important;
+    grid-row:2!important;
+  }
+  .workspace [class*="_page__"]:has([class*="_funnelFlow__"]) [data-analytics-funnel-outcome="true"]{
+    grid-column:1!important;
+    grid-row:3!important;
   }
   .workspace [class*="_page__"]:has([class*="_funnelFlow__"])
     [data-analytics-funnel-side="true"] [class*="_sideVisuals__"]{
     grid-template-columns:1fr!important;
   }
-  .workspace [class*="_page__"]:has([class*="_funnelFlow__"]) [class*="_outcomePanel__"]{
-    min-height:430px!important;
+}
+
+@media (max-width:620px){
+  .workspace [class*="_page__"]:has([class*="_funnelFlow__"]) [class*="_funnelSummary__"]{
+    grid-template-columns:1fr!important;
+  }
+  .workspace [class*="_page__"]:has([class*="_funnelFlow__"]) [class*="_sectionIntro__"]{
+    align-items:flex-start!important;
+    flex-direction:column!important;
+  }
+  .workspace [class*="_page__"]:has([class*="_funnelFlow__"]) [class*="_outcomeRing__"]{
+    width:156px!important;
+    height:156px!important;
+  }
+  body:has(.workspace [class*="_page__"]:has([class*="_funnelFlow__"])) [class*="_journalLauncher__"]{
+    right:72px!important;
   }
 }
