@@ -69,6 +69,16 @@ async function getSecurityMode(): Promise<EnforcementMode> {
   }
 }
 
+function requestForcesEnforcement(input?: Request | Headers) {
+  if (!(input instanceof Request)) return false;
+  try {
+    const pathname = new URL(input.url).pathname;
+    return pathname === "/api/analytics" || pathname.startsWith("/api/analytics/");
+  } catch {
+    return false;
+  }
+}
+
 async function touchLastSeenIfStale(user: { id: string; lastSeenAt: Date | null }) {
   const cutoff = new Date(Date.now() - LAST_SEEN_TOUCH_INTERVAL_MS);
   if (user.lastSeenAt && user.lastSeenAt >= cutoff) return;
@@ -122,7 +132,8 @@ async function findOrClaimAppUser(session: NeonAuthSession) {
 }
 
 export async function getAccessContext(input?: Request | Headers): Promise<AccessContext> {
-  const [enforcementMode, requestHeaders] = await Promise.all([getSecurityMode(), resolveRequestHeaders(input)]);
+  const [configuredEnforcementMode, requestHeaders] = await Promise.all([getSecurityMode(), resolveRequestHeaders(input)]);
+  const enforcementMode: EnforcementMode = requestForcesEnforcement(input) ? "ENFORCED" : configuredEnforcementMode;
   const authConfigured = isNeonAuthConfigured();
   const anonymous = emptyContext(enforcementMode, authConfigured);
 
