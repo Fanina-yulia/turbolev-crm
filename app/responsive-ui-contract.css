@@ -3,10 +3,10 @@
    interface scale and fluid desktop/tablet geometry for every CRM module. */
 
 :root{
-  --crm-font-meta:12px;
-  --crm-font-label:13px;
-  --crm-font-control:14px;
-  --crm-font-copy:15px;
+  --crm-font-meta:13px;
+  --crm-font-label:14px;
+  --crm-font-control:15px;
+  --crm-font-copy:16px;
   --crm-sidebar-fluid:clamp(220px,14vw,265px);
   --crm-gutter-x:clamp(14px,2vw,34px);
   --crm-gutter-bottom:clamp(30px,4vw,60px);
@@ -46,9 +46,10 @@ body{min-width:0;max-width:100%;font-size:var(--crm-font-copy)!important;line-he
 .workspace :where(small,time,code,kbd,em){font-size:var(--crm-font-meta)!important;line-height:1.4!important}
 .workspace :where(table th){font-size:var(--crm-font-meta)!important;line-height:1.35!important}
 .workspace :where(table td){font-size:var(--crm-font-control)!important;line-height:1.45!important}
+.workspace svg text{font-size:var(--crm-font-meta)!important}
 
 /* CSS-module semantic text. New screens can use these names without ever
-   falling back to 7–11px copy. */
+   falling back to unreadable micro-copy. */
 .workspace :where(
   [class*="_eyebrow__"],
   [class*="_badge__"],
@@ -66,6 +67,18 @@ body{min-width:0;max-width:100%;font-size:var(--crm-font-copy)!important;line-he
   [class*="_pill__"]
 ){font-size:var(--crm-font-meta)!important;line-height:1.4!important}
 
+/* Inline styles from legacy TSX must never render below the readable floor. */
+.workspace :where(
+  [style*="font-size: 6px"],[style*="font-size:6px"],
+  [style*="font-size: 6.5px"],[style*="font-size:6.5px"],
+  [style*="font-size: 7px"],[style*="font-size:7px"],
+  [style*="font-size: 7.5px"],[style*="font-size:7.5px"],
+  [style*="font-size: 8px"],[style*="font-size:8px"],
+  [style*="font-size: 9px"],[style*="font-size:9px"],
+  [style*="font-size: 10px"],[style*="font-size:10px"],
+  [style*="font-size: 11px"],[style*="font-size:11px"]
+):not(.uaPlateCountry *){font-size:var(--crm-font-meta)!important;line-height:1.4!important}
+
 /* Known portals rendered outside .workspace. */
 .clientDrawer,.plannerEditEnhancerModal,.communicationVehicleDrawer,.tlCallPopup,.tlDockPanel{
   font-family:var(--ui-font)!important;
@@ -82,6 +95,12 @@ body{min-width:0;max-width:100%;font-size:var(--crm-font-copy)!important;line-he
 .communicationVehicleDrawer :where(button,input,select,textarea),
 .tlCallPopup :where(button,input,select,textarea),
 .tlDockPanel :where(button,input,select,textarea){font-size:var(--crm-font-control)!important;line-height:1.4!important}
+
+.clientDrawer :where([style*="font-size: 7px"],[style*="font-size: 8px"],[style*="font-size: 9px"],[style*="font-size: 10px"],[style*="font-size: 11px"]),
+.plannerEditEnhancerModal :where([style*="font-size: 7px"],[style*="font-size: 8px"],[style*="font-size: 9px"],[style*="font-size: 10px"],[style*="font-size: 11px"]),
+.communicationVehicleDrawer :where([style*="font-size: 7px"],[style*="font-size: 8px"],[style*="font-size: 9px"],[style*="font-size: 10px"],[style*="font-size: 11px"]),
+.tlCallPopup :where([style*="font-size: 7px"],[style*="font-size: 8px"],[style*="font-size: 9px"],[style*="font-size: 10px"],[style*="font-size: 11px"]),
+.tlDockPanel :where([style*="font-size: 7px"],[style*="font-size: 8px"],[style*="font-size: 9px"],[style*="font-size: 10px"],[style*="font-size: 11px"]){font-size:var(--crm-font-meta)!important;line-height:1.4!important}
 
 /* Existing modules that historically used 8–11px. */
 [class*="mechanic-mobile-cabinet-v2_"] :where(small,time),
@@ -133,8 +152,8 @@ body{min-width:0;max-width:100%;font-size:var(--crm-font-copy)!important;line-he
 @media (max-width:760px){
   :root{--crm-sidebar-fluid:0px;--crm-gutter-x:14px;--crm-gutter-bottom:28px}
   .workspace{width:100%!important;max-width:100%!important}
-  .workspace :where(button,input,select,textarea){font-size:14px!important}
-  .workspace :where(small,time,code,kbd,em){font-size:12px!important}
+  .workspace :where(button,input,select,textarea){font-size:15px!important}
+  .workspace :where(small,time,code,kbd,em){font-size:13px!important}
   .kpis{grid-template-columns:repeat(2,minmax(0,1fr))}
   .pipeline{grid-template-columns:repeat(2,minmax(0,1fr))}
 }
