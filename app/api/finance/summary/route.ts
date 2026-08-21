@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getPrisma } from "@/src/lib/prisma";
 import { calculatePnl, decimalToNumber, outstandingAmount, roundMoney } from "@/src/domain/finance";
+import { getPrisma } from "@/src/lib/prisma";
+import { PERMISSIONS } from "@/src/security/permissions";
+import { authorizeScopedLocation } from "@/src/security/scoped-location-access";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -45,7 +47,6 @@ function addKyivDay(value: string | null) {
 }
 
 export async function GET(request: NextRequest) {
-  const prisma = getPrisma();
   const defaults = currentKyivMonthRange();
   const currency = (request.nextUrl.searchParams.get("currency") || "UAH").toUpperCase().slice(0, 3);
   const from = parseKyivDate(request.nextUrl.searchParams.get("from")) ?? defaults.from;
@@ -53,16 +54,24 @@ export async function GET(request: NextRequest) {
   const locationId = request.nextUrl.searchParams.get("locationId")?.trim() || null;
   if (from >= to) return NextResponse.json({ ok: false, error: "INVALID_DATE_RANGE" }, { status: 400 });
 
-  const locationWhere = locationId ? { locationId } : {};
+  const access = await authorizeScopedLocation(PERMISSIONS.FINANCE_READ, request, locationId);
+  if (!access.ok) return access.response;
+
+  const prisma = getPrisma();
+  const locationWhere = access.locationWhere;
+  const costCenterScopeWhere = access.allowedLocationIds
+    ? { locationId: { in: access.allowedLocationIds } }
+    : {};
+
   const [pnlGroups, cashPeriodGroups, cashAllTimeGroups, accounts, obligations, eventCount, cashCount, costCenters] = await Promise.all([
     prisma.financialEvent.groupBy({ by: ["pnlSection"], where: { status: "POSTED", currency, recognizedAt: { gte: from, lt: to }, ...locationWhere, ...NON_DEMO_WORK_ORDER }, _sum: { amount: true }, _count: { _all: true } }),
     prisma.cashTransaction.groupBy({ by: ["kind", "flowSection"], where: { status: "POSTED", currency, occurredAt: { gte: from, lt: to }, ...locationWhere, ...NON_DEMO_WORK_ORDER }, _sum: { amount: true }, _count: { _all: true } }),
     prisma.cashTransaction.groupBy({ by: ["kind"], where: { status: "POSTED", currency, ...locationWhere, ...NON_DEMO_WORK_ORDER }, _sum: { amount: true } }),
-    prisma.moneyAccount.findMany({ where: { isActive: true, currency, ...(locationId ? { locationId } : {}), NOT: { id: { startsWith: "demo_" } } }, select: { id: true, name: true, type: true, openingBalance: true, locationId: true, sortOrder: true }, orderBy: [{ sortOrder: "asc" }, { name: "asc" }] }),
+    prisma.moneyAccount.findMany({ where: { isActive: true, currency, ...locationWhere, NOT: { id: { startsWith: "demo_" } } }, select: { id: true, name: true, type: true, openingBalance: true, locationId: true, sortOrder: true }, orderBy: [{ sortOrder: "asc" }, { name: "asc" }] }),
     prisma.financialObligation.findMany({ where: { status: { in: ["OPEN", "PARTIALLY_PAID", "OVERDUE"] }, currency, ...locationWhere, ...NON_DEMO_WORK_ORDER }, select: { direction: true, amount: true, settledAmount: true, dueAt: true, status: true } }),
     prisma.financialEvent.count({ where: { status: "POSTED", currency, recognizedAt: { gte: from, lt: to }, ...locationWhere, ...NON_DEMO_WORK_ORDER } }),
     prisma.cashTransaction.count({ where: { status: "POSTED", currency, occurredAt: { gte: from, lt: to }, ...locationWhere, ...NON_DEMO_WORK_ORDER } }),
-    prisma.costCenter.findMany({ where: { isActive: true, locationId: { not: null } }, select: { locationId: true, name: true, sortOrder: true }, orderBy: [{ sortOrder: "asc" }, { name: "asc" }] }),
+    prisma.costCenter.findMany({ where: { isActive: true, locationId: { not: null }, ...costCenterScopeWhere }, select: { locationId: true, name: true, sortOrder: true }, orderBy: [{ sortOrder: "asc" }, { name: "asc" }] }),
   ]);
 
   const pnlBySection = Object.fromEntries(pnlGroups.map((row) => [row.pnlSection, decimalToNumber(row._sum.amount)]));
