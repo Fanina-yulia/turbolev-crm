@@ -93,8 +93,8 @@ export async function GET(request: NextRequest) {
     diagnosticIds.length ? prisma.auditEvent.findMany({ where: { action: REPAIR_AUDIT_ACTION, entityType: "DiagnosticRequest", entityId: { in: diagnosticIds } }, select: { entityId: true }, distinct: ["entityId"] }) : Promise.resolve([]),
   ]);
 
-  const repairIds = new Set(repairAudits.map((row) => row.entityId));
-  const paidIds = new Set(payments.map((row) => row.sourceEntityId.replace(/:payment$/, "")));
+  const repairIds = new Set(repairAudits.flatMap((row) => row.entityId ? [row.entityId] : []));
+  const paidIds = new Set(payments.flatMap((row) => row.sourceEntityId ? [row.sourceEntityId.replace(/:payment$/, "")] : []));
   const diagnosticsReached = appointments.filter((row) => Boolean(row.actualStartAt) || Boolean(diagnosticIdFromComment(row.comment))).length;
   const completed = appointments.filter((row) => row.status === "COMPLETED" || Boolean(row.actualEndAt)).length;
   const sentToRepair = diagnosticIds.filter((id) => repairIds.has(id)).length;
