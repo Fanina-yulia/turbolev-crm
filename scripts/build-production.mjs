@@ -1,3 +1,4 @@
+import "./check-ui-font-floor.mjs";
 import { spawnSync } from "node:child_process";
 import { createMigrationEnvironment } from "./migration-database-url.mjs";
 
