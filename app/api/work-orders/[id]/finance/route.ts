@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { WorkOrderFinanceValidationError } from "@/src/domain/work-order-finance";
+import { authorize } from "@/src/security/authorize";
 import { PERMISSIONS } from "@/src/security/permissions";
-import { authorizeWorkOrderRecord } from "@/src/security/work-order-scope";
+import { canAccessWorkOrder } from "@/src/security/work-order-scope";
 import {
   getWorkOrderFinance,
   savePlannedWorkOrderFinance,
@@ -32,10 +33,19 @@ function errorResponse(error: unknown) {
   return NextResponse.json({ ok: false, code: "INTERNAL_ERROR", error: "Financial operation failed" }, { status: 500 });
 }
 
+async function workOrderFinanceAccess(permission: string, request: Request, workOrderId: string) {
+  const access = await authorize(permission, { request, strict: true, minimumScope: "SELF" });
+  if (!access.allowed) return { ok: false as const, response: access.response! };
+  if (!(await canAccessWorkOrder(access.context, access.grantedScope, workOrderId))) {
+    return { ok: false as const, response: NextResponse.json({ ok: false, error: "Замовлення-наряд не знайдено." }, { status: 404 }) };
+  }
+  return { ok: true as const, access };
+}
+
 export async function GET(request: Request, context: { params: Promise<{ id: string }> }) {
   const { id } = await context.params;
-  const access = await authorizeWorkOrderRecord(PERMISSIONS.FINANCE_READ, request, id);
-  if (!access.allowed) return access.response;
+  const guard = await workOrderFinanceAccess(PERMISSIONS.FINANCE_READ, request, id);
+  if (!guard.ok) return guard.response;
 
   try {
     const result = await getWorkOrderFinance(id);
@@ -51,12 +61,12 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
 
 export async function PUT(request: Request, context: { params: Promise<{ id: string }> }) {
   const { id } = await context.params;
-  const access = await authorizeWorkOrderRecord(PERMISSIONS.FINANCE_WRITE, request, id);
-  if (!access.allowed) return access.response;
+  const guard = await workOrderFinanceAccess(PERMISSIONS.FINANCE_WRITE, request, id);
+  if (!guard.ok) return guard.response;
 
   try {
     const body = (await request.json()) as Record<string, unknown>;
-    const actorName = access.context.user?.name || access.context.user?.email || "CRM / Фінанси";
+    const actorName = guard.access.context.user?.employeeName || guard.access.context.user?.name || guard.access.context.user?.email || "CRM / Фінанси";
 
     if (await hasWorkOrderLines(id)) {
       const result = await rebuildPlannedSnapshotFromLines(id, actorName);
