@@ -1,5 +1,6 @@
 import "./check-ui-font-floor.mjs";
 import "./check-critical-api-security.mjs";
+import "./check-mechanic-performance.mjs";
 import { spawnSync } from "node:child_process";
 import { createMigrationEnvironment } from "./migration-database-url.mjs";
 
