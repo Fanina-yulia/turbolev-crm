@@ -1,4 +1,7 @@
 import { NextResponse } from "next/server";
+import { getPrisma } from "@/src/lib/prisma";
+import { authorize } from "@/src/security/authorize";
+import { PERMISSIONS } from "@/src/security/permissions";
 import {
   createPlannerAppointment,
   getPlannerBoard,
@@ -12,24 +15,95 @@ function invalidDate(message: string) {
   return NextResponse.json({ status: "INVALID_RANGE", message }, { status: 400 });
 }
 
+async function resolvePlannerScope(access: Awaited<ReturnType<typeof authorize>>) {
+  if (access.grantedScope === "ALL") {
+    return { allowedLocationIds: null as string[] | null, mechanicIds: null as string[] | null };
+  }
+  if (access.grantedScope === "LOCATION") {
+    return { allowedLocationIds: access.context.locationIds, mechanicIds: null as string[] | null };
+  }
+  if (access.grantedScope === "ASSIGNED") {
+    const userId = access.context.user?.id;
+    if (!userId) return { allowedLocationIds: [] as string[], mechanicIds: [] as string[] };
+    const mechanics = await getPrisma().serviceMechanic.findMany({
+      where: {
+        userId,
+        isActive: true,
+        ...(access.context.locationIds.length ? { locationId: { in: access.context.locationIds } } : {}),
+      },
+      select: { id: true, locationId: true },
+    });
+    return {
+      allowedLocationIds: [...new Set(mechanics.map((row) => row.locationId))],
+      mechanicIds: mechanics.map((row) => row.id),
+    };
+  }
+  return { allowedLocationIds: [] as string[], mechanicIds: [] as string[] };
+}
+
+function scopeDenied(message = "Ця локація не входить до Вашого доступу.") {
+  return NextResponse.json({ status: "FORBIDDEN", message }, { status: 403 });
+}
+
 export async function GET(request: Request) {
+  const access = await authorize(PERMISSIONS.PLANNER_READ, { strict: true, request, minimumScope: "ASSIGNED" });
+  if (!access.allowed) return access.response!;
+
   const { searchParams } = new URL(request.url);
   const from = new Date(searchParams.get("from") ?? "");
   const to = new Date(searchParams.get("to") ?? "");
-  const locationId = searchParams.get("locationId");
+  const requestedLocationId = searchParams.get("locationId")?.trim() || null;
 
   if (!Number.isFinite(from.getTime()) || !Number.isFinite(to.getTime()) || to <= from) {
     return invalidDate("Передайте коректний часовий діапазон планувальника.");
   }
 
-  const board = await getPlannerBoard(from, to, locationId);
-  return NextResponse.json({ status: "OK", ...board }, { headers: { "Cache-Control": "no-store" } });
+  const scope = await resolvePlannerScope(access);
+  if (scope.allowedLocationIds !== null && !scope.allowedLocationIds.length) {
+    return NextResponse.json({ status: "OK", locations: [], activeLocationId: null, appointments: [] }, { headers: { "Cache-Control": "no-store" } });
+  }
+  if (requestedLocationId && scope.allowedLocationIds !== null && !scope.allowedLocationIds.includes(requestedLocationId)) {
+    return scopeDenied();
+  }
+
+  const selectedLocationId = requestedLocationId ?? scope.allowedLocationIds?.[0] ?? null;
+  const board = await getPlannerBoard(from, to, selectedLocationId);
+  const allowedSet = scope.allowedLocationIds === null ? null : new Set(scope.allowedLocationIds);
+  const mechanicSet = scope.mechanicIds === null ? null : new Set(scope.mechanicIds);
+  const locations = board.locations
+    .filter((location) => !allowedSet || allowedSet.has(location.id))
+    .map((location) => mechanicSet
+      ? { ...location, mechanics: location.mechanics.filter((mechanic) => mechanicSet.has(mechanic.id)) }
+      : location);
+  const appointments = mechanicSet
+    ? board.appointments.filter((appointment) => Boolean(appointment.mechanicId && mechanicSet.has(appointment.mechanicId)))
+    : board.appointments;
+  const activeLocationId = board.activeLocationId && (!allowedSet || allowedSet.has(board.activeLocationId)) ? board.activeLocationId : null;
+
+  return NextResponse.json({ status: "OK", locations, activeLocationId, appointments }, { headers: { "Cache-Control": "no-store" } });
 }
 
 export async function POST(request: Request) {
+  const access = await authorize(PERMISSIONS.PLANNER_WRITE, { strict: true, request, minimumScope: "ASSIGNED" });
+  if (!access.allowed) return access.response!;
+
   try {
     const body = (await request.json()) as Record<string, unknown>;
     const input = normalizeAppointmentPayload(body);
+    const scope = await resolvePlannerScope(access);
+
+    if (scope.allowedLocationIds !== null && !scope.allowedLocationIds.includes(input.locationId)) {
+      return scopeDenied();
+    }
+
+    if (access.grantedScope === "ASSIGNED" && input.leadId) {
+      const lead = await getPrisma().lead.findUnique({ where: { id: input.leadId }, select: { assignedUserId: true } });
+      if (!lead || lead.assignedUserId !== access.context.user?.id) {
+        return scopeDenied("Цей запис не належить до Ваших призначених звернень.");
+      }
+    }
+
+    input.createdById = access.context.user?.id ?? null;
     const result = await createPlannerAppointment(input);
     if (!result.ok) {
       return NextResponse.json({
