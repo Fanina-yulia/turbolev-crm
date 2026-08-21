@@ -12,7 +12,7 @@ export function ActivateClientPortal({ token }: { token: string }) {
     setBusy(true);
     setError("");
     try {
-      const response = await fetch("/api/public/client-portal/session", {
+      const response = await fetch("/api/public/diagnostic-report/client-session", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ shareToken: token }),
