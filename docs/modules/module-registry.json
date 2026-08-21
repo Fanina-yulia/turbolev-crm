@@ -33,11 +33,11 @@
     {
       "id": "client-portal",
       "title": "Client Portal / My Garage",
-      "description": "Public case portal, persistent client sessions, magic-link activation and the owner's multi-vehicle My Garage experience.",
-      "keywords": ["client portal", "my garage", "magic link", "customer cabinet", "persistent session", "owner portal"],
-      "paths": ["app/my/**", "app/portal/**", "app/r/**", "app/api/public/diagnostic-report/**", "src/services/client-portal*", "prisma/client-portal-auth.prisma", "prisma/migrations/*client_portal*"],
+      "description": "Public case portal, persistent client sessions, magic-link activation, multi-vehicle My Garage, vehicle detail and auditable estimate decisions.",
+      "keywords": ["client portal", "my garage", "magic link", "customer cabinet", "persistent session", "owner portal", "vehicle detail", "line approval"],
+      "paths": ["app/my/**", "app/portal/**", "app/r/**", "app/api/public/diagnostic-report/**", "src/services/client-portal*", "prisma/client-portal-*.prisma", "prisma/migrations/*client_portal*"],
       "dependencies": ["core-platform", "clients-vehicles", "diagnostics", "work-orders", "communications"],
-      "smokeChecks": ["client-magic-link", "client-session-cookie", "my-garage-load", "case-portal-compatibility"]
+      "smokeChecks": ["client-magic-link", "client-session-cookie", "my-garage-load", "client-vehicle-detail", "per-line-estimate-decision", "vehicle-chat", "case-portal-compatibility"]
     },
     {
       "id": "leads-intake",
