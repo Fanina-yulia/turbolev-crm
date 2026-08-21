@@ -1,6 +1,8 @@
 import { after, NextResponse } from "next/server";
 import { evaluateWorkflowTransition } from "@/src/domain/workflow";
 import { getPrisma } from "@/src/lib/prisma";
+import { authorize } from "@/src/security/authorize";
+import { PERMISSIONS } from "@/src/security/permissions";
 import {
   LeadArrivalConflictError,
   LeadArrivalNotFoundError,
@@ -31,10 +33,60 @@ async function observePlannerTransition(id: string, requestedStatus: unknown) {
   return decision;
 }
 
+async function verifyPlannerWriteAccess(request: Request, appointmentId: string, requestedLocationId?: unknown) {
+  const access = await authorize(PERMISSIONS.PLANNER_WRITE, { strict: true, request, minimumScope: "ASSIGNED" });
+  if (!access.allowed) return { access, appointment: null, response: access.response! };
+
+  const prisma = getPrisma();
+  const appointment = await prisma.serviceAppointment.findUnique({
+    where: { id: appointmentId },
+    select: { id: true, locationId: true, createdById: true, leadId: true },
+  });
+  if (!appointment) {
+    return {
+      access,
+      appointment: null,
+      response: NextResponse.json({ status: "NOT_FOUND", message: "Запис не знайдено." }, { status: 404 }),
+    };
+  }
+
+  const nextLocationId = typeof requestedLocationId === "string" && requestedLocationId.trim()
+    ? requestedLocationId.trim()
+    : appointment.locationId;
+  if (access.grantedScope !== "ALL" && !access.context.locationIds.includes(nextLocationId)) {
+    return {
+      access,
+      appointment,
+      response: NextResponse.json({ status: "FORBIDDEN", message: "Ця локація не входить до Вашого доступу." }, { status: 403 }),
+    };
+  }
+
+  if (access.grantedScope === "ASSIGNED") {
+    const userId = access.context.user?.id;
+    let assigned = Boolean(userId && appointment.createdById === userId);
+    if (!assigned && userId && appointment.leadId) {
+      const lead = await prisma.lead.findUnique({ where: { id: appointment.leadId }, select: { assignedUserId: true } });
+      assigned = lead?.assignedUserId === userId;
+    }
+    if (!assigned) {
+      return {
+        access,
+        appointment,
+        response: NextResponse.json({ status: "FORBIDDEN", message: "Цей запис не належить до Ваших призначених звернень." }, { status: 403 }),
+      };
+    }
+  }
+
+  return { access, appointment, response: null };
+}
+
 export async function PATCH(request: Request, context: { params: Promise<{ id: string }> }) {
   const { id } = await context.params;
   try {
     const body = (await request.json()) as Record<string, unknown>;
+    const security = await verifyPlannerWriteAccess(request, id, body.locationId);
+    if (security.response) return security.response;
+
     const requestedStatus = parsePlannerStatus(body.status);
     const workflowObservation = await observePlannerTransition(id, body.status);
     const result = requestedStatus === "ARRIVED"
@@ -121,8 +173,11 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
   }
 }
 
-export async function DELETE(_request: Request, context: { params: Promise<{ id: string }> }) {
+export async function DELETE(request: Request, context: { params: Promise<{ id: string }> }) {
   const { id } = await context.params;
+  const security = await verifyPlannerWriteAccess(request, id);
+  if (security.response) return security.response;
+
   const workflowObservation = await observePlannerTransition(id, "CANCELLED");
   const result = await updatePlannerAppointment(id, { status: "CANCELLED" });
   if (!result.ok && "notFound" in result) {
