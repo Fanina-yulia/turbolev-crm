@@ -1,5 +1,5 @@
 /* Analytics → Funnel compatibility layer.
-   The visible funnel is now rendered as a native React grid by
+   The visible funnel is rendered as a native React grid by
    analytics-funnel-visuals.tsx. This file no longer positions or reparents
    analytical cards; it only hides the deprecated dashboard markup until that
    legacy JSX is removed in a separate cleanup. */
@@ -10,21 +10,22 @@
   padding-bottom:96px!important;
 }
 
-.workspace [class*="_page__"]:has([data-analytics-funnel-native="true"]) [class*="_header__"]{
+.workspace [class*="_page__"]:has([data-analytics-funnel-native="true"]) > [class*="_header__"]{
   margin-bottom:10px!important;
 }
-.workspace [class*="_page__"]:has([data-analytics-funnel-native="true"]) [class*="_tabs__"]{
+.workspace [class*="_page__"]:has([data-analytics-funnel-native="true"]) > [class*="_tabs__"]{
   margin-bottom:10px!important;
 }
-.workspace [class*="_page__"]:has([data-analytics-funnel-native="true"]) [class*="_filters__"]{
+.workspace [class*="_page__"]:has([data-analytics-funnel-native="true"]) > [class*="_filters__"]{
   margin-bottom:12px!important;
 }
 
-/* Deprecated funnel presentation from analytics-dashboard.tsx. The replacement
-   below it owns the complete visible layout: intro, KPIs and three columns. */
-.workspace [class*="_page__"]:has([data-analytics-funnel-native="true"]) [class*="_sectionIntro__"],
-.workspace [class*="_page__"]:has([data-analytics-funnel-native="true"]) [class*="_funnelSummary__"],
-.workspace [class*="_page__"]:has([data-analytics-funnel-native="true"]) [class*="_twoColumnsWide__"]{
+/* Hide only the deprecated direct children from analytics-dashboard.tsx.
+   The native component has similarly named internal classes, so direct-child
+   scoping is required to keep its own heading and content visible. */
+.workspace [class*="_page__"]:has([data-analytics-funnel-native="true"]) > [class*="_sectionIntro__"],
+.workspace [class*="_page__"]:has([data-analytics-funnel-native="true"]) > [class*="_funnelSummary__"],
+.workspace [class*="_page__"]:has([data-analytics-funnel-native="true"]) > [class*="_twoColumnsWide__"]{
   display:none!important;
 }
 
