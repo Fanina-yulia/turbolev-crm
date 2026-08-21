@@ -1,9 +1,17 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import dynamic from "next/dynamic";
+import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import { MechanicStandaloneCabinet } from "./mechanic-standalone-cabinet";
-import { MechanicVehicleScanner } from "./mechanic-vehicle-scanner";
-import { MechanicDiagnosticsArrivalBridge } from "./mechanic-diagnostics-arrival-bridge";
+
+const MechanicVehicleScanner = dynamic(
+  () => import("./mechanic-vehicle-scanner").then((module) => module.MechanicVehicleScanner),
+  { ssr: false },
+);
+const MechanicDiagnosticsArrivalBridge = dynamic(
+  () => import("./mechanic-diagnostics-arrival-bridge").then((module) => module.MechanicDiagnosticsArrivalBridge),
+  { ssr: false },
+);
 
 type AssignedVehicle = {
   id: string;
@@ -26,8 +34,7 @@ type AssignedVehiclesPayload = {
   items?: AssignedVehicle[];
 };
 
-type SwipeState = {
-  id: string;
+type RowSwipe = {
   startX: number;
   offset: number;
 };
@@ -92,13 +99,78 @@ function readDismissedIds() {
   }
 }
 
+const AssignedVehicleRow = memo(function AssignedVehicleRow({
+  item,
+  onDismiss,
+}: {
+  item: AssignedVehicle;
+  onDismiss: (id: string) => void;
+}) {
+  const [swipe, setSwipe] = useState<RowSwipe | null>(null);
+  const status = effectiveStatus(item);
+  const swipeOffset = swipe?.offset ?? 0;
+  const deleteVisible = swipeOffset < -12;
+
+  function startSwipe(clientX: number) {
+    setSwipe({ startX: clientX, offset: 0 });
+  }
+
+  function moveSwipe(clientX: number) {
+    setSwipe((current) => {
+      if (!current) return current;
+      const offset = Math.max(SWIPE_MAX_OFFSET, Math.min(0, clientX - current.startX));
+      if (offset === current.offset) return current;
+      return { ...current, offset };
+    });
+  }
+
+  function finishSwipe() {
+    if (swipe && swipe.offset <= SWIPE_DISMISS_THRESHOLD) {
+      onDismiss(item.id);
+      return;
+    }
+    setSwipe(null);
+  }
+
+  return <div style={{ position: "relative", overflow: "hidden", background: "rgba(205,57,72,.20)" }}>
+    <div aria-hidden="true" style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "flex-end", paddingRight: 18, color: "#ff8d98", fontSize: 12, fontWeight: 800, opacity: deleteVisible ? 1 : 0, transition: "opacity .12s ease" }}>Видалити</div>
+    <article
+      onPointerDown={(event) => startSwipe(event.clientX)}
+      onPointerMove={(event) => moveSwipe(event.clientX)}
+      onPointerUp={finishSwipe}
+      onPointerCancel={() => setSwipe(null)}
+      style={{
+        padding: "11px 14px",
+        borderBottom: "1px solid rgba(255,255,255,.07)",
+        display: "grid",
+        gridTemplateColumns: "1fr auto",
+        gap: 10,
+        background: "rgba(21,27,35,.99)",
+        transform: `translateX(${swipeOffset}px)`,
+        transition: swipe ? "none" : "transform .18s ease",
+        touchAction: "pan-y",
+        userSelect: "none",
+      }}
+    >
+      <div style={{ minWidth: 0 }}>
+        <strong style={{ display: "block", fontSize: 15, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{item.vehicle}</strong>
+        <span style={{ display: "block", marginTop: 2, fontSize: 12, opacity: .78 }}>{item.plate}{item.post ? ` · ${item.post}` : ""}</span>
+        {item.problem ? <span style={{ display: "block", marginTop: 5, fontSize: 12, opacity: .9, lineHeight: 1.3 }}>{item.problem}</span> : null}
+      </div>
+      <div style={{ textAlign: "right", minWidth: 112 }}>
+        <span style={{ display: "inline-block", borderRadius: 999, padding: "4px 8px", background: status === "READY_FOR_PICKUP" ? "rgba(40,180,110,.18)" : status === "IN_REPAIR" ? "rgba(70,140,255,.20)" : "rgba(255,157,88,.16)", fontSize: 12, fontWeight: 800 }}>{statusLabels[status] || status}</span>
+        <b style={{ display: "block", marginTop: 5, fontSize: 12 }}>{dateTime(item.plannedStartAt)}</b>
+      </div>
+    </article>
+  </div>;
+});
+
 export function MechanicLiveCabinet({ userName }: { userName?: string | null }) {
   const [items, setItems] = useState<AssignedVehicle[]>([]);
   const [lastKey, setLastKey] = useState("");
   const [expanded, setExpanded] = useState(true);
   const [dismissedIds, setDismissedIds] = useState<string[]>([]);
   const [storageReady, setStorageReady] = useState(false);
-  const [swipe, setSwipe] = useState<SwipeState | null>(null);
 
   const load = useCallback(async () => {
     const response = await fetch("/api/cabinet/mechanic/assigned-vehicles", { cache: "no-store", credentials: "include" });
@@ -109,8 +181,8 @@ export function MechanicLiveCabinet({ userName }: { userName?: string | null }) 
       .map((item) => `${item.id}:${effectiveStatus(item)}`)
       .sort()
       .join("|");
-    setItems(nextItems);
-    setLastKey(nextKey);
+    setItems((current) => current === nextItems ? current : nextItems);
+    setLastKey((current) => current === nextKey ? current : nextKey);
   }, []);
 
   useEffect(() => {
@@ -129,7 +201,7 @@ export function MechanicLiveCabinet({ userName }: { userName?: string | null }) 
     const timer = window.setInterval(() => {
       if (document.visibilityState === "visible") void load();
     }, BACKGROUND_REFRESH_MS);
-    const onFocus = () => void load();
+    const onFocus = () => { if (document.visibilityState === "visible") void load(); };
     const onVisibility = () => { if (document.visibilityState === "visible") void load(); };
     const onMechanicRefresh = () => void load();
     window.addEventListener("focus", onFocus);
@@ -173,45 +245,31 @@ export function MechanicLiveCabinet({ userName }: { userName?: string | null }) 
   }, []);
 
   const dismissItem = useCallback((id: string) => {
-    persistDismissed([...dismissedIds, id]);
-    setSwipe(null);
-  }, [dismissedIds, persistDismissed]);
+    setDismissedIds((current) => {
+      const unique = Array.from(new Set([...current, id])).slice(-MAX_DISMISSED_ITEMS);
+      try {
+        window.localStorage.setItem(DISMISSED_ITEMS_KEY, JSON.stringify(unique));
+      } catch {
+        // Keep the in-memory dismissal when persistent storage is unavailable.
+      }
+      return unique;
+    });
+  }, []);
 
   function dismissFeed() {
     if (!visibleItems.length) return;
     persistDismissed([...dismissedIds, ...visibleItems.map((item) => item.id)]);
-    setSwipe(null);
-  }
-
-  function startSwipe(id: string, clientX: number) {
-    setSwipe({ id, startX: clientX, offset: 0 });
-  }
-
-  function moveSwipe(id: string, clientX: number) {
-    setSwipe((current) => {
-      if (!current || current.id !== id) return current;
-      const offset = Math.max(SWIPE_MAX_OFFSET, Math.min(0, clientX - current.startX));
-      return { ...current, offset };
-    });
-  }
-
-  function finishSwipe(id: string) {
-    if (swipe?.id === id && swipe.offset <= SWIPE_DISMISS_THRESHOLD) {
-      dismissItem(id);
-      return;
-    }
-    setSwipe(null);
   }
 
   const showFeed = Boolean(storageReady && lastKey && visibleItems.length);
 
   return <div style={{ minHeight: "100dvh", background: "#0f141a" }}>
     {showFeed && <section style={{ position: "sticky", top: 0, zIndex: 2200, width: "100%", maxWidth: 560, margin: "0 auto", padding: "10px 12px 0", boxSizing: "border-box" }}>
-      <div style={{ borderRadius: 18, background: "rgba(21,27,35,.98)", color: "#fff", border: "1px solid rgba(255,255,255,.10)", boxShadow: "0 12px 32px rgba(0,0,0,.28)", overflow: "hidden", backdropFilter: "blur(14px)" }}>
+      <div style={{ borderRadius: 18, background: "rgba(21,27,35,.99)", color: "#fff", border: "1px solid rgba(255,255,255,.10)", boxShadow: "0 12px 32px rgba(0,0,0,.28)", overflow: "hidden" }}>
         <div style={{ display: "flex", alignItems: "stretch" }}>
           <button type="button" onClick={() => setExpanded((value) => !value)} style={{ flex: 1, minWidth: 0, border: 0, background: "transparent", color: "inherit", padding: "12px 8px 12px 14px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, cursor: "pointer", textAlign: "left" }}>
             <div>
-              <div style={{ fontSize: 11, fontWeight: 900, letterSpacing: ".08em", color: "#ff9d58" }}>ЗАКРІПЛЕНІ ЗА МНОЮ АВТО</div>
+              <div style={{ fontSize: 12, fontWeight: 900, letterSpacing: ".08em", color: "#ff9d58" }}>ЗАКРІПЛЕНІ ЗА МНОЮ АВТО</div>
               <strong style={{ display: "block", marginTop: 3, fontSize: 16 }}>{visibleItems.length} авто</strong>
             </div>
             <span style={{ fontSize: 18, opacity: .8 }}>{expanded ? "⌃" : "⌄"}</span>
@@ -220,44 +278,9 @@ export function MechanicLiveCabinet({ userName }: { userName?: string | null }) 
         </div>
 
         {expanded && <div style={{ maxHeight: "38dvh", overflowY: "auto", borderTop: "1px solid rgba(255,255,255,.08)", overscrollBehavior: "contain" }}>
-          {visibleItems.map((item) => {
-            const status = effectiveStatus(item);
-            const swipeOffset = swipe?.id === item.id ? swipe.offset : 0;
-            const deleteVisible = swipeOffset < -12;
-            return <div key={item.id} style={{ position: "relative", overflow: "hidden", background: "rgba(205,57,72,.20)" }}>
-              <div aria-hidden="true" style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "flex-end", paddingRight: 18, color: "#ff8d98", fontSize: 12, fontWeight: 800, opacity: deleteVisible ? 1 : 0, transition: "opacity .12s ease" }}>Видалити</div>
-              <article
-                onPointerDown={(event) => startSwipe(item.id, event.clientX)}
-                onPointerMove={(event) => moveSwipe(item.id, event.clientX)}
-                onPointerUp={() => finishSwipe(item.id)}
-                onPointerCancel={() => setSwipe(null)}
-                style={{
-                  padding: "11px 14px",
-                  borderBottom: "1px solid rgba(255,255,255,.07)",
-                  display: "grid",
-                  gridTemplateColumns: "1fr auto",
-                  gap: 10,
-                  background: "rgba(21,27,35,.99)",
-                  transform: `translateX(${swipeOffset}px)`,
-                  transition: swipe?.id === item.id ? "none" : "transform .18s ease",
-                  touchAction: "pan-y",
-                  userSelect: "none",
-                }}
-              >
-                <div style={{ minWidth: 0 }}>
-                  <strong style={{ display: "block", fontSize: 15, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{item.vehicle}</strong>
-                  <span style={{ display: "block", marginTop: 2, fontSize: 12, opacity: .78 }}>{item.plate}{item.post ? ` · ${item.post}` : ""}</span>
-                  {item.problem ? <span style={{ display: "block", marginTop: 5, fontSize: 12, opacity: .9, lineHeight: 1.3 }}>{item.problem}</span> : null}
-                </div>
-                <div style={{ textAlign: "right", minWidth: 112 }}>
-                  <span style={{ display: "inline-block", borderRadius: 999, padding: "4px 8px", background: status === "READY_FOR_PICKUP" ? "rgba(40,180,110,.18)" : status === "IN_REPAIR" ? "rgba(70,140,255,.20)" : "rgba(255,157,88,.16)", fontSize: 10, fontWeight: 800 }}>{statusLabels[status] || status}</span>
-                  <b style={{ display: "block", marginTop: 5, fontSize: 12 }}>{dateTime(item.plannedStartAt)}</b>
-                </div>
-              </article>
-            </div>;
-          })}
+          {visibleItems.map((item) => <AssignedVehicleRow key={item.id} item={item} onDismiss={dismissItem} />)}
         </div>}
-        <div style={{ padding: "8px 14px", fontSize: 10, opacity: .62, lineHeight: 1.35 }}>Проведіть по авто вліво, щоб прибрати сповіщення. Закриті сповіщення більше не з’являються.</div>
+        <div style={{ padding: "8px 14px", fontSize: 12, opacity: .62, lineHeight: 1.35 }}>Проведіть по авто вліво, щоб прибрати сповіщення. Закриті сповіщення більше не з’являються.</div>
       </div>
     </section>}
     <MechanicStandaloneCabinet userName={userName} />
