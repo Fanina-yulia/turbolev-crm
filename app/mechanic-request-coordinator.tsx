@@ -56,6 +56,7 @@ const GET_TTLS: Array<[RegExp, number]> = [
 ];
 const DIAGNOSTIC_BOOTSTRAP_TTL = 15_000;
 const COMPACT_BATCH_IDLE_MS = 24;
+const LEGACY_CHASSIS_CHUNK_SIZE = 6;
 
 function relativeUrl(input: RequestInfo | URL) {
   try {
@@ -181,6 +182,16 @@ function parseStructuredDiagnostic(path: string) {
 function diagnosticIdFromPath(path: string) {
   const match = pathname(path).match(/^\/api\/diagnostics\/([^/]+)/);
   return match ? decodeURIComponent(match[1]) : null;
+}
+
+function cachedDiagnosticWorkflow(entry: DiagnosticBootstrapCache | undefined) {
+  const root = entry?.detail.jsonValue;
+  if (!root || typeof root !== "object" || Array.isArray(root)) return null;
+  const diagnostic = (root as { diagnostic?: unknown }).diagnostic;
+  if (!diagnostic || typeof diagnostic !== "object" || Array.isArray(diagnostic)) return null;
+  const row = diagnostic as { workflowState?: unknown; status?: unknown };
+  const state = String(row.workflowState || row.status || "").trim().toUpperCase();
+  return state || null;
 }
 
 function isMechanicMutation(path: string, method: string) {
@@ -338,6 +349,7 @@ export function MechanicRequestCoordinator({ children }: { children: ReactNode }
 
       const task = (async (): Promise<CompactFlushResult> => {
         const unique = Array.from(new Map(queued.map((item) => [item.checkId, item])).values());
+        const hadOptimisticResponses = queued.some((item) => item.settled);
         let response: Response;
         try {
           response = await originalFetch(`/api/diagnostics/${encodeURIComponent(diagnosticId)}/checks/batch`, {
@@ -356,7 +368,7 @@ export function MechanicRequestCoordinator({ children }: { children: ReactNode }
               item.resolve(compactErrorResponse(message));
             }
           }
-          if (queued.some((item) => item.settled)) window.alert(message);
+          if (hadOptimisticResponses) window.alert(message);
           return { ok: false, message };
         }
 
@@ -375,7 +387,7 @@ export function MechanicRequestCoordinator({ children }: { children: ReactNode }
               item.resolve(compactErrorResponse(message, response.status));
             }
           }
-          if (queued.some((item) => item.settled)) window.alert(message);
+          if (hadOptimisticResponses) window.alert(message);
           return { ok: false, message };
         }
 
@@ -401,10 +413,10 @@ export function MechanicRequestCoordinator({ children }: { children: ReactNode }
         const next = [...(compactQueues.get(request.diagnosticId) || []), item];
         compactQueues.set(request.diagnosticId, next);
 
-        // Two or more compact writes in the same interaction are a bulk operation.
-        // Resolve their compatibility promises optimistically so legacy chunk loops can
-        // enqueue the entire action; the actual DB write remains one debounced batch.
-        if (next.length >= 2) compactMassMode.add(request.diagnosticId);
+        // Legacy completeChassis sends chunks of six. Once a full legacy chunk appears,
+        // settle compatibility promises so the remaining chunks can join the same
+        // debounced server batch. Smaller section actions still wait for the real write.
+        if (next.length >= LEGACY_CHASSIS_CHUNK_SIZE) compactMassMode.add(request.diagnosticId);
         if (compactMassMode.has(request.diagnosticId)) {
           for (const queued of next) {
             if (!queued.settled) {
@@ -427,6 +439,17 @@ export function MechanicRequestCoordinator({ children }: { children: ReactNode }
       const method = requestMethod(input, init);
       const compact = parseCompactCheck(path, init);
       if (compact) return enqueueCompact(compact);
+
+      const cleanPath = pathname(path);
+      const matrixStartMatch = method === "POST" ? cleanPath.match(/^\/api\/diagnostics\/([^/]+)\/matrix-start$/) : null;
+      if (matrixStartMatch) {
+        const diagnosticId = decodeURIComponent(matrixStartMatch[1]);
+        const cached = diagnosticCache.get(diagnosticId);
+        const workflow = cachedDiagnosticWorkflow(cached);
+        if (cached && Date.now() - cached.savedAt < DIAGNOSTIC_BOOTSTRAP_TTL && workflow && workflow !== "PENDING") {
+          return makeResponse(cached.detail);
+        }
+      }
 
       if (isMechanicMutation(path, method)) invalidateForMutation(path);
 
