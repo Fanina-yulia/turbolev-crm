@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { navigateCrm } from "./crm-route";
+import { AnalyticsFunnelVisuals } from "./analytics-funnel-visuals";
 import styles from "./analytics-dashboard.module.css";
 
 const KYIV_TZ = "Europe/Kyiv";
@@ -332,6 +333,7 @@ export function AnalyticsDashboard() {
         <section className={styles.panel}><PanelTitle eyebrow="КОНВЕРСІЯ" title="Повний шлях" /><div className={styles.funnelFlow}>{funnelStages.map((stage, index) => { const previousStage = index > 0 ? funnelStages[index - 1] : null; const loss = previousStage ? Math.max(0, previousStage.count - stage.count) : 0; return <div className={styles.funnelStageWrap} key={stage.key}>{previousStage && <div className={styles.stageLoss}><span>↓ {stage.conversion == null ? "—" : percent(stage.conversion)}</span><b>{loss ? `−${loss}` : "без втрат"}</b></div>}<button type="button" className={styles.funnelStage} disabled={!stage.route} onClick={stage.route} style={{ width: `${Math.max(44, (stage.count / funnelMax) * 100)}%` }}><span>{stage.label}</span><strong>{stage.count}</strong><small>{stage.route ? "натисніть, щоб відкрити" : "верх воронки"}</small></button></div>; })}</div></section>
         <section className={styles.panel}><PanelTitle eyebrow="ПЕРЕХОДИ" title="Конверсія етапів" /><div className={styles.conversionList}><div><span>Запис → візит</span><b>{percent(funnel?.bookingToArrivalPct)}</b></div><div><span>Візит → діагностика</span><b>{percent(funnel?.arrivalToDiagnosticsPct)}</b></div><div><span>Діагностика → ЗН</span><b>{percent(funnel?.diagnosticsToWorkOrderPct)}</b></div><div><span>ЗН → ремонт</span><b>{percent(funnel?.workOrderToRepairPct)}</b></div><div><span>Ремонт → завершено</span><b>{percent(funnel?.repairToCompletedPct)}</b></div><div><span>Запис → завершено</span><b>{percent(funnel?.bookingToCompletedPct)}</b></div></div></section>
       </div>
+      {funnel && <AnalyticsFunnelVisuals funnel={funnel} from={from} to={to} locationId={locationId} />}
     </>}
 
     {data && !data.emptyScope && tab === "workshop" && <>
