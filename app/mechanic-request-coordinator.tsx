@@ -18,6 +18,18 @@ type CompactCheckRequest = {
   resolve: (response: Response) => void;
 };
 
+type SnapshotKey = "home" | "tasks" | "diagnostics" | "notifications" | "findings" | "assignedVehicles";
+type SnapshotEnvelope = { ok?: boolean } & Partial<Record<SnapshotKey, unknown>>;
+
+const SNAPSHOT_PATHS: Record<string, SnapshotKey> = {
+  "/api/cabinet/home": "home",
+  "/api/cabinet/mechanic/tasks": "tasks",
+  "/api/diagnostics/me": "diagnostics",
+  "/api/cabinet/mechanic/notifications": "notifications",
+  "/api/cabinet/mechanic/findings": "findings",
+  "/api/cabinet/mechanic/assigned-vehicles": "assignedVehicles",
+};
+
 const GET_TTLS: Array<[RegExp, number]> = [
   [/^\/api\/cabinet\/home(?:\?|$)/, 55_000],
   [/^\/api\/diagnostics\/me(?:\?|$)/, 55_000],
@@ -38,6 +50,10 @@ function relativeUrl(input: RequestInfo | URL) {
   } catch {
     return String(input);
   }
+}
+
+function pathname(path: string) {
+  return path.split("?", 1)[0] || path;
 }
 
 function requestMethod(input: RequestInfo | URL, init?: RequestInit) {
@@ -61,6 +77,17 @@ function makeResponse(snapshot: CachedResponse) {
     });
   }
   return response;
+}
+
+function responseFromJson(value: unknown, savedAt = Date.now()): CachedResponse {
+  return {
+    status: 200,
+    statusText: "OK",
+    headers: [["content-type", "application/json"]],
+    body: JSON.stringify(value),
+    jsonValue: value,
+    savedAt,
+  };
 }
 
 async function snapshotResponse(response: Response): Promise<CachedResponse> {
@@ -109,11 +136,9 @@ function isMechanicMutation(path: string, method: string) {
 /**
  * Compatibility performance layer for the mechanic cabinet.
  *
- * Several legacy mechanic widgets still refresh the same resources independently.
- * This coordinator deduplicates concurrent GETs, applies short per-resource TTLs,
- * reuses parsed JSON identities to avoid no-op React rerenders, and coalesces the
- * tap-first matrix's compact OK writes into one batch request.
- * It is intentionally mounted only for the MECHANIC role.
+ * The legacy widgets keep their existing fetch contracts, but their core read models
+ * are served from one consolidated snapshot. This removes duplicate authorization and
+ * database work without forcing a risky one-shot rewrite of the mechanic UI.
  */
 export function MechanicRequestCoordinator({ children }: { children: ReactNode }) {
   const [ready, setReady] = useState(false);
@@ -124,12 +149,39 @@ export function MechanicRequestCoordinator({ children }: { children: ReactNode }
     const inflight = new Map<string, Promise<CachedResponse>>();
     const compactQueues = new Map<string, CompactCheckRequest[]>();
     const compactTimers = new Map<string, number>();
+    let snapshotInflight: Promise<void> | null = null;
+    let cacheEpoch = 0;
     let disposed = false;
 
     const clearReadCache = () => {
+      cacheEpoch += 1;
       cache.clear();
       inflight.clear();
     };
+
+    async function loadSnapshot() {
+      if (snapshotInflight) return snapshotInflight;
+      const epoch = cacheEpoch;
+      const task = (async () => {
+        const response = await originalFetch("/api/cabinet/mechanic/snapshot", {
+          cache: "no-store",
+          credentials: "include",
+        });
+        const body = await response.json().catch(() => null) as SnapshotEnvelope | null;
+        if (!response.ok || !body?.ok) throw new Error("MECHANIC_SNAPSHOT_LOAD_FAILED");
+        if (disposed || epoch !== cacheEpoch) return;
+
+        const savedAt = Date.now();
+        for (const [resourcePath, key] of Object.entries(SNAPSHOT_PATHS)) {
+          const value = body[key];
+          if (value !== undefined) cache.set(resourcePath, responseFromJson(value, savedAt));
+        }
+      })();
+      snapshotInflight = task.finally(() => {
+        snapshotInflight = null;
+      });
+      return snapshotInflight;
+    }
 
     async function flushCompact(diagnosticId: string) {
       const queued = compactQueues.get(diagnosticId) || [];
@@ -204,6 +256,24 @@ export function MechanicRequestCoordinator({ children }: { children: ReactNode }
       if (compact) return enqueueCompact(compact);
 
       if (isMechanicMutation(path, method)) clearReadCache();
+
+      const resourcePath = pathname(path);
+      const snapshotKey = SNAPSHOT_PATHS[resourcePath];
+      if (method === "GET" && snapshotKey) {
+        const ttl = ttlFor(path) || 55_000;
+        const cached = cache.get(resourcePath);
+        if (cached && (document.visibilityState !== "visible" || Date.now() - cached.savedAt < ttl)) {
+          return makeResponse(cached);
+        }
+        try {
+          await loadSnapshot();
+          const fresh = cache.get(resourcePath);
+          if (fresh) return makeResponse(fresh);
+        } catch {
+          // Fall through to the original endpoint as a safe compatibility fallback.
+        }
+        return originalFetch(input, init);
+      }
 
       const ttl = method === "GET" ? ttlFor(path) : 0;
       if (!ttl) return originalFetch(input, init);
