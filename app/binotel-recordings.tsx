@@ -2,6 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import styles from "./binotel-recordings.module.css";
+import headerStyles from "./binotel-client-header.module.css";
 
 type CallDirection = "INCOMING" | "OUTGOING";
 type CallStatus = "ANSWERED" | "MISSED" | "BUSY" | null;
@@ -240,7 +241,7 @@ export function BinotelPlayButton({ call, compact = false }: { call: BinotelCall
   >{busy ? "…" : isActive && player.playing ? "Ⅱ" : "▶"}<span>{label}</span></button>;
 }
 
-export function BinotelClientCalls({ clientId, phone, limit = 8 }: { clientId: string; phone?: string | null; limit?: number }) {
+export function BinotelClientCalls({ clientId, limit = 8 }: { clientId: string; phone?: string | null; limit?: number }) {
   const player = usePlayer();
   const [items, setItems] = useState<BinotelCallItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -275,7 +276,7 @@ export function BinotelClientCalls({ clientId, phone, limit = 8 }: { clientId: s
 
   return <div className={`${styles.clientCalls} ${expanded ? styles.clientCallsExpanded : styles.clientCallsCollapsed}`}>
     <div
-      className={styles.clientCallsHead}
+      className={`${styles.clientCallsHead} ${headerStyles.head} ${expanded ? headerStyles.expanded : ""}`}
       role="button"
       tabIndex={0}
       aria-expanded={expanded}
@@ -287,11 +288,11 @@ export function BinotelClientCalls({ clientId, phone, limit = 8 }: { clientId: s
         }
       }}
     >
-      <div className={styles.clientCallsTitle}>
-        <span className={styles.collapseChevron} aria-hidden="true">{expanded ? "⌄" : "›"}</span>
-        <div><h3>Дзвінки Binotel <span>{items.length}</span></h3><p>{phone || "Історія телефонних розмов клієнта"}</p></div>
+      <div className={`${styles.clientCallsTitle} ${headerStyles.title}`}>
+        <span className={`${styles.collapseChevron} ${headerStyles.chevron}`} aria-hidden="true" />
+        <h3 className={headerStyles.heading}>Дзвінки Binotel <span className={headerStyles.count}>{items.length}</span></h3>
       </div>
-      <div className={styles.clientCallActions} onClick={(event) => event.stopPropagation()} onKeyDown={(event) => event.stopPropagation()}>
+      <div className={`${styles.clientCallActions} ${headerStyles.actions}`} onClick={(event) => event.stopPropagation()} onKeyDown={(event) => event.stopPropagation()}>
         <button type="button" onClick={() => void load()} disabled={loading} aria-label="Оновити дзвінки">↻</button>
         <button type="button" onClick={player.openJournal}>Весь журнал</button>
       </div>
