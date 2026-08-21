@@ -2,6 +2,7 @@ import { DiagnosticRequestStatus, DiagnosticReviewState } from "@/src/generated/
 import { evaluateWorkflowTransition, type WorkflowTransitionDecision } from "@/src/domain/workflow";
 import { getPrisma } from "@/src/lib/prisma";
 import { toPrismaJson } from "@/src/lib/prisma-json";
+import { finalizeDiagnosticCard } from "@/src/services/diagnostic-card.service";
 import {
   buildStructuredTechnicalConclusion,
   getStructuredDiagnostic,
@@ -95,6 +96,17 @@ async function reportShareMeta(ids: string[]) {
   return result;
 }
 
+async function diagnosticCardMeta(ids: string[]) {
+  const result = new Map<string, { id: string; number: string; currentRevision: number; finalizedAt: Date | null; confirmedByUserId: string | null }>();
+  if (!ids.length) return result;
+  const rows = await getPrisma().diagnosticCard.findMany({
+    where: { diagnosticRequestId: { in: ids } },
+    select: { id: true, diagnosticRequestId: true, number: true, currentRevision: true, finalizedAt: true, confirmedByUserId: true },
+  });
+  for (const row of rows) result.set(row.diagnosticRequestId, row);
+  return result;
+}
+
 export async function listDiagnostics(input?: { status?: DiagnosticRequestStatus | null; limit?: number }) {
   const prisma = getPrisma();
   const limit = Math.max(1, Math.min(500, input?.limit ?? 200));
@@ -110,22 +122,22 @@ export async function listDiagnostics(input?: { status?: DiagnosticRequestStatus
     take: limit,
   });
   const ids = rows.map((row) => row.id);
-  const [meta, reports] = await Promise.all([structuredMeta(ids), reportShareMeta(ids)]);
+  const [meta, reports, cards] = await Promise.all([structuredMeta(ids), reportShareMeta(ids), diagnosticCardMeta(ids)]);
   return rows.map((row) => {
     const structured = meta.get(row.id);
     const reportShare = reports.get(row.id) || null;
-    const workflowState = row.status === DiagnosticRequestStatus.CONFIRMED && reportShare?.active
-      ? "CARD_SENT"
-      : structured?.reviewState === DiagnosticReviewState.SUBMITTED
-        ? "SUBMITTED"
-        : structured?.reviewState === DiagnosticReviewState.RETURNED
-          ? "RETURNED"
-          : row.status;
+    const diagnosticCard = cards.get(row.id) || null;
+    const workflowState = structured?.reviewState === DiagnosticReviewState.SUBMITTED
+      ? "SUBMITTED"
+      : structured?.reviewState === DiagnosticReviewState.RETURNED
+        ? "RETURNED"
+        : row.status;
     return {
       ...row,
       reviewState: structured?.reviewState || DiagnosticReviewState.DRAFT,
       workflowState,
       reportShare,
+      diagnosticCard,
       structured: {
         inspections: structured?.inspections || 0,
         checked: structured?.checked || 0,
@@ -148,21 +160,21 @@ export async function getDiagnostic(id: string) {
     },
   });
   if (!row) return null;
-  const [meta, reports] = await Promise.all([structuredMeta([id]), reportShareMeta([id])]);
+  const [meta, reports, cards] = await Promise.all([structuredMeta([id]), reportShareMeta([id]), diagnosticCardMeta([id])]);
   const structured = meta.get(id);
   const reportShare = reports.get(id) || null;
-  const workflowState = row.status === DiagnosticRequestStatus.CONFIRMED && reportShare?.active
-    ? "CARD_SENT"
-    : structured?.reviewState === DiagnosticReviewState.SUBMITTED
-      ? "SUBMITTED"
-      : structured?.reviewState === DiagnosticReviewState.RETURNED
-        ? "RETURNED"
-        : row.status;
+  const diagnosticCard = cards.get(id) || null;
+  const workflowState = structured?.reviewState === DiagnosticReviewState.SUBMITTED
+    ? "SUBMITTED"
+    : structured?.reviewState === DiagnosticReviewState.RETURNED
+      ? "RETURNED"
+      : row.status;
   return {
     ...row,
     reviewState: structured?.reviewState || DiagnosticReviewState.DRAFT,
     workflowState,
     reportShare,
+    diagnosticCard,
     structured: {
       inspections: structured?.inspections || 0,
       checked: structured?.checked || 0,
@@ -190,7 +202,7 @@ export async function transitionDiagnostic(id: string, input: DiagnosticTransiti
     }
     if (!conclusion && !current.technicalConclusion?.trim()) conclusion = await buildStructuredTechnicalConclusion(id).catch(() => null);
     if (!(conclusion || current.technicalConclusion?.trim())) {
-      throw new DiagnosticValidationError("Перед створенням діагностичної карти заповніть технічний висновок.");
+      throw new DiagnosticValidationError("Перед підтвердженням діагностичної карти перевірте технічний висновок.");
     }
   }
 
@@ -223,6 +235,7 @@ export async function transitionDiagnostic(id: string, input: DiagnosticTransiti
             actions: freshDecision.actions,
             hardGate: "WORK_ORDER_AFTER_CONFIRMED_DIAGNOSTICS",
             structured: true,
+            diagnosticCardRequired: input.status === DiagnosticRequestStatus.CONFIRMED,
             workOrderCreationDeferred: input.status === DiagnosticRequestStatus.CONFIRMED,
           }),
         },
@@ -245,7 +258,12 @@ export async function transitionDiagnostic(id: string, input: DiagnosticTransiti
   }
 
   if (input.status === DiagnosticRequestStatus.CONFIRMED) {
-    await markStructuredDiagnosticConfirmed(id, input.reviewerUserId || null).catch(() => undefined);
+    await markStructuredDiagnosticConfirmed(id, input.reviewerUserId || null);
+    await finalizeDiagnosticCard(id, {
+      reviewerUserId: input.reviewerUserId || null,
+      technicalConclusion: conclusion || current.technicalConclusion,
+      actorName,
+    });
   }
 
   const diagnostic = await getDiagnostic(id);
