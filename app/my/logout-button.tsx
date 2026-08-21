@@ -10,7 +10,7 @@ export function LogoutButton() {
     if (busy) return;
     setBusy(true);
     try {
-      await fetch("/api/public/client-portal/session", { method: "DELETE" });
+      await fetch("/api/public/diagnostic-report/client-session", { method: "DELETE" });
     } finally {
       window.location.assign("/my");
     }
