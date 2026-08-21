@@ -195,9 +195,6 @@ export function ClientsDirectory() {
                   brand={vehicle.brand}
                   model={vehicle.model}
                   year={vehicle.year}
-                  exteriorColorName={vehicle.exteriorColorName}
-                  exteriorColorHex={vehicle.exteriorColorHex}
-                  exteriorColorConfirmed={vehicle.exteriorColorConfirmed}
                   size="card"
                   eager={index < 2}
                 />
