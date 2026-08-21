@@ -67,6 +67,16 @@ async function getSecurityMode(): Promise<EnforcementMode> {
   }
 }
 
+function requestForcesEnforcement(input?: Request | Headers) {
+  if (!(input instanceof Request)) return false;
+  try {
+    const pathname = new URL(input.url).pathname;
+    return pathname === "/api/analytics" || pathname.startsWith("/api/analytics/");
+  } catch {
+    return false;
+  }
+}
+
 async function findOrClaimAppUser(session: NeonAuthSession) {
   const prisma = getPrisma();
   let appUser = await prisma.user.findUnique({
@@ -107,7 +117,8 @@ async function findOrClaimAppUser(session: NeonAuthSession) {
 }
 
 export async function getAccessContext(input?: Request | Headers): Promise<AccessContext> {
-  const [enforcementMode, requestHeaders] = await Promise.all([getSecurityMode(), resolveRequestHeaders(input)]);
+  const [configuredEnforcementMode, requestHeaders] = await Promise.all([getSecurityMode(), resolveRequestHeaders(input)]);
+  const enforcementMode: EnforcementMode = requestForcesEnforcement(input) ? "ENFORCED" : configuredEnforcementMode;
   const authConfigured = isNeonAuthConfigured();
   const anonymous = emptyContext(enforcementMode, authConfigured);
 
