@@ -8,7 +8,7 @@
       "title": "Core / Platform",
       "description": "Authentication, shell, routing, shared libraries, security, database schema and deployment infrastructure.",
       "keywords": ["auth", "login", "routing", "shell", "permissions", "security", "prisma", "migration", "deployment", "task workspace", "terminology"],
-      "paths": ["app/layout.tsx", "app/page.tsx", "app/crm-shell.tsx", "app/active-terminology-bridge.tsx", "app/my-tasks.tsx", "app/auth/**", "app/cabinet-auto-router.tsx", "app/role-cabinet.tsx", "src/security/**", "src/lib/**", "prisma/**", "scripts/build-production.mjs"],
+      "paths": ["app/layout.tsx", "app/page.tsx", "app/crm-shell.tsx", "app/active-terminology-bridge.tsx", "app/my-tasks*", "app/api/tasks/**", "app/auth/**", "app/cabinet-auto-router.tsx", "app/role-cabinet.tsx", "src/security/**", "src/lib/**", "src/services/attention-center*", "prisma/**", "scripts/build-production.mjs"],
       "dependencies": [],
       "smokeChecks": ["application-build", "authentication-redirect", "production-migration-status"]
     },
