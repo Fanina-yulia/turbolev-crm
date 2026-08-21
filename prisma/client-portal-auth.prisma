@@ -1,0 +1,14 @@
+model ClientPortalSession {
+  id               String   @id @default(cuid())
+  clientId         String   @db.VarChar(64)
+  tokenHash        String   @unique @db.VarChar(64)
+  bootstrapShareId String?  @db.VarChar(64)
+  userAgentHash    String?  @db.VarChar(64)
+  createdAt        DateTime @default(now())
+  lastSeenAt       DateTime @default(now())
+  expiresAt        DateTime
+  revokedAt        DateTime?
+
+  @@index([clientId, expiresAt])
+  @@index([expiresAt, revokedAt])
+}
