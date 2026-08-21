@@ -1,0 +1,172 @@
+import "server-only";
+
+import { getPrisma } from "@/src/lib/prisma";
+import type { AttentionCenterResult, AttentionSignal } from "@/src/services/attention-center.service";
+
+const MINUTE_MS = 60_000;
+const KYIV_TZ = "Europe/Kyiv";
+const WALK_IN_PAYMENT_SOURCE = "WALK_IN_DIAGNOSTIC_PAYMENT";
+
+type WalkInAttentionOptions = {
+  plannerLocationIds: string[] | null;
+  canSeeAmounts: boolean;
+};
+
+function walkInDiagnosticId(comment: string | null) {
+  return comment?.match(/WALK_IN_DIAGNOSTIC:([^\s]+)/)?.[1] || null;
+}
+
+function dayKey(date: Date) {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: KYIV_TZ,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(date);
+}
+
+function rank(signal: AttentionSignal) {
+  const level = signal.level === "CRITICAL" ? 0 : signal.level === "HIGH" ? 1 : signal.level === "MEDIUM" ? 2 : 3;
+  const overdue = signal.isOverdue ? 0 : 1;
+  const bucket = signal.bucket === "ACTION" ? 0 : signal.bucket === "WAITING" ? 1 : 2;
+  const due = signal.dueAt ? new Date(signal.dueAt).getTime() : Number.MAX_SAFE_INTEGER;
+  return [level, overdue, bucket, due, new Date(signal.occurredAt).getTime()] as const;
+}
+
+function sortSignals(items: AttentionSignal[]) {
+  return items.sort((a, b) => {
+    const ar = rank(a);
+    const br = rank(b);
+    for (let i = 0; i < ar.length; i += 1) {
+      if (ar[i] !== br[i]) return ar[i] - br[i];
+    }
+    return a.id.localeCompare(b.id);
+  });
+}
+
+function withDerived(signal: Omit<AttentionSignal, "isOverdue" | "overdueMinutes" | "isToday">, dueAt: Date, now: Date): AttentionSignal {
+  const late = dueAt < now ? Math.max(1, Math.floor((now.getTime() - dueAt.getTime()) / MINUTE_MS)) : 0;
+  return {
+    ...signal,
+    dueAt: dueAt.toISOString(),
+    isOverdue: late > 0,
+    overdueMinutes: late,
+    isToday: dayKey(dueAt) === dayKey(now),
+  };
+}
+
+export async function appendWalkInAttention(center: AttentionCenterResult, options: WalkInAttentionOptions): Promise<AttentionCenterResult> {
+  const prisma = getPrisma();
+  const now = new Date();
+  const appointments = await prisma.serviceAppointment.findMany({
+    where: {
+      source: "WALK_IN",
+      status: "WAITING_PAYMENT",
+      NOT: { id: { startsWith: "demo_" } },
+      ...(options.plannerLocationIds ? { locationId: { in: options.plannerLocationIds } } : {}),
+    },
+    select: {
+      id: true,
+      clientId: true,
+      vehicleId: true,
+      customerName: true,
+      vehicleLabel: true,
+      plateNumber: true,
+      problem: true,
+      comment: true,
+      updatedAt: true,
+    },
+    orderBy: { updatedAt: "asc" },
+    take: 100,
+  });
+  if (!appointments.length) return center;
+
+  const diagnosticIds = appointments
+    .map((row) => walkInDiagnosticId(row.comment))
+    .filter((id): id is string => Boolean(id));
+  const paymentRows = diagnosticIds.length
+    ? await prisma.cashTransaction.findMany({
+        where: {
+          sourceEntity: WALK_IN_PAYMENT_SOURCE,
+          sourceEntityId: { in: diagnosticIds.map((id) => `${id}:payment`) },
+          status: "POSTED",
+        },
+        select: { sourceEntityId: true, amount: true, currency: true, occurredAt: true },
+      })
+    : [];
+  const payments = new Map(
+    paymentRows.flatMap((row) => row.sourceEntityId
+      ? [[row.sourceEntityId.replace(/:payment$/, ""), row] as const]
+      : []),
+  );
+  const existingIds = new Set(center.signals.map((signal) => signal.id));
+  const extras: AttentionSignal[] = [];
+
+  for (const row of appointments) {
+    const diagnosticId = walkInDiagnosticId(row.comment);
+    const payment = diagnosticId ? payments.get(diagnosticId) : null;
+    const kind = payment ? "route" : "payment";
+    const id = `walk-in:${row.id}:${kind}`;
+    if (existingIds.has(id)) continue;
+
+    const anchor = payment?.occurredAt || row.updatedAt;
+    const dueAt = new Date(anchor.getTime() + (payment ? 15 : 60) * MINUTE_MS);
+    const ageMinutes = Math.max(0, Math.floor((now.getTime() - anchor.getTime()) / MINUTE_MS));
+    const label = row.plateNumber || row.vehicleLabel || row.customerName || "Авто";
+    const level: AttentionSignal["level"] = payment
+      ? ageMinutes >= 120 ? "CRITICAL" : ageMinutes >= 30 ? "HIGH" : "MEDIUM"
+      : ageMinutes >= 240 ? "CRITICAL" : ageMinutes >= 60 ? "HIGH" : "MEDIUM";
+
+    extras.push(withDerived({
+      id,
+      sourceType: payment ? "WALK_IN_ROUTE" : "WALK_IN_PAYMENT",
+      sourceId: row.id,
+      taskId: null,
+      title: payment ? `${label}: оплату отримано — потрібен наступний крок` : `${label}: позапланова діагностика очікує оплату`,
+      description: row.problem || null,
+      reason: payment
+        ? "Діагностику оплачено, але візит ще не завершено і авто не передано на розрахунок ремонту."
+        : "Позапланову діагностику завершено, але оплата ще не зафіксована.",
+      category: payment ? "SERVICE" : "DIAGNOSTICS",
+      level,
+      bucket: payment ? "ACTION" : "WAITING",
+      dueAt: dueAt.toISOString(),
+      occurredAt: anchor.toISOString(),
+      autoGenerated: true,
+      amount: payment && options.canSeeAmounts ? Number(payment.amount) : null,
+      currency: payment && options.canSeeAmounts ? payment.currency : null,
+      counterparty: row.customerName || null,
+      action: row.vehicleId
+        ? { label: payment ? "Обрати наступний крок" : "Закрити оплату", section: "Діагностика", params: { vehicleId: row.vehicleId } }
+        : { label: "Відкрити запис", section: "Планувальник", params: { appointmentId: row.id } },
+      metadata: {
+        walkIn: true,
+        diagnosticId,
+        appointmentId: row.id,
+        clientId: row.clientId,
+        vehicleId: row.vehicleId,
+        paid: Boolean(payment),
+      },
+    }, dueAt, now));
+  }
+
+  if (!extras.length) return center;
+  const signals = sortSignals([...center.signals, ...extras]);
+  const categories = { ...center.categories };
+  for (const item of extras) categories[item.category] = (categories[item.category] || 0) + 1;
+
+  return {
+    ...center,
+    signals,
+    categories,
+    summary: {
+      total: signals.length,
+      critical: signals.filter((item) => item.level === "CRITICAL").length,
+      overdue: signals.filter((item) => item.isOverdue).length,
+      action: signals.filter((item) => item.bucket === "ACTION").length,
+      waiting: signals.filter((item) => item.bucket === "WAITING").length,
+      today: signals.filter((item) => item.isToday).length,
+    },
+    generatedAt: now.toISOString(),
+  };
+}
