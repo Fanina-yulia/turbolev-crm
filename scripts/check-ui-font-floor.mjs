@@ -5,7 +5,7 @@ import { spawnSync } from "node:child_process";
 const ROOTS = ["app", "src"];
 const EXTENSIONS = new Set([".css", ".scss", ".tsx", ".ts", ".jsx", ".js"]);
 const MIN_FONT_PX = 12;
-const changedOnly = process.env.VERCEL === "1" || process.argv.includes("--changed");
+const changedOnly = process.env.VERCEL === "1" || process.env.GITHUB_ACTIONS === "true" || process.argv.includes("--changed");
 
 const patterns = [
   /font-size\s*:\s*(\d+(?:\.\d+)?)px/gi,
