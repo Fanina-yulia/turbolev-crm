@@ -153,8 +153,20 @@ export async function incrementLeadAttempt(id: string, actorName = "CRM") {
   if (!current) throw new LeadNotFoundError(id);
   const nextAttempts = Math.min(99, current.contactAttempts + 1);
   const normalized = normalizeLegacyLeadStatus(current.status);
-  const status = normalized === LeadStatus.NEW ? LeadStatus.CONTACTED : normalized;
-  return updateLead(id, { contactAttempts: nextAttempts, status, nextAction: nextAttempts >= 3 ? "Визначити результат контакту" : "Наступна спроба контакту" }, actorName);
+  const openBusinessStatuses = new Set<LeadStatus>([
+    LeadStatus.NEW,
+    LeadStatus.CONTACTED,
+    LeadStatus.QUALIFIED,
+    LeadStatus.ESTIMATE,
+    LeadStatus.WAITING,
+    LeadStatus.NO_ANSWER,
+  ]);
+  const status = openBusinessStatuses.has(normalized) ? LeadStatus.NEW : normalized;
+  return updateLead(id, {
+    contactAttempts: nextAttempts,
+    status,
+    nextAction: nextAttempts >= 3 ? "Визначити результат звернення" : "Наступна спроба контакту",
+  }, actorName);
 }
 
 /** ARRIVED conversion obeys Hard Gate #1: Lead -> Client + Vehicle + DiagnosticRequest. WorkOrder is NOT created here. */
