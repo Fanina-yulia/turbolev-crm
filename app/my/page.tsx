@@ -105,15 +105,16 @@ export default async function MyGaragePage({ searchParams }: { searchParams: Pro
           <h2>{selected.action.title}</h2>
           <span>{selected.action.description}</span>
           {selected.action.amount != null ? <strong>{money(selected.action.amount, selected.action.currency)}</strong> : null}
+          <Link href={`/my/vehicle/${encodeURIComponent(selected.id)}`} style={{ display: "inline-block", marginTop: 10, color: "#ff8b47", fontSize: 11, fontWeight: 900, textDecoration: "none" }}>Відкрити автомобіль →</Link>
         </div>
       </section> : selected && selected.status.code !== "OUTSIDE_SERVICE" ? <section className={styles.priorityCalm}>
-        <div className={styles.priorityMark}>✓</div><div><p>ЩО ЗАРАЗ ВАЖЛИВО</p><h2>Все гаразд. Авто в процесі</h2><span>Поточний етап: {selected.status.label}. Ми покажемо тут дію, щойно від Вас щось буде потрібно.</span></div>
+        <div className={styles.priorityMark}>✓</div><div><p>ЩО ЗАРАЗ ВАЖЛИВО</p><h2>Все гаразд. Авто в процесі</h2><span>Поточний етап: {selected.status.label}. Ми покажемо тут дію, щойно від Вас щось буде потрібно.</span><Link href={`/my/vehicle/${encodeURIComponent(selected.id)}`} style={{ display: "inline-block", marginTop: 10, color: "#78d8a6", fontSize: 11, fontWeight: 900, textDecoration: "none" }}>Переглянути ремонт →</Link></div>
       </section> : null}
 
       <section className={styles.section}>
         <div className={styles.sectionHead}><div><p>МОЇ АВТО</p><h2>Гараж</h2></div><span>{garage.vehicles.length}</span></div>
         {garage.vehicles.length ? <div className={styles.garageGrid}>
-          {garage.vehicles.map((vehicle) => <Link href={`/my?vehicle=${encodeURIComponent(vehicle.id)}`} className={`${styles.vehicleCard} ${selected?.id === vehicle.id ? styles.vehicleSelected : ""}`} key={vehicle.id}>
+          {garage.vehicles.map((vehicle) => <Link href={`/my/vehicle/${encodeURIComponent(vehicle.id)}`} className={`${styles.vehicleCard} ${selected?.id === vehicle.id ? styles.vehicleSelected : ""}`} key={vehicle.id}>
             <div className={styles.vehicleCardTop}>
               <div className={styles.carGlyph}>◆</div>
               <span className={`${styles.status} ${toneClass(vehicle)}`}>{vehicle.status.label}</span>
