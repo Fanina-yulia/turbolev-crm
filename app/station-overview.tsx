@@ -59,6 +59,10 @@ function money(value:number|null){ return value == null ? "—" : new Intl.Numbe
 function parseVehicle(label:string){ const parts=label.trim().split(/\s+/).filter(Boolean); const yearToken=parts.find((x)=>/^20\d{2}$|^19\d{2}$/.test(x)); const year=yearToken?Number(yearToken):new Date().getFullYear(); const brand=parts[0]||"Авто"; const model=parts.slice(1).filter((x)=>x!==yearToken).join(" ")||""; return {brand,model,year}; }
 function tone(level:DashboardData["attention"][number]["attentionLevel"]): AttentionCar["tone"] { if(level==="CRITICAL"||level==="HIGH")return "warn"; return "waiting"; }
 function urgency(level:DashboardData["attention"][number]["attentionLevel"]){return level==="CRITICAL"?0:level==="HIGH"?1:2;}
+function attentionStatus(item: DashboardData["attention"][number]) {
+  if (item.issues.some((issue) => issue.code === "MISSED_ARRIVAL")) return "АВТО, що потребує уваги";
+  return statusLabels[item.status] || item.status;
+}
 
 function attentionRoute(item: DashboardData["attention"][number]): { section: CrmSectionLabel; params: CrmRouteParams } {
   if (["BOOKED", "NO_SHOW", "ARRIVED"].includes(item.status)) {
@@ -118,7 +122,7 @@ export function StationOverview(){
         brand:car.brand,
         model:car.model,
         year:car.year,
-        status:statusLabels[item.status]||item.status,
+        status:attentionStatus(item),
         action:item.nextAction,
         owner:item.mechanic||item.post||"Не призначено",
         problem:`${item.attentionReason}${extra}`,
