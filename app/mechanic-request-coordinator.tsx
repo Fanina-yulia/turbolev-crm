@@ -16,6 +16,12 @@ type CompactCheckRequest = {
   checkId: string;
   body: Record<string, unknown>;
   resolve: (response: Response) => void;
+  settled: boolean;
+};
+
+type CompactFlushResult = {
+  ok: boolean;
+  message?: string;
 };
 
 type SnapshotKey = "home" | "tasks" | "diagnostics" | "notifications" | "findings" | "assignedVehicles";
@@ -44,11 +50,12 @@ const GET_TTLS: Array<[RegExp, number]> = [
   [/^\/api\/cabinet\/home(?:\?|$)/, 55_000],
   [/^\/api\/diagnostics\/me(?:\?|$)/, 55_000],
   [/^\/api\/cabinet\/mechanic\/assigned-vehicles(?:\?|$)/, 55_000],
-  [/^\/api\/cabinet\/mechanic\/tasks(?:\?|$)/, 25_000],
+  [/^\/api\/cabinet\/mechanic\/tasks(?:\?|$)/, 35_000],
   [/^\/api\/cabinet\/mechanic\/notifications(?:\?|$)/, 55_000],
   [/^\/api\/cabinet\/mechanic\/findings(?:\?|$)/, 55_000],
 ];
 const DIAGNOSTIC_BOOTSTRAP_TTL = 15_000;
+const COMPACT_BATCH_IDLE_MS = 24;
 
 function relativeUrl(input: RequestInfo | URL) {
   try {
@@ -101,6 +108,28 @@ function responseFromJson(value: unknown, savedAt = Date.now()): CachedResponse 
   };
 }
 
+function compactSuccessResponse(checkId: string) {
+  return new Response(JSON.stringify({
+    ok: true,
+    saved: true,
+    check: { id: checkId, state: "OK" },
+  }), {
+    status: 200,
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
+function compactErrorResponse(message: string, status = 503) {
+  return new Response(JSON.stringify({
+    ok: false,
+    error: "BATCH_SAVE_FAILED",
+    message,
+  }), {
+    status,
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
 async function snapshotResponse(response: Response): Promise<CachedResponse> {
   const clone = response.clone();
   const headers = Array.from(clone.headers.entries());
@@ -149,6 +178,11 @@ function parseStructuredDiagnostic(path: string) {
   };
 }
 
+function diagnosticIdFromPath(path: string) {
+  const match = pathname(path).match(/^\/api\/diagnostics\/([^/]+)/);
+  return match ? decodeURIComponent(match[1]) : null;
+}
+
 function isMechanicMutation(path: string, method: string) {
   if (method === "GET" || method === "HEAD") return false;
   return path.startsWith("/api/cabinet/") || path.startsWith("/api/diagnostics/");
@@ -157,10 +191,9 @@ function isMechanicMutation(path: string, method: string) {
 /**
  * Compatibility performance layer for the mechanic cabinet.
  *
- * The legacy widgets keep their existing fetch contracts, but their core read models
- * are served from one consolidated snapshot and diagnostic mode/detail reads are served
- * from a single bootstrap request. This removes duplicate authorization and database work
- * without forcing a risky one-shot rewrite of the mechanic UI.
+ * Legacy widgets keep their existing fetch contracts, while the coordinator serves
+ * their read models from one snapshot, deduplicates requests, coalesces mass OK checks
+ * into one transaction, and uses a single diagnostic bootstrap for mode + detail.
  */
 export function MechanicRequestCoordinator({ children }: { children: ReactNode }) {
   const [ready, setReady] = useState(false);
@@ -171,18 +204,70 @@ export function MechanicRequestCoordinator({ children }: { children: ReactNode }
     const inflight = new Map<string, Promise<CachedResponse>>();
     const compactQueues = new Map<string, CompactCheckRequest[]>();
     const compactTimers = new Map<string, number>();
+    const compactMassMode = new Set<string>();
+    const compactFlushes = new Map<string, Promise<CompactFlushResult>>();
     const diagnosticCache = new Map<string, DiagnosticBootstrapCache>();
     const diagnosticInflight = new Map<string, Promise<void>>();
     let snapshotInflight: Promise<void> | null = null;
     let cacheEpoch = 0;
     let disposed = false;
 
-    const clearReadCache = () => {
+    const invalidateAll = () => {
       cacheEpoch += 1;
       cache.clear();
       inflight.clear();
       diagnosticCache.clear();
       diagnosticInflight.clear();
+    };
+
+    const invalidateSnapshotResources = (paths: string[]) => {
+      cacheEpoch += 1;
+      for (const path of paths) cache.delete(path);
+      inflight.clear();
+    };
+
+    const invalidateForMutation = (path: string) => {
+      const cleanPath = pathname(path);
+      const diagnosticId = diagnosticIdFromPath(path);
+      if (diagnosticId) diagnosticCache.delete(diagnosticId);
+
+      if (cleanPath === "/api/cabinet/mechanic/notifications") {
+        invalidateSnapshotResources(["/api/cabinet/mechanic/notifications"]);
+        return;
+      }
+      if (cleanPath === "/api/cabinet/mechanic/findings") {
+        invalidateSnapshotResources([
+          "/api/cabinet/mechanic/findings",
+          "/api/cabinet/mechanic/notifications",
+          "/api/cabinet/mechanic/tasks",
+        ]);
+        return;
+      }
+      if (/^\/api\/cabinet\/mechanic\/tasks\/[^/]+$/.test(cleanPath)) {
+        invalidateSnapshotResources([
+          "/api/cabinet/home",
+          "/api/cabinet/mechanic/tasks",
+          "/api/cabinet/mechanic/assigned-vehicles",
+        ]);
+        return;
+      }
+      if (cleanPath.includes("/vehicle-scan") || cleanPath.includes("/walk-in")) {
+        invalidateSnapshotResources([
+          "/api/cabinet/home",
+          "/api/cabinet/mechanic/tasks",
+          "/api/diagnostics/me",
+          "/api/cabinet/mechanic/assigned-vehicles",
+        ]);
+        return;
+      }
+      if (cleanPath.startsWith("/api/diagnostics/")) {
+        invalidateSnapshotResources([
+          "/api/diagnostics/me",
+          "/api/cabinet/home",
+        ]);
+        return;
+      }
+      invalidateAll();
     };
 
     async function loadSnapshot() {
@@ -239,69 +324,101 @@ export function MechanicRequestCoordinator({ children }: { children: ReactNode }
       return task;
     }
 
-    async function flushCompact(diagnosticId: string) {
+    async function flushCompact(diagnosticId: string): Promise<CompactFlushResult> {
+      const active = compactFlushes.get(diagnosticId);
+      if (active) return active;
+
       const queued = compactQueues.get(diagnosticId) || [];
-      if (!queued.length) return;
+      if (!queued.length) return { ok: true };
       compactQueues.delete(diagnosticId);
+      compactMassMode.delete(diagnosticId);
       const timer = compactTimers.get(diagnosticId);
       if (timer != null) window.clearTimeout(timer);
       compactTimers.delete(diagnosticId);
 
-      const unique = Array.from(new Map(queued.map((item) => [item.checkId, item])).values());
-      let response: Response;
-      try {
-        response = await originalFetch(`/api/diagnostics/${encodeURIComponent(diagnosticId)}/checks/batch`, {
-          method: "PATCH",
-          credentials: "include",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            updates: unique.map((item) => ({ checkId: item.checkId, state: "OK" })),
-          }),
-        });
-      } catch {
-        for (const item of queued) {
-          item.resolve(new Response(JSON.stringify({ ok: false, error: "BATCH_NETWORK_ERROR", message: "Не вдалося зберегти відмітки." }), {
-            status: 503,
+      const task = (async (): Promise<CompactFlushResult> => {
+        const unique = Array.from(new Map(queued.map((item) => [item.checkId, item])).values());
+        let response: Response;
+        try {
+          response = await originalFetch(`/api/diagnostics/${encodeURIComponent(diagnosticId)}/checks/batch`, {
+            method: "PATCH",
+            credentials: "include",
             headers: { "Content-Type": "application/json" },
-          }));
+            body: JSON.stringify({
+              updates: unique.map((item) => ({ checkId: item.checkId, state: "OK" })),
+            }),
+          });
+        } catch {
+          const message = "Не вдалося зберегти відмітки діагностики.";
+          for (const item of queued) {
+            if (!item.settled) {
+              item.settled = true;
+              item.resolve(compactErrorResponse(message));
+            }
+          }
+          if (queued.some((item) => item.settled)) window.alert(message);
+          return { ok: false, message };
         }
-        return;
-      }
 
-      const bodyText = await response.clone().text();
-      if (!response.ok) {
+        const bodyText = await response.clone().text();
+        if (!response.ok) {
+          let message = "Не вдалося зберегти відмітки діагностики.";
+          try {
+            const parsed = JSON.parse(bodyText) as { message?: string };
+            if (parsed.message) message = parsed.message;
+          } catch {
+            // Keep the safe fallback message.
+          }
+          for (const item of queued) {
+            if (!item.settled) {
+              item.settled = true;
+              item.resolve(compactErrorResponse(message, response.status));
+            }
+          }
+          if (queued.some((item) => item.settled)) window.alert(message);
+          return { ok: false, message };
+        }
+
+        invalidateForMutation(`/api/diagnostics/${diagnosticId}/checks/batch`);
         for (const item of queued) {
-          item.resolve(new Response(bodyText, {
-            status: response.status,
-            statusText: response.statusText,
-            headers: response.headers,
-          }));
+          if (!item.settled) {
+            item.settled = true;
+            item.resolve(compactSuccessResponse(item.checkId));
+          }
         }
-        return;
-      }
+        return { ok: true };
+      })().finally(() => {
+        compactFlushes.delete(diagnosticId);
+      });
 
-      clearReadCache();
-      for (const item of queued) {
-        item.resolve(new Response(JSON.stringify({
-          ok: true,
-          saved: true,
-          check: { id: item.checkId, state: "OK" },
-        }), {
-          status: 200,
-          headers: { "Content-Type": "application/json" },
-        }));
-      }
+      compactFlushes.set(diagnosticId, task);
+      return task;
     }
 
-    function enqueueCompact(request: Omit<CompactCheckRequest, "resolve">) {
+    function enqueueCompact(request: Omit<CompactCheckRequest, "resolve" | "settled">) {
       return new Promise<Response>((resolve) => {
-        const next = [...(compactQueues.get(request.diagnosticId) || []), { ...request, resolve }];
+        const item: CompactCheckRequest = { ...request, resolve, settled: false };
+        const next = [...(compactQueues.get(request.diagnosticId) || []), item];
         compactQueues.set(request.diagnosticId, next);
+
+        // Two or more compact writes in the same interaction are a bulk operation.
+        // Resolve their compatibility promises optimistically so legacy chunk loops can
+        // enqueue the entire action; the actual DB write remains one debounced batch.
+        if (next.length >= 2) compactMassMode.add(request.diagnosticId);
+        if (compactMassMode.has(request.diagnosticId)) {
+          for (const queued of next) {
+            if (!queued.settled) {
+              queued.settled = true;
+              queued.resolve(compactSuccessResponse(queued.checkId));
+            }
+          }
+        }
+
         const existing = compactTimers.get(request.diagnosticId);
         if (existing != null) window.clearTimeout(existing);
         compactTimers.set(request.diagnosticId, window.setTimeout(() => {
           void flushCompact(request.diagnosticId);
-        }, 18));
+        }, COMPACT_BATCH_IDLE_MS));
       });
     }
 
@@ -311,10 +428,13 @@ export function MechanicRequestCoordinator({ children }: { children: ReactNode }
       const compact = parseCompactCheck(path, init);
       if (compact) return enqueueCompact(compact);
 
-      if (isMechanicMutation(path, method)) clearReadCache();
+      if (isMechanicMutation(path, method)) invalidateForMutation(path);
 
       const structured = method === "GET" ? parseStructuredDiagnostic(path) : null;
       if (structured) {
+        const pendingBatch = await flushCompact(structured.diagnosticId);
+        if (!pendingBatch.ok) return compactErrorResponse(pendingBatch.message || "Не вдалося зберегти діагностику.");
+
         const cached = diagnosticCache.get(structured.diagnosticId);
         if (cached && Date.now() - cached.savedAt < DIAGNOSTIC_BOOTSTRAP_TTL) {
           return makeResponse(structured.modeOnly ? cached.mode : cached.detail);
@@ -324,7 +444,7 @@ export function MechanicRequestCoordinator({ children }: { children: ReactNode }
           const fresh = diagnosticCache.get(structured.diagnosticId);
           if (fresh) return makeResponse(structured.modeOnly ? fresh.mode : fresh.detail);
         } catch {
-          // Fall through to the original structured endpoint as a safe fallback.
+          // Fall through to the original structured endpoint as a safe compatibility fallback.
         }
         return originalFetch(input, init);
       }
@@ -358,9 +478,10 @@ export function MechanicRequestCoordinator({ children }: { children: ReactNode }
       const active = inflight.get(path);
       if (active) return makeResponse(await active);
 
+      const epoch = cacheEpoch;
       const request = originalFetch(input, init).then(async (response) => {
         const snapshot = await snapshotResponse(response);
-        if (response.ok && !disposed) cache.set(path, snapshot);
+        if (response.ok && !disposed && epoch === cacheEpoch) cache.set(path, snapshot);
         return snapshot;
       }).finally(() => {
         inflight.delete(path);
@@ -369,9 +490,9 @@ export function MechanicRequestCoordinator({ children }: { children: ReactNode }
       return makeResponse(await request);
     };
 
-    const onRefresh = () => clearReadCache();
+    const onRefresh = () => invalidateAll();
     const onVisible = () => {
-      if (document.visibilityState === "visible") clearReadCache();
+      if (document.visibilityState === "visible") invalidateAll();
     };
     window.addEventListener("turbolev:mechanic-refresh", onRefresh);
     window.addEventListener("online", onRefresh);
