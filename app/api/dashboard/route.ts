@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { LeadStatus } from "@/src/generated/prisma/client";
 import { getPrisma } from "@/src/lib/prisma";
+import { authorize } from "@/src/security/authorize";
+import { PERMISSIONS } from "@/src/security/permissions";
 import { listStationAttentionVehicles } from "@/src/services/station-vehicle-attention.service";
 
 export const runtime = "nodejs";
@@ -15,16 +17,75 @@ function kyivDayRange(now = new Date()) {
   return { from, to };
 }
 
-export async function GET() {
+export async function GET(request: Request) {
+  const access = await authorize(PERMISSIONS.OVERVIEW_READ, { strict: true, request, minimumScope: "LOCATION" });
+  if (!access.allowed) return access.response!;
+
   const prisma = getPrisma();
   const { from, to } = kyivDayRange();
-  const [appointments, leadCounts, diagnostics, workOrderGroups, attention] = await Promise.all([
-    prisma.serviceAppointment.findMany({ where: { plannedStartAt: { gte: from, lt: to }, status: { not: "CANCELLED" } }, include: { post: true, mechanic: true }, orderBy: [{ priority: "desc" }, { plannedStartAt: "asc" }] }),
-    prisma.lead.groupBy({ by: ["status"], _count: { _all: true } }),
-    prisma.diagnosticRequest.groupBy({ by: ["status"], where: { status: { in: ["PENDING","IN_PROGRESS"] } }, _count: { _all: true } }),
-    prisma.workOrder.groupBy({ by: ["status"], where: { closedAt: null }, _count: { _all: true } }),
+  const scopedLocationIds = access.grantedScope === "ALL" ? null : access.context.locationIds;
+  const locationWhere = scopedLocationIds === null ? {} : { locationId: { in: scopedLocationIds } };
+
+  const appointments = await prisma.serviceAppointment.findMany({
+    where: { plannedStartAt: { gte: from, lt: to }, status: { not: "CANCELLED" }, ...locationWhere },
+    include: { post: true, mechanic: true },
+    orderBy: [{ priority: "desc" }, { plannedStartAt: "asc" }],
+  });
+
+  const leadIds = [...new Set(appointments.map((row) => row.leadId).filter((value): value is string => Boolean(value)))];
+  const workOrderIds = [...new Set(appointments.map((row) => row.workOrderId).filter((value): value is string => Boolean(value)))];
+
+  let diagnosticRequestIds: string[] | null = null;
+  if (scopedLocationIds !== null) {
+    const assignments = scopedLocationIds.length
+      ? await prisma.diagnosticAssignment.findMany({
+          where: { locationId: { in: scopedLocationIds } },
+          select: { diagnosticRequestId: true },
+          take: 5000,
+        })
+      : [];
+    diagnosticRequestIds = [...new Set(assignments.map((row) => row.diagnosticRequestId))];
+  }
+
+  const [leadCounts, diagnostics, workOrderGroups, attentionRaw] = await Promise.all([
+    prisma.lead.groupBy({
+      by: ["status"],
+      where: scopedLocationIds === null ? undefined : { id: { in: leadIds } },
+      _count: { _all: true },
+    }),
+    prisma.diagnosticRequest.groupBy({
+      by: ["status"],
+      where: {
+        status: { in: ["PENDING", "IN_PROGRESS"] },
+        ...(diagnosticRequestIds === null ? {} : { id: { in: diagnosticRequestIds } }),
+      },
+      _count: { _all: true },
+    }),
+    prisma.workOrder.groupBy({
+      by: ["status"],
+      where: {
+        closedAt: null,
+        ...(scopedLocationIds === null ? {} : { id: { in: workOrderIds } }),
+      },
+      _count: { _all: true },
+    }),
     listStationAttentionVehicles(),
   ]);
+
+  let attention = attentionRaw;
+  if (scopedLocationIds !== null) {
+    const attentionIds = attentionRaw.map((row) => row.appointmentId);
+    const allowedRows = attentionIds.length && scopedLocationIds.length
+      ? await prisma.serviceAppointment.findMany({
+          where: { id: { in: attentionIds }, locationId: { in: scopedLocationIds } },
+          select: { id: true },
+          take: 500,
+        })
+      : [];
+    const allowedIds = new Set(allowedRows.map((row) => row.id));
+    attention = attentionRaw.filter((row) => allowedIds.has(row.appointmentId));
+  }
+
   const leadMap = Object.fromEntries(leadCounts.map((x)=>[x.status,x._count._all]));
   const diagnosticMap = Object.fromEntries(diagnostics.map((x)=>[x.status,x._count._all]));
   const workMap = Object.fromEntries(workOrderGroups.map((x)=>[x.status,x._count._all]));
