@@ -2,6 +2,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { DiagnosticReviewState } from "@/src/generated/prisma/client";
 import { getPrisma } from "@/src/lib/prisma";
 import { toPrismaJson } from "@/src/lib/prisma-json";
+import { getFinalDiagnosticCardSnapshot, type DiagnosticCardSnapshot } from "@/src/services/diagnostic-card.service";
 import { getStructuredDiagnostic } from "@/src/services/structured-diagnostics.service";
 
 export class DiagnosticReportError extends Error {
@@ -64,7 +65,7 @@ function measurement(item: { measurementValue: string | null; measurementText: s
   return item.measurementText || null;
 }
 function reviewCanBeShared(state: DiagnosticReviewState) {
-  return state === DiagnosticReviewState.SUBMITTED || state === DiagnosticReviewState.CONFIRMED;
+  return state === DiagnosticReviewState.CONFIRMED;
 }
 function publicMeta(share: ShareMetaSource, contextualActive = true) {
   return {
@@ -78,12 +79,55 @@ function publicMeta(share: ShareMetaSource, contextualActive = true) {
   };
 }
 
-export async function buildDiagnosticReportSnapshot(diagnosticRequestId: string): Promise<DiagnosticReportSnapshot> {
+function fromDiagnosticCard(card: DiagnosticCardSnapshot): DiagnosticReportSnapshot {
+  return {
+    version: 1,
+    diagnosticRequestId: card.diagnosticRequestId,
+    generatedAt: card.generatedAt,
+    vehicle: { label: card.vehicle.label, plateNumber: card.vehicle.plateNumber, mileageKm: card.vehicle.mileageKm },
+    client: { name: clientFirstName(card.client.name) },
+    problem: card.problem,
+    technicalConclusion: card.technicalConclusion,
+    mechanicComment: card.mechanicComment,
+    stationName: card.station.name,
+    mechanicName: card.mechanic.name,
+    counts: {
+      total: card.counts.total,
+      checked: card.counts.checked,
+      ok: card.counts.ok,
+      attention: card.counts.attention,
+      defect: card.counts.defect,
+    },
+    inspections: card.inspections.map((inspection) => ({
+      name: inspection.name,
+      sections: inspection.sections.map((section) => ({
+        name: section.name,
+        items: section.items.map((item) => ({
+          name: item.name,
+          position: item.position,
+          state: item.state,
+          measurement: measurement(item),
+          note: item.note,
+          finding: item.finding ? {
+            action: item.finding.action,
+            urgency: item.finding.urgency,
+            text: item.finding.text,
+            suggestedWorkName: item.finding.suggestedWorkName,
+            suggestedPartName: item.finding.suggestedPartName,
+            mediaIds: item.finding.mediaIds,
+          } : null,
+        })),
+      })),
+    })),
+  };
+}
+
+async function buildLegacyConfirmedSnapshot(diagnosticRequestId: string): Promise<DiagnosticReportSnapshot> {
   const prisma = getPrisma();
   const view = await getStructuredDiagnostic(diagnosticRequestId);
   const reviewState = view.diagnostic.review.state;
   if (!reviewCanBeShared(reviewState)) {
-    throw new DiagnosticReportError("REPORT_NOT_READY", "Клієнтський звіт можна створити після передачі діагностики сервіс-менеджеру.", 409);
+    throw new DiagnosticReportError("REPORT_NOT_READY", "Клієнтський звіт можна надіслати лише після підтвердження Діагностичної карти сервіс-менеджером.", 409);
   }
   const mechanicId = view.diagnostic.assignment?.mechanicId || null;
   const locationId = view.diagnostic.assignment?.locationId || null;
@@ -127,6 +171,12 @@ export async function buildDiagnosticReportSnapshot(diagnosticRequestId: string)
   };
 }
 
+export async function buildDiagnosticReportSnapshot(diagnosticRequestId: string): Promise<DiagnosticReportSnapshot> {
+  const finalCard = await getFinalDiagnosticCardSnapshot(diagnosticRequestId);
+  if (finalCard) return fromDiagnosticCard(finalCard);
+  return buildLegacyConfirmedSnapshot(diagnosticRequestId);
+}
+
 export async function createDiagnosticReportShare(diagnosticRequestId: string, createdByUserId: string | null) {
   const prisma = getPrisma();
   const snapshot = await buildDiagnosticReportSnapshot(diagnosticRequestId);
@@ -142,7 +192,7 @@ export async function createDiagnosticReportShare(diagnosticRequestId: string, c
         actorName: "CRM / Сервіс-менеджер",
         entityType: "DiagnosticRequest",
         entityId: diagnosticRequestId,
-        action: "DIAGNOSTIC_REPORT_LINK_CREATED",
+        action: "DIAGNOSTIC_CARD_SHARED",
         metadata: toPrismaJson({ shareId: created.id, expiresAt: created.expiresAt?.toISOString() || null, createdByUserId }),
       },
     });
@@ -153,15 +203,16 @@ export async function createDiagnosticReportShare(diagnosticRequestId: string, c
 
 export async function latestDiagnosticReportShare(diagnosticRequestId: string) {
   const prisma = getPrisma();
-  const [share, review] = await Promise.all([
+  const [share, review, card] = await Promise.all([
     prisma.diagnosticReportShare.findFirst({ where: { diagnosticRequestId }, orderBy: { createdAt: "desc" } }),
-    prisma.diagnosticReview.findUnique({ where: { diagnosticRequestId }, select: { state: true, submittedAt: true } }),
+    prisma.diagnosticReview.findUnique({ where: { diagnosticRequestId }, select: { state: true } }),
+    prisma.diagnosticCard.findUnique({ where: { diagnosticRequestId }, select: { finalizedAt: true } }),
   ]);
   if (!share) return null;
   const currentRevision = Boolean(
     review &&
     reviewCanBeShared(review.state) &&
-    (!review.submittedAt || share.createdAt.getTime() >= review.submittedAt.getTime()),
+    (!card?.finalizedAt || share.createdAt.getTime() >= card.finalizedAt.getTime()),
   );
   return publicMeta(share, currentRevision);
 }
@@ -193,12 +244,12 @@ export async function getDiagnosticReportByToken(token: string) {
   if (!share || share.revokedAt || (share.expiresAt && share.expiresAt.getTime() <= Date.now())) {
     throw new DiagnosticReportError("REPORT_LINK_EXPIRED", "Це посилання недійсне або строк його дії завершився.", 404);
   }
-  const review = await prisma.diagnosticReview.findUnique({
-    where: { diagnosticRequestId: share.diagnosticRequestId },
-    select: { state: true, submittedAt: true },
-  });
-  if (!review || !reviewCanBeShared(review.state) || (review.submittedAt && share.createdAt.getTime() < review.submittedAt.getTime())) {
-    throw new DiagnosticReportError("REPORT_REVISION_OUTDATED", "Звіт оновлюється. Запросіть у сервіс-менеджера нове посилання після повторного погодження діагностики.", 404);
+  const [review, card] = await Promise.all([
+    prisma.diagnosticReview.findUnique({ where: { diagnosticRequestId: share.diagnosticRequestId }, select: { state: true } }),
+    prisma.diagnosticCard.findUnique({ where: { diagnosticRequestId: share.diagnosticRequestId }, select: { finalizedAt: true } }),
+  ]);
+  if (!review || !reviewCanBeShared(review.state) || (card?.finalizedAt && share.createdAt.getTime() < card.finalizedAt.getTime())) {
+    throw new DiagnosticReportError("REPORT_REVISION_OUTDATED", "Ця версія Діагностичної карти вже неактуальна. Запросіть нове посилання.", 404);
   }
   return { id: share.id, diagnosticRequestId: share.diagnosticRequestId, snapshot: share.snapshot as unknown as DiagnosticReportSnapshot, requestedPricingAt: share.requestedPricingAt, expiresAt: share.expiresAt };
 }
@@ -227,7 +278,7 @@ export async function requestDiagnosticPricing(token: string) {
 export async function getSharedDiagnosticMedia(token: string, mediaId: string) {
   const active = await getDiagnosticReportByToken(token);
   const allowed = new Set(active.snapshot.inspections.flatMap((inspection) => inspection.sections.flatMap((section) => section.items.flatMap((item) => item.finding?.mediaIds || []))));
-  if (!allowed.has(mediaId)) throw new DiagnosticReportError("REPORT_MEDIA_NOT_FOUND", "Фото не входить до цього звіту.", 404);
+  if (!allowed.has(mediaId)) throw new DiagnosticReportError("REPORT_MEDIA_NOT_FOUND", "Фото не входить до цієї Діагностичної карти.", 404);
   const media = await getPrisma().diagnosticMedia.findUnique({ where: { id: mediaId } });
   if (!media) throw new DiagnosticReportError("REPORT_MEDIA_NOT_FOUND", "Фото не знайдено.", 404);
   return media;
