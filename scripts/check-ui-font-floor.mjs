@@ -13,7 +13,13 @@ const patterns = [
   /text-\[(\d+(?:\.\d+)?)px\]/g,
 ];
 
+function allowedSelectorLiteral(source, matchIndex) {
+  const before = source.slice(Math.max(0, matchIndex - 32), matchIndex);
+  return before.includes("[style*=");
+}
+
 function allowedVisualException(source, matchIndex, value) {
+  if (allowedSelectorLiteral(source, matchIndex)) return true;
   if (value > 6) return false;
   const context = source.slice(Math.max(0, matchIndex - 180), matchIndex + 180);
   return /uaPlateCountry|plateCountry|plateUa|plateUA/i.test(context);
