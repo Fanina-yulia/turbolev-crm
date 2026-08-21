@@ -1,0 +1,82 @@
+name: Patch funnel layout
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - name: Patch analytics funnel workspace
+        shell: bash
+        run: |
+          python <<'PY'
+          from pathlib import Path
+
+          path = Path('app/analytics-dashboard.tsx')
+          text = path.read_text()
+
+          import_line = 'import { AnalyticsFunnelVisuals } from "./analytics-funnel-visuals";\n'
+          layout_import = 'import funnelLayout from "./analytics-funnel-layout.module.css";\n'
+          if layout_import not in text:
+              text = text.replace(import_line, import_line + layout_import, 1)
+
+          start_marker = '    {data && !data.emptyScope && tab === "funnel" && <>\n'
+          end_marker = '    {data && !data.emptyScope && tab === "workshop" && <>\n'
+          start = text.find(start_marker)
+          end = text.find(end_marker)
+          if start < 0 or end < 0 or end <= start:
+              raise SystemExit('Funnel block markers were not found')
+
+          replacement = '''    {data && !data.emptyScope && tab === "funnel" && <>
+      <div className={styles.sectionIntro}><div><h2>Воронка</h2><span>Де саме губляться клієнти між зверненням і завершеним ремонтом.</span></div><button className={styles.secondaryButton} onClick={() => navigateCrm("Ліди")}>Відкрити ліди →</button></div>
+      <section className={styles.funnelSummary}><article><small>Записів</small><strong>{funnel?.scheduled || 0}</strong><span>за період</span></article><article><small>Приїхало</small><strong>{funnel?.arrived || 0}</strong><span>{percent(funnel?.bookingToArrivalPct)}</span></article><article><small>Завершено</small><strong>{funnel?.completed || 0}</strong><span>{percent(funnel?.bookingToCompletedPct)} від записів</span></article><article className={(funnel?.noShow || 0) ? styles.summaryDanger : ""}><small>No-show</small><strong>{funnel?.noShow || 0}</strong><span>втрачений візит</span></article></section>
+      <div className={funnelLayout.heroGrid}>
+        <section className={`${styles.panel} ${funnelLayout.pathPanel}`}>
+          <PanelTitle eyebrow="КОНВЕРСІЯ" title="Повний шлях" right={<span>форма воронки показує, де стискається потік</span>} />
+          <div className={`${styles.funnelFlow} ${funnelLayout.leftFlow}`}>
+            {funnelStages.map((stage, index) => {
+              const previousStage = index > 0 ? funnelStages[index - 1] : null;
+              const loss = previousStage ? Math.max(0, previousStage.count - stage.count) : 0;
+              const stageWidth = stage.count > 0 ? Math.max(32, Math.min(100, 32 + (stage.count / funnelMax) * 68)) : 28;
+              return <div className={`${styles.funnelStageWrap} ${funnelLayout.leftStageWrap}`} key={stage.key}>
+                {previousStage && <div className={`${styles.stageLoss} ${funnelLayout.leftStageLoss}`}><span>↓ {stage.conversion == null ? "—" : percent(stage.conversion)}</span><b>{loss ? `−${loss}` : "без втрат"}</b></div>}
+                <button type="button" className={`${styles.funnelStage} ${funnelLayout.leftStage}`} disabled={!stage.route} onClick={stage.route} style={{ width: `${stageWidth}%` }}><span>{stage.label}</span><strong>{stage.count}</strong><small>{stage.route ? "натисніть, щоб відкрити" : "верх воронки"}</small></button>
+              </div>;
+            })}
+          </div>
+          <div className={funnelLayout.pathNote}>
+            <div><small>Запис → приїзд</small><b>{percent(funnel?.bookingToArrivalPct)}</b></div>
+            <div><small>Запис → завершено</small><b>{percent(funnel?.bookingToCompletedPct)}</b></div>
+            <div className={(funnel?.noShow || 0) > 0 ? funnelLayout.danger : ""}><small>No-show</small><b>{funnel?.noShow || 0}</b></div>
+          </div>
+        </section>
+        {funnel && <AnalyticsFunnelVisuals funnel={funnel} from={from} to={to} locationId={locationId} variant="side" />}
+      </div>
+      {funnel && <AnalyticsFunnelVisuals funnel={funnel} from={from} to={to} locationId={locationId} variant="timeline" />}
+    </>}
+
+'''
+          text = text[:start] + replacement + text[end:]
+          path.write_text(text)
+          PY
+      - name: Commit patch
+        shell: bash
+        run: |
+          if git diff --quiet; then
+            echo "No patch needed"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/analytics-dashboard.tsx
+          git commit -m "Refine funnel workspace layout"
+          git push origin HEAD:main
