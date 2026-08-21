@@ -6,8 +6,8 @@ import type { AccessScopeCode } from "@/src/security/permissions";
 
 /**
  * Returns null for unrestricted ALL access, otherwise the exact WorkOrder IDs
- * visible to the current user. The resolver intentionally derives visibility
- * from factual CRM links instead of trusting request query parameters.
+ * visible to the current user. Visibility is derived from factual CRM links,
+ * never from request-provided IDs alone.
  */
 export async function resolveVisibleWorkOrderIds(context: AccessContext, scope: AccessScopeCode | null) {
   if (scope === "ALL") return null;
@@ -29,35 +29,42 @@ export async function resolveVisibleWorkOrderIds(context: AccessContext, scope: 
     if (!userId) return [];
     const ids = new Set<string>();
 
-    const mechanics = await prisma.serviceMechanic.findMany({
-      where: {
-        userId,
-        isActive: true,
-        ...(context.locationIds.length ? { locationId: { in: context.locationIds } } : {}),
-      },
-      select: { id: true },
-    });
+    const [mechanics, assignedLeads] = await Promise.all([
+      prisma.serviceMechanic.findMany({
+        where: {
+          userId,
+          isActive: true,
+          ...(context.locationIds.length ? { locationId: { in: context.locationIds } } : {}),
+        },
+        select: { id: true },
+      }),
+      prisma.lead.findMany({
+        where: { assignedUserId: userId },
+        select: { id: true },
+        take: 10000,
+      }),
+    ]);
     const mechanicIds = mechanics.map((row) => row.id);
+    const leadIds = assignedLeads.map((row) => row.id);
+
+    const assignmentClauses: Array<Record<string, unknown>> = [{ createdById: userId }];
+    if (leadIds.length) assignmentClauses.push({ leadId: { in: leadIds } });
+    if (mechanicIds.length) assignmentClauses.push({ mechanicId: { in: mechanicIds } });
 
     const [appointments, diagnosticWorkOrders] = await Promise.all([
       prisma.serviceAppointment.findMany({
-        where: {
-          workOrderId: { not: null },
-          OR: [
-            { createdById: userId },
-            { leadId: { not: null }, AND: { leadId: { in: (await prisma.lead.findMany({ where: { assignedUserId: userId }, select: { id: true }, take: 10000 })).map((lead) => lead.id) } } },
-            ...(mechanicIds.length ? [{ mechanicId: { in: mechanicIds } }] : []),
-          ],
-        },
+        where: { workOrderId: { not: null }, OR: assignmentClauses },
         select: { workOrderId: true },
         distinct: ["workOrderId"],
         take: 10000,
       }),
-      prisma.workOrder.findMany({
-        where: { diagnosticRequest: { lead: { assignedUserId: userId } } },
-        select: { id: true },
-        take: 10000,
-      }),
+      leadIds.length
+        ? prisma.workOrder.findMany({
+            where: { diagnosticRequest: { leadId: { in: leadIds } } },
+            select: { id: true },
+            take: 10000,
+          })
+        : Promise.resolve([]),
     ]);
 
     for (const row of appointments) if (row.workOrderId) ids.add(row.workOrderId);
