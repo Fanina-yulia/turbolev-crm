@@ -20,6 +20,16 @@ type CompactCheckRequest = {
 
 type SnapshotKey = "home" | "tasks" | "diagnostics" | "notifications" | "findings" | "assignedVehicles";
 type SnapshotEnvelope = { ok?: boolean } & Partial<Record<SnapshotKey, unknown>>;
+type DiagnosticBootstrapEnvelope = {
+  ok?: boolean;
+  mode?: "MATRIX" | "LEGACY";
+  detail?: unknown;
+};
+type DiagnosticBootstrapCache = {
+  mode: CachedResponse;
+  detail: CachedResponse;
+  savedAt: number;
+};
 
 const SNAPSHOT_PATHS: Record<string, SnapshotKey> = {
   "/api/cabinet/home": "home",
@@ -38,6 +48,7 @@ const GET_TTLS: Array<[RegExp, number]> = [
   [/^\/api\/cabinet\/mechanic\/notifications(?:\?|$)/, 55_000],
   [/^\/api\/cabinet\/mechanic\/findings(?:\?|$)/, 55_000],
 ];
+const DIAGNOSTIC_BOOTSTRAP_TTL = 15_000;
 
 function relativeUrl(input: RequestInfo | URL) {
   try {
@@ -128,6 +139,16 @@ function parseCompactCheck(path: string, init?: RequestInit) {
   }
 }
 
+function parseStructuredDiagnostic(path: string) {
+  const match = pathname(path).match(/^\/api\/diagnostics\/([^/]+)\/structured$/);
+  if (!match) return null;
+  const query = path.includes("?") ? new URLSearchParams(path.slice(path.indexOf("?") + 1)) : new URLSearchParams();
+  return {
+    diagnosticId: decodeURIComponent(match[1]),
+    modeOnly: query.get("mode") === "1",
+  };
+}
+
 function isMechanicMutation(path: string, method: string) {
   if (method === "GET" || method === "HEAD") return false;
   return path.startsWith("/api/cabinet/") || path.startsWith("/api/diagnostics/");
@@ -137,8 +158,9 @@ function isMechanicMutation(path: string, method: string) {
  * Compatibility performance layer for the mechanic cabinet.
  *
  * The legacy widgets keep their existing fetch contracts, but their core read models
- * are served from one consolidated snapshot. This removes duplicate authorization and
- * database work without forcing a risky one-shot rewrite of the mechanic UI.
+ * are served from one consolidated snapshot and diagnostic mode/detail reads are served
+ * from a single bootstrap request. This removes duplicate authorization and database work
+ * without forcing a risky one-shot rewrite of the mechanic UI.
  */
 export function MechanicRequestCoordinator({ children }: { children: ReactNode }) {
   const [ready, setReady] = useState(false);
@@ -149,6 +171,8 @@ export function MechanicRequestCoordinator({ children }: { children: ReactNode }
     const inflight = new Map<string, Promise<CachedResponse>>();
     const compactQueues = new Map<string, CompactCheckRequest[]>();
     const compactTimers = new Map<string, number>();
+    const diagnosticCache = new Map<string, DiagnosticBootstrapCache>();
+    const diagnosticInflight = new Map<string, Promise<void>>();
     let snapshotInflight: Promise<void> | null = null;
     let cacheEpoch = 0;
     let disposed = false;
@@ -157,6 +181,8 @@ export function MechanicRequestCoordinator({ children }: { children: ReactNode }
       cacheEpoch += 1;
       cache.clear();
       inflight.clear();
+      diagnosticCache.clear();
+      diagnosticInflight.clear();
     };
 
     async function loadSnapshot() {
@@ -181,6 +207,36 @@ export function MechanicRequestCoordinator({ children }: { children: ReactNode }
         snapshotInflight = null;
       });
       return snapshotInflight;
+    }
+
+    async function loadDiagnosticBootstrap(diagnosticId: string) {
+      const cached = diagnosticCache.get(diagnosticId);
+      if (cached && Date.now() - cached.savedAt < DIAGNOSTIC_BOOTSTRAP_TTL) return;
+      const active = diagnosticInflight.get(diagnosticId);
+      if (active) return active;
+
+      const epoch = cacheEpoch;
+      const task = (async () => {
+        const response = await originalFetch(`/api/cabinet/mechanic/diagnostics/${encodeURIComponent(diagnosticId)}/bootstrap`, {
+          cache: "no-store",
+          credentials: "include",
+        });
+        const body = await response.json().catch(() => null) as DiagnosticBootstrapEnvelope | null;
+        if (!response.ok || !body?.ok || !body.mode || body.detail === undefined) {
+          throw new Error("MECHANIC_DIAGNOSTIC_BOOTSTRAP_FAILED");
+        }
+        if (disposed || epoch !== cacheEpoch) return;
+        const savedAt = Date.now();
+        diagnosticCache.set(diagnosticId, {
+          savedAt,
+          mode: responseFromJson({ ok: true, mode: body.mode }, savedAt),
+          detail: responseFromJson(body.detail, savedAt),
+        });
+      })().finally(() => {
+        diagnosticInflight.delete(diagnosticId);
+      });
+      diagnosticInflight.set(diagnosticId, task);
+      return task;
     }
 
     async function flushCompact(diagnosticId: string) {
@@ -257,6 +313,22 @@ export function MechanicRequestCoordinator({ children }: { children: ReactNode }
 
       if (isMechanicMutation(path, method)) clearReadCache();
 
+      const structured = method === "GET" ? parseStructuredDiagnostic(path) : null;
+      if (structured) {
+        const cached = diagnosticCache.get(structured.diagnosticId);
+        if (cached && Date.now() - cached.savedAt < DIAGNOSTIC_BOOTSTRAP_TTL) {
+          return makeResponse(structured.modeOnly ? cached.mode : cached.detail);
+        }
+        try {
+          await loadDiagnosticBootstrap(structured.diagnosticId);
+          const fresh = diagnosticCache.get(structured.diagnosticId);
+          if (fresh) return makeResponse(structured.modeOnly ? fresh.mode : fresh.detail);
+        } catch {
+          // Fall through to the original structured endpoint as a safe fallback.
+        }
+        return originalFetch(input, init);
+      }
+
       const resourcePath = pathname(path);
       const snapshotKey = SNAPSHOT_PATHS[resourcePath];
       if (method === "GET" && snapshotKey) {
@@ -317,6 +389,8 @@ export function MechanicRequestCoordinator({ children }: { children: ReactNode }
       for (const diagnosticId of compactQueues.keys()) void flushCompact(diagnosticId);
       cache.clear();
       inflight.clear();
+      diagnosticCache.clear();
+      diagnosticInflight.clear();
     };
   }, []);
 
