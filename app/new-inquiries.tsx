@@ -7,6 +7,7 @@ import {
   parseInquiriesPayload,
   parseInquiryMutationPayload,
 } from "@/src/lib/contracts/inquiries-payload.parsers";
+import { ClientCommunicationActions } from "./client-communication-actions";
 import { navigateCrm } from "./crm-route";
 import { VehicleRender } from "./vehicle-render";
 import styles from "./new-inquiries.module.css";
@@ -29,7 +30,6 @@ const channelIcon: Record<string, string> = {
   TIKTOK: "♪",
   OLX: "OLX",
 };
-const priorityLabel: Record<string, string> = { CRITICAL: "Критичний", HIGH: "Високий", MEDIUM: "Середній", LOW: "Низький" };
 const priorityWeight: Record<string, number> = { CRITICAL: 0, HIGH: 1, MEDIUM: 2, LOW: 3 };
 
 const CHANNEL_FILTERS = [
@@ -66,6 +66,21 @@ function vehicleLabel(item: Inquiry) {
 function plateLabel(item: Inquiry) { return item.vehicles[0]?.plateNumber || item.plate || "Номер не вказано"; }
 function contactLabel(item: Inquiry) { return item.phone || item.handle || "Контакт уточнюється"; }
 function sourceLabel(item: Inquiry) { return item.sourceDetail || (item.channel === "BINOTEL" ? "Binotel" : "Пряме звернення"); }
+function requestSource(item: Inquiry) {
+  if (item.channel === "BINOTEL") return "Binotel";
+  if (item.channel === "WEBSITE") return "Сайт";
+  if (item.channel === "INSTAGRAM") return "Instagram";
+  if (item.channel === "FACEBOOK") return "Facebook";
+  if (item.channel === "TIKTOK") return "TikTok";
+  if (item.channel === "OLX") return "OLX";
+  return "Інше";
+}
+function todayKey() {
+  const date = new Date();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${date.getFullYear()}-${month}-${day}`;
+}
 
 export function NewInquiries() {
   const [items, setItems] = useState<Inquiry[]>([]);
@@ -112,6 +127,21 @@ export function NewInquiries() {
 
   const selected = useMemo(() => filtered.find((item) => item.id === selectedId) || filtered[0] || null, [filtered, selectedId]);
   const waitingOver15 = useMemo(() => items.filter((item) => waitingMinutes(item.receivedAt) >= 15).length, [items]);
+
+  function openRequest(item: Inquiry, booking = false) {
+    const vehicle = item.vehicles[0];
+    window.dispatchEvent(new CustomEvent("turbolev:open-new-request", {
+      detail: {
+        name: item.existingClient?.name || item.name || "",
+        phone: item.phone || "",
+        source: requestSource(item),
+        plate: vehicle?.plateNumber || item.plate || "",
+        vin: vehicle?.vin || "",
+        inquiryId: item.id,
+        ...(booking ? { appointmentDate: todayKey() } : {}),
+      },
+    }));
+  }
 
   async function accept(item: Inquiry) {
     setBusyId(item.id); setError("");
@@ -198,7 +228,7 @@ export function NewInquiries() {
       </aside>
 
       <main className={styles.detailPane}>
-        {!selected ? <div className={styles.detailEmpty}><strong>Оберіть звернення</strong><span>Праворуч з’явиться клієнт, причина звернення та рекомендована дія.</span></div> : <>
+        {!selected ? <div className={styles.detailEmpty}><strong>Оберіть звернення</strong><span>Праворуч з’явиться клієнт і швидкі дії.</span></div> : <>
           <div className={styles.detailHeader}>
             <div className={styles.personBlock}>
               <span className={styles.avatar}>{(selected.name || "?").trim().charAt(0).toLocaleUpperCase("uk-UA") || "?"}</span>
@@ -207,41 +237,53 @@ export function NewInquiries() {
             <details className={styles.moreMenu}><summary aria-label="Додаткові дії">•••</summary><div><button type="button" className={styles.spamAction} disabled={busyId === selected.id} onClick={() => void spam(selected)}>Позначити як спам</button></div></details>
           </div>
 
-          <div className={styles.statusStrip}>
-            <span className={`${styles.priority} ${styles[`priority${selected.priority}`] || ""}`}>{priorityLabel[selected.priority] || selected.priority}</span>
-            <span className={`${styles.waitPill} ${waitingMinutes(selected.receivedAt) >= 15 ? styles.waitPillLate : ""}`}>{waitingLabel(selected.receivedAt)}</span>
-            <span className={`${styles.channelBadge} ${styles[`channel${selected.channel}`] || ""}`}>{channelIcon[selected.channel] || "•"} {channelLabel[selected.channel] || selected.channel}</span>
-            {selected.existingClient ? <span className={styles.clientBadge}>CRM впізнала клієнта</span> : <span className={styles.newClientBadge}>Новий контакт</span>}
-          </div>
-
-          <section className={styles.reasonCard}>
-            <p>Що сталося</p><h3>{selected.subject || "Нове звернення"}</h3><span>{selected.preview || "Опис звернення відсутній."}</span>
-          </section>
-
-          <div className={styles.contextGrid}>
-            <section><p>Канал</p><strong>{channelLabel[selected.channel] || selected.channel}</strong><span>{selected.channel === "BINOTEL" ? "Телефонний контакт" : "Повідомлення / заявка"}</span></section>
-            <section><p>Джерело</p><strong>{sourceLabel(selected)}</strong><span>{selected.campaign ? `Кампанія: ${selected.campaign}` : "Без кампанії"}</span></section>
-            <section><p>Автомобіль</p>{selected.vehicles[0] && <VehicleRender id={selected.vehicles[0].id} brand={selected.vehicles[0].brand} model={selected.vehicles[0].model} year={selected.vehicles[0].year} size="mini" eager />}<strong>{vehicleLabel(selected)}</strong><span>{plateLabel(selected)}</span>{selected.vehicles[0]?.vin && <small>VIN {selected.vehicles[0].vin}</small>}</section>
-            <section><p>CRM-контекст</p><strong>{selected.existingClient ? "Постійний клієнт" : "Клієнта ще не визначено"}</strong><span>{selected.existingLead ? `Активний лід · ${selected.existingLead.status}` : "Активного ліда немає"}</span></section>
-          </div>
-
-          {selected.assignedUser && <div className={styles.assignee}>Уже прийняв: <strong>{selected.assignedUser.name}</strong></div>}
-
-          <section className={styles.nextAction}>
-            <div><p>НАСТУПНА ДІЯ</p><h3>{selected.channel === "BINOTEL" && selected.phone ? "Передзвонити клієнту" : "Продовжити діалог з клієнтом"}</h3><span>{selected.channel === "BINOTEL" && selected.phone ? "Після дзвінка прийміть звернення в роботу або створіть лід." : "Відкрийте діалог, дайте відповідь і прийміть звернення в роботу."}</span></div>
-            <div className={styles.primaryActions}>
-              {selected.channel === "BINOTEL" && selected.phone ? <a className={styles.mainAction} href={`tel:${selected.phone}`}>☎ Передзвонити</a> : <button type="button" className={styles.mainAction} onClick={() => navigateCrm("Комунікації")}>Відкрити діалог</button>}
-              <button type="button" className={styles.acceptAction} disabled={busyId === selected.id} onClick={() => void accept(selected)}>{busyId === selected.id ? "Обробляю…" : "✓ Прийняти в роботу"}</button>
+          {selected.existingClient ? <>
+            <div className={styles.knownClientTools}>
+              <div><span className={styles.toolLabel}>Швидкий зв’язок</span><ClientCommunicationActions clientId={selected.existingClient.id} vehicleId={selected.vehicles[0]?.id} phone={selected.phone} /></div>
+              <button type="button" className={styles.communicationButton} onClick={() => navigateCrm("Комунікації", { clientId: selected.existingClient!.id })}>Комунікації →</button>
             </div>
-          </section>
 
-          <div className={styles.secondaryActions}>
-            {selected.existingClient && <button type="button" onClick={() => navigateCrm("Клієнти", { clientId: selected.existingClient!.id })}>Картка клієнта</button>}
-            {selected.vehicles[0] && <button type="button" onClick={() => navigateCrm("Авто", { vehicleId: selected.vehicles[0].id })}>Картка авто</button>}
-            <button type="button" onClick={() => navigateCrm("Комунікації")}>Історія комунікацій</button>
-            <button type="button" disabled={busyId === selected.id} onClick={() => selected.existingLead ? navigateCrm("Ліди") : void convert(selected)}>{selected.existingLead ? "Відкрити активний лід" : "Створити лід"}</button>
-          </div>
-          <p className={styles.acceptNote}>Після «Прийняти в роботу» звернення автоматично забирається з черги «Нові».</p>
+            <section className={styles.reasonCompact}>
+              <div><span>{selected.subject || "Нове звернення"}</span><small>{timeLabel(selected.receivedAt)} · {channelLabel[selected.channel] || selected.channel}</small></div>
+              <p>{selected.preview || "Опис звернення відсутній."}</p>
+            </section>
+
+            <section className={styles.vehicleFocus}>
+              {selected.vehicles[0] ? <>
+                <div className={styles.vehicleVisual}><VehicleRender id={selected.vehicles[0].id} brand={selected.vehicles[0].brand} model={selected.vehicles[0].model} year={selected.vehicles[0].year} size="card" eager /></div>
+                <div className={styles.vehicleCopy}>
+                  <span className={styles.toolLabel}>Автомобіль клієнта</span>
+                  <h3>{vehicleLabel(selected)}</h3>
+                  <strong>{plateLabel(selected)}</strong>
+                  {selected.vehicles[0].vin && <small>VIN {selected.vehicles[0].vin}</small>}
+                </div>
+                <button type="button" className={styles.vehicleCardButton} onClick={() => navigateCrm("Авто", { vehicleId: selected.vehicles[0]!.id })}>Карта авто →</button>
+              </> : <div className={styles.vehicleMissing}><strong>Автомобіль не визначено</strong><span>Відкрийте картку клієнта, щоб вибрати або додати авто.</span></div>}
+            </section>
+
+            <section className={styles.actionHub}>
+              <button type="button" className={styles.newOrderAction} onClick={() => openRequest(selected)}>+ Нове замовлення</button>
+              <button type="button" className={styles.bookingAction} onClick={() => openRequest(selected, true)}>Записати на СТО</button>
+            </section>
+
+            <div className={styles.utilityActions}>
+              <button type="button" onClick={() => navigateCrm("Клієнти", { clientId: selected.existingClient!.id })}>Картка клієнта</button>
+              {selected.vehicles[0] && <button type="button" onClick={() => navigateCrm("Авто", { vehicleId: selected.vehicles[0]!.id })}>Картка авто</button>}
+              {selected.existingLead && <button type="button" onClick={() => navigateCrm("Ліди")}>Активна заявка</button>}
+            </div>
+          </> : <>
+            <section className={styles.reasonCard}>
+              <p>Що сталося</p><h3>{selected.subject || "Нове звернення"}</h3><span>{selected.preview || "Опис звернення відсутній."}</span>
+            </section>
+            <section className={styles.newContactPanel}>
+              <div><strong>Новий контакт</strong><span>Створіть клієнта або прийміть звернення в роботу.</span></div>
+              <div className={styles.primaryActions}>
+                {selected.channel === "BINOTEL" && selected.phone ? <a className={styles.mainAction} href={`tel:${selected.phone}`}>☎ Передзвонити</a> : <button type="button" className={styles.mainAction} onClick={() => navigateCrm("Комунікації")}>Відкрити діалог</button>}
+                <button type="button" className={styles.acceptAction} disabled={busyId === selected.id} onClick={() => void accept(selected)}>{busyId === selected.id ? "Обробляю…" : "✓ Прийняти"}</button>
+                <button type="button" className={styles.createLeadAction} disabled={busyId === selected.id} onClick={() => void convert(selected)}>Створити клієнта / заявку</button>
+              </div>
+            </section>
+          </>}
         </>}
       </main>
     </section>
