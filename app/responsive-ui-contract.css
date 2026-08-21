@@ -166,3 +166,302 @@ body{min-width:0;max-width:100%;font-size:var(--crm-font-copy)!important;line-he
 
 /* Plate artwork is the only intentional sub-12px visual exception. */
 .uaPlateCountry small{font-size:6px!important;line-height:1!important}
+
+/* Analytics / Funnel — Turbo LEV product layout.
+   Uses only the active CRM theme variables, so the page stays graphite/black
+   in the dark theme instead of introducing a separate blue dashboard skin. */
+.workspace [class*="_page__"]:has([class*="_funnelFlow__"]){
+  --analytics-surface:color-mix(in srgb,var(--panel) 96%,transparent);
+  --analytics-surface-2:color-mix(in srgb,var(--panel-2) 94%,transparent);
+  --analytics-line:color-mix(in srgb,var(--line) 88%,transparent);
+  max-width:1720px!important;
+  padding-top:18px!important;
+}
+.workspace [class*="_page__"]:has([class*="_funnelFlow__"]) [class*="_header__"] h1{
+  font-size:36px!important;
+  line-height:1.05!important;
+  letter-spacing:-.045em!important;
+}
+.workspace [class*="_page__"]:has([class*="_funnelFlow__"]) [class*="_header__"]{
+  margin-bottom:12px!important;
+}
+.workspace [class*="_page__"]:has([class*="_funnelFlow__"]) [class*="_tabs__"]{
+  gap:10px!important;
+  margin-bottom:12px!important;
+}
+.workspace [class*="_page__"]:has([class*="_funnelFlow__"]) [class*="_tabs__"]>button{
+  padding:10px 12px!important;
+  border-bottom-width:3px!important;
+}
+.workspace [class*="_page__"]:has([class*="_funnelFlow__"]) [class*="_filters__"]{
+  padding:10px!important;
+  gap:10px!important;
+  margin-bottom:12px!important;
+  border-color:var(--analytics-line)!important;
+  background:var(--analytics-surface)!important;
+  box-shadow:0 16px 40px rgba(0,0,0,.10)!important;
+}
+.workspace [class*="_page__"]:has([class*="_funnelFlow__"]) [class*="_presets__"]{
+  border-color:var(--analytics-line)!important;
+  background:color-mix(in srgb,var(--panel-2) 78%,transparent)!important;
+}
+.workspace [class*="_page__"]:has([class*="_funnelFlow__"]) [class*="_activePreset__"]{
+  background:color-mix(in srgb,var(--orange) 15%,var(--panel-2))!important;
+  color:var(--orange)!important;
+  box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--orange) 38%,transparent)!important;
+}
+.workspace [class*="_page__"]:has([class*="_funnelFlow__"]) [class*="_sectionIntro__"]{
+  margin:0 0 10px!important;
+  padding:8px 2px!important;
+  align-items:center!important;
+}
+.workspace [class*="_page__"]:has([class*="_funnelFlow__"]) [class*="_sectionIntro__"] h2{
+  font-size:22px!important;
+}
+.workspace [class*="_page__"]:has([class*="_funnelFlow__"]) [class*="_funnelSummary__"]{
+  grid-template-columns:repeat(4,minmax(0,1fr))!important;
+  gap:12px!important;
+  margin-bottom:14px!important;
+}
+.workspace [class*="_page__"]:has([class*="_funnelFlow__"]) [class*="_funnelSummary__"] article{
+  position:relative!important;
+  overflow:hidden!important;
+  min-height:104px!important;
+  padding:16px 18px 15px 74px!important;
+  border-radius:14px!important;
+  border-color:var(--analytics-line)!important;
+  background:linear-gradient(145deg,color-mix(in srgb,var(--panel) 96%,white 1%),var(--panel))!important;
+  box-shadow:0 14px 34px rgba(0,0,0,.12),inset 0 1px 0 rgba(255,255,255,.02)!important;
+}
+.workspace [class*="_page__"]:has([class*="_funnelFlow__"]) [class*="_funnelSummary__"] article::before{
+  content:"▣";
+  position:absolute;
+  left:17px;
+  top:20px;
+  width:40px;
+  height:40px;
+  display:grid;
+  place-items:center;
+  border-radius:13px;
+  font-size:22px;
+  font-weight:900;
+  color:var(--orange);
+  background:color-mix(in srgb,var(--orange) 13%,var(--panel-2));
+  border:1px solid color-mix(in srgb,var(--orange) 36%,var(--line));
+  box-shadow:0 0 24px color-mix(in srgb,var(--orange) 12%,transparent);
+}
+.workspace [class*="_page__"]:has([class*="_funnelFlow__"]) [class*="_funnelSummary__"] article:nth-child(2)::before{content:"✓";color:#65d5a0;background:rgba(31,174,112,.10);border-color:rgba(101,213,160,.28)}
+.workspace [class*="_page__"]:has([class*="_funnelFlow__"]) [class*="_funnelSummary__"] article:nth-child(3)::before{content:"✓";color:#b98cff;background:rgba(156,93,255,.09);border-color:rgba(185,140,255,.25)}
+.workspace [class*="_page__"]:has([class*="_funnelFlow__"]) [class*="_funnelSummary__"] article:nth-child(4)::before{content:"×";color:#ff7373;background:rgba(224,72,72,.09);border-color:rgba(255,115,115,.28)}
+.workspace [class*="_page__"]:has([class*="_funnelFlow__"]) [class*="_funnelSummary__"] small{
+  color:var(--muted)!important;
+  font-weight:800!important;
+}
+.workspace [class*="_page__"]:has([class*="_funnelFlow__"]) [class*="_funnelSummary__"] strong{
+  font-size:30px!important;
+  line-height:1!important;
+  margin:8px 0 6px!important;
+}
+.workspace [class*="_page__"]:has([class*="_funnelFlow__"]) [class*="_twoColumnsWide__"]{
+  grid-template-columns:minmax(640px,1.16fr) minmax(470px,.84fr)!important;
+  gap:14px!important;
+  align-items:start!important;
+}
+.workspace [class*="_page__"]:has([class*="_funnelFlow__"]) [class*="_panel__"]{
+  border-color:var(--analytics-line)!important;
+  background:linear-gradient(180deg,var(--analytics-surface),color-mix(in srgb,var(--panel) 98%,black 1%))!important;
+  box-shadow:0 18px 45px rgba(0,0,0,.13),inset 0 1px 0 rgba(255,255,255,.018)!important;
+}
+.workspace [class*="_page__"]:has([class*="_funnelFlow__"]) [class*="_panel__"]>header h2,
+.workspace [class*="_page__"]:has([class*="_funnelFlow__"]) [class*="_panel__"]>header h3{
+  font-size:20px!important;
+  line-height:1.2!important;
+}
+.workspace [class*="_page__"]:has([class*="_funnelFlow__"]) section:has([class*="_funnelFlow__"]){
+  min-height:646px!important;
+  padding:16px!important;
+  overflow:hidden!important;
+}
+.workspace [class*="_page__"]:has([class*="_funnelFlow__"]) [class*="_funnelFlow__"]{
+  width:52%!important;
+  max-width:none!important;
+  margin:0!important;
+  padding:0 4px 2px 0!important;
+  align-items:stretch!important;
+  gap:0!important;
+}
+.workspace [class*="_page__"]:has([class*="_funnelFlow__"]) [class*="_funnelStageWrap__"]{
+  align-items:stretch!important;
+  width:100%!important;
+}
+.workspace [class*="_page__"]:has([class*="_funnelFlow__"]) [class*="_stageLoss__"]{
+  height:22px!important;
+  min-height:22px!important;
+  padding:2px 5px 2px 12px!important;
+  justify-content:flex-start!important;
+  gap:8px!important;
+}
+.workspace [class*="_page__"]:has([class*="_funnelFlow__"]) [class*="_funnelStage__"]{
+  width:100%!important;
+  min-height:62px!important;
+  padding:10px 12px 10px 54px!important;
+  position:relative!important;
+  border-radius:11px!important;
+  border:1px solid color-mix(in srgb,var(--orange) 35%,var(--line))!important;
+  border-left:2px solid var(--orange)!important;
+  background:linear-gradient(90deg,color-mix(in srgb,var(--orange) 18%,var(--panel-2)),color-mix(in srgb,var(--orange) 4%,var(--panel-2)) 62%,var(--panel-2))!important;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.025)!important;
+}
+.workspace [class*="_page__"]:has([class*="_funnelFlow__"]) [class*="_funnelStage__"]::before{
+  position:absolute;
+  left:12px;
+  top:50%;
+  transform:translateY(-50%);
+  width:30px;
+  height:30px;
+  display:grid;
+  place-items:center;
+  border-radius:50%;
+  color:#fff;
+  background:linear-gradient(145deg,color-mix(in srgb,var(--orange) 80%,#ffd36a),var(--orange));
+  box-shadow:0 0 18px color-mix(in srgb,var(--orange) 25%,transparent);
+  font-size:14px;
+  font-weight:900;
+}
+.workspace [class*="_page__"]:has([class*="_funnelFlow__"]) [class*="_funnelStageWrap__"]:nth-child(1) [class*="_funnelStage__"]::before{content:"1"}
+.workspace [class*="_page__"]:has([class*="_funnelFlow__"]) [class*="_funnelStageWrap__"]:nth-child(2) [class*="_funnelStage__"]::before{content:"2"}
+.workspace [class*="_page__"]:has([class*="_funnelFlow__"]) [class*="_funnelStageWrap__"]:nth-child(3) [class*="_funnelStage__"]::before{content:"3"}
+.workspace [class*="_page__"]:has([class*="_funnelFlow__"]) [class*="_funnelStageWrap__"]:nth-child(4) [class*="_funnelStage__"]::before{content:"4"}
+.workspace [class*="_page__"]:has([class*="_funnelFlow__"]) [class*="_funnelStageWrap__"]:nth-child(5) [class*="_funnelStage__"]::before{content:"5"}
+.workspace [class*="_page__"]:has([class*="_funnelFlow__"]) [class*="_funnelStageWrap__"]:nth-child(6) [class*="_funnelStage__"]::before{content:"6"}
+.workspace [class*="_page__"]:has([class*="_funnelFlow__"]) [class*="_funnelStageWrap__"]:nth-child(7) [class*="_funnelStage__"]::before{content:"7"}
+.workspace [class*="_page__"]:has([class*="_funnelFlow__"]) [class*="_funnelStage__"] span{
+  font-size:14px!important;
+  font-weight:850!important;
+}
+.workspace [class*="_page__"]:has([class*="_funnelFlow__"]) [class*="_funnelStage__"] strong{
+  font-size:22px!important;
+}
+.workspace [class*="_page__"]:has([class*="_funnelFlow__"]) [class*="_outcomeMount__"]{
+  position:absolute!important;
+  top:66px!important;
+  right:16px!important;
+  bottom:16px!important;
+  width:43%!important;
+  min-width:0!important;
+  display:block!important;
+}
+.workspace [class*="_page__"]:has([class*="_funnelFlow__"]) [class*="_outcomePanel__"]{
+  height:100%!important;
+  min-height:0!important;
+  padding:14px!important;
+  border:1px solid var(--analytics-line)!important;
+  border-radius:13px!important;
+  background:color-mix(in srgb,var(--panel-2) 54%,transparent)!important;
+  display:flex!important;
+  flex-direction:column!important;
+}
+.workspace [class*="_page__"]:has([class*="_funnelFlow__"]) [class*="_outcomeHeader__"]{
+  margin-bottom:8px!important;
+}
+.workspace [class*="_page__"]:has([class*="_funnelFlow__"]) [class*="_outcomeHeader__"] span{
+  display:none!important;
+}
+.workspace [class*="_page__"]:has([class*="_funnelFlow__"]) [class*="_outcomeRing__"]{
+  width:176px!important;
+  height:176px!important;
+  margin:12px auto 14px!important;
+  box-shadow:0 0 34px rgba(0,0,0,.16)!important;
+}
+.workspace [class*="_page__"]:has([class*="_funnelFlow__"]) [class*="_outcomeCenter__"] strong{
+  font-size:34px!important;
+}
+.workspace [class*="_page__"]:has([class*="_funnelFlow__"]) [class*="_outcomeLegend__"]{
+  gap:2px!important;
+}
+.workspace [class*="_page__"]:has([class*="_funnelFlow__"]) [class*="_outcomeLegend__"]>div{
+  min-height:34px!important;
+  border-bottom:1px solid var(--analytics-line)!important;
+}
+.workspace [class*="_page__"]:has([class*="_funnelFlow__"]) [class*="_outcomeDepth__"]{
+  margin-top:8px!important;
+}
+.workspace [class*="_page__"]:has([class*="_funnelFlow__"]) [class*="_outcomeAction__"]{
+  margin-top:auto!important;
+  min-height:42px!important;
+  border-color:color-mix(in srgb,var(--orange) 55%,var(--line))!important;
+  background:transparent!important;
+}
+.workspace [class*="_page__"]:has([class*="_funnelFlow__"]) [data-analytics-funnel-side="true"] [class*="_sideVisuals__"]{
+  display:grid!important;
+  grid-template-columns:1fr!important;
+  gap:14px!important;
+}
+.workspace [class*="_page__"]:has([class*="_funnelFlow__"]) [data-analytics-funnel-side="true"] [class*="_panel__"]{
+  padding:15px!important;
+  border:1px solid var(--analytics-line)!important;
+  border-radius:13px!important;
+  background:linear-gradient(180deg,var(--analytics-surface),var(--panel))!important;
+}
+.workspace [class*="_page__"]:has([class*="_funnelFlow__"]) [class*="_lossList__"]{
+  gap:9px!important;
+}
+.workspace [class*="_page__"]:has([class*="_funnelFlow__"]) [class*="_lossMeta__"]{
+  margin-bottom:5px!important;
+}
+.workspace [class*="_page__"]:has([class*="_funnelFlow__"]) [class*="_lossTrack__"]{
+  height:7px!important;
+}
+.workspace [class*="_page__"]:has([class*="_funnelFlow__"]) [class*="_insight__"]{
+  margin-top:10px!important;
+  min-height:42px!important;
+  border-color:color-mix(in srgb,var(--orange) 34%,var(--line))!important;
+  background:color-mix(in srgb,var(--orange) 5%,var(--panel-2))!important;
+}
+.workspace [class*="_page__"]:has([class*="_funnelFlow__"]) [class*="_conversionChart__"]{
+  height:220px!important;
+  gap:9px!important;
+  padding-top:3px!important;
+}
+.workspace [class*="_page__"]:has([class*="_funnelFlow__"]) [class*="_conversionTrack__"]{
+  height:142px!important;
+  max-width:58px!important;
+  background:linear-gradient(180deg,color-mix(in srgb,var(--panel-2) 88%,transparent),var(--panel-2))!important;
+}
+.workspace [class*="_page__"]:has([class*="_funnelFlow__"]) [class*="_conversionBar__"]{
+  background:linear-gradient(180deg,color-mix(in srgb,var(--orange) 75%,#ffd36a),var(--orange))!important;
+  box-shadow:0 0 22px color-mix(in srgb,var(--orange) 12%,transparent)!important;
+}
+.workspace [class*="_page__"]:has([class*="_funnelFlow__"]) [class*="_quickStats__"]>div{
+  min-height:44px!important;
+  border-color:var(--analytics-line)!important;
+  background:var(--analytics-surface-2)!important;
+}
+.workspace [class*="_page__"]:has([class*="_funnelFlow__"]) [class*="_timelineOnly__"]{
+  display:none!important;
+}
+
+@media (max-width:1320px){
+  .workspace [class*="_page__"]:has([class*="_funnelFlow__"]) [class*="_twoColumnsWide__"]{
+    grid-template-columns:1fr!important;
+  }
+  .workspace [class*="_page__"]:has([class*="_funnelFlow__"]) section:has([class*="_funnelFlow__"]){min-height:auto!important}
+  .workspace [class*="_page__"]:has([class*="_funnelFlow__"]) [class*="_funnelFlow__"]{width:100%!important}
+  .workspace [class*="_page__"]:has([class*="_funnelFlow__"]) [class*="_outcomeMount__"]{
+    position:static!important;
+    width:100%!important;
+    margin-top:14px!important;
+  }
+  .workspace [class*="_page__"]:has([class*="_funnelFlow__"]) [class*="_outcomePanel__"]{min-height:420px!important}
+}
+@media (max-width:860px){
+  .workspace [class*="_page__"]:has([class*="_funnelFlow__"]) [class*="_funnelSummary__"]{grid-template-columns:repeat(2,minmax(0,1fr))!important}
+  .workspace [class*="_page__"]:has([class*="_funnelFlow__"]) [class*="_sectionIntro__"]{align-items:flex-start!important;flex-direction:column!important}
+  .workspace [class*="_page__"]:has([class*="_funnelFlow__"]) [class*="_filters__"]{align-items:stretch!important}
+  .workspace [class*="_page__"]:has([class*="_funnelFlow__"]) [class*="_compare__"]{margin-left:0!important}
+}
+@media (max-width:540px){
+  .workspace [class*="_page__"]:has([class*="_funnelFlow__"]) [class*="_funnelSummary__"]{grid-template-columns:1fr!important}
+  .workspace [class*="_page__"]:has([class*="_funnelFlow__"]) [class*="_funnelStage__"]{padding-left:50px!important}
+  .workspace [class*="_page__"]:has([class*="_funnelFlow__"]) [class*="_outcomeRing__"]{width:156px!important;height:156px!important}
+}
