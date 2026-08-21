@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { WorkOrderFinanceValidationError } from "@/src/domain/work-order-finance";
+import { authorize } from "@/src/security/authorize";
 import { PERMISSIONS } from "@/src/security/permissions";
-import { authorizeWorkOrderRecord } from "@/src/security/work-order-scope";
+import { canAccessWorkOrder } from "@/src/security/work-order-scope";
 import {
   finalizeWorkOrderFinance,
   WorkOrderFinanceError,
@@ -32,13 +33,17 @@ function errorResponse(error: unknown) {
 }
 
 export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
+  const access = await authorize(PERMISSIONS.FINANCE_WRITE, { request, strict: true, minimumScope: "SELF" });
+  if (!access.allowed) return access.response!;
+
   const { id } = await context.params;
-  const access = await authorizeWorkOrderRecord(PERMISSIONS.FINANCE_WRITE, request, id);
-  if (!access.allowed) return access.response;
+  if (!(await canAccessWorkOrder(access.context, access.grantedScope, id))) {
+    return NextResponse.json({ ok: false, error: "Замовлення-наряд не знайдено." }, { status: 404 });
+  }
 
   try {
     const body = (await request.json()) as Record<string, unknown>;
-    const actorName = access.context.user?.name || access.context.user?.email || "CRM / Фінанси";
+    const actorName = access.context.user?.employeeName || access.context.user?.name || access.context.user?.email || "CRM / Фінанси";
     const usesLines = await hasWorkOrderLines(id);
     const result = usesLines
       ? await finalizeWorkOrderFinanceFromLines(id, body, actorName)
