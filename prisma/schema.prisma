@@ -304,10 +304,11 @@ model DiagnosticRequest {
   createdAt           DateTime                @default(now())
   updatedAt           DateTime                @updatedAt
 
-  client    Client @relation(fields: [clientId], references: [id], onDelete: Restrict)
-  vehicle   Vehicle @relation(fields: [vehicleId], references: [id], onDelete: Restrict)
-  lead      Lead? @relation("LeadDiagnostics", fields: [leadId], references: [id], onDelete: SetNull)
-  workOrder WorkOrder?
+  client         Client          @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  vehicle        Vehicle         @relation(fields: [vehicleId], references: [id], onDelete: Restrict)
+  lead           Lead?           @relation("LeadDiagnostics", fields: [leadId], references: [id], onDelete: SetNull)
+  workOrder      WorkOrder?
+  diagnosticCard DiagnosticCard?
 
   @@index([clientId, status])
   @@index([vehicleId, status])

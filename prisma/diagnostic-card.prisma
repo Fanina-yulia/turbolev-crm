@@ -13,7 +13,8 @@ model DiagnosticCard {
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
 
-  revisions DiagnosticCardRevision[]
+  diagnosticRequest DiagnosticRequest       @relation(fields: [diagnosticRequestId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  revisions         DiagnosticCardRevision[]
 
   @@index([finalizedAt, updatedAt])
   @@index([confirmedByUserId])

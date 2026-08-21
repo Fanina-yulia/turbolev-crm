@@ -2,8 +2,10 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { MechanicWalkInForm } from "./mechanic-walk-in-form";
 import styles from "./mechanic-vehicle-scanner.module.css";
 
+type ScanScenario = "ASSIGNED" | "ASSIGNED_TO_OTHER" | "WALK_IN_EXISTING_VEHICLE" | "WALK_IN_NEW_VEHICLE";
 type ScanAction = {
   type: "DIAGNOSTIC" | "REPAIR" | "WAITING" | "NONE";
   label: string;
@@ -15,10 +17,17 @@ type ScanAction = {
 type ScanResult = {
   ok: boolean;
   recognized?: boolean;
+  scenario?: ScanScenario;
   recognition?: { raw: string; plate: string; confidence: number | null; source: string };
-  vehicle?: { id: string | null; label: string; plate: string };
-  appointment?: { id: string; status: string; post: string | null; plannedStartAt: string } | null;
+  vehicle?: { id: string | null; label: string; plate: string; mileageKm?: number | null };
+  appointment?: { id: string; status: string; post: string | null; plannedStartAt: string; mechanic?: string | null } | null;
   assignedToMe?: boolean;
+  walkIn?: {
+    eligible: boolean;
+    existingVehicle: boolean;
+    existingClient: { id: string; name: string | null; phone: string } | null;
+    mileageKm: number | null;
+  };
   nextAction?: ScanAction;
   confirmed?: boolean;
   arrivalApplied?: boolean;
@@ -75,6 +84,7 @@ export function MechanicVehicleScanner() {
   const [busy, setBusy] = useState(false);
   const [manual, setManual] = useState("");
   const [manualMode, setManualMode] = useState(false);
+  const [walkInMode, setWalkInMode] = useState(false);
   const [error, setError] = useState("");
   const [scanHint, setScanHint] = useState("");
   const [result, setResult] = useState<ScanResult | null>(null);
@@ -92,6 +102,10 @@ export function MechanicVehicleScanner() {
     && result.recognition?.plate
     && result.nextAction
     && (result.nextAction.type === "DIAGNOSTIC" || awaitingVehicleConfirmation),
+  );
+  const walkInEligible = Boolean(
+    result?.walkIn?.eligible
+    && (result.scenario === "WALK_IN_EXISTING_VEHICLE" || result.scenario === "WALK_IN_NEW_VEHICLE"),
   );
 
   useEffect(() => {
@@ -136,6 +150,7 @@ export function MechanicVehicleScanner() {
     setScanHint("");
     setManual("");
     setManualMode(false);
+    setWalkInMode(false);
     setBusy(false);
     setCameraError("");
     setCountdown(null);
@@ -200,6 +215,7 @@ export function MechanicVehicleScanner() {
       if (!response.ok || !body?.ok) throw new Error(body?.message || body?.error || "Не вдалося перевірити авто");
       if (controller.signal.aborted) return null;
       setResult(body);
+      setWalkInMode(false);
       stopCamera();
       if (body.recognition?.plate) setManual(body.recognition.plate);
       return body;
@@ -338,6 +354,13 @@ export function MechanicVehicleScanner() {
     window.dispatchEvent(new CustomEvent("turbolev:mechanic-refresh"));
   }
 
+  function openWalkInDiagnostic(diagnosticId: string) {
+    setOpen(false);
+    reset();
+    window.dispatchEvent(new CustomEvent("turbolev:mechanic-open-diagnostic", { detail: { diagnosticId } }));
+    window.dispatchEvent(new CustomEvent("turbolev:mechanic-refresh"));
+  }
+
   useEffect(() => {
     if (!open || !autoAdvanceToDiagnostic || busy || error || !result?.recognition?.plate || !result.nextAction) return;
     const key = `${result.recognition.plate}:${result.nextAction.type}:${result.nextAction.diagnosticId || "new"}`;
@@ -436,37 +459,53 @@ export function MechanicVehicleScanner() {
     {open && result && <div className={styles.backdrop} role="dialog" aria-modal="true" aria-label="Результат сканування автомобіля">
       <section className={styles.sheet}>
         <header className={styles.head}>
-          <div><small>КАБІНЕТ МЕХАНІКА</small><h2>Автомобіль розпізнано</h2><p>CRM перевірила номер і поточне призначення.</p></div>
+          <div><small>КАБІНЕТ МЕХАНІКА</small><h2>{walkInMode ? "Позаплановий заїзд" : "Автомобіль розпізнано"}</h2><p>{walkInMode ? "Вкажіть мінімальні дані та одразу переходьте до діагностики." : "CRM перевірила номер і поточне призначення."}</p></div>
           <button type="button" onClick={close} aria-label="Закрити">×</button>
         </header>
 
         {result.vehicle && <div className={styles.result}>
-          <div className={styles.plateBlock}>
-            <span className={styles.car}>🚗</span>
-            <div><h3>{result.vehicle.label}</h3><strong>{result.recognition?.plate || result.vehicle.plate}</strong>{result.recognition?.confidence != null && <small>Розпізнавання: {result.recognition.confidence}%</small>}</div>
-          </div>
-          {result.appointment?.post && <div className={styles.fact}><span>Пост</span><b>{result.appointment.post}</b></div>}
+          {walkInMode ? <MechanicWalkInForm
+            plate={result.recognition?.plate || result.vehicle.plate}
+            vehicleLabel={result.vehicle.label}
+            existingClient={result.walkIn?.existingClient || null}
+            mileageKm={result.walkIn?.mileageKm ?? result.vehicle.mileageKm ?? null}
+            onCancel={() => setWalkInMode(false)}
+            onStarted={openWalkInDiagnostic}
+          /> : <>
+            <div className={styles.plateBlock}>
+              <span className={styles.car}>🚗</span>
+              <div><h3>{result.vehicle.label}</h3><strong>{result.recognition?.plate || result.vehicle.plate}</strong>{result.recognition?.confidence != null && <small>Розпізнавання: {result.recognition.confidence}%</small>}</div>
+            </div>
+            {result.appointment?.post && <div className={styles.fact}><span>Пост</span><b>{result.appointment.post}</b></div>}
 
-          {result.assignedToMe ? <div className={styles.mine}><b>✓ Автомобіль закріплений за вами</b><span>CRM перевірила активне призначення механіка.</span></div> : <div className={styles.notMine}><b>⚠ Автомобіль не закріплений за вами</b><span>{result.nextAction?.reason || "Зверніться до сервіс-менеджера."}</span></div>}
+            {walkInEligible ? <div className={styles.walkInNotice}>
+              <b>{result.scenario === "WALK_IN_EXISTING_VEHICLE" ? "✓ Автомобіль є в базі" : "＋ Новий автомобіль"}</b>
+              <span>{result.scenario === "WALK_IN_EXISTING_VEHICLE"
+                ? "Активного запису немає. Можна оформити позаплановий заїзд і почати діагностику."
+                : "Автомобіля немає в базі та активних записах. Можна оформити позаплановий заїзд."}</span>
+              {result.walkIn?.existingClient && <small>{result.walkIn.existingClient.name || "Клієнт"} · {result.walkIn.existingClient.phone}</small>}
+            </div> : result.assignedToMe ? <div className={styles.mine}><b>✓ Автомобіль закріплений за вами</b><span>CRM перевірила активне призначення механіка.</span></div> : <div className={styles.notMine}><b>⚠ Автомобіль не закріплений за вами</b><span>{result.nextAction?.reason || "Зверніться до сервіс-менеджера."}</span></div>}
 
-          {autoAdvanceToDiagnostic && !error && <div aria-live="polite" style={{ display: "grid", justifyItems: "center", gap: 12, padding: "22px 16px", borderRadius: 20, background: "rgba(255,101,0,.08)", border: "1px solid rgba(255,101,0,.28)", textAlign: "center" }}>
-            <div style={{ width: 82, height: 82, borderRadius: 999, border: "5px solid #ff6500", display: "grid", placeItems: "center", boxShadow: "0 0 0 8px rgba(255,101,0,.10)", fontSize: 34, fontWeight: 900, color: "#fff", fontVariantNumeric: "tabular-nums" }}>{countdown && countdown > 0 ? countdown : "✓"}</div>
-            <div><strong style={{ display: "block", fontSize: 18, color: "#f4f7fb" }}>Автомобіль закріплений за вами</strong><span style={{ display: "block", marginTop: 5, color: "#9aa6b2", fontSize: 14 }}>{busy ? "Підтверджую авто та створюю діагностику…" : "Автоматично відкриваю діагностику цього автомобіля…"}</span></div>
-          </div>}
+            {autoAdvanceToDiagnostic && !error && <div aria-live="polite" style={{ display: "grid", justifyItems: "center", gap: 12, padding: "22px 16px", borderRadius: 20, background: "rgba(255,101,0,.08)", border: "1px solid rgba(255,101,0,.28)", textAlign: "center" }}>
+              <div style={{ width: 82, height: 82, borderRadius: 999, border: "5px solid #ff6500", display: "grid", placeItems: "center", boxShadow: "0 0 0 8px rgba(255,101,0,.10)", fontSize: 34, fontWeight: 900, color: "#fff", fontVariantNumeric: "tabular-nums" }}>{countdown && countdown > 0 ? countdown : "✓"}</div>
+              <div><strong style={{ display: "block", fontSize: 18, color: "#f4f7fb" }}>Автомобіль закріплений за вами</strong><span style={{ display: "block", marginTop: 5, color: "#9aa6b2", fontSize: 14 }}>{busy ? "Підтверджую авто та створюю діагностику…" : "Автоматично відкриваю діагностику цього автомобіля…"}</span></div>
+            </div>}
 
-          {!autoAdvanceToDiagnostic && result.assignedToMe && result.nextAction && <div className={styles.actionBox} data-kind={result.nextAction.type}>
-            <small>НАСТУПНИЙ ЕТАП</small>
-            <strong>{result.nextAction.label}</strong>
-            {result.nextAction.reason && <span>{result.nextAction.reason}</span>}
-          </div>}
+            {!autoAdvanceToDiagnostic && result.assignedToMe && result.nextAction && <div className={styles.actionBox} data-kind={result.nextAction.type}>
+              <small>НАСТУПНИЙ ЕТАП</small>
+              <strong>{result.nextAction.label}</strong>
+              {result.nextAction.reason && <span>{result.nextAction.reason}</span>}
+            </div>}
 
-          {error && <div className={styles.error}>{error}</div>}
+            {error && <div className={styles.error}>{error}</div>}
 
-          {!autoAdvanceToDiagnostic && result.assignedToMe && result.nextAction && ["DIAGNOSTIC", "REPAIR"].includes(result.nextAction.type) && <button type="button" className={styles.confirm} disabled={busy} onClick={() => void confirmVehicle()}>{busy ? "Підтверджую…" : `Підтвердити авто та ${result.nextAction.type === "DIAGNOSTIC" ? "перейти до діагностики" : "перейти до ремонту"} →`}</button>}
-          {autoAdvanceToDiagnostic && error && <button type="button" className={styles.confirm} disabled={busy} onClick={() => { autoAdvanceRef.current = ""; setError(""); setCountdown(3); void confirmVehicle(); }}>{busy ? "Підтверджую…" : "Повторити перехід до діагностики →"}</button>}
-          {result.assignedToMe && result.nextAction?.type === "WAITING" && !awaitingVehicleConfirmation && !autoAdvanceToDiagnostic && <div className={styles.waiting}>Дію поки заблоковано workflow CRM. Статус зміниться автоматично після наступного етапу.</div>}
-          {!autoAdvanceToDiagnostic && <div className={styles.resultButtons}><button type="button" onClick={() => { reset(); setOpen(true); }}>Сканувати інше авто</button><button type="button" onClick={close}>Закрити</button></div>}
-          {autoAdvanceToDiagnostic && error && <div className={styles.resultButtons}><button type="button" onClick={() => { reset(); setOpen(true); }}>Сканувати інше авто</button><button type="button" onClick={close}>Закрити</button></div>}
+            {walkInEligible && <button type="button" className={styles.confirm} onClick={() => setWalkInMode(true)}>Продовжити позапланову діагностику →</button>}
+            {!autoAdvanceToDiagnostic && result.assignedToMe && result.nextAction && ["DIAGNOSTIC", "REPAIR"].includes(result.nextAction.type) && <button type="button" className={styles.confirm} disabled={busy} onClick={() => void confirmVehicle()}>{busy ? "Підтверджую…" : `Підтвердити авто та ${result.nextAction.type === "DIAGNOSTIC" ? "перейти до діагностики" : "перейти до ремонту"} →`}</button>}
+            {autoAdvanceToDiagnostic && error && <button type="button" className={styles.confirm} disabled={busy} onClick={() => { autoAdvanceRef.current = ""; setError(""); setCountdown(3); void confirmVehicle(); }}>{busy ? "Підтверджую…" : "Повторити перехід до діагностики →"}</button>}
+            {result.assignedToMe && result.nextAction?.type === "WAITING" && !awaitingVehicleConfirmation && !autoAdvanceToDiagnostic && <div className={styles.waiting}>Дію поки заблоковано workflow CRM. Статус зміниться автоматично після наступного етапу.</div>}
+            {!autoAdvanceToDiagnostic && <div className={styles.resultButtons}><button type="button" onClick={() => { reset(); setOpen(true); }}>Сканувати інше авто</button><button type="button" onClick={close}>Закрити</button></div>}
+            {autoAdvanceToDiagnostic && error && <div className={styles.resultButtons}><button type="button" onClick={() => { reset(); setOpen(true); }}>Сканувати інше авто</button><button type="button" onClick={close}>Закрити</button></div>}
+          </>}
         </div>}
       </section>
     </div>}
