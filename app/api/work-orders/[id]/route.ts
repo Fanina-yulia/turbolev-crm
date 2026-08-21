@@ -1,4 +1,7 @@
 import { NextResponse } from "next/server";
+import { authorize } from "@/src/security/authorize";
+import { PERMISSIONS } from "@/src/security/permissions";
+import { canAccessWorkOrder } from "@/src/security/work-order-scope";
 import {
   getWorkOrder,
   transitionWorkOrder,
@@ -12,9 +15,15 @@ export const maxDuration = 30;
 
 type RouteContext = { params: Promise<{ id: string }> };
 
-export async function GET(_request: Request, context: RouteContext) {
+export async function GET(request: Request, context: RouteContext) {
+  const access = await authorize(PERMISSIONS.WORK_ORDERS_READ, { strict: true, request, minimumScope: "ASSIGNED" });
+  if (!access.allowed) return access.response!;
+
   const { id } = await context.params;
   try {
+    if (!(await canAccessWorkOrder(access.context, access.grantedScope, id))) {
+      return NextResponse.json({ ok: false, error: "Замовлення-наряд не знайдено." }, { status: 404 });
+    }
     const workOrder = await getWorkOrder(id);
     if (!workOrder) return NextResponse.json({ ok: false, error: "Замовлення-наряд не знайдено." }, { status: 404 });
     return NextResponse.json({ ok: true, workOrder }, { headers: { "Cache-Control": "no-store" } });
@@ -25,12 +34,18 @@ export async function GET(_request: Request, context: RouteContext) {
 }
 
 export async function PATCH(request: Request, context: RouteContext) {
+  const access = await authorize(PERMISSIONS.WORK_ORDERS_WRITE, { strict: true, request, minimumScope: "LOCATION" });
+  if (!access.allowed) return access.response!;
+
   const { id } = await context.params;
   try {
+    if (!(await canAccessWorkOrder(access.context, access.grantedScope, id))) {
+      return NextResponse.json({ ok: false, error: "Замовлення-наряд не знайдено." }, { status: 404 });
+    }
     const body = await request.json() as Record<string, unknown>;
     const status = typeof body.status === "string" ? body.status : "";
     if (!status.trim()) return NextResponse.json({ ok: false, error: "Передайте новий статус." }, { status: 400 });
-    const actorName = typeof body.actorName === "string" && body.actorName.trim() ? body.actorName.trim().slice(0, 160) : "CRM";
+    const actorName = (access.context.user?.employeeName || access.context.user?.name || "CRM").trim().slice(0, 160);
     const workOrder = await transitionWorkOrder(id, status, actorName);
     return NextResponse.json({ ok: true, workOrder });
   } catch (error) {
