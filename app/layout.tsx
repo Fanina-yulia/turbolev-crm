@@ -35,6 +35,7 @@ import "./typography-final.css";
 import "./auth/sidebar-rail-width-fix.css";
 import "./auth/sidebar-compact-logo.css";
 import "./responsive-ui-contract.css";
+import "./analytics-funnel-agreed-layout.css";
 import { PhoneInputNormalizer } from "./phone-input-normalizer";
 import { LeadDetailsEnhancer } from "./lead-details-enhancer";
 import { VehicleConfigurationEnhancer } from "./vehicle-configuration-enhancer";
