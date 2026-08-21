@@ -342,6 +342,18 @@ export async function getClientGarageSnapshot(clientId: string): Promise<ClientG
     },
   });
 
+  const latestEstimateIds = client.vehicles
+    .flatMap((vehicle) => vehicle.workOrders.map((order) => order.estimates[0]?.id).filter((id): id is string => Boolean(id)));
+  const submittedDecisionEstimateIds = new Set<string>();
+  if (latestEstimateIds.length) {
+    const rows = await prisma.clientEstimateLineDecision.findMany({
+      where: { clientId, estimateId: { in: latestEstimateIds } },
+      select: { estimateId: true },
+      distinct: ["estimateId"],
+    });
+    rows.forEach((row) => submittedDecisionEstimateIds.add(row.estimateId));
+  }
+
   const vehicles: ClientGarageVehicle[] = client.vehicles.map((vehicle) => {
     const vehicleAppointments = appointments.filter((item) => item.vehicleId === vehicle.id);
     const activeWorkOrder = vehicle.workOrders.find((item) => !["CLOSED", "COMPLETED", "CANCELLED"].includes(item.status)) || null;
@@ -368,13 +380,23 @@ export async function getClientGarageSnapshot(clientId: string): Promise<ClientG
     const latestEstimate = activeWorkOrder?.estimates[0] || null;
     let action: ClientGarageVehicle["action"] = null;
     if (latestEstimate?.status === "SENT") {
-      action = {
-        kind: "ESTIMATE_DECISION",
-        title: "Потрібне ваше погодження",
-        description: "Сервіс-менеджер надіслав кошторис робіт і запчастин.",
-        amount: numberValue(latestEstimate.totalAmount),
-        currency: latestEstimate.currency,
-      };
+      if (submittedDecisionEstimateIds.has(latestEstimate.id)) {
+        action = {
+          kind: "INFO",
+          title: "Ваш вибір передано менеджеру",
+          description: "Ми зафіксували рішення по кожній позиції. Сервіс-менеджер перевіряє вибір і, якщо потрібно, надішле нову ревізію кошторису.",
+          amount: numberValue(latestEstimate.totalAmount),
+          currency: latestEstimate.currency,
+        };
+      } else {
+        action = {
+          kind: "ESTIMATE_DECISION",
+          title: "Потрібне ваше погодження",
+          description: "Сервіс-менеджер надіслав кошторис робіт і запчастин.",
+          amount: numberValue(latestEstimate.totalAmount),
+          currency: latestEstimate.currency,
+        };
+      }
     } else if (statusCode === "READY_FOR_PICKUP" || statusCode === "WAITING_PAYMENT") {
       action = {
         kind: "READY",
