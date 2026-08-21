@@ -17,6 +17,13 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
   } catch (error) {
     const message = error instanceof Error ? error.message : "unknown";
     if (message === "TASK_NOT_FOUND") return NextResponse.json({ ok: false, error: "Задачу не знайдено" }, { status: 404 });
+    if (message === "AUTO_TASK_READ_ONLY") {
+      return NextResponse.json({
+        ok: false,
+        error: "AUTO_TASK_READ_ONLY",
+        message: "Автоматична задача закриється сама після усунення причини в CRM.",
+      }, { status: 409 });
+    }
     if (["TITLE_REQUIRED", "INVALID_DATE", "INVALID_PRIORITY", "INVALID_STATUS"].includes(message)) return NextResponse.json({ ok: false, error: message }, { status: 422 });
     console.error("PATCH /api/tasks/[id] failed", error);
     return NextResponse.json({ ok: false, error: "Не вдалося оновити задачу" }, { status: 500 });
