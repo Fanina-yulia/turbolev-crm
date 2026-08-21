@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { WorkOrderFinanceValidationError } from "@/src/domain/work-order-finance";
+import { PERMISSIONS } from "@/src/security/permissions";
+import { authorize } from "@/src/security/authorize";
 import {
   recordWorkOrderPayment,
   WorkOrderFinanceError,
@@ -26,12 +28,19 @@ function errorResponse(error: unknown) {
 }
 
 export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
+  const access = await authorize(PERMISSIONS.PAYMENTS_WRITE, {
+    request,
+    strict: true,
+    // Current payment writers are global finance roles. If location-scoped
+    // payment posting is introduced later it must get an explicit row check.
+    minimumScope: "ALL",
+  });
+  if (!access.allowed) return access.response ?? NextResponse.json({ ok: false, error: "FORBIDDEN" }, { status: 403 });
+
   const { id } = await context.params;
   try {
     const body = (await request.json()) as Record<string, unknown>;
-    const actorName = typeof body.actorName === "string" && body.actorName.trim()
-      ? body.actorName.trim().slice(0, 120)
-      : "CRM / Каса";
+    const actorName = access.context.user?.name || access.context.user?.email || "CRM / Каса";
     const result = await recordWorkOrderPayment(id, body, actorName);
 
     let workOrder = null;
