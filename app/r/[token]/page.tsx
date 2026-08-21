@@ -28,7 +28,29 @@ export default async function ClientPortalPage({ params }: { params: Promise<{ t
       actorName: "Клієнт / public link",
       metadata: { shareId: snapshot.share.id, clientId: snapshot.client.id, vehicleId: snapshot.vehicle.id, source: "PUBLIC_CLIENT_PORTAL" },
     }).catch(() => undefined);
-    return <ClientPortal token={token} initialSnapshot={snapshot} />;
+    return <>
+      <ClientPortal token={token} initialSnapshot={snapshot} />
+      <a
+        href={`/portal/access/${encodeURIComponent(token)}`}
+        style={{
+          position: "fixed",
+          right: 14,
+          bottom: 88,
+          zIndex: 80,
+          border: "1px solid rgba(255,255,255,.14)",
+          borderRadius: 999,
+          background: "#ff6500",
+          color: "#fff",
+          padding: "11px 15px",
+          boxShadow: "0 10px 28px rgba(0,0,0,.32)",
+          textDecoration: "none",
+          fontSize: 12,
+          fontWeight: 900,
+        }}
+      >
+        Мій гараж · зберегти доступ
+      </a>
+    </>;
   } catch (error) {
     const message = error instanceof ClientPortalError || error instanceof DiagnosticReportError
       ? error.message
