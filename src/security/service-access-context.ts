@@ -55,11 +55,10 @@ type OidcConfig = {
 };
 
 type FetchLike = typeof fetch;
-
+type OidcJwk = JsonWebKey & { kid?: string; alg?: string; use?: string };
 type DiscoveryDocument = { issuer?: string; jwks_uri?: string };
-type JwkSet = { keys?: JsonWebKey[] };
-
-type CachedJwks = { issuer: string; jwksUri: string; keys: JsonWebKey[]; expiresAt: number };
+type JwkSet = { keys?: OidcJwk[] };
+type CachedJwks = { issuer: string; jwksUri: string; keys: OidcJwk[]; expiresAt: number };
 let cachedJwks: CachedJwks | null = null;
 
 export class ServiceAccessError extends Error {
