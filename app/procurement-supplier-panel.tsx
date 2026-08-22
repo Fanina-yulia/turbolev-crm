@@ -11,6 +11,9 @@ type Target = {
     number: number | null;
     plate: string;
     vehicle: string;
+    status: string;
+    paymentRequired: boolean;
+    paymentConfirmedAt: string | null;
   };
   item: {
     id: string;
@@ -39,7 +42,15 @@ type Offer = {
 type Point = { id: string; label: string };
 type Transporter = { id: string; label: string };
 type Delivery = { id: string; label: string; time?: string | null };
-type SupplierOrder = { id: string; status: string; externalOrderId?: string | null; totalPurchase?: number | null; currency?: string | null };
+type SupplierOrderItem = { partsRequestItemId?: string | null };
+type SupplierOrder = {
+  id: string;
+  status: string;
+  externalOrderId?: string | null;
+  totalPurchase?: number | null;
+  currency?: string | null;
+  items?: SupplierOrderItem[] | null;
+};
 
 type Props = {
   target: Target;
@@ -57,6 +68,11 @@ function localDate() {
   const now = new Date();
   const offset = now.getTimezoneOffset() * 60_000;
   return new Date(now.getTime() - offset).toISOString().slice(0, 10);
+}
+
+function activeOrderForItem(order: SupplierOrder, itemId: string) {
+  if (["CANCELLED", "ERROR"].includes(order.status)) return false;
+  return Array.isArray(order.items) && order.items.some((item) => item?.partsRequestItemId === itemId);
 }
 
 export function ProcurementSupplierPanel({ target, locationId, onClose, onChanged }: Props) {
@@ -85,14 +101,19 @@ export function ProcurementSupplierPanel({ target, locationId, onClose, onChange
   const sellPrice = selectedOffer?.purchasePrice == null || !Number.isFinite(markup)
     ? null
     : Math.round(selectedOffer.purchasePrice * (1 + Math.max(0, markup) / 100) * 100) / 100;
+  const paymentReady = !target.card.paymentRequired || Boolean(target.card.paymentConfirmedAt);
+  const readyForDraft = target.card.status === "ORDER_REQUIRED" && paymentReady;
+  const readinessMessage = target.card.status !== "ORDER_REQUIRED"
+    ? "Пошук і порівняння цін доступні зараз. Чернетку можна створити після переходу заявки у «До замовлення»."
+    : !paymentReady
+      ? "Спочатку підтвердіть передоплату клієнта. До цього CRM не дозволить створити або відправити supplier order."
+      : "Чернетка доступна. Її створення не відправляє замовлення постачальнику.";
 
   async function searchOffers() {
     const q = query.trim();
     if (q.length < 2) return setMessage("Введіть артикул або назву деталі.");
     setBusy("search");
     setMessage("");
-    setDraft(null);
-    setSubmitted(null);
     try {
       const params = new URLSearchParams({ q });
       if (locationId) params.set("locationId", locationId);
@@ -110,7 +131,32 @@ export function ProcurementSupplierPanel({ target, locationId, onClose, onChange
     }
   }
 
-  useEffect(() => { void searchOffers(); }, []);
+  async function bootstrap() {
+    setBusy("bootstrap");
+    setMessage("");
+    try {
+      const suffix = locationId ? `?locationId=${encodeURIComponent(locationId)}` : "";
+      const response = await fetch(`/api/procurement/supplier-orders${suffix}`, { cache: "no-store" });
+      const payload = await response.json() as { ok?: boolean; orders?: SupplierOrder[]; error?: string };
+      if (!response.ok || !payload.ok) throw new Error(payload.error || "Не вдалося перевірити замовлення постачальникам.");
+      const existing = (payload.orders || []).find((order) => activeOrderForItem(order, target.item.id)) || null;
+      if (existing) {
+        setDraft(existing);
+        if (existing.externalOrderId || existing.status !== "DRAFT") setSubmitted(existing);
+        setMessage(existing.status === "DRAFT"
+          ? "Для цієї позиції вже є чернетка CRM. Нову чернетку створювати не потрібно."
+          : `Для цієї позиції вже є supplier order${existing.externalOrderId ? ` · № ${existing.externalOrderId}` : ""}.`);
+        return;
+      }
+      await searchOffers();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Не вдалося відкрити supplier workflow.");
+    } finally {
+      setBusy("");
+    }
+  }
+
+  useEffect(() => { void bootstrap(); }, []);
 
   async function chooseOffer(offer: Offer) {
     if (offer.supplierId !== "unique-trade" || !offer.externalProductId || !offer.available) return;
@@ -189,10 +235,11 @@ export function ProcurementSupplierPanel({ target, locationId, onClose, onChange
   }
 
   async function createDraft() {
+    if (!readyForDraft) return setMessage(readinessMessage);
     if (!selectedOffer?.externalProductId || !warehouseId || !deliveryPointId || !deliveryId || !paymentType) {
       return setMessage("Оберіть пропозицію, склад, точку, доставку та тип оплати.");
     }
-    if (!Number.isFinite(markup) || markup < 0 || markup > 300) return setMessage("Націнка має бути від 0 до 300%. ");
+    if (!Number.isFinite(markup) || markup < 0 || markup > 300) return setMessage("Націнка має бути від 0 до 300%.");
     setBusy("draft");
     setMessage("");
     try {
@@ -236,6 +283,7 @@ export function ProcurementSupplierPanel({ target, locationId, onClose, onChange
 
   async function submitDraft() {
     if (!draft) return;
+    if (!readyForDraft) return setMessage(readinessMessage);
     const accepted = window.confirm("Відправити це замовлення в Юнік Трейд? Після підтвердження CRM виконає реальний checkout у постачальника.");
     if (!accepted) return;
     setBusy("submit");
@@ -268,6 +316,7 @@ export function ProcurementSupplierPanel({ target, locationId, onClose, onChange
       </header>
 
       <div className={styles.itemCard}><strong>{[target.item.brand, target.item.article].filter(Boolean).join(" · ") || target.item.description}</strong><span>{target.item.description}</span><small>Потрібно: {target.item.quantity}</small></div>
+      {!draft && <div className={styles.message}>{readinessMessage}</div>}
 
       {!draft && <>
         <div className={styles.search}><input value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void searchOffers(); }} placeholder="Артикул або назва деталі"/><button type="button" onClick={() => void searchOffers()} disabled={Boolean(busy)}>{busy === "search" ? "Шукаю…" : "Знайти"}</button></div>
@@ -290,8 +339,8 @@ export function ProcurementSupplierPanel({ target, locationId, onClose, onChange
           <label><span>Варіант доставки</span><select value={deliveryId} onChange={(event) => setDeliveryId(event.target.value)} disabled={!transporterId || busy === "deliveries"}><option value="">{busy === "deliveries" ? "Завантажую…" : "Оберіть доставку"}</option>{deliveries.map((item) => <option key={item.id} value={item.id}>{item.label}{item.time ? ` · ${item.time}` : ""}</option>)}</select></label>
           <label><span>Тип оплати</span><select value={paymentType} onChange={(event) => setPaymentType(event.target.value as "" | "nal" | "beznal")}><option value="">Оберіть</option><option value="beznal">Безготівка</option><option value="nal">Готівка</option></select></label>
           <label><span>Коментар постачальнику</span><textarea value={comment} onChange={(event) => setComment(event.target.value)} placeholder="Необов’язково"/></label>
-          <button type="button" className={styles.draftButton} onClick={() => void createDraft()} disabled={Boolean(busy) || !warehouseId || !deliveryId || !paymentType}>{busy === "draft" ? "Створюю…" : "Створити чернетку в CRM"}</button>
-          <small className={styles.safety}>Ця дія НЕ відправляє замовлення постачальнику. CRM ще раз перевірить live-ціну, залишок і склад перед збереженням.</small>
+          <button type="button" className={styles.draftButton} onClick={() => void createDraft()} disabled={Boolean(busy) || !readyForDraft || !warehouseId || !deliveryId || !paymentType}>{busy === "draft" ? "Створюю…" : "Створити чернетку в CRM"}</button>
+          <small className={styles.safety}>CRM ще раз перевірить live-ціну, залишок і склад перед збереженням. Реальна покупка виконується лише наступною окремою підтвердженою дією.</small>
         </div>}
       </>}
 
@@ -301,8 +350,8 @@ export function ProcurementSupplierPanel({ target, locationId, onClose, onChange
         <div><span>Статус</span><b>{draft.status}</b></div>
         <div><span>Сума закупки</span><b>{money(draft.totalPurchase, draft.currency || "UAH")}</b></div>
         {draft.externalOrderId && <div><span>№ постачальника</span><b>{draft.externalOrderId}</b></div>}
-        {!submitted && <button type="button" className={styles.submitButton} onClick={() => void submitDraft()} disabled={Boolean(busy)}>{busy === "submit" ? "Відправляю…" : "Підтвердити й замовити в Юнік Трейд"}</button>}
-        {!submitted && <small>Наступна кнопка виконає реальне замовлення. Перед відправкою CRM покаже системне підтвердження.</small>}
+        {!submitted && <button type="button" className={styles.submitButton} onClick={() => void submitDraft()} disabled={Boolean(busy) || !readyForDraft}>{busy === "submit" ? "Відправляю…" : "Підтвердити й замовити в Юнік Трейд"}</button>}
+        {!submitted && <small>{readyForDraft ? "Наступна кнопка виконає реальне замовлення. Перед відправкою CRM покаже системне підтвердження." : readinessMessage}</small>}
       </div>}
 
       {message && <div className={styles.message}>{message}</div>}
