@@ -25,7 +25,7 @@ export async function POST(request: NextRequest) {
     );
     const response = NextResponse.json({
       ok: true,
-      redirectTo: `/my?vehicle=${encodeURIComponent(session.vehicleId)}`,
+      redirectTo: `/my/vehicle/${encodeURIComponent(session.vehicleId)}`,
       expiresAt: session.expiresAt.toISOString(),
     });
     response.cookies.set(CLIENT_PORTAL_SESSION_COOKIE, session.token, {
