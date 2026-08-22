@@ -35,7 +35,7 @@ CREATE TABLE "IntegrationRateLimitBucket" (
     CONSTRAINT "IntegrationRateLimitBucket_pkey" PRIMARY KEY ("id")
 );
 
-CREATE UNIQUE INDEX "IntegrationIdempotencyRecord_principalHash_operationKey_idempotencyKeyHash_key"
+CREATE UNIQUE INDEX "integration_idempotency_principal_op_key_uq"
 ON "IntegrationIdempotencyRecord"("principalHash", "operationKey", "idempotencyKeyHash");
 
 CREATE INDEX "IntegrationIdempotencyRecord_state_updatedAt_idx"
@@ -44,7 +44,7 @@ ON "IntegrationIdempotencyRecord"("state", "updatedAt");
 CREATE INDEX "IntegrationIdempotencyRecord_expiresAt_idx"
 ON "IntegrationIdempotencyRecord"("expiresAt");
 
-CREATE UNIQUE INDEX "IntegrationRateLimitBucket_principalHash_bucketKey_windowStart_windowSeconds_key"
+CREATE UNIQUE INDEX "integration_rate_limit_principal_bucket_window_uq"
 ON "IntegrationRateLimitBucket"("principalHash", "bucketKey", "windowStart", "windowSeconds");
 
 CREATE INDEX "IntegrationRateLimitBucket_expiresAt_idx"
