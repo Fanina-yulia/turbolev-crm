@@ -1,0 +1,27 @@
+enum ClientEstimateLineDecisionValue {
+  APPROVE
+  REJECT
+}
+
+model ClientEstimateLineDecision {
+  id                  String                          @id @default(cuid())
+  estimateId          String                          @db.VarChar(64)
+  workOrderId         String                          @db.VarChar(64)
+  clientId            String                          @db.VarChar(64)
+  vehicleId           String                          @db.VarChar(64)
+  sessionId           String?                         @db.VarChar(64)
+  estimateRevision    Int
+  estimateFingerprint String                          @db.VarChar(64)
+  lineId              String                          @db.VarChar(64)
+  decision            ClientEstimateLineDecisionValue
+  lineSnapshot        Json
+  note                String?                         @db.Text
+  decidedAt           DateTime                        @default(now())
+  createdAt           DateTime                        @default(now())
+  updatedAt           DateTime                        @updatedAt
+
+  @@unique([estimateId, lineId])
+  @@index([clientId, vehicleId, decidedAt])
+  @@index([workOrderId, estimateId])
+  @@index([sessionId, decidedAt])
+}
