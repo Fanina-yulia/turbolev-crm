@@ -5,6 +5,7 @@ on:
     paths:
       - "src/services/*supplier*"
       - "scripts/supplier-ingestion-smoke.ts"
+      - "scripts/unique-trade-shadow-ingestion-smoke.ts"
       - "prisma/catalog.prisma"
       - "prisma/supplier-ingestion.prisma"
       - ".github/workflows/supplier-ingestion.yml"
@@ -13,6 +14,7 @@ on:
     paths:
       - "src/services/*supplier*"
       - "scripts/supplier-ingestion-smoke.ts"
+      - "scripts/unique-trade-shadow-ingestion-smoke.ts"
       - "prisma/catalog.prisma"
       - "prisma/supplier-ingestion.prisma"
       - ".github/workflows/supplier-ingestion.yml"
@@ -44,3 +46,5 @@ jobs:
         run: npx tsc --noEmit
       - name: Supplier ingestion golden smoke
         run: npx --no-install tsx scripts/supplier-ingestion-smoke.ts
+      - name: Unique Trade shadow ingestion smoke
+        run: npx --no-install tsx scripts/unique-trade-shadow-ingestion-smoke.ts
