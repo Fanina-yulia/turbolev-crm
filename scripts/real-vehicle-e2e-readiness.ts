@@ -97,7 +97,7 @@ async function main() {
           sa."plannedStartAt" AS planned_start_at,
           sa."actualArrivalAt" AS actual_arrival_at,
           dr.id AS diagnostic_id,
-          dr.status AS diagnostic_status,
+          dr.status::text AS diagnostic_status,
           dr."confirmedAt" AS diagnostic_confirmed_at,
           wo.id AS work_order_id,
           wo.status::text AS work_order_status,
