@@ -1,0 +1,235 @@
+enum VehicleReferenceStatus {
+  ACTIVE
+  DEPRECATED
+  MERGED
+  DISABLED
+}
+
+enum VehicleResolutionStatus {
+  PENDING
+  RESOLVED
+  AMBIGUOUS
+  FAILED
+  EXPIRED
+}
+
+enum VehicleResolutionInputType {
+  VIN
+  MANUAL
+  CRM_VEHICLE
+  REGISTRY
+}
+
+enum VehicleReferenceLinkStatus {
+  PROVISIONAL
+  VERIFIED
+  STALE
+  CONFLICT
+}
+
+enum VehicleFitmentStatus {
+  ACTIVE
+  DEPRECATED
+  REVIEW_REQUIRED
+  DISABLED
+}
+
+enum VehicleFitmentCriterionOperator {
+  EQ
+  IN
+  RANGE
+  EXISTS
+  NOT_EQ
+}
+
+model VehicleReference {
+  id                   String                 @id @default(cuid())
+  fitmentKey           String                 @unique(map: "vehicle_reference_fitment_key_uq") @db.VarChar(40)
+  status               VehicleReferenceStatus @default(ACTIVE)
+  make                 String                 @db.VarChar(80)
+  makeNormalized       String                 @db.VarChar(80)
+  model                String                 @db.VarChar(100)
+  modelNormalized      String                 @db.VarChar(100)
+  generation           String?                @db.VarChar(120)
+  generationNormalized String?                @db.VarChar(120)
+  modification         String?                @db.VarChar(160)
+  productionStartYear  Int?                   @db.SmallInt
+  productionStartMonth Int?                   @db.SmallInt
+  productionEndYear    Int?                   @db.SmallInt
+  productionEndMonth   Int?                   @db.SmallInt
+  engineName           String?                @db.VarChar(160)
+  engineCode           String?                @db.VarChar(80)
+  engineCodeNormalized String?                @db.VarChar(80)
+  displacementCm3      Int?
+  cylinders            Int?                   @db.SmallInt
+  powerKw              Int?                   @db.SmallInt
+  powerHp              Int?                   @db.SmallInt
+  fuelType             String?                @db.VarChar(48)
+  bodyType             String?                @db.VarChar(80)
+  driveType            String?                @db.VarChar(48)
+  transmissionType     String?                @db.VarChar(80)
+  transmissionCode     String?                @db.VarChar(80)
+  market               String?                @db.VarChar(32)
+  canonicalFingerprint String?                @unique(map: "vehicle_reference_fingerprint_uq") @db.VarChar(64)
+  confidence           Int?
+  mergedIntoId         String?
+  createdAt            DateTime               @default(now())
+  updatedAt            DateTime               @updatedAt
+
+  mergedInto           VehicleReference?             @relation("VehicleReferenceMerge", fields: [mergedIntoId], references: [id], onDelete: SetNull, map: "vehicle_reference_merged_into_fk")
+  mergedFrom           VehicleReference[]            @relation("VehicleReferenceMerge")
+  externalIds          VehicleReferenceExternalId[]
+  fitments             VehicleFitment[]
+  resolutionCandidates VehicleResolutionCandidate[]
+  resolutions          VehicleResolution[]
+  crmVehicleLinks      VehicleCatalogLink[]
+
+  @@index([makeNormalized, modelNormalized], map: "vehicle_reference_make_model_idx")
+  @@index([makeNormalized, modelNormalized, productionStartYear, productionEndYear], map: "vehicle_reference_make_model_years_idx")
+  @@index([engineCodeNormalized], map: "vehicle_reference_engine_code_idx")
+  @@index([status, updatedAt], map: "vehicle_reference_status_updated_idx")
+  @@index([mergedIntoId], map: "vehicle_reference_merged_into_idx")
+}
+
+model VehicleReferenceExternalId {
+  id                 String           @id @default(cuid())
+  vehicleReferenceId String
+  provider           String           @db.VarChar(64)
+  externalType       String           @db.VarChar(64)
+  externalId         String           @db.VarChar(160)
+  sourceVersion      String?          @db.VarChar(80)
+  isPrimary          Boolean          @default(false)
+  firstSeenAt        DateTime         @default(now())
+  lastSeenAt         DateTime         @default(now())
+  metadata           Json?
+
+  vehicleReference VehicleReference @relation(fields: [vehicleReferenceId], references: [id], onDelete: Cascade, map: "vehicle_reference_external_ref_fk")
+
+  @@unique([provider, externalType, externalId], map: "vehicle_reference_external_identity_uq")
+  @@index([vehicleReferenceId, provider], map: "vehicle_reference_external_provider_idx")
+  @@index([provider, sourceVersion], map: "vehicle_reference_external_version_idx")
+}
+
+model VehicleCatalogLink {
+  id                 String                     @id @default(cuid())
+  vehicleId          String                     @unique(map: "vehicle_catalog_link_vehicle_uq")
+  vehicleReferenceId String
+  status             VehicleReferenceLinkStatus @default(PROVISIONAL)
+  confidence         Int
+  source             String                     @db.VarChar(64)
+  sourceVersion      String?                    @db.VarChar(80)
+  evidence           Json?
+  confirmedAt        DateTime?
+  lastVerifiedAt     DateTime?
+  createdAt          DateTime                   @default(now())
+  updatedAt          DateTime                   @updatedAt
+
+  vehicle          Vehicle          @relation(fields: [vehicleId], references: [id], onDelete: Cascade, map: "vehicle_catalog_link_vehicle_fk")
+  vehicleReference VehicleReference @relation(fields: [vehicleReferenceId], references: [id], onDelete: Restrict, map: "vehicle_catalog_link_reference_fk")
+
+  @@index([vehicleReferenceId, status], map: "vehicle_catalog_link_reference_status_idx")
+  @@index([status, lastVerifiedAt], map: "vehicle_catalog_link_status_verified_idx")
+}
+
+model VehicleFitment {
+  id                 String               @id @default(cuid())
+  productId          String
+  vehicleReferenceId String
+  genericArticleId   String?
+  status             VehicleFitmentStatus @default(ACTIVE)
+  position           String?              @db.VarChar(80)
+  validFromYear      Int?                 @db.SmallInt
+  validFromMonth     Int?                 @db.SmallInt
+  validToYear        Int?                 @db.SmallInt
+  validToMonth       Int?                 @db.SmallInt
+  source             String               @db.VarChar(64)
+  sourceVersion      String?              @db.VarChar(80)
+  sourceFitmentId    String               @db.VarChar(180)
+  confidence         Int?
+  notes              String?              @db.Text
+  rawEvidence        Json?
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
+
+  product          Product          @relation(fields: [productId], references: [id], onDelete: Restrict, map: "vehicle_fitment_product_fk")
+  vehicleReference VehicleReference @relation(fields: [vehicleReferenceId], references: [id], onDelete: Cascade, map: "vehicle_fitment_reference_fk")
+  genericArticle   GenericArticle?  @relation(fields: [genericArticleId], references: [id], onDelete: SetNull, map: "vehicle_fitment_generic_article_fk")
+  criteria         VehicleFitmentCriterion[]
+
+  @@unique([source, sourceFitmentId], map: "vehicle_fitment_source_identity_uq")
+  @@index([productId, status], map: "vehicle_fitment_product_status_idx")
+  @@index([vehicleReferenceId, status], map: "vehicle_fitment_reference_status_idx")
+  @@index([vehicleReferenceId, genericArticleId, status], map: "vehicle_fitment_reference_article_status_idx")
+  @@index([source, sourceVersion], map: "vehicle_fitment_source_version_idx")
+}
+
+model VehicleFitmentCriterion {
+  id               String                          @id @default(cuid())
+  vehicleFitmentId String
+  key              String                          @db.VarChar(80)
+  operator         VehicleFitmentCriterionOperator @default(EQ)
+  valueText        String?                         @db.VarChar(200)
+  valueNormalized  String?                         @db.VarChar(200)
+  valueNumber      Decimal?                        @db.Decimal(16, 4)
+  valueNumberTo    Decimal?                        @db.Decimal(16, 4)
+  unit             String?                         @db.VarChar(32)
+  isMandatory      Boolean                         @default(true)
+  displayText      String?                         @db.VarChar(240)
+  metadata         Json?
+
+  vehicleFitment VehicleFitment @relation(fields: [vehicleFitmentId], references: [id], onDelete: Cascade, map: "vehicle_fitment_criterion_fitment_fk")
+
+  @@index([vehicleFitmentId, isMandatory], map: "vehicle_fitment_criterion_required_idx")
+  @@index([key, valueNormalized], map: "vehicle_fitment_criterion_text_idx")
+  @@index([key, valueNumber], map: "vehicle_fitment_criterion_number_idx")
+}
+
+model VehicleResolution {
+  id                 String                     @id @default(cuid())
+  status             VehicleResolutionStatus    @default(PENDING)
+  inputType          VehicleResolutionInputType
+  vehicleReferenceId String?
+  confidence         Int                        @default(0)
+  source             String?                    @db.VarChar(64)
+  sourceVersion      String?                    @db.VarChar(80)
+  requestFingerprint String?                    @db.VarChar(96)
+  normalizedInput    Json?
+  normalizedFacts    Json?
+  missingCriteria    Json?
+  evidence           Json?
+  resolutionPolicy   String                     @db.VarChar(40)
+  correlationId      String?                    @db.VarChar(80)
+  errorCode          String?                    @db.VarChar(80)
+  errorDetail        String?                    @db.Text
+  resolvedAt         DateTime?
+  expiresAt          DateTime
+  createdAt          DateTime                   @default(now())
+  updatedAt          DateTime                   @updatedAt
+
+  vehicleReference VehicleReference?            @relation(fields: [vehicleReferenceId], references: [id], onDelete: SetNull, map: "vehicle_resolution_reference_fk")
+  candidates       VehicleResolutionCandidate[]
+
+  @@index([status, expiresAt], map: "vehicle_resolution_status_expiry_idx")
+  @@index([vehicleReferenceId, status], map: "vehicle_resolution_reference_status_idx")
+  @@index([requestFingerprint, createdAt], map: "vehicle_resolution_fingerprint_created_idx")
+  @@index([correlationId], map: "vehicle_resolution_correlation_idx")
+}
+
+model VehicleResolutionCandidate {
+  id                  String            @id @default(cuid())
+  vehicleResolutionId String
+  vehicleReferenceId  String
+  rank                Int               @db.SmallInt
+  score               Int
+  discriminators      Json?
+  evidence            Json?
+  selected            Boolean           @default(false)
+  createdAt           DateTime          @default(now())
+
+  vehicleResolution VehicleResolution @relation(fields: [vehicleResolutionId], references: [id], onDelete: Cascade, map: "vehicle_resolution_candidate_resolution_fk")
+  vehicleReference  VehicleReference  @relation(fields: [vehicleReferenceId], references: [id], onDelete: Cascade, map: "vehicle_resolution_candidate_reference_fk")
+
+  @@unique([vehicleResolutionId, vehicleReferenceId], map: "vehicle_resolution_candidate_reference_uq")
+  @@index([vehicleResolutionId, rank], map: "vehicle_resolution_candidate_rank_idx")
+  @@index([vehicleReferenceId], map: "vehicle_resolution_candidate_reference_idx")
+}
