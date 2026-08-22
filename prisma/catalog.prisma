@@ -1,0 +1,479 @@
+enum CatalogEntityStatus {
+  DRAFT
+  ACTIVE
+  INACTIVE
+  MERGED
+  DEPRECATED
+}
+
+enum ProductIdentifierType {
+  GTIN
+  EAN
+  BARCODE
+  INTERNAL_SKU
+  LEGACY_SKU
+  EXTERNAL_CATALOG_ID
+}
+
+enum IdentifierVerificationStatus {
+  UNVERIFIED
+  VERIFIED
+  REJECTED
+  CONFLICT
+}
+
+enum CrossReferenceType {
+  EQUIVALENT
+  REPLACEMENT
+  SUPERSEDES
+  SUPERSEDED_BY
+  KIT_CONTAINS
+  ALTERNATIVE
+}
+
+enum AttributeDataType {
+  TEXT
+  NUMBER
+  BOOLEAN
+  ENUM
+}
+
+enum ProductMediaType {
+  IMAGE
+  DRAWING
+  DOCUMENT
+  INSTRUCTION
+}
+
+enum ProductMediaStatus {
+  PENDING
+  ACTIVE
+  REJECTED
+  ARCHIVED
+}
+
+enum CatalogImportStatus {
+  PENDING
+  RUNNING
+  VALIDATING
+  READY_TO_PUBLISH
+  PUBLISHED
+  FAILED
+  CANCELLED
+}
+
+enum CatalogImportRecordState {
+  RECEIVED
+  NORMALIZED
+  MATCHED
+  NEW_CANDIDATE
+  CONFLICT
+  REJECTED
+  PUBLISHED
+}
+
+model Brand {
+  id             String              @id @default(cuid())
+  canonicalName  String              @db.VarChar(120)
+  normalizedName String              @unique @db.VarChar(120)
+  slug           String              @unique @db.VarChar(160)
+  status         CatalogEntityStatus @default(DRAFT)
+  countryCode    String?             @db.VarChar(2)
+  websiteUrl     String?             @db.Text
+  merchantName   String?             @db.VarChar(160)
+  mergedIntoId   String?
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+
+  mergedInto   Brand?                   @relation("BrandMerge", fields: [mergedIntoId], references: [id], onDelete: SetNull)
+  mergedFrom   Brand[]                  @relation("BrandMerge")
+  aliases      BrandAlias[]
+  externalRefs BrandExternalReference[]
+  products     Product[]
+
+  @@index([status, canonicalName])
+  @@index([mergedIntoId])
+}
+
+model BrandAlias {
+  id              String   @id @default(cuid())
+  brandId         String
+  aliasRaw        String   @db.VarChar(160)
+  aliasNormalized String   @unique @db.VarChar(160)
+  source          String   @db.VarChar(64)
+  confidence      Int?
+  isApproved      Boolean  @default(false)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  brand Brand @relation(fields: [brandId], references: [id], onDelete: Cascade)
+
+  @@index([brandId, isApproved])
+}
+
+model BrandExternalReference {
+  id            String   @id @default(cuid())
+  brandId       String
+  provider      String   @db.VarChar(64)
+  externalType  String   @db.VarChar(64)
+  externalId    String   @db.VarChar(180)
+  sourceVersion String?  @db.VarChar(160)
+  firstSeenAt   DateTime @default(now())
+  lastSeenAt    DateTime @default(now())
+  metadata      Json?
+
+  brand Brand @relation(fields: [brandId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, externalType, externalId])
+  @@index([brandId])
+}
+
+model GenericArticle {
+  id           String              @id @default(cuid())
+  code         String              @unique @db.VarChar(80)
+  name         String              @db.VarChar(180)
+  slug         String              @unique @db.VarChar(200)
+  status       CatalogEntityStatus @default(DRAFT)
+  mergedIntoId String?
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+
+  mergedInto   GenericArticle?                    @relation("GenericArticleMerge", fields: [mergedIntoId], references: [id], onDelete: SetNull)
+  mergedFrom   GenericArticle[]                   @relation("GenericArticleMerge")
+  externalRefs GenericArticleExternalReference[]
+  categories   CategoryGenericArticle[]
+  products     Product[]
+
+  @@index([status, name])
+  @@index([mergedIntoId])
+}
+
+model GenericArticleExternalReference {
+  id               String   @id @default(cuid())
+  genericArticleId String
+  provider         String   @db.VarChar(64)
+  externalType     String   @db.VarChar(64)
+  externalId       String   @db.VarChar(180)
+  sourceVersion    String?  @db.VarChar(160)
+  firstSeenAt      DateTime @default(now())
+  lastSeenAt       DateTime @default(now())
+  metadata         Json?
+
+  genericArticle GenericArticle @relation(fields: [genericArticleId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, externalType, externalId])
+  @@index([genericArticleId])
+}
+
+model Category {
+  id        String              @id @default(cuid())
+  parentId  String?
+  name      String              @db.VarChar(180)
+  slug      String              @unique @db.VarChar(220)
+  status    CatalogEntityStatus @default(DRAFT)
+  sortOrder Int                 @default(100)
+  createdAt DateTime            @default(now())
+  updatedAt DateTime            @updatedAt
+
+  parent   Category?                @relation("CategoryTree", fields: [parentId], references: [id], onDelete: Restrict)
+  children Category[]               @relation("CategoryTree")
+  articles CategoryGenericArticle[]
+
+  @@index([parentId, status, sortOrder])
+}
+
+model CategoryGenericArticle {
+  id               String @id @default(cuid())
+  categoryId       String
+  genericArticleId String
+  sortOrder        Int    @default(100)
+
+  category       Category       @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  genericArticle GenericArticle @relation(fields: [genericArticleId], references: [id], onDelete: Cascade)
+
+  @@unique([categoryId, genericArticleId])
+  @@index([genericArticleId, sortOrder])
+}
+
+model ProductGroup {
+  id        String              @id @default(cuid())
+  name      String              @db.VarChar(180)
+  slug      String              @unique @db.VarChar(220)
+  status    CatalogEntityStatus @default(DRAFT)
+  metadata  Json?
+  createdAt DateTime            @default(now())
+  updatedAt DateTime            @updatedAt
+
+  members ProductGroupMember[]
+
+  @@index([status, name])
+}
+
+model ProductGroupMember {
+  id        String @id @default(cuid())
+  groupId   String
+  productId String
+  role      String? @db.VarChar(64)
+  sortOrder Int     @default(100)
+
+  group   ProductGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  product Product      @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([groupId, productId])
+  @@index([productId])
+}
+
+model Product {
+  id                  String              @id @default(cuid())
+  brandId             String
+  genericArticleId    String?
+  mpnRaw              String              @db.VarChar(160)
+  mpnNormalized       String              @db.VarChar(160)
+  mpnSearchNormalized String              @db.VarChar(160)
+  title               String              @db.VarChar(320)
+  shortTitle          String?             @db.VarChar(180)
+  slug                String?             @unique @db.VarChar(320)
+  description         String?             @db.Text
+  status              CatalogEntityStatus @default(DRAFT)
+  countryOfOrigin     String?             @db.VarChar(2)
+  weightGrams         Int?
+  mergedIntoId        String?
+  createdAt           DateTime            @default(now())
+  updatedAt           DateTime            @updatedAt
+
+  brand                           Brand                             @relation(fields: [brandId], references: [id], onDelete: Restrict)
+  genericArticle                  GenericArticle?                   @relation(fields: [genericArticleId], references: [id], onDelete: SetNull)
+  mergedInto                      Product?                          @relation("ProductMerge", fields: [mergedIntoId], references: [id], onDelete: SetNull)
+  mergedFrom                      Product[]                         @relation("ProductMerge")
+  identifiers                     ProductIdentifier[]
+  externalRefs                    ProductExternalReference[]
+  oeReferences                    OEReference[]
+  crossFrom                       ProductCrossReference[]           @relation("ProductCrossFrom")
+  crossTo                         ProductCrossReference[]           @relation("ProductCrossTo")
+  unresolvedCrossReferences       ProductExternalCrossReference[]
+  attributes                      ProductAttributeValue[]
+  media                           ProductMedia[]
+  groupMemberships                ProductGroupMember[]
+  catalogImportRecords            CatalogImportRecord[]
+  supplierImportRecords           SupplierImportRecord[]
+  supplierMappings                SupplierIdentityMapping[]
+  supplierResolvedReconciliations SupplierReconciliationTask[]     @relation("SupplierResolvedProduct")
+  supplierReconciliationCandidates SupplierReconciliationCandidate[]
+  supplierOffers                  SupplierOffer[]
+
+  @@unique([brandId, mpnNormalized])
+  @@index([mpnSearchNormalized])
+  @@index([genericArticleId, status])
+  @@index([brandId, status])
+  @@index([status, updatedAt])
+  @@index([mergedIntoId])
+}
+
+model ProductIdentifier {
+  id                 String                       @id @default(cuid())
+  productId          String
+  type               ProductIdentifierType
+  valueRaw           String                       @db.VarChar(200)
+  valueNormalized    String                       @db.VarChar(200)
+  verificationStatus IdentifierVerificationStatus @default(UNVERIFIED)
+  source             String                       @db.VarChar(64)
+  sourceVersion      String?                      @db.VarChar(160)
+  isPrimary          Boolean                      @default(false)
+  firstSeenAt        DateTime                     @default(now())
+  lastSeenAt         DateTime                     @default(now())
+  metadata           Json?
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([productId, type, valueNormalized, source])
+  @@index([type, valueNormalized, verificationStatus])
+  @@index([productId, isPrimary])
+}
+
+model ProductExternalReference {
+  id            String   @id @default(cuid())
+  productId     String
+  provider      String   @db.VarChar(64)
+  externalType  String   @db.VarChar(64)
+  externalId    String   @db.VarChar(200)
+  sourceVersion String?  @db.VarChar(160)
+  firstSeenAt   DateTime @default(now())
+  lastSeenAt    DateTime @default(now())
+  metadata      Json?
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, externalType, externalId])
+  @@index([productId])
+}
+
+model OEReference {
+  id                 String   @id @default(cuid())
+  productId          String
+  oeBrand            String   @db.VarChar(120)
+  oeBrandNormalized  String   @db.VarChar(120)
+  oeNumberRaw        String   @db.VarChar(160)
+  oeNumberNormalized String   @db.VarChar(160)
+  relationType       String?  @db.VarChar(40)
+  source             String   @db.VarChar(64)
+  sourceVersion      String?  @db.VarChar(160)
+  confidence         Int?
+  createdAt          DateTime @default(now())
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([productId, oeBrandNormalized, oeNumberNormalized, source])
+  @@index([oeBrandNormalized, oeNumberNormalized])
+  @@index([oeNumberNormalized])
+}
+
+model ProductCrossReference {
+  id            String             @id @default(cuid())
+  fromProductId String
+  toProductId   String
+  type          CrossReferenceType
+  source        String             @db.VarChar(64)
+  sourceVersion String?            @db.VarChar(160)
+  confidence    Int?
+  notes         String?            @db.Text
+  createdAt     DateTime           @default(now())
+
+  fromProduct Product @relation("ProductCrossFrom", fields: [fromProductId], references: [id], onDelete: Cascade)
+  toProduct   Product @relation("ProductCrossTo", fields: [toProductId], references: [id], onDelete: Cascade)
+
+  @@unique([fromProductId, toProductId, type, source])
+  @@index([toProductId, type])
+}
+
+model ProductExternalCrossReference {
+  id                       String   @id @default(cuid())
+  productId                String
+  externalBrandRaw         String?  @db.VarChar(160)
+  externalBrandNormalized  String?  @db.VarChar(160)
+  externalNumberRaw        String   @db.VarChar(180)
+  externalNumberNormalized String   @db.VarChar(180)
+  relationType             String?  @db.VarChar(64)
+  source                   String   @db.VarChar(64)
+  sourceVersion            String?  @db.VarChar(160)
+  confidence               Int?
+  createdAt                DateTime @default(now())
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([productId, externalBrandNormalized, externalNumberNormalized, source])
+  @@index([externalBrandNormalized, externalNumberNormalized])
+}
+
+model ProductAttributeDefinition {
+  id                String              @id @default(cuid())
+  code              String              @unique @db.VarChar(100)
+  name              String              @db.VarChar(180)
+  dataType          AttributeDataType
+  canonicalUnit     String?             @db.VarChar(40)
+  isFacet           Boolean             @default(false)
+  isFitmentCritical Boolean             @default(false)
+  status            CatalogEntityStatus @default(DRAFT)
+  sortOrder         Int                 @default(100)
+  metadata          Json?
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+
+  values ProductAttributeValue[]
+
+  @@index([status, isFacet, sortOrder])
+}
+
+model ProductAttributeValue {
+  id                    String   @id @default(cuid())
+  productId             String
+  attributeDefinitionId String
+  valueText             String?  @db.Text
+  valueNormalized       String?  @db.Text
+  valueNumber           Decimal? @db.Decimal(16, 4)
+  valueBoolean          Boolean?
+  unit                  String?  @db.VarChar(40)
+  source                String   @db.VarChar(64)
+  sourceVersion         String?  @db.VarChar(160)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  product             Product                    @relation(fields: [productId], references: [id], onDelete: Cascade)
+  attributeDefinition ProductAttributeDefinition @relation(fields: [attributeDefinitionId], references: [id], onDelete: Restrict)
+
+  @@unique([productId, attributeDefinitionId, source])
+  @@index([attributeDefinitionId, valueNormalized])
+  @@index([productId])
+}
+
+model ProductMedia {
+  id         String             @id @default(cuid())
+  productId  String
+  type       ProductMediaType
+  status     ProductMediaStatus @default(PENDING)
+  source     String             @db.VarChar(64)
+  sourceUrl  String?            @db.Text
+  storageKey String?            @db.Text
+  rights     String?            @db.Text
+  provenance Json?
+  contentHash String?           @db.VarChar(128)
+  width      Int?
+  height     Int?
+  sortOrder  Int                @default(100)
+  altText    String?            @db.VarChar(320)
+  createdAt  DateTime           @default(now())
+  updatedAt  DateTime           @updatedAt
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([productId, status, sortOrder])
+  @@index([contentHash])
+}
+
+model CatalogImportBatch {
+  id              String              @id @default(cuid())
+  provider        String              @db.VarChar(64)
+  scope           String              @db.VarChar(100)
+  sourceVersion   String?             @db.VarChar(160)
+  mode            String              @db.VarChar(40)
+  adapterVersion  String              @db.VarChar(80)
+  schemaVersion   String              @db.VarChar(80)
+  checksum        String?             @db.VarChar(128)
+  status          CatalogImportStatus @default(PENDING)
+  startedAt       DateTime            @default(now())
+  finishedAt      DateTime?
+  recordsReceived Int                 @default(0)
+  recordsValid    Int                 @default(0)
+  recordsPublished Int                @default(0)
+  recordsConflict Int                 @default(0)
+  errorSummary    String?             @db.Text
+  metadata        Json?
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  records CatalogImportRecord[]
+
+  @@index([provider, scope, status, startedAt])
+  @@index([sourceVersion])
+}
+
+model CatalogImportRecord {
+  id                String                   @id @default(cuid())
+  batchId           String
+  providerRecordKey String                   @db.VarChar(240)
+  rawChecksum       String                   @db.VarChar(128)
+  rawPayload        Json
+  normalizedPayload Json?
+  state             CatalogImportRecordState @default(RECEIVED)
+  matchedProductId  String?
+  identityEvidence  Json?
+  errorCodes        Json?
+  createdAt         DateTime                 @default(now())
+  updatedAt         DateTime                 @updatedAt
+
+  batch          CatalogImportBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  matchedProduct Product?           @relation(fields: [matchedProductId], references: [id], onDelete: SetNull)
+
+  @@unique([batchId, providerRecordKey])
+  @@index([batchId, state])
+  @@index([matchedProductId, state])
+}

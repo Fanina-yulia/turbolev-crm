@@ -36,9 +36,15 @@ model Supplier {
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt
 
-  credential SupplierCredential?
-  quotes     SupplierProductQuote[]
-  orders     SupplierOrder[]
+  credential        SupplierCredential?
+  quotes            SupplierProductQuote[]
+  orders            SupplierOrder[]
+  importBatches     SupplierImportBatch[]
+  identityMappings  SupplierIdentityMapping[]
+  reconciliation    SupplierReconciliationTask[]
+  syncCursors       SupplierSyncCursor[]
+  freshnessPolicies SupplierFreshnessPolicy[]
+  offers            SupplierOffer[]
 
   @@index([isActive, priority])
 }
