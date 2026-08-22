@@ -4,7 +4,7 @@ on:
   pull_request:
     paths:
       - "src/services/*supplier*"
-      - "app/api/internal/qa/suppliers/**"
+      - "app/api/parts/qa/**"
       - "scripts/supplier-ingestion-smoke.ts"
       - "scripts/unique-trade-shadow-ingestion-smoke.ts"
       - "scripts/unique-trade-shadow-preview-qa-smoke.ts"
@@ -15,7 +15,7 @@ on:
     branches: [main]
     paths:
       - "src/services/*supplier*"
-      - "app/api/internal/qa/suppliers/**"
+      - "app/api/parts/qa/**"
       - "scripts/supplier-ingestion-smoke.ts"
       - "scripts/unique-trade-shadow-ingestion-smoke.ts"
       - "scripts/unique-trade-shadow-preview-qa-smoke.ts"
