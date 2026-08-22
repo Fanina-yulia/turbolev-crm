@@ -12,13 +12,13 @@ import {
   type SupplierIngestionRecordInput,
 } from "@/src/services/supplier-ingestion-persistence.service";
 import { getPrisma } from "@/src/lib/prisma";
-import { ensureSupplierRecord } from "@/src/services/suppliers/order.service";
 import { uniqueTradeAdapter } from "@/src/services/suppliers/unique-trade.adapter";
 import type { SupplierOffer, SupplierStock } from "@/src/services/suppliers/types";
 
 const INTEGRATION_SCOPE = "UNIQUE_TRADE_SEARCH_SHADOW_V1";
 const ADAPTER_VERSION = "unique-trade-search-shadow/1";
 const SCHEMA_VERSION = "supplier-ingestion/v1";
+const DEFAULT_MARKUP_PERCENT = 23;
 const SHADOW_ENV_NAME = "UNIQUE_TRADE_SHADOW_INGESTION_ENABLED";
 const SHADOW_ENV_VALUE = "SHADOW_UNIQUE_TRADE_V1";
 const SHADOW_CONFIRMATION = "ALLOW_UNIQUE_TRADE_SHADOW_INGESTION";
@@ -121,12 +121,17 @@ function quantityContract(stock: SupplierStock | null, available: boolean) {
 }
 
 function stableRecordKey(offer: SupplierOffer, stock: SupplierStock | null) {
-  const identity = {
-    externalProductId: offer.externalProductId?.trim() || null,
-    brand: normalizeBrand(offer.brand),
-    article: normalizePartNumber(offer.article),
-    warehouseKey: warehouseKey(stock),
-  };
+  const externalProductId = offer.externalProductId?.trim() || null;
+  const identity = externalProductId
+    ? {
+        externalProductId,
+        warehouseKey: warehouseKey(stock),
+      }
+    : {
+        brand: normalizeBrand(offer.brand),
+        article: normalizePartNumber(offer.article),
+        warehouseKey: warehouseKey(stock),
+      };
   return `UTR:${semanticFingerprint(identity).slice(0, 40)}`;
 }
 
@@ -349,6 +354,28 @@ export function assertUniqueTradeShadowWritesEnabled(
   }
 }
 
+async function ensureUniqueTradeSupplierRecord() {
+  const prisma = getPrisma();
+  return prisma.supplier.upsert({
+    where: { code: "UNIQUE_TRADE" },
+    update: {
+      name: uniqueTradeAdapter.name,
+      websiteUrl: uniqueTradeAdapter.website,
+      apiBaseUrl: uniqueTradeAdapter.apiBaseUrl,
+      isActive: true,
+    },
+    create: {
+      code: "UNIQUE_TRADE",
+      name: uniqueTradeAdapter.name,
+      websiteUrl: uniqueTradeAdapter.website,
+      apiBaseUrl: uniqueTradeAdapter.apiBaseUrl,
+      isActive: true,
+      defaultMarkupPercent: DEFAULT_MARKUP_PERCENT,
+      defaultCurrency: "UAH",
+    },
+  });
+}
+
 async function loadUniqueTradeShadowSearch(query: string, limit = 30) {
   const trimmed = query.trim();
   if (!trimmed) throw new Error("Unique Trade shadow search query is required.");
@@ -416,7 +443,7 @@ export async function runUniqueTradeShadowSearch(
     return { ...preview, persisted: false, persistenceResult: null };
   }
 
-  const supplier = await ensureSupplierRecord("unique-trade");
+  const supplier = await ensureUniqueTradeSupplierRecord();
   const batch = await buildUniqueTradeShadowBatch({
     supplierId: supplier.id,
     query: snapshot.trimmed,
