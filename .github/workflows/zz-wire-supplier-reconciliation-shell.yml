@@ -1,0 +1,45 @@
+name: One-shot wire supplier reconciliation shell
+
+on:
+  push:
+    branches: [feat/supplier-reconciliation-workspace-v1]
+    paths:
+      - ".github/workflows/zz-wire-supplier-reconciliation-shell.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  wire-shell:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/supplier-reconciliation-workspace-v1
+          fetch-depth: 0
+      - name: Apply exact shell wiring
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('app/crm-shell.tsx')
+          text = path.read_text()
+          old_import = 'const ProcurementQueue = dynamic(() => import("./procurement-queue").then((mod) => mod.ProcurementQueue), { loading: SectionLoading });'
+          new_import = 'const PartsProcurementWorkspace = dynamic(() => import("./parts-procurement-workspace").then((mod) => mod.PartsProcurementWorkspace), { loading: SectionLoading });'
+          old_render = 'active==="Закупівлі та склад"?<ProcurementQueue/>'
+          new_render = 'active==="Закупівлі та склад"?<PartsProcurementWorkspace/>'
+          if text.count(old_import) != 1:
+              raise SystemExit(f'expected exactly one procurement import, found {text.count(old_import)}')
+          if text.count(old_render) != 1:
+              raise SystemExit(f'expected exactly one procurement render, found {text.count(old_render)}')
+          text = text.replace(old_import, new_import).replace(old_render, new_render)
+          path.write_text(text)
+          PY
+          grep -F 'PartsProcurementWorkspace' app/crm-shell.tsx
+      - name: Remove one-shot workflow and commit
+        run: |
+          rm .github/workflows/zz-wire-supplier-reconciliation-shell.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/crm-shell.tsx .github/workflows/zz-wire-supplier-reconciliation-shell.yml
+          git commit -m "feat(suppliers): surface reconciliation in procurement workspace"
+          git push origin HEAD:feat/supplier-reconciliation-workspace-v1
