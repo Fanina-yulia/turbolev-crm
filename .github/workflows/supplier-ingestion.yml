@@ -1,0 +1,46 @@
+name: Supplier Ingestion Policy
+
+on:
+  pull_request:
+    paths:
+      - "src/domain/suppliers/**"
+      - "scripts/supplier-ingestion-smoke.ts"
+      - "prisma/catalog.prisma"
+      - "prisma/supplier-ingestion.prisma"
+      - ".github/workflows/supplier-ingestion.yml"
+  push:
+    branches: [main]
+    paths:
+      - "src/domain/suppliers/**"
+      - "scripts/supplier-ingestion-smoke.ts"
+      - "prisma/catalog.prisma"
+      - "prisma/supplier-ingestion.prisma"
+      - ".github/workflows/supplier-ingestion.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  supplier-ingestion-policy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/turbolev_ci
+      DATABASE_URL_UNPOOLED: postgresql://postgres:postgres@localhost:5432/turbolev_ci
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+      - name: Validate Prisma schema
+        run: npx prisma validate
+      - name: TypeScript contract check
+        run: npx tsc --noEmit
+      - name: Supplier ingestion golden smoke
+        run: npx --no-install tsx scripts/supplier-ingestion-smoke.ts
