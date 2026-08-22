@@ -356,7 +356,7 @@ async function loadUniqueTradeShadowSearch(query: string, limit = 30) {
   const providerStartedAt = new Date();
   const offers = await uniqueTradeAdapter.search(trimmed, safeLimit);
   const providerFinishedAt = new Date();
-  return { trimmed, offers, providerStartedAt, providerFinishedAt };
+  return { query: trimmed, trimmed, offers, providerStartedAt, providerFinishedAt };
 }
 
 async function previewFromSnapshot(input: {
