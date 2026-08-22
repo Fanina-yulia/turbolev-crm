@@ -54,7 +54,6 @@ async function expectServiceError(action: () => Promise<unknown>, status: number
 }
 
 async function authSmoke() {
-  process.env.NODE_ENV = "test";
   testOnlyResetOidcCache();
   const signer = await createSigner();
   const issuer = "https://oidc.example.test/turbo-lev";
