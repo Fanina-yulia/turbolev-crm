@@ -10,7 +10,7 @@ import {
   enforceIntegrationRateLimit,
   requiredIdempotencyKey,
   stableRequestFingerprint,
-} from "@/src/services/integration-api-request-guard.service";
+} from "@/src/security/integration-api-request-guard";
 import {
   ServiceAccessError,
   testOnlyResetOidcCache,
