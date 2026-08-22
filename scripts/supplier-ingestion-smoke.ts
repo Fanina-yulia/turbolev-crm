@@ -14,8 +14,8 @@ import {
   normalizeSupplierRecord,
   semanticFingerprint,
   validateNormalizedRecord,
-} from "../src/domain/suppliers/ingestion";
-import type { NormalizedSupplierRecord, SupplierFreshnessPolicyContract } from "../src/domain/suppliers/contracts";
+} from "../src/services/supplier-ingestion-policy";
+import type { NormalizedSupplierRecord, SupplierFreshnessPolicyContract } from "../src/services/supplier-ingestion-contracts";
 
 let assertions = 0;
 function check(name: string, fn: () => void) {
