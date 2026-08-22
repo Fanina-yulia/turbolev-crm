@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { navigateCrm } from "./crm-route";
 import styles from "./analytics-dashboard.module.css";
 
@@ -58,7 +58,7 @@ function date(value: string | null) {
   if (!value) return "—";
   return new Intl.DateTimeFormat("uk-UA", { timeZone: "Europe/Kyiv", day: "2-digit", month: "2-digit", year: "numeric" }).format(new Date(value));
 }
-function drillButton(onClick: () => void, children: React.ReactNode) {
+function drillButton(onClick: () => void, children: ReactNode) {
   return <button type="button" onClick={onClick} style={{ border: 0, background: "transparent", padding: 0, color: "inherit", font: "inherit", fontSize: 12, fontWeight: 750, cursor: "pointer", textAlign: "left" }}>{children}</button>;
 }
 
