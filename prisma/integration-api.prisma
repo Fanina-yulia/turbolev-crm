@@ -18,7 +18,7 @@ model IntegrationIdempotencyRecord {
   createdAt          DateTime                    @default(now())
   updatedAt          DateTime                    @updatedAt
 
-  @@unique([principalHash, operationKey, idempotencyKeyHash])
+  @@unique([principalHash, operationKey, idempotencyKeyHash], map: "integration_idempotency_principal_op_key_uq")
   @@index([state, updatedAt])
   @@index([expiresAt])
 }
@@ -34,6 +34,6 @@ model IntegrationRateLimitBucket {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  @@unique([principalHash, bucketKey, windowStart, windowSeconds])
+  @@unique([principalHash, bucketKey, windowStart, windowSeconds], map: "integration_rate_limit_principal_bucket_window_uq")
   @@index([expiresAt])
 }
