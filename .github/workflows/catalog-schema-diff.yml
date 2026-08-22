@@ -1,0 +1,47 @@
+name: Catalog Supplier Schema Diff
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "prisma/**"
+      - ".github/workflows/catalog-schema-diff.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  migration-diff:
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: turbolev_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d turbolev_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/turbolev_ci
+      DATABASE_URL_UNPOOLED: postgresql://postgres:postgres@localhost:5432/turbolev_ci
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm install --no-audit --no-fund
+      - name: Apply existing migration history
+        run: bash scripts/ci-migrate-with-external-fixtures.sh
+      - name: Normalize SQL-managed objects
+        run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f scripts/ci-normalize-prisma-drift.sql
+      - name: Print exact Prisma migration diff
+        run: npx prisma migrate diff --from-config-datasource --to-schema prisma --script
