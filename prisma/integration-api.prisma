@@ -1,0 +1,39 @@
+enum IntegrationIdempotencyState {
+  IN_PROGRESS
+  COMPLETED
+}
+
+model IntegrationIdempotencyRecord {
+  id                 String                      @id @default(cuid())
+  principalHash      String                      @db.VarChar(64)
+  operationKey       String                      @db.VarChar(160)
+  idempotencyKeyHash String                      @db.VarChar(64)
+  requestFingerprint String                      @db.VarChar(64)
+  state              IntegrationIdempotencyState @default(IN_PROGRESS)
+  responseStatus     Int?
+  responseBody       Json?
+  lockedAt           DateTime                    @default(now())
+  completedAt        DateTime?
+  expiresAt          DateTime
+  createdAt          DateTime                    @default(now())
+  updatedAt          DateTime                    @updatedAt
+
+  @@unique([principalHash, operationKey, idempotencyKeyHash])
+  @@index([state, updatedAt])
+  @@index([expiresAt])
+}
+
+model IntegrationRateLimitBucket {
+  id            String   @id @default(cuid())
+  principalHash String   @db.VarChar(64)
+  bucketKey     String   @db.VarChar(160)
+  windowStart   DateTime
+  windowSeconds Int
+  count         Int      @default(0)
+  expiresAt     DateTime
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([principalHash, bucketKey, windowStart, windowSeconds])
+  @@index([expiresAt])
+}
