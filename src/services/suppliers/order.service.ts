@@ -120,12 +120,27 @@ export async function createSupplierOrderDraft(input: CreateDraftInput) {
     include: { items: true },
   });
   if (!partsRequest) throw new Error("Заявку на запчастини не знайдено.");
+  if (partsRequest.status !== "ORDER_REQUIRED") throw new Error("Чернетку supplier order можна створити лише після переходу заявки у «До замовлення».");
+  if (partsRequest.paymentRequired && !partsRequest.paymentConfirmedAt) throw new Error("Перед створенням supplier order потрібно підтвердити передоплату клієнта.");
+
   const itemMap = new Map(partsRequest.items.map((item) => [item.id, item]));
   const seen = new Set<string>();
+  const selectedRows = [] as typeof partsRequest.items;
   for (const item of input.items) {
     if (seen.has(item.partsRequestItemId)) throw new Error("Одна позиція не може бути додана до замовлення двічі.");
     seen.add(item.partsRequestItemId);
-    if (!itemMap.has(item.partsRequestItemId)) throw new Error("Позиція не належить до цієї заявки на запчастини.");
+    const row = itemMap.get(item.partsRequestItemId);
+    if (!row) throw new Error("Позиція не належить до цієї заявки на запчастини.");
+    selectedRows.push(row);
+  }
+  const linkedOrderIds = [...new Set(selectedRows.flatMap((row) => row.supplierOrderId ? [row.supplierOrderId] : []))];
+  if (linkedOrderIds.length) {
+    const activeOrders = await prisma.supplierOrder.findMany({
+      where: { id: { in: linkedOrderIds }, status: { notIn: ["CANCELLED", "ERROR"] } },
+      select: { id: true },
+      take: 1,
+    });
+    if (activeOrders.length) throw new Error("Для цієї позиції вже існує активна чернетка або замовлення постачальнику.");
   }
 
   const supplier = await ensureSupplierRecord(input.supplierId);
@@ -261,6 +276,16 @@ export async function submitSupplierOrder(input: { orderId: string; confirmation
   if (!order) throw new Error("Замовлення постачальнику не знайдено.");
   if (order.status !== "DRAFT") throw new Error("Відправити можна лише draft замовлення.");
   if (order.supplier.code !== "UNIQUE_TRADE") throw new Error("Live submit зараз увімкнений лише для Юнік Трейд.");
+  if (!order.workOrderId) throw new Error("Supplier order не прив'язаний до замовлення-наряду.");
+
+  const request = await prisma.partsRequest.findFirst({
+    where: { workOrderId: order.workOrderId, items: { some: { supplierOrderId: order.id } } },
+    select: { id: true, status: true, paymentRequired: true, paymentConfirmedAt: true },
+  });
+  if (!request) throw new Error("Заявку на запчастини для supplier order не знайдено.");
+  if (request.status !== "ORDER_REQUIRED") throw new Error("Реальне замовлення постачальнику дозволене лише зі статусу «До замовлення».");
+  if (request.paymentRequired && !request.paymentConfirmedAt) throw new Error("Перед реальним замовленням потрібно підтвердити передоплату клієнта.");
+
   const adapter = getSupplierAdapter("unique-trade");
   if (!adapter?.submitOrder) throw new Error("Юнік Трейд order API недоступний.");
   const checkout = checkoutFromOrder(order);
@@ -277,10 +302,7 @@ export async function submitSupplierOrder(input: { orderId: string; confirmation
       confirmedAt: new Date(),
     },
   });
-  if (order.workOrderId) {
-    const request = await prisma.partsRequest.findFirst({ where: { workOrderId: order.workOrderId, items: { some: { supplierOrderId: order.id } } }, select: { id: true, status: true } });
-    if (request && request.status !== "ORDERED") await transitionPartsRequest(request.id, "ORDERED", input.actorName || "CRM / Закупівлі");
-  }
+  await transitionPartsRequest(request.id, "ORDERED", input.actorName || "CRM / Закупівлі");
   await writeAuditEvent({ entityType: "SupplierOrder", entityId: order.id, action: "SUBMIT", actorId: input.actorId, actorName: input.actorName, after: toPrismaJson({ externalOrderId: provider.externalOrderId, providerStatus: provider.providerStatus, totalPurchase: provider.totalPurchase }) });
   return updated;
 }
