@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 
+import { decideIncomingOrder } from "../src/services/supplier-ingestion-policy";
 import {
   UNIQUE_TRADE_SHADOW_INGESTION_ACTIVATION,
   UniqueTradeShadowWriteDisabledError,
@@ -35,6 +36,8 @@ assert.equal(exact[0].normalized.warehouseKey, "UTR:10");
 assert.equal(exact[0].normalized.brandNormalized, "BOSCH");
 assert.equal(exact[0].normalized.mpnCandidateNorm, "0986494596");
 assert.equal(exact[0].normalized.currency, "UAH");
+assert.equal(exact[0].normalized.sourceUpdatedAt, null);
+assert.equal(exact[0].normalized.sourceTimeTrusted, false);
 
 const band = buildUniqueTradeShadowRecords([
   offer({ stock: [{ warehouse: "Основний", warehouseId: "11", quantity: "10+" }] }),
@@ -102,10 +105,14 @@ assert.equal(rawPayload.includes("password"), false);
 assert.equal(rawPayload.includes("authorization"), false);
 
 const query = " Bosch 0 986 494 596 ";
+const providerStartedAt = new Date("2026-08-22T16:00:00.000Z");
+const providerFinishedAt = new Date("2026-08-22T16:00:01.000Z");
 const batch = await buildUniqueTradeShadowBatch({
   supplierId: "sup_test",
   query,
   offers: [offer()],
+  providerStartedAt,
+  providerFinishedAt,
   resolveIdentity: async (record) => {
     assert.equal(record.brandNormalized, "BOSCH");
     assert.equal(record.mpnCandidateNorm, "0986494596");
@@ -119,12 +126,33 @@ assert.equal(batch.records.length, 1);
 assert.deepEqual(batch.records[0].identityCandidates, [
   { productId: "prod_001", brandMpnExact: true },
 ]);
-assert.match(batch.sourceVersion ?? "", /^search:[a-f0-9]{24}$/);
-assert.equal((batch.sourceVersion ?? "").includes("BOSCH"), false);
+assert.equal(batch.sourceVersion, null);
+assert.equal(batch.providerStartedAt?.toISOString(), providerStartedAt.toISOString());
+assert.equal(batch.providerFinishedAt?.toISOString(), providerFinishedAt.toISOString());
+assert.match(String(batch.metadata?.queryHash ?? ""), /^[a-f0-9]{24}$/);
 assert.equal(JSON.stringify(batch.metadata).includes(query.trim()), false);
 assert.equal(batch.metadata?.rawQueryStored, false);
+assert.equal(batch.metadata?.providerOrderingEvidence, false);
+assert.equal(batch.metadata?.changedCommercialPayloadPolicy, "RECONCILE_FAIL_CLOSED");
 assert.equal(batch.maxIdentityProblemRatio, 1);
 assert.equal(batch.maxRejectedRatio, 1);
+
+// Unique Trade search does not expose an authoritative provider updated_at/version today.
+// A changed payload without ordering evidence must remain fail-closed rather than silently
+// replacing the previously persisted commercial state.
+const unorderedChangedPayload = decideIncomingOrder({
+  currentSourceUpdatedAt: null,
+  incomingSourceUpdatedAt: null,
+  currentSourceTimeTrusted: false,
+  incomingSourceTimeTrusted: false,
+  currentSourceVersion: null,
+  incomingSourceVersion: null,
+  currentSemanticHash: "old-semantic-hash",
+  incomingSemanticHash: "new-semantic-hash",
+});
+assert.equal(unorderedChangedPayload.apply, false);
+assert.equal(unorderedChangedPayload.idempotent, false);
+assert.equal(unorderedChangedPayload.reason, "INSUFFICIENT_ORDERING_EVIDENCE");
 
 const shadowEnv = UNIQUE_TRADE_SHADOW_INGESTION_ACTIVATION.envName;
 const shadowValue = UNIQUE_TRADE_SHADOW_INGESTION_ACTIVATION.requiredEnvValue;
