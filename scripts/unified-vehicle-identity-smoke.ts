@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
-import { parseVehicleIdentityInput } from "@/src/domain/vehicle-identity";
-import { resolveUnifiedVehicleIdentity } from "@/src/services/unified-vehicle-identity.service";
+import { parseVehicleIdentityInput } from "@/src/lib/vehicle-identity";
+import { resolveUnifiedVehicleIdentity } from "@/src/services/vehicle-lookup-unified.service";
 
 const vin = "WVWZZZ1JZXW000001";
 
