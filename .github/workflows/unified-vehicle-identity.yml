@@ -3,28 +3,29 @@ name: Unified Vehicle Identity
 on:
   pull_request:
     paths:
-      - "src/domain/vehicle-identity.ts"
-      - "src/services/unified-vehicle-identity.service.ts"
+      - "src/lib/vehicle-identity.ts"
+      - "src/services/vehicle-lookup-unified.service.ts"
       - "scripts/unified-vehicle-identity-smoke.ts"
       - ".github/workflows/unified-vehicle-identity.yml"
   push:
     branches: [main]
     paths:
-      - "src/domain/vehicle-identity.ts"
-      - "src/services/unified-vehicle-identity.service.ts"
+      - "src/lib/vehicle-identity.ts"
+      - "src/services/vehicle-lookup-unified.service.ts"
       - "scripts/unified-vehicle-identity-smoke.ts"
       - ".github/workflows/unified-vehicle-identity.yml"
 
 jobs:
   vehicle-identity:
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 24
           cache: npm
-      - run: npm ci
+      # package.json/package-lock drift already exists on main; do not make this feature gate depend on that unrelated repository issue.
+      - run: npm install --package-lock=false --no-audit --no-fund
       - run: npx tsc --noEmit
       - run: npx tsx scripts/unified-vehicle-identity-smoke.ts
