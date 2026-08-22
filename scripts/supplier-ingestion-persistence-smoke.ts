@@ -11,7 +11,7 @@ import type { SupplierIngestionRecordInput } from "../src/services/supplier-inge
 
 const WRITE_ENV = {
   SUPPLIER_INGESTION_WRITES_ENABLED: SUPPLIER_INGESTION_WRITE_ACTIVATION.requiredEnvValue,
-} as NodeJS.ProcessEnv;
+};
 
 assert.throws(
   () =>
@@ -164,7 +164,6 @@ function batch(
 
 const activation = { confirmation: SUPPLIER_INGESTION_WRITE_ACTIVATION.requiredConfirmation };
 
-// Three independent offers become active through provider-neutral incremental batches.
 const a1 = batch("v1", "INCREMENTAL", [row(productA.id, "A", "SMOKEA", 100, time(1))]);
 const first = await persistSupplierIngestionBatch(a1, activation);
 assert.equal(first.published, true);
@@ -187,7 +186,6 @@ assert.equal(
   3,
 );
 
-// A suspicious 67% full-snapshot drop is blocked; no offer may be deactivated.
 const massDrop = await persistSupplierIngestionBatch(
   batch("v4", "FULL_SNAPSHOT", [row(productA.id, "A", "SMOKEA", 100, time(4))], true),
   activation,
@@ -199,7 +197,6 @@ assert.equal(
   3,
 );
 
-// A clean complete 2/3 snapshot is below the 40% drop guard and may mark C as NOT_PRESENT.
 const cleanFull = await persistSupplierIngestionBatch(
   batch(
     "v5",
@@ -225,7 +222,6 @@ const cAfterFull = await prisma.supplierOffer.findUniqueOrThrow({
 });
 assert.equal(cAfterFull.status, "NOT_PRESENT");
 
-// Restore C with a newer incremental observation.
 await persistSupplierIngestionBatch(
   batch("v6", "INCREMENTAL", [row(productC.id, "C", "SMOKEC", 300, time(6))]),
   activation,
@@ -245,8 +241,6 @@ assert.equal(
   "ACTIVE",
 );
 
-// Commercial conflict must be atomic: A is a safe +10% update, B is a +150% anomaly.
-// If B fails preflight, A must remain unchanged too.
 const beforeA = await prisma.supplierOffer.findUniqueOrThrow({
   where: {
     supplierId_integrationScope_offerKey: {
@@ -304,8 +298,6 @@ assert.ok(
   (await prisma.supplierReconciliationTask.count({ where: { batchId: conflict.batchId, status: "OPEN" } })) >= 1,
 );
 
-// A complete full snapshot with one unresolved row may publish its clean rows,
-// but MUST NOT deactivate a missing offer even when the relaxed identity ratio permits publication.
 const nonCleanFull = await persistSupplierIngestionBatch(
   batch(
     "v8",
@@ -334,7 +326,6 @@ const cAfterNonClean = await prisma.supplierOffer.findUniqueOrThrow({
 });
 assert.equal(cAfterNonClean.status, "ACTIVE");
 
-// New pipeline must not silently back-write the legacy quote cache.
 assert.equal(await prisma.supplierProductQuote.count({ where: { supplierId: supplier.id } }), 0);
 
 const cursor = await prisma.supplierSyncCursor.findUniqueOrThrow({
