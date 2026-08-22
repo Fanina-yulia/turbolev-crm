@@ -1,6 +1,9 @@
 import { getSqlPool } from "../src/lib/sql";
 
 type AuditRow = {
+  cycle_id: string;
+  cycle_kind: "WORK_ORDER" | "APPOINTMENT" | "DIAGNOSTIC";
+  cycle_time: Date;
   vehicle_id: string;
   plate_number: string | null;
   vehicle_label: string;
@@ -28,14 +31,26 @@ type AuditRow = {
 
 type Stage = { key: string; passed: boolean; optional?: boolean };
 
-const MIN_REAL_VEHICLES = Math.max(10, Number(process.env.E2E_MIN_REAL_VEHICLES || 10));
-const MAX_REPORT_ROWS = Math.max(MIN_REAL_VEHICLES, Math.min(50, Number(process.env.E2E_MAX_REPORT_ROWS || 20)));
+function boundedInt(raw: string | undefined, fallback: number, min: number, max: number) {
+  const parsed = Number.parseInt(raw || "", 10);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.max(min, Math.min(max, parsed));
+}
+
+const MIN_REAL_VEHICLES = boundedInt(process.env.E2E_MIN_REAL_VEHICLES, 10, 10, 20);
+const MAX_REPORT_ROWS = boundedInt(process.env.E2E_MAX_REPORT_ROWS, 20, MIN_REAL_VEHICLES, 50);
+const LOOKBACK_DAYS = boundedInt(process.env.E2E_AUDIT_LOOKBACK_DAYS, 180, 30, 365);
 const INCLUDE_IDENTIFIERS = process.env.E2E_AUDIT_INCLUDE_IDENTIFIERS === "1";
 
 function maskPlate(value: string | null) {
   if (!value) return "NO_PLATE";
   if (INCLUDE_IDENTIFIERS || value.length <= 4) return value;
   return `${value.slice(0, 2)}${"•".repeat(Math.max(2, value.length - 4))}${value.slice(-2)}`;
+}
+
+function maskId(value: string) {
+  if (INCLUDE_IDENTIFIERS || value.length <= 10) return value;
+  return `${value.slice(0, 6)}…${value.slice(-4)}`;
 }
 
 function stages(row: AuditRow): Stage[] {
@@ -62,35 +77,62 @@ function stages(row: AuditRow): Stage[] {
 async function main() {
   const pool = getSqlPool();
   const client = await pool.connect();
+  const cutoff = new Date(Date.now() - LOOKBACK_DAYS * 86_400_000);
   let rows: AuditRow[] = [];
 
   try {
     await client.query("BEGIN READ ONLY");
     await client.query("SET LOCAL statement_timeout = '20s'");
     const result = await client.query<AuditRow>(`
-      WITH latest_appointment AS (
-        SELECT DISTINCT ON ("vehicleId")
-          "vehicleId", id, status::text AS status, "plannedStartAt", "actualArrivalAt", "workOrderId"
-        FROM "ServiceAppointment"
-        WHERE id NOT LIKE 'demo_%' AND "vehicleId" IS NOT NULL
-        ORDER BY "vehicleId", "plannedStartAt" DESC NULLS LAST, "createdAt" DESC
-      ),
-      latest_diagnostic AS (
-        SELECT DISTINCT ON ("vehicleId")
-          "vehicleId", id, status::text AS status, "confirmedAt"
-        FROM "DiagnosticRequest"
-        WHERE id NOT LIKE 'demo_%'
-        ORDER BY "vehicleId", "createdAt" DESC
-      ),
-      latest_work_order AS (
-        SELECT DISTINCT ON ("vehicleId")
-          "vehicleId", id, status::text AS status, "diagnosticRequestId", "closedAt", "createdAt"
-        FROM "WorkOrder"
-        WHERE id NOT LIKE 'demo_%'
-        ORDER BY "vehicleId", "createdAt" DESC
-      ),
-      cycle AS (
+      WITH work_order_cycles AS (
         SELECT
+          'wo:' || wo.id AS cycle_id,
+          'WORK_ORDER'::text AS cycle_kind,
+          wo."createdAt" AS cycle_time,
+          v.id AS vehicle_id,
+          v."plateNumber" AS plate_number,
+          concat_ws(' ', v.brand, v.model, v.year::text) AS vehicle_label,
+          sa.id AS appointment_id,
+          sa.status AS appointment_status,
+          sa."plannedStartAt" AS planned_start_at,
+          sa."actualArrivalAt" AS actual_arrival_at,
+          dr.id AS diagnostic_id,
+          dr.status AS diagnostic_status,
+          dr."confirmedAt" AS diagnostic_confirmed_at,
+          wo.id AS work_order_id,
+          wo.status::text AS work_order_status,
+          wo."closedAt" AS work_order_closed_at
+        FROM "WorkOrder" wo
+        JOIN "Vehicle" v ON v.id=wo."vehicleId"
+        LEFT JOIN LATERAL (
+          SELECT sa.id, sa.status::text AS status, sa."plannedStartAt", sa."actualArrivalAt"
+          FROM "ServiceAppointment" sa
+          WHERE sa."workOrderId"=wo.id AND sa.id NOT LIKE 'demo_%'
+          ORDER BY sa."plannedStartAt" DESC NULLS LAST, sa."createdAt" DESC
+          LIMIT 1
+        ) sa ON true
+        LEFT JOIN "DiagnosticRequest" dr ON dr.id=wo."diagnosticRequestId"
+        WHERE wo.id NOT LIKE 'demo_%' AND wo."createdAt" >= $1
+      ),
+      latest_orphan_appointment AS (
+        SELECT DISTINCT ON (sa."vehicleId")
+          sa.id,
+          sa."vehicleId",
+          sa.status::text AS status,
+          sa."plannedStartAt",
+          sa."actualArrivalAt",
+          sa."createdAt"
+        FROM "ServiceAppointment" sa
+        WHERE sa.id NOT LIKE 'demo_%'
+          AND sa."workOrderId" IS NULL
+          AND sa."createdAt" >= $1
+        ORDER BY sa."vehicleId", sa."plannedStartAt" DESC NULLS LAST, sa."createdAt" DESC
+      ),
+      appointment_cycles AS (
+        SELECT
+          'appt:' || a.id AS cycle_id,
+          'APPOINTMENT'::text AS cycle_kind,
+          a."createdAt" AS cycle_time,
           v.id AS vehicle_id,
           v."plateNumber" AS plate_number,
           concat_ws(' ', v.brand, v.model, v.year::text) AS vehicle_label,
@@ -98,19 +140,60 @@ async function main() {
           a.status AS appointment_status,
           a."plannedStartAt" AS planned_start_at,
           a."actualArrivalAt" AS actual_arrival_at,
-          COALESCE(wo.id, a."workOrderId") AS work_order_id,
-          COALESCE(wo.status, awo.status) AS work_order_status,
-          COALESCE(wo."closedAt", awo."closedAt") AS work_order_closed_at,
-          COALESCE(wo."diagnosticRequestId", awo."diagnosticRequestId", d.id) AS diagnostic_id,
-          COALESCE(dr.status::text, d.status) AS diagnostic_status,
-          COALESCE(dr."confirmedAt", d."confirmedAt") AS diagnostic_confirmed_at
-        FROM "Vehicle" v
-        LEFT JOIN latest_appointment a ON a."vehicleId"=v.id
-        LEFT JOIN latest_work_order wo ON wo."vehicleId"=v.id
-        LEFT JOIN "WorkOrder" awo ON awo.id=a."workOrderId"
-        LEFT JOIN latest_diagnostic d ON d."vehicleId"=v.id
-        LEFT JOIN "DiagnosticRequest" dr ON dr.id=COALESCE(wo."diagnosticRequestId", awo."diagnosticRequestId", d.id)
-        WHERE v.id NOT LIKE 'demo_%'
+          dr.id AS diagnostic_id,
+          dr.status AS diagnostic_status,
+          dr."confirmedAt" AS diagnostic_confirmed_at,
+          NULL::text AS work_order_id,
+          NULL::text AS work_order_status,
+          NULL::timestamptz AS work_order_closed_at
+        FROM latest_orphan_appointment a
+        JOIN "Vehicle" v ON v.id=a."vehicleId"
+        LEFT JOIN LATERAL (
+          SELECT dr.id, dr.status::text AS status, dr."confirmedAt"
+          FROM "DiagnosticRequest" dr
+          WHERE dr."vehicleId"=a."vehicleId"
+            AND dr.id NOT LIKE 'demo_%'
+            AND dr."createdAt" >= a."createdAt"
+            AND NOT EXISTS (SELECT 1 FROM "WorkOrder" wo WHERE wo."diagnosticRequestId"=dr.id)
+          ORDER BY dr."createdAt" DESC
+          LIMIT 1
+        ) dr ON true
+      ),
+      diagnostic_cycles AS (
+        SELECT DISTINCT ON (dr."vehicleId")
+          'diag:' || dr.id AS cycle_id,
+          'DIAGNOSTIC'::text AS cycle_kind,
+          dr."createdAt" AS cycle_time,
+          v.id AS vehicle_id,
+          v."plateNumber" AS plate_number,
+          concat_ws(' ', v.brand, v.model, v.year::text) AS vehicle_label,
+          NULL::text AS appointment_id,
+          NULL::text AS appointment_status,
+          NULL::timestamptz AS planned_start_at,
+          NULL::timestamptz AS actual_arrival_at,
+          dr.id AS diagnostic_id,
+          dr.status::text AS diagnostic_status,
+          dr."confirmedAt" AS diagnostic_confirmed_at,
+          NULL::text AS work_order_id,
+          NULL::text AS work_order_status,
+          NULL::timestamptz AS work_order_closed_at
+        FROM "DiagnosticRequest" dr
+        JOIN "Vehicle" v ON v.id=dr."vehicleId"
+        WHERE dr.id NOT LIKE 'demo_%'
+          AND dr."createdAt" >= $1
+          AND NOT EXISTS (SELECT 1 FROM "WorkOrder" wo WHERE wo."diagnosticRequestId"=dr.id)
+          AND NOT EXISTS (
+            SELECT 1 FROM latest_orphan_appointment a
+            WHERE a."vehicleId"=dr."vehicleId" AND a."createdAt" <= dr."createdAt"
+          )
+        ORDER BY dr."vehicleId", dr."createdAt" DESC
+      ),
+      base_cycles AS (
+        SELECT * FROM work_order_cycles
+        UNION ALL
+        SELECT * FROM appointment_cycles
+        UNION ALL
+        SELECT * FROM diagnostic_cycles
       )
       SELECT
         c.*,
@@ -121,24 +204,64 @@ async function main() {
         ) AS has_final_diagnostic_card,
         EXISTS (SELECT 1 FROM "WorkOrderEstimate" e WHERE e."workOrderId"=c.work_order_id) AS has_estimate,
         EXISTS (SELECT 1 FROM "WorkOrderEstimate" e WHERE e."workOrderId"=c.work_order_id AND e."approvedAt" IS NOT NULL) AS estimate_approved,
-        EXISTS (SELECT 1 FROM "WorkOrderLine" l WHERE l."workOrderId"=c.work_order_id AND l.status='COMPLETED') AS has_completed_work,
-        EXISTS (SELECT 1 FROM "WorkOrderLine" l WHERE l."workOrderId"=c.work_order_id AND l.type='PART' AND l."requiredForRepair"=true) AS has_required_parts,
-        EXISTS (SELECT 1 FROM "PartsRequest" pr WHERE pr."workOrderId"=c.work_order_id) AS has_parts_request,
-        EXISTS (SELECT 1 FROM "PartsRequest" pr WHERE pr."workOrderId"=c.work_order_id AND pr."receivedAt" IS NOT NULL) AS required_parts_received,
-        EXISTS (SELECT 1 FROM "WorkOrderQualityControl" qc WHERE qc."workOrderId"=c.work_order_id AND qc."completedAt" IS NOT NULL) AS qc_completed,
-        EXISTS (SELECT 1 FROM "WorkOrderFinanceSnapshot" fs WHERE fs."workOrderId"=c.work_order_id AND fs.kind='ACTUAL') AS has_actual_finance,
         (
-          EXISTS (SELECT 1 FROM "CashTransaction" ct WHERE ct."workOrderId"=c.work_order_id AND ct.status='POSTED')
-          OR EXISTS (
-            SELECT 1 FROM "FinancialObligation" fo
-            WHERE fo."workOrderId"=c.work_order_id AND fo.direction='RECEIVABLE' AND fo.status='PAID'
+          EXISTS (SELECT 1 FROM "WorkOrderLine" l WHERE l."workOrderId"=c.work_order_id AND l.status='COMPLETED')
+          AND NOT EXISTS (
+            SELECT 1 FROM "WorkOrderLine" l
+            WHERE l."workOrderId"=c.work_order_id AND l.status NOT IN ('COMPLETED','CANCELLED')
           )
+        ) AS has_completed_work,
+        EXISTS (
+          SELECT 1 FROM "WorkOrderLine" l
+          WHERE l."workOrderId"=c.work_order_id AND l.type='PART' AND l."requiredForRepair"=true AND l.status <> 'CANCELLED'
+        ) AS has_required_parts,
+        EXISTS (SELECT 1 FROM "PartsRequest" pr WHERE pr."workOrderId"=c.work_order_id) AS has_parts_request,
+        NOT EXISTS (
+          SELECT 1
+          FROM "WorkOrderLine" l
+          WHERE l."workOrderId"=c.work_order_id
+            AND l.type='PART'
+            AND l."requiredForRepair"=true
+            AND l.status <> 'CANCELLED'
+            AND COALESCE((
+              SELECT SUM(GREATEST(COALESCE(pri."receivedQuantity", 0), COALESCE(pri."installedQuantity", 0)))
+              FROM "PartsRequestItem" pri
+              JOIN "PartsRequest" pr ON pr.id=pri."partsRequestId"
+              WHERE pr."workOrderId"=c.work_order_id AND pri."workOrderLineId"=l.id
+            ), 0) < l."plannedQuantity"
+        ) AS required_parts_received,
+        EXISTS (
+          SELECT 1 FROM "WorkOrderQualityControl" qc
+          WHERE qc."workOrderId"=c.work_order_id AND qc."completedAt" IS NOT NULL
+        ) AS qc_completed,
+        EXISTS (
+          SELECT 1 FROM "WorkOrderFinanceSnapshot" fs
+          WHERE fs."workOrderId"=c.work_order_id AND fs.kind='ACTUAL'
+        ) AS has_actual_finance,
+        EXISTS (
+          SELECT 1
+          FROM "WorkOrderFinanceSnapshot" fs
+          WHERE fs."workOrderId"=c.work_order_id
+            AND fs.kind='ACTUAL'
+            AND fs."grossRevenue" > 0
+            AND (
+              COALESCE((
+                SELECT SUM(ct.amount)
+                FROM "CashTransaction" ct
+                WHERE ct."workOrderId"=c.work_order_id AND ct.status='POSTED' AND ct.kind='INFLOW'
+              ), 0) >= fs."grossRevenue"
+              OR EXISTS (
+                SELECT 1 FROM "FinancialObligation" fo
+                WHERE fo."workOrderId"=c.work_order_id
+                  AND fo.direction='RECEIVABLE'
+                  AND fo.status='PAID'
+                  AND fo."settledAmount" >= fo.amount
+              )
+            )
         ) AS has_payment_evidence
-      FROM cycle c
-      WHERE c.appointment_id IS NOT NULL OR c.diagnostic_id IS NOT NULL OR c.work_order_id IS NOT NULL
-      ORDER BY c.planned_start_at DESC NULLS LAST, c.vehicle_id
-      LIMIT $1
-    `, [MAX_REPORT_ROWS]);
+      FROM base_cycles c
+      ORDER BY c.cycle_time DESC, c.vehicle_id, c.cycle_id
+    `, [cutoff]);
     rows = result.rows;
     await client.query("ROLLBACK");
   } catch (error) {
@@ -151,11 +274,15 @@ async function main() {
   const evaluated = rows.map((row) => {
     const stageList = stages(row);
     const blockers = stageList.filter((stage) => !stage.passed).map((stage) => stage.key);
-    const completed = blockers.length === 0;
-    const staleBooked = row.appointment_status === "BOOKED" && Boolean(row.planned_start_at && row.planned_start_at.getTime() < Date.now()) && !row.actual_arrival_at;
+    const complete = blockers.length === 0;
+    const staleBooked = row.appointment_status === "BOOKED"
+      && Boolean(row.planned_start_at && row.planned_start_at.getTime() < Date.now())
+      && !row.actual_arrival_at;
     const stalledDiagnostic = row.diagnostic_status === "IN_PROGRESS" && !row.diagnostic_confirmed_at;
     return {
-      vehicleId: row.vehicle_id,
+      cycle: maskId(row.cycle_id),
+      cycleKind: row.cycle_kind,
+      vehicleRef: maskId(row.vehicle_id),
       vehicle: row.vehicle_label || "Vehicle",
       plate: maskPlate(row.plate_number),
       appointmentStatus: row.appointment_status,
@@ -166,24 +293,27 @@ async function main() {
       blockers,
       staleBooked,
       stalledDiagnostic,
-      complete: completed,
+      complete,
     };
   });
 
-  const completeVehicles = evaluated.filter((row) => row.complete).length;
+  const auditedVehicleIds = new Set(rows.map((row) => row.vehicle_id));
+  const completeVehicleIds = new Set(rows.filter((row, index) => evaluated[index]?.complete).map((row) => row.vehicle_id));
   const staleBooked = evaluated.filter((row) => row.staleBooked).length;
   const stalledDiagnostics = evaluated.filter((row) => row.stalledDiagnostic).length;
-  const passed = completeVehicles >= MIN_REAL_VEHICLES;
+  const passed = completeVehicleIds.size >= MIN_REAL_VEHICLES;
 
   console.log("REAL_VEHICLE_E2E_READINESS", JSON.stringify({
     mode: "READ_ONLY",
+    lookbackDays: LOOKBACK_DAYS,
     minimumCompleteVehicles: MIN_REAL_VEHICLES,
-    auditedVehicles: evaluated.length,
-    completeVehicles,
+    auditedCycles: evaluated.length,
+    auditedVehicles: auditedVehicleIds.size,
+    completeVehicles: completeVehicleIds.size,
     staleBooked,
     stalledDiagnostics,
     gate: passed ? "PASS" : "BLOCKED",
-    vehicles: evaluated,
+    cycles: evaluated.slice(0, MAX_REPORT_ROWS),
   }, null, 2));
 
   await pool.end().catch(() => undefined);
