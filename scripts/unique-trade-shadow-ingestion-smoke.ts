@@ -179,8 +179,8 @@ const persistenceConfirmation = UNIQUE_TRADE_SHADOW_INGESTION_ACTIVATION.persist
 
 function expectDisabled(
   env: Record<string, string | undefined>,
-  shadowConfirm = shadowConfirmation,
-  persistenceConfirm = persistenceConfirmation,
+  shadowConfirm: string = shadowConfirmation,
+  persistenceConfirm: string = persistenceConfirmation,
 ) {
   assert.throws(
     () => assertUniqueTradeShadowWritesEnabled(shadowConfirm, persistenceConfirm, env),
