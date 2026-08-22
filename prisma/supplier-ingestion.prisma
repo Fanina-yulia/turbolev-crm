@@ -1,0 +1,367 @@
+enum SupplierImportMode {
+  FULL_SNAPSHOT
+  INCREMENTAL
+  API_POLL
+  WEBHOOK_DELTA
+  MANUAL_FILE
+}
+
+enum SupplierImportStatus {
+  PENDING
+  RUNNING
+  VALIDATING
+  READY_TO_PUBLISH
+  PUBLISHED
+  FAILED
+  CANCELLED
+}
+
+enum SupplierPublishStatus {
+  NOT_READY
+  READY
+  PUBLISHING
+  PUBLISHED
+  BLOCKED
+  ROLLED_BACK
+}
+
+enum SupplierImportRecordState {
+  RECEIVED
+  NORMALIZED
+  MATCHED
+  AMBIGUOUS
+  UNMATCHED
+  CONFLICT
+  REJECTED
+  PUBLISHED
+}
+
+enum SupplierMappingMethod {
+  APPROVED_MAPPING
+  TRUSTED_EXTERNAL_ID
+  BRAND_MPN
+  VERIFIED_GTIN
+  ALIAS_SUPERSESSION
+  MANUAL
+}
+
+enum SupplierReconciliationStatus {
+  OPEN
+  IN_REVIEW
+  RESOLVED
+  REJECTED
+  ESCALATED
+}
+
+enum SupplierReconciliationReason {
+  UNMATCHED
+  AMBIGUOUS
+  IDENTITY_CONFLICT
+  INVALID_IDENTIFIER
+  BRAND_CONFLICT
+  PRICE_ANOMALY
+  STOCK_ANOMALY
+  SCHEMA_ERROR
+}
+
+enum SupplierOfferStatus {
+  ACTIVE
+  INACTIVE
+  NOT_PRESENT
+  BLOCKED
+  ERROR
+}
+
+enum SupplierFreshnessClass {
+  FRESH
+  STALE_ALLOWED
+  EXPIRED
+  UNKNOWN_SOURCE_TIME
+  PROVIDER_ERROR_LAST_KNOWN
+}
+
+enum SupplierAvailabilityState {
+  AVAILABLE
+  LOW_STOCK
+  OUT_OF_STOCK
+  ORDERABLE
+  CHECK_REQUIRED
+  UNKNOWN
+}
+
+enum SupplierQuantityMode {
+  EXACT
+  BAND
+  BOOLEAN_ONLY
+  UNKNOWN
+}
+
+model SupplierImportBatch {
+  id                  String                @id @default(cuid())
+  supplierId          String
+  integrationScope    String                @db.VarChar(100)
+  mode                SupplierImportMode
+  status              SupplierImportStatus @default(PENDING)
+  publishStatus       SupplierPublishStatus @default(NOT_READY)
+  sourceVersion       String?               @db.VarChar(160)
+  cursorBefore        String?               @db.Text
+  cursorAfter         String?               @db.Text
+  sourceChecksum      String?               @db.VarChar(128)
+  adapterVersion      String                @db.VarChar(80)
+  schemaVersion       String                @db.VarChar(80)
+  providerStartedAt   DateTime?
+  providerFinishedAt  DateTime?
+  startedAt           DateTime              @default(now())
+  finishedAt          DateTime?
+  validatedAt         DateTime?
+  publishedAt         DateTime?
+  recordsReceived     Int                   @default(0)
+  recordsValid        Int                   @default(0)
+  recordsMatched      Int                   @default(0)
+  recordsAmbiguous    Int                   @default(0)
+  recordsUnmatched    Int                   @default(0)
+  recordsConflict     Int                   @default(0)
+  recordsRejected     Int                   @default(0)
+  bytesReceived       BigInt?
+  semanticFingerprint String                @db.VarChar(128)
+  errorCode           String?               @db.VarChar(80)
+  errorSummary        String?               @db.Text
+  anomalySummary      Json?
+  metadata            Json?
+  createdAt           DateTime              @default(now())
+  updatedAt           DateTime              @updatedAt
+
+  supplier            Supplier                     @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+  records             SupplierImportRecord[]
+  reconciliationTasks SupplierReconciliationTask[]
+  offersPublished     SupplierOffer[]               @relation("SupplierOfferPublishedBatch")
+
+  @@unique([supplierId, integrationScope, semanticFingerprint])
+  @@index([supplierId, integrationScope, status, startedAt])
+  @@index([supplierId, integrationScope, publishStatus, startedAt])
+  @@index([sourceVersion])
+  @@index([finishedAt])
+}
+
+model SupplierImportRecord {
+  id                      String                    @id @default(cuid())
+  batchId                 String
+  supplierRecordKey       String                    @db.VarChar(240)
+  state                   SupplierImportRecordState @default(RECEIVED)
+  rawChecksum             String                    @db.VarChar(128)
+  rawPayload              Json
+  normalizedPayload       Json?
+  externalProductId       String?                   @db.VarChar(200)
+  supplierArticleRaw      String?                   @db.VarChar(180)
+  supplierArticleNorm     String?                   @db.VarChar(180)
+  brandRaw                String?                   @db.VarChar(160)
+  brandNormalized         String?                   @db.VarChar(160)
+  mpnCandidateRaw         String?                   @db.VarChar(180)
+  mpnCandidateNorm        String?                   @db.VarChar(180)
+  gtinCandidate           String?                   @db.VarChar(32)
+  currency                String?                   @db.VarChar(3)
+  purchasePrice           Decimal?                  @db.Decimal(16, 4)
+  quantityMode            SupplierQuantityMode      @default(UNKNOWN)
+  exactQty                Decimal?                  @db.Decimal(16, 3)
+  availabilityBand        String?                   @db.VarChar(48)
+  supplierAvailabilityRaw String?                   @db.VarChar(120)
+  warehouseKey            String?                   @db.VarChar(120)
+  minOrderQty             Decimal?                  @db.Decimal(16, 3)
+  multiplicity            Decimal?                  @db.Decimal(16, 3)
+  leadTimeMinHours        Int?
+  leadTimeMaxHours        Int?
+  etaFrom                 DateTime?
+  etaTo                   DateTime?
+  sourceUpdatedAt         DateTime?
+  sourceTimeTrusted       Boolean                   @default(false)
+  matchedProductId        String?
+  mappingMethod           SupplierMappingMethod?
+  matchConfidence         Int?
+  identityEvidence        Json?
+  errorCodes              Json?
+  createdAt               DateTime                  @default(now())
+  updatedAt               DateTime                  @updatedAt
+
+  batch              SupplierImportBatch         @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  matchedProduct     Product?                    @relation(fields: [matchedProductId], references: [id], onDelete: SetNull)
+  reconciliationTask SupplierReconciliationTask?
+
+  @@unique([batchId, supplierRecordKey])
+  @@index([batchId, state])
+  @@index([matchedProductId, state])
+  @@index([brandNormalized, mpnCandidateNorm])
+  @@index([gtinCandidate])
+  @@index([externalProductId])
+}
+
+model SupplierIdentityMapping {
+  id                String                @id @default(cuid())
+  supplierId        String
+  integrationScope  String                @db.VarChar(100)
+  supplierRecordKey String                @db.VarChar(240)
+  productId         String
+  method            SupplierMappingMethod
+  confidence        Int?
+  evidence          Json?
+  sourceVersion     String?               @db.VarChar(160)
+  isApproved        Boolean               @default(false)
+  isActive          Boolean               @default(true)
+  approvedById      String?               @db.VarChar(160)
+  approvedAt        DateTime?
+  disabledAt        DateTime?
+  disabledReason    String?               @db.Text
+  createdAt         DateTime              @default(now())
+  updatedAt         DateTime              @updatedAt
+
+  supplier Supplier @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+  product  Product  @relation(fields: [productId], references: [id], onDelete: Restrict)
+
+  @@unique([supplierId, integrationScope, supplierRecordKey])
+  @@index([productId, isActive])
+  @@index([supplierId, isActive])
+}
+
+model SupplierReconciliationTask {
+  id                String                       @id @default(cuid())
+  supplierId        String
+  batchId           String?
+  importRecordId    String                       @unique
+  status            SupplierReconciliationStatus @default(OPEN)
+  reason            SupplierReconciliationReason
+  priority          Int                          @default(100)
+  conflictFields    Json?
+  evidence          Json?
+  resolutionType    String?                      @db.VarChar(80)
+  resolvedProductId String?
+  resolvedById      String?                      @db.VarChar(160)
+  resolvedAt        DateTime?
+  notes             String?                      @db.Text
+  createdAt         DateTime                     @default(now())
+  updatedAt         DateTime                     @updatedAt
+
+  supplier        Supplier                          @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+  batch           SupplierImportBatch?              @relation(fields: [batchId], references: [id], onDelete: SetNull)
+  importRecord    SupplierImportRecord               @relation(fields: [importRecordId], references: [id], onDelete: Restrict)
+  resolvedProduct Product?                           @relation("SupplierResolvedProduct", fields: [resolvedProductId], references: [id], onDelete: SetNull)
+  candidates      SupplierReconciliationCandidate[]
+
+  @@index([status, priority, createdAt])
+  @@index([supplierId, status, createdAt])
+  @@index([batchId])
+}
+
+model SupplierReconciliationCandidate {
+  id          String   @id @default(cuid())
+  taskId      String
+  productId   String
+  rank        Int
+  score       Int
+  reasonCodes Json?
+  evidence    Json?
+  createdAt   DateTime @default(now())
+
+  task    SupplierReconciliationTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  product Product                    @relation(fields: [productId], references: [id], onDelete: Restrict)
+
+  @@unique([taskId, productId])
+  @@index([taskId, rank])
+  @@index([productId])
+}
+
+model SupplierSyncCursor {
+  id                    String   @id @default(cuid())
+  supplierId            String
+  integrationScope      String   @db.VarChar(100)
+  cursorValue           String?  @db.Text
+  lastSourceVersion     String?  @db.VarChar(160)
+  lastSuccessfulBatchId String?
+  lastFullSnapshotAt    DateTime?
+  lastSuccessfulAt      DateTime?
+  lastPublishedAt       DateTime?
+  lastErrorAt           DateTime?
+  lastErrorCode         String?  @db.VarChar(80)
+  consecutiveFailures   Int      @default(0)
+  version               Int      @default(0)
+  updatedAt             DateTime @updatedAt
+  createdAt             DateTime @default(now())
+
+  supplier Supplier @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+
+  @@unique([supplierId, integrationScope])
+  @@index([lastSuccessfulAt])
+  @@index([lastErrorAt])
+}
+
+model SupplierFreshnessPolicy {
+  id                    String   @id @default(cuid())
+  supplierId            String
+  integrationScope      String   @db.VarChar(100)
+  offerClass            String   @default("DEFAULT") @db.VarChar(80)
+  freshTtlSeconds       Int
+  staleAllowedSeconds   Int      @default(0)
+  hardExpirySeconds     Int
+  checkoutRevalidate    Boolean  @default(true)
+  staleDisplayAllowed   Boolean  @default(false)
+  providerErrorFallback Boolean  @default(false)
+  priority              Int      @default(100)
+  isActive              Boolean  @default(true)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  supplier Supplier @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+
+  @@unique([supplierId, integrationScope, offerClass])
+  @@index([isActive, priority])
+}
+
+model SupplierOffer {
+  id                String                    @id @default(cuid())
+  supplierId        String
+  productId         String
+  integrationScope  String                    @db.VarChar(100)
+  offerKey          String                    @db.VarChar(240)
+  supplierArticle   String?                   @db.VarChar(180)
+  externalProductId String?                   @db.VarChar(200)
+  warehouseKey      String?                   @db.VarChar(120)
+  status            SupplierOfferStatus       @default(ACTIVE)
+  purchasePrice     Decimal                   @db.Decimal(16, 4)
+  currency          String                    @db.VarChar(3)
+  quantityMode      SupplierQuantityMode      @default(UNKNOWN)
+  exactQty          Decimal?                  @db.Decimal(16, 3)
+  availabilityBand  String?                   @db.VarChar(48)
+  availability      SupplierAvailabilityState @default(UNKNOWN)
+  minOrderQty       Decimal?                  @db.Decimal(16, 3)
+  multiplicity      Decimal?                  @db.Decimal(16, 3)
+  leadTimeMinHours  Int?
+  leadTimeMaxHours  Int?
+  etaFrom           DateTime?
+  etaTo             DateTime?
+  freshnessClass    SupplierFreshnessClass
+  sourceUpdatedAt   DateTime?
+  sourceTimeTrusted Boolean                   @default(false)
+  ingestedAt        DateTime                  @default(now())
+  freshUntil        DateTime
+  staleAllowedUntil DateTime?
+  expiresAt         DateTime
+  sourceVersion     String?                   @db.VarChar(160)
+  importBatchId     String?
+  mappingMethod     SupplierMappingMethod
+  mappingConfidence Int?
+  lastSeenBatchId   String?
+  notPresentSince   DateTime?
+  metadata          Json?
+  createdAt         DateTime                  @default(now())
+  updatedAt         DateTime                  @updatedAt
+
+  supplier       Supplier             @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+  product        Product              @relation(fields: [productId], references: [id], onDelete: Restrict)
+  publishedBatch SupplierImportBatch? @relation("SupplierOfferPublishedBatch", fields: [importBatchId], references: [id], onDelete: SetNull)
+
+  @@unique([supplierId, integrationScope, offerKey])
+  @@index([productId, status, freshnessClass, purchasePrice])
+  @@index([supplierId, status, expiresAt])
+  @@index([freshnessClass, expiresAt])
+  @@index([externalProductId])
+  @@index([supplierArticle])
+  @@index([lastSeenBatchId])
+}
