@@ -43,5 +43,14 @@ jobs:
         run: bash scripts/ci-migrate-with-external-fixtures.sh
       - name: Normalize SQL-managed objects
         run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f scripts/ci-normalize-prisma-drift.sql
-      - name: Print exact Prisma migration diff
-        run: npx prisma migrate diff --from-config-datasource --to-schema prisma --script
+      - name: Generate exact Prisma migration diff
+        run: npx prisma migrate diff --from-config-datasource --to-schema prisma --script > /tmp/catalog-supplier-migration.sql
+      - name: Validate generated migration is non-empty
+        run: test -s /tmp/catalog-supplier-migration.sql
+      - name: Upload exact migration SQL
+        uses: actions/upload-artifact@v4
+        with:
+          name: catalog-supplier-migration-sql
+          path: /tmp/catalog-supplier-migration.sql
+          if-no-files-found: error
+          retention-days: 1
