@@ -133,10 +133,13 @@ for (const forbidden of [
 }
 
 const routeSource = readFileSync(
-  new URL("../app/api/internal/qa/suppliers/unique-trade-preview/route.ts", import.meta.url),
+  new URL("../app/api/parts/qa/unique-trade-preview/route.ts", import.meta.url),
   "utf8",
 );
 assert.equal(routeSource.includes('process.env.VERCEL_ENV !== "preview"'), true);
+assert.equal(routeSource.includes("authorizeScopedLocation"), true);
+assert.equal(routeSource.includes("PERMISSIONS.PARTS_READ"), true);
+assert.equal(routeSource.indexOf('process.env.VERCEL_ENV !== "preview"') < routeSource.indexOf("authorizeScopedLocation"), true);
 assert.equal(routeSource.includes("searchParams"), false);
 assert.equal(routeSource.includes("persistSupplierIngestionBatch"), false);
 assert.equal(routeSource.includes("submitOrder"), false);
