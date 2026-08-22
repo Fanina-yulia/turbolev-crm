@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { formatWorkOrderNumber } from "@/src/domain/work-order-number";
 import { navigateCrm, readCrmRoute } from "./crm-route";
+import { ProcurementSupplierPanel } from "./procurement-supplier-panel";
 import styles from "./procurement-queue.module.css";
 
 type Category = "SELECTING" | "APPROVED" | "ORDERED" | "PARTIAL" | "RECEIVED";
@@ -85,6 +86,7 @@ export function ProcurementQueue() {
   const [busy, setBusy] = useState("");
   const [message, setMessage] = useState("");
   const [receivedDraft, setReceivedDraft] = useState<Record<string, string>>({});
+  const [supplierTarget, setSupplierTarget] = useState<{ card: Card; item: Item } | null>(null);
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async (nextLocationId?: string) => {
@@ -201,9 +203,11 @@ export function ProcurementQueue() {
               <div className={styles.items}>{card.items.map((item) => {
                 const receivedDone = item.receivedQuantity >= item.quantity;
                 const installedDone = item.installedQuantity >= item.quantity;
+                const canSource = ["NEW", "SELECTING", "SELECTED", "WAITING_APPROVAL", "APPROVED", "ORDER_REQUIRED"].includes(card.status) && !receivedDone;
                 return <div className={styles.item} key={item.id}>
                   <div className={styles.itemHead}><div><b>{[item.brand, item.article].filter(Boolean).join(" · ") || item.description}</b><span>{item.description}</span></div>{item.requiredForRepair && <em>обов’язкова</em>}</div>
                   <div className={styles.itemMeta}><span>{item.supplier?.name || "Постачальник не вибраний"}</span><span>Потрібно {item.quantity} · отримано {item.receivedQuantity} · видано {item.installedQuantity}</span>{item.etaAt && <span>ETA {fmt(item.etaAt, data.location?.timezone)}</span>}</div>
+                  {data.canWrite && canSource && <button type="button" className={styles.secondary} disabled={Boolean(busy)} onClick={() => setSupplierTarget({ card, item })}>{item.supplier ? "Перевірити / змінити постачальника" : "Знайти у постачальника"}</button>}
                   {data.canWrite && ["ORDERED", "PARTIALLY_RECEIVED"].includes(card.status) && !receivedDone && <div className={styles.receive}><input type="number" min={item.receivedQuantity} max={item.quantity} step="0.01" value={receivedDraft[item.id] ?? String(item.quantity)} onChange={(event) => setReceivedDraft((current) => ({ ...current, [item.id]: event.target.value }))}/><button type="button" disabled={Boolean(busy)} onClick={() => void act(card, "RECEIVE_ITEM", { itemId: item.id, quantity: receivedDraft[item.id] ?? String(item.quantity) })}>Прийняти</button></div>}
                   {data.canWrite && ["RECEIVED", "PARTIALLY_RECEIVED", "INSTALLED"].includes(card.status) && receivedDone && !installedDone && <button type="button" className={styles.install} disabled={Boolean(busy)} onClick={() => void act(card, "INSTALL_ITEM", { itemId: item.id, receivedQuantity: item.receivedQuantity, quantity: item.quantity })}>Видати / встановити всю кількість</button>}
                   {installedDone && <div className={styles.done}>✓ Видано / встановлено</div>}
@@ -221,5 +225,12 @@ export function ProcurementQueue() {
         </section>;
       })}
     </div>
+
+    {supplierTarget && <ProcurementSupplierPanel
+      target={supplierTarget}
+      locationId={locationId}
+      onClose={() => setSupplierTarget(null)}
+      onChanged={async () => { await load(); }}
+    />}
   </div>;
 }
