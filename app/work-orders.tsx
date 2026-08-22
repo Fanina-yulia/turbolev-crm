@@ -229,6 +229,11 @@ export function WorkOrders() {
     navigateCrm("Замовлення-наряди", routeForWorkOrder(detail.id, tab));
   }
 
+  function openDocuments() {
+    if (!detail) return;
+    window.open(`/work-order-documents/${encodeURIComponent(detail.id)}`, "_blank", "noopener,noreferrer");
+  }
+
   const handleCommercialChanged = useCallback(() => {
     if (selectedId) void loadDetail(selectedId);
     void loadRows();
@@ -290,7 +295,7 @@ export function WorkOrders() {
         <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="ЗН-000124, клієнт, телефон, номер авто або VIN..." style={{ border: 0, outline: 0, minWidth: 0, background: "transparent", color: "var(--text)" }}/>
         {search && <button type="button" onClick={() => setSearch("")} aria-label="Очистити пошук" style={{ border: 0, background: "transparent", color: "var(--muted)", cursor: "pointer", fontSize: 18 }}>×</button>}
       </label>
-      <span style={{ color: "var(--muted)", fontSize: 11 }}>{filtered.length} з {rows.length}</span>
+      <span style={{ color: "var(--muted)", fontSize: 12 }}>{filtered.length} з {rows.length}</span>
     </div>
 
     <nav className={styles.filters}>
@@ -306,7 +311,7 @@ export function WorkOrders() {
       <section className={styles.list}>
         {loading && !rows.length ? <div className={styles.empty}>Завантажую замовлення-наряди…</div> : !filtered.length ? <div className={styles.empty}>За вибраним статусом або пошуком нарядів немає.</div> : filtered.map((item) => <button type="button" key={item.id} className={`${styles.row} ${selectedId === item.id ? styles.rowActive : ""}`} onClick={() => chooseWorkOrder(item)}>
           <div>
-            <div className={styles.rowTitle}><span style={{ fontFamily: "ui-monospace,SFMono-Regular,Menlo,monospace", fontWeight: 850, fontSize: 11, color: "var(--orange)" }}>{formatWorkOrderNumber(item.number)}</span><strong>{vehicleName(item)}</strong>{item.vehicle.plateNumber && <span className={styles.plate}>{item.vehicle.plateNumber}</span>}</div>
+            <div className={styles.rowTitle}><span style={{ fontFamily: "ui-monospace,SFMono-Regular,Menlo,monospace", fontWeight: 850, fontSize: 12, color: "var(--orange)" }}>{formatWorkOrderNumber(item.number)}</span><strong>{vehicleName(item)}</strong>{item.vehicle.plateNumber && <span className={styles.plate}>{item.vehicle.plateNumber}</span>}</div>
             <div className={styles.rowMeta}>{item.client.name || "Клієнт без імені"} · {item.client.phone}<br/>Оновлено {formatDate(item.updatedAt)}</div>
           </div>
           <span className={styles.status}>{item.statusLabel}</span>
@@ -321,7 +326,11 @@ export function WorkOrders() {
                 <div className={styles.summaryPlate}>{detail.vehicle.plateNumber || "БЕЗ НОМЕРА"}</div>
                 <div><small>{formatWorkOrderNumber(selectedNumber)}</small><h2>{vehicleName(detail)}</h2><button type="button" onClick={() => navigateCrm("Клієнти", { clientId: detail.client.id })}>{detail.client.name || detail.client.phone}</button></div>
               </div>
-              <div className={styles.summaryStatus}><span className={styles.status}>{detail.statusLabel}</span><small>{detail.appointment ? `${detail.appointment.post?.name || "Без поста"} · ${detail.appointment.mechanic?.name || "Без механіка"}` : "Пост / механік не призначені"}</small></div>
+              <div className={styles.summaryStatus}>
+                <span className={styles.status}>{detail.statusLabel}</span>
+                <small>{detail.appointment ? `${detail.appointment.post?.name || "Без поста"} · ${detail.appointment.mechanic?.name || "Без механіка"}` : "Пост / механік не призначені"}</small>
+                <button type="button" onClick={openDocuments} style={{ marginTop: 8, border: "1px solid var(--line)", borderRadius: 8, background: "var(--panel)", color: "var(--text)", padding: "7px 10px", fontSize: 12, fontWeight: 750, cursor: "pointer" }}>Документи / друк</button>
+              </div>
             </div>
             <div className={styles.summaryMoney}>
               <span><small>Кошторис</small><b>{commercialSummary ? money(commercialSummary.estimateTotal) : "…"}</b></span>
