@@ -83,6 +83,22 @@ const repeat = buildUniqueTradeShadowRecords([offer()]);
 assert.equal(repeat[0].normalized.supplierRecordKey, exact[0].normalized.supplierRecordKey);
 assert.equal(repeat[0].rawChecksum, exact[0].rawChecksum);
 
+// Provider detail ID is the primary stable identity: corrected brand/article text must not fork the row key.
+const stableExternalA = buildUniqueTradeShadowRecords([offer()])[0];
+const stableExternalB = buildUniqueTradeShadowRecords([
+  offer({ brand: "BOSCH GmbH", article: "0986 494 596", externalProductId: "12345" }),
+])[0];
+assert.equal(stableExternalA.normalized.supplierRecordKey, stableExternalB.normalized.supplierRecordKey);
+
+// Without provider ID, normalized brand+article remains the deterministic fallback identity.
+const fallbackIdentityA = buildUniqueTradeShadowRecords([
+  offer({ externalProductId: "", brand: " Bosch ", article: "0 986 494 596" }),
+])[0];
+const fallbackIdentityB = buildUniqueTradeShadowRecords([
+  offer({ externalProductId: "", brand: "BOSCH", article: "0-986-494-596" }),
+])[0];
+assert.equal(fallbackIdentityA.normalized.supplierRecordKey, fallbackIdentityB.normalized.supplierRecordKey);
+
 // Same provider detail/warehouse with equivalent commercial state is a harmless duplicate.
 const duplicateStock = buildUniqueTradeShadowRecords([
   offer({
