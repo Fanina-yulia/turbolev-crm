@@ -1,0 +1,44 @@
+name: One-shot Supplier Advisory Lock Fix
+
+on:
+  push:
+    branches: [feat/supplier-ingestion-persistence-v1]
+    paths:
+      - ".github/workflows/tmp-fix-supplier-advisory.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/supplier-ingestion-persistence-v1
+          fetch-depth: 0
+      - name: Patch advisory lock call exactly once
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('src/services/supplier-ingestion-persistence.service.ts')
+          text = p.read_text()
+          old = 'await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`supplier-ingestion:${prepared.supplierId}:${prepared.integrationScope}`}))`;'
+          new = 'await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`supplier-ingestion:${prepared.supplierId}:${prepared.integrationScope}`}))`;'
+          count = text.count(old)
+          if count != 1:
+              raise SystemExit(f'Expected exactly one advisory lock query, found {count}')
+          p.write_text(text.replace(old, new, 1))
+          PY
+      - name: Remove one-shot workflow
+        run: rm .github/workflows/tmp-fix-supplier-advisory.yml
+      - name: Commit patch
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/services/supplier-ingestion-persistence.service.ts .github/workflows/tmp-fix-supplier-advisory.yml
+          git commit -m "fix(suppliers): execute advisory lock without void deserialization"
+          git push origin HEAD:feat/supplier-ingestion-persistence-v1
