@@ -120,7 +120,6 @@ function stableRecordKey(offer: SupplierOffer, stock: SupplierStock | null) {
 
 function normalizedRecord(offer: SupplierOffer, stock: SupplierStock | null): NormalizedSupplierRecord {
   const quantity = quantityContract(stock, offer.available);
-  const currentWarehouseKey = warehouseKey(stock);
   return {
     supplierRecordKey: stableRecordKey(offer, stock),
     externalProductId: offer.externalProductId?.trim() || null,
@@ -137,7 +136,7 @@ function normalizedRecord(offer: SupplierOffer, stock: SupplierStock | null): No
     exactQty: quantity.exactQty,
     availabilityBand: quantity.availabilityBand,
     supplierAvailabilityRaw: quantity.supplierAvailabilityRaw,
-    warehouseKey: currentWarehouseKey,
+    warehouseKey: warehouseKey(stock),
     minOrderQty: null,
     multiplicity: offer.multiplicity,
     leadTimeMinHours: null,
@@ -266,8 +265,8 @@ export async function buildUniqueTradeShadowBatch(input: {
     sourceChecksum,
     providerDeclaredComplete: false,
     records: recordsWithIdentity,
-    // Shadow search intentionally keeps unmatched/rejected rows visible for reconciliation
-    // without pretending this query-scoped response is a complete supplier catalogue.
+    // Query-scoped shadow data is deliberately allowed to carry unmatched/rejected rows
+    // for reconciliation. It is never treated as a complete supplier catalogue.
     maxIdentityProblemRatio: 1,
     maxRejectedRatio: 1,
     metadata: {
@@ -283,36 +282,49 @@ export async function buildUniqueTradeShadowBatch(input: {
 
 export function assertUniqueTradeShadowWritesEnabled(
   shadowConfirmation: string | undefined,
+  persistenceConfirmation: string | undefined,
   env: Env = process.env,
 ) {
   if (
     env[SHADOW_ENV_NAME] !== SHADOW_ENV_VALUE ||
-    shadowConfirmation !== SHADOW_CONFIRMATION
+    shadowConfirmation !== SHADOW_CONFIRMATION ||
+    env[SUPPLIER_INGESTION_WRITE_ACTIVATION.envName] !==
+      SUPPLIER_INGESTION_WRITE_ACTIVATION.requiredEnvValue ||
+    persistenceConfirmation !==
+      SUPPLIER_INGESTION_WRITE_ACTIVATION.requiredConfirmation
   ) {
     throw new UniqueTradeShadowWriteDisabledError();
   }
 }
 
-export async function previewUniqueTradeShadowSearch(
-  query: string,
-  limit = 30,
-): Promise<UniqueTradeShadowPreview> {
+async function loadUniqueTradeShadowSearch(query: string, limit = 30) {
   const trimmed = query.trim();
   if (!trimmed) throw new Error("Unique Trade shadow search query is required.");
   const safeLimit = Number.isInteger(limit) ? Math.min(Math.max(limit, 1), 100) : 30;
   const offers = await uniqueTradeAdapter.search(trimmed, safeLimit);
+  return { trimmed, offers };
+}
+
+async function previewFromSnapshot(input: {
+  query: string;
+  offers: SupplierOffer[];
+}): Promise<UniqueTradeShadowPreview> {
   const supplier = await getPrisma().supplier.findUnique({
     where: { code: "UNIQUE_TRADE" },
     select: { id: true },
   });
   // Preview is read-only: if the Supplier row is not initialized yet, use a non-persistable
-  // placeholder and create the real row only after explicit shadow-write activation.
+  // placeholder and create the real row only after every write gate has passed.
   const supplierId = supplier?.id ?? "shadow:unique-trade:not-initialized";
-  const batch = await buildUniqueTradeShadowBatch({ supplierId, query: trimmed, offers });
+  const batch = await buildUniqueTradeShadowBatch({
+    supplierId,
+    query: input.query,
+    offers: input.offers,
+  });
   return {
     provider: "UNIQUE_TRADE",
     integrationScope: INTEGRATION_SCOPE,
-    offerCount: offers.length,
+    offerCount: input.offers.length,
     recordCount: batch.records.length,
     recordsWithIdentityCandidates: batch.records.filter(
       (record) => (record.identityCandidates?.length ?? 0) > 0,
@@ -321,36 +333,46 @@ export async function previewUniqueTradeShadowSearch(
   };
 }
 
+export async function previewUniqueTradeShadowSearch(
+  query: string,
+  limit = 30,
+): Promise<UniqueTradeShadowPreview> {
+  const snapshot = await loadUniqueTradeShadowSearch(query, limit);
+  return previewFromSnapshot({ query: snapshot.trimmed, offers: snapshot.offers });
+}
+
 export async function runUniqueTradeShadowSearch(
   input: UniqueTradeShadowRunInput,
 ): Promise<UniqueTradeShadowRunResult> {
-  const preview = await previewUniqueTradeShadowSearch(input.query, input.limit);
+  const snapshot = await loadUniqueTradeShadowSearch(input.query, input.limit);
+  const preview = await previewFromSnapshot({
+    query: snapshot.trimmed,
+    offers: snapshot.offers,
+  });
   if (!input.persist) {
     return { ...preview, persisted: false, persistenceResult: null };
   }
 
-  assertUniqueTradeShadowWritesEnabled(input.shadowConfirmation);
-  if (
-    input.persistenceConfirmation !==
-    SUPPLIER_INGESTION_WRITE_ACTIVATION.requiredConfirmation
-  ) {
-    throw new UniqueTradeShadowWriteDisabledError();
-  }
+  // Every guard is checked before ensureSupplierRecord() or any other DB write.
+  assertUniqueTradeShadowWritesEnabled(
+    input.shadowConfirmation,
+    input.persistenceConfirmation,
+  );
 
   const supplier = await ensureSupplierRecord("unique-trade");
   const batch = await buildUniqueTradeShadowBatch({
     supplierId: supplier.id,
-    query: input.query,
-    offers: await uniqueTradeAdapter.search(input.query.trim(), input.limit ?? 30),
+    query: snapshot.trimmed,
+    offers: snapshot.offers,
   });
   const persistenceResult = await persistSupplierIngestionBatch(batch, {
-    confirmation: input.persistenceConfirmation,
+    confirmation: input.persistenceConfirmation!,
   });
 
   return {
     provider: "UNIQUE_TRADE",
     integrationScope: INTEGRATION_SCOPE,
-    offerCount: batch.metadata?.offerCount as number,
+    offerCount: snapshot.offers.length,
     recordCount: batch.records.length,
     recordsWithIdentityCandidates: batch.records.filter(
       (record) => (record.identityCandidates?.length ?? 0) > 0,
