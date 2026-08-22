@@ -432,7 +432,7 @@ export async function persistSupplierIngestionBatch(
   const now = new Date();
 
   return prisma.$transaction(async (tx) => {
-    await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`supplier-ingestion:${prepared.supplierId}:${prepared.integrationScope}`}))`;
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`supplier-ingestion:${prepared.supplierId}:${prepared.integrationScope}`}))`;
 
     const supplier = await tx.supplier.findUnique({
       where: { id: prepared.supplierId },
