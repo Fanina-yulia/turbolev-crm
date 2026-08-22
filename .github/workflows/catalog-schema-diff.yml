@@ -8,7 +8,7 @@ on:
       - ".github/workflows/catalog-schema-diff.yml"
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   migration-diff:
@@ -30,10 +30,12 @@ jobs:
     env:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/turbolev_ci
       DATABASE_URL_UNPOOLED: postgresql://postgres:postgres@localhost:5432/turbolev_ci
+      MIGRATION_DIR: prisma/migrations/20260822101500_catalog_supplier_schema_v1
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.ref }}
       - uses: actions/setup-node@v4
         with:
           node-version: 24
@@ -44,13 +46,20 @@ jobs:
       - name: Normalize SQL-managed objects
         run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f scripts/ci-normalize-prisma-drift.sql
       - name: Generate exact Prisma migration diff
-        run: npx prisma migrate diff --from-config-datasource --to-schema prisma --script > /tmp/catalog-supplier-migration.sql
-      - name: Validate generated migration is non-empty
-        run: test -s /tmp/catalog-supplier-migration.sql
-      - name: Upload exact migration SQL
-        uses: actions/upload-artifact@v4
-        with:
-          name: catalog-supplier-migration-sql
-          path: /tmp/catalog-supplier-migration.sql
-          if-no-files-found: error
-          retention-days: 1
+        run: |
+          mkdir -p "$MIGRATION_DIR"
+          npx prisma migrate diff --from-config-datasource --to-schema prisma --script > "$MIGRATION_DIR/migration.sql"
+          test -s "$MIGRATION_DIR/migration.sql"
+      - name: Validate migration on clean PostgreSQL
+        run: |
+          npx prisma migrate deploy
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f scripts/ci-normalize-prisma-drift.sql
+          npx prisma migrate diff --from-config-datasource --to-schema prisma --exit-code
+      - name: Commit exact migration and remove temporary workflow
+        run: |
+          rm .github/workflows/catalog-schema-diff.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "$MIGRATION_DIR/migration.sql" .github/workflows/catalog-schema-diff.yml
+          git commit -m "feat(data): add catalog supplier schema migration"
+          git push origin "HEAD:${{ github.event.pull_request.head.ref }}"
