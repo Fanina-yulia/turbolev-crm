@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { decideIncomingOrder } from "../src/services/supplier-ingestion-policy";
 import {
   UNIQUE_TRADE_SHADOW_INGESTION_ACTIVATION,
+  UniqueTradeShadowDuplicateRecordConflictError,
   UniqueTradeShadowWriteDisabledError,
   assertUniqueTradeShadowWritesEnabled,
   buildUniqueTradeShadowBatch,
@@ -82,15 +83,30 @@ const repeat = buildUniqueTradeShadowRecords([offer()]);
 assert.equal(repeat[0].normalized.supplierRecordKey, exact[0].normalized.supplierRecordKey);
 assert.equal(repeat[0].rawChecksum, exact[0].rawChecksum);
 
+// Same provider detail/warehouse with equivalent commercial state is a harmless duplicate.
 const duplicateStock = buildUniqueTradeShadowRecords([
   offer({
     stock: [
       { warehouse: "Київ", warehouseId: "10", quantity: "7" },
-      { warehouse: "Київ duplicate", warehouseId: "10", quantity: "7" },
+      { warehouse: "Київ duplicate label", warehouseId: "10", quantity: "7" },
     ],
   }),
 ]);
 assert.equal(duplicateStock.length, 1);
+
+// The same stable identity with conflicting commercial state must never silently pick one row.
+assert.throws(
+  () =>
+    buildUniqueTradeShadowRecords([
+      offer({
+        stock: [
+          { warehouse: "Київ", warehouseId: "10", quantity: "7" },
+          { warehouse: "Київ", warehouseId: "10", quantity: "3" },
+        ],
+      }),
+    ]),
+  UniqueTradeShadowDuplicateRecordConflictError,
+);
 
 const secretLikeOffer = {
   ...offer(),
