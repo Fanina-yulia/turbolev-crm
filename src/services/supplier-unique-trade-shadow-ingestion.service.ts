@@ -38,6 +38,18 @@ export class UniqueTradeShadowWriteDisabledError extends Error {
   }
 }
 
+export class UniqueTradeShadowDuplicateRecordConflictError extends Error {
+  readonly supplierRecordKey: string;
+
+  constructor(supplierRecordKey: string) {
+    super(
+      `Unique Trade returned conflicting commercial rows for the same shadow identity: ${supplierRecordKey}.`,
+    );
+    this.name = "UniqueTradeShadowDuplicateRecordConflictError";
+    this.supplierRecordKey = supplierRecordKey;
+  }
+}
+
 export type UniqueTradeShadowRunInput = {
   query: string;
   limit?: number;
@@ -165,6 +177,24 @@ function normalizedRecord(offer: SupplierOffer, stock: SupplierStock | null): No
   };
 }
 
+function commercialFingerprint(record: NormalizedSupplierRecord) {
+  return semanticFingerprint({
+    externalProductId: record.externalProductId ?? null,
+    supplierArticleNorm: record.supplierArticleNorm ?? null,
+    brandNormalized: record.brandNormalized ?? null,
+    mpnCandidateNorm: record.mpnCandidateNorm ?? null,
+    currency: record.currency ?? null,
+    purchasePrice: record.purchasePrice ?? null,
+    quantityMode: record.quantityMode,
+    exactQty: record.exactQty ?? null,
+    availabilityBand: record.availabilityBand ?? null,
+    supplierAvailabilityRaw: record.supplierAvailabilityRaw ?? null,
+    warehouseKey: record.warehouseKey ?? null,
+    minOrderQty: record.minOrderQty ?? null,
+    multiplicity: record.multiplicity ?? null,
+  });
+}
+
 export function buildUniqueTradeShadowRecords(offers: SupplierOffer[]): SupplierIngestionRecordInput[] {
   const records = offers.flatMap((offer) => {
     const stocks = offer.stock.length > 0 ? offer.stock : [null];
@@ -177,12 +207,24 @@ export function buildUniqueTradeShadowRecords(offers: SupplierOffer[]): Supplier
     });
   });
 
-  const seen = new Set<string>();
-  return records.filter((record) => {
-    if (seen.has(record.normalized.supplierRecordKey)) return false;
-    seen.add(record.normalized.supplierRecordKey);
-    return true;
-  });
+  const byKey = new Map<
+    string,
+    { record: SupplierIngestionRecordInput; commercialHash: string }
+  >();
+  for (const record of records) {
+    const key = record.normalized.supplierRecordKey;
+    const commercialHash = commercialFingerprint(record.normalized);
+    const existing = byKey.get(key);
+    if (!existing) {
+      byKey.set(key, { record, commercialHash });
+      continue;
+    }
+    if (existing.commercialHash !== commercialHash) {
+      throw new UniqueTradeShadowDuplicateRecordConflictError(key);
+    }
+    // Exact commercial duplicate: keep the first raw observation deterministically.
+  }
+  return [...byKey.values()].map((item) => item.record);
 }
 
 function mergeCandidate(
@@ -360,17 +402,19 @@ export async function previewUniqueTradeShadowSearch(
 export async function runUniqueTradeShadowSearch(
   input: UniqueTradeShadowRunInput,
 ): Promise<UniqueTradeShadowRunResult> {
-  const snapshot = await loadUniqueTradeShadowSearch(input.query, input.limit);
-  const preview = await previewFromSnapshot(snapshot);
-  if (!input.persist) {
-    return { ...preview, persisted: false, persistenceResult: null };
+  if (input.persist) {
+    // Persist-mode authorization is checked before the provider API call, DB reads or writes.
+    assertUniqueTradeShadowWritesEnabled(
+      input.shadowConfirmation,
+      input.persistenceConfirmation,
+    );
   }
 
-  // Every guard is checked before ensureSupplierRecord() or any other DB write.
-  assertUniqueTradeShadowWritesEnabled(
-    input.shadowConfirmation,
-    input.persistenceConfirmation,
-  );
+  const snapshot = await loadUniqueTradeShadowSearch(input.query, input.limit);
+  if (!input.persist) {
+    const preview = await previewFromSnapshot(snapshot);
+    return { ...preview, persisted: false, persistenceResult: null };
+  }
 
   const supplier = await ensureSupplierRecord("unique-trade");
   const batch = await buildUniqueTradeShadowBatch({
