@@ -27,6 +27,7 @@ const DEFAULT_MAX_RECORDS = 5_000;
 const DEFAULT_MAX_PRICE_CHANGE_RATIO = 0.5;
 
 type Tx = Prisma.TransactionClient;
+type SupplierIngestionEnv = Record<string, string | undefined>;
 
 export class SupplierIngestionWriteDisabledError extends Error {
   constructor() {
@@ -121,13 +122,13 @@ function requireNonEmpty(value: string, code: string, label: string): string {
   return normalized;
 }
 
-export function supplierIngestionWritesEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
+export function supplierIngestionWritesEnabled(env: SupplierIngestionEnv = process.env): boolean {
   return env.SUPPLIER_INGESTION_WRITES_ENABLED === WRITE_ENV_VALUE;
 }
 
 export function assertSupplierIngestionWritesEnabled(
   activation: SupplierIngestionWriteActivation,
-  env: NodeJS.ProcessEnv = process.env,
+  env: SupplierIngestionEnv = process.env,
 ): void {
   if (!supplierIngestionWritesEnabled(env) || activation.confirmation !== WRITE_CONFIRMATION) {
     throw new SupplierIngestionWriteDisabledError();
@@ -206,6 +207,12 @@ function prepareInput(input: PersistSupplierIngestionBatchInput) {
     sourceChecksum: input.sourceChecksum ?? null,
     cursorBefore: input.cursorBefore ?? null,
     cursorAfter: input.cursorAfter ?? null,
+    providerDeclaredComplete: input.providerDeclaredComplete === true,
+    minimumFullSnapshotRows: input.minimumFullSnapshotRows ?? null,
+    maxRejectedRatio: input.maxRejectedRatio ?? null,
+    maxIdentityProblemRatio: input.maxIdentityProblemRatio ?? null,
+    maxFullSnapshotDropRatio: input.maxFullSnapshotDropRatio ?? null,
+    maxPriceChangeRatio: input.maxPriceChangeRatio ?? DEFAULT_MAX_PRICE_CHANGE_RATIO,
     records: preparedRecords
       .map((record) => ({ key: record.normalized.supplierRecordKey, rawChecksum: record.input.rawChecksum.trim() }))
       .sort((a, b) => a.key.localeCompare(b.key)),
@@ -231,9 +238,10 @@ function readMetadataString(value: unknown, key: string): string | null {
   return typeof candidate === "string" && candidate ? candidate : null;
 }
 
-function reconciliationReasonForIdentity(state: "AMBIGUOUS" | "UNMATCHED" | "CONFLICT") {
+function reconciliationReasonForIdentity(state: "AMBIGUOUS" | "UNMATCHED" | "CONFLICT" | "MATCHED") {
   if (state === "AMBIGUOUS") return "AMBIGUOUS" as const;
   if (state === "UNMATCHED") return "UNMATCHED" as const;
+  if (state === "MATCHED") return "SCHEMA_ERROR" as const;
   return "IDENTITY_CONFLICT" as const;
 }
 
