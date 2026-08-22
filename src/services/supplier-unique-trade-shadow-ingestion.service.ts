@@ -143,6 +143,8 @@ function normalizedRecord(offer: SupplierOffer, stock: SupplierStock | null): No
     leadTimeMaxHours: null,
     etaFrom: null,
     etaTo: null,
+    // Unique Trade search currently gives us a current observation, not an authoritative
+    // provider-side updated_at/version. Keep that distinction explicit and fail-closed.
     sourceUpdatedAt: null,
     sourceTimeTrusted: false,
     rawPayload: {
@@ -236,6 +238,8 @@ export async function buildUniqueTradeShadowBatch(input: {
   supplierId: string;
   query: string;
   offers: SupplierOffer[];
+  providerStartedAt?: Date | null;
+  providerFinishedAt?: Date | null;
   resolveIdentity?: IdentityResolver;
 }): Promise<PersistSupplierIngestionBatchInput> {
   const resolveIdentity = input.resolveIdentity ?? resolveUniqueTradeIdentityCandidates;
@@ -261,8 +265,12 @@ export async function buildUniqueTradeShadowBatch(input: {
     mode: "API_POLL",
     adapterVersion: ADAPTER_VERSION,
     schemaVersion: SCHEMA_VERSION,
-    sourceVersion: `search:${queryHash}`,
+    // A query hash is not a provider version. Leave sourceVersion absent so the core
+    // ordering policy cannot mistake it for authoritative change ordering evidence.
+    sourceVersion: null,
     sourceChecksum,
+    providerStartedAt: input.providerStartedAt ?? null,
+    providerFinishedAt: input.providerFinishedAt ?? null,
     providerDeclaredComplete: false,
     records: recordsWithIdentity,
     // Query-scoped shadow data is deliberately allowed to carry unmatched/rejected rows
@@ -276,6 +284,8 @@ export async function buildUniqueTradeShadowBatch(input: {
       offerCount: input.offers.length,
       recordCount: recordsWithIdentity.length,
       rawQueryStored: false,
+      providerOrderingEvidence: false,
+      changedCommercialPayloadPolicy: "RECONCILE_FAIL_CLOSED",
     },
   };
 }
@@ -301,13 +311,17 @@ async function loadUniqueTradeShadowSearch(query: string, limit = 30) {
   const trimmed = query.trim();
   if (!trimmed) throw new Error("Unique Trade shadow search query is required.");
   const safeLimit = Number.isInteger(limit) ? Math.min(Math.max(limit, 1), 100) : 30;
+  const providerStartedAt = new Date();
   const offers = await uniqueTradeAdapter.search(trimmed, safeLimit);
-  return { trimmed, offers };
+  const providerFinishedAt = new Date();
+  return { trimmed, offers, providerStartedAt, providerFinishedAt };
 }
 
 async function previewFromSnapshot(input: {
   query: string;
   offers: SupplierOffer[];
+  providerStartedAt: Date;
+  providerFinishedAt: Date;
 }): Promise<UniqueTradeShadowPreview> {
   const supplier = await getPrisma().supplier.findUnique({
     where: { code: "UNIQUE_TRADE" },
@@ -320,6 +334,8 @@ async function previewFromSnapshot(input: {
     supplierId,
     query: input.query,
     offers: input.offers,
+    providerStartedAt: input.providerStartedAt,
+    providerFinishedAt: input.providerFinishedAt,
   });
   return {
     provider: "UNIQUE_TRADE",
@@ -338,17 +354,14 @@ export async function previewUniqueTradeShadowSearch(
   limit = 30,
 ): Promise<UniqueTradeShadowPreview> {
   const snapshot = await loadUniqueTradeShadowSearch(query, limit);
-  return previewFromSnapshot({ query: snapshot.trimmed, offers: snapshot.offers });
+  return previewFromSnapshot(snapshot);
 }
 
 export async function runUniqueTradeShadowSearch(
   input: UniqueTradeShadowRunInput,
 ): Promise<UniqueTradeShadowRunResult> {
   const snapshot = await loadUniqueTradeShadowSearch(input.query, input.limit);
-  const preview = await previewFromSnapshot({
-    query: snapshot.trimmed,
-    offers: snapshot.offers,
-  });
+  const preview = await previewFromSnapshot(snapshot);
   if (!input.persist) {
     return { ...preview, persisted: false, persistenceResult: null };
   }
@@ -364,6 +377,8 @@ export async function runUniqueTradeShadowSearch(
     supplierId: supplier.id,
     query: snapshot.trimmed,
     offers: snapshot.offers,
+    providerStartedAt: snapshot.providerStartedAt,
+    providerFinishedAt: snapshot.providerFinishedAt,
   });
   const persistenceResult = await persistSupplierIngestionBatch(batch, {
     confirmation: input.persistenceConfirmation!,
