@@ -35,6 +35,7 @@ export type SupplierStatus = {
 export type SupplierStock = {
   warehouse: string;
   quantity: string;
+  warehouseId?: string | null;
 };
 
 export type SupplierOffer = {
@@ -52,6 +53,61 @@ export type SupplierOffer = {
   sourceUrl: string | null;
 };
 
+export type SupplierDeliveryPoint = {
+  id: string;
+  label: string;
+};
+
+export type SupplierTransporter = {
+  id: string;
+  label: string;
+};
+
+export type SupplierDeliveryOption = {
+  id: string;
+  label: string;
+  time?: string | null;
+  timestamp?: number | null;
+};
+
+export type SupplierOrderItemInput = {
+  externalProductId: string;
+  quantity: number;
+  warehouseId: string;
+};
+
+export type SupplierOrderSubmitInput = {
+  comment?: string | null;
+  deliveryId: string;
+  deliveryDate: string;
+  deliveryPointId: string;
+  paymentType: "nal" | "beznal";
+  withoutDocument: boolean;
+  items: SupplierOrderItemInput[];
+};
+
+export type SupplierOrderResult = {
+  externalOrderId: string;
+  externalCode?: string | null;
+  providerStatus: string;
+  totalPurchase: number | null;
+  currency: string | null;
+  raw: unknown;
+};
+
+export type SupplierOrderStatusResult = SupplierOrderResult & {
+  items?: Array<{
+    externalProductId: string | null;
+    article: string | null;
+    brand: string | null;
+    name: string | null;
+    quantity: number | null;
+    purchasePrice: number | null;
+    warehouseId: string | null;
+    warehouse: string | null;
+  }>;
+};
+
 export interface SupplierAdapter {
   readonly id: SupplierId;
   readonly name: string;
@@ -63,4 +119,9 @@ export interface SupplierAdapter {
   isConfigured(): Promise<boolean>;
   testConnection(): Promise<SupplierConnectionCheck>;
   search(query: string, limit?: number): Promise<SupplierOffer[]>;
+  listDeliveryPoints?(): Promise<SupplierDeliveryPoint[]>;
+  listTransporters?(input: { date: string; deliveryPointId: string }): Promise<SupplierTransporter[]>;
+  listDeliveryOptions?(input: { date: string; deliveryPointId: string; transporterId: string; warehouseIds: string[] }): Promise<SupplierDeliveryOption[]>;
+  submitOrder?(input: SupplierOrderSubmitInput): Promise<SupplierOrderResult>;
+  getOrder?(externalOrderId: string): Promise<SupplierOrderStatusResult>;
 }
