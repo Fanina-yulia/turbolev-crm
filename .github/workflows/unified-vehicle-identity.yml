@@ -1,0 +1,30 @@
+name: Unified Vehicle Identity
+
+on:
+  pull_request:
+    paths:
+      - "src/domain/vehicle-identity.ts"
+      - "src/services/unified-vehicle-identity.service.ts"
+      - "scripts/unified-vehicle-identity-smoke.ts"
+      - ".github/workflows/unified-vehicle-identity.yml"
+  push:
+    branches: [main]
+    paths:
+      - "src/domain/vehicle-identity.ts"
+      - "src/services/unified-vehicle-identity.service.ts"
+      - "scripts/unified-vehicle-identity-smoke.ts"
+      - ".github/workflows/unified-vehicle-identity.yml"
+
+jobs:
+  vehicle-identity:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npx tsc --noEmit
+      - run: npx tsx scripts/unified-vehicle-identity-smoke.ts
