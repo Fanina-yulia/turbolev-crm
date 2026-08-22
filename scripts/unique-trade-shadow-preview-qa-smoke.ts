@@ -139,7 +139,11 @@ const routeSource = readFileSync(
 assert.equal(routeSource.includes('process.env.VERCEL_ENV !== "preview"'), true);
 assert.equal(routeSource.includes("authorizeScopedLocation"), true);
 assert.equal(routeSource.includes("PERMISSIONS.PARTS_READ"), true);
-assert.equal(routeSource.indexOf('process.env.VERCEL_ENV !== "preview"') < routeSource.indexOf("authorizeScopedLocation"), true);
+assert.equal(
+  routeSource.indexOf('process.env.VERCEL_ENV !== "preview"') <
+    routeSource.indexOf("const access = await authorizeScopedLocation"),
+  true,
+);
 assert.equal(routeSource.includes("searchParams"), false);
 assert.equal(routeSource.includes("persistSupplierIngestionBatch"), false);
 assert.equal(routeSource.includes("submitOrder"), false);
