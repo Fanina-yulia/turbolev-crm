@@ -241,44 +241,97 @@ function mergeCandidate(
   map.set(productId, { ...current, ...patch, productId });
 }
 
+function identityPairKey(brandNormalized: string, mpnNormalized: string) {
+  return `${brandNormalized}\u0000${mpnNormalized}`;
+}
+
+export async function resolveUniqueTradeIdentityCandidatesBatch(
+  records: NormalizedSupplierRecord[],
+): Promise<Map<string, IdentityEvidenceCandidate[]>> {
+  const prisma = getPrisma();
+  const externalIds = [...new Set(
+    records.map((record) => record.externalProductId).filter((value): value is string => Boolean(value)),
+  )];
+  const brandMpnPairs = [...new Map(
+    records.flatMap((record) => {
+      if (!record.brandNormalized || !record.mpnCandidateNorm) return [];
+      const key = identityPairKey(record.brandNormalized, record.mpnCandidateNorm);
+      return [[key, { brand: record.brandNormalized, mpn: record.mpnCandidateNorm }] as const];
+    }),
+  ).values()];
+
+  const [externalRows, exactProducts] = await Promise.all([
+    externalIds.length
+      ? prisma.productExternalReference.findMany({
+          where: {
+            provider: "UNIQUE_TRADE",
+            externalType: "DETAIL_ID",
+            externalId: { in: externalIds },
+            product: { status: "ACTIVE" },
+          },
+          select: { externalId: true, product: { select: { id: true } } },
+        })
+      : Promise.resolve([]),
+    brandMpnPairs.length
+      ? prisma.product.findMany({
+          where: {
+            status: "ACTIVE",
+            OR: brandMpnPairs.map((pair) => ({
+              mpnNormalized: pair.mpn,
+              brand: { normalizedName: pair.brand, status: "ACTIVE" },
+            })),
+          },
+          select: {
+            id: true,
+            mpnNormalized: true,
+            brand: { select: { normalizedName: true } },
+          },
+        })
+      : Promise.resolve([]),
+  ]);
+
+  const externalMap = new Map<string, string[]>();
+  for (const row of externalRows) {
+    const ids = externalMap.get(row.externalId) ?? [];
+    ids.push(row.product.id);
+    externalMap.set(row.externalId, ids);
+  }
+
+  const brandMpnMap = new Map<string, string[]>();
+  for (const product of exactProducts) {
+    const key = identityPairKey(product.brand.normalizedName, product.mpnNormalized);
+    const ids = brandMpnMap.get(key) ?? [];
+    ids.push(product.id);
+    brandMpnMap.set(key, ids);
+  }
+
+  const result = new Map<string, IdentityEvidenceCandidate[]>();
+  for (const record of records) {
+    const candidates = new Map<string, IdentityEvidenceCandidate>();
+    if (record.externalProductId) {
+      for (const productId of externalMap.get(record.externalProductId) ?? []) {
+        mergeCandidate(candidates, productId, { trustedExternalId: true });
+      }
+    }
+    if (record.brandNormalized && record.mpnCandidateNorm) {
+      const key = identityPairKey(record.brandNormalized, record.mpnCandidateNorm);
+      for (const productId of brandMpnMap.get(key) ?? []) {
+        mergeCandidate(candidates, productId, { brandMpnExact: true });
+      }
+    }
+    result.set(
+      record.supplierRecordKey,
+      [...candidates.values()].sort((a, b) => a.productId.localeCompare(b.productId)),
+    );
+  }
+  return result;
+}
+
 export async function resolveUniqueTradeIdentityCandidates(
   record: NormalizedSupplierRecord,
 ): Promise<IdentityEvidenceCandidate[]> {
-  const prisma = getPrisma();
-  const candidates = new Map<string, IdentityEvidenceCandidate>();
-
-  if (record.externalProductId) {
-    const external = await prisma.productExternalReference.findUnique({
-      where: {
-        provider_externalType_externalId: {
-          provider: "UNIQUE_TRADE",
-          externalType: "DETAIL_ID",
-          externalId: record.externalProductId,
-        },
-      },
-      select: { product: { select: { id: true, status: true } } },
-    });
-    if (external?.product.status === "ACTIVE") {
-      mergeCandidate(candidates, external.product.id, { trustedExternalId: true });
-    }
-  }
-
-  if (record.brandNormalized && record.mpnCandidateNorm) {
-    const exactProducts = await prisma.product.findMany({
-      where: {
-        status: "ACTIVE",
-        mpnNormalized: record.mpnCandidateNorm,
-        brand: { normalizedName: record.brandNormalized, status: "ACTIVE" },
-      },
-      select: { id: true },
-      take: 5,
-    });
-    for (const product of exactProducts) {
-      mergeCandidate(candidates, product.id, { brandMpnExact: true });
-    }
-  }
-
-  return [...candidates.values()].sort((a, b) => a.productId.localeCompare(b.productId));
+  const resolved = await resolveUniqueTradeIdentityCandidatesBatch([record]);
+  return resolved.get(record.supplierRecordKey) ?? [];
 }
 
 export async function buildUniqueTradeShadowBatch(input: {
@@ -289,14 +342,24 @@ export async function buildUniqueTradeShadowBatch(input: {
   providerFinishedAt?: Date | null;
   resolveIdentity?: IdentityResolver;
 }): Promise<PersistSupplierIngestionBatchInput> {
-  const resolveIdentity = input.resolveIdentity ?? resolveUniqueTradeIdentityCandidates;
   const records = buildUniqueTradeShadowRecords(input.offers);
-  const recordsWithIdentity = await Promise.all(
-    records.map(async (record) => ({
-      ...record,
-      identityCandidates: await resolveIdentity(record.normalized),
-    })),
-  );
+  let identityCandidates: IdentityEvidenceCandidate[][];
+  if (input.resolveIdentity) {
+    identityCandidates = await Promise.all(
+      records.map((record) => input.resolveIdentity!(record.normalized)),
+    );
+  } else {
+    const resolved = await resolveUniqueTradeIdentityCandidatesBatch(
+      records.map((record) => record.normalized),
+    );
+    identityCandidates = records.map(
+      (record) => resolved.get(record.normalized.supplierRecordKey) ?? [],
+    );
+  }
+  const recordsWithIdentity = records.map((record, index) => ({
+    ...record,
+    identityCandidates: identityCandidates[index],
+  }));
   const queryHash = stableQueryHash(input.query);
   const sourceChecksum = semanticFingerprint(
     recordsWithIdentity.map((record) => ({
@@ -333,6 +396,7 @@ export async function buildUniqueTradeShadowBatch(input: {
       rawQueryStored: false,
       providerOrderingEvidence: false,
       changedCommercialPayloadPolicy: "RECONCILE_FAIL_CLOSED",
+      identityResolutionMode: "BATCH",
     },
   };
 }
