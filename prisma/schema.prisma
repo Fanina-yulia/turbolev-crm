@@ -202,6 +202,7 @@ model Vehicle {
   diagnosticRequests DiagnosticRequest[]
   workOrders         WorkOrder[]
   vehicleImages      VehicleImageAsset[]
+  catalogLink        VehicleCatalogLink?
 
   @@index([clientId])
   @@index([brand, model])
