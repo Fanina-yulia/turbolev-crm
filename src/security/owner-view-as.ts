@@ -59,7 +59,7 @@ function activeRoleWhere(now: Date) {
     startsAt: { lte: now },
     OR: [{ endsAt: null }, { endsAt: { gt: now } }],
     role: { isActive: true },
-  } as const;
+  };
 }
 
 export async function listOwnerViewAsEmployees(context: AccessContext) {
