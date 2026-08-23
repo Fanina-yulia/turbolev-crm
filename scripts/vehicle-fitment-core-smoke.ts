@@ -175,7 +175,7 @@ try {
 
   await expectViolation(
     client,
-    "23503",
+    "23001",
     `DELETE FROM "Product" WHERE "id" = 'fit_product_1'`,
   );
 
