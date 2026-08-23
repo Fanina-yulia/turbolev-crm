@@ -12,6 +12,14 @@ export type CrmAccessSnapshot = {
   roles:Array<{code:string;name:string;locationId:string|null;isPrimary:boolean}>;
   permissions:Record<string,string>;
   locations:string[];
+  viewAs:{
+    active:true;
+    readOnly:true;
+    sessionId:string;
+    expiresAt:string;
+    owner:{id:string;name:string;employeeId:string|null};
+    target:{id:string;name:string;employeeId:string|null};
+  }|null;
 };
 
 export function useCrmAccess(){
