@@ -135,8 +135,10 @@ function Delta({ current, previous, invert = false }: { current: number | null |
 }
 
 function routeAttention(item: DashboardAttention) {
-  if (item.workOrderId) return () => navigateCrm("Замовлення-наряди", { workOrderId: item.workOrderId });
-  if (item.vehicleId) return () => navigateCrm("Авто", { vehicleId: item.vehicleId });
+  const workOrderId = item.workOrderId;
+  if (workOrderId) return () => navigateCrm("Замовлення-наряди", { workOrderId });
+  const vehicleId = item.vehicleId;
+  if (vehicleId) return () => navigateCrm("Авто", { vehicleId });
   return () => navigateCrm("Планувальник", { appointmentId: item.appointmentId });
 }
 
