@@ -23,6 +23,9 @@ const ACTIVE_STATION_STATUSES = [
   "WARRANTY",
 ] as const;
 
+const NEEDS_MECHANIC_STATUSES = new Set(["ARRIVED", "DIAGNOSTICS", "READY_FOR_REPAIR", "IN_REPAIR", "WAITING_QC"]);
+const ATTENTION_STATUSES = new Set(["WAITING_APPROVAL", "WAITING_PARTS", "PAUSED", "WAITING_QC", "READY_FOR_PICKUP"]);
+
 async function kyivDayRange() {
   const prisma = getPrisma();
   const rows = await prisma.$queryRawUnsafe<Array<{ startAt: Date; endAt: Date }>>(`
@@ -35,6 +38,18 @@ async function kyivDayRange() {
 
 function vehicleLabel(vehicle: { brand: string | null; model: string | null; year: number | null }) {
   return [vehicle.brand, vehicle.model, vehicle.year].filter(Boolean).join(" ") || "Автомобіль";
+}
+
+function attentionReason(status: string, overdue: boolean, unassigned: boolean) {
+  if (status === "NO_SHOW") return "Клієнт не прибув на запланований час";
+  if (overdue) return "Протерміновано плановий час завершення";
+  if (unassigned) return "Не призначено механіка";
+  if (status === "WAITING_APPROVAL") return "Очікує рішення клієнта";
+  if (status === "WAITING_PARTS") return "Робота заблокована очікуванням деталей";
+  if (status === "PAUSED") return "Роботу призупинено";
+  if (status === "WAITING_QC") return "Очікує контроль якості";
+  if (status === "READY_FOR_PICKUP") return "Авто готове та очікує видачу";
+  return "Потребує контролю керівника";
 }
 
 export async function GET(request: Request) {
@@ -66,7 +81,12 @@ export async function GET(request: Request) {
         });
       }
 
-      const [location, appointments, posts, mechanics] = await Promise.all([
+      const appointmentInclude = {
+        post: { select: { id: true, name: true } },
+        mechanic: { select: { id: true, name: true } },
+      } as const;
+
+      const [location, todayAppointments, activeAppointments, posts, mechanics] = await Promise.all([
         prisma.serviceLocation.findUnique({ where: { id: locationId }, select: { id: true, name: true } }),
         prisma.serviceAppointment.findMany({
           where: {
@@ -74,38 +94,86 @@ export async function GET(request: Request) {
             plannedStartAt: { gte: startAt, lt: endAt },
             status: { notIn: ["CANCELLED", "RESERVE"] },
           },
-          include: {
-            post: { select: { id: true, name: true } },
-            mechanic: { select: { id: true, name: true } },
-          },
+          include: appointmentInclude,
           orderBy: [{ priority: "desc" }, { plannedStartAt: "asc" }],
+        }),
+        prisma.serviceAppointment.findMany({
+          where: { locationId, status: { in: [...ACTIVE_STATION_STATUSES] } },
+          include: appointmentInclude,
+          orderBy: [{ priority: "desc" }, { updatedAt: "asc" }],
+          take: 250,
         }),
         prisma.servicePost.findMany({ where: { locationId, isActive: true }, select: { id: true, name: true }, orderBy: { sortOrder: "asc" } }),
         prisma.serviceMechanic.findMany({ where: { locationId, isActive: true }, select: { id: true, name: true }, orderBy: { sortOrder: "asc" } }),
       ]);
 
-      const statusCount = (status: string) => appointments.filter((item) => item.status === status).length;
-      const inRepair = statusCount("IN_REPAIR");
+      const now = new Date();
+      const activeStatusCount = (status: string) => activeAppointments.filter((item) => item.status === status).length;
+      const todayStatusCount = (status: string) => todayAppointments.filter((item) => item.status === status).length;
+      const inRepair = activeStatusCount("IN_REPAIR");
       const occupiedPostIds = new Set(
-        appointments
-          .filter((item) => item.status === "IN_REPAIR" && item.postId)
-          .map((item) => item.postId as string),
+        activeAppointments.filter((item) => item.status === "IN_REPAIR" && item.postId).map((item) => item.postId as string),
       );
-      const carsOnStation = appointments.filter((item) => ACTIVE_STATION_STATUSES.includes(item.status as (typeof ACTIVE_STATION_STATUSES)[number])).length;
-      const attentionStatuses = new Set(["WAITING_APPROVAL", "WAITING_PARTS", "PAUSED", "NO_SHOW", "WAITING_QC", "READY_FOR_PICKUP"]);
-      const attention = appointments
-        .filter((item) => attentionStatuses.has(item.status))
-        .slice(0, 12)
-        .map((item) => ({
+      const isOverdue = (item: (typeof activeAppointments)[number]) => item.plannedEndAt < now;
+      const isUnassigned = (item: (typeof activeAppointments)[number]) => NEEDS_MECHANIC_STATUSES.has(item.status) && !item.mechanicId;
+      const overdueCount = activeAppointments.filter(isOverdue).length;
+      const unassignedCount = activeAppointments.filter(isUnassigned).length;
+
+      const attentionCandidates = [
+        ...activeAppointments.filter((item) => ATTENTION_STATUSES.has(item.status) || isOverdue(item) || isUnassigned(item)),
+        ...todayAppointments.filter((item) => item.status === "NO_SHOW"),
+      ];
+      const priorityRank = { CRITICAL: 0, HIGH: 1, NORMAL: 2 } as const;
+      const attentionAll = attentionCandidates.map((item) => {
+        const overdue = item.status !== "NO_SHOW" && item.plannedEndAt < now;
+        const unassigned = item.status !== "NO_SHOW" && NEEDS_MECHANIC_STATUSES.has(item.status) && !item.mechanicId;
+        const priority: keyof typeof priorityRank = item.status === "NO_SHOW" || overdue || item.status === "PAUSED" || (unassigned && ["ARRIVED", "DIAGNOSTICS", "IN_REPAIR"].includes(item.status))
+          ? "CRITICAL"
+          : ["WAITING_APPROVAL", "WAITING_PARTS", "WAITING_QC", "READY_FOR_PICKUP"].includes(item.status) || unassigned
+            ? "HIGH"
+            : "NORMAL";
+        return {
           id: item.id,
           status: item.status,
           plate: item.plateNumber || "—",
           vehicle: item.vehicleLabel || "Автомобіль",
           problem: item.problem,
           plannedStartAt: item.plannedStartAt,
+          plannedEndAt: item.plannedEndAt,
           post: item.post?.name ?? null,
           mechanic: item.mechanic?.name ?? null,
-        }));
+          priority,
+          reason: attentionReason(item.status, overdue, unassigned),
+          overdue,
+          waitingMinutes: Math.max(0, Math.floor((now.getTime() - item.updatedAt.getTime()) / 60_000)),
+        };
+      }).sort((a, b) => priorityRank[a.priority] - priorityRank[b.priority] || b.waitingMinutes - a.waitingMinutes);
+
+      const postLoads = posts.map((post) => {
+        const active = activeAppointments.find((item) => item.postId === post.id && item.status === "IN_REPAIR") ?? null;
+        return {
+          id: post.id,
+          name: post.name,
+          occupied: Boolean(active),
+          plate: active?.plateNumber ?? null,
+          vehicle: active?.vehicleLabel ?? null,
+          mechanic: active?.mechanic?.name ?? null,
+          plannedEndAt: active?.plannedEndAt ?? null,
+        };
+      });
+
+      const mechanicLoads = mechanics.map((mechanic) => {
+        const assigned = activeAppointments.filter((item) => item.mechanicId === mechanic.id);
+        const mechanicInRepair = assigned.filter((item) => item.status === "IN_REPAIR").length;
+        return {
+          id: mechanic.id,
+          name: mechanic.name,
+          activeCars: assigned.length,
+          inRepair: mechanicInRepair,
+          waiting: Math.max(0, assigned.length - mechanicInRepair),
+          available: mechanicInRepair === 0,
+        };
+      }).sort((a, b) => b.inRepair - a.inRepair || b.activeCars - a.activeCars || a.name.localeCompare(b.name, "uk"));
 
       return NextResponse.json({
         ok: true,
@@ -113,25 +181,30 @@ export async function GET(request: Request) {
         linked: true,
         station: location ?? { id: locationId, name: "Станція" },
         kpis: {
-          carsToday: appointments.length,
-          carsOnStation,
+          carsToday: todayAppointments.length,
+          carsOnStation: activeAppointments.length,
           inRepair,
           postsOccupied: occupiedPostIds.size,
           postsTotal: posts.length,
           mechanicsTotal: mechanics.length,
-          noShow: statusCount("NO_SHOW"),
+          noShow: todayStatusCount("NO_SHOW"),
+          needsAction: attentionAll.length,
+          overdue: overdueCount,
+          unassigned: unassignedCount,
         },
         flow: {
-          booked: statusCount("BOOKED"),
-          diagnostics: statusCount("DIAGNOSTICS") + statusCount("ARRIVED"),
-          approval: statusCount("WAITING_APPROVAL") + statusCount("WAITING_CALCULATION"),
-          waitingParts: statusCount("WAITING_PARTS") + statusCount("WAITING_PARTS_SELECTION"),
-          readyForRepair: statusCount("READY_FOR_REPAIR"),
+          booked: todayStatusCount("BOOKED"),
+          diagnostics: activeStatusCount("DIAGNOSTICS") + activeStatusCount("ARRIVED"),
+          approval: activeStatusCount("WAITING_APPROVAL") + activeStatusCount("WAITING_CALCULATION"),
+          waitingParts: activeStatusCount("WAITING_PARTS") + activeStatusCount("WAITING_PARTS_SELECTION"),
+          readyForRepair: activeStatusCount("READY_FOR_REPAIR"),
           inRepair,
-          qc: statusCount("WAITING_QC"),
-          ready: statusCount("READY_FOR_PICKUP"),
+          qc: activeStatusCount("WAITING_QC"),
+          ready: activeStatusCount("READY_FOR_PICKUP"),
         },
-        attention,
+        attention: attentionAll.slice(0, 16),
+        posts: postLoads,
+        mechanics: mechanicLoads,
       }, { headers: { "Cache-Control": "no-store" } });
     }
 

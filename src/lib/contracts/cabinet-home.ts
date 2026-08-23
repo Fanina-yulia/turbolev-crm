@@ -71,6 +71,9 @@ export type StationManagerKpisContract = {
   postsTotal: number;
   mechanicsTotal: number;
   noShow: number;
+  needsAction: number;
+  overdue: number;
+  unassigned: number;
 };
 
 export type StationManagerFlowContract = {
@@ -84,6 +87,8 @@ export type StationManagerFlowContract = {
   ready: number;
 };
 
+export type StationManagerAttentionPriority = "CRITICAL" | "HIGH" | "NORMAL";
+
 export type StationManagerAttentionContract = {
   id: string;
   status: PlannerStatusContract;
@@ -91,8 +96,32 @@ export type StationManagerAttentionContract = {
   vehicle: string;
   problem: string | null;
   plannedStartAt: CrmDateTime;
+  plannedEndAt: CrmDateTime;
   post: string | null;
   mechanic: string | null;
+  priority: StationManagerAttentionPriority;
+  reason: string;
+  overdue: boolean;
+  waitingMinutes: number;
+};
+
+export type StationManagerPostLoadContract = {
+  id: string;
+  name: string;
+  occupied: boolean;
+  plate: string | null;
+  vehicle: string | null;
+  mechanic: string | null;
+  plannedEndAt: CrmDateTime | null;
+};
+
+export type StationManagerMechanicLoadContract = {
+  id: string;
+  name: string;
+  activeCars: number;
+  inRepair: number;
+  waiting: number;
+  available: boolean;
 };
 
 export type StationManagerCabinetLinkedPayload = {
@@ -103,6 +132,8 @@ export type StationManagerCabinetLinkedPayload = {
   kpis: StationManagerKpisContract;
   flow: StationManagerFlowContract;
   attention: StationManagerAttentionContract[];
+  posts: StationManagerPostLoadContract[];
+  mechanics: StationManagerMechanicLoadContract[];
 };
 
 export type StationManagerCabinetUnlinkedPayload = {
