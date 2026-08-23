@@ -6,6 +6,7 @@ import { cabinetHomePayloadMessage, parseCabinetHomePayload } from "@/src/lib/co
 import { navigateCrm, type CrmRouteParams } from "./crm-route";
 import type { CrmAccessSnapshot } from "./use-crm-access";
 import { StationOverview } from "./station-overview";
+import { OwnerControlCenter } from "./owner-dashboard";
 import { MechanicMobileCabinet } from "./mechanic-mobile-cabinet";
 import type { CrmSectionLabel } from "./crm-navigation";
 import styles from "./role-cabinet.module.css";
@@ -150,6 +151,7 @@ function StationManagerCabinet({ data, userName }: { data: StationManagerCabinet
 export function RoleAwareOverview({ access }: { access: CrmAccessSnapshot | null }) {
   const roleCodes = useMemo(() => new Set((access?.roles ?? []).map((role) => role.code).filter(Boolean)), [access?.roles]);
   const specialRole = roleCodes.has("STATION_MANAGER") ? "STATION_MANAGER" : roleCodes.has("MECHANIC") ? "MECHANIC" : null;
+  const ownerRole = roleCodes.has("OWNER") || roleCodes.has("EXECUTIVE_DIRECTOR");
   const [data, setData] = useState<CabinetHomePayload | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -172,7 +174,8 @@ export function RoleAwareOverview({ access }: { access: CrmAccessSnapshot | null
 
   useEffect(() => { void load(); const handler = () => void load(); window.addEventListener("turbolev:data-changed", handler); return () => window.removeEventListener("turbolev:data-changed", handler); }, [load]);
 
-  if (roleCodes.has("OWNER") || roleCodes.has("EXECUTIVE_DIRECTOR") || !specialRole || access?.provisioningState !== "ACTIVE") return <StationOverview />;
+  if (ownerRole && access?.provisioningState === "ACTIVE") return <OwnerControlCenter userName={access?.user?.name} />;
+  if (!specialRole || access?.provisioningState !== "ACTIVE") return <StationOverview />;
   if (loading && !data) return <Loading />;
   if (error && !data) return <div className={styles.state}><strong>Не вдалося відкрити кабінет</strong><span>{error}</span><button type="button" onClick={() => void load()}>Повторити</button></div>;
   if (!data) return <Loading />;
