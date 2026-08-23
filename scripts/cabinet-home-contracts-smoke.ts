@@ -52,7 +52,18 @@ const managerLinked = parseCabinetHomePayload({
   cabinet: "STATION_MANAGER",
   linked: true,
   station: { id: "station-1", name: "Глеваха" },
-  kpis: { carsToday: 8, carsOnStation: 5, inRepair: 2, postsOccupied: 2, postsTotal: 4, mechanicsTotal: 3, noShow: 1 },
+  kpis: {
+    carsToday: 8,
+    carsOnStation: 5,
+    inRepair: 2,
+    postsOccupied: 2,
+    postsTotal: 4,
+    mechanicsTotal: 3,
+    noShow: 1,
+    needsAction: 2,
+    overdue: 1,
+    unassigned: 1,
+  },
   flow: { booked: 2, diagnostics: 1, approval: 1, waitingParts: 1, readyForRepair: 0, inRepair: 2, qc: 1, ready: 0 },
   attention: [{
     id: "appointment-2",
@@ -61,12 +72,37 @@ const managerLinked = parseCabinetHomePayload({
     vehicle: "Volvo XC90 2020",
     problem: null,
     plannedStartAt: start,
+    plannedEndAt: end,
     post: "Пост 2",
     mechanic: "Механік",
+    priority: "HIGH",
+    reason: "Робота заблокована очікуванням деталей",
+    overdue: false,
+    waitingMinutes: 45,
+  }],
+  posts: [{
+    id: "post-1",
+    name: "Пост 1",
+    occupied: true,
+    plate: "KA5678KA",
+    vehicle: "Volvo XC90 2020",
+    mechanic: "Механік",
+    plannedEndAt: end,
+  }],
+  mechanics: [{
+    id: "mechanic-1",
+    name: "Механік",
+    activeCars: 2,
+    inRepair: 1,
+    waiting: 1,
+    available: false,
   }],
 });
 assert(managerLinked && managerLinked.cabinet === "STATION_MANAGER" && managerLinked.linked);
 assert.equal(managerLinked.attention[0]?.status, "WAITING_PARTS");
+assert.equal(managerLinked.kpis.needsAction, 2);
+assert.equal(managerLinked.posts[0]?.occupied, true);
+assert.equal(managerLinked.mechanics[0]?.activeCars, 2);
 
 assert.equal(parseCabinetHomePayload({
   ok: true,
@@ -83,9 +119,36 @@ assert.equal(parseCabinetHomePayload({
   cabinet: "STATION_MANAGER",
   linked: true,
   station: { id: "s", name: "S" },
-  kpis: { carsToday: 1, carsOnStation: 1, inRepair: 0, postsOccupied: 0, postsTotal: 1, mechanicsTotal: 1, noShow: 0 },
+  kpis: {
+    carsToday: 1,
+    carsOnStation: 1,
+    inRepair: 0,
+    postsOccupied: 0,
+    postsTotal: 1,
+    mechanicsTotal: 1,
+    noShow: 0,
+    needsAction: 1,
+    overdue: 0,
+    unassigned: 0,
+  },
   flow: { booked: 1, diagnostics: 0, approval: 0, waitingParts: 0, readyForRepair: 0, inRepair: 0, qc: 0, ready: 0 },
-  attention: [{ id: "a", status: "UNKNOWN", plate: "AA", vehicle: "Car", problem: null, plannedStartAt: start, post: null, mechanic: null }],
+  attention: [{
+    id: "a",
+    status: "UNKNOWN",
+    plate: "AA",
+    vehicle: "Car",
+    problem: null,
+    plannedStartAt: start,
+    plannedEndAt: end,
+    post: null,
+    mechanic: null,
+    priority: "HIGH",
+    reason: "Test",
+    overdue: false,
+    waitingMinutes: 0,
+  }],
+  posts: [],
+  mechanics: [],
 }), null);
 
 console.log("Cabinet home contracts smoke: OK");
