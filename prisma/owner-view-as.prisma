@@ -1,0 +1,17 @@
+model OwnerEmployeeViewAsSession {
+  id               String   @id @default(cuid())
+  tokenHash        String   @unique @db.VarChar(64)
+  ownerUserId      String
+  targetUserId     String
+  targetEmployeeId String?
+  targetRoleCode   String?  @db.VarChar(64)
+  locationId       String?
+  createdAt        DateTime @default(now())
+  expiresAt        DateTime
+  lastUsedAt       DateTime @default(now())
+  endedAt          DateTime?
+
+  @@index([ownerUserId, endedAt, expiresAt])
+  @@index([targetUserId, endedAt, expiresAt])
+  @@index([expiresAt])
+}
