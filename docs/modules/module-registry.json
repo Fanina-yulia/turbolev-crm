@@ -26,7 +26,7 @@
       "title": "Clients & Vehicles",
       "description": "Client records, vehicle cards, ownership data, VIN/plate lookup, appearance and vehicle directory.",
       "keywords": ["client", "customer", "vehicle", "car", "vin", "plate", "owner", "color"],
-      "paths": ["app/client-*", "app/clients-*", "app/vehicles-*", "app/vehicle-plate*", "app/vehicle-presentation*", "app/quick-lookup-*", "app/api/clients*/**", "app/api/vehicles/**", "src/services/vehicle-lookup*", "src/services/vehicle-registry-color*"],
+      "paths": ["app/client-*", "app/clients-*", "app/vehicles-*", "app/vehicle-plate*", "app/vehicle-presentation*", "app/api/clients*/**", "app/api/vehicles/**", "src/services/vehicle-lookup*", "src/services/vehicle-registry-color*"],
       "dependencies": ["leads-intake", "planner", "diagnostics", "work-orders", "vehicle-images"],
       "smokeChecks": ["client-card-load", "vehicle-card-load", "plate-search", "vehicle-owner-consistency"]
     },
