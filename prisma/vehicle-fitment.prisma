@@ -34,6 +34,9 @@ model VehicleCatalogLink {
   createdAt          DateTime                   @default(now())
   updatedAt          DateTime                   @updatedAt
 
+  vehicle          Vehicle          @relation(fields: [vehicleId], references: [id], onDelete: Cascade, map: "vehicle_catalog_link_vehicle_fk")
+  vehicleReference VehicleReference @relation(fields: [vehicleReferenceId], references: [id], onDelete: Restrict, map: "vehicle_catalog_link_reference_fk")
+
   @@index([vehicleReferenceId, status], map: "vehicle_catalog_link_reference_status_idx")
   @@index([status, lastVerifiedAt], map: "vehicle_catalog_link_status_verified_idx")
 }
@@ -58,6 +61,11 @@ model VehicleFitment {
   createdAt          DateTime             @default(now())
   updatedAt          DateTime             @updatedAt
 
+  product          Product                   @relation(fields: [productId], references: [id], onDelete: Restrict, map: "vehicle_fitment_product_fk")
+  vehicleReference VehicleReference          @relation(fields: [vehicleReferenceId], references: [id], onDelete: Cascade, map: "vehicle_fitment_reference_fk")
+  genericArticle   GenericArticle?           @relation(fields: [genericArticleId], references: [id], onDelete: SetNull, map: "vehicle_fitment_generic_article_fk")
+  criteria         VehicleFitmentCriterion[]
+
   @@unique([source, sourceFitmentId], map: "vehicle_fitment_source_identity_uq")
   @@index([productId, status], map: "vehicle_fitment_product_status_idx")
   @@index([vehicleReferenceId, status], map: "vehicle_fitment_reference_status_idx")
@@ -78,6 +86,8 @@ model VehicleFitmentCriterion {
   isMandatory      Boolean                         @default(true)
   displayText      String?                         @db.VarChar(240)
   metadata         Json?
+
+  vehicleFitment VehicleFitment @relation(fields: [vehicleFitmentId], references: [id], onDelete: Cascade, map: "vehicle_fitment_criterion_fitment_fk")
 
   @@index([vehicleFitmentId, isMandatory], map: "vehicle_fitment_criterion_required_idx")
   @@index([key, valueNormalized], map: "vehicle_fitment_criterion_text_idx")
