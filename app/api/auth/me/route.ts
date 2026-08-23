@@ -23,7 +23,6 @@ export async function GET(request: Request) {
       roles: context.roles,
       permissions: context.permissions,
       locations: context.locationIds,
-      viewAs: context.viewAs,
     },
     { headers: { "Cache-Control": "no-store" } },
   );
