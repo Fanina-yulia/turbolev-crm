@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAccessContext, hasPermission } from "@/src/security/access-context";
 import { PERMISSIONS, type AccessScopeCode, type PermissionCode } from "@/src/security/permissions";
+import { appendOperationalStallAttention } from "@/src/services/attention-center-operational-stalls.service";
 import { supplementAttentionCenter } from "@/src/services/attention-center-supplement.service";
 import { appendWalkInAttention } from "@/src/services/attention-center-walk-in.service";
 import { buildAttentionCenter } from "@/src/services/attention-center.service";
@@ -40,8 +41,10 @@ export async function GET(request: NextRequest) {
 
     const tasks = await listTasksForUser(auth.userId);
     const canPlanner = can(context, PERMISSIONS.PLANNER_READ);
+    const canDiagnostics = can(context, PERMISSIONS.DIAGNOSTICS_READ);
     const canFinance = can(context, PERMISSIONS.FINANCE_READ);
     const plannerLocationIds = locationIdsFor(context, PERMISSIONS.PLANNER_READ);
+    const diagnosticLocationIds = locationIdsFor(context, PERMISSIONS.DIAGNOSTICS_READ);
     const canPayrollNetwork = hasNetworkPayrollAccess(context);
     const baseAttention = await buildAttentionCenter({
       userId: auth.userId,
@@ -60,9 +63,15 @@ export async function GET(request: NextRequest) {
       plannerLocationIds,
       canPayrollNetwork,
     });
+    const operationalAttention = await appendOperationalStallAttention(supplementedAttention, {
+      canPlanner,
+      plannerLocationIds,
+      canDiagnostics,
+      diagnosticLocationIds,
+    });
     const attention = canPlanner
-      ? await appendWalkInAttention(supplementedAttention, { plannerLocationIds, canSeeAmounts: canFinance })
-      : supplementedAttention;
+      ? await appendWalkInAttention(operationalAttention, { plannerLocationIds, canSeeAmounts: canFinance })
+      : operationalAttention;
 
     return NextResponse.json({
       ok: true,
