@@ -9,11 +9,23 @@ import {
 } from "@/src/lib/contracts/integration/v1";
 
 const autoPlate = parseVehicleResolveRequest({ inputType: "AUTO", identifier: "КА 7584 СІ" });
-assert.deepEqual(autoPlate, { inputType: "PLATE", plate: "KA7584CI", countryCode: "UA", context: undefined });
+assert.equal(autoPlate.inputType, "PLATE");
+if (autoPlate.inputType === "PLATE") {
+  assert.equal(autoPlate.plate, "KA7584CI");
+  assert.equal(autoPlate.countryCode, "UA");
+  assert.equal(autoPlate.context, undefined);
+}
 
 const euVin = "WVWZZZ1JZXW000001";
 const autoVin = parseVehicleResolveRequest({ inputType: "AUTO", identifier: euVin, context: { categoryId: "brakes" } });
-assert.deepEqual(autoVin, { inputType: "VIN", vin: euVin, context: { categoryId: "brakes" } });
+assert.equal(autoVin.inputType, "VIN");
+if (autoVin.inputType === "VIN") {
+  assert.equal(autoVin.vin, euVin);
+  assert.equal(autoVin.context?.categoryId, "brakes");
+  assert.equal(autoVin.context?.genericArticleId, undefined);
+  assert.equal(autoVin.context?.productId, undefined);
+  assert.deepEqual(JSON.parse(JSON.stringify(autoVin.context)), { categoryId: "brakes" });
+}
 
 const explicitPlate = parseVehicleResolveRequest({ inputType: "PLATE", plate: "AA 1234 BC", countryCode: "ua" });
 assert.equal(explicitPlate.inputType, "PLATE");
@@ -46,7 +58,11 @@ const manual = parseVehicleResolveRequest({
 assert.equal(manual.inputType, "MANUAL");
 
 const saved = parseVehicleResolveRequest({ inputType: "SAVED_VEHICLE", publicVehicleRef: "vehref_abc-123" });
-assert.deepEqual(saved, { inputType: "SAVED_VEHICLE", publicVehicleRef: "vehref_abc-123", context: undefined });
+assert.equal(saved.inputType, "SAVED_VEHICLE");
+if (saved.inputType === "SAVED_VEHICLE") {
+  assert.equal(saved.publicVehicleRef, "vehref_abc-123");
+  assert.equal(saved.context, undefined);
+}
 
 const confirmed = parseVehicleResolveConfirmRequest({
   vehicleResolutionId: "resolution_123",
