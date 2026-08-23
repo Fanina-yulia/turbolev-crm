@@ -1,5 +1,17 @@
 import assert from "node:assert/strict";
 import { Pool, type PoolClient } from "pg";
+import type { Prisma } from "../src/generated/prisma/client";
+
+const prismaRelationContract = {
+  vehicle: { catalogLink: true } satisfies Prisma.VehicleInclude,
+  product: { vehicleFitments: true } satisfies Prisma.ProductInclude,
+  article: { vehicleFitments: true } satisfies Prisma.GenericArticleInclude,
+  reference: { fitments: true, crmVehicleLinks: true } satisfies Prisma.VehicleReferenceInclude,
+  fitment: { product: true, vehicleReference: true, genericArticle: true, criteria: true } satisfies Prisma.VehicleFitmentInclude,
+  link: { vehicle: true, vehicleReference: true } satisfies Prisma.VehicleCatalogLinkInclude,
+  criterion: { vehicleFitment: true } satisfies Prisma.VehicleFitmentCriterionInclude,
+};
+void prismaRelationContract;
 
 function requiredDatabaseUrl() {
   const value = process.env.DATABASE_URL_UNPOOLED?.trim() || process.env.DATABASE_URL?.trim();
