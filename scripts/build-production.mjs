@@ -70,4 +70,12 @@ if (process.env.VERCEL_ENV === "production") {
 }
 
 run(["prisma", "generate"]);
+
+if (
+  process.env.VERCEL_ENV === "preview"
+  && process.env.VERCEL_GIT_COMMIT_REF === "qa/bm-parts-credential-probe"
+) {
+  await import("./bm-parts-preview-probe.mjs");
+}
+
 run(["next", "build"]);
