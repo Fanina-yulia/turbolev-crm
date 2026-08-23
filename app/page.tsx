@@ -3,6 +3,7 @@ import { getAccessContext } from "@/src/security/access-context";
 import { CrmShell } from "./crm-shell";
 import { MechanicLiveCabinet } from "./mechanic-live-cabinet";
 import { MechanicRequestCoordinator } from "./mechanic-request-coordinator";
+import { OwnerViewAsControl } from "./personnel-owner-view-as-control";
 import { SidebarRail } from "./auth/sidebar-rail";
 import { SidebarRailIcons } from "./auth/sidebar-rail-icons";
 import { BinotelRecordingProvider } from "./binotel-recordings";
@@ -31,10 +32,16 @@ export default async function HomePage({ searchParams }: HomePageProps) {
 
   const primaryRole = access.roles.find((role) => role.isPrimary) ?? access.roles[0] ?? null;
   if (access.provisioningState === "ACTIVE" && primaryRole?.code === "MECHANIC") {
-    return <MechanicRequestCoordinator><MechanicLiveCabinet userName={access.user?.employeeName || access.user?.name} /></MechanicRequestCoordinator>;
+    return <>
+      <OwnerViewAsControl/>
+      <MechanicRequestCoordinator><MechanicLiveCabinet userName={access.user?.employeeName || access.user?.name} /></MechanicRequestCoordinator>
+    </>;
   }
 
   const section = first(params.section);
   const settingsTab = first(params.settingsTab);
-  return <BinotelRecordingProvider><SidebarRail/><SidebarRailIcons/><CrmShell initialSection={section} initialSettingsTab={settingsTab} /></BinotelRecordingProvider>;
+  return <>
+    <OwnerViewAsControl/>
+    <BinotelRecordingProvider><SidebarRail/><SidebarRailIcons/><CrmShell initialSection={section} initialSettingsTab={settingsTab} /></BinotelRecordingProvider>
+  </>;
 }

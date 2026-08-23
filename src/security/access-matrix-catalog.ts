@@ -60,6 +60,7 @@ export const PERMISSION_PRESENTATION: Record<PermissionCode, PermissionPresentat
   [PERMISSIONS.SETTINGS_INTEGRATIONS]: { label: "Інтеграції та credentials", moduleLabel: "Налаштування", sensitive: true },
   [PERMISSIONS.AUDIT_READ]: { label: "Журнал аудиту", moduleLabel: "Безпека", sensitive: true },
   [PERMISSIONS.SECURITY_ACCESS_MANAGE]: { label: "Ролі та допуски", moduleLabel: "Безпека", sensitive: true },
+  [PERMISSIONS.OWNER_EMPLOYEE_VIEW_AS]: { label: "Перегляд CRM як працівник", moduleLabel: "Власник", sensitive: true },
 };
 
 export type AccessRolePreset = {
@@ -72,10 +73,11 @@ export type AccessRolePreset = {
 
 const grant = (code: PermissionCode, scope: AccessScopeCode) => ({ code, scope });
 const all = Object.values(PERMISSIONS).map((code) => grant(code, "ALL"));
+const allExceptOwnerViewAs = all.filter((item) => item.code !== PERMISSIONS.OWNER_EMPLOYEE_VIEW_AS);
 
 export const DEFAULT_ACCESS_ROLES: AccessRolePreset[] = [
   { code: "OWNER", name: "Власник", description: "Повний доступ до всієї мережі, фінансів, безпеки та налаштувань.", sortOrder: 10, grants: all },
-  { code: "EXECUTIVE_DIRECTOR", name: "Виконавчий директор", description: "Повний управлінський доступ до всієї мережі.", sortOrder: 20, grants: all },
+  { code: "EXECUTIVE_DIRECTOR", name: "Виконавчий директор", description: "Повний управлінський доступ до всієї мережі.", sortOrder: 20, grants: allExceptOwnerViewAs },
   { code: "HEAD_OF_SALES", name: "Керівник відділу продажів", description: "Продажі, команда, клієнти та контроль воронки без фінансового адміністрування.", sortOrder: 30, grants: [
     grant(PERMISSIONS.OVERVIEW_READ,"ALL"), grant(PERMISSIONS.COMMUNICATIONS_READ,"ALL"), grant(PERMISSIONS.COMMUNICATIONS_WRITE,"TEAM"),
     grant(PERMISSIONS.LEADS_READ,"ALL"), grant(PERMISSIONS.LEADS_WRITE,"TEAM"), grant(PERMISSIONS.LEADS_ASSIGN,"TEAM"), grant(PERMISSIONS.CLIENTS_READ,"ALL"),
