@@ -33,3 +33,13 @@ ALTER TABLE IF EXISTS "DiagnosticCheck" DROP CONSTRAINT IF EXISTS "DiagnosticChe
 ALTER TABLE IF EXISTS "DiagnosticFinding" DROP CONSTRAINT IF EXISTS "DiagnosticFinding_checkId_fkey";
 ALTER TABLE IF EXISTS "DiagnosticMedia" DROP CONSTRAINT IF EXISTS "DiagnosticMedia_findingId_fkey";
 ALTER TABLE IF EXISTS "UserUiPreference" DROP CONSTRAINT IF EXISTS "UserUiPreference_userId_fkey";
+
+-- Vehicle fitment Phase B follows the same split-schema pattern: Prisma exposes
+-- scalar canonical IDs while PostgreSQL enforces cross-file referential integrity.
+-- Remove only those SQL-managed FKs in disposable CI before Prisma drift diff.
+ALTER TABLE IF EXISTS "VehicleCatalogLink" DROP CONSTRAINT IF EXISTS "vehicle_catalog_link_vehicle_fk";
+ALTER TABLE IF EXISTS "VehicleCatalogLink" DROP CONSTRAINT IF EXISTS "vehicle_catalog_link_reference_fk";
+ALTER TABLE IF EXISTS "VehicleFitment" DROP CONSTRAINT IF EXISTS "vehicle_fitment_product_fk";
+ALTER TABLE IF EXISTS "VehicleFitment" DROP CONSTRAINT IF EXISTS "vehicle_fitment_reference_fk";
+ALTER TABLE IF EXISTS "VehicleFitment" DROP CONSTRAINT IF EXISTS "vehicle_fitment_generic_article_fk";
+ALTER TABLE IF EXISTS "VehicleFitmentCriterion" DROP CONSTRAINT IF EXISTS "vehicle_fitment_criterion_fitment_fk";
