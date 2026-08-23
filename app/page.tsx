@@ -1,6 +1,8 @@
 import { redirect } from "next/navigation";
 import { getAccessContext } from "@/src/security/access-context";
 import { CrmShell } from "./crm-shell";
+import { CrmAccessProvider } from "./crm-access-provider";
+import type { CrmAccessSnapshot } from "./use-crm-access";
 import { MechanicLiveCabinet } from "./mechanic-live-cabinet";
 import { MechanicRequestCoordinator } from "./mechanic-request-coordinator";
 import { OwnerViewAsControl } from "./personnel-owner-view-as-control";
@@ -57,8 +59,25 @@ export default async function HomePage({ searchParams }: HomePageProps) {
     : undefined;
   const section = requestedSection ?? roleStartSection;
   const settingsTab = first(params.settingsTab);
+  const clientAccess: CrmAccessSnapshot = {
+    authConfigured: access.authConfigured,
+    authenticated: access.authenticated,
+    provisioningState: access.provisioningState,
+    enforcementMode: access.enforcementMode,
+    user: access.user ? {
+      id: access.user.id,
+      name: access.user.employeeName || access.user.name,
+      employeeId: access.user.employeeId,
+    } : null,
+    roles: access.roles,
+    permissions: access.permissions,
+    locations: access.locationIds,
+  };
+
   return <>
     <OwnerViewAsControl/>
-    <BinotelRecordingProvider><SidebarRail/><SidebarRailIcons/><CrmShell initialSection={section} initialSettingsTab={settingsTab} /></BinotelRecordingProvider>
+    <CrmAccessProvider snapshot={clientAccess}>
+      <BinotelRecordingProvider><SidebarRail/><SidebarRailIcons/><CrmShell initialSection={section} initialSettingsTab={settingsTab} /></BinotelRecordingProvider>
+    </CrmAccessProvider>
   </>;
 }
