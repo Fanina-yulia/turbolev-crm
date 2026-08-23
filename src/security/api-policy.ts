@@ -27,7 +27,7 @@ function readWrite(
   note: string,
 ): ApiSecurityPolicy {
   const read = method.toUpperCase() === "GET";
-  return internal(read ? readPermission : writePermission, intendedScope, strict = false, note);
+  return internal(read ? readPermission : writePermission, intendedScope, note);
 }
 
 const exact = (value: string) => (path: string) => path === value;
