@@ -19,6 +19,11 @@
   display:none !important;
 }
 
+/* The global Binotel call journal launcher is intentionally disabled across the CRM. */
+[class*="_journalLauncher__"]{
+  display:none !important;
+}
+
 @media (prefers-reduced-motion: reduce){
   .carBrandImageMonochrome{transition:none}
 }
