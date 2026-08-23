@@ -1,19 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import styles from "./personnel-owner-view-as-control.module.css";
-
-type EmployeeOption = {
-  userId:string;
-  employeeId:string;
-  name:string;
-  position:string|null;
-  category:string|null;
-  roleCode:string;
-  roleName:string;
-  locationId:string|null;
-  locationName:string|null;
-};
 
 type PreviewCurrent = {
   sessionId:string;
@@ -29,19 +17,13 @@ type PreviewCurrent = {
 };
 
 type CurrentPayload = { ok:boolean; current?:PreviewCurrent|null; message?:string; error?:string };
-type EmployeesPayload = { ok:boolean; employees?:EmployeeOption[]; message?:string; error?:string };
 
 const BASE="/api/personnel/owner-view-as";
 
 export function OwnerViewAsControl() {
-  const [ownerResolved,setOwnerResolved]=useState(false);
-  const [isOwner,setIsOwner]=useState(false);
+  const [resolved,setResolved]=useState(false);
   const [preview,setPreview]=useState<PreviewCurrent|null>(null);
-  const [open,setOpen]=useState(false);
-  const [employees,setEmployees]=useState<EmployeeOption[]>([]);
-  const [query,setQuery]=useState("");
-  const [loading,setLoading]=useState(false);
-  const [busyUserId,setBusyUserId]=useState<string|null>(null);
+  const [stopping,setStopping]=useState(false);
   const [error,setError]=useState("");
 
   useEffect(()=>{
@@ -49,82 +31,37 @@ export function OwnerViewAsControl() {
     fetch(`${BASE}/current`,{cache:"no-store",credentials:"include"})
       .then(async response=>{
         const body=await response.json().catch(()=>null) as CurrentPayload|null;
-        if(response.status===403){if(alive){setIsOwner(false);setOwnerResolved(true);}return;}
+        if(response.status===403){if(alive){setPreview(null);setResolved(true);}return;}
         if(!response.ok||!body?.ok)throw new Error(body?.message||body?.error||"Не вдалося перевірити режим перегляду");
-        if(alive){setIsOwner(true);setPreview(body.current||null);setOwnerResolved(true);}
+        if(alive){setPreview(body.current||null);setResolved(true);}
       })
-      .catch(()=>{if(alive){setIsOwner(false);setOwnerResolved(true);}});
+      .catch(()=>{if(alive){setPreview(null);setResolved(true);}});
     return()=>{alive=false;};
   },[]);
 
-  useEffect(()=>{
-    if(!isOwner||!open||employees.length||loading)return;
-    let alive=true;
-    setLoading(true);setError("");
-    fetch(`${BASE}/employees`,{cache:"no-store",credentials:"include"})
-      .then(async response=>{
-        const body=await response.json().catch(()=>null) as EmployeesPayload|null;
-        if(!response.ok||!body?.ok)throw new Error(body?.message||body?.error||"Не вдалося завантажити працівників");
-        if(alive)setEmployees(body.employees||[]);
-      })
-      .catch(cause=>{if(alive)setError(cause instanceof Error?cause.message:"Помилка завантаження");})
-      .finally(()=>{if(alive)setLoading(false);});
-    return()=>{alive=false;};
-  },[isOwner,open,employees.length,loading]);
-
-  const filtered=useMemo(()=>{
-    const needle=query.trim().toLowerCase();
-    if(!needle)return employees;
-    return employees.filter(item=>[item.name,item.position,item.roleName,item.locationName].filter(Boolean).join(" ").toLowerCase().includes(needle));
-  },[employees,query]);
-
-  if(!ownerResolved||!isOwner)return null;
-
-  const activate=async(employee:EmployeeOption)=>{
-    setBusyUserId(employee.userId);setError("");
-    try{
-      const response=await fetch(`${BASE}/${preview?"switch":"start"}`,{
-        method:"POST",headers:{"Content-Type":"application/json"},credentials:"include",body:JSON.stringify({targetUserId:employee.userId}),
-      });
-      const body=await response.json().catch(()=>null) as {ok?:boolean;message?:string;error?:string}|null;
-      if(!response.ok||!body?.ok)throw new Error(body?.message||body?.error||"Не вдалося відкрити кабінет працівника");
-      window.location.assign("/");
-    }catch(cause){setError(cause instanceof Error?cause.message:"Помилка перемикання");setBusyUserId(null);}
-  };
-
   const stop=async()=>{
-    setBusyUserId("__stop__");setError("");
+    setStopping(true);setError("");
     try{
       const response=await fetch(`${BASE}/stop`,{method:"POST",credentials:"include"});
       const body=await response.json().catch(()=>null) as {ok?:boolean;message?:string;error?:string}|null;
       if(!response.ok||!body?.ok)throw new Error(body?.message||body?.error||"Не вдалося повернутися в кабінет Власника");
       window.location.assign("/");
-    }catch(cause){setError(cause instanceof Error?cause.message:"Помилка виходу з режиму перегляду");setBusyUserId(null);}
+    }catch(cause){
+      setError(cause instanceof Error?cause.message:"Помилка виходу з режиму перегляду");
+      setStopping(false);
+    }
   };
 
-  return <div className={preview?styles.previewBanner:styles.ownerControl}>
-    {preview?<div className={styles.previewIdentity}>
+  if(!resolved||!preview)return null;
+
+  return <div className={styles.previewBanner}>
+    <div className={styles.previewIdentity}>
       <span className={styles.eye}>👁</span>
       <div><strong>Перегляд як {preview.name}</strong><span>READ ONLY · реальні права працівника</span></div>
-    </div>:<button type="button" className={styles.ownerButton} onClick={()=>setOpen(value=>!value)} aria-expanded={open}><span>👁</span><span>Переглянути як працівник</span></button>}
-
-    {preview&&<div className={styles.previewActions}>
-      <button type="button" onClick={()=>setOpen(value=>!value)}>{open?"Закрити":"Змінити працівника"}</button>
-      <button type="button" className={styles.exitButton} onClick={()=>void stop()} disabled={busyUserId==="__stop__"}>{busyUserId==="__stop__"?"Повертаю…":"← Кабінет власника"}</button>
-    </div>}
-
-    {open&&<div className={`${styles.picker} ${preview?styles.pickerPreview:""}`}>
-      <div className={styles.pickerHead}><strong>Кабінети працівників</strong><span>Відкриваються без права змінювати дані</span></div>
-      <input value={query} onChange={event=>setQuery(event.target.value)} placeholder="Пошук за ім’ям, посадою або станцією…" autoFocus/>
-      {error&&<div className={styles.error}>{error}</div>}
-      {loading?<div className={styles.state}>Завантажую працівників…</div>:<div className={styles.employeeList}>
-        {filtered.map(employee=><button type="button" key={employee.userId} className={styles.employee} onClick={()=>void activate(employee)} disabled={Boolean(busyUserId)}>
-          <div><strong>{employee.name}</strong><span>{employee.position||employee.roleName}</span></div>
-          <small>{employee.locationName||"Вся компанія"}</small>
-          <b>{busyUserId===employee.userId?"Відкриваю…":"Переглянути →"}</b>
-        </button>)}
-        {!filtered.length&&!loading&&<div className={styles.state}>Працівників з активним кабінетом не знайдено.</div>}
-      </div>}
-    </div>}
+    </div>
+    <div className={styles.previewActions}>
+      <button type="button" className={styles.exitButton} onClick={()=>void stop()} disabled={stopping}>{stopping?"Повертаю…":"← Кабінет власника"}</button>
+    </div>
+    {error&&<div className={styles.error}>{error}</div>}
   </div>;
 }
