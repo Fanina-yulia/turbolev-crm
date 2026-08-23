@@ -12,6 +12,19 @@ type HomePageProps = {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 };
 
+const ROLE_START_SECTION: Partial<Record<string, string>> = {
+  HEAD_OF_SALES: "leads",
+  SALES: "leads",
+  PARTS_SPECIALIST: "parts",
+  WAREHOUSE_KEEPER: "procurement",
+  ACCOUNTANT: "finance",
+  MARKETING_DIRECTOR: "analytics",
+  MARKETER: "analytics",
+  HR_MANAGER: "settings",
+  ADMINISTRATOR: "planner",
+  CRM_ADMIN: "settings",
+};
+
 function first(value: string | string[] | undefined) {
   return Array.isArray(value) ? value[0] : value;
 }
@@ -38,7 +51,11 @@ export default async function HomePage({ searchParams }: HomePageProps) {
     </>;
   }
 
-  const section = first(params.section);
+  const requestedSection = first(params.section);
+  const roleStartSection = access.provisioningState === "ACTIVE" && primaryRole?.code
+    ? ROLE_START_SECTION[primaryRole.code]
+    : undefined;
+  const section = requestedSection ?? roleStartSection;
   const settingsTab = first(params.settingsTab);
   return <>
     <OwnerViewAsControl/>
