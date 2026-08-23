@@ -14,6 +14,11 @@
   filter:brightness(0);
 }
 
+/* The floating Binotel launcher is intentionally disabled across the CRM. */
+.tlDockButton{
+  display:none !important;
+}
+
 @media (prefers-reduced-motion: reduce){
   .carBrandImageMonochrome{transition:none}
 }
