@@ -52,7 +52,6 @@ import { GlobalKeyboardShortcuts } from "./global-keyboard-shortcuts";
 import { NewRequestVinDisplayEnhancer } from "./new-request-vin-display-enhancer";
 import { DiagnosticBookingEnhancer } from "./diagnostic-booking-enhancer";
 import { OptionalMechanicBookingBridge } from "./optional-mechanic-booking-bridge";
-import { CabinetAutoRouter } from "./cabinet-auto-router";
 import { MechanicClarificationBridge } from "./mechanic-clarification-bridge";
 import { CommunicationActivationDiagnosticsBridge } from "./communication-activation-diagnostics-bridge";
 import { ClientCommunicationBridge } from "./client-communication-bridge";
@@ -64,5 +63,5 @@ export const metadata: Metadata = { title: "Turbo LEV CRM", description: "Опе
 const themeBootstrap = `(function(){try{var saved=window.localStorage.getItem('turbolev-theme-mode')||window.localStorage.getItem('turbolev-theme')||'auto';if(saved!=='light'&&saved!=='dark'&&saved!=='auto')saved='auto';var resolved=saved==='light'||saved==='dark'?saved:(window.matchMedia('(prefers-color-scheme: light)').matches?'light':'dark');var root=document.documentElement;root.dataset.theme=resolved;root.dataset.themeMode=saved;root.style.colorScheme=resolved;}catch(e){}})();`;
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  return <html lang="uk" suppressHydrationWarning><head><script dangerouslySetInnerHTML={{ __html: themeBootstrap }} /></head><body><GlobalKeyboardShortcuts/><CabinetAutoRouter/><MechanicClarificationBridge/><CrmScrollReset/><ActiveTerminologyBridge/><PlannerEditEnhancer/><PhoneInputNormalizer/><LeadDetailsEnhancer/><VehicleConfigurationEnhancer/><WorkflowFilterEnhancer/><CrmDataBridge/><ClientsVehiclesRichCards/><WorkPriceTableEnhancer/><NewRequestContextBridge/><NewRequestVinDisplayEnhancer/><DiagnosticBookingEnhancer/><OptionalMechanicBookingBridge/><TelephonyRealtimeBridge/><CommunicationActivationDiagnosticsBridge/><ClientCommunicationBridge/><VehiclePresentationBridge/><AnalyticsDashboardWalkInBridge/><AnalyticsOwnerEconomicsBridge/>{children}</body></html>;
+  return <html lang="uk" suppressHydrationWarning><head><script dangerouslySetInnerHTML={{ __html: themeBootstrap }} /></head><body><GlobalKeyboardShortcuts/><MechanicClarificationBridge/><CrmScrollReset/><ActiveTerminologyBridge/><PlannerEditEnhancer/><PhoneInputNormalizer/><LeadDetailsEnhancer/><VehicleConfigurationEnhancer/><WorkflowFilterEnhancer/><CrmDataBridge/><ClientsVehiclesRichCards/><WorkPriceTableEnhancer/><NewRequestContextBridge/><NewRequestVinDisplayEnhancer/><DiagnosticBookingEnhancer/><OptionalMechanicBookingBridge/><TelephonyRealtimeBridge/><CommunicationActivationDiagnosticsBridge/><ClientCommunicationBridge/><VehiclePresentationBridge/><AnalyticsDashboardWalkInBridge/><AnalyticsOwnerEconomicsBridge/>{children}</body></html>;
 }
