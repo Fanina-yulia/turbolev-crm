@@ -52,6 +52,11 @@ function denialResponse(context: AccessContext, permission: string, requiredScop
   return Response.json({ ok: false, error: "FORBIDDEN", permission }, { status: 403 });
 }
 
+function previewWriteBlocked(context: AccessContext, input?: Request | Headers) {
+  if (!context.viewAs?.readOnly || !(input instanceof Request)) return false;
+  return !["GET", "HEAD", "OPTIONS"].includes(input.method.toUpperCase());
+}
+
 export async function authorize(
   permission: PermissionCode | string,
   options: AuthorizationOptions = {},
@@ -59,6 +64,26 @@ export async function authorize(
   const context = await getAccessContext(options.request);
   const requiredScope = options.minimumScope ?? "ALL";
   const grantedScope = context.permissions[permission] ?? null;
+
+  if (previewWriteBlocked(context, options.request)) {
+    return {
+      allowed: false,
+      wouldAllow: false,
+      shadowBypass: false,
+      context,
+      grantedScope,
+      response: Response.json(
+        {
+          ok: false,
+          error: "OWNER_PREVIEW_READ_ONLY",
+          message: "Режим перегляду працівника не дозволяє змінювати дані.",
+          permission,
+        },
+        { status: 403 },
+      ),
+    };
+  }
+
   const wouldAllow = hasPermission(context, permission) && scopeCovers(grantedScope, requiredScope);
   if (wouldAllow) {
     return { allowed: true, wouldAllow: true, shadowBypass: false, context, grantedScope, response: null };
