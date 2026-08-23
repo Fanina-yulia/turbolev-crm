@@ -3,6 +3,7 @@ import pg from "pg";
 
 const { Pool } = pg;
 
+// QA-only: report auth state without logging credential values or provider payloads.
 function decryptPayload(value, source) {
   const [version, ivRaw, tagRaw, encryptedRaw] = String(value || "").split(".");
   if (version !== "v1" || !ivRaw || !tagRaw || !encryptedRaw) throw new Error("Unsupported credential payload");
