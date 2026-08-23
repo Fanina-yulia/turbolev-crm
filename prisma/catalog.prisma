@@ -138,11 +138,12 @@ model GenericArticle {
   createdAt    DateTime            @default(now())
   updatedAt    DateTime            @updatedAt
 
-  mergedInto   GenericArticle?                    @relation("GenericArticleMerge", fields: [mergedIntoId], references: [id], onDelete: SetNull)
-  mergedFrom   GenericArticle[]                   @relation("GenericArticleMerge")
-  externalRefs GenericArticleExternalReference[]
-  categories   CategoryGenericArticle[]
-  products     Product[]
+  mergedInto      GenericArticle?                    @relation("GenericArticleMerge", fields: [mergedIntoId], references: [id], onDelete: SetNull)
+  mergedFrom      GenericArticle[]                   @relation("GenericArticleMerge")
+  externalRefs    GenericArticleExternalReference[]
+  categories      CategoryGenericArticle[]
+  products        Product[]
+  vehicleFitments VehicleFitment[]
 
   @@index([status, name])
   @@index([mergedIntoId])
@@ -260,6 +261,7 @@ model Product {
   supplierResolvedReconciliations SupplierReconciliationTask[]     @relation("SupplierResolvedProduct")
   supplierReconciliationCandidates SupplierReconciliationCandidate[]
   supplierOffers                  SupplierOffer[]
+  vehicleFitments                 VehicleFitment[]
 
   @@unique([brandId, mpnNormalized])
   @@index([mpnSearchNormalized])
