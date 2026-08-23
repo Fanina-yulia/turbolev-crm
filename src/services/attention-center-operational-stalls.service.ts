@@ -1,0 +1,249 @@
+import "server-only";
+
+import {
+  DiagnosticInspectionStatus,
+  DiagnosticRequestStatus,
+  PlannerAppointmentStatus,
+} from "@/src/generated/prisma/client";
+import { getPrisma } from "@/src/lib/prisma";
+import type { AttentionCenterResult, AttentionSignal } from "@/src/services/attention-center.service";
+
+const MINUTE_MS = 60_000;
+const BOOKED_GRACE_MINUTES = 30;
+const DIAGNOSTIC_STALL_MINUTES = 120;
+const COMPLETED_INSPECTION_GRACE_MINUTES = 30;
+const KYIV_TZ = "Europe/Kyiv";
+
+type Options = {
+  canPlanner: boolean;
+  plannerLocationIds: string[] | null;
+  canDiagnostics: boolean;
+  diagnosticLocationIds: string[] | null;
+};
+
+function minutesLate(dueAt: Date, now: Date) {
+  if (dueAt >= now) return 0;
+  return Math.max(1, Math.floor((now.getTime() - dueAt.getTime()) / MINUTE_MS));
+}
+
+function dayKey(date: Date) {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: KYIV_TZ,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(date);
+}
+
+function rank(signal: AttentionSignal) {
+  const level = signal.level === "CRITICAL" ? 0 : signal.level === "HIGH" ? 1 : signal.level === "MEDIUM" ? 2 : 3;
+  const overdue = signal.isOverdue ? 0 : 1;
+  const bucket = signal.bucket === "ACTION" ? 0 : signal.bucket === "WAITING" ? 1 : 2;
+  const due = signal.dueAt ? new Date(signal.dueAt).getTime() : Number.MAX_SAFE_INTEGER;
+  return [level, overdue, bucket, due, new Date(signal.occurredAt).getTime()] as const;
+}
+
+function sortSignals(items: AttentionSignal[]) {
+  return items.sort((a, b) => {
+    const ar = rank(a);
+    const br = rank(b);
+    for (let i = 0; i < ar.length; i += 1) {
+      if (ar[i] !== br[i]) return ar[i] - br[i];
+    }
+    return a.id.localeCompare(b.id);
+  });
+}
+
+function derivedSignal(
+  input: Omit<AttentionSignal, "dueAt" | "isOverdue" | "overdueMinutes" | "isToday">,
+  dueAt: Date,
+  now: Date,
+): AttentionSignal {
+  const late = minutesLate(dueAt, now);
+  return {
+    ...input,
+    dueAt: dueAt.toISOString(),
+    isOverdue: late > 0,
+    overdueMinutes: late,
+    isToday: dayKey(dueAt) === dayKey(now),
+  };
+}
+
+function append(center: AttentionCenterResult, extras: AttentionSignal[], now: Date): AttentionCenterResult {
+  if (!extras.length) return center;
+  const signals = sortSignals([...center.signals, ...extras]);
+  const categories = { ...center.categories };
+  for (const item of extras) categories[item.category] += 1;
+  return {
+    ...center,
+    signals,
+    categories,
+    summary: {
+      total: signals.length,
+      critical: signals.filter((item) => item.level === "CRITICAL").length,
+      overdue: signals.filter((item) => item.isOverdue).length,
+      action: signals.filter((item) => item.bucket === "ACTION").length,
+      waiting: signals.filter((item) => item.bucket === "WAITING").length,
+      today: signals.filter((item) => item.isToday).length,
+    },
+    generatedAt: now.toISOString(),
+  };
+}
+
+export async function appendOperationalStallAttention(center: AttentionCenterResult, options: Options): Promise<AttentionCenterResult> {
+  if (!options.canPlanner && !options.canDiagnostics) return center;
+
+  const prisma = getPrisma();
+  const now = new Date();
+  const extras: AttentionSignal[] = [];
+  const existingIds = new Set(center.signals.map((item) => item.id));
+
+  if (options.canPlanner && (!options.plannerLocationIds || options.plannerLocationIds.length > 0)) {
+    const cutoff = new Date(now.getTime() - BOOKED_GRACE_MINUTES * MINUTE_MS);
+    const rows = await prisma.serviceAppointment.findMany({
+      where: {
+        status: PlannerAppointmentStatus.BOOKED,
+        plannedStartAt: { lt: cutoff },
+        ...(options.plannerLocationIds ? { locationId: { in: options.plannerLocationIds } } : {}),
+        NOT: { id: { startsWith: "demo_" } },
+      },
+      select: {
+        id: true,
+        customerName: true,
+        phone: true,
+        vehicleLabel: true,
+        plateNumber: true,
+        problem: true,
+        plannedStartAt: true,
+      },
+      orderBy: { plannedStartAt: "asc" },
+      take: 250,
+    });
+
+    for (const row of rows) {
+      const id = `appointment:${row.id}:stale-booked`;
+      if (existingIds.has(id)) continue;
+      const dueAt = new Date(row.plannedStartAt.getTime() + BOOKED_GRACE_MINUTES * MINUTE_MS);
+      const late = minutesLate(dueAt, now);
+      const label = row.plateNumber || row.vehicleLabel || row.customerName || "Авто";
+      extras.push(derivedSignal({
+        id,
+        sourceType: "APPOINTMENT",
+        sourceId: row.id,
+        taskId: null,
+        title: `${label}: час запису минув, статус досі BOOKED`,
+        description: row.problem || null,
+        reason: "Минуло понад 30 хв після планового початку, але не зафіксовано ані приїзд, ані no-show, ані скасування.",
+        category: "SERVICE",
+        level: late >= 4 * 60 ? "CRITICAL" : "HIGH",
+        bucket: "ACTION",
+        occurredAt: row.plannedStartAt.toISOString(),
+        autoGenerated: true,
+        amount: null,
+        currency: null,
+        counterparty: row.customerName || row.phone || null,
+        action: { label: "Відкрити запис", section: "Планувальник", params: { appointmentId: row.id } },
+        metadata: { status: "BOOKED", attentionReason: "STALE_BOOKED", plateNumber: row.plateNumber },
+      }, dueAt, now));
+    }
+  }
+
+  if (options.canDiagnostics && (!options.diagnosticLocationIds || options.diagnosticLocationIds.length > 0)) {
+    let scopedAssignments: Array<{ diagnosticRequestId: string; locationId: string | null }> = [];
+    let requestIds: string[] | null = null;
+
+    if (options.diagnosticLocationIds) {
+      scopedAssignments = await prisma.diagnosticAssignment.findMany({
+        where: { locationId: { in: options.diagnosticLocationIds } },
+        select: { diagnosticRequestId: true, locationId: true },
+        take: 1000,
+      });
+      requestIds = [...new Set(scopedAssignments.map((row) => row.diagnosticRequestId))];
+    }
+
+    const requests = requestIds?.length === 0
+      ? []
+      : await prisma.diagnosticRequest.findMany({
+          where: {
+            status: DiagnosticRequestStatus.IN_PROGRESS,
+            ...(requestIds ? { id: { in: requestIds } } : {}),
+            NOT: { id: { startsWith: "demo_" } },
+          },
+          select: {
+            id: true,
+            vehicleId: true,
+            createdAt: true,
+            updatedAt: true,
+            vehicle: { select: { plateNumber: true, brand: true, model: true, year: true } },
+          },
+          orderBy: { updatedAt: "asc" },
+          take: 250,
+        });
+
+    if (requests.length) {
+      if (!options.diagnosticLocationIds) {
+        scopedAssignments = await prisma.diagnosticAssignment.findMany({
+          where: { diagnosticRequestId: { in: requests.map((row) => row.id) } },
+          select: { diagnosticRequestId: true, locationId: true },
+        });
+      }
+      const locationByRequest = new Map(scopedAssignments.map((row) => [row.diagnosticRequestId, row.locationId]));
+      const inspections = await prisma.diagnosticInspection.findMany({
+        where: { diagnosticRequestId: { in: requests.map((row) => row.id) } },
+        select: { diagnosticRequestId: true, status: true, startedAt: true, completedAt: true, updatedAt: true },
+        orderBy: { updatedAt: "desc" },
+      });
+      const latestInspection = new Map<string, (typeof inspections)[number]>();
+      for (const inspection of inspections) {
+        if (!latestInspection.has(inspection.diagnosticRequestId)) latestInspection.set(inspection.diagnosticRequestId, inspection);
+      }
+
+      for (const row of requests) {
+        const inspection = latestInspection.get(row.id);
+        const inspectionCompleted = inspection?.status === DiagnosticInspectionStatus.COMPLETED && Boolean(inspection.completedAt);
+        const anchor = inspectionCompleted ? inspection!.completedAt! : (inspection?.updatedAt || row.updatedAt);
+        const graceMinutes = inspectionCompleted ? COMPLETED_INSPECTION_GRACE_MINUTES : DIAGNOSTIC_STALL_MINUTES;
+        const dueAt = new Date(anchor.getTime() + graceMinutes * MINUTE_MS);
+        if (dueAt >= now) continue;
+
+        const id = `diagnostic:${row.id}:stalled`;
+        if (existingIds.has(id)) continue;
+        const late = minutesLate(dueAt, now);
+        const vehicleName = [row.vehicle.brand, row.vehicle.model, row.vehicle.year].filter(Boolean).join(" ") || "Авто";
+        const label = row.vehicle.plateNumber || vehicleName;
+        extras.push(derivedSignal({
+          id,
+          sourceType: "DIAGNOSTIC",
+          sourceId: row.id,
+          taskId: null,
+          title: inspectionCompleted
+            ? `${label}: перевірка завершена, діагностику не підтверджено`
+            : `${label}: діагностика зависла в роботі`,
+          description: inspectionCompleted
+            ? "DiagnosticInspection має статус COMPLETED, але DiagnosticRequest досі IN_PROGRESS."
+            : `Діагностика не оновлювалася у робочому статусі понад ${DIAGNOSTIC_STALL_MINUTES} хв.`,
+          reason: inspectionCompleted
+            ? "Потрібно перевірити результат, підтвердити діагностику або повернути її на доопрацювання."
+            : "Потрібно перевірити механіка/поточний стан і зафіксувати наступну дію.",
+          category: "DIAGNOSTICS",
+          level: inspectionCompleted || late >= 4 * 60 ? "CRITICAL" : "HIGH",
+          bucket: "ACTION",
+          occurredAt: anchor.toISOString(),
+          autoGenerated: true,
+          amount: null,
+          currency: null,
+          counterparty: label,
+          action: { label: "Відкрити діагностику", section: "Діагностика", params: { vehicleId: row.vehicleId } },
+          metadata: {
+            status: "IN_PROGRESS",
+            attentionReason: inspectionCompleted ? "INSPECTION_COMPLETED_REQUEST_OPEN" : "DIAGNOSTIC_STALLED",
+            inspectionStatus: inspection?.status || null,
+            locationId: locationByRequest.get(row.id) || null,
+          },
+        }, dueAt, now));
+      }
+    }
+  }
+
+  return append(center, extras, now);
+}
