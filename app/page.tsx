@@ -3,7 +3,7 @@ import { getAccessContext } from "@/src/security/access-context";
 import { CrmShell } from "./crm-shell";
 import { MechanicLiveCabinet } from "./mechanic-live-cabinet";
 import { MechanicRequestCoordinator } from "./mechanic-request-coordinator";
-import { OwnerViewAsControl } from "./owner-view-as-control";
+import { OwnerViewAsControl } from "./personnel-owner-view-as-control";
 import { SidebarRail } from "./auth/sidebar-rail";
 import { SidebarRailIcons } from "./auth/sidebar-rail-icons";
 import { BinotelRecordingProvider } from "./binotel-recordings";
