@@ -10,10 +10,13 @@ import {
   type StationManagerCabinetLinkedPayload,
   type StationManagerFlowContract,
   type StationManagerKpisContract,
+  type StationManagerMechanicLoadContract,
+  type StationManagerPostLoadContract,
 } from "./cabinet-home";
 import { PLANNER_STATUS_VALUES, type PlannerStatusContract } from "./planner";
 
 const PLANNER_STATUSES = new Set<string>(PLANNER_STATUS_VALUES);
+const ATTENTION_PRIORITIES = new Set(["CRITICAL", "HIGH", "NORMAL"] as const);
 
 function requiredString(value: unknown) {
   if (typeof value !== "string") return null;
@@ -28,6 +31,11 @@ function nullableString(value: unknown) {
 function dateString(value: unknown) {
   const text = requiredString(value);
   return text && Number.isFinite(new Date(text).getTime()) ? text : null;
+}
+
+function nullableDateString(value: unknown) {
+  if (value == null) return null;
+  return dateString(value) ?? undefined;
 }
 
 function nonNegativeInteger(value: unknown) {
@@ -136,8 +144,11 @@ function parseManagerKpis(value: unknown): StationManagerKpisContract | null {
   const postsTotal = nonNegativeInteger(value.postsTotal);
   const mechanicsTotal = nonNegativeInteger(value.mechanicsTotal);
   const noShow = nonNegativeInteger(value.noShow);
-  if (carsToday == null || carsOnStation == null || inRepair == null || postsOccupied == null || postsTotal == null || mechanicsTotal == null || noShow == null) return null;
-  return { carsToday, carsOnStation, inRepair, postsOccupied, postsTotal, mechanicsTotal, noShow };
+  const needsAction = nonNegativeInteger(value.needsAction);
+  const overdue = nonNegativeInteger(value.overdue);
+  const unassigned = nonNegativeInteger(value.unassigned);
+  if (carsToday == null || carsOnStation == null || inRepair == null || postsOccupied == null || postsTotal == null || mechanicsTotal == null || noShow == null || needsAction == null || overdue == null || unassigned == null) return null;
+  return { carsToday, carsOnStation, inRepair, postsOccupied, postsTotal, mechanicsTotal, noShow, needsAction, overdue, unassigned };
 }
 
 function parseManagerFlow(value: unknown): StationManagerFlowContract | null {
@@ -162,10 +173,40 @@ function parseAttention(value: unknown): StationManagerAttentionContract | null 
   const vehicle = requiredString(value.vehicle);
   const problem = nullableString(value.problem);
   const plannedStartAt = dateString(value.plannedStartAt);
+  const plannedEndAt = dateString(value.plannedEndAt);
   const post = nullableString(value.post);
   const mechanic = nullableString(value.mechanic);
-  if (!id || !status || !plate || !vehicle || problem === undefined || !plannedStartAt || post === undefined || mechanic === undefined) return null;
-  return { id, status, plate, vehicle, problem, plannedStartAt, post, mechanic };
+  const priority = typeof value.priority === "string" && ATTENTION_PRIORITIES.has(value.priority as "CRITICAL" | "HIGH" | "NORMAL") ? value.priority as "CRITICAL" | "HIGH" | "NORMAL" : null;
+  const reason = requiredString(value.reason);
+  const overdue = typeof value.overdue === "boolean" ? value.overdue : null;
+  const waitingMinutes = nonNegativeInteger(value.waitingMinutes);
+  if (!id || !status || !plate || !vehicle || problem === undefined || !plannedStartAt || !plannedEndAt || post === undefined || mechanic === undefined || !priority || !reason || overdue == null || waitingMinutes == null) return null;
+  return { id, status, plate, vehicle, problem, plannedStartAt, plannedEndAt, post, mechanic, priority, reason, overdue, waitingMinutes };
+}
+
+function parsePostLoad(value: unknown): StationManagerPostLoadContract | null {
+  if (!isRecord(value)) return null;
+  const id = requiredString(value.id);
+  const name = requiredString(value.name);
+  const occupied = typeof value.occupied === "boolean" ? value.occupied : null;
+  const plate = nullableString(value.plate);
+  const vehicle = nullableString(value.vehicle);
+  const mechanic = nullableString(value.mechanic);
+  const plannedEndAt = nullableDateString(value.plannedEndAt);
+  if (!id || !name || occupied == null || plate === undefined || vehicle === undefined || mechanic === undefined || plannedEndAt === undefined) return null;
+  return { id, name, occupied, plate, vehicle, mechanic, plannedEndAt };
+}
+
+function parseMechanicLoad(value: unknown): StationManagerMechanicLoadContract | null {
+  if (!isRecord(value)) return null;
+  const id = requiredString(value.id);
+  const name = requiredString(value.name);
+  const activeCars = nonNegativeInteger(value.activeCars);
+  const inRepair = nonNegativeInteger(value.inRepair);
+  const waiting = nonNegativeInteger(value.waiting);
+  const available = typeof value.available === "boolean" ? value.available : null;
+  if (!id || !name || activeCars == null || inRepair == null || waiting == null || available == null) return null;
+  return { id, name, activeCars, inRepair, waiting, available };
 }
 
 function parseManagerLinked(value: Record<string, unknown>): StationManagerCabinetLinkedPayload | null {
@@ -173,8 +214,10 @@ function parseManagerLinked(value: Record<string, unknown>): StationManagerCabin
   const kpis = parseManagerKpis(value.kpis);
   const flow = parseManagerFlow(value.flow);
   const attention = parseArrayStrict(value.attention, parseAttention);
-  if (!station || !kpis || !flow || !attention) return null;
-  return { ok: true, cabinet: "STATION_MANAGER", linked: true, station, kpis, flow, attention };
+  const posts = parseArrayStrict(value.posts, parsePostLoad);
+  const mechanics = parseArrayStrict(value.mechanics, parseMechanicLoad);
+  if (!station || !kpis || !flow || !attention || !posts || !mechanics) return null;
+  return { ok: true, cabinet: "STATION_MANAGER", linked: true, station, kpis, flow, attention, posts, mechanics };
 }
 
 export function parseCabinetHomePayload(value: unknown): CabinetHomePayload | null {
