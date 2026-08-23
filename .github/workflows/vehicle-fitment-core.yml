@@ -3,6 +3,8 @@ name: Vehicle Fitment Core
 on:
   pull_request:
     paths:
+      - "prisma/schema.prisma"
+      - "prisma/catalog.prisma"
       - "prisma/vehicle-resolution.prisma"
       - "prisma/vehicle-fitment.prisma"
       - "prisma/migrations/20260823011500_vehicle_resolution_core/**"
@@ -15,6 +17,8 @@ on:
   push:
     branches: [main]
     paths:
+      - "prisma/schema.prisma"
+      - "prisma/catalog.prisma"
       - "prisma/vehicle-resolution.prisma"
       - "prisma/vehicle-fitment.prisma"
       - "prisma/migrations/20260823011500_vehicle_resolution_core/**"
@@ -70,6 +74,10 @@ jobs:
         run: npx tsc --noEmit
       - name: Apply full migration history to disposable PostgreSQL 18
         run: bash scripts/ci-migrate-with-external-fixtures.sh
+      - name: Normalize SQL-managed objects for Prisma drift check
+        run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f scripts/ci-normalize-prisma-drift.sql
+      - name: Reject Prisma / migration schema drift
+        run: npx prisma migrate diff --exit-code --from-config-datasource --to-schema prisma
       - name: Vehicle resolution Phase A smoke
         run: npx --no-install tsx scripts/vehicle-resolution-core-smoke.ts
       - name: Vehicle fitment Phase B smoke
