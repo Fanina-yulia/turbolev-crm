@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import type { CrmAccessSnapshot } from "./use-crm-access";
+import { useCrmAccess } from "./use-crm-access";
 import styles from "./owner-view-as-control.module.css";
 
 type EmployeeOption = {
@@ -18,7 +18,9 @@ type EmployeeOption = {
 
 type EmployeesPayload = { ok:boolean; employees?:EmployeeOption[]; message?:string; error?:string };
 
-export function OwnerViewAsControl({ snapshot }: { snapshot: CrmAccessSnapshot | null }) {
+export function OwnerViewAsControl() {
+  const access=useCrmAccess();
+  const snapshot=access.snapshot;
   const preview=snapshot?.viewAs||null;
   const isOwner=Boolean(preview)||Boolean(snapshot?.roles.some(role=>role.code==="OWNER"));
   const [open,setOpen]=useState(false);
@@ -49,7 +51,7 @@ export function OwnerViewAsControl({ snapshot }: { snapshot: CrmAccessSnapshot |
     return employees.filter(item=>[item.name,item.position,item.roleName,item.locationName].filter(Boolean).join(" ").toLowerCase().includes(needle));
   },[employees,query]);
 
-  if(!isOwner)return null;
+  if(!access.loaded||!isOwner)return null;
 
   const activate=async(employee:EmployeeOption)=>{
     setBusyUserId(employee.userId);setError("");
