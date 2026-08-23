@@ -79,7 +79,7 @@ try {
   );
 
   const permissionCount = await client.query(`SELECT count(*)::int AS count FROM "Permission"`);
-  assert.equal(permissionCount.rows[0].count, 45);
+  assert.equal(permissionCount.rows[0].count, 46);
 
   const users = await client.query(`SELECT count(*)::int AS count FROM "User"`);
   assert.equal(users.rows[0].count, 0, "security migration must not create application users");
@@ -169,7 +169,12 @@ try {
     assert.ok(!matrix.get(role)?.has("SECURITY.ACCESS_MANAGE"), `${role} must not administer access`);
   }
 
-  assert.equal(matrix.get("OWNER")?.size, 45);
+  assert.ok(matrix.get("OWNER")?.has("OWNER.EMPLOYEE_VIEW_AS"), "OWNER must be able to preview employee cabinets");
+  for (const role of canonicalRoleCodes.filter((role) => role !== "OWNER")) {
+    assert.ok(!matrix.get(role)?.has("OWNER.EMPLOYEE_VIEW_AS"), `${role} must not preview employee cabinets`);
+  }
+
+  assert.equal(matrix.get("OWNER")?.size, 46);
   assert.equal(matrix.get("EXECUTIVE_DIRECTOR")?.size, 45);
 } finally {
   await client.end();
