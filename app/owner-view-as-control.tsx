@@ -17,6 +17,7 @@ type EmployeeOption = {
 };
 
 type EmployeesPayload = { ok:boolean; employees?:EmployeeOption[]; message?:string; error?:string };
+const API_BASE="/api/personnel/owner-view-as";
 
 export function OwnerViewAsControl() {
   const access=useCrmAccess();
@@ -34,7 +35,7 @@ export function OwnerViewAsControl() {
     if(!isOwner||!open||employees.length||loading)return;
     let alive=true;
     setLoading(true);setError("");
-    fetch("/api/owner/view-as/employees",{cache:"no-store",credentials:"include"})
+    fetch(`${API_BASE}/employees`,{cache:"no-store",credentials:"include"})
       .then(async response=>{
         const body=await response.json().catch(()=>null) as EmployeesPayload|null;
         if(!response.ok||!body?.ok)throw new Error(body?.message||body?.error||"Не вдалося завантажити працівників");
@@ -56,7 +57,7 @@ export function OwnerViewAsControl() {
   const activate=async(employee:EmployeeOption)=>{
     setBusyUserId(employee.userId);setError("");
     try{
-      const response=await fetch(preview?"/api/owner/view-as/switch":"/api/owner/view-as/start",{
+      const response=await fetch(`${API_BASE}/${preview?"switch":"start"}`,{
         method:"POST",headers:{"Content-Type":"application/json"},credentials:"include",body:JSON.stringify({targetUserId:employee.userId}),
       });
       const body=await response.json().catch(()=>null) as {ok?:boolean;message?:string;error?:string}|null;
@@ -68,7 +69,7 @@ export function OwnerViewAsControl() {
   const stop=async()=>{
     setBusyUserId("__stop__");setError("");
     try{
-      const response=await fetch("/api/owner/view-as/stop",{method:"POST",credentials:"include"});
+      const response=await fetch(`${API_BASE}/stop`,{method:"POST",credentials:"include"});
       const body=await response.json().catch(()=>null) as {ok?:boolean;message?:string;error?:string}|null;
       if(!response.ok||!body?.ok)throw new Error(body?.message||body?.error||"Не вдалося повернутися в кабінет Власника");
       window.location.assign("/");
