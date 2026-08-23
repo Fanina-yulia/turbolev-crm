@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { NAV_PERMISSION, type PermissionCode } from "@/src/security/permissions";
+import { useInitialCrmAccess } from "./crm-access-provider";
 
 export type CrmAccessSnapshot = {
   authConfigured:boolean;
@@ -15,10 +16,17 @@ export type CrmAccessSnapshot = {
 };
 
 export function useCrmAccess(){
-  const [snapshot,setSnapshot]=useState<CrmAccessSnapshot|null>(null);
-  const [loaded,setLoaded]=useState(false);
+  const initialSnapshot=useInitialCrmAccess();
+  const [snapshot,setSnapshot]=useState<CrmAccessSnapshot|null>(initialSnapshot);
+  const [loaded,setLoaded]=useState(Boolean(initialSnapshot));
 
   useEffect(()=>{
+    if(initialSnapshot){
+      setSnapshot(initialSnapshot);
+      setLoaded(true);
+      return;
+    }
+
     let alive=true;
     fetch("/api/auth/me",{cache:"no-store"})
       .then(async response=>{if(!response.ok)throw new Error(`auth/me ${response.status}`);return response.json();})
@@ -26,7 +34,7 @@ export function useCrmAccess(){
       .catch(error=>{console.warn("CRM access context unavailable",error);})
       .finally(()=>{if(alive)setLoaded(true);});
     return()=>{alive=false;};
-  },[]);
+  },[initialSnapshot]);
 
   const enforced=snapshot?.enforcementMode==="ENFORCED";
   const activeUser=snapshot?.provisioningState==="ACTIVE";
