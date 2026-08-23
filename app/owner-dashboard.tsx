@@ -76,22 +76,24 @@ type AnalyticsPayload = {
   trend?: Array<{ date: string; closed: number; revenue: number | null; grossProfit: number | null }>;
 };
 
+type DashboardAttention = {
+  id: string;
+  plate: string;
+  vehicle: string;
+  status: string;
+  attentionTitle: string;
+  attentionReason: string;
+  nextAction: string;
+  attentionLevel: "CRITICAL" | "HIGH" | "MEDIUM";
+  workOrderId: string | null;
+  vehicleId: string | null;
+  appointmentId: string;
+};
+
 type DashboardPayload = {
   ok: boolean;
   blockers?: { approval: number; waitingParts: number; noShow: number };
-  attention?: Array<{
-    id: string;
-    plate: string;
-    vehicle: string;
-    status: string;
-    attentionTitle: string;
-    attentionReason: string;
-    nextAction: string;
-    attentionLevel: "CRITICAL" | "HIGH" | "MEDIUM";
-    workOrderId: string | null;
-    vehicleId: string | null;
-    appointmentId: string;
-  }>;
+  attention?: DashboardAttention[];
 };
 
 function money(value: number | null | undefined) {
@@ -132,7 +134,7 @@ function Delta({ current, previous, invert = false }: { current: number | null |
   return <small className={good ? styles.deltaGood : styles.deltaBad}>{value > 0 ? "↑" : value < 0 ? "↓" : "•"} {Math.abs(value).toFixed(1)}%</small>;
 }
 
-function routeAttention(item: DashboardPayload["attention"] extends Array<infer T> ? T : never) {
+function routeAttention(item: DashboardAttention) {
   if (item.workOrderId) return () => navigateCrm("Замовлення-наряди", { workOrderId: item.workOrderId });
   if (item.vehicleId) return () => navigateCrm("Авто", { vehicleId: item.vehicleId });
   return () => navigateCrm("Планувальник", { appointmentId: item.appointmentId });
