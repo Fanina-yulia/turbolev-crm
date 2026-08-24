@@ -1,0 +1,30 @@
+model DashboardConfiguration {
+  id          String   @id @default(cuid())
+  userId      String
+  dashboardId String   @db.VarChar(64)
+  version     Int      @default(1)
+  presetId    String   @db.VarChar(80)
+  config      Json
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  versions DashboardConfigurationVersion[]
+
+  @@unique([userId, dashboardId])
+  @@index([dashboardId, updatedAt])
+}
+
+model DashboardConfigurationVersion {
+  id                       String   @id @default(cuid())
+  dashboardConfigurationId String
+  version                  Int
+  presetId                 String   @db.VarChar(80)
+  config                   Json
+  createdByUserId          String
+  createdAt                DateTime @default(now())
+
+  configuration DashboardConfiguration @relation(fields: [dashboardConfigurationId], references: [id], onDelete: Cascade)
+
+  @@unique([dashboardConfigurationId, version])
+  @@index([createdByUserId, createdAt])
+}

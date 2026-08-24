@@ -40,16 +40,20 @@ function safeTitle(value: unknown) {
   return title || undefined;
 }
 
-function isWidgetType(value: unknown): value is DashboardWidgetType {
+export function isDashboardWidgetType(value: unknown): value is DashboardWidgetType {
   return typeof value === "string" && Object.prototype.hasOwnProperty.call(DASHBOARD_WIDGET_REGISTRY, value);
 }
 
-function canUseWidget(widgetType: DashboardWidgetType, access: DashboardAccessSnapshot) {
+export function canUseDashboardWidget(widgetType: DashboardWidgetType, access: DashboardAccessSnapshot) {
   const definition = DASHBOARD_WIDGET_REGISTRY[widgetType];
   const hasPermission = Boolean(access.permissions[definition.requiredPermission]);
   const allowedByRole = !definition.allowedRoleCodes?.length
     || definition.allowedRoleCodes.some((role) => access.roleCodes.includes(role));
   return hasPermission && allowedByRole;
+}
+
+export function listAllowedDashboardWidgetDefinitions(access: DashboardAccessSnapshot) {
+  return Object.values(DASHBOARD_WIDGET_REGISTRY).filter((definition) => canUseDashboardWidget(definition.widgetType, access));
 }
 
 function normalizeLayout(widgetType: DashboardWidgetType, input: unknown): DashboardGridLayout {
@@ -63,8 +67,8 @@ function normalizeLayout(widgetType: DashboardWidgetType, input: unknown): Dashb
 }
 
 function normalizeInstance(value: unknown, access: DashboardAccessSnapshot): DashboardWidgetInstance | null {
-  if (!isRecord(value) || !isWidgetType(value.widgetType)) return null;
-  if (!canUseWidget(value.widgetType, access)) return null;
+  if (!isRecord(value) || !isDashboardWidgetType(value.widgetType)) return null;
+  if (!canUseDashboardWidget(value.widgetType, access)) return null;
 
   const rawId = typeof value.instanceId === "string" ? value.instanceId.trim() : "";
   if (!rawId || (!UUID_PATTERN.test(rawId) && !INSTANCE_ID_PATTERN.test(rawId))) return null;
