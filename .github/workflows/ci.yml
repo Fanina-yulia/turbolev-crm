@@ -178,9 +178,13 @@ jobs:
         run: npx --no-install tsx scripts/communication-attachments-smoke.ts
 
       - name: Communication inbound media view smoke test
+        env:
+          NODE_OPTIONS: --conditions=react-server
         run: npx --no-install tsx scripts/communication-message-view-smoke.ts
 
       - name: Communication activation diagnostics smoke test
+        env:
+          NODE_OPTIONS: --conditions=react-server
         run: npx --no-install tsx scripts/communication-activation-diagnostics-smoke.ts
 
       - name: Production build
