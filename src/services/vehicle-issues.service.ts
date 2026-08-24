@@ -1,5 +1,6 @@
 import { VehicleIssueStatus } from "@/src/generated/prisma/client";
 import { getPrisma } from "@/src/lib/prisma";
+import { toPrismaJson } from "@/src/lib/prisma-json";
 import { getStructuredDiagnostic } from "@/src/services/structured-diagnostics.service";
 
 const ACTIVE_STATUSES: VehicleIssueStatus[] = [
@@ -13,6 +14,7 @@ const ACTIVE_STATUSES: VehicleIssueStatus[] = [
   VehicleIssueStatus.IN_REPAIR,
   VehicleIssueStatus.DEFERRED,
 ];
+const TERMINAL_STATUSES: VehicleIssueStatus[] = [VehicleIssueStatus.RESOLVED, VehicleIssueStatus.DISMISSED];
 
 export class VehicleIssueError extends Error {
   code: string;
@@ -27,6 +29,66 @@ export class VehicleIssueError extends Error {
 
 function clean(value: unknown, max = 500) {
   return typeof value === "string" ? value.trim().slice(0, max) : "";
+}
+
+function jsonRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
+}
+
+function findingIdFromSource(sourceEntity: string | null, sourceEntityId: string | null) {
+  if (sourceEntity !== "DIAGNOSTIC_FINDING" || !sourceEntityId) return null;
+  if (sourceEntityId.endsWith(":LABOR")) return sourceEntityId.slice(0, -6);
+  if (sourceEntityId.endsWith(":PART")) return sourceEntityId.slice(0, -5);
+  return sourceEntityId;
+}
+
+async function loadIssueLineStates(workOrderId: string) {
+  const prisma = getPrisma();
+  const lines = await prisma.workOrderLine.findMany({
+    where: { workOrderId, sourceEntity: "DIAGNOSTIC_FINDING" },
+    select: { id: true, status: true, sourceEntity: true, sourceEntityId: true, metadata: true },
+  });
+
+  const unresolvedFindingIds = Array.from(new Set(lines.flatMap((line) => {
+    const metadata = jsonRecord(line.metadata);
+    if (clean(metadata.vehicleIssueId, 160)) return [];
+    const findingId = findingIdFromSource(line.sourceEntity, line.sourceEntityId);
+    return findingId ? [findingId] : [];
+  })));
+  const fallbackIssues = unresolvedFindingIds.length
+    ? await prisma.vehicleIssue.findMany({
+        where: { sourceFindingId: { in: unresolvedFindingIds } },
+        select: { id: true, sourceFindingId: true },
+      })
+    : [];
+  const issueByFinding = new Map(fallbackIssues.flatMap((issue) => issue.sourceFindingId ? [[issue.sourceFindingId, issue.id] as const] : []));
+  const states = new Map<string, string[]>();
+
+  for (const line of lines) {
+    const metadata = jsonRecord(line.metadata);
+    const findingId = findingIdFromSource(line.sourceEntity, line.sourceEntityId);
+    const metadataIssueId = clean(metadata.vehicleIssueId, 160) || null;
+    const issueId = metadataIssueId || (findingId ? issueByFinding.get(findingId) || null : null);
+    if (!issueId) continue;
+    const current = states.get(issueId) || [];
+    current.push(line.status);
+    states.set(issueId, current);
+
+    if (!metadataIssueId) {
+      await prisma.workOrderLine.update({
+        where: { id: line.id },
+        data: {
+          metadata: toPrismaJson({
+            ...metadata,
+            vehicleIssueId: issueId,
+            findingId: clean(metadata.findingId, 160) || findingId,
+          }),
+        },
+      });
+    }
+  }
+
+  return states;
 }
 
 export async function syncVehicleIssuesFromDiagnostic(diagnosticRequestId: string) {
@@ -186,27 +248,90 @@ export async function updateVehicleIssue(input: {
   });
 }
 
-export async function markDiagnosticIssuesQuoted(diagnosticRequestId: string, workOrderId: string) {
+export async function reconcileWorkOrderIssueLinks(workOrderId: string) {
   const prisma = getPrisma();
-  return prisma.vehicleIssue.updateMany({
+  const states = await loadIssueLineStates(workOrderId);
+  const activeIssueIds = Array.from(states.entries())
+    .filter(([, lineStates]) => lineStates.some((status) => status !== "CANCELLED"))
+    .map(([issueId]) => issueId);
+
+  if (activeIssueIds.length) {
+    await prisma.vehicleIssue.updateMany({
+      where: { id: { in: activeIssueIds }, status: { notIn: TERMINAL_STATUSES } },
+      data: { workOrderId },
+    });
+    await prisma.vehicleIssue.updateMany({
+      where: { id: { in: activeIssueIds }, status: { in: [VehicleIssueStatus.OPEN, VehicleIssueStatus.DECISION_REQUIRED] } },
+      data: { status: VehicleIssueStatus.QUOTED },
+    });
+  }
+
+  const detached = await prisma.vehicleIssue.findMany({
     where: {
-      sourceDiagnosticId: diagnosticRequestId,
-      status: { in: [VehicleIssueStatus.OPEN, VehicleIssueStatus.DECISION_REQUIRED, VehicleIssueStatus.DEFERRED] },
+      workOrderId,
+      status: { notIn: TERMINAL_STATUSES },
+      ...(activeIssueIds.length ? { id: { notIn: activeIssueIds } } : {}),
     },
-    data: { status: VehicleIssueStatus.QUOTED, workOrderId },
+    select: { id: true, status: true },
   });
+  const deferredIds = detached.filter((issue) => issue.status === VehicleIssueStatus.DEFERRED).map((issue) => issue.id);
+  const resetIds = detached.filter((issue) => issue.status !== VehicleIssueStatus.DEFERRED).map((issue) => issue.id);
+  if (deferredIds.length) {
+    await prisma.vehicleIssue.updateMany({ where: { id: { in: deferredIds } }, data: { workOrderId: null } });
+  }
+  if (resetIds.length) {
+    await prisma.vehicleIssue.updateMany({
+      where: { id: { in: resetIds } },
+      data: { workOrderId: null, status: VehicleIssueStatus.DECISION_REQUIRED },
+    });
+  }
+
+  return { linked: activeIssueIds.length, detached: detached.length };
+}
+
+export async function markDiagnosticIssuesQuoted(diagnosticRequestId: string, workOrderId: string) {
+  await syncVehicleIssuesFromDiagnostic(diagnosticRequestId);
+  return reconcileWorkOrderIssueLinks(workOrderId);
 }
 
 export async function markWorkOrderIssues(workOrderId: string, status: VehicleIssueStatus) {
   const prisma = getPrisma();
-  return prisma.vehicleIssue.updateMany({
+  await reconcileWorkOrderIssueLinks(workOrderId);
+  const states = await loadIssueLineStates(workOrderId);
+  const activeEntries = Array.from(states.entries()).filter(([, lineStates]) => lineStates.some((lineStatus) => lineStatus !== "CANCELLED"));
+  const targetIssueIds = status === VehicleIssueStatus.RESOLVED
+    ? activeEntries
+        .filter(([, lineStates]) => {
+          const activeLineStates = lineStates.filter((lineStatus) => lineStatus !== "CANCELLED");
+          return activeLineStates.length > 0 && activeLineStates.every((lineStatus) => lineStatus === "COMPLETED");
+        })
+        .map(([issueId]) => issueId)
+    : activeEntries.map(([issueId]) => issueId);
+
+  if (!targetIssueIds.length) {
+    return { count: 0, linked: activeEntries.length, skippedIncomplete: status === VehicleIssueStatus.RESOLVED ? activeEntries.length : 0 };
+  }
+
+  const result = await prisma.vehicleIssue.updateMany({
     where: {
+      id: { in: targetIssueIds },
       workOrderId,
-      status: { notIn: [VehicleIssueStatus.RESOLVED, VehicleIssueStatus.DISMISSED] },
+      status: status === VehicleIssueStatus.RESOLVED
+        ? { notIn: [VehicleIssueStatus.RESOLVED, VehicleIssueStatus.DISMISSED] }
+        : { notIn: [VehicleIssueStatus.RESOLVED, VehicleIssueStatus.DISMISSED, VehicleIssueStatus.DEFERRED] },
     },
     data: {
       status,
-      ...(status === VehicleIssueStatus.RESOLVED ? { resolvedAt: new Date() } : {}),
+      ...(status === VehicleIssueStatus.RESOLVED ? {
+        resolvedAt: new Date(),
+        resolutionNote: "Усунено після виконання пов’язаних робіт і успішного контролю якості.",
+      } : {}),
     },
   });
+
+  return {
+    count: result.count,
+    linked: activeEntries.length,
+    skippedIncomplete: status === VehicleIssueStatus.RESOLVED ? activeEntries.length - targetIssueIds.length : 0,
+  };
 }
