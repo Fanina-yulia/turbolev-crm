@@ -49,7 +49,7 @@ export function PersonnelOwnerViewButton({employee,className}:Props){
     }
   };
 
-  return <span>
+  return <span data-owner-view-as-action="true">
     <button type="button" className={className} onClick={()=>void openCabinet()} disabled={busy} title={unavailableReason||"Відкрити CRM так, як її бачить цей працівник — без права змінювати дані"}>
       {busy?"Відкриваю…":"👁 Переглянути його кабінет"}
     </button>
