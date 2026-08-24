@@ -129,6 +129,46 @@ function fromPlateOnly(maskedIdentifier: string, result: GlobalVehicleLookupResp
   };
 }
 
+function normalizeComparable(value: string | null | undefined) {
+  return String(value ?? "").toUpperCase().replace(/[^A-ZА-ЯІЇЄ0-9]/g, "");
+}
+
+function labelsCompatible(left: string | null | undefined, right: string | null | undefined) {
+  const a = normalizeComparable(left);
+  const b = normalizeComparable(right);
+  if (!a || !b) return true;
+  return a === b || a.includes(b) || b.includes(a);
+}
+
+function plateVinConflicts(plateResult: GlobalVehicleLookupResponse, decoded: VinIntelligence) {
+  if (plateResult.status !== "FOUND" || !plateResult.vehicle || decoded.status !== "FOUND" || !decoded.vehicle) return [];
+  const conflicts: string[] = [];
+  if (!labelsCompatible(plateResult.vehicle.model, decoded.vehicle.model)) conflicts.push("MODEL");
+  if (plateResult.vehicle.year != null && decoded.vehicle.year != null && plateResult.vehicle.year !== decoded.vehicle.year) conflicts.push("YEAR");
+  return conflicts;
+}
+
+function conflictContext(
+  maskedIdentifier: string,
+  plateResult: GlobalVehicleLookupResponse,
+  decoded: VinIntelligence,
+  conflicts: string[],
+): PublicVehicleIdentityContext {
+  return {
+    state: "ASSISTED",
+    inputType: "PLATE",
+    maskedIdentifier,
+    confidence: 0,
+    source: `${plateResult.lookupLevel}→${decoded.sourceDetail || "VIN"}→CONFLICT`,
+    vehicle: null,
+    vinAvailable: true,
+    canonicalReferenceReady: false,
+    exactFitmentReady: false,
+    needsVin: false,
+    message: `Дані державного номера і VIN суперечать одне одному (${conflicts.join(", ")}). Автомобіль потрібно перевірити перед підбором запчастин.`,
+  };
+}
+
 export async function resolveUnifiedVehicleIdentity(
   rawInput: string,
   options: { deepPlateLookup?: boolean; forceVinRefresh?: boolean } = {},
@@ -147,6 +187,9 @@ export async function resolveUnifiedVehicleIdentity(
 
   try {
     const decoded = await dependencies.decodeVin(plateResult.vehicle.vin);
+    const conflicts = plateVinConflicts(plateResult, decoded);
+    if (conflicts.length) return conflictContext(parsed.masked, plateResult, decoded, conflicts);
+
     const vinContext = fromVin("PLATE", parsed.masked, decoded, plateResult.lookupLevel);
     return {
       ...vinContext,
