@@ -113,7 +113,7 @@ export function VehicleDiagnosticsTab({ vehicleId, plateNumber, vin }: Props) {
         </div>
         <div className={styles.actions}>
           <button type="button" className={styles.primary} onClick={() => navigateCrm("Діагностика", { diagnosticId: row.id })}>Відкрити ДК</button>
-          {state === "CONFIRMED" && <button type="button" onClick={() => navigateCrm("Підбір запчастин", { plate: plateNumber || "", vin: vin || "" })}>Підібрати запчастини</button>}
+          {state === "CONFIRMED" && <button type="button" onClick={() => navigateCrm("Підбір запчастин", { diagnosticId: row.id, plate: plateNumber || "", vin: vin || "" })}>Підібрати запчастини</button>}
           {row.commercialProposal && <button type="button" onClick={() => navigateCrm("Замовлення-наряди", { workOrderId: row.commercialProposal!.workOrderId, workOrderTab: "estimate" })}>Відкрити КП</button>}
         </div>
       </article>;
