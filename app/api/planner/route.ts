@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getPrisma } from "@/src/lib/prisma";
+import { zonedDateKey, zonedDayRange } from "@/src/lib/zoned-time";
 import { authorize } from "@/src/security/authorize";
 import { PERMISSIONS } from "@/src/security/permissions";
 import {
@@ -54,9 +55,10 @@ export async function GET(request: Request) {
   if (!access.allowed) return access.response!;
 
   const { searchParams } = new URL(request.url);
-  const from = new Date(searchParams.get("from") ?? "");
-  const to = new Date(searchParams.get("to") ?? "");
+  let from = new Date(searchParams.get("from") ?? "");
+  let to = new Date(searchParams.get("to") ?? "");
   const requestedLocationId = searchParams.get("locationId")?.trim() || null;
+  const requestedAppointmentId = searchParams.get("appointmentId")?.trim() || null;
 
   if (!Number.isFinite(from.getTime()) || !Number.isFinite(to.getTime()) || to <= from) {
     return invalidDate("Передайте коректний часовий діапазон планувальника.");
@@ -66,11 +68,38 @@ export async function GET(request: Request) {
   if (scope.allowedLocationIds !== null && !scope.allowedLocationIds.length) {
     return NextResponse.json({ status: "OK", locations: [], activeLocationId: null, appointments: [] }, { headers: { "Cache-Control": "no-store" } });
   }
-  if (requestedLocationId && scope.allowedLocationIds !== null && !scope.allowedLocationIds.includes(requestedLocationId)) {
+
+  let selectedLocationId = requestedLocationId ?? scope.allowedLocationIds?.[0] ?? null;
+  if (requestedAppointmentId) {
+    const focusedAppointment = await getPrisma().serviceAppointment.findUnique({
+      where: { id: requestedAppointmentId },
+      select: {
+        locationId: true,
+        mechanicId: true,
+        plannedStartAt: true,
+        location: { select: { timezone: true } },
+      },
+    });
+    if (!focusedAppointment) {
+      return NextResponse.json({ status: "NOT_FOUND", message: "Запис планувальника не знайдено." }, { status: 404 });
+    }
+    if (scope.allowedLocationIds !== null && !scope.allowedLocationIds.includes(focusedAppointment.locationId)) {
+      return scopeDenied();
+    }
+    if (scope.mechanicIds !== null && (!focusedAppointment.mechanicId || !scope.mechanicIds.includes(focusedAppointment.mechanicId))) {
+      return scopeDenied("Цей запис не належить до Ваших призначених робіт.");
+    }
+
+    const timeZone = focusedAppointment.location.timezone || "Europe/Kyiv";
+    const focusedDay = zonedDateKey(focusedAppointment.plannedStartAt, timeZone);
+    const focusedRange = zonedDayRange(focusedDay, timeZone);
+    from = focusedRange.from;
+    to = focusedRange.to;
+    selectedLocationId = focusedAppointment.locationId;
+  } else if (requestedLocationId && scope.allowedLocationIds !== null && !scope.allowedLocationIds.includes(requestedLocationId)) {
     return scopeDenied();
   }
 
-  const selectedLocationId = requestedLocationId ?? scope.allowedLocationIds?.[0] ?? null;
   const board = await getPlannerBoard(from, to, selectedLocationId);
   const allowedSet = scope.allowedLocationIds === null ? null : new Set(scope.allowedLocationIds);
   const mechanicSet = scope.mechanicIds === null ? null : new Set(scope.mechanicIds);
