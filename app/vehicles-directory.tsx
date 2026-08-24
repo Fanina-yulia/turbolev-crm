@@ -13,10 +13,13 @@ import { CustomerCabinetCard } from "./customer-cabinet-card";
 import { navigateCrm, readCrmRoute } from "./crm-route";
 import { VehicleBrandLogo } from "./vehicle-brand-logo";
 import { VehicleRender } from "./vehicle-render";
+import { VehicleDiagnosticsTab } from "./vehicle-diagnostics-tab";
 import styles from "./directory-pages.module.css";
+import tabStyles from "./vehicle-card-tabs.module.css";
 
 type Vehicle = VehicleDirectoryItem;
 type VehicleCard = VehicleCardContract;
+type VehicleDrawerTab = "overview" | "diagnostics" | "history";
 
 const PAGE_SIZE = 24;
 
@@ -63,6 +66,7 @@ export function VehiclesDirectory() {
   const [vehicleId, setVehicleId] = useState<string | null>(null);
   const [vehicleCard, setVehicleCard] = useState<VehicleCard | null>(null);
   const [vehicleLoading, setVehicleLoading] = useState(false);
+  const [drawerTab, setDrawerTab] = useState<VehicleDrawerTab>("overview");
 
   useEffect(() => {
     const controller = new AbortController();
@@ -100,6 +104,7 @@ export function VehiclesDirectory() {
   }, []);
 
   useEffect(() => {
+    setDrawerTab("overview");
     if (!vehicleId) {
       setVehicleCard(null);
       return;
@@ -220,31 +225,46 @@ export function VehiclesDirectory() {
             </div>
             <button className={styles.close} onClick={closeVehicle}>×</button>
           </header>
+
+          <nav className={tabStyles.tabs} aria-label="Розділи картки автомобіля">
+            <button type="button" className={drawerTab === "overview" ? tabStyles.active : ""} onClick={() => setDrawerTab("overview")}>Огляд</button>
+            <button type="button" className={drawerTab === "diagnostics" ? tabStyles.active : ""} onClick={() => setDrawerTab("diagnostics")}>Діагностика</button>
+            <button type="button" className={drawerTab === "history" ? tabStyles.active : ""} onClick={() => setDrawerTab("history")}>Сервісна історія</button>
+          </nav>
+
           <div className={styles.drawerBody}>
-            <section className={styles.panel}>
-              <h3>Власник</h3>
-              <button className={styles.ownerButton} onClick={() => navigateCrm("Клієнти", { clientId: vehicleCard.client.id })}>
-                <span><strong>{vehicleCard.client.name || "Клієнт без імені"}</strong><small>{vehicleCard.client.phone}</small></span><span>›</span>
-              </button>
-            </section>
-            <section className={styles.panel}>
-              <CustomerCabinetCard clientId={vehicleCard.client.id} vehicleId={vehicleCard.id} />
-            </section>
-            <section className={styles.panel}>
-              <h3>Технічні дані</h3>
-              <div className={styles.facts}>
-                <span><small>Марка</small><b>{vehicleCard.brand || "—"}</b></span>
-                <span><small>Модель</small><b>{vehicleCard.model || "—"}</b></span>
-                <span><small>Рік</small><b>{vehicleCard.year || "—"}</b></span>
-                <span><small>VIN</small><b>{vehicleCard.vin || "—"}</b></span>
-                <span><small>Пробіг</small><b>{vehicleCard.mileageKm ? `${vehicleCard.mileageKm.toLocaleString("uk-UA")} км` : "—"}</b></span>
-                <span><small>Двигун</small><b>{engineText(vehicleCard)}</b></span>
-                <span><small>Паливо</small><b>{vehicleCard.fuelType || "—"}</b></span>
-                <span><small>Привід</small><b>{vehicleCard.driveType || "—"}</b></span>
-              </div>
-            </section>
-            <VehicleAppearanceEditor vehicle={vehicleCard} onSaved={updateVehicleCard}/>
-            <section className={styles.panel}>
+            {drawerTab === "overview" && <>
+              <section className={styles.panel}>
+                <h3>Власник</h3>
+                <button className={styles.ownerButton} onClick={() => navigateCrm("Клієнти", { clientId: vehicleCard.client.id })}>
+                  <span><strong>{vehicleCard.client.name || "Клієнт без імені"}</strong><small>{vehicleCard.client.phone}</small></span><span>›</span>
+                </button>
+              </section>
+              <section className={styles.panel}>
+                <CustomerCabinetCard clientId={vehicleCard.client.id} vehicleId={vehicleCard.id} />
+              </section>
+              <section className={styles.panel}>
+                <h3>Технічні дані</h3>
+                <div className={styles.facts}>
+                  <span><small>Марка</small><b>{vehicleCard.brand || "—"}</b></span>
+                  <span><small>Модель</small><b>{vehicleCard.model || "—"}</b></span>
+                  <span><small>Рік</small><b>{vehicleCard.year || "—"}</b></span>
+                  <span><small>VIN</small><b>{vehicleCard.vin || "—"}</b></span>
+                  <span><small>Пробіг</small><b>{vehicleCard.mileageKm ? `${vehicleCard.mileageKm.toLocaleString("uk-UA")} км` : "—"}</b></span>
+                  <span><small>Двигун</small><b>{engineText(vehicleCard)}</b></span>
+                  <span><small>Паливо</small><b>{vehicleCard.fuelType || "—"}</b></span>
+                  <span><small>Привід</small><b>{vehicleCard.driveType || "—"}</b></span>
+                </div>
+              </section>
+              <VehicleAppearanceEditor vehicle={vehicleCard} onSaved={updateVehicleCard}/>
+            </>}
+
+            {drawerTab === "diagnostics" && <section className={styles.panel}>
+              <h3>Діагностика</h3>
+              <VehicleDiagnosticsTab vehicleId={vehicleCard.id} plateNumber={vehicleCard.plateNumber} vin={vehicleCard.vin}/>
+            </section>}
+
+            {drawerTab === "history" && <section className={styles.panel}>
               <h3>Сервісна історія</h3>
               <div className={styles.facts}>
                 <span><small>Замовлення</small><b>{vehicleCard._count.workOrders}</b></span>
@@ -257,7 +277,7 @@ export function VehiclesDirectory() {
                 <small>{dateText(workOrder.closedAt || workOrder.updatedAt || workOrder.createdAt)}</small>
                 <span>›</span>
               </button>)}</div> : null}
-            </section>
+            </section>}
           </div>
           <footer className={styles.drawerFooter}><button className={styles.primary} onClick={openNewRequest}>+ Нова заявка</button></footer>
         </>}

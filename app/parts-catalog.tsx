@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { readCrmRoute } from "./crm-route";
 import styles from "./parts-catalog.module.css";
 import supplierStyles from "./parts-suppliers.module.css";
 
@@ -50,6 +51,10 @@ type SupplierOffer = {
 };
 
 type SupplierProvider = { id: string; ok: boolean; message?: string };
+type DiagnosticPartsPayload = {
+  ok?: boolean;
+  inspections?: Array<{ sections?: Array<{ items?: Array<{ finding?: { suggestedPartName?: string | null } | null }> }> }>;
+};
 
 function normalizeVin(value: string) {
   return value.toUpperCase().replace(/[^A-HJ-NPR-Z0-9]/g, "").slice(0, 17);
@@ -83,8 +88,46 @@ export function PartsCatalog() {
   const [offers, setOffers] = useState<SupplierOffer[]>([]);
   const [supplierProviders, setSupplierProviders] = useState<SupplierProvider[]>([]);
   const [configuredSuppliers, setConfiguredSuppliers] = useState<string[]>([]);
+  const [recommendedParts, setRecommendedParts] = useState<string[]>([]);
+  const [diagnosticCardContext, setDiagnosticCardContext] = useState(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("Введіть VIN або держномер автомобіля, якщо він є, і назву або артикул потрібної деталі.");
+
+  useEffect(() => {
+    let cancelled = false;
+    const sync = async () => {
+      const route = readCrmRoute();
+      const reference = route.plate || route.vin || "";
+      if (reference) setVehicleRef(reference.toUpperCase());
+      if (!route.diagnosticId) {
+        if (!cancelled) {
+          setRecommendedParts([]);
+          setDiagnosticCardContext(false);
+        }
+        return;
+      }
+      setDiagnosticCardContext(true);
+      try {
+        const response = await fetch(`/api/diagnostics/${encodeURIComponent(route.diagnosticId)}/structured`, { cache: "no-store", credentials: "include" });
+        const payload = await response.json().catch(() => null) as DiagnosticPartsPayload | null;
+        if (!response.ok || !payload?.ok) return;
+        const names = Array.from(new Set((payload.inspections || []).flatMap((inspection) => (inspection.sections || []).flatMap((section) => (section.items || []).flatMap((item) => {
+          const name = item.finding?.suggestedPartName?.trim();
+          return name ? [name] : [];
+        })))));
+        if (cancelled) return;
+        setRecommendedParts(names);
+        setQ((current) => current.trim() ? current : names[0] || "");
+        if (names.length) setMessage(`З Діагностичної карти передано рекомендовані деталі: ${names.length}. Оберіть деталь для підбору.`);
+      } catch {
+        if (!cancelled) setRecommendedParts([]);
+      }
+    };
+    void sync();
+    const onRoute = () => { void sync(); };
+    window.addEventListener("popstate", onRoute);
+    return () => { cancelled = true; window.removeEventListener("popstate", onRoute); };
+  }, []);
 
   async function resolveVinFromReference() {
     const reference = vehicleRef.trim();
@@ -172,6 +215,11 @@ export function PartsCatalog() {
       <div><p>TURBO LEV · PARTS INTELLIGENCE</p><h1>Підбір запчастин</h1></div>
       <span className={styles.badge}>VIN / ДЕРЖНОМЕР + SUPPLIER API</span>
     </div>
+
+    {diagnosticCardContext && recommendedParts.length > 0 && <section className={styles.panel}>
+      <div className={styles.head}><div><p>З ДІАГНОСТИЧНОЇ КАРТИ</p><h2>Рекомендовані деталі</h2></div><span className={styles.badge}>{recommendedParts.length}</span></div>
+      <div className={styles.grid}>{recommendedParts.map((name) => <button type="button" className={styles.card} key={name} onClick={() => setQ(name)}><div className={styles.cardTop}><b>{name}</b><span>ОБРАТИ</span></div><small>Підтягнуто з підтвердженої діагностики</small></button>)}</div>
+    </section>}
 
     <section className={styles.panel}>
       <div className={styles.contextGrid}>

@@ -8,7 +8,7 @@
       "title": "Core / Platform",
       "description": "Authentication, shell, routing, shared libraries, security, database schema and deployment infrastructure.",
       "keywords": ["auth", "login", "routing", "shell", "permissions", "security", "prisma", "migration", "deployment", "task workspace", "terminology"],
-      "paths": ["app/layout.tsx", "app/page.tsx", "app/crm-shell.tsx", "app/crm-access-provider.tsx", "app/use-crm-access.ts", "app/active-terminology-bridge.tsx", "app/security-enforcement-control.tsx", "app/my-tasks*", "app/api/tasks/**", "app/auth/**", "app/cabinet-auto-router.tsx", "app/role-cabinet*", "app/api/cabinet/home/**", "src/security/**", "src/lib/**", "src/services/attention-center*", "prisma/**", "scripts/build-production.mjs"],
+      "paths": ["app/layout.tsx", "app/page.tsx", "app/crm-shell.tsx", "app/crm-route.ts", "app/crm-access-provider.tsx", "app/use-crm-access.ts", "app/active-terminology-bridge.tsx", "app/security-enforcement-control.tsx", "app/my-tasks*", "app/api/tasks/**", "app/auth/**", "app/cabinet-auto-router.tsx", "app/role-cabinet*", "app/api/cabinet/home/**", "src/security/**", "src/lib/**", "src/services/attention-center*", "prisma/**", "scripts/build-production.mjs"],
       "dependencies": [],
       "smokeChecks": ["application-build", "authentication-redirect", "production-migration-status"]
     },
@@ -26,7 +26,7 @@
       "title": "Clients & Vehicles",
       "description": "Client records, vehicle cards, ownership data, VIN/plate lookup, appearance and vehicle directory.",
       "keywords": ["client", "customer", "vehicle", "car", "vin", "plate", "owner", "color"],
-      "paths": ["app/client-*", "app/clients-*", "app/vehicles-*", "app/vehicle-plate*", "app/vehicle-presentation*", "app/api/clients*/**", "app/api/vehicles/**", "src/services/vehicle-lookup*", "src/services/vehicle-registry-color*"],
+      "paths": ["app/client-*", "app/clients-*", "app/vehicles-*", "app/vehicle-card-*", "app/vehicle-plate*", "app/vehicle-presentation*", "app/api/clients*/**", "app/api/vehicles/**", "src/services/vehicle-lookup*", "src/services/vehicle-registry-color*"],
       "dependencies": ["leads-intake", "planner", "diagnostics", "work-orders", "vehicle-images"],
       "smokeChecks": ["client-card-load", "vehicle-card-load", "plate-search", "vehicle-owner-consistency"]
     },
@@ -62,7 +62,7 @@
       "title": "Diagnostics",
       "description": "Diagnostic requests, assignments, findings, confirmation and the gate before repair work orders.",
       "keywords": ["diagnostic", "diagnostics", "finding", "inspection", "confirmation", "walk-in", "позаплановий заїзд"],
-      "paths": ["app/diagnostic-*", "app/*diagnostics*", "app/api/diagnostic*/**", "src/services/diagnostic*", "src/services/quick-diagnostic-*", "src/services/walk-in-diagnostic-*"],
+      "paths": ["app/diagnostic-*", "app/*diagnostic*", "app/*diagnostics*", "app/api/diagnostic*/**", "src/services/diagnostic*", "src/services/quick-diagnostic-*", "src/services/walk-in-diagnostic-*"],
       "dependencies": ["clients-vehicles", "planner", "mechanic-cabinet", "work-orders", "finance"],
       "smokeChecks": ["diagnostic-create", "diagnostic-assignment", "diagnostic-confirmation", "work-order-gate", "walk-in-diagnostic-flow"]
     },

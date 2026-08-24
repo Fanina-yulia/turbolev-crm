@@ -31,6 +31,13 @@ export type DiagnosticTransitionInput = {
   reviewerUserId?: string | null;
 };
 
+type DiagnosticListInput = {
+  status?: DiagnosticRequestStatus | null;
+  limit?: number;
+  vehicleId?: string | null;
+  clientId?: string | null;
+};
+
 function clean(value: unknown, max = 10000) {
   if (typeof value !== "string") return null;
   const next = value.trim();
@@ -107,11 +114,89 @@ async function diagnosticCardMeta(ids: string[]) {
   return result;
 }
 
-export async function listDiagnostics(input?: { status?: DiagnosticRequestStatus | null; limit?: number }) {
+async function assignmentMeta(ids: string[]) {
+  const prisma = getPrisma();
+  const result = new Map<string, { mechanicId: string | null; mechanicName: string | null; locationId: string | null }>();
+  if (!ids.length) return result;
+  const assignments = await prisma.diagnosticAssignment.findMany({
+    where: { diagnosticRequestId: { in: ids } },
+    select: { diagnosticRequestId: true, mechanicId: true, locationId: true },
+  });
+  const mechanicIds = Array.from(new Set(assignments.flatMap((row) => row.mechanicId ? [row.mechanicId] : [])));
+  const mechanics = mechanicIds.length ? await prisma.serviceMechanic.findMany({
+    where: { id: { in: mechanicIds } },
+    select: { id: true, name: true },
+  }) : [];
+  const nameById = new Map(mechanics.map((row) => [row.id, row.name]));
+  for (const row of assignments) {
+    result.set(row.diagnosticRequestId, {
+      mechanicId: row.mechanicId,
+      mechanicName: row.mechanicId ? nameById.get(row.mechanicId) || null : null,
+      locationId: row.locationId,
+    });
+  }
+  return result;
+}
+
+async function commercialMeta(rows: Array<{ id: string; workOrder: { id: string } | null }>) {
+  const prisma = getPrisma();
+  const result = new Map<string, {
+    workOrderId: string;
+    stage: "PARTS_SELECTION" | "DRAFT" | "SENT" | "APPROVED" | "REJECTED" | "SUPERSEDED";
+    estimate: { id: string; revision: number; status: string } | null;
+    partsRequest: { id: string; status: string } | null;
+  }>();
+  const workOrders = rows.flatMap((row) => row.workOrder ? [{ diagnosticId: row.id, workOrderId: row.workOrder.id }] : []);
+  if (!workOrders.length) return result;
+  const workOrderIds = workOrders.map((row) => row.workOrderId);
+  const [estimates, partsRequests] = await Promise.all([
+    prisma.workOrderEstimate.findMany({
+      where: { workOrderId: { in: workOrderIds } },
+      orderBy: [{ workOrderId: "asc" }, { revision: "desc" }],
+      select: { id: true, workOrderId: true, revision: true, status: true },
+    }),
+    prisma.partsRequest.findMany({
+      where: { workOrderId: { in: workOrderIds }, status: { not: "CANCELLED" } },
+      orderBy: [{ workOrderId: "asc" }, { createdAt: "desc" }],
+      select: { id: true, workOrderId: true, status: true },
+    }),
+  ]);
+  const latestEstimate = new Map<string, { id: string; revision: number; status: string }>();
+  const latestParts = new Map<string, { id: string; status: string }>();
+  for (const row of estimates) if (!latestEstimate.has(row.workOrderId)) latestEstimate.set(row.workOrderId, { id: row.id, revision: row.revision, status: row.status });
+  for (const row of partsRequests) if (!latestParts.has(row.workOrderId)) latestParts.set(row.workOrderId, { id: row.id, status: row.status });
+  for (const row of workOrders) {
+    const estimate = latestEstimate.get(row.workOrderId) || null;
+    const partsRequest = latestParts.get(row.workOrderId) || null;
+    if (!estimate && !partsRequest) continue;
+    const stage = estimate
+      ? (["DRAFT", "SENT", "APPROVED", "REJECTED", "SUPERSEDED"].includes(estimate.status) ? estimate.status : "DRAFT")
+      : "PARTS_SELECTION";
+    result.set(row.diagnosticId, {
+      workOrderId: row.workOrderId,
+      stage: stage as "PARTS_SELECTION" | "DRAFT" | "SENT" | "APPROVED" | "REJECTED" | "SUPERSEDED",
+      estimate,
+      partsRequest,
+    });
+  }
+  return result;
+}
+
+function businessWorkflowState(rowStatus: DiagnosticRequestStatus, reviewState?: string) {
+  if (reviewState === DiagnosticReviewState.SUBMITTED) return "SUBMITTED";
+  if (reviewState === DiagnosticReviewState.RETURNED) return DiagnosticRequestStatus.IN_PROGRESS;
+  return rowStatus;
+}
+
+export async function listDiagnostics(input?: DiagnosticListInput) {
   const prisma = getPrisma();
   const limit = Math.max(1, Math.min(500, input?.limit ?? 200));
   const rows = await prisma.diagnosticRequest.findMany({
-    where: input?.status ? { status: input.status } : undefined,
+    where: {
+      ...(input?.status ? { status: input.status } : {}),
+      ...(input?.vehicleId ? { vehicleId: input.vehicleId } : {}),
+      ...(input?.clientId ? { clientId: input.clientId } : {}),
+    },
     include: {
       client: { select: { id: true, name: true, phone: true } },
       vehicle: { select: { id: true, brand: true, model: true, year: true, plateNumber: true, vin: true, mileageKm: true } },
@@ -122,24 +207,28 @@ export async function listDiagnostics(input?: { status?: DiagnosticRequestStatus
     take: limit,
   });
   const ids = rows.map((row) => row.id);
-  const [meta, reports, cards] = await Promise.all([structuredMeta(ids), reportShareMeta(ids), diagnosticCardMeta(ids)]);
+  const [meta, reports, cards, assignments, commercial] = await Promise.all([
+    structuredMeta(ids),
+    reportShareMeta(ids),
+    diagnosticCardMeta(ids),
+    assignmentMeta(ids),
+    commercialMeta(rows),
+  ]);
   return rows.map((row) => {
     const structured = meta.get(row.id);
     const reportShare = reports.get(row.id) || null;
     const diagnosticCard = cards.get(row.id) || null;
-    const workflowState = reportShare?.active
-      ? "CARD_SENT"
-      : structured?.reviewState === DiagnosticReviewState.SUBMITTED
-        ? "SUBMITTED"
-        : structured?.reviewState === DiagnosticReviewState.RETURNED
-          ? "RETURNED"
-          : row.status;
+    const assignment = assignments.get(row.id) || null;
+    const commercialProposal = commercial.get(row.id) || null;
     return {
       ...row,
       reviewState: structured?.reviewState || DiagnosticReviewState.DRAFT,
-      workflowState,
+      workflowState: businessWorkflowState(row.status, structured?.reviewState),
       reportShare,
       diagnosticCard,
+      assignment,
+      assignedMechanic: assignment?.mechanicId ? { id: assignment.mechanicId, name: assignment.mechanicName } : null,
+      commercialProposal,
       structured: {
         inspections: structured?.inspections || 0,
         checked: structured?.checked || 0,
@@ -151,6 +240,10 @@ export async function listDiagnostics(input?: { status?: DiagnosticRequestStatus
 }
 
 export async function getDiagnostic(id: string) {
+  const rows = await listDiagnostics({ limit: 1 });
+  const cached = rows.find((row) => row.id === id);
+  if (cached) return cached;
+
   const prisma = getPrisma();
   const row = await prisma.diagnosticRequest.findUnique({
     where: { id },
@@ -162,23 +255,26 @@ export async function getDiagnostic(id: string) {
     },
   });
   if (!row) return null;
-  const [meta, reports, cards] = await Promise.all([structuredMeta([id]), reportShareMeta([id]), diagnosticCardMeta([id])]);
+  const [meta, reports, cards, assignments, commercial] = await Promise.all([
+    structuredMeta([id]),
+    reportShareMeta([id]),
+    diagnosticCardMeta([id]),
+    assignmentMeta([id]),
+    commercialMeta([row]),
+  ]);
   const structured = meta.get(id);
   const reportShare = reports.get(id) || null;
   const diagnosticCard = cards.get(id) || null;
-  const workflowState = reportShare?.active
-    ? "CARD_SENT"
-    : structured?.reviewState === DiagnosticReviewState.SUBMITTED
-      ? "SUBMITTED"
-      : structured?.reviewState === DiagnosticReviewState.RETURNED
-        ? "RETURNED"
-        : row.status;
+  const assignment = assignments.get(id) || null;
   return {
     ...row,
     reviewState: structured?.reviewState || DiagnosticReviewState.DRAFT,
-    workflowState,
+    workflowState: businessWorkflowState(row.status, structured?.reviewState),
     reportShare,
     diagnosticCard,
+    assignment,
+    assignedMechanic: assignment?.mechanicId ? { id: assignment.mechanicId, name: assignment.mechanicName } : null,
+    commercialProposal: commercial.get(id) || null,
     structured: {
       inspections: structured?.inspections || 0,
       checked: structured?.checked || 0,
