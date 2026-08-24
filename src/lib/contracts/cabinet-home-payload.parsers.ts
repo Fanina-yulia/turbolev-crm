@@ -6,7 +6,9 @@ import {
   type MechanicHomeAppointmentContract,
   type MechanicHomeKpisContract,
   type MechanicHomeTaskContract,
+  type StationManagerAttentionActionContract,
   type StationManagerAttentionContract,
+  type StationManagerAttentionSourceType,
   type StationManagerCabinetLinkedPayload,
   type StationManagerFlowContract,
   type StationManagerKpisContract,
@@ -17,6 +19,7 @@ import { PLANNER_STATUS_VALUES, type PlannerStatusContract } from "./planner";
 
 const PLANNER_STATUSES = new Set<string>(PLANNER_STATUS_VALUES);
 const ATTENTION_PRIORITIES = new Set(["CRITICAL", "HIGH", "NORMAL"] as const);
+const ATTENTION_SOURCE_TYPES = new Set<StationManagerAttentionSourceType>(["INQUIRY", "APPOINTMENT", "ESTIMATE"]);
 
 function requiredString(value: unknown) {
   if (typeof value !== "string") return null;
@@ -147,8 +150,35 @@ function parseManagerKpis(value: unknown): StationManagerKpisContract | null {
   const needsAction = nonNegativeInteger(value.needsAction);
   const overdue = nonNegativeInteger(value.overdue);
   const unassigned = nonNegativeInteger(value.unassigned);
-  if (carsToday == null || carsOnStation == null || inRepair == null || postsOccupied == null || postsTotal == null || mechanicsTotal == null || noShow == null || needsAction == null || overdue == null || unassigned == null) return null;
-  return { carsToday, carsOnStation, inRepair, postsOccupied, postsTotal, mechanicsTotal, noShow, needsAction, overdue, unassigned };
+  const missedCalls = nonNegativeInteger(value.missedCalls);
+  const newInquiries = nonNegativeInteger(value.newInquiries);
+  const stuckCars = nonNegativeInteger(value.stuckCars);
+  const proposalsNotSent = nonNegativeInteger(value.proposalsNotSent);
+  const waitingCustomerDecision = nonNegativeInteger(value.waitingCustomerDecision);
+  const partsBlocking = nonNegativeInteger(value.partsBlocking);
+  if (
+    carsToday == null || carsOnStation == null || inRepair == null || postsOccupied == null || postsTotal == null || mechanicsTotal == null
+    || noShow == null || needsAction == null || overdue == null || unassigned == null || missedCalls == null || newInquiries == null
+    || stuckCars == null || proposalsNotSent == null || waitingCustomerDecision == null || partsBlocking == null
+  ) return null;
+  return {
+    carsToday,
+    carsOnStation,
+    inRepair,
+    postsOccupied,
+    postsTotal,
+    mechanicsTotal,
+    noShow,
+    needsAction,
+    overdue,
+    unassigned,
+    missedCalls,
+    newInquiries,
+    stuckCars,
+    proposalsNotSent,
+    waitingCustomerDecision,
+    partsBlocking,
+  };
 }
 
 function parseManagerFlow(value: unknown): StationManagerFlowContract | null {
@@ -165,23 +195,52 @@ function parseManagerFlow(value: unknown): StationManagerFlowContract | null {
   return { booked, diagnostics, approval, waitingParts, readyForRepair, inRepair, qc, ready };
 }
 
+function parseStringParams(value: unknown): Record<string, string> | undefined | null {
+  if (value === undefined) return undefined;
+  if (!isRecord(value)) return null;
+  const result: Record<string, string> = {};
+  for (const [key, raw] of Object.entries(value)) {
+    const parsed = requiredString(raw);
+    if (!parsed) return null;
+    result[key] = parsed;
+  }
+  return result;
+}
+
+function parseAttentionAction(value: unknown): StationManagerAttentionActionContract | null {
+  if (!isRecord(value)) return null;
+  const label = requiredString(value.label);
+  const section = requiredString(value.section);
+  const params = parseStringParams(value.params);
+  if (!label || !section || params === null) return null;
+  return params === undefined ? { label, section } : { label, section, params };
+}
+
 function parseAttention(value: unknown): StationManagerAttentionContract | null {
   if (!isRecord(value)) return null;
   const id = requiredString(value.id);
-  const status = parseStatus(value.status);
-  const plate = requiredString(value.plate);
-  const vehicle = requiredString(value.vehicle);
-  const problem = nullableString(value.problem);
-  const plannedStartAt = dateString(value.plannedStartAt);
-  const plannedEndAt = dateString(value.plannedEndAt);
-  const post = nullableString(value.post);
-  const mechanic = nullableString(value.mechanic);
-  const priority = typeof value.priority === "string" && ATTENTION_PRIORITIES.has(value.priority as "CRITICAL" | "HIGH" | "NORMAL") ? value.priority as "CRITICAL" | "HIGH" | "NORMAL" : null;
+  const sourceType = typeof value.sourceType === "string" && ATTENTION_SOURCE_TYPES.has(value.sourceType as StationManagerAttentionSourceType)
+    ? value.sourceType as StationManagerAttentionSourceType
+    : null;
+  const sourceId = requiredString(value.sourceId);
+  const code = requiredString(value.code);
+  const title = requiredString(value.title);
+  const description = nullableString(value.description);
+  const priority = typeof value.priority === "string" && ATTENTION_PRIORITIES.has(value.priority as "CRITICAL" | "HIGH" | "NORMAL")
+    ? value.priority as "CRITICAL" | "HIGH" | "NORMAL"
+    : null;
   const reason = requiredString(value.reason);
   const overdue = typeof value.overdue === "boolean" ? value.overdue : null;
   const waitingMinutes = nonNegativeInteger(value.waitingMinutes);
-  if (!id || !status || !plate || !vehicle || problem === undefined || !plannedStartAt || !plannedEndAt || post === undefined || mechanic === undefined || !priority || !reason || overdue == null || waitingMinutes == null) return null;
-  return { id, status, plate, vehicle, problem, plannedStartAt, plannedEndAt, post, mechanic, priority, reason, overdue, waitingMinutes };
+  const plate = nullableString(value.plate);
+  const vehicle = nullableString(value.vehicle);
+  const customer = nullableString(value.customer);
+  const action = parseAttentionAction(value.action);
+  if (
+    !id || !sourceType || !sourceId || !code || !title || description === undefined || !priority || !reason || overdue == null
+    || waitingMinutes == null || plate === undefined || vehicle === undefined || customer === undefined || !action
+  ) return null;
+  return { id, sourceType, sourceId, code, title, description, priority, reason, overdue, waitingMinutes, plate, vehicle, customer, action };
 }
 
 function parsePostLoad(value: unknown): StationManagerPostLoadContract | null {
