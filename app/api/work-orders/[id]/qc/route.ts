@@ -1,10 +1,12 @@
 import { NextResponse } from "next/server";
+import { VehicleIssueStatus } from "@/src/generated/prisma/client";
 import {
   ensureQualityControlTask,
   getQualityControlState,
   updateQualityControl,
   WorkOrderQualityError,
 } from "@/src/services/work-order-qc.service";
+import { markWorkOrderIssues } from "@/src/services/vehicle-issues.service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -41,8 +43,18 @@ export async function POST(request: Request, context: RouteContext) {
       ? body.actorName.trim().slice(0, 160)
       : "CRM / Контроль якості";
     if (typeof body.action === "string" && body.action.trim()) {
+      const action = body.action.trim().toUpperCase();
       const qualityControl = await updateQualityControl(id, body, actorName);
-      return NextResponse.json({ ok: true, qualityControl });
+      let issueSyncWarning: string | null = null;
+      if (action === "PASS" || action === "FAIL") {
+        try {
+          await markWorkOrderIssues(id, action === "PASS" ? VehicleIssueStatus.RESOLVED : VehicleIssueStatus.IN_REPAIR);
+        } catch (issueError) {
+          issueSyncWarning = issueError instanceof Error ? issueError.message : "Не вдалося синхронізувати стан автомобіля.";
+          console.error("Vehicle issue QC sync failed", { workOrderId: id, action, issueError });
+        }
+      }
+      return NextResponse.json({ ok: true, qualityControl, issueSyncWarning });
     }
     const task = await ensureQualityControlTask(id, actorName);
     const qualityControl = await getQualityControlState(id);
