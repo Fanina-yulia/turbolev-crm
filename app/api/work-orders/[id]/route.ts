@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { VehicleIssueStatus } from "@/src/generated/prisma/client";
 import { authorize } from "@/src/security/authorize";
 import { PERMISSIONS } from "@/src/security/permissions";
 import { canAccessWorkOrder } from "@/src/security/work-order-scope";
@@ -8,12 +9,21 @@ import {
   WorkOrderNotFoundError,
   WorkOrderTransitionError,
 } from "@/src/services/work-orders.service";
+import { markWorkOrderIssues } from "@/src/services/vehicle-issues.service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
 
 type RouteContext = { params: Promise<{ id: string }> };
+
+function issueStatusForWorkOrder(status: string): VehicleIssueStatus | null {
+  if (status === "WAITING_APPROVAL") return VehicleIssueStatus.WAITING_CUSTOMER;
+  if (status === "WAITING_PARTS") return VehicleIssueStatus.WAITING_PARTS;
+  if (status === "READY_FOR_REPAIR") return VehicleIssueStatus.READY_FOR_REPAIR;
+  if (status === "IN_REPAIR") return VehicleIssueStatus.IN_REPAIR;
+  return null;
+}
 
 export async function GET(request: Request, context: RouteContext) {
   const access = await authorize(PERMISSIONS.WORK_ORDERS_READ, { strict: true, request, minimumScope: "ASSIGNED" });
@@ -47,7 +57,19 @@ export async function PATCH(request: Request, context: RouteContext) {
     if (!status.trim()) return NextResponse.json({ ok: false, error: "Передайте новий статус." }, { status: 400 });
     const actorName = (access.context.user?.employeeName || access.context.user?.name || "CRM").trim().slice(0, 160);
     const workOrder = await transitionWorkOrder(id, status, actorName);
-    return NextResponse.json({ ok: true, workOrder });
+
+    let issueSyncWarning: string | null = null;
+    const issueStatus = issueStatusForWorkOrder(workOrder.status);
+    if (issueStatus) {
+      try {
+        await markWorkOrderIssues(id, issueStatus);
+      } catch (issueError) {
+        issueSyncWarning = issueError instanceof Error ? issueError.message : "Не вдалося синхронізувати стан автомобіля.";
+        console.error("Vehicle issue work-order sync failed", { workOrderId: id, status: workOrder.status, issueError });
+      }
+    }
+
+    return NextResponse.json({ ok: true, workOrder, issueSyncWarning });
   } catch (error) {
     if (error instanceof WorkOrderNotFoundError) {
       return NextResponse.json({ ok: false, error: "Замовлення-наряд не знайдено." }, { status: 404 });
