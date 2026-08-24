@@ -4,9 +4,16 @@ import { useEffect, useState } from "react";
 import { readCrmRoute } from "./crm-route";
 
 type ClientContext = { id: string; name: string | null; phone: string };
+type ClientResponse = ClientContext | { client?: ClientContext | null } | null;
 
 function text(value: Element | null | undefined) {
   return String(value?.textContent || "").replace(/\s+/g, " ").trim();
+}
+
+function clientFromResponse(body: ClientResponse): ClientContext | null {
+  if (!body) return null;
+  if ("client" in body) return body.client?.id ? body.client : null;
+  return body.id ? body : null;
 }
 
 export function ClientNewRequestContextEnhancer() {
@@ -21,10 +28,9 @@ export function ClientNewRequestContextEnhancer() {
       controller = new AbortController();
       void fetch(`/api/clients?id=${encodeURIComponent(clientId)}`, { cache: "no-store", signal: controller.signal })
         .then(async (response) => {
-          const body = await response.json().catch(() => null) as { client?: ClientContext } | ClientContext | null;
-          if (!response.ok || !body) return setClient(null);
-          const next = "client" in body ? body.client : body;
-          setClient(next?.id ? next : null);
+          const body = await response.json().catch(() => null) as ClientResponse;
+          if (!response.ok) return setClient(null);
+          setClient(clientFromResponse(body));
         })
         .catch((error) => { if ((error as Error).name !== "AbortError") setClient(null); });
     };
