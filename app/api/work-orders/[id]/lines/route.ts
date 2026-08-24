@@ -10,6 +10,7 @@ import {
   prepareCatalogWorkOrderLineInput,
   WorkOrderServiceWarrantyError,
 } from "@/src/services/work-order-service-warranty.service";
+import { reconcileWorkOrderIssueLinks } from "@/src/services/vehicle-issues.service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -66,7 +67,15 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     }
     const prepared = await prepareCatalogWorkOrderLineInput(body);
     const result = await createWorkOrderLine(id, prepared, actor(body));
-    return NextResponse.json({ ok: true, ...result, warranty: buildWorkOrderLineWarranty(result.line) }, { status: 201 });
+    let issueSync = null;
+    let issueSyncWarning: string | null = null;
+    try {
+      issueSync = await reconcileWorkOrderIssueLinks(id);
+    } catch (error) {
+      issueSyncWarning = error instanceof Error ? error.message : "Не вдалося синхронізувати проблеми автомобіля.";
+      console.error("Vehicle issue line reconciliation failed", { workOrderId: id, error });
+    }
+    return NextResponse.json({ ok: true, ...result, warranty: buildWorkOrderLineWarranty(result.line), issueSync, issueSyncWarning }, { status: 201 });
   } catch (error) {
     return errorResponse(error);
   }
