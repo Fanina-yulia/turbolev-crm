@@ -13,6 +13,7 @@ export type CrmRouteParams = {
   vin?: string;
   date?: string;
   scope?: string;
+  assignedUserId?: string;
 };
 
 export const CRM_ROUTE_KEYS: Array<keyof CrmRouteParams> = [
@@ -26,6 +27,7 @@ export const CRM_ROUTE_KEYS: Array<keyof CrmRouteParams> = [
   "vin",
   "date",
   "scope",
+  "assignedUserId",
 ];
 
 export function readCrmRoute(): CrmRouteParams {
