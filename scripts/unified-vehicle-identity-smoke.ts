@@ -156,6 +156,89 @@ assert.equal(plateWithoutVin.state, "PARTIAL");
 assert.equal(plateWithoutVin.needsVin, true);
 assert.equal(plateWithoutVin.exactFitmentReady, false);
 
+const conflict = await resolveUnifiedVehicleIdentity(
+  "AA1234BC",
+  {},
+  {
+    lookupByPlate: (async () => ({
+      status: "FOUND",
+      lookupLevel: "MVS_INDEX",
+      plate: "AA1234BC",
+      vehicle: {
+        id: null,
+        clientId: null,
+        clientName: null,
+        clientPhone: null,
+        vin,
+        make: "SKODA",
+        model: "OCTAVIA",
+        year: 2017,
+        mileageKm: null,
+        engine: "1.6 TDI",
+        engineVolumeCm3: 1598,
+        engineVolumeL: 1.598,
+        fuelType: "DIESEL",
+        bodyType: "WAGON",
+        grossWeightKg: null,
+        driveType: "FWD",
+        vehicleType: "PASSENGER",
+        turboLevClass: "STANDARD",
+        turboLevClassLabel: "STANDARD",
+        priceCoefficient: 1,
+        classificationSource: "MVS_INDEX+RULES",
+        classificationConfidence: 90,
+        classificationReason: "fixture",
+        manualClassOverride: false,
+        vehicleDataSource: "MVS_INDEX",
+        vehicleDataConfidence: 90,
+        sourceYear: 2018,
+      },
+    })) as any,
+    decodeVin: (async () => ({
+      status: "FOUND",
+      vin,
+      source: "CACHE",
+      sourceDetail: "VIN_CACHE_CONFLICT_FIXTURE",
+      confidence: 99,
+      fieldConfidence: {},
+      validation: {},
+      warning: null,
+      cached: true,
+      vehicle: {
+        vin,
+        wmi: "WVW",
+        region: "EUROPE",
+        make: "VOLKSWAGEN",
+        model: "PASSAT",
+        year: 2018,
+        trim: null,
+        series: null,
+        bodyType: "SEDAN",
+        vehicleType: "PASSENGER",
+        engine: "2.0 TDI",
+        engineVolumeL: 1.968,
+        cylinders: 4,
+        fuelType: "DIESEL",
+        secondaryFuelType: null,
+        driveType: "FWD",
+        transmission: "AUTOMATIC",
+        plantCountry: null,
+        plantCompany: null,
+        manufacturer: "VOLKSWAGEN",
+      },
+    })) as any,
+  } as any,
+);
+assert.equal(conflict.state, "ASSISTED");
+assert.equal(conflict.vehicle, null, "conflicting plate/VIN must not expose one source as authoritative");
+assert.equal(conflict.confidence, 0);
+assert.equal(conflict.vinAvailable, true);
+assert.equal(conflict.needsVin, false);
+assert.equal(conflict.exactFitmentReady, false);
+assert.match(conflict.source, /CONFLICT$/);
+assert.match(conflict.message, /суперечать/);
+assert.ok(!JSON.stringify(conflict).includes(vin), "conflict response must keep VIN masked");
+
 const directVin = await resolveUnifiedVehicleIdentity(
   vin,
   {},
