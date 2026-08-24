@@ -280,7 +280,7 @@ export function SidebarRail() {
             : openSection(item.label)}
         >
           <span className="crmRailFlyoutDot" aria-hidden="true"/>
-          <span>{item.label === "Планувальник" ? "Записи на СТО" : item.label}</span>
+          <span>{item.label}</span>
           {item.label === "Нові звернення" && <small>NEW</small>}
         </button>
         {item.slug === "settings" && visibleSettingsItems.length > 0 && <div
@@ -325,7 +325,7 @@ export function SidebarRail() {
       .crmRailFlyoutTitle {
         padding: 8px 10px 7px;
         color: var(--muted);
-        font-size: 11px;
+        font-size: 12px;
         font-weight: 700;
         letter-spacing: .08em;
         text-transform: uppercase;
@@ -380,7 +380,7 @@ export function SidebarRail() {
       .crmRailFlyoutItem small {
         margin-left: auto;
         color: var(--orange);
-        font-size: 9px;
+        font-size: 12px;
         font-weight: 800;
         letter-spacing: .06em;
       }
