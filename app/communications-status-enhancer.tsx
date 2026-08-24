@@ -160,7 +160,8 @@ function updateNativeFilterCounts(filterBar: HTMLElement, conversations: Communi
     const label = Array.from(counts.keys()).find((key) => raw.startsWith(key));
     if (!label) continue;
     const counter = button.querySelector<HTMLElement>("span");
-    if (counter) counter.textContent = String(counts.get(label) || 0);
+    const next = String(counts.get(label) || 0);
+    if (counter && counter.textContent !== next) counter.textContent = next;
   }
 }
 
@@ -274,7 +275,7 @@ export function CommunicationsStatusEnhancer() {
     };
     sync();
     const observer = new MutationObserver(sync);
-    observer.observe(document.body, { childList: true, subtree: true, characterData: true });
+    observer.observe(document.body, { childList: true, subtree: true });
     window.addEventListener("popstate", sync);
     window.addEventListener("turbolev:data-changed", sync as EventListener);
     return () => {
