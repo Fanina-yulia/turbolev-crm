@@ -40,9 +40,8 @@ type TestVehicle = {
   year: number | null;
   bodyType: string | null;
   plateNumber: string | null;
+  imageState?: string;
 };
-
-type Filter = "all" | "pending" | "approved" | "generating" | "error";
 
 type TestRunState = {
   running: boolean;
@@ -99,9 +98,9 @@ export function VehicleImageLibrarySettingsPanel() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [search, setSearch] = useState("");
-  const [filter, setFilter] = useState<Filter>("all");
   const [busy, setBusy] = useState<Record<string, string>>({});
   const [testVehicles, setTestVehicles] = useState<TestVehicle[]>([]);
+  const [testVehicleTotal, setTestVehicleTotal] = useState(0);
   const [testSetLoading, setTestSetLoading] = useState(true);
   const [testRun, setTestRun] = useState<TestRunState>({ running: false, completed: 0, total: 0, current: "", failures: 0 });
 
@@ -124,11 +123,12 @@ export function VehicleImageLibrarySettingsPanel() {
     setTestSetLoading(true);
     try {
       const response = await fetch("/api/vehicle-images/library/test-set", { cache: "no-store" });
-      const payload = await response.json().catch(() => null) as { ok?: boolean; vehicles?: TestVehicle[]; error?: string } | null;
-      if (!response.ok || !payload?.ok) throw new Error(payload?.error || "Не вдалося підготувати контрольний набір.");
+      const payload = await response.json().catch(() => null) as { ok?: boolean; vehicles?: TestVehicle[]; totalMissing?: number; error?: string } | null;
+      if (!response.ok || !payload?.ok) throw new Error(payload?.error || "Не вдалося знайти автомобілі без зображення.");
       setTestVehicles(payload.vehicles || []);
+      setTestVehicleTotal(Number(payload.totalMissing ?? payload.vehicles?.length ?? 0));
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Не вдалося підготувати контрольний набір.");
+      setError(reason instanceof Error ? reason.message : "Не вдалося знайти автомобілі без зображення.");
     } finally {
       setTestSetLoading(false);
     }
@@ -139,27 +139,19 @@ export function VehicleImageLibrarySettingsPanel() {
     void loadTestSet();
   }, [load, loadTestSet]);
 
-  const stats = useMemo(() => ({
-    all: assets.length,
-    pending: assets.filter((item) => item.status === "READY" && item.reviewStatus !== "APPROVED").length,
-    approved: assets.filter((item) => item.status === "READY" && item.reviewStatus === "APPROVED").length,
-    generating: assets.filter((item) => item.status === "GENERATING").length,
-    error: assets.filter((item) => item.status === "ERROR").length,
-  }), [assets]);
-
+  const approvedAssets = useMemo(
+    () => assets.filter((item) => item.status === "READY" && item.reviewStatus === "APPROVED"),
+    [assets],
+  );
+  const reviewAssets = useMemo(
+    () => assets.filter((item) => item.status === "READY" && item.reviewStatus !== "APPROVED"),
+    [assets],
+  );
   const visible = useMemo(() => {
     const query = search.trim().toLocaleLowerCase("uk-UA");
-    return assets.filter((asset) => {
-      const matchesText = !query || [asset.make, asset.model, asset.year?.toString(), asset.bodyType, asset.providerModel, asset.normalizedColor, asset.variantKey]
-        .filter(Boolean).join(" ").toLocaleLowerCase("uk-UA").includes(query);
-      if (!matchesText) return false;
-      if (filter === "pending") return asset.status === "READY" && asset.reviewStatus !== "APPROVED";
-      if (filter === "approved") return asset.status === "READY" && asset.reviewStatus === "APPROVED";
-      if (filter === "generating") return asset.status === "GENERATING";
-      if (filter === "error") return asset.status === "ERROR";
-      return true;
-    });
-  }, [assets, filter, search]);
+    return approvedAssets.filter((asset) => !query || [asset.make, asset.model, asset.year?.toString(), asset.bodyType, asset.providerModel, asset.normalizedColor, asset.variantKey]
+      .filter(Boolean).join(" ").toLocaleLowerCase("uk-UA").includes(query));
+  }, [approvedAssets, search]);
 
   const runTestSet = async () => {
     if (!testVehicles.length || testRun.running) return;
@@ -174,9 +166,9 @@ export function VehicleImageLibrarySettingsPanel() {
         throw new Error(testPayload?.message || testPayload?.error || "OpenAI API для зображень ще не налаштовано.");
       }
 
-      const list = testVehicles.map((vehicle) => `• ${vehicle.make} ${vehicle.model}${vehicle.year ? ` ${vehicle.year}` : ""}`).join("\n");
+      const list = testVehicles.map((vehicle) => `• ${vehicle.make} ${vehicle.model}${vehicle.year ? ` ${vehicle.year}` : ""}${vehicle.plateNumber ? ` · ${vehicle.plateNumber}` : ""}`).join("\n");
       const confirmed = window.confirm(
-        `Запустити контрольну генерацію ${testVehicles.length} автомобілів?\n\n${list}\n\nКожен відсутній модельний або кольоровий варіант може створити платний OpenAI API-запит. Уже готові варіанти повторно не генеруються.`,
+        `Згенерувати зображення для ${testVehicles.length} реальних автомобілів CRM, у яких його ще немає?\n\n${list}\n\nПлатний OpenAI API-запит виконується тільки якщо готового зображення справді немає.`,
       );
       if (!confirmed) return;
 
@@ -210,15 +202,15 @@ export function VehicleImageLibrarySettingsPanel() {
       };
 
       await Promise.all(Array.from({ length: Math.min(2, testVehicles.length) }, () => worker()));
-      await load();
+      await Promise.all([load(), loadTestSet()]);
 
       if (failures.length) {
-        setError(`Контрольний тест завершено: ${completed - failures.length}/${completed} успішно. ${failures.join(" · ")}`);
+        setError(`Генерацію завершено: ${completed - failures.length}/${completed} успішно. ${failures.join(" · ")}`);
       } else {
-        setNotice(`Контрольний тест завершено: усі ${completed} зображень готові. Перевірте відповідність моделей і натисніть «Затвердити» для коректних.`);
+        setNotice(`Готово: ${completed} зображень створено або повторно використано. Автомобілі з готовими зображеннями прибрані з «Контролю якості»; нові зображення очікують затвердження.`);
       }
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Не вдалося запустити контрольний тест.");
+      setError(reason instanceof Error ? reason.message : "Не вдалося запустити генерацію.");
     } finally {
       setTestRun((current) => ({ ...current, running: false, current: "" }));
     }
@@ -236,8 +228,8 @@ export function VehicleImageLibrarySettingsPanel() {
       });
       const payload = await response.json().catch(() => null) as { ok?: boolean; error?: string } | null;
       if (!response.ok || !payload?.ok) throw new Error(payload?.error || "Не вдалося виконати дію.");
-      setNotice(action === "approve" ? "Зображення затверджено." : "Нове зображення згенеровано. Перевірте його перед затвердженням.");
-      await load();
+      setNotice(action === "approve" ? "Зображення затверджено й додано до основної бібліотеки." : "Нове зображення згенеровано. Перевірте його перед затвердженням.");
+      await Promise.all([load(), loadTestSet()]);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Не вдалося виконати дію.");
     } finally {
@@ -267,7 +259,7 @@ export function VehicleImageLibrarySettingsPanel() {
       const payload = await response.json().catch(() => null) as { ok?: boolean; error?: string } | null;
       if (!response.ok || !payload?.ok) throw new Error(payload?.error || "Не вдалося замінити PNG.");
       setNotice("PNG замінено, оптимізовано для CRM та автоматично затверджено.");
-      await load();
+      await Promise.all([load(), loadTestSet()]);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Не вдалося замінити PNG.");
     } finally {
@@ -275,12 +267,56 @@ export function VehicleImageLibrarySettingsPanel() {
     }
   };
 
+  const renderAssetCard = (asset: Asset) => {
+    const state = badge(asset);
+    const action = busy[asset.id];
+    const preview = asset.status === "READY" && asset.imageMimeType;
+    return <article className={styles.card} key={asset.id}>
+      <div className={styles.preview}>
+        {preview ? <img src={`/api/vehicle-images/${encodeURIComponent(asset.id)}?v=${encodeURIComponent(asset.updatedAt)}`} alt={`${asset.make} ${asset.model}`}/> : <div className={styles.previewFallback}>Немає зображення</div>}
+        <span className={`${styles.badge} ${state.className}`}>{state.label}</span>
+      </div>
+
+      <div className={styles.cardBody}>
+        <div className={styles.titleRow}>
+          <div><h3>{asset.make} {asset.model}</h3><p>{asset.year || "Рік не вказано"}{asset.bodyType ? ` · ${asset.bodyType}` : ""}</p></div>
+          <span className={styles.theme}>{asset.normalizedColor || themeText(asset.theme)}</span>
+        </div>
+
+        <dl className={styles.meta}>
+          <div><dt>Джерело</dt><dd>{asset.provider === "MANUAL" ? "Вручну" : asset.providerModel || asset.provider}</dd></div>
+          <div><dt>Розмір</dt><dd>{sizeText(asset.imageSizeBytes)}</dd></div>
+          <div><dt>Модельний діапазон</dt><dd>{generationText(asset)}</dd></div>
+          <div><dt>Колір-варіант</dt><dd>{asset.normalizedColor || themeText(asset.theme)}</dd></div>
+          <div><dt>Створення</dt><dd>{generationModeText(asset)}</dd></div>
+          <div><dt>Згенеровано</dt><dd>{dateText(asset.generatedAt)}</dd></div>
+          <div><dt>Перевірено</dt><dd>{asset.reviewStatus === "APPROVED" ? dateText(asset.reviewedAt) : "Ще ні"}</dd></div>
+        </dl>
+
+        {asset.lastError ? <div className={styles.assetError}>{asset.lastError}</div> : null}
+
+        <div className={styles.actions}>
+          <button type="button" className={styles.primary} disabled={Boolean(action) || asset.status !== "READY" || asset.reviewStatus === "APPROVED"} onClick={() => void patch(asset, "approve")}>
+            {action === "approve" ? "Зберігаю…" : asset.reviewStatus === "APPROVED" ? "✓ Затверджено" : "✓ Затвердити"}
+          </button>
+          <button type="button" className={styles.secondary} disabled={Boolean(action) || asset.status === "GENERATING"} onClick={() => void regenerate(asset)}>
+            {action === "regenerate" ? "Генерую…" : "↻ Перегенерувати"}
+          </button>
+          <label className={`${styles.secondary} ${action ? styles.disabled : ""}`}>
+            {action === "replace" ? "Завантажую…" : "↑ Замінити PNG"}
+            <input type="file" accept="image/png" disabled={Boolean(action)} onChange={(event) => { const file = event.currentTarget.files?.[0] || null; void replace(asset, file); event.currentTarget.value = ""; }}/>
+          </label>
+        </div>
+      </div>
+    </article>;
+  };
+
   return <section className={styles.panel}>
     <header className={styles.header}>
       <div>
         <span className={styles.eyebrow}>OpenAI · бібліотека CRM</span>
         <h2>Бібліотека зображень авто</h2>
-        <p>Після збереження нового авто CRM автоматично шукає готовий модельний шаблон і колір. Однакові варіанти перевикористовуються, а новий колір за можливості створюється з уже готової моделі.</p>
+        <p>В основній бібліотеці відображаються тільки готові зображення, які вже затверджені для використання в CRM.</p>
       </div>
       <button className={styles.refresh} type="button" onClick={() => { void load(); void loadTestSet(); }} disabled={loading || testSetLoading}>↻ Оновити</button>
     </header>
@@ -288,86 +324,51 @@ export function VehicleImageLibrarySettingsPanel() {
     <div className={styles.testPanel}>
       <div className={styles.testCopy}>
         <span className={styles.testEyebrow}>Контроль якості бібліотеки</span>
-        <h3>Тестовий набір із реальних авто CRM</h3>
-        <p>CRM бере шість останніх реальних автомобілів із заповненими маркою та моделлю. Готовий варіант буде використано повторно; відсутній — створено як новий модельний або кольоровий варіант.</p>
+        <h3>Реальні автомобілі CRM без зображення</h3>
+        <p>Тут показуються тільки автомобілі, які дійсно мають картку в CRM, заповнені марку та модель, але для їхнього модельного й кольорового варіанта ще немає готового зображення.</p>
         <div className={styles.testVehicles}>
-          {testVehicles.map((vehicle) => <span key={vehicle.id}>{vehicle.make} {vehicle.model}{vehicle.year ? ` · ${vehicle.year}` : ""}</span>)}
-          {!testSetLoading && !testVehicles.length ? <span>Немає достатньо автомобілів для тесту</span> : null}
+          {testVehicles.map((vehicle) => <span key={vehicle.id}>{vehicle.make} {vehicle.model}{vehicle.year ? ` · ${vehicle.year}` : ""}{vehicle.plateNumber ? ` · ${vehicle.plateNumber}` : ""}</span>)}
+          {!testSetLoading && !testVehicles.length ? <span>Усі перевірені автомобілі CRM уже мають готові зображення</span> : null}
         </div>
       </div>
       <div className={styles.testAction}>
         <button type="button" onClick={() => void runTestSet()} disabled={testSetLoading || testRun.running || !testVehicles.length}>
-          {testRun.running ? `Генерація ${testRun.completed}/${testRun.total}` : testSetLoading ? "Готую набір…" : `Перевірити ${testVehicles.length} тестових авто`}
+          {testRun.running ? `Генерація ${testRun.completed}/${testRun.total}` : testSetLoading ? "Перевіряю CRM…" : testVehicles.length ? `Згенерувати ${testVehicles.length} авто` : "Немає авто без зображення"}
         </button>
-        <small>Платний OpenAI-запит потрібен лише для відсутнього варіанта. Готові варіанти не генеруються повторно.</small>
+        <small>{testVehicleTotal > testVehicles.length ? `Показано ${testVehicles.length} із ${testVehicleTotal} знайдених авто без зображення. ` : ""}Готові варіанти не генеруються повторно.</small>
         {testRun.running ? <div className={styles.testProgress}><span style={{ width: `${testRun.total ? Math.round(testRun.completed / testRun.total * 100) : 0}%` }}/><b>{testRun.current}</b></div> : null}
       </div>
     </div>
 
+    {reviewAssets.length ? <>
+      <div className={styles.testPanel}>
+        <div className={styles.testCopy}>
+          <span className={styles.testEyebrow}>Модерація зображень</span>
+          <h3>Очікують затвердження</h3>
+          <p>Ці зображення вже згенеровані, але ще не входять до основної бібліотеки. Перевірте відповідність авто та затвердьте правильні варіанти.</p>
+        </div>
+        <div className={styles.testAction}><small>До затвердження: {reviewAssets.length}</small></div>
+      </div>
+      <div className={styles.grid}>{reviewAssets.map(renderAssetCard)}</div>
+    </> : null}
+
     <div className={styles.stats}>
-      <button type="button" className={filter === "all" ? styles.statActive : ""} onClick={() => setFilter("all")}><b>{stats.all}</b><span>Усього</span></button>
-      <button type="button" className={filter === "pending" ? styles.statActive : ""} onClick={() => setFilter("pending")}><b>{stats.pending}</b><span>На перевірці</span></button>
-      <button type="button" className={filter === "approved" ? styles.statActive : ""} onClick={() => setFilter("approved")}><b>{stats.approved}</b><span>Затверджено</span></button>
-      <button type="button" className={filter === "generating" ? styles.statActive : ""} onClick={() => setFilter("generating")}><b>{stats.generating}</b><span>Генерується</span></button>
-      <button type="button" className={filter === "error" ? styles.statActive : ""} onClick={() => setFilter("error")}><b>{stats.error}</b><span>Помилки</span></button>
+      <button type="button" className={styles.statActive}><b>{approvedAssets.length}</b><span>Затверджено в бібліотеці</span></button>
+      <button type="button"><b>{reviewAssets.length}</b><span>Очікують затвердження</span></button>
     </div>
 
     <div className={styles.toolbar}>
-      <label className={styles.search}><span>⌕</span><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Марка, модель, рік, кузов або колір"/></label>
-      <span className={styles.costHint}>Одна модельна база може мати кілька кольорових варіантів; однакові варіанти спільні для всіх відповідних авто.</span>
+      <label className={styles.search}><span>⌕</span><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Пошук серед затверджених: марка, модель, рік, кузов або колір"/></label>
+      <span className={styles.costHint}>Основна бібліотека нижче містить виключно затверджені зображення.</span>
     </div>
 
     {error ? <div className={styles.error}>{error}</div> : null}
     {notice ? <div className={styles.notice}>{notice}</div> : null}
 
     {loading ? <div className={styles.empty}>Завантажую бібліотеку…</div> : null}
-    {!loading && !assets.length ? <div className={styles.empty}><b>Бібліотека поки порожня.</b><span>Додайте новий автомобіль — після його збереження CRM автоматично запустить підбір або генерацію зображення.</span></div> : null}
-    {!loading && assets.length > 0 && !visible.length ? <div className={styles.empty}>За цим фільтром нічого не знайдено.</div> : null}
+    {!loading && !approvedAssets.length ? <div className={styles.empty}><b>Затверджених зображень поки немає.</b><span>Нові згенеровані зображення спочатку з’являться у блоці «Очікують затвердження».</span></div> : null}
+    {!loading && approvedAssets.length > 0 && !visible.length ? <div className={styles.empty}>Серед затверджених зображень нічого не знайдено.</div> : null}
 
-    <div className={styles.grid}>
-      {visible.map((asset) => {
-        const state = badge(asset);
-        const action = busy[asset.id];
-        const preview = asset.status === "READY" && asset.imageMimeType;
-        return <article className={styles.card} key={asset.id}>
-          <div className={styles.preview}>
-            {preview ? <img src={`/api/vehicle-images/${encodeURIComponent(asset.id)}?v=${encodeURIComponent(asset.updatedAt)}`} alt={`${asset.make} ${asset.model}`}/> : <div className={styles.previewFallback}>{asset.status === "GENERATING" ? "Генерація…" : asset.status === "ERROR" ? "Помилка генерації" : "Немає зображення"}</div>}
-            <span className={`${styles.badge} ${state.className}`}>{state.label}</span>
-          </div>
-
-          <div className={styles.cardBody}>
-            <div className={styles.titleRow}>
-              <div><h3>{asset.make} {asset.model}</h3><p>{asset.year || "Рік не вказано"}{asset.bodyType ? ` · ${asset.bodyType}` : ""}</p></div>
-              <span className={styles.theme}>{asset.normalizedColor || themeText(asset.theme)}</span>
-            </div>
-
-            <dl className={styles.meta}>
-              <div><dt>Джерело</dt><dd>{asset.provider === "MANUAL" ? "Вручну" : asset.providerModel || asset.provider}</dd></div>
-              <div><dt>Розмір</dt><dd>{sizeText(asset.imageSizeBytes)}</dd></div>
-              <div><dt>Модельний діапазон</dt><dd>{generationText(asset)}</dd></div>
-              <div><dt>Колір-варіант</dt><dd>{asset.normalizedColor || themeText(asset.theme)}</dd></div>
-              <div><dt>Створення</dt><dd>{generationModeText(asset)}</dd></div>
-              <div><dt>Згенеровано</dt><dd>{dateText(asset.generatedAt)}</dd></div>
-              <div><dt>Перевірено</dt><dd>{asset.reviewStatus === "APPROVED" ? dateText(asset.reviewedAt) : "Ще ні"}</dd></div>
-            </dl>
-
-            {asset.lastError ? <div className={styles.assetError}>{asset.lastError}</div> : null}
-
-            <div className={styles.actions}>
-              <button type="button" className={styles.primary} disabled={Boolean(action) || asset.status !== "READY" || asset.reviewStatus === "APPROVED"} onClick={() => void patch(asset, "approve")}>
-                {action === "approve" ? "Зберігаю…" : asset.reviewStatus === "APPROVED" ? "✓ Затверджено" : "✓ Затвердити"}
-              </button>
-              <button type="button" className={styles.secondary} disabled={Boolean(action) || asset.status === "GENERATING"} onClick={() => void regenerate(asset)}>
-                {action === "regenerate" ? "Генерую…" : "↻ Перегенерувати"}
-              </button>
-              <label className={`${styles.secondary} ${action ? styles.disabled : ""}`}>
-                {action === "replace" ? "Завантажую…" : "↑ Замінити PNG"}
-                <input type="file" accept="image/png" disabled={Boolean(action)} onChange={(event) => { const file = event.currentTarget.files?.[0] || null; void replace(asset, file); event.currentTarget.value = ""; }}/>
-              </label>
-            </div>
-          </div>
-        </article>;
-      })}
-    </div>
+    <div className={styles.grid}>{visible.map(renderAssetCard)}</div>
   </section>;
 }
