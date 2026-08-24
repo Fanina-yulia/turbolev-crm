@@ -62,6 +62,7 @@ export function VehicleDiagnosticsTab({ vehicleId, plateNumber, vin }: Props) {
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [busyId, setBusyId] = useState("");
 
   useEffect(() => {
     const controller = new AbortController();
@@ -87,9 +88,29 @@ export function VehicleDiagnosticsTab({ vehicleId, plateNumber, vin }: Props) {
     defects: rows.reduce((sum, row) => sum + (row.structured?.defects || 0), 0),
   }), [rows]);
 
+  function bookDiagnostic() {
+    window.dispatchEvent(new CustomEvent("turbolev:open-new-request", { detail: { source: "VEHICLE", plate: plateNumber || "", vin: vin || "" } }));
+  }
+
+  async function createCommercialProposal(row: Row) {
+    setBusyId(row.id);
+    setError("");
+    try {
+      const response = await fetch(`/api/diagnostics/${encodeURIComponent(row.id)}/commercial-proposal`, { method: "POST", credentials: "include" });
+      const body = await response.json().catch(() => null) as { ok?: boolean; workOrder?: { id?: string }; error?: string; message?: string } | null;
+      if (!response.ok || !body?.ok || !body.workOrder?.id) throw new Error(body?.message || body?.error || "Не вдалося створити Комерційну пропозицію");
+      window.dispatchEvent(new CustomEvent("turbolev:data-changed"));
+      navigateCrm("Замовлення-наряди", { workOrderId: body.workOrder.id, workOrderTab: "estimate" });
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Не вдалося створити Комерційну пропозицію");
+    } finally {
+      setBusyId("");
+    }
+  }
+
   if (loading) return <div className={styles.loading}>Завантажую історію діагностик…</div>;
-  if (error) return <div className={styles.error}>{error}</div>;
-  if (!rows.length) return <div className={styles.empty}>Для цього автомобіля діагностики ще не проводились.</div>;
+  if (error && !rows.length) return <div className={styles.error}>{error}</div>;
+  if (!rows.length) return <div className={styles.empty}>Для цього автомобіля діагностики ще не проводились.<div className={styles.actions}><button type="button" className={styles.primary} onClick={bookDiagnostic}>+ Записати на діагностику</button></div></div>;
 
   return <div className={styles.wrap}>
     <div className={styles.summary}>
@@ -98,6 +119,7 @@ export function VehicleDiagnosticsTab({ vehicleId, plateNumber, vin }: Props) {
       <div><span>Підтверджені ДК</span><strong>{summary.confirmed}</strong></div>
       <div><span>Виявлено дефектів</span><strong>{summary.defects}</strong></div>
     </div>
+    {error ? <div className={styles.error}>{error}</div> : null}
     <div className={styles.list}>{rows.map((row) => {
       const state = stateOf(row);
       const title = row.diagnosticCard?.number || (state === "CONFIRMED" ? "Історична діагностика" : "Діагностика в процесі");
@@ -113,8 +135,8 @@ export function VehicleDiagnosticsTab({ vehicleId, plateNumber, vin }: Props) {
         </div>
         <div className={styles.actions}>
           <button type="button" className={styles.primary} onClick={() => navigateCrm("Діагностика", { diagnosticId: row.id })}>Відкрити ДК</button>
-          {state === "CONFIRMED" && <button type="button" onClick={() => navigateCrm("Підбір запчастин", { diagnosticId: row.id, plate: plateNumber || "", vin: vin || "" })}>Підібрати запчастини</button>}
-          {row.commercialProposal && <button type="button" onClick={() => navigateCrm("Замовлення-наряди", { workOrderId: row.commercialProposal!.workOrderId, workOrderTab: "estimate" })}>Відкрити КП</button>}
+          {state === "CONFIRMED" && <button type="button" onClick={() => navigateCrm("Підбір запчастин", { diagnosticId: row.id, vehicleId, plate: plateNumber || "", vin: vin || "" })}>Підібрати запчастини</button>}
+          {row.commercialProposal ? <button type="button" onClick={() => navigateCrm("Замовлення-наряди", { workOrderId: row.commercialProposal!.workOrderId, workOrderTab: "estimate" })}>Відкрити КП</button> : state === "CONFIRMED" ? <button type="button" disabled={busyId === row.id} onClick={() => void createCommercialProposal(row)}>{busyId === row.id ? "Створюю…" : "Створити КП"}</button> : null}
         </div>
       </article>;
     })}</div>
