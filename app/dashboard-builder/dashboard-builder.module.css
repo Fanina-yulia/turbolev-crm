@@ -191,7 +191,7 @@
 }
 
 .catalogCard > div span {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 900;
   color: #818b96;
 }
@@ -275,7 +275,7 @@
 
 .widgetHead span {
   flex: 0 0 auto;
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 900;
   color: #818b96;
 }
@@ -318,7 +318,7 @@
   border-radius: 999px;
   background: #eef1f4;
   color: #59636f;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 800;
   text-transform: uppercase;
   letter-spacing: 0.06em;
