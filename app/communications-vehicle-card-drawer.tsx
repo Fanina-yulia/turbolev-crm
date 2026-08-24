@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { navigateCrm } from "./crm-route";
 import { VehiclePlate, VehicleVisual, vehicleIdentityTitle } from "./vehicle-identity";
 
 type VehicleCard = {
@@ -88,13 +89,7 @@ export function CommunicationsVehicleCardDrawer({ vehicleId, onClose }: Props) {
   function openFullSection() {
     if (!vehicle) return;
     onClose();
-    window.dispatchEvent(new CustomEvent("turbolev:navigate", {
-      detail: {
-        section: "Клієнти та авто",
-        filter: vehicle.plateNumber || vehicle.vin || vehicle.id,
-        filterLabel: vehicle.plateNumber || vehicleTitle(vehicle),
-      },
-    }));
+    navigateCrm("Авто", { vehicleId: vehicle.id });
   }
 
   return <div className="communicationVehicleBackdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
@@ -139,7 +134,7 @@ export function CommunicationsVehicleCardDrawer({ vehicleId, onClose }: Props) {
         </> : null}
       </div>
 
-      {vehicle && <footer className="communicationVehicleActions"><button type="button" onClick={openFullSection}>Відкрити у «Клієнти та авто» →</button></footer>}
+      {vehicle && <footer className="communicationVehicleActions"><button type="button" onClick={openFullSection}>Відкрити картку авто →</button></footer>}
     </aside>
     <style jsx global>{`
       .communicationVehicleBackdrop{position:fixed;inset:0;z-index:1250;background:rgba(8,12,18,.42);display:flex;justify-content:flex-end;backdrop-filter:blur(2px)}
