@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated": "2026-08-23",
+  "updated": "2026-08-24",
   "rule": "Every production change must be assigned to at least one module. Start analysis from the module passport, then inspect declared dependencies only when the change can affect them.",
   "modules": [
     {
@@ -125,7 +125,7 @@
       "title": "Vehicle Images",
       "description": "OpenAI image generation, shared model templates, generation catalog, color variants, optimization and image library administration.",
       "keywords": ["vehicle image", "openai image", "template", "generation", "color variant", "recolor", "image library"],
-      "paths": ["app/vehicle-image-*", "app/vehicle-generation-*", "app/api/vehicle-images/**", "app/api/internal/vehicle-image*/**", "src/services/vehicle-images/**", "prisma/migrations/*vehicle_image*", "prisma/migrations/*vehicle_generation*"],
+      "paths": ["app/vehicle-image-*", "app/vehicle-generation-*", "app/vehicle-render.tsx", "app/vehicle-render.module.css", "app/api/vehicle-images/**", "app/api/internal/vehicle-image*/**", "src/services/vehicle-images/**", "prisma/migrations/*vehicle_image*", "prisma/migrations/*vehicle_generation*"],
       "dependencies": ["clients-vehicles", "settings-integrations"],
       "smokeChecks": ["existing-template-reuse", "new-color-variant", "new-model-generation", "generation-resolution", "image-delivery", "image-library-admin"]
     },
