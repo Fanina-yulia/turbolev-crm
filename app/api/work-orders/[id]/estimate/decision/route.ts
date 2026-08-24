@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { normalizeApprovedEstimateFingerprint } from "@/src/services/work-order-estimate-fingerprint.service";
-import { WorkOrderCommercialError } from "@/src/services/work-order-commercial.service";
-import { decideEstimateWithVehicleIssues } from "@/src/services/work-order-estimate-decision.service";
+import { decideEstimate, WorkOrderCommercialError } from "@/src/services/work-order-commercial.service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -18,7 +17,7 @@ export async function POST(request: Request, context: RouteContext) {
       return NextResponse.json({ ok: false, error: "Передайте decision APPROVE або REJECT." }, { status: 400 });
     }
     const actorName = typeof body.actorName === "string" ? body.actorName : "CRM / Сервіс-менеджер";
-    const estimate = await decideEstimateWithVehicleIssues(id, {
+    const estimate = await decideEstimate(id, {
       decision: rawDecision,
       approvedByName: typeof body.approvedByName === "string" ? body.approvedByName : undefined,
       source: typeof body.source === "string" ? body.source : undefined,
