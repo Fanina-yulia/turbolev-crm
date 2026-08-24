@@ -150,7 +150,7 @@ export function VehicleRender(props: VehicleRenderProps) {
         setLibraryError(library?.error || null);
 
         if (state === "GENERATING") {
-          setResolving(clickToResolve ? true : resolving);
+          if (clickToResolve) setResolving(true);
           if (pollAttempts < 40) schedulePoll(3000);
           else {
             setResolving(false);
