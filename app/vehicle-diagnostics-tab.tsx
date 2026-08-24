@@ -4,11 +4,12 @@ import { useEffect, useMemo, useState } from "react";
 import { navigateCrm } from "./crm-route";
 import styles from "./vehicle-diagnostics-tab.module.css";
 
-type WorkflowState = "PENDING" | "IN_PROGRESS" | "SUBMITTED" | "CONFIRMED" | "CANCELLED";
+type WorkflowState = "PENDING" | "IN_PROGRESS" | "SUBMITTED" | "RETURNED" | "CONFIRMED" | "CANCELLED";
 type Row = {
   id: string;
   status: "PENDING" | "IN_PROGRESS" | "CONFIRMED" | "CANCELLED";
-  workflowState?: WorkflowState;
+  workflowState?: Exclude<WorkflowState, "RETURNED">;
+  reviewState?: string;
   createdAt: string;
   updatedAt: string;
   confirmedAt: string | null;
@@ -29,6 +30,7 @@ const labels: Record<WorkflowState, string> = {
   PENDING: "Очікує",
   IN_PROGRESS: "В роботі",
   SUBMITTED: "На перевірці",
+  RETURNED: "На уточненні",
   CONFIRMED: "Підтверджена",
   CANCELLED: "Скасована",
 };
@@ -42,11 +44,12 @@ const commercialLabels: Record<string, string> = {
 };
 
 function stateOf(row: Row): WorkflowState {
+  if (row.reviewState === "RETURNED") return "RETURNED";
   return row.workflowState || row.status;
 }
 function stateClass(state: WorkflowState) {
   if (state === "PENDING") return styles.waiting;
-  if (state === "IN_PROGRESS") return styles.working;
+  if (state === "IN_PROGRESS" || state === "RETURNED") return styles.working;
   if (state === "SUBMITTED") return styles.review;
   if (state === "CONFIRMED") return styles.confirmed;
   return styles.cancelled;
@@ -83,7 +86,7 @@ export function VehicleDiagnosticsTab({ vehicleId, plateNumber, vin }: Props) {
 
   const summary = useMemo(() => ({
     total: rows.length,
-    active: rows.filter((row) => ["PENDING", "IN_PROGRESS", "SUBMITTED"].includes(stateOf(row))).length,
+    active: rows.filter((row) => ["PENDING", "IN_PROGRESS", "SUBMITTED", "RETURNED"].includes(stateOf(row))).length,
     confirmed: rows.filter((row) => stateOf(row) === "CONFIRMED").length,
     defects: rows.reduce((sum, row) => sum + (row.structured?.defects || 0), 0),
   }), [rows]);
