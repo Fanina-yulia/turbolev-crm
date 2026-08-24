@@ -10,7 +10,7 @@ import { OwnerControlCenter } from "./owner-dashboard";
 import { MechanicMobileCabinet } from "./mechanic-mobile-cabinet";
 import { ServiceAdvisorCabinetHome } from "./service-advisor-cabinet-home";
 import { PartsRoleCabinetHome } from "./parts-role-cabinet-home";
-import { SalesRoleCabinetHome } from "./sales-role-cabinet-home";
+import { SalesRoleCabinetHome } from "./leads-sales-role-cabinet-home";
 import type { CrmSectionLabel } from "./crm-navigation";
 import styles from "./role-cabinet.module.css";
 
