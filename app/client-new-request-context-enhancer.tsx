@@ -13,7 +13,8 @@ function text(value: Element | null | undefined) {
 function clientFromResponse(body: ClientResponse): ClientContext | null {
   if (!body) return null;
   if ("client" in body) return body.client?.id ? body.client : null;
-  return body.id ? body : null;
+  if ("id" in body && typeof body.id === "string") return body;
+  return null;
 }
 
 export function ClientNewRequestContextEnhancer() {
