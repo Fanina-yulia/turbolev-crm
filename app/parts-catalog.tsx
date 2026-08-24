@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { readCrmRoute } from "./crm-route";
 import styles from "./parts-catalog.module.css";
 import supplierStyles from "./parts-suppliers.module.css";
 
@@ -50,6 +51,10 @@ type SupplierOffer = {
 };
 
 type SupplierProvider = { id: string; ok: boolean; message?: string };
+type DiagnosticPartsPayload = {
+  ok?: boolean;
+  inspections?: Array<{ sections?: Array<{ items?: Array<{ finding?: { suggestedPartName?: string | null } | null }> }> }>;
+};
 
 function normalizeVin(value: string) {
   return value.toUpperCase().replace(/[^A-HJ-NPR-Z0-9]/g, "").slice(0, 17);
@@ -83,8 +88,44 @@ export function PartsCatalog() {
   const [offers, setOffers] = useState<SupplierOffer[]>([]);
   const [supplierProviders, setSupplierProviders] = useState<SupplierProvider[]>([]);
   const [configuredSuppliers, setConfiguredSuppliers] = useState<string[]>([]);
+  const [recommendedParts, setRecommendedParts] = useState<string[]>([]);
+  const [diagnosticCardContext, setDiagnosticCardContext] = useState(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("Введіть VIN або держномер автомобіля, якщо він є, і назву або артикул потрібної деталі.");
+
+  useEffect(() => {
+    let cancelled = false;
+    const sync = async () => {
+      const route = readCrmRoute();
+      const reference = route.plate || route.vin || "";
+      if (reference) setVehicleRef(reference.toUpperCase());
+      if (!route.diagnosticId) {
+        setRecommendedParts([]);
+        setDiagnosticCardContext(false);
+        return;
+      }
+      setDiagnosticCardContext(true);
+      try {
+        const response = await fetch(`/api/diagnostics/${encodeURIComponent(route.diagnosticId)}/structured`, { cache: "no-store", credentials: "include" });
+        const payload = await response.json().catch(() => null) as DiagnosticPartsPayload | null;
+        if (!response.ok || !payload?.ok) return;
+        const names = Array.from(new Set((payload.inspections || []).flatMap((inspection) => (inspection.sections || []).flatMap((section) => (section.items || []).flatMap((item) => {
+          const name = item.finding?.suggestedPartName?.trim();
+          return name ? [name] : [];
+        })))));
+        if (cancelled) return;
+        setRecommendedParts(names);
+        setQ((current) => current.trim() ? current : names[0] || "");
+        if (names.length) setMessage(`З Діагностичної карти передано рекомендовані деталі: ${names.length}. Оберіть деталь для підбору.`);
+      } catch {
+        if (!cancelled) setRecommendedParts([]);
+      }
+    };
+    void sync();
+    const onRoute = () => { void sync(); };
+    window.addEventListener("popstate", onRoute);
+    return () => { cancelled = true; window.removeEventListener("popstate", onRoute); };
+  }, []);
 
   async function resolveVinFromReference() {
     const reference = vehicleRef.trim();
@@ -173,52 +214,42 @@ export function PartsCatalog() {
       <span className={styles.badge}>VIN / ДЕРЖНОМЕР + SUPPLIER API</span>
     </div>
 
+    {diagnosticCardContext && recommendedParts.length > 0 && <section className={styles.panel}>
+      <div className={styles.head}><div><p>З ДІАГНОСТИЧНОЇ КАРТИ</p><h2>Рекомендовані деталі</h2></div><span className={styles.badge}>{recommendedParts.length}</span></div>
+      <div className={supplierStyles.offerGrid}>{recommendedParts.map((name) => <button type="button" key={name} onClick={() => setQ(name)}>{name}</button>)}</div>
+    </section>}
+
     <section className={styles.panel}>
       <div className={styles.contextGrid}>
         <label className={styles.field}><span>VIN або держномер</span><input value={vehicleRef} onChange={(e) => { setVehicleRef(e.target.value.toUpperCase()); setResolvedPlate(null); }} placeholder="VIN або номер авто" /><small>{referenceHint}</small></label>
         <label className={styles.field}><span>Що шукаємо</span><input value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === "Enter" && search()} placeholder="Артикул або назва: 115 906, колодки…" /></label>
         <button className={styles.primary} type="button" onClick={search} disabled={busy}>{busy ? "Шукаю…" : "Знайти"}</button>
       </div>
+      <p className={styles.message}>{message}</p>
+      {resolvedPlate ? <p className={styles.message}>Автомобіль: {resolvedPlate}</p> : null}
+    </section>
 
-      {vehicle && <div className={styles.vehicleCard}>
-        <div><small>{resolvedPlate ? `АВТО ПО ДЕРЖНОМЕРУ · ${resolvedPlate}` : "АВТО ПО VIN"}</small><strong>{[vehicle.make, vehicle.model, vehicle.year].filter(Boolean).join(" ") || vehicle.vin}</strong><span>{vehicle.vin}</span></div>
-        <div className={styles.vehicleMeta}>{vehicle.engineVolumeL && <span>{vehicle.engineVolumeL} л</span>}{vehicle.engine && <span>{vehicle.engine}</span>}{vehicle.fuelType && <span>{vehicle.fuelType}</span>}{vehicle.generation?.name && <span>{vehicle.generation.name}</span>}</div>
-        <div className={styles.confidence}><small>Довіра до авто</small><b>{vehicle.confidence ?? 0}%</b><span>{vehicle.source ?? "VIN decoder"}</span></div>
-      </div>}
+    {vehicle ? <section className={styles.panel}>
+      <div className={styles.vehicleSummary}><strong>{[vehicle.make, vehicle.model, vehicle.year].filter(Boolean).join(" ") || "Автомобіль"}</strong><span>{vehicle.engine || (vehicle.engineVolumeL ? `${vehicle.engineVolumeL} л` : "Двигун не визначено")}{vehicle.fuelType ? ` · ${vehicle.fuelType}` : ""}</span>{vehicle.generation?.name ? <span>{vehicle.generation.name}</span> : null}</div>
+    </section> : null}
 
-      <div className={styles.note}>{message}</div>
-      <div className={styles.guard}><b>Hard Gate сумісності:</b> ціна та наявність у постачальника не означають, що деталь підходить до конкретного VIN. Замовлення розблоковується тільки після OEM/API підтвердження застосовності.</div>
+    {providerErrors.length ? <section className={styles.panel}><p className={styles.message}>Частина постачальників недоступна: {providerErrors.map((provider) => provider.message || provider.id).join(" · ")}</p></section> : null}
+    {configuredSuppliers.length ? <section className={styles.panel}><p className={styles.message}>Підключені постачальники: {configuredSuppliers.join(", ")}</p></section> : null}
 
-      <section className={supplierStyles.supplierBlock}>
-        <div className={supplierStyles.supplierHead}>
-          <div><strong>Пропозиції постачальників</strong><span>Живі закупівельні ціни та складські залишки через серверні API</span></div>
-          <span className={supplierStyles.providerCount}>{configuredSuppliers.length} API налаштовано</span>
-        </div>
+    {offers.length ? <section className={styles.panel}>
+      <div className={styles.head}><div><p>ПОСТАЧАЛЬНИКИ</p><h2>Пропозиції</h2></div><span className={styles.badge}>{offers.length}</span></div>
+      <div className={supplierStyles.offerGrid}>{offers.map((offer) => <article className={supplierStyles.offerCard} key={`${offer.supplierId}:${offer.externalProductId || offer.article}`}>
+        <div className={supplierStyles.offerHead}><strong>{offer.brand ? `${offer.brand} · ` : ""}{offer.name}</strong><span>{offer.supplierName}</span></div>
+        <code>{offer.article}</code>
+        <b>{formatMoney(offer.purchasePrice, offer.currency)}</b>
+        <small>{offer.available ? "Є в наявності" : "Наявність уточнюється"}</small>
+        {offer.stock.length ? <p>{offer.stock.map((row) => `${row.warehouse}: ${row.quantity}`).join(" · ")}</p> : null}
+      </article>)}</div>
+    </section> : null}
 
-        {!configuredSuppliers.length ? <div className={supplierStyles.supplierEmpty}>API-доступи ще не додані на сервер CRM. Відкрийте <b>Налаштування → Постачальники</b>: там видно, який доступ потрібен для BM Parts, Юнік Трейд та Автонова-Д.</div> : null}
-
-        {configuredSuppliers.length > 0 && !offers.length && !busy ? <div className={supplierStyles.supplierEmpty}>У підключених постачальників за цим запитом пропозицій не знайдено.</div> : null}
-
-        {offers.length ? <div className={supplierStyles.tableWrap}><table className={supplierStyles.offerTable}>
-          <thead><tr><th>Постачальник</th><th>Деталь</th><th>Закупівля</th><th>Залишок</th></tr></thead>
-          <tbody>{offers.map((offer, index) => <tr key={`${offer.supplierId}-${offer.externalProductId ?? offer.article}-${index}`}>
-            <td><div className={supplierStyles.offerSupplier}><strong>{offer.supplierName}</strong><span>{offer.available ? "в наявності" : "уточнити"}</span></div></td>
-            <td><div className={supplierStyles.offerName}><strong>{offer.brand ? `${offer.brand} · ${offer.article}` : offer.article}</strong><span>{offer.name}</span></div></td>
-            <td className={supplierStyles.offerPrice}>{formatMoney(offer.purchasePrice, offer.currency)}</td>
-            <td>{offer.stock.length ? <div className={supplierStyles.stockList}>{offer.stock.slice(0, 3).map((stock, stockIndex) => <span key={`${stock.warehouse}-${stockIndex}`}>{stock.warehouse}: <b>{stock.quantity}</b></span>)}</div> : <span className={supplierStyles.stockEmpty}>немає даних</span>}</td>
-          </tr>)}</tbody>
-        </table></div> : null}
-
-        {providerErrors.length ? <div className={supplierStyles.supplierWarning}>Не всі API відповіли: {providerErrors.map((provider) => `${provider.id}${provider.message ? ` — ${provider.message}` : ""}`).join("; ")}</div> : null}
-      </section>
-
-      {parts.length ? <div className={styles.grid}>{parts.map((part, index) => <article className={styles.card} key={`${part.slug ?? part.name}-${index}`}>
-        <div className={styles.cardTop}><b>{part.name ?? "Деталь"}</b><span className={styles.unverified}>НЕ ПІДТВЕРДЖЕНО</span></div>
-        {part.category && <span>{part.category}</span>}
-        {part.slug && <small>{part.slug}</small>}
-        {part.description && <small>{part.description}</small>}
-        {part.fitment && <div className={styles.fitment}><span>Контекст {part.fitment.confidence ?? 0}%</span><small>{part.fitment.reason}</small></div>}
-      </article>)}</div> : <div className={styles.empty}>Довідкові результати з’являться тут.</div>}
+    <section className={styles.panel}>
+      <div className={styles.head}><div><p>ДОВІДНИК</p><h2>Каталог деталей</h2></div><span className={styles.badge}>{parts.length}</span></div>
+      {parts.length ? <div className={styles.results}>{parts.map((part, index) => <article key={`${part.slug || part.name || "part"}-${index}`}><strong>{part.name || part.slug || "Деталь"}</strong>{part.category ? <span>{part.category}</span> : null}{part.description ? <p>{part.description}</p> : null}{part.fitment ? <small>{part.fitment.confirmed ? "✓ Сумісність підтверджена" : part.fitment.status || "Сумісність уточнюється"}{typeof part.fitment.confidence === "number" ? ` · ${part.fitment.confidence}%` : ""}</small> : null}</article>)}</div> : <p className={styles.message}>Поки немає результатів довідника.</p>}
     </section>
   </div>;
 }
