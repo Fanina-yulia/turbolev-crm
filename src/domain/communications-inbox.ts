@@ -1,5 +1,5 @@
 export type CommunicationChannel = "FACEBOOK" | "INSTAGRAM" | "TIKTOK" | "BINOTEL" | "OLX" | "WEBSITE" | "TELEGRAM";
-export type CommunicationLifecycleState = "NEW" | "IN_WORK" | "WAITING_CLIENT" | "CLOSED" | "SPAM";
+export type CommunicationLifecycleState = "NEW" | "IN_WORK" | "WAITING_CLIENT" | "CLOSED" | "NOT_OUR_CLIENT" | "SPAM";
 export type CommunicationInquiryState = CommunicationLifecycleState | "CONVERTED" | "LINKED";
 export type CommunicationMessage = {
   id: string;
@@ -32,6 +32,8 @@ export type CommunicationInquiry = {
   lastInboundAt?: string;
   lastOutboundAt?: string;
   metadata?: unknown;
+  automaticLifecycleState?: "NEW" | "IN_WORK" | "CLOSED";
+  automaticLifecycleChangedAt?: string;
   messages: CommunicationMessage[];
 };
 
@@ -84,6 +86,14 @@ export function normalizeCommunicationInquiryChannel(inquiry: CommunicationInqui
 export function getCommunicationLifecycleState(inquiry: CommunicationInquiry): CommunicationLifecycleState {
   if (inquiry.state === "SPAM") return "SPAM";
   if (inquiry.state === "CLOSED") return "CLOSED";
+  if (inquiry.state === "NOT_OUR_CLIENT") return "NOT_OUR_CLIENT";
+  if (inquiry.automaticLifecycleState) {
+    if (inquiry.state === "WAITING_CLIENT") return "WAITING_CLIENT";
+    if (inquiry.state === "NEW") return "NEW";
+    if (inquiry.state === "IN_WORK") return "IN_WORK";
+  }
+  if (isObject(inquiry.metadata) && inquiry.metadata.lifecycleManualState === "NOT_OUR_CLIENT") return "NOT_OUR_CLIENT";
+  if (isObject(inquiry.metadata) && inquiry.metadata.lifecycleNotOurClientAt) return "NOT_OUR_CLIENT";
   if (isObject(inquiry.metadata) && inquiry.metadata.lifecycleClosedAt) return "CLOSED";
   if (inquiry.state === "WAITING_CLIENT") return "WAITING_CLIENT";
   if (inquiry.state === "NEW") return "NEW";
@@ -96,6 +106,7 @@ export function getCommunicationLifecycleLabel(state: CommunicationLifecycleStat
   if (state === "IN_WORK") return "У роботі";
   if (state === "WAITING_CLIENT") return "Очікує клієнта";
   if (state === "CLOSED") return "Закрито";
+  if (state === "NOT_OUR_CLIENT") return "Не наш клієнт";
   return "Спам";
 }
 
@@ -219,10 +230,11 @@ function conversationLifecycleState(inquiries: CommunicationInquiry[]): Communic
   // a contact that an operator explicitly classified as spam. Manual reclassification
   // updates all inquiries in the conversation and removes this lock.
   if (states.some((state) => state === "SPAM")) return "SPAM";
-  if (states.every((state) => state === "CLOSED")) return "CLOSED";
   if (states.some((state) => state === "NEW")) return "NEW";
   if (states.some((state) => state === "IN_WORK")) return "IN_WORK";
   if (states.some((state) => state === "WAITING_CLIENT")) return "WAITING_CLIENT";
+  if (states.some((state) => state === "NOT_OUR_CLIENT")) return "NOT_OUR_CLIENT";
+  if (states.every((state) => state === "CLOSED")) return "CLOSED";
   return "IN_WORK";
 }
 

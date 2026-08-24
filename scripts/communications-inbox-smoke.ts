@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import {
   buildCommunicationConversations,
+  getCommunicationLifecycleState,
   getCommunicationReplyInquiries,
   getDefaultCommunicationReplyInquiry,
   normalizeCommunicationPhone,
@@ -25,6 +26,19 @@ function missed(id: string, phone: string, at: string, unread = false): Communic
 
 assert.equal(normalizeCommunicationPhone("067 329 24 56"), "380673292456");
 assert.equal(normalizeCommunicationPhone("+380673292456"), "380673292456");
+
+const notOurClient = {
+  ...missed("not-our-client", "+380671234567", "2026-08-24T09:00:00.000Z"),
+  state: "NOT_OUR_CLIENT" as const,
+};
+assert.equal(getCommunicationLifecycleState(notOurClient), "NOT_OUR_CLIENT");
+assert.equal(buildCommunicationConversations([notOurClient])[0]?.lifecycleState, "NOT_OUR_CLIENT");
+assert.equal(getCommunicationLifecycleState({
+  ...missed("legacy-closed", "+380671234568", "2026-08-24T09:05:00.000Z"),
+  automaticLifecycleState: "NEW",
+  automaticLifecycleChangedAt: "2026-08-24T09:05:00.000Z",
+  metadata: { lifecycleClosedAt: "2026-08-20T12:00:00.000Z" },
+}), "NEW", "an old manual close must not override the current automatic workflow state");
 
 const authoritativeName = buildCommunicationConversations([
   {

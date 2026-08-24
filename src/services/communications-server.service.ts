@@ -1,6 +1,8 @@
 import { randomUUID } from "node:crypto";
 import type { QueryResultRow } from "pg";
 import { getSqlPool } from "@/src/lib/sql";
+import { normalizePhone as normalizeCanonicalPhone } from "@/src/lib/phone";
+import { getAutomaticCommunicationLifecycles } from "@/src/services/communication-business-lifecycle.service";
 
 export type CommunicationChannel = "FACEBOOK" | "INSTAGRAM" | "TIKTOK" | "BINOTEL" | "OLX" | "WEBSITE";
 export type InquiryState = "NEW" | "IN_WORK" | "CONVERTED" | "LINKED" | "SPAM";
@@ -80,10 +82,8 @@ interface LeadRow extends QueryResultRow {
 }
 
 export function normalizePhone(value?: string | null) {
-  const digits = String(value || "").replace(/\D/g, "");
-  if (!digits) return "";
-  if (digits.length === 10 && digits.startsWith("0")) return `380${digits}`;
-  if (digits.length === 12 && digits.startsWith("380")) return digits;
+  const digits = normalizeCanonicalPhone(value);
+  if (digits.length === 11 && digits.startsWith("80")) return `3${digits}`;
   return digits;
 }
 
@@ -147,10 +147,13 @@ export async function listCommunicationInquiries(input?: { channel?: string; unr
   if (!rows.length) return { items: [] };
 
   const ids = rows.map((row) => row.id);
-  const messageResult = await pool.query<CommunicationMessageRow>(
-    `SELECT * FROM "CommunicationMessage" WHERE "inquiryId" = ANY($1::text[]) ORDER BY "sentAt" ASC`,
-    [ids],
-  );
+  const [messageResult, automaticLifecycles] = await Promise.all([
+    pool.query<CommunicationMessageRow>(
+      `SELECT * FROM "CommunicationMessage" WHERE "inquiryId" = ANY($1::text[]) ORDER BY "sentAt" ASC`,
+      [ids],
+    ),
+    getAutomaticCommunicationLifecycles(ids),
+  ]);
   const messagesByInquiry = new Map<string, CommunicationMessageView[]>();
   for (const message of messageResult.rows) {
     const list = messagesByInquiry.get(message.inquiryId) || [];
@@ -201,6 +204,7 @@ export async function listCommunicationInquiries(input?: { channel?: string; unr
   return {
     items: rows.map((row) => {
       const client = row.phoneNormalized ? clientMap.get(row.phoneNormalized) : null;
+      const automaticLifecycle = automaticLifecycles.get(row.id);
       return {
         id: row.id,
         channel: row.channel,
@@ -221,6 +225,8 @@ export async function listCommunicationInquiries(input?: { channel?: string; unr
         existingLeadId: row.leadId || undefined,
         assignedUserId: row.assignedUserId || undefined,
         metadata: row.metadata || undefined,
+        automaticLifecycleState: automaticLifecycle?.state,
+        automaticLifecycleChangedAt: automaticLifecycle?.changedAt,
         messages: messagesByInquiry.get(row.id) || [],
         duplicateLead: !row.leadId && row.phoneNormalized ? duplicateMap.get(row.phoneNormalized) || null : null,
       };

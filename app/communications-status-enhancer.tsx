@@ -10,7 +10,7 @@ import {
   type CommunicationLifecycleState,
 } from "@/src/domain/communications-inbox";
 
-type EditableStatus = "NEW" | "IN_WORK" | "CLOSED" | "SPAM";
+type EditableStatus = "NEW" | "IN_WORK" | "CLOSED" | "NOT_OUR_CLIENT" | "SPAM";
 type CustomFilter = "CLOSED" | "SPAM" | null;
 type StatusTarget = {
   host: HTMLElement;
@@ -23,6 +23,7 @@ const STATUS_OPTIONS: Array<{ value: EditableStatus; label: string }> = [
   { value: "NEW", label: "НОВИЙ" },
   { value: "IN_WORK", label: "В РОБОТІ" },
   { value: "CLOSED", label: "ЗАКРИТО" },
+  { value: "NOT_OUR_CLIENT", label: "НЕ НАШ КЛІЄНТ" },
   { value: "SPAM", label: "СПАМ" },
 ];
 
@@ -356,12 +357,20 @@ export function CommunicationsStatusEnhancer() {
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ state }),
         });
-        return response.ok;
+        const data = await response.json().catch(() => null) as { error?: string } | null;
+        return { ok: response.ok, error: data?.error };
       }));
-      if (responses.some((ok) => !ok)) throw new Error("Не всі звернення вдалося оновити");
+      const failed = responses.find((result) => !result.ok);
+      if (failed) throw new Error(failed.error || "Не всі звернення вдалося оновити");
       await load();
       window.dispatchEvent(new CustomEvent("turbolev:data-changed"));
-      notify(state === "SPAM" ? "Діалог переміщено в спам." : state === "CLOSED" ? "Діалог закрито." : "Статус діалогу оновлено.");
+      notify(state === "SPAM"
+        ? "Діалог переміщено в спам."
+        : state === "CLOSED"
+          ? "Діалог закрито."
+          : state === "NOT_OUR_CLIENT"
+            ? "Контакт позначено як «Не наш клієнт»."
+            : "Статус діалогу оновлено.");
     } catch (error) {
       notify(error instanceof Error ? error.message : "Не вдалося змінити статус діалогу.");
     } finally {
@@ -388,7 +397,9 @@ export function CommunicationsStatusEnhancer() {
       const conversation = byKey.get(target.conversationKey);
       if (!conversation) return null;
       const phone = normalizeCommunicationPhone(conversation.phone);
-      const isClient = target.location === "header" && Boolean(phone && clientFlags[phone]);
+      const isClient = target.location === "header"
+        && conversation.lifecycleState !== "NOT_OUR_CLIENT"
+        && Boolean(phone && clientFlags[phone]);
       return createPortal(
         <LifecycleSelect
           conversation={conversation}
@@ -407,14 +418,15 @@ export function CommunicationsStatusEnhancer() {
     </div>, filterHost) : null}
     {toast ? <div className="communicationsLifecycleToast">{toast}</div> : null}
     <style jsx global>{`
-      [data-communications-lifecycle-host="row"]{display:inline-flex;align-items:center;justify-content:flex-end;flex:none;margin-left:auto;margin-right:6px;min-width:108px}
+      [data-communications-lifecycle-host="row"]{display:inline-flex;align-items:center;justify-content:flex-end;flex:none;margin-left:auto;margin-right:6px;min-width:138px}
       [data-communications-lifecycle-host="header"]{display:flex;align-items:center;flex:none;margin-left:auto}
       .communicationsLifecycleControl{display:inline-flex;align-items:center;gap:6px;position:relative}
-      .communicationsLifecycleControl select{height:30px;min-width:108px;max-width:132px;border:1px solid var(--line);border-radius:999px;background:var(--surface);color:var(--text);padding:0 25px 0 10px;font-size:12px;font-weight:850;line-height:1;cursor:pointer;outline:none;text-transform:uppercase}
-      .communicationsLifecycleControl.header select{height:34px;min-width:122px}
+      .communicationsLifecycleControl select{height:30px;min-width:108px;max-width:160px;border:1px solid var(--line);border-radius:999px;background:var(--surface);color:var(--text);padding:0 25px 0 10px;font-size:12px;font-weight:850;line-height:1;cursor:pointer;outline:none;text-transform:uppercase}
+      .communicationsLifecycleControl.header select{height:34px;min-width:122px;max-width:174px}
       .communicationsLifecycleControl[data-state="NEW"] select{border-color:color-mix(in srgb,#2563eb 45%,var(--line));background:color-mix(in srgb,#2563eb 8%,var(--surface));color:#2563eb}
       .communicationsLifecycleControl[data-state="IN_WORK"] select{border-color:color-mix(in srgb,var(--orange) 48%,var(--line));background:color-mix(in srgb,var(--orange) 8%,var(--surface));color:var(--orange)}
       .communicationsLifecycleControl[data-state="CLOSED"] select{border-color:color-mix(in srgb,#16a34a 40%,var(--line));background:color-mix(in srgb,#16a34a 7%,var(--surface));color:#16a34a}
+      .communicationsLifecycleControl[data-state="NOT_OUR_CLIENT"] select{border-color:color-mix(in srgb,#64748b 50%,var(--line));background:color-mix(in srgb,#64748b 10%,var(--surface));color:#94a3b8}
       .communicationsLifecycleControl[data-state="SPAM"] select{border-color:color-mix(in srgb,#ef4444 45%,var(--line));background:color-mix(in srgb,#ef4444 8%,var(--surface));color:#dc2626}
       .communicationsLifecycleControl select:disabled{cursor:wait;opacity:.65}
       .communicationsLifecycleSaving{position:absolute;right:8px;color:currentColor;font-size:12px;font-weight:900;pointer-events:none}
@@ -429,8 +441,8 @@ export function CommunicationsStatusEnhancer() {
       button[data-suppress-lifecycle-active="1"]{border-color:var(--line)!important;background:var(--panel)!important;color:var(--text)!important}
       button[data-suppress-lifecycle-active="1"] span{background:var(--surface)!important;color:var(--muted)!important}
       .communicationsLifecycleToast{position:fixed;right:20px;bottom:20px;z-index:1800;max-width:380px;border:1px solid var(--line);border-radius:12px;background:var(--panel);box-shadow:0 18px 50px rgba(0,0,0,.2);padding:12px 14px;color:var(--text);font-size:13px;font-weight:700;line-height:1.4}
-      @media(max-width:1366px){[data-communications-lifecycle-host="row"]{min-width:96px}.communicationsLifecycleControl.compact select{min-width:96px;max-width:108px;padding-left:8px;font-size:12px}[data-communications-lifecycle-host="header"]{margin-left:0}}
-      @media(max-width:900px){[data-communications-lifecycle-host="row"]{min-width:0;margin-right:2px}.communicationsLifecycleControl.compact select{min-width:88px;max-width:96px}.communicationsClientBadge{display:none}}
+      @media(max-width:1366px){[data-communications-lifecycle-host="row"]{min-width:136px}.communicationsLifecycleControl.compact select{min-width:136px;max-width:150px;padding-left:8px;font-size:12px}[data-communications-lifecycle-host="header"]{margin-left:0}}
+      @media(max-width:900px){[data-communications-lifecycle-host="row"]{min-width:126px;margin-right:2px}.communicationsLifecycleControl.compact select{min-width:126px;max-width:136px;font-size:12px}.communicationsClientBadge{display:none}}
     `}</style>
   </>;
 }
