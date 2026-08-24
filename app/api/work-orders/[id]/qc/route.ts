@@ -45,16 +45,20 @@ export async function POST(request: Request, context: RouteContext) {
     if (typeof body.action === "string" && body.action.trim()) {
       const action = body.action.trim().toUpperCase();
       const qualityControl = await updateQualityControl(id, body, actorName);
+      let issueSync: Awaited<ReturnType<typeof markWorkOrderIssues>> | null = null;
       let issueSyncWarning: string | null = null;
       if (action === "PASS" || action === "FAIL") {
         try {
-          await markWorkOrderIssues(id, action === "PASS" ? VehicleIssueStatus.RESOLVED : VehicleIssueStatus.IN_REPAIR);
+          issueSync = await markWorkOrderIssues(id, action === "PASS" ? VehicleIssueStatus.RESOLVED : VehicleIssueStatus.IN_REPAIR);
+          if (action === "PASS" && issueSync.skippedIncomplete > 0) {
+            issueSyncWarning = `Контроль якості пройдено, але ${issueSync.skippedIncomplete} проблем(и) залишились активними: пов’язані роботи або деталі ще не позначені виконаними.`;
+          }
         } catch (issueError) {
           issueSyncWarning = issueError instanceof Error ? issueError.message : "Не вдалося синхронізувати стан автомобіля.";
           console.error("Vehicle issue QC sync failed", { workOrderId: id, action, issueError });
         }
       }
-      return NextResponse.json({ ok: true, qualityControl, issueSyncWarning });
+      return NextResponse.json({ ok: true, qualityControl, issueSync, issueSyncWarning });
     }
     const task = await ensureQualityControlTask(id, actorName);
     const qualityControl = await getQualityControlState(id);

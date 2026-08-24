@@ -8,6 +8,7 @@ type Issue = {
   id: string;
   vehicleId: string;
   sourceDiagnosticId: string | null;
+  workOrderId: string | null;
   title: string;
   description: string | null;
   action: string | null;
@@ -17,6 +18,7 @@ type Issue = {
   status: string;
   firstDetectedAt: string;
   lastDetectedAt: string;
+  resolvedAt: string | null;
   deferredUntil: string | null;
   resolutionNote: string | null;
 };
@@ -46,6 +48,12 @@ function statusLabel(status: string) {
     DISMISSED: "Відхилено",
   };
   return labels[status] || status;
+}
+
+function workOrderActionLabel(status: string) {
+  if (["QUOTED", "WAITING_CUSTOMER", "APPROVED"].includes(status)) return "Відкрити КП";
+  if (["WAITING_PARTS", "READY_FOR_REPAIR", "IN_REPAIR"].includes(status)) return "Відкрити ремонт";
+  return "Відкрити наряд";
 }
 
 export function VehicleHealthEnhancer() {
@@ -88,6 +96,12 @@ export function VehicleHealthEnhancer() {
   }, [vehicleId]);
 
   useEffect(() => { if (vehicleId) void load(vehicleId, scope); }, [vehicleId, scope, load]);
+
+  useEffect(() => {
+    const reload = () => { if (vehicleId) void load(vehicleId, scope); };
+    window.addEventListener("turbolev:data-changed", reload);
+    return () => window.removeEventListener("turbolev:data-changed", reload);
+  }, [vehicleId, scope, load]);
 
   useEffect(() => {
     let frame = 0;
@@ -148,18 +162,20 @@ export function VehicleHealthEnhancer() {
   if (!host || !vehicleId) return null;
   return createPortal(<section className="vehicleHealthPanel">
     <div className="vehicleHealthHead">
-      <div><span>СТАН АВТО</span><h3>Виявлені проблеми</h3><p>Постійний список несправностей із підтверджених діагностичних карт.</p></div>
+      <div><span>СТАН АВТО</span><h3>Виявлені проблеми</h3><p>Проблема проходить один ланцюжок: ДК → КП → запчастини → ремонт → контроль → усунено.</p></div>
       <div className="vehicleHealthTabs"><button type="button" className={scope === "active" ? "active" : ""} onClick={() => setScope("active")}>Активні</button><button type="button" className={scope === "resolved" ? "active" : ""} onClick={() => setScope("resolved")}>Історія</button></div>
     </div>
     {message ? <div className="vehicleHealthMessage">{message}</div> : null}
     {loading ? <div className="vehicleHealthEmpty">Завантажую стан автомобіля…</div> : issues.length ? <div className="vehicleHealthList">{issues.map((issue) => <article key={issue.id} className="vehicleHealthIssue" data-urgency={issue.urgency || "INFO"}>
       <div className="vehicleHealthIssueTop"><strong>{issue.title}</strong><span>{statusLabel(issue.status)}</span></div>
       {issue.description ? <p>{issue.description}</p> : null}
-      <div className="vehicleHealthMeta"><span>Виявлено: {date(issue.firstDetectedAt)}</span>{issue.firstDetectedAt !== issue.lastDetectedAt ? <span>Повторно: {date(issue.lastDetectedAt)}</span> : null}{issue.urgency ? <span>{issue.urgency === "CRITICAL" ? "Критично" : issue.urgency === "SOON" ? "Найближчим часом" : "Рекомендація"}</span> : null}</div>
+      <div className="vehicleHealthMeta"><span>Виявлено: {date(issue.firstDetectedAt)}</span>{issue.firstDetectedAt !== issue.lastDetectedAt ? <span>Повторно: {date(issue.lastDetectedAt)}</span> : null}{issue.resolvedAt ? <span>Усунено: {date(issue.resolvedAt)}</span> : null}{issue.urgency ? <span>{issue.urgency === "CRITICAL" ? "Критично" : issue.urgency === "SOON" ? "Найближчим часом" : "Рекомендація"}</span> : null}</div>
       {(issue.suggestedWorkName || issue.suggestedPartName) && <div className="vehicleHealthRecommendations">{issue.suggestedWorkName ? <span>🔧 {issue.suggestedWorkName}</span> : null}{issue.suggestedPartName ? <span>▣ {issue.suggestedPartName}</span> : null}</div>}
+      {issue.resolutionNote ? <div className="vehicleHealthResolution">{issue.resolutionNote}</div> : null}
       <div className="vehicleHealthActions">
         {issue.sourceDiagnosticId ? <button type="button" onClick={() => navigateCrm("Діагностика", { diagnosticId: issue.sourceDiagnosticId! })}>Відкрити ДК</button> : null}
-        {issue.sourceDiagnosticId && !["RESOLVED", "DISMISSED"].includes(issue.status) ? <button type="button" onClick={() => navigateCrm("Підбір запчастин", { diagnosticId: issue.sourceDiagnosticId! })}>Підібрати запчастини</button> : null}
+        {issue.workOrderId ? <button type="button" className="primary" onClick={() => navigateCrm("Замовлення-наряди", { workOrderId: issue.workOrderId!, workOrderTab: ["QUOTED", "WAITING_CUSTOMER", "APPROVED"].includes(issue.status) ? "estimate" : undefined })}>{workOrderActionLabel(issue.status)}</button> : null}
+        {issue.sourceDiagnosticId && !issue.workOrderId && !["RESOLVED", "DISMISSED"].includes(issue.status) ? <button type="button" onClick={() => navigateCrm("Підбір запчастин", { diagnosticId: issue.sourceDiagnosticId! })}>Підібрати запчастини</button> : null}
         {!(["RESOLVED", "DISMISSED", "DEFERRED"].includes(issue.status)) ? <button type="button" disabled={busy === issue.id} onClick={() => void mutate(issue, "DEFER")}>Відкласти</button> : null}
         {!(["RESOLVED", "DISMISSED"].includes(issue.status)) ? <button type="button" disabled={busy === issue.id} onClick={() => void mutate(issue, "DISMISS")}>Відхилити</button> : <button type="button" disabled={busy === issue.id} onClick={() => void mutate(issue, "REOPEN")}>Відкрити знову</button>}
       </div>
@@ -167,7 +183,7 @@ export function VehicleHealthEnhancer() {
     <style jsx global>{`
       .vehicleHealthPanel{border:1px solid var(--line);border-radius:14px;background:var(--panel);padding:14px;margin-top:12px;color:var(--text)}
       .vehicleHealthHead{display:flex;justify-content:space-between;gap:14px;align-items:flex-start}.vehicleHealthHead span{font-size:12px;font-weight:850;color:var(--orange);letter-spacing:.08em}.vehicleHealthHead h3{margin:4px 0 2px;font-size:18px}.vehicleHealthHead p{margin:0;color:var(--muted);font-size:12px;line-height:1.45}.vehicleHealthTabs{display:flex;gap:6px}.vehicleHealthTabs button{border:1px solid var(--line);background:var(--surface);color:var(--text);border-radius:999px;padding:7px 10px;font-size:12px;font-weight:750;cursor:pointer}.vehicleHealthTabs button.active{border-color:var(--orange);color:var(--orange)}
-      .vehicleHealthList{display:grid;gap:9px;margin-top:12px}.vehicleHealthIssue{border:1px solid var(--line);border-left:4px solid #f59e0b;border-radius:11px;background:var(--surface);padding:11px}.vehicleHealthIssue[data-urgency="CRITICAL"]{border-left-color:#dc2626}.vehicleHealthIssueTop{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}.vehicleHealthIssueTop strong{font-size:14px}.vehicleHealthIssueTop span{font-size:12px;color:var(--muted);white-space:nowrap}.vehicleHealthIssue p{margin:7px 0;font-size:13px;line-height:1.45}.vehicleHealthMeta,.vehicleHealthRecommendations{display:flex;gap:8px;flex-wrap:wrap}.vehicleHealthMeta span,.vehicleHealthRecommendations span{font-size:12px;color:var(--muted)}.vehicleHealthRecommendations{margin-top:7px}.vehicleHealthRecommendations span{color:var(--text)}.vehicleHealthActions{display:flex;gap:7px;flex-wrap:wrap;margin-top:10px}.vehicleHealthActions button{border:1px solid var(--line);background:var(--panel);color:var(--text);border-radius:9px;padding:7px 9px;font-size:12px;font-weight:700;cursor:pointer}.vehicleHealthActions button:disabled{opacity:.55;cursor:wait}.vehicleHealthEmpty,.vehicleHealthMessage{margin-top:12px;border:1px dashed var(--line);border-radius:10px;padding:12px;color:var(--muted);font-size:12px}.vehicleHealthMessage{border-style:solid;color:#dc2626}
+      .vehicleHealthList{display:grid;gap:9px;margin-top:12px}.vehicleHealthIssue{border:1px solid var(--line);border-left:4px solid #f59e0b;border-radius:11px;background:var(--surface);padding:11px}.vehicleHealthIssue[data-urgency="CRITICAL"]{border-left-color:#dc2626}.vehicleHealthIssueTop{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}.vehicleHealthIssueTop strong{font-size:14px}.vehicleHealthIssueTop span{font-size:12px;color:var(--muted);white-space:nowrap}.vehicleHealthIssue p{margin:7px 0;font-size:13px;line-height:1.45}.vehicleHealthMeta,.vehicleHealthRecommendations{display:flex;gap:8px;flex-wrap:wrap}.vehicleHealthMeta span,.vehicleHealthRecommendations span{font-size:12px;color:var(--muted)}.vehicleHealthRecommendations{margin-top:7px}.vehicleHealthRecommendations span{color:var(--text)}.vehicleHealthResolution{margin-top:8px;border-radius:8px;background:var(--panel);padding:8px 9px;color:var(--muted);font-size:12px;line-height:1.45}.vehicleHealthActions{display:flex;gap:7px;flex-wrap:wrap;margin-top:10px}.vehicleHealthActions button{border:1px solid var(--line);background:var(--panel);color:var(--text);border-radius:9px;padding:7px 9px;font-size:12px;font-weight:700;cursor:pointer}.vehicleHealthActions button.primary{border-color:var(--orange);color:var(--orange)}.vehicleHealthActions button:disabled{opacity:.55;cursor:wait}.vehicleHealthEmpty,.vehicleHealthMessage{margin-top:12px;border:1px dashed var(--line);border-radius:10px;padding:12px;color:var(--muted);font-size:12px}.vehicleHealthMessage{border-style:solid;color:#dc2626}
       @media(max-width:620px){.vehicleHealthHead{display:grid}.vehicleHealthTabs{justify-content:flex-start}}
     `}</style>
   </section>, host);

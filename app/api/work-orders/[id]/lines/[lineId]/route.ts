@@ -4,6 +4,7 @@ import {
   updateWorkOrderLine,
   WorkOrderLineError,
 } from "@/src/services/work-order-lines.service";
+import { reconcileWorkOrderIssueLinks } from "@/src/services/vehicle-issues.service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -33,6 +34,16 @@ function errorResponse(error: unknown) {
   return NextResponse.json({ ok: false, code: "INTERNAL_ERROR", error: "WorkOrder line operation failed" }, { status: 500 });
 }
 
+async function reconcileIssues(workOrderId: string) {
+  try {
+    return { issueSync: await reconcileWorkOrderIssueLinks(workOrderId), issueSyncWarning: null as string | null };
+  } catch (error) {
+    const issueSyncWarning = error instanceof Error ? error.message : "Не вдалося синхронізувати проблеми автомобіля.";
+    console.error("Vehicle issue line reconciliation failed", { workOrderId, error });
+    return { issueSync: null, issueSyncWarning };
+  }
+}
+
 export async function PATCH(request: Request, context: { params: Promise<{ id: string; lineId: string }> }) {
   const { id, lineId } = await context.params;
   try {
@@ -41,7 +52,8 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
       return NextResponse.json({ ok: false, code: "INVALID_JSON_BODY", error: "Request body must be a JSON object" }, { status: 400 });
     }
     const result = await updateWorkOrderLine(id, lineId, body, actor(body));
-    return NextResponse.json({ ok: true, ...result });
+    const issueState = await reconcileIssues(id);
+    return NextResponse.json({ ok: true, ...result, ...issueState });
   } catch (error) {
     return errorResponse(error);
   }
@@ -53,7 +65,8 @@ export async function DELETE(request: Request, context: { params: Promise<{ id: 
     const parsed = await request.json().catch(() => undefined);
     const body = asRecord(parsed) ?? {};
     const result = await cancelWorkOrderLine(id, lineId, actor(body));
-    return NextResponse.json({ ok: true, ...result });
+    const issueState = await reconcileIssues(id);
+    return NextResponse.json({ ok: true, ...result, ...issueState });
   } catch (error) {
     return errorResponse(error);
   }

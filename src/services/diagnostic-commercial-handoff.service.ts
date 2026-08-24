@@ -98,6 +98,14 @@ export async function importDiagnosticRecommendationsToEstimate(
   const { workOrder, suggestions } = await buildSuggestions(diagnosticRequestId);
   const pending = suggestions.filter((item) => !item.imported);
   const created: Array<{ key: string; lineId: string }> = [];
+  const findingIds = Array.from(new Set(pending.map((item) => item.findingId)));
+  const issueRows = findingIds.length
+    ? await prisma.vehicleIssue.findMany({
+        where: { sourceFindingId: { in: findingIds } },
+        select: { id: true, sourceFindingId: true },
+      })
+    : [];
+  const issueByFinding = new Map(issueRows.flatMap((issue) => issue.sourceFindingId ? [[issue.sourceFindingId, issue.id] as const] : []));
 
   for (const suggestion of pending) {
     const duplicate = await prisma.workOrderLine.findFirst({
@@ -125,6 +133,7 @@ export async function importDiagnosticRecommendationsToEstimate(
         source: "DIAGNOSTIC_RECOMMENDATION",
         diagnosticRequestId,
         findingId: suggestion.findingId,
+        vehicleIssueId: issueByFinding.get(suggestion.findingId) || null,
         inspection: suggestion.inspection,
         section: suggestion.section,
         checkName: suggestion.checkName,

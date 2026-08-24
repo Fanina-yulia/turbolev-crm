@@ -11,6 +11,7 @@
     "src/services/vehicle-issues.service.ts"
   ],
   "parts-inventory": [
-    "app/api/parts-selection/**"
+    "app/api/parts-selection/**",
+    "app/api/procurement/**"
   ]
 }
