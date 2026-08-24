@@ -134,7 +134,12 @@ export function StructuredDiagnosticReviewPanel({ diagnosticId, onChanged }: { d
 
   function openPartsSelection() {
     if (!view) return;
-    navigateCrm("Підбір запчастин", { plate: view.diagnostic.vehicle.plateNumber || "", vin: view.diagnostic.vehicle.vin || "" });
+    navigateCrm("Підбір запчастин", {
+      diagnosticId,
+      vehicleId: view.diagnostic.vehicle.id,
+      plate: view.diagnostic.vehicle.plateNumber || "",
+      vin: view.diagnostic.vehicle.vin || "",
+    });
   }
 
   function openCommercialProposal() {
