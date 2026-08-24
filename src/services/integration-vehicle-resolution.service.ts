@@ -380,7 +380,7 @@ export async function resolveVehicleRequest(
   }
 
   let facts: VehicleFacts | null = null;
-  let source = request.inputType;
+  let source: string = request.inputType;
   let identityState: string | null = null;
   let pendingReason: string | null = null;
   let pendingMissing: string[] = [];
@@ -417,7 +417,7 @@ export async function resolveVehicleRequest(
   const record = await getPrisma().vehicleResolution.create({
     data: {
       status: selected.status,
-      inputType: request.inputType === "SAVED_VEHICLE" ? "CRM_VEHICLE" : request.inputType,
+      inputType: request.inputType,
       vehicleReferenceId: selected.reference?.id ?? null,
       confidence: selected.confidence,
       source: source.slice(0, 64),
