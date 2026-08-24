@@ -9,6 +9,7 @@ import { DiagnosticCommercialHandoffError } from "@/src/services/diagnostic-comm
 import { DiagnosticRequestNotFoundError, WorkOrderHardGateError } from "@/src/services/work-orders.service";
 import { WorkOrderCommercialError } from "@/src/services/work-order-commercial.service";
 import { getStructuredDiagnostic, StructuredDiagnosticError } from "@/src/services/structured-diagnostics.service";
+import { markDiagnosticIssuesQuoted } from "@/src/services/vehicle-issues.service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -29,7 +30,14 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     if (!(await locationAllowed(access, id))) return NextResponse.json({ ok: false, error: "LOCATION_FORBIDDEN" }, { status: 403 });
 
     const result = await createCommercialProposalFromDiagnostic(id, access.context.user.name || "CRM / Сервіс-менеджер", access.context.user.id);
-    return NextResponse.json({ ok: true, ...result });
+    let issueSyncWarning: string | null = null;
+    try {
+      await markDiagnosticIssuesQuoted(id, result.workOrder.id);
+    } catch (issueError) {
+      issueSyncWarning = issueError instanceof Error ? issueError.message : "Не вдалося оновити стан проблем автомобіля.";
+      console.error("Vehicle issue commercial handoff sync failed", { diagnosticRequestId: id, workOrderId: result.workOrder.id, issueError });
+    }
+    return NextResponse.json({ ok: true, ...result, issueSyncWarning });
   } catch (error) {
     if (error instanceof DiagnosticCommercialProposalError || error instanceof DiagnosticCommercialHandoffError || error instanceof StructuredDiagnosticError) {
       return NextResponse.json({ ok: false, error: error.code, message: error.message }, { status: error.status });
