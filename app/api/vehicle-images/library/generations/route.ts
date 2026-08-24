@@ -7,10 +7,11 @@ import {
   listVehicleGenerationCatalog,
   refreshTopVehicleModelPopularity,
 } from "@/src/services/vehicle-images/vehicle-generation-catalog.service";
+import { generateVehicleGenerationImage } from "@/src/services/vehicle-images/vehicle-generation-image-campaign.service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-export const maxDuration = 100;
+export const maxDuration = 300;
 
 function clamp(value: string | null) {
   const parsed = Number(value);
@@ -54,7 +55,21 @@ export async function POST(request: NextRequest) {
   if (!sameOrigin(request)) return NextResponse.json({ ok: false, error: "Forbidden" }, { status: 403 });
 
   try {
-    const body = await request.json().catch(() => null) as { action?: string; limit?: number } | null;
+    const body = await request.json().catch(() => null) as { action?: string; limit?: number; generationId?: string; force?: boolean } | null;
+
+    if (body?.action === "generate") {
+      const generationId = body.generationId?.trim() || "";
+      if (!generationId) return NextResponse.json({ ok: false, error: "Не вибрано покоління авто." }, { status: 400 });
+      try {
+        const result = await generateVehicleGenerationImage(generationId, { force: body.force === true });
+        return NextResponse.json({ ok: true, result }, { headers: { "Cache-Control": "no-store" } });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Не вдалося згенерувати авто.";
+        console.error("vehicle generation image generation failed", { generationId, error });
+        return NextResponse.json({ ok: false, error: message }, { status: 422, headers: { "Cache-Control": "no-store" } });
+      }
+    }
+
     if (body?.action !== "refresh") {
       return NextResponse.json({ ok: false, error: "Невідома дія." }, { status: 400 });
     }
