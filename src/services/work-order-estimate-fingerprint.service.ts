@@ -1,6 +1,8 @@
+import { VehicleIssueStatus } from "@/src/generated/prisma/client";
 import { getPrisma } from "@/src/lib/prisma";
 import { toPrismaJson } from "@/src/lib/prisma-json";
 import { getWorkOrderEstimateApprovalStateTx } from "@/src/services/work-order-estimate-approval-scope.service";
+import { markWorkOrderIssues } from "@/src/services/vehicle-issues.service";
 
 export async function normalizeApprovedEstimateFingerprint(
   workOrderId: string,
@@ -8,7 +10,7 @@ export async function normalizeApprovedEstimateFingerprint(
   actorName = "CRM / Сервіс-менеджер",
 ) {
   const prisma = getPrisma();
-  return prisma.$transaction(async (tx) => {
+  const normalized = await prisma.$transaction(async (tx) => {
     await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`wo-commercial:${workOrderId}`}))`;
     const estimate = await tx.workOrderEstimate.findFirst({
       where: { id: estimateId, workOrderId, status: "APPROVED" },
@@ -37,4 +39,13 @@ export async function normalizeApprovedEstimateFingerprint(
     });
     return updated;
   });
+
+  if (normalized) {
+    try {
+      await markWorkOrderIssues(workOrderId, VehicleIssueStatus.APPROVED);
+    } catch (error) {
+      console.error("Vehicle issue estimate approval sync failed", { workOrderId, estimateId, error });
+    }
+  }
+  return normalized;
 }
