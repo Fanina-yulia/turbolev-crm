@@ -3,6 +3,7 @@ import { getPrisma } from "@/src/lib/prisma";
 import { hasPermission, type AccessContext } from "@/src/security/access-context";
 import { PERMISSIONS, type AccessScopeCode } from "@/src/security/permissions";
 import { authorizeScopedLocation, type ScopedLocationAccess } from "@/src/security/scoped-location-access";
+import { syncInstalledPartWorkOrderLine } from "@/src/services/parts-work-order-line-sync.service";
 import { transitionPartsRequest, updatePartsRequest, updatePartsRequestItem, WorkOrderCommercialError } from "@/src/services/work-order-commercial.service";
 
 export const runtime = "nodejs";
@@ -203,7 +204,23 @@ export async function POST(request: Request) {
         ? { receivedQuantity: body.quantity }
         : { receivedQuantity: body.receivedQuantity, installedQuantity: body.quantity };
       const result = await updatePartsRequestItem(partsRequestId, itemId, payload, actorName);
-      return NextResponse.json({ ok: true, ...result });
+      let lineSync = null;
+      let lineSyncWarning: string | null = null;
+      if (action === "INSTALL_ITEM" && result.item.workOrderLineId) {
+        try {
+          lineSync = await syncInstalledPartWorkOrderLine({
+            workOrderId: result.partsRequest.workOrderId,
+            workOrderLineId: result.item.workOrderLineId,
+            quantity: result.item.quantity,
+            installedQuantity: result.item.installedQuantity,
+            actorName,
+          });
+        } catch (error) {
+          lineSyncWarning = error instanceof Error ? error.message : "Деталь встановлена, але не вдалося оновити позицію ремонту.";
+          console.error("Installed part WorkOrderLine sync failed", { partsRequestId, itemId, error });
+        }
+      }
+      return NextResponse.json({ ok: true, ...result, lineSync, lineSyncWarning });
     }
     return NextResponse.json({ ok: false, error: "Непідтримувана складська дія." }, { status: 400 });
   } catch (error) {
