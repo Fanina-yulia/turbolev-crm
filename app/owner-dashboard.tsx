@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { navigateCrm } from "./crm-route";
+import { VehicleRender } from "./vehicle-render";
 import styles from "./owner-dashboard.module.css";
 
 type AnalyticsPayload = {
@@ -85,6 +86,8 @@ type DashboardAttention = {
   attentionReason: string;
   nextAction: string;
   attentionLevel: "CRITICAL" | "HIGH" | "MEDIUM";
+  attentionAt: string;
+  issues?: Array<{ code: string }>;
   workOrderId: string | null;
   vehicleId: string | null;
   appointmentId: string;
@@ -142,11 +145,35 @@ function routeAttention(item: DashboardAttention) {
   return () => navigateCrm("Планувальник", { appointmentId: item.appointmentId });
 }
 
+const OWNER_DECISION_CODES = new Set(["PAUSED_STALLED", "WARRANTY_OPEN"]);
+
+function needsOwnerDecision(item: DashboardAttention) {
+  return item.issues?.some((issue) => OWNER_DECISION_CODES.has(issue.code)) ?? false;
+}
+
+function attentionIssueLabel(item: DashboardAttention) {
+  for (const prefix of [item.plate, item.vehicle]) {
+    if (prefix && item.attentionTitle.startsWith(`${prefix}:`)) return item.attentionTitle.slice(prefix.length + 1).trim();
+  }
+  return item.attentionTitle;
+}
+
+function attentionDelay(value: string) {
+  const minutes = Math.max(1, Math.floor((Date.now() - new Date(value).getTime()) / 60_000));
+  if (minutes < 60) return `Прострочено ${minutes} хв`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `Прострочено ${hours} год`;
+  const days = Math.floor(hours / 24);
+  const restHours = hours % 24;
+  return `Прострочено ${days} д${restHours ? ` ${restHours} год` : ""}`;
+}
+
 export function OwnerControlCenter({ userName }: { userName?: string | null }) {
   const [analytics, setAnalytics] = useState<AnalyticsPayload | null>(null);
   const [dashboard, setDashboard] = useState<DashboardPayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [attentionTab, setAttentionTab] = useState<"OWNER" | "TEAM">("OWNER");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -183,7 +210,10 @@ export function OwnerControlCenter({ userName }: { userName?: string | null }) {
   const previous = analytics?.previous;
   const operations = analytics?.operations;
   const funnel = analytics?.funnel;
-  const attention = dashboard?.attention?.slice(0, 6) ?? [];
+  const attention = dashboard?.attention ?? [];
+  const ownerAttention = attention.filter(needsOwnerDecision);
+  const teamAttention = attention.filter((item) => !needsOwnerDecision(item));
+  const selectedAttention = (attentionTab === "OWNER" ? ownerAttention : teamAttention).slice(0, 5);
   const trend = analytics?.trend?.slice(-10) ?? [];
   const trendMax = Math.max(1, ...trend.map((item) => Math.abs(item.revenue || item.closed || 0)));
   const scopeLabel = useMemo(() => {
@@ -192,6 +222,10 @@ export function OwnerControlCenter({ userName }: { userName?: string | null }) {
     if (names.length === 1) return names[0];
     return `${names.length} станції · вся мережа`;
   }, [analytics?.locations]);
+
+  useEffect(() => {
+    if (!ownerAttention.length && teamAttention.length) setAttentionTab("TEAM");
+  }, [ownerAttention.length, teamAttention.length]);
 
   return <>
     <header className={styles.header}>
@@ -252,8 +286,24 @@ export function OwnerControlCenter({ userName }: { userName?: string | null }) {
 
     <div className={styles.twoColumns}>
       <section className={styles.panel}>
-        <div className={styles.panelHead}><div><p className="eyebrow">ПОТРЕБУЄ УВАГИ</p><h2>Авто та рішення власника</h2></div><button type="button" onClick={() => navigateCrm("Авто")}>Всі авто →</button></div>
-        {attention.length ? <div className={styles.attentionList}>{attention.map((item) => <button type="button" key={item.id} className={item.attentionLevel === "CRITICAL" ? styles.attentionCritical : item.attentionLevel === "HIGH" ? styles.attentionHigh : ""} onClick={routeAttention(item)}><b>{item.plate}</b><div><strong>{item.attentionTitle}</strong><span>{item.vehicle} · {item.attentionReason}</span><small>{item.nextAction}</small></div><em>{item.attentionLevel === "CRITICAL" ? "Критично" : item.attentionLevel === "HIGH" ? "Високий пріоритет" : "Контроль"}</em></button>)}</div> : <div className={styles.empty}>Немає авто, які зараз потребують управлінського втручання.</div>}
+        <div className={styles.panelHead}><div><p className="eyebrow">КОНТРОЛЬ СЕРВІСУ</p><h2>Потрібна дія</h2></div><button type="button" onClick={() => navigateCrm("Авто")}>Усі авто →</button></div>
+        <div className={styles.attentionTabs} role="tablist" aria-label="Категорії автомобілів, які потребують уваги">
+          <button type="button" role="tab" aria-selected={attentionTab === "OWNER"} className={attentionTab === "OWNER" ? styles.attentionTabActive : ""} onClick={() => setAttentionTab("OWNER")}>Моє рішення <b>{ownerAttention.length}</b></button>
+          <button type="button" role="tab" aria-selected={attentionTab === "TEAM"} className={attentionTab === "TEAM" ? styles.attentionTabActive : ""} onClick={() => setAttentionTab("TEAM")}>Контроль команди <b>{teamAttention.length}</b></button>
+        </div>
+        {selectedAttention.length ? <div className={styles.attentionCards}>{selectedAttention.map((item) => <article key={item.id} className={`${styles.attentionCard} ${item.attentionLevel === "CRITICAL" ? styles.attentionCritical : item.attentionLevel === "HIGH" ? styles.attentionHigh : ""}`}>
+          {item.vehicleId ? <VehicleRender id={item.vehicleId} brand={item.vehicle} size="mini" className={styles.attentionVehicleImage} /> : <span className={styles.attentionVehicleFallback} aria-label="Зображення автомобіля недоступне">🚗</span>}
+          <div className={styles.attentionCardBody}>
+            <div className={styles.attentionIdentity}><b>{item.plate}</b><span>{item.vehicle}</span></div>
+            <strong>{attentionIssueLabel(item)}</strong>
+            <span>{item.attentionReason}</span>
+          </div>
+          <div className={styles.attentionCardAction}>
+            <small>{attentionDelay(item.attentionAt)}</small>
+            <button type="button" onClick={routeAttention(item)}>{item.nextAction}</button>
+          </div>
+        </article>)}</div> : <div className={styles.empty}>{attentionTab === "OWNER" ? "Зараз немає автомобілів, які очікують особистого рішення власника." : "Команда опрацювала всі автомобілі, які потребували уваги."}</div>}
+        {(attentionTab === "OWNER" ? ownerAttention : teamAttention).length > selectedAttention.length && <button type="button" className={styles.attentionMore} onClick={() => navigateCrm("Авто")}>Показати ще {(attentionTab === "OWNER" ? ownerAttention : teamAttention).length - selectedAttention.length} →</button>}
       </section>
 
       <section className={styles.panel}>
