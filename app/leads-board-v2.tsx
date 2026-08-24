@@ -25,7 +25,7 @@ import type {
   RejectReasonCode,
   UserOption,
 } from "./leads-board-v2.types";
-import { navigateCrm } from "./crm-route";
+import { navigateCrm, readCrmRoute } from "./crm-route";
 
 const CANCELLATION_REASONS: Array<{ code: RejectReasonCode; label: string }> = [
   { code: "TOO_EXPENSIVE", label: "Дорого" },
@@ -35,6 +35,11 @@ const CANCELLATION_REASONS: Array<{ code: RejectReasonCode; label: string }> = [
   { code: "SPAM_ADS", label: "Спам / реклама" },
   { code: "OTHER", label: "Інше" },
 ];
+
+function routeKpi(scope?: string): KpiKey | null {
+  if (scope === "new" || scope === "overdue" || scope === "booked" || scope === "cancelled" || scope === "conversion") return scope;
+  return null;
+}
 
 export function LeadsBoardV2() {
   const [leads, setLeads] = useState<Lead[]>([]);
@@ -81,6 +86,16 @@ export function LeadsBoardV2() {
     window.addEventListener("turbolev:data-changed", handler);
     return () => window.removeEventListener("turbolev:data-changed", handler);
   }, [load]);
+  useEffect(() => {
+    const syncRoute = () => {
+      const route = readCrmRoute();
+      setManager(route.assignedUserId || "");
+      setActiveKpi(routeKpi(route.scope));
+    };
+    syncRoute();
+    window.addEventListener("popstate", syncRoute);
+    return () => window.removeEventListener("popstate", syncRoute);
+  }, []);
 
   const visible = useMemo(() => leads.filter((lead) => {
     const haystack = `${lead.name || ""} ${lead.phone} ${lead.plateNumber || ""} ${carLabel(lead)} ${lead.need || ""}`.toLowerCase();
