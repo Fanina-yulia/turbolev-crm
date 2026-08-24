@@ -36,6 +36,7 @@ import "./auth/sidebar-rail-width-fix.css";
 import "./auth/sidebar-compact-logo.css";
 import "./responsive-ui-contract.css";
 import "./analytics-funnel-agreed-layout.css";
+import "@/src/lib/global-phone-copy.css";
 import { PhoneInputNormalizer } from "./phone-input-normalizer";
 import { LeadDetailsEnhancer } from "./lead-details-enhancer";
 import { VehicleConfigurationEnhancer } from "./vehicle-configuration-enhancer";
@@ -59,10 +60,11 @@ import { CommunicationsStatusEnhancer } from "./communications-status-enhancer";
 import { VehiclePresentationBridge } from "./vehicle-presentation-bridge";
 import { AnalyticsDashboardWalkInBridge } from "./analytics-dashboard-walk-in-bridge";
 import { AnalyticsOwnerEconomicsBridge } from "./analytics-owner-economics-bridge";
+import { GlobalPhoneCopy } from "@/src/lib/global-phone-copy";
 
 export const metadata: Metadata = { title: "Turbo LEV CRM", description: "Операційна CRM-система СТО Turbo LEV" };
 const themeBootstrap = `(function(){try{var saved=window.localStorage.getItem('turbolev-theme-mode')||window.localStorage.getItem('turbolev-theme')||'auto';if(saved!=='light'&&saved!=='dark'&&saved!=='auto')saved='auto';var resolved=saved==='light'||saved==='dark'?saved:(window.matchMedia('(prefers-color-scheme: light)').matches?'light':'dark');var root=document.documentElement;root.dataset.theme=resolved;root.dataset.themeMode=saved;root.style.colorScheme=resolved;}catch(e){}})();`;
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  return <html lang="uk" suppressHydrationWarning><head><script dangerouslySetInnerHTML={{ __html: themeBootstrap }} /></head><body><GlobalKeyboardShortcuts/><MechanicClarificationBridge/><CrmScrollReset/><ActiveTerminologyBridge/><PlannerEditEnhancer/><PhoneInputNormalizer/><LeadDetailsEnhancer/><VehicleConfigurationEnhancer/><WorkflowFilterEnhancer/><CrmDataBridge/><ClientsVehiclesRichCards/><WorkPriceTableEnhancer/><NewRequestContextBridge/><NewRequestVinDisplayEnhancer/><DiagnosticBookingEnhancer/><OptionalMechanicBookingBridge/><TelephonyRealtimeBridge/><CommunicationActivationDiagnosticsBridge/><ClientCommunicationBridge/><CommunicationsStatusEnhancer/><VehiclePresentationBridge/><AnalyticsDashboardWalkInBridge/><AnalyticsOwnerEconomicsBridge/>{children}</body></html>;
+  return <html lang="uk" suppressHydrationWarning><head><script dangerouslySetInnerHTML={{ __html: themeBootstrap }} /></head><body><GlobalKeyboardShortcuts/><GlobalPhoneCopy/><MechanicClarificationBridge/><CrmScrollReset/><ActiveTerminologyBridge/><PlannerEditEnhancer/><PhoneInputNormalizer/><LeadDetailsEnhancer/><VehicleConfigurationEnhancer/><WorkflowFilterEnhancer/><CrmDataBridge/><ClientsVehiclesRichCards/><WorkPriceTableEnhancer/><NewRequestContextBridge/><NewRequestVinDisplayEnhancer/><DiagnosticBookingEnhancer/><OptionalMechanicBookingBridge/><TelephonyRealtimeBridge/><CommunicationActivationDiagnosticsBridge/><ClientCommunicationBridge/><CommunicationsStatusEnhancer/><VehiclePresentationBridge/><AnalyticsDashboardWalkInBridge/><AnalyticsOwnerEconomicsBridge/>{children}</body></html>;
 }

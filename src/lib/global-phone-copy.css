@@ -1,0 +1,98 @@
+.globalPhoneCopyToast {
+  position: fixed;
+  left: 50%;
+  bottom: max(24px, env(safe-area-inset-bottom));
+  z-index: 25000;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 46px;
+  max-width: min(430px, calc(100vw - 28px));
+  padding: 10px 16px 10px 11px;
+  border: 1px solid rgba(255, 255, 255, .16);
+  border-radius: 14px;
+  background: #111827;
+  color: #fff;
+  box-shadow: 0 16px 44px rgba(0, 0, 0, .28);
+  font-size: 14px;
+  font-weight: 750;
+  line-height: 1.25;
+  transform: translateX(-50%);
+  animation: phoneCopyToastIn .22s ease-out;
+}
+
+.globalPhoneCopyToastError { background: #991b1b; }
+
+.globalPhoneCopyToastMark {
+  display: grid;
+  place-items: center;
+  flex: 0 0 28px;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: #22c55e;
+  color: #fff;
+  font-size: 17px;
+  font-weight: 900;
+}
+
+.globalPhoneCopyToastError .globalPhoneCopyToastMark { background: rgba(255, 255, 255, .18); }
+
+.globalPhoneCopyToastText {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.globalPhoneCopyToastText small {
+  overflow: hidden;
+  color: rgba(255, 255, 255, .72);
+  font-size: 12px;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.globalPhoneCopyRipple {
+  position: fixed;
+  z-index: 24999;
+  width: 18px;
+  height: 18px;
+  border: 2px solid #22c55e;
+  border-radius: 50%;
+  background: rgba(34, 197, 94, .2);
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+  animation: phoneCopyRipple .52s ease-out forwards;
+}
+
+[data-phone-copy-ready="true"] { cursor: copy !important; }
+
+[data-phone-copy-active="true"] {
+  animation: phoneCopyTargetPulse .5s ease-out;
+  border-radius: 7px;
+}
+
+@keyframes phoneCopyToastIn {
+  from { opacity: 0; transform: translate(-50%, 10px) scale(.97); }
+  to { opacity: 1; transform: translateX(-50%); }
+}
+
+@keyframes phoneCopyRipple {
+  from { opacity: .95; transform: translate(-50%, -50%) scale(.4); }
+  to { opacity: 0; transform: translate(-50%, -50%) scale(3.1); }
+}
+
+@keyframes phoneCopyTargetPulse {
+  0%, 100% { outline: 0 solid rgba(34, 197, 94, 0); }
+  42% { outline: 4px solid rgba(34, 197, 94, .32); background-color: rgba(34, 197, 94, .12); }
+}
+
+@media (max-width: 640px) {
+  .globalPhoneCopyToast { bottom: max(14px, env(safe-area-inset-bottom)); width: calc(100vw - 28px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .globalPhoneCopyToast, [data-phone-copy-active="true"] { animation: none; }
+  .globalPhoneCopyRipple { display: none; }
+}
