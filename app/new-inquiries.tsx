@@ -10,7 +10,7 @@ import {
 } from "@/src/lib/contracts/inquiries-payload.parsers";
 import { parseWorkOrderListPayload } from "@/src/lib/contracts/work-order-payload.parsers";
 import { ClientCommunicationActions } from "./client-communication-actions";
-import { navigateCrm } from "./crm-route";
+import { navigateCrm, readCrmRoute } from "./crm-route";
 import { VehicleRender } from "./vehicle-render";
 import styles from "./new-inquiries.module.css";
 import flowStyles from "./new-inquiries-client-flow.module.css";
@@ -128,6 +128,7 @@ export function NewInquiries() {
   const [channel, setChannel] = useState("ALL");
   const [priority, setPriority] = useState("ALL");
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [routeRevision, setRouteRevision] = useState(0);
 
   const load = useCallback(async () => {
     setLoading(true); setError("");
@@ -152,6 +153,18 @@ export function NewInquiries() {
     finally { setLoading(false); }
   }, []);
   useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    const syncRoute = () => {
+      if (readCrmRoute().inquiryId) {
+        setSearch("");
+        setChannel("ALL");
+        setPriority("ALL");
+      }
+      setRouteRevision((value) => value + 1);
+    };
+    window.addEventListener("popstate", syncRoute);
+    return () => window.removeEventListener("popstate", syncRoute);
+  }, []);
 
   const filtered = useMemo(() => {
     const needle = search.trim().toLocaleLowerCase("uk-UA");
@@ -168,9 +181,14 @@ export function NewInquiries() {
   }, [items, channel, priority, search]);
 
   useEffect(() => {
+    const routedInquiryId = readCrmRoute().inquiryId;
+    if (routedInquiryId && filtered.some((item) => item.id === routedInquiryId)) {
+      if (selectedId !== routedInquiryId) setSelectedId(routedInquiryId);
+      return;
+    }
     if (filtered.length === 0) { if (selectedId) setSelectedId(null); return; }
     if (!selectedId || !filtered.some((item) => item.id === selectedId)) setSelectedId(filtered[0].id);
-  }, [filtered, selectedId]);
+  }, [filtered, selectedId, routeRevision]);
 
   const selected = useMemo(() => filtered.find((item) => item.id === selectedId) || filtered[0] || null, [filtered, selectedId]);
   const waitingOver15 = useMemo(() => items.filter((item) => waitingMinutes(item.receivedAt) >= 15).length, [items]);
