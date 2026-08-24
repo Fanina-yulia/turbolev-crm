@@ -15,6 +15,7 @@ import {
   getStructuredDiagnosticForMechanic,
   StructuredDiagnosticError,
 } from "@/src/services/structured-diagnostics.service";
+import { syncVehicleIssuesFromDiagnostic } from "@/src/services/vehicle-issues.service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -68,7 +69,10 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
       actorName: access.context.user.name || "CRM",
       reviewerUserId: status === DiagnosticRequestStatus.CONFIRMED ? access.context.user.id : null,
     });
-    return NextResponse.json({ ok: true, ...result });
+    const issueSync = status === DiagnosticRequestStatus.CONFIRMED
+      ? await syncVehicleIssuesFromDiagnostic(id)
+      : null;
+    return NextResponse.json({ ok: true, ...result, issueSync });
   } catch (error) {
     if (error instanceof DiagnosticNotFoundError) {
       return NextResponse.json({ ok: false, error: "Діагностику не знайдено." }, { status: 404 });
