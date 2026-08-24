@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated": "2026-08-21",
+  "updated": "2026-08-24",
   "rule": "Every production change must be assigned to at least one module. Start analysis from the module passport, then inspect declared dependencies only when the change can affect them.",
   "modules": [
     {
@@ -152,7 +152,7 @@
       "title": "Settings & Integrations",
       "description": "System configuration, API credentials, integrations, cameras and operational settings.",
       "keywords": ["settings", "integration", "api key", "camera", "configuration", "credential"],
-      "paths": ["app/settings-*", "app/*settings*", "app/api/settings/**", "src/services/integration-*", "src/services/*settings*"],
+      "paths": ["app/settings-*", "app/*settings*", "app/api/settings/**", "app/api/integration/**", "src/services/integration-*", "src/services/*settings*"],
       "dependencies": ["core-platform"],
       "smokeChecks": ["settings-load", "credential-read-write", "integration-test"]
     }
