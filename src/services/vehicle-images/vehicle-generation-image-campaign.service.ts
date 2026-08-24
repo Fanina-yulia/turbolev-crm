@@ -264,11 +264,11 @@ async function finishJob(jobId: string, status: "DONE" | "FAILED", errorMessage?
   ).catch(() => undefined);
 }
 
-async function generateMaster(row: GenerationRow, apiKey: string) {
+async function generateMaster(row: GenerationRow, apiKey: string, options: { force?: boolean } = {}) {
   const identity = identityForGeneration(row);
   const prompt = campaignPrompt(row);
   const prior = await existingMaster(identity);
-  if (prior?.status === "READY") return { state: "READY" as const, assetId: prior.id, reused: true };
+  if (prior?.status === "READY" && options.force !== true) return { state: "READY" as const, assetId: prior.id, reused: true };
 
   const assetId = prior?.id || `vimg_${randomUUID().replace(/-/g, "")}`;
   const libraryKey = prior?.libraryKey || identity.libraryKey;
@@ -313,6 +313,48 @@ async function generateMaster(row: GenerationRow, apiKey: string) {
     ).catch(() => undefined);
     await finishJob(jobId, "FAILED", message.slice(0, 4000));
     throw error;
+  }
+}
+
+export async function generateVehicleGenerationImage(generationId: string, options: { force?: boolean } = {}) {
+  const id = generationId.trim();
+  if (!id) throw new Error("Не вказано покоління для генерації.");
+
+  const generations = await listGenerations();
+  const row = generations.find((item) => item.id === id);
+  if (!row) throw new Error("Покоління не знайдено у активному довіднику ТОП-100.");
+
+  const config = await getOpenAIVehicleImageConfig();
+  if (!config) throw new Error("OpenAI API не налаштовано.");
+
+  const pool = getSqlPool();
+  const client = await pool.connect();
+  const lockName = `vehicle-generation-manual:${id}`;
+  let locked = false;
+  try {
+    const lockResult = await client.query<{ locked: boolean }>("SELECT pg_try_advisory_lock(hashtext($1)) AS locked", [lockName]);
+    locked = Boolean(lockResult.rows[0]?.locked);
+    if (!locked) throw new Error("Це покоління вже генерується. Спробуйте ще раз після завершення.");
+
+    const result = await generateMaster(row, config.apiKey, { force: options.force === true });
+    return {
+      generationId: row.id,
+      rank: row.rank,
+      make: row.make,
+      model: row.model,
+      generation: row.generationLabel,
+      fromYear: row.fromYear,
+      toYear: row.toYear,
+      assetId: result.assetId,
+      reused: result.reused,
+      promptVersion: PROMPT_VERSION,
+      modelName: CAMPAIGN_MODEL,
+      quality: CAMPAIGN_QUALITY,
+      imageSize: CAMPAIGN_SIZE,
+    };
+  } finally {
+    if (locked) await client.query("SELECT pg_advisory_unlock(hashtext($1))", [lockName]).catch(() => undefined);
+    client.release();
   }
 }
 

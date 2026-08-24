@@ -37,6 +37,7 @@ type Generation = {
   verificationStatus: string;
   notes?: string | null;
 };
+type GenerationFeedback = { kind: "success" | "error"; message: string };
 
 function number(value: string | number) {
   const parsed = Number(value);
@@ -56,6 +57,8 @@ export function VehicleGenerationCatalogPanel() {
   const [query, setQuery] = useState("");
   const [expanded, setExpanded] = useState<string | null>(null);
   const [generations, setGenerations] = useState<Record<string, Generation[]>>({});
+  const [generatingId, setGeneratingId] = useState<string | null>(null);
+  const [generationFeedback, setGenerationFeedback] = useState<Record<string, GenerationFeedback>>({});
 
   const load = useCallback(async () => {
     setLoading(true); setError("");
@@ -102,6 +105,31 @@ export function VehicleGenerationCatalogPanel() {
     } catch { setGenerations((current) => ({ ...current, [row.id]: [] })); }
   }
 
+  async function generate(generation: Generation) {
+    if (generatingId) return;
+    setGeneratingId(generation.id);
+    setGenerationFeedback((current) => {
+      const next = { ...current };
+      delete next[generation.id];
+      return next;
+    });
+    try {
+      const response = await fetch("/api/vehicle-images/library/generations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "generate", generationId: generation.id, force: true }),
+      });
+      const payload = await response.json().catch(() => null) as { ok?: boolean; result?: { assetId?: string }; error?: string } | null;
+      if (!response.ok || !payload?.ok) throw new Error(payload?.error || "Не вдалося згенерувати авто.");
+      setGenerationFeedback((current) => ({ ...current, [generation.id]: { kind: "success", message: "Згенеровано" } }));
+    } catch (reason) {
+      const message = reason instanceof Error ? reason.message : "Не вдалося згенерувати авто.";
+      setGenerationFeedback((current) => ({ ...current, [generation.id]: { kind: "error", message } }));
+    } finally {
+      setGeneratingId(null);
+    }
+  }
+
   const visible = useMemo(() => {
     const value = query.trim().toLocaleLowerCase("uk-UA");
     if (!value) return catalog;
@@ -136,7 +164,17 @@ export function VehicleGenerationCatalogPanel() {
         {expanded === row.id ? <div className={styles.detail}>
           <div className={styles.years}><b>Наймасовіші роки:</b>{row.topYears.map((item) => <span key={item.year}>{item.year} · {number(item.count)}</span>)}</div>
           <div className={styles.generations}>
-            {(generations[row.id] || []).length ? (generations[row.id] || []).map((generation) => <span key={generation.id}><strong>{generation.generationLabel}</strong><small>{generation.fromYear}–{generation.toYear} · довіра {generation.confidence}% · {generation.verificationStatus === "VERIFIED" ? "перевірено" : "кураторський довідник"}</small></span>) : <span><strong>Покоління ще не описані</strong><small>Ця модель залишається в безпечному режимі «марка + модель + точний рік».</small></span>}
+            {(generations[row.id] || []).length ? (generations[row.id] || []).map((generation) => {
+              const feedback = generationFeedback[generation.id];
+              const isGenerating = generatingId === generation.id;
+              return <div className={styles.generationCard} key={generation.id}>
+                <span className={styles.generationInfo}><strong>{generation.generationLabel}</strong><small>{generation.fromYear}–{generation.toYear} · довіра {generation.confidence}% · {generation.verificationStatus === "VERIFIED" ? "перевірено" : "кураторський довідник"}</small></span>
+                <span className={styles.generationActions}>
+                  {feedback ? <em className={feedback.kind === "success" ? styles.generationSuccess : styles.generationError}>{feedback.message}</em> : null}
+                  <button type="button" onClick={() => void generate(generation)} disabled={Boolean(generatingId)}>{isGenerating ? "Генерую…" : "Згенерувати"}</button>
+                </span>
+              </div>;
+            }) : <span><strong>Покоління ще не описані</strong><small>Ця модель залишається в безпечному режимі «марка + модель + точний рік».</small></span>}
           </div>
         </div> : null}
       </div>)}
