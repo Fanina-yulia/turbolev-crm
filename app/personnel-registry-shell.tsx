@@ -7,7 +7,7 @@ import styles from "./personnel-registry-shell.module.css";
 export function PersonnelRegistryShell() {
   function openEmployeeCard(event: ReactMouseEvent<HTMLDivElement>) {
     const target = event.target as HTMLElement | null;
-    const button = target?.closest("aside > button");
+    const button = target?.closest("button[data-personnel-row]");
     if (!(button instanceof HTMLButtonElement)) return;
     if (button.dataset.personnelOpening === "1") return;
 

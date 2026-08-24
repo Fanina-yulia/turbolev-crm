@@ -19,12 +19,19 @@ export function PersonnelOwnerViewButton({employee,className}:Props){
 
   const targetUserId=employee.access?.userId||null;
   const canPreview=can(PERMISSIONS.OWNER_EMPLOYEE_VIEW_AS);
-  const hasCabinet=Boolean(employee.isActive&&employee.access?.cabinetEnabled&&targetUserId);
+  const unavailableReason=!employee.isActive
+    ?"Працівник неактивний. Активуйте його, щоб переглянути кабінет."
+    :!employee.access?.cabinetEnabled
+      ?"CRM-кабінет працівника вимкнений. Спочатку увімкніть його на кроці «Доступ»."
+      :!targetUserId
+        ?"Кабінет ще не створений. Збережіть працівника після увімкнення CRM-доступу."
+        :"";
 
-  if(!canPreview||!hasCabinet)return null;
+  if(!canPreview)return null;
 
   const openCabinet=async()=>{
-    if(!targetUserId||busy)return;
+    if(busy)return;
+    if(unavailableReason||!targetUserId){setError(unavailableReason||"Кабінет працівника ще недоступний.");return}
     setBusy(true);setError("");
     try{
       const response=await fetch(`${BASE}/start`,{
@@ -42,8 +49,8 @@ export function PersonnelOwnerViewButton({employee,className}:Props){
     }
   };
 
-  return <span>
-    <button type="button" className={className} onClick={()=>void openCabinet()} disabled={busy} title="Відкрити CRM так, як її бачить цей працівник — без права змінювати дані">
+  return <span data-owner-view-as-action="true">
+    <button type="button" className={className} onClick={()=>void openCabinet()} disabled={busy} title={unavailableReason||"Відкрити CRM так, як її бачить цей працівник — без права змінювати дані"}>
       {busy?"Відкриваю…":"👁 Переглянути його кабінет"}
     </button>
     {error?<small role="alert" style={{display:"block",marginTop:6,maxWidth:260}}>{error}</small>:null}

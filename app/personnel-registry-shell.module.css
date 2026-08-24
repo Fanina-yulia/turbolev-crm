@@ -12,51 +12,81 @@
   display:none!important;
 }
 
-.registryShell :global(aside > button){
+.registryShell :global(aside > [data-personnel-row-wrap]){
+  display:grid;
+  grid-template-columns:minmax(0,1fr) auto;
+  align-items:center;
+  border-bottom:1px solid var(--line);
+}
+
+.registryShell :global(aside > [data-personnel-row-wrap]:last-child){
+  border-bottom:0;
+}
+
+.registryShell :global(button[data-personnel-row]){
   width:100%;
   min-height:74px;
   padding:14px 16px!important;
   grid-template-columns:46px minmax(0,1fr) auto!important;
-  border-bottom:1px solid var(--line)!important;
-}
-
-.registryShell :global(aside > button:last-child){
   border-bottom:0!important;
 }
 
-.registryShell :global(aside > button > div:nth-child(2)){
+.registryShell :global(aside [data-owner-view-as-action]){
+  display:block;
+  min-width:206px;
+  padding:0 16px 0 8px;
+}
+
+.registryShell :global(aside [data-owner-view-as-action] > button){
+  width:100%;
+  min-height:40px;
+  white-space:nowrap;
+}
+
+.registryShell :global(aside [data-owner-view-as-action] > small){
+  margin-top:5px!important;
+}
+
+.registryShell :global(button[data-personnel-row] > div:nth-child(2)){
   min-width:0;
 }
 
-.registryShell :global(aside > button > div:nth-child(2) > b){
+.registryShell :global(button[data-personnel-row] > div:nth-child(2) > b){
   font-size:14px;
   line-height:1.35;
 }
 
-.registryShell :global(aside > button > div:nth-child(2) > span),
-.registryShell :global(aside > button > div:nth-child(2) > small){
+.registryShell :global(button[data-personnel-row] > div:nth-child(2) > span),
+.registryShell :global(button[data-personnel-row] > div:nth-child(2) > small){
   margin-top:3px;
   white-space:normal;
   overflow-wrap:anywhere;
 }
 
 @media (min-width:900px){
-  .registryShell :global(aside > button > div:nth-child(2)){
+  .registryShell :global(button[data-personnel-row] > div:nth-child(2)){
     display:grid;
     grid-template-columns:minmax(220px,1.25fr) minmax(180px,.9fr) minmax(280px,1.4fr);
     align-items:center;
     column-gap:24px;
   }
-  .registryShell :global(aside > button > div:nth-child(2) > b),
-  .registryShell :global(aside > button > div:nth-child(2) > span),
-  .registryShell :global(aside > button > div:nth-child(2) > small){
+  .registryShell :global(button[data-personnel-row] > div:nth-child(2) > b),
+  .registryShell :global(button[data-personnel-row] > div:nth-child(2) > span),
+  .registryShell :global(button[data-personnel-row] > div:nth-child(2) > small){
     margin:0;
   }
 }
 
 @media (max-width:720px){
-  .registryShell :global(aside > button){
+  .registryShell :global(aside > [data-personnel-row-wrap]){
+    grid-template-columns:1fr;
+  }
+  .registryShell :global(button[data-personnel-row]){
     min-height:68px;
     padding:12px!important;
+  }
+  .registryShell :global(aside [data-owner-view-as-action]){
+    min-width:0;
+    padding:0 12px 12px;
   }
 }
