@@ -1,6 +1,8 @@
 export const CRM_NAV = [
   { label: "Огляд станції", slug: "overview" },
   { label: "Мої задачі", slug: "tasks" },
+  { label: "Нові звернення", slug: "inquiries" },
+  { label: "Активні", slug: "leads" },
   { label: "Комунікації", slug: "communications" },
   { label: "Клієнти", slug: "clients" },
   { label: "Авто", slug: "vehicles" },
@@ -22,11 +24,9 @@ export type LegacyCrmSectionLabel =
   | "Контроль якості"
   | "Гарантії"
   | "Ліди"
-  | "Активні"
-  | "Звернення"
-  | "Нові звернення";
+  | "Звернення";
 export type CrmSectionLabel = VisibleCrmSectionLabel | LegacyCrmSectionLabel;
-export type CrmSectionSlug = VisibleCrmSectionSlug | "production" | "quality" | "warranties" | "inquiries" | "leads";
+export type CrmSectionSlug = VisibleCrmSectionSlug | "production" | "quality" | "warranties";
 export type CrmNavItem = (typeof CRM_NAV)[number];
 
 type CrmNavGroup = { label: string; items: readonly CrmNavItem[] };
@@ -103,8 +103,6 @@ export function isCrmSection(value: string): value is CrmSectionLabel {
     || value === "Контроль якості"
     || value === "Гарантії"
     || value === "Ліди"
-    || value === "Активні"
     || value === "Звернення"
-    || value === "Нові звернення"
     || CRM_NAV.some((item) => item.label === value);
 }
