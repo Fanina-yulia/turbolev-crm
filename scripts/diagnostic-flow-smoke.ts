@@ -206,7 +206,8 @@ async function main() {
     assert(report.token.length > 20, "diagnostic card must create a client share token");
     const diagnosticView = await getDiagnostic(diagnosticId);
     assert(diagnosticView);
-    assert.equal(diagnosticView.workflowState, "CARD_SENT", "active report share must expose Надіслана ДК business state");
+    assert.equal(diagnosticView.workflowState, DiagnosticRequestStatus.CONFIRMED, "sharing a diagnostic card must not change the confirmed diagnostic lifecycle state");
+    assert.equal(diagnosticView.reportShare?.active, true, "active report share must be exposed separately from diagnostic status");
 
     const workOrder = await createWorkOrderFromConfirmedDiagnostic(diagnosticId);
     assert.equal(workOrder.diagnosticRequestId, diagnosticId);
@@ -250,7 +251,8 @@ async function main() {
     console.log("Diagnostic workflow smoke: PASS");
     console.log(JSON.stringify({
       arrival: "BOOKED -> ARRIVED",
-      diagnostic: "PENDING -> IN_PROGRESS -> SUBMITTED -> CONFIRMED -> CARD_SENT",
+      diagnostic: "PENDING -> IN_PROGRESS -> SUBMITTED -> CONFIRMED",
+      reportShare: "delivery channel remains separate from diagnostic status",
       workOrderGate: "blocked before confirmation, explicit after card",
       followupVisit: "reuses confirmed diagnostic and WorkOrder",
     }, null, 2));
