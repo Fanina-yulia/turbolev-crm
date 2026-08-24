@@ -10,6 +10,7 @@ import { OwnerControlCenter } from "./owner-dashboard";
 import { MechanicMobileCabinet } from "./mechanic-mobile-cabinet";
 import { ServiceAdvisorCabinetHome } from "./service-advisor-cabinet-home";
 import { PartsRoleCabinetHome } from "./parts-role-cabinet-home";
+import { SalesRoleCabinetHome } from "./sales-role-cabinet-home";
 import type { CrmSectionLabel } from "./crm-navigation";
 import styles from "./role-cabinet.module.css";
 
@@ -156,6 +157,7 @@ export function RoleAwareOverview({ access }: { access: CrmAccessSnapshot | null
   const ownerRole = roleCodes.has("OWNER") || roleCodes.has("EXECUTIVE_DIRECTOR");
   const serviceAdvisorRole = primaryRoleCode === "SERVICE_ADVISOR";
   const partsRole = primaryRoleCode === "PARTS_SPECIALIST" ? "PARTS_SPECIALIST" : primaryRoleCode === "WAREHOUSE_KEEPER" ? "WAREHOUSE_KEEPER" : null;
+  const salesRole = primaryRoleCode === "HEAD_OF_SALES" ? "HEAD_OF_SALES" : primaryRoleCode === "SALES" ? "SALES" : null;
   const [data, setData] = useState<CabinetHomePayload | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -181,6 +183,7 @@ export function RoleAwareOverview({ access }: { access: CrmAccessSnapshot | null
   if (ownerRole && access?.provisioningState === "ACTIVE") return <OwnerControlCenter userName={access?.user?.name} />;
   if (serviceAdvisorRole && access?.provisioningState === "ACTIVE") return <ServiceAdvisorCabinetHome userName={access?.user?.name} />;
   if (partsRole && access?.provisioningState === "ACTIVE") return <PartsRoleCabinetHome role={partsRole} userName={access?.user?.name} />;
+  if (salesRole && access?.provisioningState === "ACTIVE" && access) return <SalesRoleCabinetHome role={salesRole} access={access} />;
   if (!specialRole || access?.provisioningState !== "ACTIVE") return <StationOverview />;
   if (loading && !data) return <Loading />;
   if (error && !data) return <div className={styles.state}><strong>Не вдалося відкрити кабінет</strong><span>{error}</span><button type="button" onClick={() => void load()}>Повторити</button></div>;
