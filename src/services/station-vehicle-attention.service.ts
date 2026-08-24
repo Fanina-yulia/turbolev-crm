@@ -96,10 +96,11 @@ function overdueLevel(dueAt: Date, now: Date, criticalAfterMinutes: number): Sta
   return minutesBetween(dueAt, now) >= criticalAfterMinutes ? "CRITICAL" : "HIGH";
 }
 
-export async function listStationAttentionVehicles(now = new Date()): Promise<StationAttentionVehicle[]> {
+export async function listStationAttentionVehicles(now = new Date(), locationId?: string | null): Promise<StationAttentionVehicle[]> {
   const prisma = getPrisma();
   const rows = await prisma.serviceAppointment.findMany({
     where: {
+      ...(locationId ? { locationId } : {}),
       status: { in: ACTIVE_STATUSES },
       NOT: { id: { startsWith: "demo_" } },
     },
