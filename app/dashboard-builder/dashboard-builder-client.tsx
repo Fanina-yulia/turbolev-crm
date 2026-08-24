@@ -73,7 +73,7 @@ export function DashboardBuilderClient() {
       setWidgetStates({});
       return;
     }
-    const response = await fetch("/api/dashboard/batch", {
+    const response = await fetch("/api/dashboard?mode=batch", {
       method: "POST",
       credentials: "include",
       headers: { "Content-Type": "application/json" },
@@ -97,7 +97,7 @@ export function DashboardBuilderClient() {
     setConflict(false);
     setMessage("Завантажую конфігурацію…");
     try {
-      const response = await fetch("/api/dashboard/config", { cache: "no-store", credentials: "include" });
+      const response = await fetch("/api/dashboard?mode=config", { cache: "no-store", credentials: "include" });
       const body = await response.json().catch(() => null) as ConfigResponse | { ok?: false; error?: string } | null;
       if (!response.ok || !body || body.ok !== true) {
         throw new Error(body && "error" in body && body.error ? body.error : "DASHBOARD_CONFIG_LOAD_FAILED");
@@ -141,7 +141,7 @@ export function DashboardBuilderClient() {
     const snapshot = widgetsRef.current;
     const snapshotKey = JSON.stringify(snapshot);
     try {
-      const response = await fetch("/api/dashboard/config", {
+      const response = await fetch("/api/dashboard?mode=config", {
         method: "PUT",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
@@ -186,7 +186,7 @@ export function DashboardBuilderClient() {
     setSaving(true);
     setMessage("Відновлюю рольовий пресет…");
     try {
-      const response = await fetch("/api/dashboard/config", {
+      const response = await fetch("/api/dashboard?mode=config", {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },

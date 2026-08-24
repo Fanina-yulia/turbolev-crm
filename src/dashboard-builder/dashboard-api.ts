@@ -1,6 +1,10 @@
+import "server-only";
+
 import { NextResponse } from "next/server";
 import {
+  canUseDashboardWidget,
   dashboardAccessSnapshot,
+  isDashboardWidgetType,
   isSupportedDashboardId,
   listAllowedDashboardWidgetDefinitions,
   sanitizeDashboardConfig,
@@ -12,10 +16,11 @@ import { getPrisma } from "@/src/lib/prisma";
 import { authorize } from "@/src/security/authorize";
 import { PERMISSIONS } from "@/src/security/permissions";
 
-export const runtime = "nodejs";
-export const dynamic = "force-dynamic";
-
 class VersionConflictError extends Error {}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
 
 function traceId() {
   return crypto.randomUUID();
@@ -25,20 +30,16 @@ function errorResponse(status: number, error: string, id: string, extra: Record<
   return NextResponse.json({ ok: false, error, traceId: id, ...extra }, { status, headers: { "Cache-Control": "no-store" } });
 }
 
-function roleCodes(roles: Array<{ code: string }>) {
-  return roles.map((role) => role.code);
-}
-
 function safeExpectedVersion(value: unknown) {
   return typeof value === "number" && Number.isInteger(value) && value >= 0 ? value : null;
 }
 
 async function authorizeDashboard(request: Request) {
-  return authorize(PERMISSIONS.OVERVIEW_READ, { strict: true, request, minimumScope: "SELF" });
+  return authorize(PERMISSIONS.OVERVIEW_READ, { strict: true, request, minimumScope: "LOCATION" });
 }
 
 function currentPreset(context: { roles: Array<{ code: string }>; permissions: Record<string, unknown> }) {
-  const preset = resolveDashboardPreset(roleCodes(context.roles));
+  const preset = resolveDashboardPreset(context.roles.map((role) => role.code));
   const access = dashboardAccessSnapshot(context);
   const config = sanitizeDashboardConfig(preset.config, access, preset.presetId);
   const catalog = listAllowedDashboardWidgetDefinitions(access).map((definition) => ({
@@ -57,7 +58,7 @@ function currentPreset(context: { roles: Array<{ code: string }>; permissions: R
   return { preset, access, catalog, config: { ...config, presetId: preset.presetId } };
 }
 
-export async function GET(request: Request) {
+export async function handleDashboardConfigGet(request: Request) {
   const id = traceId();
   const access = await authorizeDashboard(request);
   if (!access.allowed) return access.response!;
@@ -190,12 +191,48 @@ async function saveDashboard(request: Request, resetToPreset: boolean) {
   }
 }
 
-export async function PUT(request: Request) {
+export async function handleDashboardConfigPut(request: Request) {
   return saveDashboard(request, false);
 }
 
-export async function POST(request: Request) {
+export async function handleDashboardConfigPost(request: Request) {
   const body = await request.clone().json().catch(() => null) as Record<string, unknown> | null;
   if (body?.action !== "reset") return errorResponse(400, "UNSUPPORTED_ACTION", traceId());
   return saveDashboard(request, true);
+}
+
+export async function handleDashboardBatchPost(request: Request) {
+  const id = traceId();
+  const access = await authorizeDashboard(request);
+  if (!access.allowed) return access.response!;
+
+  const body = await request.json().catch(() => null) as Record<string, unknown> | null;
+  if (!body || !isSupportedDashboardId(body.dashboardId) || !Array.isArray(body.widgets)) {
+    return errorResponse(400, "INVALID_BATCH_REQUEST", id);
+  }
+
+  const dashboardAccess = dashboardAccessSnapshot(access.context);
+  const now = new Date().toISOString();
+  const results = body.widgets.slice(0, 40).map((item) => {
+    if (!isRecord(item)) {
+      return { instanceId: null, widgetType: null, state: "error", error: "INVALID_WIDGET_REQUEST", traceId: id };
+    }
+    const instanceId = typeof item.instanceId === "string" ? item.instanceId.slice(0, 80) : null;
+    if (!instanceId || !isDashboardWidgetType(item.widgetType)) {
+      return { instanceId, widgetType: null, state: "error", error: "INVALID_WIDGET_REQUEST", traceId: id };
+    }
+    if (!canUseDashboardWidget(item.widgetType, dashboardAccess)) {
+      return { instanceId, widgetType: item.widgetType, state: "forbidden", data: null, lastUpdatedAt: null, traceId: id };
+    }
+    return {
+      instanceId,
+      widgetType: item.widgetType,
+      state: "empty",
+      data: null,
+      lastUpdatedAt: now,
+      traceId: id,
+    };
+  });
+
+  return NextResponse.json({ ok: true, traceId: id, results }, { headers: { "Cache-Control": "no-store" } });
 }

@@ -1,5 +1,11 @@
 import { NextResponse } from "next/server";
 import { LeadStatus } from "@/src/generated/prisma/client";
+import {
+  handleDashboardBatchPost,
+  handleDashboardConfigGet,
+  handleDashboardConfigPost,
+  handleDashboardConfigPut,
+} from "@/src/dashboard-builder/dashboard-api";
 import { getPrisma } from "@/src/lib/prisma";
 import { authorize } from "@/src/security/authorize";
 import { PERMISSIONS } from "@/src/security/permissions";
@@ -7,6 +13,10 @@ import { listStationAttentionVehicles } from "@/src/services/station-vehicle-att
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+function dashboardMode(request: Request) {
+  return new URL(request.url).searchParams.get("mode");
+}
 
 function kyivDayRange(now = new Date()) {
   const parts = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Kyiv", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(now);
@@ -18,6 +28,8 @@ function kyivDayRange(now = new Date()) {
 }
 
 export async function GET(request: Request) {
+  if (dashboardMode(request) === "config") return handleDashboardConfigGet(request);
+
   const access = await authorize(PERMISSIONS.OVERVIEW_READ, { strict: true, request, minimumScope: "LOCATION" });
   if (!access.allowed) return access.response!;
 
@@ -121,4 +133,16 @@ export async function GET(request: Request) {
     },
     attention,
   }, { headers: { "Cache-Control": "no-store" } });
+}
+
+export async function PUT(request: Request) {
+  if (dashboardMode(request) === "config") return handleDashboardConfigPut(request);
+  return NextResponse.json({ ok: false, error: "UNSUPPORTED_DASHBOARD_MODE" }, { status: 400 });
+}
+
+export async function POST(request: Request) {
+  const mode = dashboardMode(request);
+  if (mode === "config") return handleDashboardConfigPost(request);
+  if (mode === "batch") return handleDashboardBatchPost(request);
+  return NextResponse.json({ ok: false, error: "UNSUPPORTED_DASHBOARD_MODE" }, { status: 400 });
 }
