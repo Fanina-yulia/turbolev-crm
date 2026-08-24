@@ -17,8 +17,6 @@ type HomePageProps = {
 const ROLE_START_SECTION: Partial<Record<string, string>> = {
   HEAD_OF_SALES: "leads",
   SALES: "leads",
-  PARTS_SPECIALIST: "parts",
-  WAREHOUSE_KEEPER: "procurement",
   ACCOUNTANT: "finance",
   MARKETING_DIRECTOR: "analytics",
   MARKETER: "analytics",
