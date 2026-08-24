@@ -9,6 +9,7 @@ import { StationOverview } from "./station-overview";
 import { OwnerControlCenter } from "./owner-dashboard";
 import { MechanicMobileCabinet } from "./mechanic-mobile-cabinet";
 import { ServiceAdvisorCabinetHome } from "./service-advisor-cabinet-home";
+import { PartsRoleCabinetHome } from "./parts-role-cabinet-home";
 import type { CrmSectionLabel } from "./crm-navigation";
 import styles from "./role-cabinet.module.css";
 
@@ -136,7 +137,6 @@ function StationManagerCabinet({ data, userName }: { data: StationManagerCabinet
           <em className={post.occupied ? styles.resourceBusy : styles.resourceFree}>{post.occupied ? "Зайнятий" : "Вільний"}</em>
         </button>)}</div>
       </section>
-
       <section className={styles.panel}>
         <div className={styles.panelHead}><div><p className="eyebrow">МЕХАНІКИ</p><h2>Поточне навантаження</h2></div><button type="button" onClick={() => navigateCrm("Виробництво", { scope: "mechanics" })}>Всі механіки →</button></div>
         <div className={styles.resourceList}>{data.mechanics.map((mechanic) => <button type="button" key={mechanic.id} className={styles.resourceRow} onClick={() => navigateCrm("Виробництво", { scope: "mechanics" })}>
@@ -155,6 +155,7 @@ export function RoleAwareOverview({ access }: { access: CrmAccessSnapshot | null
   const specialRole = roleCodes.has("STATION_MANAGER") ? "STATION_MANAGER" : roleCodes.has("MECHANIC") ? "MECHANIC" : null;
   const ownerRole = roleCodes.has("OWNER") || roleCodes.has("EXECUTIVE_DIRECTOR");
   const serviceAdvisorRole = primaryRoleCode === "SERVICE_ADVISOR";
+  const partsRole = primaryRoleCode === "PARTS_SPECIALIST" ? "PARTS_SPECIALIST" : primaryRoleCode === "WAREHOUSE_KEEPER" ? "WAREHOUSE_KEEPER" : null;
   const [data, setData] = useState<CabinetHomePayload | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -179,6 +180,7 @@ export function RoleAwareOverview({ access }: { access: CrmAccessSnapshot | null
 
   if (ownerRole && access?.provisioningState === "ACTIVE") return <OwnerControlCenter userName={access?.user?.name} />;
   if (serviceAdvisorRole && access?.provisioningState === "ACTIVE") return <ServiceAdvisorCabinetHome userName={access?.user?.name} />;
+  if (partsRole && access?.provisioningState === "ACTIVE") return <PartsRoleCabinetHome role={partsRole} userName={access?.user?.name} />;
   if (!specialRole || access?.provisioningState !== "ACTIVE") return <StationOverview />;
   if (loading && !data) return <Loading />;
   if (error && !data) return <div className={styles.state}><strong>Не вдалося відкрити кабінет</strong><span>{error}</span><button type="button" onClick={() => void load()}>Повторити</button></div>;
