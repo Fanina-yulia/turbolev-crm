@@ -4,11 +4,31 @@ import { execFileSync } from "node:child_process";
 
 const ROOT = process.cwd();
 const REGISTRY_PATH = path.join(ROOT, "docs", "modules", "module-registry.json");
+const OVERRIDES_PATH = path.join(ROOT, "docs", "modules", "module-path-overrides.json");
 
 function loadRegistry() {
   const raw = fs.readFileSync(REGISTRY_PATH, "utf8");
   const registry = JSON.parse(raw);
   if (!registry || !Array.isArray(registry.modules)) throw new Error("Invalid module registry: modules[] is required");
+
+  if (fs.existsSync(OVERRIDES_PATH)) {
+    const overrides = JSON.parse(fs.readFileSync(OVERRIDES_PATH, "utf8"));
+    if (!overrides || Array.isArray(overrides) || typeof overrides !== "object") {
+      throw new Error("Invalid module path overrides: expected an object keyed by module id");
+    }
+    const knownIds = new Set(registry.modules.map((module) => module.id));
+    for (const [id, patterns] of Object.entries(overrides)) {
+      if (!knownIds.has(id)) throw new Error(`Unknown module id in path overrides: ${id}`);
+      if (!Array.isArray(patterns) || patterns.some((pattern) => typeof pattern !== "string" || !pattern.trim())) {
+        throw new Error(`Invalid path overrides for module ${id}: expected non-empty string patterns`);
+      }
+    }
+    registry.modules = registry.modules.map((module) => ({
+      ...module,
+      paths: [...module.paths, ...(overrides[module.id] || [])],
+    }));
+  }
+
   return registry;
 }
 
