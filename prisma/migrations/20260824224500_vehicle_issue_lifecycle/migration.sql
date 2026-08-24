@@ -34,7 +34,7 @@ CREATE TABLE "VehicleIssue" (
   "resolvedByUserId" TEXT,
   "resolutionNote" TEXT,
   "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "updatedAt" TIMESTAMP(3) NOT NULL,
   CONSTRAINT "VehicleIssue_pkey" PRIMARY KEY ("id")
 );
 
