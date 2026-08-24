@@ -69,10 +69,19 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
       actorName: access.context.user.name || "CRM",
       reviewerUserId: status === DiagnosticRequestStatus.CONFIRMED ? access.context.user.id : null,
     });
-    const issueSync = status === DiagnosticRequestStatus.CONFIRMED
-      ? await syncVehicleIssuesFromDiagnostic(id)
-      : null;
-    return NextResponse.json({ ok: true, ...result, issueSync });
+
+    let issueSync: { vehicleId: string; created: number; updated: number } | null = null;
+    let issueSyncWarning: string | null = null;
+    if (status === DiagnosticRequestStatus.CONFIRMED) {
+      try {
+        issueSync = await syncVehicleIssuesFromDiagnostic(id);
+      } catch (syncError) {
+        issueSyncWarning = syncError instanceof Error ? syncError.message : "Не вдалося синхронізувати стан автомобіля.";
+        console.error("Vehicle issue sync after diagnostic confirmation failed", { diagnosticRequestId: id, syncError });
+      }
+    }
+
+    return NextResponse.json({ ok: true, ...result, issueSync, issueSyncWarning });
   } catch (error) {
     if (error instanceof DiagnosticNotFoundError) {
       return NextResponse.json({ ok: false, error: "Діагностику не знайдено." }, { status: 404 });
