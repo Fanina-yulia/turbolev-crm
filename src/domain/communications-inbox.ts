@@ -215,11 +215,14 @@ function latestHandledAt(inquiries: CommunicationInquiry[]) {
 
 function conversationLifecycleState(inquiries: CommunicationInquiry[]): CommunicationLifecycleState {
   const states = inquiries.map(getCommunicationLifecycleState);
+  // Spam is a conversation-level lock. A new inbound event must not silently reopen
+  // a contact that an operator explicitly classified as spam. Manual reclassification
+  // updates all inquiries in the conversation and removes this lock.
+  if (states.some((state) => state === "SPAM")) return "SPAM";
   if (states.every((state) => state === "CLOSED")) return "CLOSED";
   if (states.some((state) => state === "NEW")) return "NEW";
   if (states.some((state) => state === "IN_WORK")) return "IN_WORK";
   if (states.some((state) => state === "WAITING_CLIENT")) return "WAITING_CLIENT";
-  if (states.every((state) => state === "SPAM")) return "SPAM";
   return "IN_WORK";
 }
 
@@ -227,7 +230,6 @@ export function buildCommunicationConversations(source: CommunicationInquiry[]) 
   const groups = new Map<string, CommunicationInquiry[]>();
   for (const sourceInquiry of source) {
     const inquiry = normalizeCommunicationInquiryChannel(sourceInquiry);
-    if (getCommunicationLifecycleState(inquiry) === "SPAM") continue;
     const key = getCommunicationConversationKey(inquiry);
     const group = groups.get(key) || [];
     group.push(inquiry);
@@ -237,11 +239,13 @@ export function buildCommunicationConversations(source: CommunicationInquiry[]) 
   return Array.from(groups.entries()).map(([key, raw]) => {
     const inquiries = [...raw].sort((a, b) => toMillis(b.receivedAt) - toMillis(a.receivedAt));
     const representative = inquiries[0];
+    const lifecycleState = conversationLifecycleState(inquiries);
+    const spamLocked = lifecycleState === "SPAM";
     const handledAt = latestHandledAt(inquiries);
     const missed = inquiries.filter(isMissedCommunicationInquiry);
-    const unreadInquiryIds = inquiries.filter((item) => item.unread).map((item) => item.id);
-    const unresolvedMissed = missed.filter((item) => !item.answered && toMillis(item.receivedAt) > handledAt);
-    const unanswered = inquiries.filter((item) => {
+    const unreadInquiryIds = spamLocked ? [] : inquiries.filter((item) => item.unread).map((item) => item.id);
+    const unresolvedMissed = spamLocked ? [] : missed.filter((item) => !item.answered && toMillis(item.receivedAt) > handledAt);
+    const unanswered = spamLocked ? [] : inquiries.filter((item) => {
       if (getCommunicationLifecycleState(item) === "CLOSED") return false;
       if (item.answered || toMillis(item.receivedAt) <= handledAt) return false;
       return item.messages.some((message) => message.direction === "in") || isMissedCommunicationInquiry(item);
@@ -290,7 +294,7 @@ export function buildCommunicationConversations(source: CommunicationInquiry[]) 
       unresolvedMissedCount,
       hasMessages: inquiries.some((item) => item.channel !== "BINOTEL" || item.messages.some((message) => message.direction !== "system")),
       actionState,
-      lifecycleState: conversationLifecycleState(inquiries),
+      lifecycleState,
       existingLeadId,
       duplicateLead,
     } satisfies CommunicationConversation;
