@@ -1,0 +1,43 @@
+enum VehicleIssueStatus {
+  OPEN
+  DECISION_REQUIRED
+  QUOTED
+  WAITING_CUSTOMER
+  APPROVED
+  WAITING_PARTS
+  READY_FOR_REPAIR
+  IN_REPAIR
+  RESOLVED
+  DEFERRED
+  DISMISSED
+}
+
+model VehicleIssue {
+  id                   String             @id @default(cuid())
+  vehicleId            String
+  sourceFindingId      String?            @unique
+  sourceDiagnosticId   String?
+  sourceTemplateItemId String?
+  sourcePosition       String?
+  title                String
+  description          String?
+  action               String?
+  urgency              String?
+  suggestedWorkName    String?
+  suggestedPartName    String?
+  status               VehicleIssueStatus @default(DECISION_REQUIRED)
+  workOrderId          String?
+  deferredUntil        DateTime?
+  firstDetectedAt      DateTime           @default(now())
+  lastDetectedAt       DateTime           @default(now())
+  resolvedAt           DateTime?
+  resolvedByUserId     String?
+  resolutionNote       String?
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
+
+  @@index([vehicleId, status])
+  @@index([sourceDiagnosticId])
+  @@index([workOrderId])
+  @@index([sourceTemplateItemId, sourcePosition])
+}

@@ -8,12 +8,12 @@ import styles from "./diagnostics.module.css";
 import registryStyles from "./diagnostics-registry.module.css";
 
 type DiagnosticStatus = "PENDING" | "IN_PROGRESS" | "CONFIRMED" | "CANCELLED";
-type WorkflowState = DiagnosticStatus | "SUBMITTED";
+type WorkflowState = DiagnosticStatus | "SUBMITTED" | "RETURNED";
 type CommercialStage = "PARTS_SELECTION" | "DRAFT" | "SENT" | "APPROVED" | "REJECTED" | "SUPERSEDED";
 type Diagnostic = {
   id: string;
   status: DiagnosticStatus;
-  workflowState?: WorkflowState;
+  workflowState?: Exclude<WorkflowState, "RETURNED">;
   reviewState?: string;
   technicalConclusion: string | null;
   confirmedAt: string | null;
@@ -35,12 +35,13 @@ type Diagnostic = {
   structured?: { inspections: number; checked: number; defects: number; attention: number };
 };
 type ApiResponse = { ok: boolean; diagnostics?: Diagnostic[]; diagnostic?: Diagnostic; workOrder?: Diagnostic["workOrder"]; error?: string; message?: string };
-type Filter = "ALL" | "PENDING" | "IN_PROGRESS" | "SUBMITTED" | "CONFIRMED" | "COMMERCIAL" | "CANCELLED";
+type Filter = "ALL" | "PENDING" | "IN_PROGRESS" | "SUBMITTED" | "RETURNED" | "CONFIRMED" | "COMMERCIAL" | "CANCELLED";
 
 const statusMeta: Record<WorkflowState, { label: string; note: string }> = {
   PENDING: { label: "Очікує", note: "Діагностика підготовлена до старту" },
   IN_PROGRESS: { label: "В роботі", note: "Механік проводить діагностику; CRM зберігає результати" },
   SUBMITTED: { label: "На перевірці", note: "Механік завершив діагностику; сервіс-менеджер перевіряє ДК" },
+  RETURNED: { label: "На уточненні", note: "Сервіс-менеджер повернув ДК механіку для уточнення" },
   CONFIRMED: { label: "Підтверджена", note: "Діагностична карта зафіксована та доступна для комерційного етапу" },
   CANCELLED: { label: "Скасована", note: "Діагностику закрито без підтвердженої ДК" },
 };
@@ -49,6 +50,7 @@ const filters: Array<{ value: Filter; label: string }> = [
   { value: "PENDING", label: "Очікують" },
   { value: "IN_PROGRESS", label: "В роботі" },
   { value: "SUBMITTED", label: "На перевірці" },
+  { value: "RETURNED", label: "На уточненні" },
   { value: "CONFIRMED", label: "Підтверджені" },
   { value: "COMMERCIAL", label: "Комерційна пропозиція" },
   { value: "CANCELLED", label: "Скасовані" },
@@ -70,17 +72,19 @@ function dateTime(value: string | null) {
   return new Intl.DateTimeFormat("uk-UA", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }).format(new Date(value));
 }
 function workflowState(row: Diagnostic): WorkflowState {
+  if (row.reviewState === "RETURNED") return "RETURNED";
   return row.workflowState || row.status;
 }
 function stateClass(row: Diagnostic) {
   const state = workflowState(row);
-  if (state === "SUBMITTED") return styles.IN_PROGRESS;
+  if (state === "SUBMITTED" || state === "RETURNED") return styles.IN_PROGRESS;
   return styles[row.status];
 }
 function matchesFilter(row: Diagnostic, filter: Filter) {
   if (filter === "ALL") return true;
   if (filter === "COMMERCIAL") return Boolean(row.status === "CONFIRMED" && row.commercialProposal);
   if (filter === "SUBMITTED") return workflowState(row) === "SUBMITTED";
+  if (filter === "RETURNED") return workflowState(row) === "RETURNED";
   if (filter === "IN_PROGRESS") return workflowState(row) === "IN_PROGRESS";
   return row.status === filter;
 }
@@ -149,7 +153,7 @@ export function Diagnostics() {
 
   const counts = useMemo(() => ({
     waiting: rows.filter((row) => row.status === "PENDING").length,
-    inWork: rows.filter((row) => workflowState(row) === "IN_PROGRESS").length,
+    inWork: rows.filter((row) => workflowState(row) === "IN_PROGRESS" || workflowState(row) === "RETURNED").length,
     submitted: rows.filter((row) => workflowState(row) === "SUBMITTED").length,
     confirmed: rows.filter((row) => row.status === "CONFIRMED").length,
   }), [rows]);
@@ -178,7 +182,7 @@ export function Diagnostics() {
   const filterCount = (value: Filter) => rows.filter((row) => matchesFilter(row, value)).length;
 
   return <div className={styles.page}>
-    <header className={styles.head}><div><p className={styles.eyebrow}>СЕРВІС · ДІАГНОСТИКА</p><h1>Всі діагностики</h1><p>Єдиний реєстр усіх діагностик СТО. Основний процес: Очікує → В роботі → На перевірці → Підтверджена. Комерційна пропозиція відображається окремо й не змінює статус ДК.</p></div><button className={styles.refresh} onClick={() => void load()} disabled={loading}>{loading ? "Оновлюю…" : "Оновити"}</button></header>
+    <header className={styles.head}><div><p className={styles.eyebrow}>СЕРВІС · ДІАГНОСТИКА</p><h1>Всі діагностики</h1><p>Єдиний реєстр усіх діагностик СТО. Основний процес: Очікує → В роботі → На перевірці → На уточненні / Підтверджена. Комерційна пропозиція відображається окремо й не змінює статус ДК.</p></div><button className={styles.refresh} onClick={() => void load()} disabled={loading}>{loading ? "Оновлюю…" : "Оновити"}</button></header>
 
     <section className={styles.kpis}><div><span>Очікують</span><strong>{counts.waiting}</strong></div><div><span>В роботі</span><strong>{counts.inWork}</strong></div><div><span>На перевірці</span><strong>{counts.submitted}</strong></div><div><span>Підтверджені</span><strong>{counts.confirmed}</strong></div></section>
 

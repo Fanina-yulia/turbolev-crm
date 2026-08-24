@@ -1,0 +1,16 @@
+{
+  "core-platform": [
+    "app/business-flow-route-bridge.tsx"
+  ],
+  "communications": [
+    "app/legacy-active-action-bridge.tsx"
+  ],
+  "clients-vehicles": [
+    "app/vehicle-health-enhancer.tsx",
+    "app/api/vehicle-issues/**",
+    "src/services/vehicle-issues.service.ts"
+  ],
+  "parts-inventory": [
+    "app/api/parts-selection/**"
+  ]
+}

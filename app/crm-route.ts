@@ -4,32 +4,61 @@ import { slugFromSection, type CrmSectionLabel } from "./crm-navigation";
 
 export type CrmRouteParams = {
   status?: string;
+  scope?: string;
+
+  inquiryId?: string;
   clientId?: string;
   vehicleId?: string;
+  appointmentId?: string;
   diagnosticId?: string;
+  findingId?: string;
+  vehicleIssueId?: string;
+
   workOrderId?: string;
   workOrderTab?: string;
-  appointmentId?: string;
-  inquiryId?: string;
+  partsRequestId?: string;
+  supplierOrderId?: string;
+
   plate?: string;
   vin?: string;
   date?: string;
-  scope?: string;
+  locationId?: string;
+
+  analyticsTab?: string;
+  metric?: string;
+  from?: string;
+  to?: string;
+
+  settingsTab?: string;
+  supplierId?: string;
+  provider?: string;
 };
 
 export const CRM_ROUTE_KEYS: Array<keyof CrmRouteParams> = [
   "status",
+  "scope",
+  "inquiryId",
   "clientId",
   "vehicleId",
+  "appointmentId",
   "diagnosticId",
+  "findingId",
+  "vehicleIssueId",
   "workOrderId",
   "workOrderTab",
-  "appointmentId",
-  "inquiryId",
+  "partsRequestId",
+  "supplierOrderId",
   "plate",
   "vin",
   "date",
-  "scope",
+  "locationId",
+  "analyticsTab",
+  "metric",
+  "from",
+  "to",
+  "settingsTab",
+  "supplierId",
+  "provider",
 ];
 
 export function readCrmRoute(): CrmRouteParams {
@@ -59,8 +88,6 @@ export function navigateCrm(section: CrmSectionLabel, params: CrmRouteParams = {
     const value = typeof raw === "string" ? raw.trim() : "";
     if (value) url.searchParams.set(key, value);
   }
-
-  if (section !== "Налаштування") url.searchParams.delete("settingsTab");
 
   window.history.pushState({}, "", `${url.pathname}${url.search}${url.hash}`);
   window.dispatchEvent(new PopStateEvent("popstate"));
