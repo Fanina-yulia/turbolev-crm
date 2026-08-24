@@ -14,26 +14,26 @@ import type { CrmSectionLabel } from "./crm-navigation";
 import styles from "./role-cabinet.module.css";
 
 type FlowRoute = { label: string; value: number; section: CrmSectionLabel; params?: CrmRouteParams };
+type LinkedStationManagerCabinet = Extract<StationManagerCabinetPayload, { linked: true }>;
+type ManagerAttentionFilter = "ALL" | "MISSED_CALL" | "NEW_INQUIRY" | "STUCK_CARS" | "COMMERCIAL_PROPOSAL_NOT_SENT" | "CUSTOMER_DECISION_WAIT" | "PARTS_BLOCKING" | "NO_SHOW" | "NO_MECHANIC";
 
-const statusLabels: Record<string, string> = {
-  DRAFT: "Чернетка",
-  APPROVED: "Погоджено",
-  IN_PROGRESS: "В роботі",
-  COMPLETED: "Завершено",
-  BOOKED: "Записаний",
-  ARRIVED: "Приїхав",
-  DIAGNOSTICS: "Діагностика",
-  WAITING_CALCULATION: "Розрахунок",
-  WAITING_APPROVAL: "Очікує погодження",
-  WAITING_PARTS: "Очікує деталі",
-  READY_FOR_REPAIR: "Готовий до ремонту",
-  IN_REPAIR: "У ремонті",
-  WAITING_QC: "Очікує QC",
-  WAITING_PAYMENT: "Очікує оплату (legacy)",
-  READY_FOR_PICKUP: "Готовий до видачі",
-  PAUSED: "Призупинено",
-  NO_SHOW: "Не приїхав",
-};
+const STUCK_CAR_CODES = new Set([
+  "ARRIVED_STALLED",
+  "PARTS_SELECTION_STALLED",
+  "CALCULATION_STALLED",
+  "APPROVAL_STALLED",
+  "PARTS_ETA_OVERDUE",
+  "PARTS_ETA_MISSING",
+  "READY_FOR_REPAIR_STALLED",
+  "REPAIR_OVERRUN",
+  "QC_STALLED",
+  "PAYMENT_STALLED",
+  "PICKUP_STALLED",
+  "PAUSED_STALLED",
+  "PLAN_OVERRUN",
+]);
+
+const PARTS_BLOCKING_CODES = new Set(["PARTS_SELECTION_STALLED", "PARTS_ETA_OVERDUE", "PARTS_ETA_MISSING"]);
 
 function Loading() {
   return <div className={styles.state}><strong>Завантажую робочий кабінет…</strong><span>Дані беруться з поточного профілю доступу.</span></div>;
@@ -44,15 +44,6 @@ function LinkRequired() {
     <strong>Кабінет Керівника станції створений, але станція ще не призначена</strong>
     <span>Призначте станцію працівнику в «Персонал». Після цього пульт покаже тільки її операційні дані.</span>
   </div>;
-}
-
-function attentionRoute(item: StationManagerAttentionContract): { section: CrmSectionLabel; params: CrmRouteParams } {
-  if (item.status === "NO_SHOW") return { section: "Планувальник", params: { appointmentId: item.id, status: "NO_SHOW" } };
-  if (item.status === "WAITING_QC") return { section: "Контроль якості", params: { scope: "waiting" } };
-  if (["WAITING_APPROVAL", "WAITING_PARTS", "READY_FOR_REPAIR", "IN_REPAIR", "READY_FOR_PICKUP"].includes(item.status)) {
-    return { section: "Замовлення-наряди", params: { status: item.status, plate: item.plate } };
-  }
-  return { section: "Замовлення-наряди", params: { plate: item.plate } };
 }
 
 function waitingLabel(minutes: number) {
@@ -67,8 +58,26 @@ function timeLabel(value: string | null) {
   return Number.isFinite(date.getTime()) ? date.toLocaleTimeString("uk-UA", { hour: "2-digit", minute: "2-digit" }) : null;
 }
 
-function StationManagerCabinet({ data, userName }: { data: StationManagerCabinetPayload; userName?: string | null }) {
-  if (!data.linked) return <LinkRequired />;
+function attentionMatches(item: StationManagerAttentionContract, filter: ManagerAttentionFilter) {
+  if (filter === "ALL") return true;
+  if (filter === "STUCK_CARS") return STUCK_CAR_CODES.has(item.code);
+  if (filter === "PARTS_BLOCKING") return PARTS_BLOCKING_CODES.has(item.code);
+  return item.code === filter;
+}
+
+function attentionContext(item: StationManagerAttentionContract) {
+  if (item.plate) return item.plate;
+  if (item.sourceType === "INQUIRY") return "Звернення";
+  if (item.sourceType === "ESTIMATE") return "КП";
+  return "Авто";
+}
+
+function openManagerAttention(item: StationManagerAttentionContract) {
+  navigateCrm(item.action.section as CrmSectionLabel, (item.action.params ?? {}) as CrmRouteParams);
+}
+
+function StationManagerLinkedCabinet({ data, userName }: { data: LinkedStationManagerCabinet; userName?: string | null }) {
+  const [attentionFilter, setAttentionFilter] = useState<ManagerAttentionFilter>("ALL");
   const flow: FlowRoute[] = [
     { label: "Заплановано сьогодні", value: data.flow.booked, section: "Планувальник", params: { status: "BOOKED" } },
     { label: "Приймання / діагностика", value: data.flow.diagnostics, section: "Діагностика" },
@@ -79,51 +88,111 @@ function StationManagerCabinet({ data, userName }: { data: StationManagerCabinet
     { label: "Контроль якості", value: data.flow.qc, section: "Контроль якості", params: { scope: "waiting" } },
     { label: "Готові до видачі", value: data.flow.ready, section: "Замовлення-наряди", params: { status: "READY_FOR_PICKUP" } },
   ];
-  const attention = data.attention;
+
+  const filteredAttention = useMemo(
+    () => data.attention.filter((item) => attentionMatches(item, attentionFilter)),
+    [data.attention, attentionFilter],
+  );
+
+  const filterLabels: Record<ManagerAttentionFilter, string> = {
+    ALL: "Усі сигнали",
+    MISSED_CALL: "Пропущені дзвінки",
+    NEW_INQUIRY: "Нові звернення",
+    STUCK_CARS: "Завислі авто",
+    COMMERCIAL_PROPOSAL_NOT_SENT: "КП не відправлена",
+    CUSTOMER_DECISION_WAIT: "Очікуємо рішення клієнта",
+    PARTS_BLOCKING: "Запчастини блокують ремонт",
+    NO_SHOW: "Не прибули",
+    NO_MECHANIC: "Без механіка",
+  };
+
+  const selectFilter = (filter: ManagerAttentionFilter) => {
+    setAttentionFilter(filter);
+    window.setTimeout(() => document.getElementById("station-manager-attention")?.scrollIntoView({ behavior: "smooth", block: "start" }), 0);
+  };
+
+  const roleKpis: Array<{ label: string; value: number; hint: string; filter: ManagerAttentionFilter; critical?: boolean }> = [
+    { label: "Пропущені дзвінки", value: data.kpis.missedCalls, hint: "ще не опрацьовані", filter: "MISSED_CALL", critical: true },
+    { label: "Нові звернення", value: data.kpis.newInquiries, hint: "очікують першої реакції", filter: "NEW_INQUIRY" },
+    { label: "Завислі авто", value: data.kpis.stuckCars, hint: "процес не рухається", filter: "STUCK_CARS", critical: true },
+    { label: "КП не відправлена", value: data.kpis.proposalsNotSent, hint: "кошторис готовий як DRAFT", filter: "COMMERCIAL_PROPOSAL_NOT_SENT", critical: true },
+    { label: "Очікуємо рішення", value: data.kpis.waitingCustomerDecision, hint: "КП відправлена клієнту", filter: "CUSTOMER_DECISION_WAIT" },
+    { label: "Блокують запчастини", value: data.kpis.partsBlocking, hint: "підбір, ETA або поставка", filter: "PARTS_BLOCKING" },
+    { label: "Не прибули", value: data.kpis.noShow, hint: "потребують рішення по запису", filter: "NO_SHOW" },
+    { label: "Без механіка", value: data.kpis.unassigned, hint: "активні авто без виконавця", filter: "NO_MECHANIC" },
+  ];
+
   return <>
     <header className={styles.header}>
-      <div><p className="eyebrow">TURBO LEV · КАБІНЕТ КЕРІВНИКА СТАНЦІЇ</p><h1>Операційний пульт станції</h1><span className="muted">{userName || "Керівник станції"} · {data.station.name} · оперативний контур без глобальних фінансів мережі</span></div>
+      <div><p className="eyebrow">TURBO LEV · КАБІНЕТ КЕРІВНИКА СТАНЦІЇ</p><h1>Операційний пульт станції</h1><span className="muted">{userName || "Керівник станції"} · {data.station.name} · усе, що зараз потребує управлінської дії</span></div>
       <button className={styles.primaryAction} type="button" onClick={() => navigateCrm("Виробництво", { scope: "posts" })}>Виробництво зараз →</button>
     </header>
 
-    <section className={styles.kpis}>
-      <button type="button" onClick={() => navigateCrm("Планувальник")}><span>Авто сьогодні</span><strong>{data.kpis.carsToday}</strong><small>{data.kpis.carsOnStation} зараз у потоці станції</small></button>
-      <button type="button" onClick={() => navigateCrm("Виробництво", { status: "IN_REPAIR" })}><span>У ремонті</span><strong>{data.kpis.inRepair}</strong><small>активних авто</small></button>
-      <button type="button" onClick={() => navigateCrm("Виробництво", { scope: "posts" })}><span>Пости</span><strong>{data.kpis.postsOccupied}/{data.kpis.postsTotal}</strong><small>зайнято зараз</small></button>
-      <button type="button" className={data.kpis.needsAction ? styles.kpiAlert : ""} onClick={() => document.getElementById("station-manager-attention")?.scrollIntoView({ behavior: "smooth", block: "start" })}><span>Потребує моєї дії</span><strong>{data.kpis.needsAction}</strong><small>блокери та контрольні точки</small></button>
+    <section className={styles.managerKpis} aria-label="Ключові показники керівника станції">
+      {roleKpis.map((item) => <button
+        type="button"
+        key={item.filter}
+        className={`${item.value > 0 ? styles.managerKpiActive : ""} ${item.critical && item.value > 0 ? styles.managerKpiCritical : ""} ${attentionFilter === item.filter ? styles.managerKpiSelected : ""}`}
+        aria-pressed={attentionFilter === item.filter}
+        onClick={() => selectFilter(item.filter)}
+      >
+        <span>{item.label}</span><strong>{item.value}</strong><small>{item.hint}</small>
+      </button>)}
     </section>
 
-    <section className={styles.alertStrip} aria-label="Операційні ризики">
-      <button type="button" className={data.kpis.overdue ? styles.alertCritical : ""} onClick={() => document.getElementById("station-manager-attention")?.scrollIntoView({ behavior: "smooth" })}><span>Протерміновано</span><strong>{data.kpis.overdue}</strong><small>вийшли за плановий час</small></button>
-      <button type="button" className={data.kpis.unassigned ? styles.alertWarning : ""} onClick={() => navigateCrm("Виробництво", { scope: "mechanics" })}><span>Без механіка</span><strong>{data.kpis.unassigned}</strong><small>активні авто без виконавця</small></button>
-      <button type="button" className={data.kpis.noShow ? styles.alertWarning : ""} onClick={() => navigateCrm("Планувальник", { status: "NO_SHOW" })}><span>Не прибули сьогодні</span><strong>{data.kpis.noShow}</strong><small>потребують рішення по запису</small></button>
+    <section className={styles.managerSummary} aria-label="Стан виробництва">
+      <button type="button" onClick={() => navigateCrm("Планувальник")}><span>Авто сьогодні</span><strong>{data.kpis.carsToday}</strong><small>{data.kpis.carsOnStation} зараз у потоці</small></button>
+      <button type="button" onClick={() => navigateCrm("Виробництво", { status: "IN_REPAIR" })}><span>У ремонті</span><strong>{data.kpis.inRepair}</strong><small>активних авто</small></button>
+      <button type="button" onClick={() => navigateCrm("Виробництво", { scope: "posts" })}><span>Пости</span><strong>{data.kpis.postsOccupied}/{data.kpis.postsTotal}</strong><small>зайнято зараз</small></button>
+      <button type="button" className={data.kpis.needsAction ? styles.kpiAlert : ""} onClick={() => selectFilter("ALL")}><span>Всього сигналів</span><strong>{data.kpis.needsAction}</strong><small>{data.kpis.overdue} уже прострочено</small></button>
+    </section>
+
+    <section className={styles.panel} id="station-manager-attention">
+      <div className={styles.panelHead}>
+        <div><p className="eyebrow">ЦЕНТР УВАГИ</p><h2>{filterLabels[attentionFilter]}</h2><span className="muted">Натисніть на сигнал — CRM відкриє саме той етап, де потрібно виправити проблему.</span></div>
+        <div className={styles.attentionToolbar}><span className={styles.badge}>{filteredAttention.length}</span>{attentionFilter !== "ALL" && <button type="button" className={styles.filterReset} onClick={() => setAttentionFilter("ALL")}>Показати всі</button>}</div>
+      </div>
+      {filteredAttention.length ? <div className={styles.list}>{filteredAttention.map((item) => <button
+        className={`${styles.attention} ${item.priority === "CRITICAL" ? styles.attentionCritical : item.priority === "HIGH" ? styles.attentionHigh : ""}`}
+        type="button"
+        key={item.id}
+        onClick={() => openManagerAttention(item)}
+      >
+        <b className={styles.attentionContext}>{attentionContext(item)}</b>
+        <div className={styles.attentionMain}>
+          <strong>{item.title}</strong>
+          <span>{item.description || item.reason}</span>
+          <small>{[item.customer, item.vehicle].filter(Boolean).join(" · ") || "Операційний сигнал"} · {item.overdue ? "прострочено" : "очікує"} {waitingLabel(item.waitingMinutes)}</small>
+        </div>
+        <em className={styles.attentionAction}>{item.action.label} →</em>
+      </button>)}</div> : <div className={styles.empty}>За цим показником активних проблем немає.</div>}
     </section>
 
     <section className={styles.panel}>
-      <div className={styles.panelHead}><div><p className="eyebrow">ВИРОБНИЧИЙ ПОТІК</p><h2>Де зараз автомобілі станції</h2></div><span className="muted">статус авто ≠ стан оплати</span></div>
+      <div className={styles.panelHead}><div><p className="eyebrow">ВИРОБНИЧИЙ ПОТІК</p><h2>Де зараз автомобілі станції</h2></div><span className="muted">кожен етап відкривається окремо</span></div>
       <div className={styles.flow}>{flow.map((item) => <button type="button" key={item.label} onClick={() => navigateCrm(item.section, item.params)}><span>{item.label}</span><strong>{item.value}</strong><em>Відкрити →</em></button>)}</div>
     </section>
 
     <div className={styles.twoColumns}>
-      <section className={styles.panel} id="station-manager-attention">
-        <div className={styles.panelHead}><div><p className="eyebrow">ПОТРЕБУЄ МОЄЇ ДІЇ</p><h2>Що керівник має розблокувати</h2></div><span className={styles.badge}>{data.kpis.needsAction}</span></div>
-        {attention.length ? <div className={styles.list}>{attention.map((item) => {
-          const route = attentionRoute(item);
-          return <button className={`${styles.attention} ${item.priority === "CRITICAL" ? styles.attentionCritical : item.priority === "HIGH" ? styles.attentionHigh : ""}`} type="button" key={item.id} onClick={() => navigateCrm(route.section, route.params)}>
-            <b>{item.plate}</b><div><strong>{item.reason}</strong><span>{item.vehicle}{item.problem ? ` · ${item.problem}` : ""}</span><small>{item.mechanic || "Механік не призначений"}{item.post ? ` · ${item.post}` : ""} · без руху {waitingLabel(item.waitingMinutes)}</small></div><em>{item.overdue ? "Протерміновано" : statusLabels[item.status] || item.status}</em>
-          </button>;
-        })}</div> : <div className={styles.empty}>Немає блокерів, прострочень або авто без виконавця.</div>}
-      </section>
-
-      <aside className={styles.panel}>
+      <section className={styles.panel}>
         <div className={styles.panelHead}><div><p className="eyebrow">ШВИДКИЙ ДОСТУП</p><h2>Керування процесом</h2></div></div>
         <div className={styles.quickGrid}>
+          <button type="button" onClick={() => navigateCrm("Нові звернення")}>Нові звернення<span>дзвінки та вхідні запити →</span></button>
           <button type="button" onClick={() => navigateCrm("Діагностика")}>Діагностика<span>черга та підтвердження →</span></button>
-          <button type="button" onClick={() => navigateCrm("Замовлення-наряди")}>Замовлення-наряди<span>кошториси та статуси →</span></button>
+          <button type="button" onClick={() => navigateCrm("Замовлення-наряди")}>Замовлення-наряди<span>КП, погодження та статуси →</span></button>
           <button type="button" onClick={() => navigateCrm("Виробництво", { status: "IN_REPAIR" })}>Ремонт у роботі<span>пости та активні роботи →</span></button>
           <button type="button" onClick={() => navigateCrm("Контроль якості")}>Контроль якості<span>черга QC та результати →</span></button>
           <button type="button" onClick={() => navigateCrm("Підбір запчастин")}>Запчастини<span>підбір і постачання →</span></button>
           <button type="button" onClick={() => navigateCrm("Планувальник")}>Планувальник<span>запис і майбутнє завантаження →</span></button>
+        </div>
+      </section>
+      <aside className={styles.panel}>
+        <div className={styles.panelHead}><div><p className="eyebrow">КОНТРОЛЬ СТАНЦІЇ</p><h2>Що бачить керівник</h2></div></div>
+        <div className={styles.controlFacts}>
+          <div><span>Механіків</span><strong>{data.kpis.mechanicsTotal}</strong></div>
+          <div><span>Авто на станції</span><strong>{data.kpis.carsOnStation}</strong></div>
+          <div><span>Прострочені сигнали</span><strong>{data.kpis.overdue}</strong></div>
+          <div><span>Потребують дії</span><strong>{data.kpis.needsAction}</strong></div>
         </div>
       </aside>
     </div>
@@ -147,6 +216,11 @@ function StationManagerCabinet({ data, userName }: { data: StationManagerCabinet
       </section>
     </div>
   </>;
+}
+
+function StationManagerCabinet({ data, userName }: { data: StationManagerCabinetPayload; userName?: string | null }) {
+  if (!data.linked) return <LinkRequired />;
+  return <StationManagerLinkedCabinet data={data} userName={userName} />;
 }
 
 export function RoleAwareOverview({ access }: { access: CrmAccessSnapshot | null }) {
@@ -176,7 +250,12 @@ export function RoleAwareOverview({ access }: { access: CrmAccessSnapshot | null
     }
   }, [specialRole, access?.provisioningState]);
 
-  useEffect(() => { void load(); const handler = () => void load(); window.addEventListener("turbolev:data-changed", handler); return () => window.removeEventListener("turbolev:data-changed", handler); }, [load]);
+  useEffect(() => {
+    void load();
+    const handler = () => void load();
+    window.addEventListener("turbolev:data-changed", handler);
+    return () => window.removeEventListener("turbolev:data-changed", handler);
+  }, [load]);
 
   if (ownerRole && access?.provisioningState === "ACTIVE") return <OwnerControlCenter userName={access?.user?.name} />;
   if (serviceAdvisorRole && access?.provisioningState === "ACTIVE") return <ServiceAdvisorCabinetHome userName={access?.user?.name} />;

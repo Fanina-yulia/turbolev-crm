@@ -74,6 +74,12 @@ export type StationManagerKpisContract = {
   needsAction: number;
   overdue: number;
   unassigned: number;
+  missedCalls: number;
+  newInquiries: number;
+  stuckCars: number;
+  proposalsNotSent: number;
+  waitingCustomerDecision: number;
+  partsBlocking: number;
 };
 
 export type StationManagerFlowContract = {
@@ -88,21 +94,29 @@ export type StationManagerFlowContract = {
 };
 
 export type StationManagerAttentionPriority = "CRITICAL" | "HIGH" | "NORMAL";
+export type StationManagerAttentionSourceType = "INQUIRY" | "APPOINTMENT" | "ESTIMATE";
+
+export type StationManagerAttentionActionContract = {
+  label: string;
+  section: string;
+  params?: Record<string, string>;
+};
 
 export type StationManagerAttentionContract = {
   id: string;
-  status: PlannerStatusContract;
-  plate: string;
-  vehicle: string;
-  problem: string | null;
-  plannedStartAt: CrmDateTime;
-  plannedEndAt: CrmDateTime;
-  post: string | null;
-  mechanic: string | null;
+  sourceType: StationManagerAttentionSourceType;
+  sourceId: string;
+  code: string;
+  title: string;
+  description: string | null;
   priority: StationManagerAttentionPriority;
   reason: string;
   overdue: boolean;
   waitingMinutes: number;
+  plate: string | null;
+  vehicle: string | null;
+  customer: string | null;
+  action: StationManagerAttentionActionContract;
 };
 
 export type StationManagerPostLoadContract = {

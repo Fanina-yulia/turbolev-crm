@@ -47,38 +47,51 @@ const mechanicUnlinked = parseCabinetHomePayload({
 });
 assert(mechanicUnlinked && mechanicUnlinked.cabinet === "MECHANIC" && !mechanicUnlinked.linked);
 
+const managerKpis = {
+  carsToday: 8,
+  carsOnStation: 5,
+  inRepair: 2,
+  postsOccupied: 2,
+  postsTotal: 4,
+  mechanicsTotal: 3,
+  noShow: 1,
+  needsAction: 6,
+  overdue: 3,
+  unassigned: 1,
+  missedCalls: 2,
+  newInquiries: 3,
+  stuckCars: 2,
+  proposalsNotSent: 1,
+  waitingCustomerDecision: 2,
+  partsBlocking: 1,
+};
+
 const managerLinked = parseCabinetHomePayload({
   ok: true,
   cabinet: "STATION_MANAGER",
   linked: true,
   station: { id: "station-1", name: "Глеваха" },
-  kpis: {
-    carsToday: 8,
-    carsOnStation: 5,
-    inRepair: 2,
-    postsOccupied: 2,
-    postsTotal: 4,
-    mechanicsTotal: 3,
-    noShow: 1,
-    needsAction: 2,
-    overdue: 1,
-    unassigned: 1,
-  },
+  kpis: managerKpis,
   flow: { booked: 2, diagnostics: 1, approval: 1, waitingParts: 1, readyForRepair: 0, inRepair: 2, qc: 1, ready: 0 },
   attention: [{
-    id: "appointment-2",
-    status: "WAITING_PARTS",
+    id: "estimate:est-1:not-sent",
+    sourceType: "ESTIMATE",
+    sourceId: "est-1",
+    code: "COMMERCIAL_PROPOSAL_NOT_SENT",
+    title: "KA5678KA: комерційна пропозиція не відправлена",
+    description: "Діагностика ходової",
+    priority: "HIGH",
+    reason: "Остання ревізія кошторису залишається DRAFT.",
+    overdue: true,
+    waitingMinutes: 45,
     plate: "KA5678KA",
     vehicle: "Volvo XC90 2020",
-    problem: null,
-    plannedStartAt: start,
-    plannedEndAt: end,
-    post: "Пост 2",
-    mechanic: "Механік",
-    priority: "HIGH",
-    reason: "Робота заблокована очікуванням деталей",
-    overdue: false,
-    waitingMinutes: 45,
+    customer: "Клієнт",
+    action: {
+      label: "Відкрити кошторис",
+      section: "Замовлення-наряди",
+      params: { workOrderId: "wo-2", workOrderTab: "estimate" },
+    },
   }],
   posts: [{
     id: "post-1",
@@ -99,8 +112,11 @@ const managerLinked = parseCabinetHomePayload({
   }],
 });
 assert(managerLinked && managerLinked.cabinet === "STATION_MANAGER" && managerLinked.linked);
-assert.equal(managerLinked.attention[0]?.status, "WAITING_PARTS");
-assert.equal(managerLinked.kpis.needsAction, 2);
+assert.equal(managerLinked.attention[0]?.code, "COMMERCIAL_PROPOSAL_NOT_SENT");
+assert.equal(managerLinked.attention[0]?.action.params?.workOrderTab, "estimate");
+assert.equal(managerLinked.kpis.missedCalls, 2);
+assert.equal(managerLinked.kpis.proposalsNotSent, 1);
+assert.equal(managerLinked.kpis.needsAction, 6);
 assert.equal(managerLinked.posts[0]?.occupied, true);
 assert.equal(managerLinked.mechanics[0]?.activeCars, 2);
 
@@ -119,33 +135,35 @@ assert.equal(parseCabinetHomePayload({
   cabinet: "STATION_MANAGER",
   linked: true,
   station: { id: "s", name: "S" },
-  kpis: {
-    carsToday: 1,
-    carsOnStation: 1,
-    inRepair: 0,
-    postsOccupied: 0,
-    postsTotal: 1,
-    mechanicsTotal: 1,
-    noShow: 0,
-    needsAction: 1,
-    overdue: 0,
-    unassigned: 0,
-  },
+  kpis: { ...managerKpis, missedCalls: -1 },
+  flow: { booked: 1, diagnostics: 0, approval: 0, waitingParts: 0, readyForRepair: 0, inRepair: 0, qc: 0, ready: 0 },
+  attention: [],
+  posts: [],
+  mechanics: [],
+}), null);
+
+assert.equal(parseCabinetHomePayload({
+  ok: true,
+  cabinet: "STATION_MANAGER",
+  linked: true,
+  station: { id: "s", name: "S" },
+  kpis: managerKpis,
   flow: { booked: 1, diagnostics: 0, approval: 0, waitingParts: 0, readyForRepair: 0, inRepair: 0, qc: 0, ready: 0 },
   attention: [{
-    id: "a",
-    status: "UNKNOWN",
-    plate: "AA",
-    vehicle: "Car",
-    problem: null,
-    plannedStartAt: start,
-    plannedEndAt: end,
-    post: null,
-    mechanic: null,
+    id: "bad",
+    sourceType: "UNKNOWN",
+    sourceId: "x",
+    code: "TEST",
+    title: "Test",
+    description: null,
     priority: "HIGH",
     reason: "Test",
     overdue: false,
     waitingMinutes: 0,
+    plate: null,
+    vehicle: null,
+    customer: null,
+    action: { label: "Відкрити", section: "Планувальник" },
   }],
   posts: [],
   mechanics: [],

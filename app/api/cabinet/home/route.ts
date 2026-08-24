@@ -3,6 +3,7 @@ import { getPrisma } from "@/src/lib/prisma";
 import { getAccessContext, hasPermission } from "@/src/security/access-context";
 import { PERMISSIONS } from "@/src/security/permissions";
 import { effectiveAssignmentStatus, listActiveMechanicAssignments } from "@/src/services/mechanic-assignments.service";
+import { buildStationManagerControlCenter } from "@/src/services/station-manager-control-center.service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -24,7 +25,6 @@ const ACTIVE_STATION_STATUSES = [
 ] as const;
 
 const NEEDS_MECHANIC_STATUSES = new Set(["ARRIVED", "DIAGNOSTICS", "READY_FOR_REPAIR", "IN_REPAIR", "WAITING_QC"]);
-const ATTENTION_STATUSES = new Set(["WAITING_APPROVAL", "WAITING_PARTS", "PAUSED", "WAITING_QC", "READY_FOR_PICKUP"]);
 
 async function kyivDayRange() {
   const prisma = getPrisma();
@@ -38,18 +38,6 @@ async function kyivDayRange() {
 
 function vehicleLabel(vehicle: { brand: string | null; model: string | null; year: number | null }) {
   return [vehicle.brand, vehicle.model, vehicle.year].filter(Boolean).join(" ") || "Автомобіль";
-}
-
-function attentionReason(status: string, overdue: boolean, unassigned: boolean) {
-  if (status === "NO_SHOW") return "Клієнт не прибув на запланований час";
-  if (overdue) return "Протерміновано плановий час завершення";
-  if (unassigned) return "Не призначено механіка";
-  if (status === "WAITING_APPROVAL") return "Очікує рішення клієнта";
-  if (status === "WAITING_PARTS") return "Робота заблокована очікуванням деталей";
-  if (status === "PAUSED") return "Роботу призупинено";
-  if (status === "WAITING_QC") return "Очікує контроль якості";
-  if (status === "READY_FOR_PICKUP") return "Авто готове та очікує видачу";
-  return "Потребує контролю керівника";
 }
 
 export async function GET(request: Request) {
@@ -86,7 +74,7 @@ export async function GET(request: Request) {
         mechanic: { select: { id: true, name: true } },
       } as const;
 
-      const [location, todayAppointments, activeAppointments, posts, mechanics] = await Promise.all([
+      const [location, todayAppointments, activeAppointments, posts, mechanics, controlCenter] = await Promise.all([
         prisma.serviceLocation.findUnique({ where: { id: locationId }, select: { id: true, name: true } }),
         prisma.serviceAppointment.findMany({
           where: {
@@ -105,49 +93,21 @@ export async function GET(request: Request) {
         }),
         prisma.servicePost.findMany({ where: { locationId, isActive: true }, select: { id: true, name: true }, orderBy: { sortOrder: "asc" } }),
         prisma.serviceMechanic.findMany({ where: { locationId, isActive: true }, select: { id: true, name: true }, orderBy: { sortOrder: "asc" } }),
+        buildStationManagerControlCenter({
+          locationId,
+          canCommunications: hasPermission(context, PERMISSIONS.COMMUNICATIONS_READ),
+          canWorkOrders: hasPermission(context, PERMISSIONS.WORK_ORDERS_READ),
+        }),
       ]);
 
-      const now = new Date();
       const activeStatusCount = (status: string) => activeAppointments.filter((item) => item.status === status).length;
       const todayStatusCount = (status: string) => todayAppointments.filter((item) => item.status === status).length;
       const inRepair = activeStatusCount("IN_REPAIR");
       const occupiedPostIds = new Set(
         activeAppointments.filter((item) => item.status === "IN_REPAIR" && item.postId).map((item) => item.postId as string),
       );
-      const isOverdue = (item: (typeof activeAppointments)[number]) => item.plannedEndAt < now;
       const isUnassigned = (item: (typeof activeAppointments)[number]) => NEEDS_MECHANIC_STATUSES.has(item.status) && !item.mechanicId;
-      const overdueCount = activeAppointments.filter(isOverdue).length;
       const unassignedCount = activeAppointments.filter(isUnassigned).length;
-
-      const attentionCandidates = [
-        ...activeAppointments.filter((item) => ATTENTION_STATUSES.has(item.status) || isOverdue(item) || isUnassigned(item)),
-        ...todayAppointments.filter((item) => item.status === "NO_SHOW"),
-      ];
-      const priorityRank = { CRITICAL: 0, HIGH: 1, NORMAL: 2 } as const;
-      const attentionAll = attentionCandidates.map((item) => {
-        const overdue = item.status !== "NO_SHOW" && item.plannedEndAt < now;
-        const unassigned = item.status !== "NO_SHOW" && NEEDS_MECHANIC_STATUSES.has(item.status) && !item.mechanicId;
-        const priority: keyof typeof priorityRank = item.status === "NO_SHOW" || overdue || item.status === "PAUSED" || (unassigned && ["ARRIVED", "DIAGNOSTICS", "IN_REPAIR"].includes(item.status))
-          ? "CRITICAL"
-          : ["WAITING_APPROVAL", "WAITING_PARTS", "WAITING_QC", "READY_FOR_PICKUP"].includes(item.status) || unassigned
-            ? "HIGH"
-            : "NORMAL";
-        return {
-          id: item.id,
-          status: item.status,
-          plate: item.plateNumber || "—",
-          vehicle: item.vehicleLabel || "Автомобіль",
-          problem: item.problem,
-          plannedStartAt: item.plannedStartAt,
-          plannedEndAt: item.plannedEndAt,
-          post: item.post?.name ?? null,
-          mechanic: item.mechanic?.name ?? null,
-          priority,
-          reason: attentionReason(item.status, overdue, unassigned),
-          overdue,
-          waitingMinutes: Math.max(0, Math.floor((now.getTime() - item.updatedAt.getTime()) / 60_000)),
-        };
-      }).sort((a, b) => priorityRank[a.priority] - priorityRank[b.priority] || b.waitingMinutes - a.waitingMinutes);
 
       const postLoads = posts.map((post) => {
         const active = activeAppointments.find((item) => item.postId === post.id && item.status === "IN_REPAIR") ?? null;
@@ -188,9 +148,10 @@ export async function GET(request: Request) {
           postsTotal: posts.length,
           mechanicsTotal: mechanics.length,
           noShow: todayStatusCount("NO_SHOW"),
-          needsAction: attentionAll.length,
-          overdue: overdueCount,
+          needsAction: controlCenter.attention.length,
+          overdue: controlCenter.attention.filter((item) => item.overdue).length,
           unassigned: unassignedCount,
+          ...controlCenter.kpis,
         },
         flow: {
           booked: todayStatusCount("BOOKED"),
@@ -202,7 +163,7 @@ export async function GET(request: Request) {
           qc: activeStatusCount("WAITING_QC"),
           ready: activeStatusCount("READY_FOR_PICKUP"),
         },
-        attention: attentionAll.slice(0, 16),
+        attention: controlCenter.attention,
         posts: postLoads,
         mechanics: mechanicLoads,
       }, { headers: { "Cache-Control": "no-store" } });
