@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { DiagnosticReportSharePanel } from "./diagnostic-report-share-panel";
+import { navigateCrm } from "./crm-route";
 import styles from "./structured-diagnostic-review-panel.module.css";
 
 type Media = { id: string; fileName: string };
@@ -44,7 +45,7 @@ type DiagnosticCardState = {
 
 const actionLabels: Record<string, string> = { NONE: "Без дії", REPLACE: "Замінити", REPAIR: "Ремонтувати", ADJUST: "Відрегулювати", CLEAN: "Очистити / обслужити", ADDITIONAL_DIAGNOSTICS: "Додаткова діагностика" };
 const urgencyLabels: Record<string, string> = { INFO: "Рекомендація", SOON: "Найближчим часом", CRITICAL: "Критично" };
-const reviewLabels: Record<string, string> = { DRAFT: "Чернетка", SUBMITTED: "На перевірці", RETURNED: "На уточненні", CONFIRMED: "Підтверджена ДК" };
+const reviewLabels: Record<string, string> = { DRAFT: "Чернетка", SUBMITTED: "На перевірці", RETURNED: "В роботі", CONFIRMED: "Підтверджена ДК" };
 
 export function StructuredDiagnosticReviewPanel({ diagnosticId, onChanged }: { diagnosticId: string; onChanged: () => void | Promise<void> }) {
   const [view, setView] = useState<View | null>(null);
@@ -83,14 +84,14 @@ export function StructuredDiagnosticReviewPanel({ diagnosticId, onChanged }: { d
   async function returnToMechanic() {
     if (!view) return;
     if (!managerComment.trim()) { setError("Вкажіть, що саме механіку потрібно уточнити."); return; }
-    if (!confirm("Повернути Діагностичну карту механіку на уточнення?")) return;
+    if (!confirm("Повернути Діагностичну карту механіку в роботу?")) return;
     setBusy(true); setError(""); setMessage("");
     try {
       const response = await fetch(`/api/diagnostics/${diagnosticId}/structured`, { method: "PATCH", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "RETURN", managerComment }) });
       const body = await response.json().catch(() => null);
       if (!response.ok || !body?.ok) throw new Error(body?.message || body?.error || "Не вдалося повернути діагностику");
       setView(body as View & { ok: true });
-      setMessage("Діагностичну карту повернено механіку на уточнення.");
+      setMessage("Діагностичну карту повернено механіку в роботу. Коментар менеджера збережено.");
       await onChanged();
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Помилка"); }
     finally { setBusy(false); }
@@ -124,12 +125,21 @@ export function StructuredDiagnosticReviewPanel({ diagnosticId, onChanged }: { d
       if (!response.ok || !body?.ok) throw new Error(body?.message || body?.error || "Не вдалося створити Комерційну пропозицію");
       const parts = Number(body.handoff?.counts?.parts || 0);
       const works = Number(body.handoff?.counts?.labor || 0);
-      setMessage(`Комерційну пропозицію створено: ${works} робіт · ${parts} деталей. Далі потрібно виконати підбір деталей, встановити ціни та лише після цього надсилати КП клієнту.`);
+      setMessage(`Комерційну пропозицію створено: ${works} робіт · ${parts} деталей. Далі можна перейти до підбору деталей або відкрити КП.`);
       await load();
       await onChanged();
-      if (parts > 0) window.setTimeout(() => window.dispatchEvent(new CustomEvent("turbolev:navigate", { detail: "Підбір запчастин" })), 350);
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Помилка створення Комерційної пропозиції"); }
     finally { setBusy(false); }
+  }
+
+  function openPartsSelection() {
+    if (!view) return;
+    navigateCrm("Підбір запчастин", { plate: view.diagnostic.vehicle.plateNumber || "", vin: view.diagnostic.vehicle.vin || "" });
+  }
+
+  function openCommercialProposal() {
+    if (!view?.diagnostic.workOrder) return;
+    navigateCrm("Замовлення-наряди", { workOrderId: view.diagnostic.workOrder.id, workOrderTab: "estimate" });
   }
 
   if (loading) return <div className={styles.state}>Завантажую Діагностичну карту…</div>;
@@ -140,7 +150,7 @@ export function StructuredDiagnosticReviewPanel({ diagnosticId, onChanged }: { d
   const cardNumber = cardState.card?.number || null;
 
   return <section className={styles.panel}>
-    <div className={styles.head}><div><span>ДІАГНОСТИЧНА КАРТА</span><h3>{cardNumber ? cardNumber : "Результати діагностики"}</h3><p>{view.diagnostic.review.state === "SUBMITTED" ? "Автомеханік завершив діагностику. CRM сформувала чернетку ДК — перевірте факти та технічний висновок." : view.diagnostic.review.state === "RETURNED" ? "ДК повернена механіку на уточнення. Після виправлення буде створена нова ревізія для перевірки." : confirmed ? "ДК підтверджена. Це готовий технічний документ. Комерційна пропозиція формується окремо." : "Автомеханік працює над діагностикою; чернетка ДК оновлюється з фактичних результатів."}</p></div><b className={styles.reviewState}>{reviewLabels[view.diagnostic.review.state] || view.diagnostic.review.state}</b></div>
+    <div className={styles.head}><div><span>ДІАГНОСТИЧНА КАРТА</span><h3>{cardNumber ? cardNumber : "Результати діагностики"}</h3><p>{view.diagnostic.review.state === "SUBMITTED" ? "Автомеханік завершив діагностику. CRM сформувала чернетку ДК — перевірте факти та технічний висновок." : view.diagnostic.review.state === "RETURNED" ? "ДК повернена механіку в роботу. Після доопрацювання механік повторно передасть її на перевірку." : confirmed ? "ДК підтверджена. Це готовий технічний документ. Комерційна пропозиція формується окремо." : "Автомеханік працює над діагностикою; чернетка ДК оновлюється з фактичних результатів."}</p></div><b className={styles.reviewState}>{reviewLabels[view.diagnostic.review.state] || view.diagnostic.review.state}</b></div>
     {error && <div className={styles.error}>{error}</div>}
     {message && <div className={styles.state}>{message}</div>}
 
@@ -155,13 +165,18 @@ export function StructuredDiagnosticReviewPanel({ diagnosticId, onChanged }: { d
 
     {(view.diagnostic.review.state === "SUBMITTED" || confirmed) && <label className={styles.comment}><span>Технічний висновок сервіс-менеджера</span><textarea rows={5} value={technicalConclusion} disabled={confirmed} onChange={(event) => setTechnicalConclusion(event.target.value)} placeholder="CRM сформує базовий висновок автоматично. Перевірте та за потреби скоригуйте його." /></label>}
 
-    {view.diagnostic.review.state === "SUBMITTED" && view.diagnostic.status === "IN_PROGRESS" && <div className={styles.decision}><label><span>Перевірка сервіс-менеджером</span><small>Повернення потребує пояснення. Підтвердження створює фінальну незмінну ревізію ДК.</small><textarea rows={3} value={managerComment} onChange={(event) => setManagerComment(event.target.value)} placeholder="Що потрібно уточнити механіку (якщо повертаєте)…" /></label><div><button className={styles.returnButton} type="button" disabled={busy} onClick={() => void returnToMechanic()}>← На уточнення</button><button className={styles.confirmButton} type="button" disabled={busy || !technicalConclusion.trim()} onClick={() => void confirmDiagnosticCard()}>{busy ? "Обробляю…" : "Підтвердити ДК"}</button></div></div>}
+    {view.diagnostic.review.state === "SUBMITTED" && view.diagnostic.status === "IN_PROGRESS" && <div className={styles.decision}><label><span>Перевірка сервіс-менеджером</span><small>Повернення переводить діагностику назад «В роботу» та потребує пояснення. Підтвердження створює фінальну незмінну ревізію ДК.</small><textarea rows={3} value={managerComment} onChange={(event) => setManagerComment(event.target.value)} placeholder="Що потрібно доопрацювати механіку…" /></label><div><button className={styles.returnButton} type="button" disabled={busy} onClick={() => void returnToMechanic()}>← Повернути в роботу</button><button className={styles.confirmButton} type="button" disabled={busy || !technicalConclusion.trim()} onClick={() => void confirmDiagnosticCard()}>{busy ? "Обробляю…" : "Підтвердити ДК"}</button></div></div>}
 
-    {view.diagnostic.review.state === "RETURNED" && <div className={styles.lock}>Очікуємо уточнення від автомеханіка. Після повторного завершення CRM створить нову REVIEW-ревізію ДК і поверне її в чергу «На перевірці».</div>}
+    {view.diagnostic.review.state === "RETURNED" && <div className={styles.lock}>Діагностика знову «В роботі». Механік бачить коментар менеджера, доопрацьовує перевірку та повторно передає ДК «На перевірку».</div>}
 
     {confirmed && <div className={styles.decision}>
-      <label><span>Наступний документ: Комерційна пропозиція</span><small>ДК завершена. Тепер рекомендації можна окремо перетворити на роботи й деталі для розрахунку. Ціни не записуються назад у ДК.</small></label>
-      <div><button className={styles.confirmButton} type="button" disabled={busy} onClick={() => void createCommercialProposal()}>{busy ? "Створюю…" : view.diagnostic.workOrder ? "Оновити / відкрити КП" : "Створити Комерційну пропозицію"}</button></div>
+      <label><span>Наступний етап</span><small>ДК завершена. Можна перейти до підбору запчастин або створити Комерційну пропозицію. Ціни не записуються назад у ДК.</small></label>
+      <div>
+        <button className={styles.returnButton} type="button" disabled={busy} onClick={openPartsSelection}>Підібрати запчастини</button>
+        {view.diagnostic.workOrder
+          ? <button className={styles.confirmButton} type="button" disabled={busy} onClick={openCommercialProposal}>Відкрити КП</button>
+          : <button className={styles.confirmButton} type="button" disabled={busy} onClick={() => void createCommercialProposal()}>{busy ? "Створюю…" : "Створити Комерційну пропозицію"}</button>}
+      </div>
     </div>}
 
     <DiagnosticReportSharePanel diagnosticId={diagnosticId} reviewState={view.diagnostic.review.state} workOrder={view.diagnostic.workOrder} />
