@@ -16,7 +16,14 @@ export async function GET(request: NextRequest) {
     const status = rawStatus ? parseDiagnosticStatus(rawStatus) : null;
     if (rawStatus && !status) return NextResponse.json({ ok: false, error: "Невідомий статус діагностики." }, { status: 400 });
     const limitRaw = Number(request.nextUrl.searchParams.get("limit") || 200);
-    let diagnostics = await listDiagnostics({ status, limit: Number.isFinite(limitRaw) ? limitRaw : 200 });
+    const vehicleId = request.nextUrl.searchParams.get("vehicleId")?.trim() || null;
+    const clientId = request.nextUrl.searchParams.get("clientId")?.trim() || null;
+    let diagnostics = await listDiagnostics({
+      status,
+      vehicleId,
+      clientId,
+      limit: Number.isFinite(limitRaw) ? limitRaw : 200,
+    });
 
     if (access.grantedScope !== "ALL") {
       const prisma = getPrisma();
