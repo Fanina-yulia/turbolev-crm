@@ -56,7 +56,9 @@ export function SalesRoleCabinetHome({ role, access }: { role: SalesRole; access
     setLoading(true);
     setError("");
     try {
-      const response = await fetch("/api/leads", { cache: "no-store", credentials: "include" });
+      const params = new URLSearchParams();
+      if (!isHead && currentUserId) params.set("assignedUserId", currentUserId);
+      const response = await fetch(`/api/leads${params.size ? `?${params.toString()}` : ""}`, { cache: "no-store", credentials: "include" });
       const payload: unknown = await response.json().catch(() => null);
       if (!response.ok) throw new Error(payloadMessage(payload, "Не вдалося завантажити звернення"));
       setLeads(parseLeadList(readPayloadField(payload, "leads")));
@@ -68,7 +70,7 @@ export function SalesRoleCabinetHome({ role, access }: { role: SalesRole; access
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [isHead, currentUserId]);
 
   useEffect(() => {
     void load();
