@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import {
   classificationPatch,
   formatPhone,
@@ -65,6 +65,8 @@ export function NewRequestWizardV5({showButton=true}:NewRequestWizardProps){
   const [plannerLoading,setPlannerLoading]=useState(false);
   const [preliminaryWorks,setPreliminaryWorks]=useState<PreliminaryWork[]>([]);
   const [preliminaryTotal,setPreliminaryTotal]=useState(0);
+  const plateLookupControllerRef=useRef<AbortController|null>(null);
+  const plateLookupRequestRef=useRef(0);
 
   const canLeaveClient=normalizePhone(form.phone).length===12&&form.customerName.trim().length>0;
   const canLeaveVehicle=normalizePlate(form.plate).length>=6||normalizeVin(form.vin).length===17;
@@ -93,6 +95,9 @@ export function NewRequestWizardV5({showButton=true}:NewRequestWizardProps){
     setAllowReassign(false);
   }
   function updatePlate(value:string){
+    plateLookupControllerRef.current?.abort();
+    plateLookupControllerRef.current=null;
+    plateLookupRequestRef.current+=1;
     update("plate",normalizePlate(value));
     setPlateLookupState("idle");
     setFoundVehicle(null);
@@ -244,6 +249,9 @@ export function NewRequestWizardV5({showButton=true}:NewRequestWizardProps){
   }
 
   function openWith(detail:OpenRequestDetail={}){
+    plateLookupControllerRef.current?.abort();
+    plateLookupControllerRef.current=null;
+    plateLookupRequestRef.current+=1;
     const stored=typeof window!=="undefined"?window.localStorage.getItem(MANAGER_KEY)||"":"";
     setForm({
       ...initialRequestForm,
@@ -273,6 +281,9 @@ export function NewRequestWizardV5({showButton=true}:NewRequestWizardProps){
     setOpen(true);
   }
   function close(){
+    plateLookupControllerRef.current?.abort();
+    plateLookupControllerRef.current=null;
+    plateLookupRequestRef.current+=1;
     setOpen(false);
     setStep(1);
     setError("");
@@ -280,6 +291,7 @@ export function NewRequestWizardV5({showButton=true}:NewRequestWizardProps){
   }
 
   useEffect(()=>{void loadUsers()},[]);
+  useEffect(()=>()=>plateLookupControllerRef.current?.abort(),[]);
   useEffect(()=>{
     const handler=(event:Event)=>openWith((event as CustomEvent<OpenRequestDetail>).detail||{});
     window.addEventListener("turbolev:open-new-request",handler as EventListener);
@@ -303,7 +315,7 @@ export function NewRequestWizardV5({showButton=true}:NewRequestWizardProps){
     if(!open||step!==1||plateLookupState!=="idle")return;
     const plate=normalizePlate(form.plate);
     if(plate.length<6)return;
-    const timer=window.setTimeout(()=>{void lookupPlate()},450);
+    const timer=window.setTimeout(()=>{void lookupPlate(plate)},450);
     return()=>window.clearTimeout(timer);
   },[open,step,form.plate,plateLookupState]);
 
@@ -342,19 +354,28 @@ export function NewRequestWizardV5({showButton=true}:NewRequestWizardProps){
     setError("");
   }
 
-  async function lookupPlate(){
-    const plate=normalizePlate(form.plate);
+  async function lookupPlate(requestedPlate=form.plate){
+    const plate=normalizePlate(requestedPlate);
     if(plate.length<6){
       setPlateLookupState("not-found");
       return;
     }
+    plateLookupControllerRef.current?.abort();
+    const controller=new AbortController();
+    const requestId=plateLookupRequestRef.current+1;
+    plateLookupControllerRef.current=controller;
+    plateLookupRequestRef.current=requestId;
     setPlateLookupState("searching");
     setFoundVehicle(null);
     setVehicleConflict(null);
     setAllowReassign(false);
     try{
-      const response=await fetch(`/api/vehicles/lookup?plate=${encodeURIComponent(plate)}`,{cache:"no-store"});
+      const response=await fetch(`/api/vehicles/lookup?plate=${encodeURIComponent(plate)}`,{
+        cache:"no-store",
+        signal:controller.signal,
+      });
       const payload:unknown=await response.json();
+      if(controller.signal.aborted||requestId!==plateLookupRequestRef.current)return;
       const candidate=parsePlateLookupCandidate(payload,plate);
       if(!response.ok||readPayloadField(payload,"status")!=="FOUND"||!candidate){
         setPlateLookupState("not-found");
@@ -363,8 +384,12 @@ export function NewRequestWizardV5({showButton=true}:NewRequestWizardProps){
       applyVehicle(candidate);
       applyVehicleOwner(candidate);
       setPlateLookupState("found");
-    }catch{
+    }catch(reason){
+      if(controller.signal.aborted||(reason instanceof DOMException&&reason.name==="AbortError"))return;
+      if(requestId!==plateLookupRequestRef.current)return;
       setPlateLookupState("unavailable");
+    }finally{
+      if(plateLookupControllerRef.current===controller)plateLookupControllerRef.current=null;
     }
   }
 
@@ -571,7 +596,7 @@ export function NewRequestWizardV5({showButton=true}:NewRequestWizardProps){
                 <div>
                   <small>АВТОМОБІЛЬ ЗНАЙДЕНО</small>
                   <strong>{vehicleTitle(form)}</strong>
-                  <span>{[form.plate,form.vin].filter(Boolean).join(" · ")}</span>
+                  <span>Держномер: {form.plate||"—"} · VIN: {form.vin||"не знайдено"}</span>
                 </div>
                 <div>
                   <small>ПРОБІГ</small>
