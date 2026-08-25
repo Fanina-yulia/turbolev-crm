@@ -1,1 +1,1 @@
-.root{min-width:0}[data-analytics-route-focus="true"]{outline:2px solid var(--accent,#f97316);outline-offset:3px;border-radius:12px;animation:routePulse 1.6s ease-out 1}@keyframes routePulse{0%{box-shadow:0 0 0 0 rgba(249,115,22,.35)}100%{box-shadow:0 0 0 14px rgba(249,115,22,0)}}
+.root{min-width:0}.root :global([data-analytics-route-focus="true"]){outline:2px solid var(--accent,#f97316);outline-offset:3px;border-radius:12px;animation:routePulse 1.6s ease-out 1}@keyframes routePulse{0%{box-shadow:0 0 0 0 rgba(249,115,22,.35)}100%{box-shadow:0 0 0 14px rgba(249,115,22,0)}}
