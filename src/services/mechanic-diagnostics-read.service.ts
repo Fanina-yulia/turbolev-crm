@@ -251,20 +251,24 @@ export async function getStructuredDiagnosticForMechanicReadOnly(userId: string,
   const inspectionView = inspections.map((inspection) => {
     const sectionView = sections
       .filter((section) => section.templateId === inspection.templateId)
-      .map((section) => {
-        const rows = items.filter((item) => item.sectionId === section.id).map((item) => {
+      .flatMap((section) => {
+        const rows = items.filter((item) => item.sectionId === section.id).flatMap((item) => {
           const check = checkByPair.get(`${inspection.id}:${item.id}`);
-          const finding = check ? findingByCheck.get(check.id) : undefined;
-          return {
-            id: check?.id || null,
+          // A template can evolve after an inspection was created. Missing checks
+          // are not part of this vehicle's inspection (for example, engine and
+          // exhaust items on an EV), so they must not become phantom required rows.
+          if (!check) return [];
+          const finding = findingByCheck.get(check.id);
+          return [{
+            id: check.id,
             templateItemId: item.id,
             name: item.name,
             position: item.position,
             measurementUnit: item.measurementUnit,
-            state: check?.state || DiagnosticCheckState.NOT_CHECKED,
-            measurementValue: check?.measurementValue?.toString() || null,
-            measurementText: check?.measurementText || null,
-            note: check?.note || null,
+            state: check.state,
+            measurementValue: check.measurementValue?.toString() || null,
+            measurementText: check.measurementText || null,
+            note: check.note || null,
             finding: finding ? {
               id: finding.id,
               action: finding.action,
@@ -274,9 +278,11 @@ export async function getStructuredDiagnosticForMechanicReadOnly(userId: string,
               suggestedPartName: finding.suggestedPartName,
               media: mediaByFinding.get(finding.id) || [],
             } : null,
-          };
+          }];
         });
-        return { id: section.id, code: section.code, name: section.name, items: rows, counts: counts(rows) };
+        return rows.length
+          ? [{ id: section.id, code: section.code, name: section.name, items: rows, counts: counts(rows) }]
+          : [];
       });
     const flat = sectionView.flatMap((section) => section.items);
     return {

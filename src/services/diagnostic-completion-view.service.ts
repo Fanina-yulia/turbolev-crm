@@ -14,6 +14,7 @@ const AUTO_OK_SECTION_CODES = new Set([
 ]);
 
 type ViewItem = {
+  id?: string | null;
   templateItemId: string;
   state: DiagnosticCheckState | string;
 };
@@ -46,7 +47,9 @@ const EMPTY_COMPLETION: DiagnosticCompletion = {
  */
 export async function getCompletionFromMechanicView(inspections: ViewInspection[]): Promise<DiagnosticCompletion> {
   const rows = inspections.flatMap((inspection) => inspection.sections.flatMap((section) =>
-    section.items.map((item) => ({ ...item, sectionCode: section.code })),
+    section.items
+      .filter((item) => Boolean(item.id))
+      .map((item) => ({ ...item, sectionCode: section.code })),
   ));
   if (!rows.length) return EMPTY_COMPLETION;
 
