@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { navigateCrm, readCrmRoute } from "./crm-route";
 import styles from "./financial-center.module.css";
 
 type FinanceSummary = {
@@ -30,6 +31,7 @@ const METRIC_LABEL: Record<Metric, string> = {
   overdueReceivables: "Прострочена дебіторка",
   overduePayables: "Прострочена кредиторка",
 };
+const METRICS = new Set<Metric>(Object.keys(METRIC_LABEL) as Metric[]);
 
 function money(value: number, currency = "UAH") { return new Intl.NumberFormat("uk-UA", { style: "currency", currency, maximumFractionDigits: 0 }).format(value); }
 function percent(value: number | null) { return value == null ? "—" : `${new Intl.NumberFormat("uk-UA", { maximumFractionDigits: 1 }).format(value)}%`; }
@@ -43,6 +45,7 @@ function presetRange(preset: Exclude<Preset, "custom">) {
   return { from: `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-01`, to };
 }
 function dateText(value: string | null) { if (!value) return "—"; const date = new Date(value); return Number.isNaN(date.getTime()) ? "—" : new Intl.DateTimeFormat("uk-UA", { timeZone: "Europe/Kyiv", day: "2-digit", month: "2-digit", year: "numeric" }).format(date); }
+function isIsoDate(value: string | undefined) { return Boolean(value && /^\d{4}-\d{2}-\d{2}$/.test(value)); }
 
 export function FinancialCenter() {
   const initial = useMemo(() => presetRange("month"), []);
@@ -65,15 +68,71 @@ export function FinancialCenter() {
     finally { setLoading(false); }
   }, [query]);
 
-  useEffect(() => { void load(); const handler = () => void load(); window.addEventListener("turbolev:data-changed", handler); return () => window.removeEventListener("turbolev:data-changed", handler); }, [load]);
-  useEffect(() => { setMetric(null); setDetailRows([]); }, [query]);
+  useEffect(() => {
+    const syncRoute = () => {
+      const route = readCrmRoute();
+      if (isIsoDate(route.from)) setFrom(route.from!);
+      if (isIsoDate(route.to)) setTo(route.to!);
+      if (isIsoDate(route.from) || isIsoDate(route.to)) setPreset("custom");
+      setLocationId(route.locationId || "");
+      const wantedMetric = route.metric || (route.scope === "receivables" || route.scope === "payables" ? route.scope : "");
+      setMetric(METRICS.has(wantedMetric as Metric) ? wantedMetric as Metric : null);
+    };
+    syncRoute();
+    window.addEventListener("popstate", syncRoute);
+    return () => window.removeEventListener("popstate", syncRoute);
+  }, []);
 
-  function choosePreset(next: Exclude<Preset, "custom">) { const range = presetRange(next); setPreset(next); setFrom(range.from); setTo(range.to); }
-  async function openDrill(nextMetric: Metric) {
-    setMetric(nextMetric); setDetailLoading(true); setDetailRows([]);
-    try { const response = await fetch(`/api/finance/details?metric=${nextMetric}&${query}`, { cache: "no-store" }); const payload = await response.json(); if (!response.ok || !payload.ok) throw new Error(payload.error || "Не вдалося відкрити деталізацію"); setDetailRows(payload.rows || []); }
-    catch (cause) { setError(cause instanceof Error ? cause.message : "Помилка деталізації"); }
-    finally { setDetailLoading(false); }
+  useEffect(() => { void load(); const handler = () => void load(); window.addEventListener("turbolev:data-changed", handler); return () => window.removeEventListener("turbolev:data-changed", handler); }, [load]);
+
+  useEffect(() => {
+    if (!metric) { setDetailRows([]); setDetailLoading(false); return; }
+    const controller = new AbortController();
+    setDetailLoading(true); setDetailRows([]);
+    void fetch(`/api/finance/details?metric=${metric}&${query}`, { cache: "no-store", signal: controller.signal })
+      .then(async (response) => {
+        const payload = await response.json();
+        if (!response.ok || !payload.ok) throw new Error(payload.error || "Не вдалося відкрити деталізацію");
+        setDetailRows(payload.rows || []);
+      })
+      .catch((cause) => { if ((cause as Error).name !== "AbortError") setError(cause instanceof Error ? cause.message : "Помилка деталізації"); })
+      .finally(() => { if (!controller.signal.aborted) setDetailLoading(false); });
+    return () => controller.abort();
+  }, [metric, query]);
+
+  function routeParams(nextFrom = from, nextTo = to, nextLocation = locationId, nextMetric = metric) {
+    return {
+      from: nextFrom,
+      to: nextTo,
+      ...(nextLocation ? { locationId: nextLocation } : {}),
+      ...(nextMetric ? { metric: nextMetric } : {}),
+    };
+  }
+
+  function choosePreset(next: Exclude<Preset, "custom">) {
+    const range = presetRange(next);
+    setPreset(next); setFrom(range.from); setTo(range.to);
+    navigateCrm("Фінансовий центр", routeParams(range.from, range.to));
+  }
+
+  function changeCustomRange(nextFrom: string, nextTo: string) {
+    setPreset("custom"); setFrom(nextFrom); setTo(nextTo);
+    if (isIsoDate(nextFrom) && isIsoDate(nextTo)) navigateCrm("Фінансовий центр", routeParams(nextFrom, nextTo));
+  }
+
+  function changeLocation(nextLocation: string) {
+    setLocationId(nextLocation);
+    navigateCrm("Фінансовий центр", routeParams(from, to, nextLocation));
+  }
+
+  function openDrill(nextMetric: Metric) {
+    setMetric(nextMetric);
+    navigateCrm("Фінансовий центр", routeParams(from, to, locationId, nextMetric));
+  }
+
+  function closeDrill() {
+    setMetric(null);
+    navigateCrm("Фінансовий центр", routeParams(from, to, locationId, null));
   }
 
   const empty = data && !data.hasFinancialData;
@@ -92,27 +151,27 @@ export function FinancialCenter() {
         <button className={preset === "month" ? styles.activePreset : ""} onClick={() => choosePreset("month")}>Місяць</button>
         <button className={preset === "custom" ? styles.activePreset : ""} onClick={() => setPreset("custom")}>Період</button>
       </div>
-      {preset === "custom" && <div className={styles.dateRange}><label>Від<input type="date" value={from} onChange={(event) => setFrom(event.target.value)} /></label><label>До<input type="date" value={to} onChange={(event) => setTo(event.target.value)} /></label></div>}
-      <label className={styles.location}>Локація<select value={locationId} onChange={(event) => setLocationId(event.target.value)}><option value="">Усі локації</option>{data?.locations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}</select></label>
+      {preset === "custom" && <div className={styles.dateRange}><label>Від<input type="date" value={from} onChange={(event) => changeCustomRange(event.target.value, to)} /></label><label>До<input type="date" value={to} onChange={(event) => changeCustomRange(from, event.target.value)} /></label></div>}
+      <label className={styles.location}>Локація<select value={locationId} onChange={(event) => changeLocation(event.target.value)}><option value="">Усі локації</option>{data?.locations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}</select></label>
     </section>
 
     {error && <div className="alert"><strong>Не вдалося оновити фінанси</strong><span>{error}</span><button onClick={() => void load()}>Повторити</button></div>}
     {empty && <div className={styles.emptyState}><strong>Фінансове ядро готове до даних</strong><span>За вибраний період/локацію немає проведених фінансових фактів. CRM не підставляє demo-цифри.</span></div>}
 
     <section className={styles.kpiGrid}>
-      <button className={styles.kpi} onClick={() => void openDrill("revenue")}><span>Виручка</span><strong>{displayMoney(data, data?.pnl.revenue)}</strong><small>визнаний дохід · натисніть для деталей</small></button>
-      <button className={styles.kpi} onClick={() => void openDrill("grossProfit")}><span>Валовий прибуток</span><strong>{displayMoney(data, data?.pnl.grossProfit)}</strong><small>маржа {data?.hasFinancialData ? percent(data.pnl.grossMarginPercent) : "—"}</small></button>
-      <button className={styles.kpi} onClick={() => void openDrill("netProfit")}><span>Чистий управлінський прибуток</span><strong>{displayMoney(data, data?.pnl.netProfit)}</strong><small>net margin {data?.hasFinancialData ? percent(data.pnl.netMarginPercent) : "—"}</small></button>
-      <button className={styles.kpi} onClick={() => void openDrill("currentCash")}><span>Гроші зараз</span><strong>{displayMoney(data, data?.cashFlow.currentCash)}</strong><small>{data?.counts.activeMoneyAccounts ?? 0} активних рахунків</small></button>
-      <button className={styles.kpi} onClick={() => void openDrill("receivables")}><span>Дебіторка</span><strong>{displayMoney(data, data?.workingCapital.receivables)}</strong><small>прострочено {data?.hasFinancialData ? money(data.workingCapital.overdueReceivables, data.currency) : "—"}</small></button>
-      <button className={styles.kpi} onClick={() => void openDrill("payables")}><span>Кредиторка</span><strong>{displayMoney(data, data?.workingCapital.payables)}</strong><small>прострочено {data?.hasFinancialData ? money(data.workingCapital.overduePayables, data.currency) : "—"}</small></button>
+      <button className={styles.kpi} onClick={() => openDrill("revenue")}><span>Виручка</span><strong>{displayMoney(data, data?.pnl.revenue)}</strong><small>визнаний дохід · натисніть для деталей</small></button>
+      <button className={styles.kpi} onClick={() => openDrill("grossProfit")}><span>Валовий прибуток</span><strong>{displayMoney(data, data?.pnl.grossProfit)}</strong><small>маржа {data?.hasFinancialData ? percent(data.pnl.grossMarginPercent) : "—"}</small></button>
+      <button className={styles.kpi} onClick={() => openDrill("netProfit")}><span>Чистий управлінський прибуток</span><strong>{displayMoney(data, data?.pnl.netProfit)}</strong><small>net margin {data?.hasFinancialData ? percent(data.pnl.netMarginPercent) : "—"}</small></button>
+      <button className={styles.kpi} onClick={() => openDrill("currentCash")}><span>Гроші зараз</span><strong>{displayMoney(data, data?.cashFlow.currentCash)}</strong><small>{data?.counts.activeMoneyAccounts ?? 0} активних рахунків</small></button>
+      <button className={styles.kpi} onClick={() => openDrill("receivables")}><span>Дебіторка</span><strong>{displayMoney(data, data?.workingCapital.receivables)}</strong><small>прострочено {data?.hasFinancialData ? money(data.workingCapital.overdueReceivables, data.currency) : "—"}</small></button>
+      <button className={styles.kpi} onClick={() => openDrill("payables")}><span>Кредиторка</span><strong>{displayMoney(data, data?.workingCapital.payables)}</strong><small>прострочено {data?.hasFinancialData ? money(data.workingCapital.overduePayables, data.currency) : "—"}</small></button>
     </section>
 
     {metric && <section className={styles.drilldown}>
-      <div className={styles.drillHead}><div><p className="eyebrow">DRILL-DOWN</p><h2>{METRIC_LABEL[metric]}</h2><span>{periodLabel}{locationId ? ` · ${data?.locations.find((item) => item.id === locationId)?.name || locationId}` : " · усі локації"}</span></div><button onClick={() => setMetric(null)}>Закрити</button></div>
+      <div className={styles.drillHead}><div><p className="eyebrow">DRILL-DOWN</p><h2>{METRIC_LABEL[metric]}</h2><span>{periodLabel}{locationId ? ` · ${data?.locations.find((item) => item.id === locationId)?.name || locationId}` : " · усі локації"}</span></div><button onClick={closeDrill}>Закрити</button></div>
       {detailLoading ? <div className={styles.drillState}>Завантажую деталізацію…</div> : detailRows.length === 0 ? <div className={styles.drillState}>За цим показником немає рядків.</div> : <div className={styles.detailTable}>
         <div className={styles.detailHead}><span>Дата</span><span>Опис</span><span>Тип</span><span>ЗН</span><span>Сума</span></div>
-        {detailRows.map((row) => <div className={styles.detailRow} key={row.id}><span>{dateText(row.date)}</span><span>{row.description}</span><span>{row.type}</span><span>{row.workOrderId ? <a href={`/?section=workorders&filter=${encodeURIComponent(row.workOrderId)}`}>{row.workOrderLabel || "Відкрити ЗН"}</a> : "—"}</span><strong>{money(row.amount, data?.currency || "UAH")}</strong></div>)}
+        {detailRows.map((row) => <div className={styles.detailRow} key={row.id}><span>{dateText(row.date)}</span><span>{row.description}</span><span>{row.type}</span><span>{row.workOrderId ? <button type="button" onClick={() => navigateCrm("Замовлення-наряди", { workOrderId: row.workOrderId!, workOrderTab: "overview" })}>{row.workOrderLabel || "Відкрити ЗН"}</button> : "—"}</span><strong>{money(row.amount, data?.currency || "UAH")}</strong></div>)}
       </div>}
     </section>}
 

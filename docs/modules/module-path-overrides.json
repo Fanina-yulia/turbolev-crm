@@ -1,6 +1,11 @@
 {
   "core-platform": [
-    "app/business-flow-route-bridge.tsx"
+    "app/business-flow-route-bridge.tsx",
+    "app/global-smart-search.tsx",
+    "app/global-smart-search-palette.tsx",
+    "app/api/search/**",
+    ".github/workflows/ci.yml",
+    "scripts/ci-bootstrap-external-tables.sql"
   ],
   "communications": [
     "app/legacy-active-action-bridge.tsx"
@@ -13,6 +18,9 @@
   "dashboard-analytics": [
     "app/analytics-workspace.tsx",
     "app/analytics-workspace.module.css"
+  ],
+  "finance": [
+    "app/financial-center.tsx"
   ],
   "parts-inventory": [
     "app/api/parts-selection/**",

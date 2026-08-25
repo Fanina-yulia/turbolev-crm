@@ -65,12 +65,13 @@ export async function GET(request: NextRequest) {
 
   const prisma = getPrisma();
   const q = (request.nextUrl.searchParams.get("q") || "").trim().slice(0, 120);
+  const requestedWorkOrderId = request.nextUrl.searchParams.get("workOrderId")?.trim() || null;
   const scopedLocation = access.locationWhere;
   const { from, to } = todayRange();
 
   try {
-    let searchedWorkOrderIds: string[] | null = null;
-    if (q) {
+    let searchedWorkOrderIds: string[] | null = requestedWorkOrderId ? [requestedWorkOrderId] : null;
+    if (!requestedWorkOrderId && q) {
       const parsedNumber = parseWorkOrderNumber(q);
       const exactNumber = parsedNumber == null
         ? null

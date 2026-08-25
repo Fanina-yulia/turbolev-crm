@@ -32,18 +32,47 @@ type WorkOrderResult = {
   vehicle: { id: string; plateNumber: string | null; vin: string | null; brand: string | null; model: string | null; year: number | null };
 };
 
+type DiagnosticResult = {
+  id: string;
+  status: string;
+  statusLabel: string;
+  updatedAt: string;
+  technicalConclusion: string | null;
+  client: { id: string; name: string | null; phone: string };
+  vehicle: { id: string; plateNumber: string | null; vin: string | null; brand: string | null; model: string | null; year: number | null };
+};
+
+type AppointmentResult = {
+  id: string;
+  status: string;
+  statusLabel: string;
+  customerName: string | null;
+  phone: string | null;
+  vehicleLabel: string | null;
+  plateNumber: string | null;
+  problem: string | null;
+  plannedStartAt: string;
+  clientId: string | null;
+  vehicleId: string | null;
+  location: { id: string; name: string };
+};
+
 type SearchResponse = {
   ok: boolean;
   clients?: ClientResult[];
   vehicles?: VehicleResult[];
   workOrders?: WorkOrderResult[];
+  diagnostics?: DiagnosticResult[];
+  appointments?: AppointmentResult[];
   error?: string;
 };
 
 type FlatResult =
   | { key: string; type: "client"; row: ClientResult }
   | { key: string; type: "vehicle"; row: VehicleResult }
-  | { key: string; type: "workOrder"; row: WorkOrderResult };
+  | { key: string; type: "workOrder"; row: WorkOrderResult }
+  | { key: string; type: "diagnostic"; row: DiagnosticResult }
+  | { key: string; type: "appointment"; row: AppointmentResult };
 
 function carLabel(vehicle: { brand: string | null; model: string | null; year?: number | null }) {
   return [vehicle.brand, vehicle.model, vehicle.year].filter(Boolean).join(" ") || "Автомобіль";
@@ -54,11 +83,23 @@ function shortVin(vin: string | null) {
   return vin.length > 12 ? `VIN …${vin.slice(-8)}` : `VIN ${vin}`;
 }
 
+function appointmentDate(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return new Intl.DateTimeFormat("uk-UA", {
+    timeZone: "Europe/Kyiv",
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date);
+}
+
 export function GlobalSmartSearch() {
   const inputRef = useRef<HTMLInputElement>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
   const [query, setQuery] = useState("");
-  const [data, setData] = useState<SearchResponse>({ ok: true, clients: [], vehicles: [], workOrders: [] });
+  const [data, setData] = useState<SearchResponse>({ ok: true, clients: [], vehicles: [], workOrders: [], diagnostics: [], appointments: [] });
   const [loading, setLoading] = useState(false);
   const [open, setOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(-1);
@@ -85,7 +126,7 @@ export function GlobalSmartSearch() {
   useEffect(() => {
     const trimmed = query.trim();
     if (!trimmed) {
-      setData({ ok: true, clients: [], vehicles: [], workOrders: [] });
+      setData({ ok: true, clients: [], vehicles: [], workOrders: [], diagnostics: [], appointments: [] });
       setLoading(false);
       setActiveIndex(-1);
       return;
@@ -102,7 +143,7 @@ export function GlobalSmartSearch() {
         setActiveIndex(-1);
       } catch (error) {
         if ((error as Error).name !== "AbortError") {
-          setData({ ok: false, clients: [], vehicles: [], workOrders: [], error: error instanceof Error ? error.message : "Помилка пошуку" });
+          setData({ ok: false, clients: [], vehicles: [], workOrders: [], diagnostics: [], appointments: [], error: error instanceof Error ? error.message : "Помилка пошуку" });
         }
       } finally {
         if (!controller.signal.aborted) setLoading(false);
@@ -117,12 +158,16 @@ export function GlobalSmartSearch() {
 
   const flat = useMemo<FlatResult[]>(() => [
     ...(data.workOrders || []).map((row) => ({ key: `wo-${row.id}`, type: "workOrder" as const, row })),
+    ...(data.diagnostics || []).map((row) => ({ key: `diagnostic-${row.id}`, type: "diagnostic" as const, row })),
+    ...(data.appointments || []).map((row) => ({ key: `appointment-${row.id}`, type: "appointment" as const, row })),
     ...(data.vehicles || []).map((row) => ({ key: `vehicle-${row.id}`, type: "vehicle" as const, row })),
     ...(data.clients || []).map((row) => ({ key: `client-${row.id}`, type: "client" as const, row })),
   ], [data]);
 
   const choose = (item: FlatResult) => {
     if (item.type === "workOrder") navigateCrm("Замовлення-наряди", { workOrderId: item.row.id, workOrderTab: "overview" });
+    else if (item.type === "diagnostic") navigateCrm("Діагностика", { diagnosticId: item.row.id });
+    else if (item.type === "appointment") navigateCrm("Планувальник", { appointmentId: item.row.id });
     else if (item.type === "vehicle") navigateCrm("Авто", { vehicleId: item.row.id });
     else navigateCrm("Клієнти", { clientId: item.row.id });
     setOpen(false);
@@ -161,7 +206,7 @@ export function GlobalSmartSearch() {
         onChange={(event) => { setQuery(event.target.value); setOpen(true); }}
         onFocus={() => setOpen(true)}
         onKeyDown={onKeyDown}
-        placeholder="ПІБ, телефон, номер, VIN, ЗН"
+        placeholder="ПІБ, телефон, номер, VIN, ЗН, ДК, запис"
         aria-label="Глобальний пошук CRM"
         aria-expanded={open}
         aria-controls="crm-global-search-results"
@@ -172,13 +217,31 @@ export function GlobalSmartSearch() {
 
     {open && hasQuery && <div className={styles.panel} id="crm-global-search-results" role="listbox">
       {!data.ok && <div className={styles.message}>{data.error || "Пошук недоступний"}</div>}
-      {empty && <div className={styles.message}><b>Нічого не знайдено</b><span>Перевірте ПІБ, телефон, держномер, VIN або номер ЗН.</span></div>}
+      {empty && <div className={styles.message}><b>Нічого не знайдено</b><span>Перевірте ПІБ, телефон, держномер, VIN, номер ЗН, діагностику або запис.</span></div>}
 
       {(data.workOrders || []).length > 0 && <ResultGroup title="Замовлення-наряди">
         {(data.workOrders || []).map((row) => {
           const index = flat.findIndex((item) => item.key === `wo-${row.id}`);
           return <button key={row.id} type="button" role="option" aria-selected={index === activeIndex} className={`${styles.result} ${index === activeIndex ? styles.resultActive : ""}`} onMouseEnter={() => setActiveIndex(index)} onClick={() => choose({ key: `wo-${row.id}`, type: "workOrder", row })}>
             <span className={styles.badge}>ЗН</span><span className={styles.resultBody}><strong>{row.numberLabel} · {row.vehicle.plateNumber || carLabel(row.vehicle)}</strong><small>{carLabel(row.vehicle)} · {row.client.name || row.client.phone}</small></span><span className={styles.status}>{row.statusLabel}</span>
+          </button>;
+        })}
+      </ResultGroup>}
+
+      {(data.diagnostics || []).length > 0 && <ResultGroup title="Діагностика">
+        {(data.diagnostics || []).map((row) => {
+          const index = flat.findIndex((item) => item.key === `diagnostic-${row.id}`);
+          return <button key={row.id} type="button" role="option" aria-selected={index === activeIndex} className={`${styles.result} ${index === activeIndex ? styles.resultActive : ""}`} onMouseEnter={() => setActiveIndex(index)} onClick={() => choose({ key: `diagnostic-${row.id}`, type: "diagnostic", row })}>
+            <span className={styles.badge}>ДК</span><span className={styles.resultBody}><strong>{row.vehicle.plateNumber || carLabel(row.vehicle)}</strong><small>{carLabel(row.vehicle)} · {row.client.name || row.client.phone}{row.technicalConclusion ? ` · ${row.technicalConclusion.slice(0, 72)}` : ""}</small></span><span className={styles.status}>{row.statusLabel}</span>
+          </button>;
+        })}
+      </ResultGroup>}
+
+      {(data.appointments || []).length > 0 && <ResultGroup title="Планувальник">
+        {(data.appointments || []).map((row) => {
+          const index = flat.findIndex((item) => item.key === `appointment-${row.id}`);
+          return <button key={row.id} type="button" role="option" aria-selected={index === activeIndex} className={`${styles.result} ${index === activeIndex ? styles.resultActive : ""}`} onMouseEnter={() => setActiveIndex(index)} onClick={() => choose({ key: `appointment-${row.id}`, type: "appointment", row })}>
+            <span className={styles.badge}>ПЛ</span><span className={styles.resultBody}><strong>{row.plateNumber || row.vehicleLabel || "Запис на СТО"}</strong><small>{appointmentDate(row.plannedStartAt)} · {row.location.name} · {row.customerName || row.phone || "Клієнт"}{row.problem ? ` · ${row.problem.slice(0, 64)}` : ""}</small></span><span className={styles.status}>{row.statusLabel}</span>
           </button>;
         })}
       </ResultGroup>}
