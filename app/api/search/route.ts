@@ -3,7 +3,7 @@ import { formatWorkOrderNumber, parseWorkOrderNumber } from "@/src/domain/work-o
 import { getWorkflowStatusLabel } from "@/src/domain/workflow";
 import { getPrisma } from "@/src/lib/prisma";
 import { getAccessContext, hasPermission, type AccessContext } from "@/src/security/access-context";
-import { PERMISSIONS, type AccessScopeCode } from "@/src/security/permissions";
+import { PERMISSIONS, type AccessScopeCode, type PermissionCode } from "@/src/security/permissions";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -53,8 +53,68 @@ function appointmentStatusLabel(status: string) {
   return labels[status] || status;
 }
 
+function permissionScope(context: AccessContext, permission: PermissionCode) {
+  return context.permissions[permission] as AccessScopeCode | undefined;
+}
+
 function workOrderScope(context: AccessContext) {
-  return context.permissions[PERMISSIONS.WORK_ORDERS_READ] as AccessScopeCode | undefined;
+  return permissionScope(context, PERMISSIONS.WORK_ORDERS_READ);
+}
+
+async function currentMechanicIds(context: AccessContext) {
+  const identities = [
+    context.user?.id ? { userId: context.user.id } : null,
+    context.user?.employeeId ? { employeeId: context.user.employeeId } : null,
+  ].filter((value): value is { userId: string } | { employeeId: string } => Boolean(value));
+  if (!identities.length) return [] as string[];
+
+  const rows = await getPrisma().serviceMechanic.findMany({
+    where: {
+      OR: identities,
+      ...(context.locationIds.length ? { locationId: { in: context.locationIds } } : {}),
+    },
+    select: { id: true },
+  });
+  return rows.map((row) => row.id);
+}
+
+async function plannerScopeWhere(context: AccessContext) {
+  if (context.enforcementMode !== "ENFORCED") return {};
+  const scope = permissionScope(context, PERMISSIONS.PLANNER_READ);
+  if (!scope) return { id: { in: [] as string[] } };
+  if (scope === "ALL") return {};
+  if (scope === "LOCATION" || scope === "TEAM") {
+    return context.locationIds.length
+      ? { locationId: { in: context.locationIds } }
+      : { id: { in: [] as string[] } };
+  }
+  const mechanicIds = await currentMechanicIds(context);
+  return { mechanicId: { in: mechanicIds } };
+}
+
+async function diagnosticScopeWhere(context: AccessContext) {
+  if (context.enforcementMode !== "ENFORCED") return {};
+  const scope = permissionScope(context, PERMISSIONS.DIAGNOSTICS_READ);
+  if (!scope) return { id: { in: [] as string[] } };
+  if (scope === "ALL") return {};
+
+  const prisma = getPrisma();
+  if (scope === "LOCATION" || scope === "TEAM") {
+    if (!context.locationIds.length) return { id: { in: [] as string[] } };
+    const assignments = await prisma.diagnosticAssignment.findMany({
+      where: { locationId: { in: context.locationIds } },
+      select: { diagnosticRequestId: true },
+    });
+    return { id: { in: assignments.map((row) => row.diagnosticRequestId) } };
+  }
+
+  const mechanicIds = await currentMechanicIds(context);
+  if (!mechanicIds.length) return { id: { in: [] as string[] } };
+  const assignments = await prisma.diagnosticAssignment.findMany({
+    where: { mechanicId: { in: mechanicIds } },
+    select: { diagnosticRequestId: true },
+  });
+  return { id: { in: assignments.map((row) => row.diagnosticRequestId) } };
 }
 
 async function filterWorkOrdersByScope<T extends { id: string }>(rows: T[], context: AccessContext) {
@@ -123,6 +183,11 @@ export async function GET(request: NextRequest) {
   const exactEntityId = ENTITY_ID.test(q) ? q : null;
 
   try {
+    const [plannerWhere, diagnosticWhere] = await Promise.all([
+      canPlanner ? plannerScopeWhere(context) : Promise.resolve({ id: { in: [] as string[] } }),
+      canDiagnostics ? diagnosticScopeWhere(context) : Promise.resolve({ id: { in: [] as string[] } }),
+    ]);
+
     const clientsPromise = canClients
       ? prisma.client.findMany({
           where: {
@@ -177,12 +242,13 @@ export async function GET(request: NextRequest) {
     const diagnosticsPromise = canDiagnostics
       ? prisma.diagnosticRequest.findMany({
           where: {
+            ...diagnosticWhere,
             OR: [
               ...(exactEntityId ? [{ id: exactEntityId }] : []),
               { technicalConclusion: { contains: q, mode: "insensitive" } },
               { client: { is: { name: { contains: q, mode: "insensitive" } } } },
               ...(phoneNeedle.length >= 3 ? [{ client: { is: { phone: { contains: phoneNeedle } } } }] : []),
-              { vehicle: { is: { plateNumber: { contains: normalized, mode: "insensitive" } } } },
+              { vehicle: { is: { plateNumber: { contains: normalized, mode: "insensitive" } } },
               { vehicle: { is: { vin: { contains: normalized, mode: "insensitive" } } } },
             ],
           },
@@ -199,9 +265,6 @@ export async function GET(request: NextRequest) {
         })
       : Promise.resolve([]);
 
-    const plannerWhere = context.enforcementMode === "ENFORCED" && context.locationIds.length
-      ? { locationId: { in: context.locationIds } }
-      : {};
     const appointmentsPromise = canPlanner
       ? prisma.serviceAppointment.findMany({
           where: {
