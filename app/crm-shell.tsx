@@ -33,8 +33,8 @@ const CommunicationsHub = dynamic(() => import("./communications-hub-server").th
 const ClientsDirectory = dynamic(() => import("./clients-directory").then((mod) => mod.ClientsDirectory), { loading: SectionLoading });
 const VehiclesDirectory = dynamic(() => import("./vehicles-directory").then((mod) => mod.VehiclesDirectory), { loading: SectionLoading });
 const PartsCatalog = dynamic(() => import("./parts-catalog").then((mod) => mod.PartsCatalog), { loading: SectionLoading });
-const ProcurementQueue = dynamic(() => import("./procurement-queue").then((mod) => mod.ProcurementQueue), { loading: SectionLoading });
-const PlannerV2 = dynamic(() => import("./planner-v2").then((mod) => mod.PlannerV2), { loading: SectionLoading });
+const ProcurementWorkspace = dynamic(() => import("./procurement-workspace").then((mod) => mod.ProcurementWorkspace), { loading: SectionLoading });
+const PlannerWorkspace = dynamic(() => import("./planner-workspace").then((mod) => mod.PlannerWorkspace), { loading: SectionLoading });
 const Diagnostics = dynamic(() => import("./diagnostics").then((mod) => mod.Diagnostics), { loading: SectionLoading });
 const WorkOrders = dynamic(() => import("./work-orders").then((mod) => mod.WorkOrders), { loading: SectionLoading });
 const ProductionBoard = dynamic(() => import("./production-board").then((mod) => mod.ProductionBoard), { loading: SectionLoading });
@@ -43,7 +43,7 @@ const RoleAwareOverview = dynamic(() => import("./role-cabinet").then((mod) => m
 const FinancialCenter = dynamic(() => import("./financial-center").then((mod) => mod.FinancialCenter), { loading: SectionLoading });
 const PaymentsQueue = dynamic(() => import("./payments-queue").then((mod) => mod.PaymentsQueue), { loading: SectionLoading });
 const WarrantyCenter = dynamic(() => import("./warranty-center").then((mod) => mod.WarrantyCenter), { loading: SectionLoading });
-const AnalyticsDashboard = dynamic(() => import("./analytics-dashboard").then((mod) => mod.AnalyticsDashboard), { loading: SectionLoading });
+const AnalyticsWorkspace = dynamic(() => import("./analytics-workspace").then((mod) => mod.AnalyticsWorkspace), { loading: SectionLoading });
 
 const SETTINGS_SUBMENU:Array<{id:SettingsTab;label:string}>=[
   {id:"schedule",label:"Графік"},
@@ -74,21 +74,20 @@ function legacyRoute(section:CrmSectionLabel,filter:string):LegacyRoute|null{
   const value=filter.trim();
 
   if(section==="Виробництво"){
-    if(value==="in-repair"||value==="in_repair")return{section,params:{status:"IN_REPAIR"}};
-    if(value==="ready"||value==="ready-for-repair"||value==="ready_for_repair")return{section,params:{status:"READY_FOR_REPAIR"}};
-    if(value==="waiting-parts"||value==="waiting_parts")return{section,params:{status:"WAITING_PARTS"}};
-    if(value==="qc-ready"||value==="waiting_qc")return{section,params:{status:"WAITING_QC"}};
-    if(value==="mechanics"||value==="assigned")return{section,params:{scope:"mechanics"}};
-    if(value==="posts")return{section,params:{scope:"posts"}};
-    return value?{section,params:{}}:null;
+    if(value==="in-repair"||value==="in_repair")return{section:"Замовлення-наряди",params:{status:"IN_REPAIR"}};
+    if(value==="ready"||value==="ready-for-repair"||value==="ready_for_repair")return{section:"Замовлення-наряди",params:{status:"READY_FOR_REPAIR"}};
+    if(value==="waiting-parts"||value==="waiting_parts")return{section:"Замовлення-наряди",params:{status:"WAITING_PARTS",workOrderTab:"parts"}};
+    if(value==="qc-ready"||value==="waiting_qc")return{section:"Замовлення-наряди",params:{status:"WAITING_QC",workOrderTab:"qc"}};
+    if(value==="mechanics"||value==="assigned"||value==="posts")return{section:"Планувальник",params:{scope:"resources"}};
+    return{section:"Планувальник",params:{scope:"resources"}};
   }
 
   if(section==="Контроль якості"){
-    if(value==="ready"||value==="ready_for_pickup"||value==="passed")return{section,params:{scope:"passed"}};
-    if(value==="in-progress"||value==="in_progress")return{section,params:{scope:"in-progress"}};
-    if(value==="failed"||value==="rework")return{section,params:{scope:"failed"}};
-    if(value==="qc-ready"||value==="waiting_qc"||value==="waiting")return{section,params:{scope:"waiting"}};
-    return value?{section,params:{}}:null;
+    if(value==="ready"||value==="ready_for_pickup"||value==="passed")return{section:"Замовлення-наряди",params:{status:"READY_FOR_PICKUP",workOrderTab:"qc"}};
+    if(value==="in-progress"||value==="in_progress")return{section:"Замовлення-наряди",params:{status:"WAITING_QC",workOrderTab:"qc"}};
+    if(value==="failed"||value==="rework")return{section:"Замовлення-наряди",params:{status:"REWORK",workOrderTab:"qc"}};
+    if(value==="qc-ready"||value==="waiting_qc"||value==="waiting")return{section:"Замовлення-наряди",params:{status:"WAITING_QC",workOrderTab:"qc"}};
+    return{section:"Замовлення-наряди",params:{status:"WAITING_QC",workOrderTab:"qc"}};
   }
 
   if(section==="Закупівлі та склад"){
@@ -97,7 +96,7 @@ function legacyRoute(section:CrmSectionLabel,filter:string):LegacyRoute|null{
     if(value==="ordered"||value==="in-transit"||value==="in_transit")return{section,params:{scope:"ordered"}};
     if(value==="partial"||value==="partially-received"||value==="partially_received")return{section,params:{scope:"partial"}};
     if(value==="received"||value==="installed")return{section,params:{scope:"received"}};
-    return value?{section,params:{}}:null;
+    return value?{section,params:{partsRequestId:value}}:null;
   }
 
   if(section==="Оплати"){
@@ -105,7 +104,7 @@ function legacyRoute(section:CrmSectionLabel,filter:string):LegacyRoute|null{
     if(value==="partial"||value==="partially-paid"||value==="partially_paid")return{section,params:{scope:"partial"}};
     if(value==="paid"||value==="paid-today"||value==="paid_today")return{section,params:{scope:"paidToday"}};
     if(value==="debt"||value==="overdue")return{section,params:{scope:"debt"}};
-    return value?{section,params:{}}:null;
+    return value?{section,params:{workOrderId:value}}:null;
   }
 
   if(section==="Замовлення-наряди"){
@@ -122,7 +121,7 @@ function legacyRoute(section:CrmSectionLabel,filter:string):LegacyRoute|null{
       "ready-for-repair":"READY_FOR_REPAIR",
       ready_for_repair:"READY_FOR_REPAIR",
     };
-    if(value==="qc-ready"||value==="waiting_qc")return{section:"Контроль якості",params:{scope:"waiting"}};
+    if(value==="qc-ready"||value==="waiting_qc")return{section,params:{status:"WAITING_QC",workOrderTab:"qc"}};
     if(statuses[value])return{section,params:{status:statuses[value]}};
     if(value==="assigned")return{section,params:{}};
     if(/^[A-Z_]+$/.test(value)&&["PARTS_REVIEW","WAITING_APPROVAL","WAITING_PARTS","READY_FOR_REPAIR","IN_REPAIR","WAITING_QC","READY_FOR_PICKUP","CLOSED"].includes(value))return{section,params:{status:value}};
@@ -133,7 +132,9 @@ function legacyRoute(section:CrmSectionLabel,filter:string):LegacyRoute|null{
     if(!value)return null;
     const statuses:Record<string,string>={booked:"BOOKED","no-show":"NO_SHOW",no_show:"NO_SHOW"};
     if(statuses[value])return{section,params:{status:statuses[value]}};
-    if(value==="today"||value==="assigned"||value==="mechanics")return{section,params:{}};
+    if(value==="posts"||value==="mechanics"||value==="assigned"||value==="resources")return{section,params:{scope:"resources"}};
+    if(value==="today")return{section,params:{}};
+    return{section,params:{appointmentId:value}};
   }
 
   if(section==="Підбір запчастин"&&["assigned","waiting-parts","waiting_parts"].includes(value))return{section,params:{}};
@@ -167,7 +168,8 @@ export function CrmShell({ initialSection, initialSettingsTab }: { initialSectio
 
   const navigateSettings = useCallback((tab:SettingsTab,historyMode:"push"|"replace"="push")=>{
     setActive("Налаштування");setOpenGroup(groupForSection("Налаштування"));setWorkflowFilter("");setWorkflowFilterLabel("");setSettingsTab(tab);setMobileNavOpen(false);
-    const url=new URL(window.location.href);url.searchParams.set("section","settings");url.searchParams.set("settingsTab",tab);url.searchParams.delete("filter");url.searchParams.delete("filterLabel");clearTypedRouteParams(url);
+    const url=new URL(window.location.href);url.searchParams.set("section","settings");url.searchParams.set("settingsTab",tab);url.searchParams.delete("filter");url.searchParams.delete("filterLabel");
+    for(const key of CRM_ROUTE_KEYS){if(key!=="settingsTab"&&key!=="supplierId"&&key!=="provider")url.searchParams.delete(key);}
     const nextUrl=`${url.pathname}${url.search}${url.hash}`;
     if(historyMode==="replace")window.history.replaceState({},"",nextUrl);else window.history.pushState({},"",nextUrl);
   },[]);
@@ -260,6 +262,6 @@ export function CrmShell({ initialSection, initialSettingsTab }: { initialSectio
       <div className="sidebarFoot"><span className="liveDot"/> {access.enforced?(access.snapshot?.user?.name||"Захищений режим"):"Станція онлайн"}</div>
     </aside>
     <div className={active==="Огляд станції"?shellStyles.globalNewRequest:undefined}><NewRequestLauncher showButton={active==="Огляд станції"&&canCreateRequest}/></div>
-    <section className={`workspace ${active==="Огляд станції"?shellStyles.workspaceWithFloatingAction:""}`}>{!activeAllowed?accessDenied:<>{active!=="Огляд станції"&&active!=="Налаштування"&&filterBanner}{active==="Мої задачі"?<MyTasks/>:active==="Нові звернення"?<NewInquiries/>:active==="Комунікації"?<CommunicationsHub/>:active==="Активні"?<LeadsBoardV2/>:active==="Клієнти"?<ClientsDirectory/>:active==="Авто"?<VehiclesDirectory/>:active==="Планувальник"?<PlannerV2/>:active==="Діагностика"?<Diagnostics/>:active==="Замовлення-наряди"?<WorkOrders/>:active==="Виробництво"?<ProductionBoard/>:active==="Контроль якості"?<QcQueue/>:active==="Підбір запчастин"?<PartsCatalog/>:active==="Закупівлі та склад"?<ProcurementQueue/>:active==="Фінансовий центр"?<FinancialCenter/>:active==="Оплати"?<PaymentsQueue/>:active==="Гарантії"?<WarrantyCenter/>:active==="Аналітика"?<AnalyticsDashboard/>:active==="Налаштування"?<SettingsPage tab={settingsTab}/>:active==="Огляд станції"?<RoleAwareOverview access={access.snapshot}/>:<div className="comingSoon"><p className="eyebrow">TURBO LEV CRM</p><h1>{active}</h1><p>Розділ тимчасово недоступний.</p></div>}</>}</section>
+    <section className={`workspace ${active==="Огляд станції"?shellStyles.workspaceWithFloatingAction:""}`}>{!activeAllowed?accessDenied:<>{active!=="Огляд станції"&&active!=="Налаштування"&&filterBanner}{active==="Мої задачі"?<MyTasks/>:active==="Нові звернення"?<NewInquiries/>:active==="Комунікації"?<CommunicationsHub/>:active==="Активні"?<LeadsBoardV2/>:active==="Клієнти"?<ClientsDirectory/>:active==="Авто"?<VehiclesDirectory/>:active==="Планувальник"?<PlannerWorkspace/>:active==="Діагностика"?<Diagnostics/>:active==="Замовлення-наряди"?<WorkOrders/>:active==="Виробництво"?<ProductionBoard/>:active==="Контроль якості"?<QcQueue/>:active==="Підбір запчастин"?<PartsCatalog/>:active==="Закупівлі та склад"?<ProcurementWorkspace/>:active==="Фінансовий центр"?<FinancialCenter/>:active==="Оплати"?<PaymentsQueue/>:active==="Гарантії"?<WarrantyCenter/>:active==="Аналітика"?<AnalyticsWorkspace/>:active==="Налаштування"?<SettingsPage tab={settingsTab}/>:active==="Огляд станції"?<RoleAwareOverview access={access.snapshot}/>:<div className="comingSoon"><p className="eyebrow">TURBO LEV CRM</p><h1>{active}</h1><p>Розділ тимчасово недоступний.</p></div>}</>}</section>
   </main>;
 }

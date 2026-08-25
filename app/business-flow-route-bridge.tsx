@@ -6,6 +6,10 @@ import type { CrmSectionLabel } from "./crm-navigation";
 
 type LegacyNavigateDetail = string | { section?: string; filter?: string; filterLabel?: string };
 type CanonicalTarget = { section: CrmSectionLabel; params: CrmRouteParams };
+type SearchPayload = {
+  clients?: Array<{ id: string; name?: string | null; phone?: string | null }>;
+  vehicles?: Array<{ id: string; plateNumber?: string | null; vin?: string | null; client?: { id: string } | null }>;
+};
 
 const ENTITY_ID = /^[A-Za-z0-9_-]{12,}$/;
 const PAYMENT_LABELS: Record<string, string> = {
@@ -24,7 +28,7 @@ function canonicalizeLegacy(detail: LegacyNavigateDetail): CanonicalTarget | nul
     if (["Активні", "Ліди", "Звернення", "Нові звернення"].includes(detail)) {
       return { section: "Комунікації", params: {} };
     }
-    if (detail === "Виробництво") return { section: "Замовлення-наряди", params: {} };
+    if (detail === "Виробництво") return { section: "Планувальник", params: { scope: "resources" } };
     if (detail === "Контроль якості") return { section: "Замовлення-наряди", params: { status: "WAITING_QC", workOrderTab: "qc" } };
     if (detail === "Гарантії") return { section: "Замовлення-наряди", params: { workOrderTab: "history" } };
     return null;
@@ -70,9 +74,43 @@ function canonicalizeLegacy(detail: LegacyNavigateDetail): CanonicalTarget | nul
     const status = statuses[filter];
     if (status === "WAITING_QC") return { section: "Замовлення-наряди", params: { status, workOrderTab: "qc" } };
     if (status) return { section: "Замовлення-наряди", params: { status, workOrderTab: status === "WAITING_PARTS" ? "parts" : "overview" } };
-    return { section: "Замовлення-наряди", params: {} };
+    return { section: "Планувальник", params: { scope: "resources" } };
   }
   return null;
+}
+
+async function resolveLegacyClientVehicle(detail: Exclude<LegacyNavigateDetail, string>) {
+  const filter = (detail.filter || "").trim();
+  const label = (detail.filterLabel || "").trim();
+  const wantsClient = label.toLocaleLowerCase("uk-UA").startsWith("клієнт");
+  if (!filter) {
+    navigateCrm(wantsClient ? "Клієнти" : "Авто");
+    return;
+  }
+
+  try {
+    const response = await fetch(`/api/search?q=${encodeURIComponent(filter)}`, { cache: "no-store" });
+    const payload = await response.json().catch(() => null) as SearchPayload | null;
+    if (response.ok && payload) {
+      if (wantsClient) {
+        const client = payload.clients?.[0] || payload.vehicles?.[0]?.client;
+        if (client?.id) {
+          navigateCrm("Клієнти", { clientId: client.id });
+          return;
+        }
+      } else {
+        const vehicle = payload.vehicles?.[0];
+        if (vehicle?.id) {
+          navigateCrm("Авто", { vehicleId: vehicle.id });
+          return;
+        }
+      }
+    }
+  } catch {
+    // Compatibility fallback below keeps navigation usable if search is temporarily unavailable.
+  }
+
+  navigateCrm(wantsClient ? "Клієнти" : "Авто");
 }
 
 function setNativeInput(input: HTMLInputElement, value: string) {
@@ -150,6 +188,11 @@ export function BusinessFlowRouteBridge() {
   useEffect(() => {
     const onNavigate = (event: Event) => {
       const detail = (event as CustomEvent<LegacyNavigateDetail>).detail;
+      if (typeof detail !== "string" && detail?.section === "Клієнти та авто") {
+        event.stopImmediatePropagation();
+        void resolveLegacyClientVehicle(detail);
+        return;
+      }
       const target = canonicalizeLegacy(detail);
       if (!target) return;
       event.stopImmediatePropagation();
@@ -198,6 +241,11 @@ export function BusinessFlowRouteBridge() {
 
   useEffect(() => {
     let timer = 0;
+    const onPopState = () => {
+      paymentApplied.current = "";
+      financeApplied.current = "";
+      sync();
+    };
     const sync = () => {
       window.clearTimeout(timer);
       timer = window.setTimeout(() => {
@@ -207,14 +255,11 @@ export function BusinessFlowRouteBridge() {
     };
     const observer = new MutationObserver(sync);
     observer.observe(document.body, { childList: true, subtree: true });
-    window.addEventListener("popstate", () => {
-      paymentApplied.current = "";
-      financeApplied.current = "";
-      sync();
-    });
+    window.addEventListener("popstate", onPopState);
     sync();
     return () => {
       observer.disconnect();
+      window.removeEventListener("popstate", onPopState);
       window.clearTimeout(timer);
     };
   }, []);

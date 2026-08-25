@@ -10,8 +10,14 @@
     "app/api/vehicle-issues/**",
     "src/services/vehicle-issues.service.ts"
   ],
+  "dashboard-analytics": [
+    "app/analytics-workspace.tsx",
+    "app/analytics-workspace.module.css"
+  ],
   "parts-inventory": [
     "app/api/parts-selection/**",
-    "app/api/procurement/**"
+    "app/api/procurement/**",
+    "app/procurement-workspace.tsx",
+    "app/procurement-workspace.module.css"
   ]
 }

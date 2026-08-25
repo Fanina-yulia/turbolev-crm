@@ -1,0 +1,1 @@
+.root{min-width:0}.root :global([data-procurement-route-focus="true"]){outline:2px solid var(--accent,#f97316);outline-offset:3px;border-radius:14px;animation:procurementRoutePulse 1.7s ease-out 1}@keyframes procurementRoutePulse{0%{box-shadow:0 0 0 0 rgba(249,115,22,.4)}100%{box-shadow:0 0 0 16px rgba(249,115,22,0)}}

@@ -76,6 +76,9 @@ jobs:
       - name: TypeScript contract check
         run: npx tsc --noEmit
 
+      - name: Navigation contract smoke test
+        run: node scripts/navigation-contract-smoke.mjs
+
       - name: Run targeted stateless module smoke checks
         run: node scripts/module-ci.mjs --base "origin/${{ github.base_ref }}" --run
 
@@ -140,6 +143,9 @@ jobs:
 
       - name: Canonical CRM contracts smoke test
         run: npm run contracts:smoke
+
+      - name: Navigation contract smoke test
+        run: node scripts/navigation-contract-smoke.mjs
 
       - name: Diagnostic workflow smoke test
         run: npx --no-install tsx scripts/diagnostic-flow-smoke.ts
