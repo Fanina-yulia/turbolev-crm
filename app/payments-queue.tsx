@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { navigateCrm } from "./crm-route";
+import { navigateCrm, readCrmRoute } from "./crm-route";
 import styles from "./payments-queue.module.css";
 
 type Account = { id: string; name: string; type: "CASH" | "BANK" | "CARD" | "ACQUIRING" | "OTHER"; currency: string; locationId: string | null };
@@ -43,6 +43,7 @@ const TABS: Array<{ id: TabId; label: string }> = [
   { id: "paidToday", label: "Оплачено сьогодні" },
   { id: "debt", label: "Борги" },
 ];
+const TAB_IDS = new Set<TabId>(TABS.map((item) => item.id));
 
 const ACCOUNT_LABELS: Record<Account["type"], string> = {
   CASH: "Готівка",
@@ -82,6 +83,8 @@ function newPaymentKey(workOrderId: string) {
 export function PaymentsQueue() {
   const [tab, setTab] = useState<TabId>("due");
   const [query, setQuery] = useState("");
+  const [routeWorkOrderId, setRouteWorkOrderId] = useState("");
+  const [routeLocationId, setRouteLocationId] = useState("");
   const [data, setData] = useState<QueueResponse>({ ok: true, rows: [], accounts: [], counts: { due: 0, partial: 0, paidToday: 0, debt: 0 } });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -94,6 +97,18 @@ export function PaymentsQueue() {
   const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
+    const syncRoute = () => {
+      const route = readCrmRoute();
+      if (route.scope && TAB_IDS.has(route.scope as TabId)) setTab(route.scope as TabId);
+      setRouteWorkOrderId(route.workOrderId || "");
+      setRouteLocationId(route.locationId || "");
+    };
+    syncRoute();
+    window.addEventListener("popstate", syncRoute);
+    return () => window.removeEventListener("popstate", syncRoute);
+  }, []);
+
+  useEffect(() => {
     const controller = new AbortController();
     const timer = window.setTimeout(async () => {
       setLoading(true);
@@ -101,6 +116,8 @@ export function PaymentsQueue() {
       try {
         const params = new URLSearchParams();
         if (query.trim()) params.set("q", query.trim());
+        if (routeWorkOrderId) params.set("workOrderId", routeWorkOrderId);
+        if (routeLocationId) params.set("locationId", routeLocationId);
         const response = await fetch(`/api/payments${params.size ? `?${params}` : ""}`, { cache: "no-store", signal: controller.signal });
         const payload = await response.json() as QueueResponse;
         if (!response.ok || !payload.ok) throw new Error(payload.error || "Не вдалося завантажити касу");
@@ -112,15 +129,24 @@ export function PaymentsQueue() {
       }
     }, query.trim() ? 220 : 0);
     return () => { controller.abort(); window.clearTimeout(timer); };
-  }, [query, refreshKey]);
+  }, [query, refreshKey, routeWorkOrderId, routeLocationId]);
 
   const rows = data.rows || [];
   const accounts = data.accounts || [];
   const counts = data.counts || { due: 0, partial: 0, paidToday: 0, debt: 0 };
-  const visible = useMemo(() => rows.filter((row) => row.flags[tab]), [rows, tab]);
+  const visible = useMemo(
+    () => routeWorkOrderId ? rows.filter((row) => row.workOrderId === routeWorkOrderId) : rows.filter((row) => row.flags[tab]),
+    [rows, routeWorkOrderId, tab],
+  );
   const outstandingTotal = useMemo(() => rows.filter((row) => row.outstanding > 0).reduce((sum, row) => sum + row.outstanding, 0), [rows]);
   const paidTodayTotal = useMemo(() => rows.reduce((sum, row) => sum + row.todayPaid, 0), [rows]);
   const debtTotal = useMemo(() => rows.filter((row) => row.flags.debt).reduce((sum, row) => sum + row.outstanding, 0), [rows]);
+
+  function selectTab(next: TabId) {
+    setTab(next);
+    setRouteWorkOrderId("");
+    navigateCrm("Оплати", { scope: next, ...(routeLocationId ? { locationId: routeLocationId } : {}) });
+  }
 
   function openPayment(row: PaymentRow) {
     const defaultAccount = accounts.find((account) => !account.locationId) || accounts[0];
@@ -171,8 +197,7 @@ export function PaymentsQueue() {
       if (!response.ok || !payload.ok) throw new Error(payload.error || payload.code || "Не вдалося провести оплату");
       setPaymentRow(null);
       setRefreshKey((value) => value + 1);
-      if (numericAmount >= paymentRow.outstanding - 0.001) setTab("paidToday");
-      else setTab("partial");
+      if (!routeWorkOrderId) setTab(numericAmount >= paymentRow.outstanding - 0.001 ? "paidToday" : "partial");
     } catch (cause) {
       setPaymentError(cause instanceof Error ? cause.message : "Не вдалося провести оплату");
     } finally {
@@ -185,7 +210,7 @@ export function PaymentsQueue() {
       <div>
         <p className={styles.eyebrow}>TURBO LEV · КАСА</p>
         <h1>Оплати</h1>
-        <span>Що потрібно отримати від клієнтів і що вже надійшло сьогодні</span>
+        <span>{routeWorkOrderId ? "Відкрито конкретний замовлення-наряд" : "Що потрібно отримати від клієнтів і що вже надійшло сьогодні"}</span>
       </div>
       <button className={styles.refresh} type="button" onClick={() => setRefreshKey((value) => value + 1)} disabled={loading}>↻ Оновити</button>
     </header>
@@ -201,11 +226,11 @@ export function PaymentsQueue() {
     </div>
 
     <nav className={styles.tabs} aria-label="Черги оплат">
-      {TABS.map((item) => <button type="button" key={item.id} className={tab === item.id ? styles.activeTab : ""} onClick={() => setTab(item.id)}><span>{item.label}</span><b>{counts[item.id]}</b></button>)}
+      {TABS.map((item) => <button type="button" key={item.id} className={!routeWorkOrderId && tab === item.id ? styles.activeTab : ""} onClick={() => selectTab(item.id)}><span>{item.label}</span><b>{counts[item.id]}</b></button>)}
     </nav>
 
     {error && <div className={styles.error}>{error}</div>}
-    {loading ? <div className={styles.state}>Завантажую касову чергу…</div> : !visible.length ? <div className={styles.state}>У цій черзі зараз немає замовлень.</div> : <section className={styles.list}>
+    {loading ? <div className={styles.state}>Завантажую касову чергу…</div> : !visible.length ? <div className={styles.state}>{routeWorkOrderId ? "Для цього ЗН немає доступного фінансового зобов’язання." : "У цій черзі зараз немає замовлень."}</div> : <section className={styles.list}>
       {visible.map((row) => <article className={`${styles.card} ${row.overdue ? styles.overdueCard : ""}`} key={row.obligationId}>
         <div className={styles.cardHead}>
           <button className={styles.woLink} type="button" onClick={() => navigateCrm("Замовлення-наряди", { workOrderId: row.workOrderId, workOrderTab: "payment" })}>{row.workOrderLabel}</button>
