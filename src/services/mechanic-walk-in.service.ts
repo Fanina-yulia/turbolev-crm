@@ -13,6 +13,19 @@ const LAT_TO_CYR: Record<string, string> = {
   A: "А", B: "В", E: "Е", I: "І", K: "К", M: "М", H: "Н", O: "О", P: "Р", C: "С", T: "Т", X: "Х", Y: "У",
 };
 
+type WalkInRegistryVehicle = {
+  vin: string | null;
+  brand: string | null;
+  model: string | null;
+  makeYear: number | null;
+  engineVolumeCm3: number | null;
+  fuelType: string | null;
+  bodyType: string | null;
+  grossWeightKg: number | null;
+  exteriorColorName: string | null;
+  source: "MVS_INDEX" | "MVS_OPEN_DATA";
+};
+
 export class MechanicWalkInError extends Error {
   readonly code: string;
   readonly status: number;
@@ -58,6 +71,69 @@ function diagnosticIdFromWalkInComment(comment: string | null | undefined) {
 
 function plateCandidates(raw: string, canonical: string) {
   return Array.from(new Set([raw.toUpperCase().replace(/\s+/g, ""), canonical, cyrillicPlate(canonical)].filter(Boolean)));
+}
+
+function registrationPlateKey(plate: string): bigint | null {
+  if (!/^[A-Z0-9]{6,10}$/.test(plate)) return null;
+  let value = 0n;
+  for (const char of plate) {
+    const code = char.charCodeAt(0);
+    const digit = code >= 48 && code <= 57 ? code - 48 : code - 65 + 10;
+    if (digit < 0 || digit >= 36) return null;
+    value = value * 36n + BigInt(digit);
+  }
+  return value * 16n + BigInt(plate.length);
+}
+
+async function findWalkInRegistryVehicle(tx: Prisma.TransactionClient, plate: string): Promise<WalkInRegistryVehicle | null> {
+  const plateKey = registrationPlateKey(plate);
+  if (plateKey !== null) {
+    const rows = await tx.$queryRaw<Array<{
+      vin: string | null;
+      brand: string | null;
+      model: string | null;
+      makeYear: number | null;
+      engineVolumeCm3: number | null;
+      fuelType: string | null;
+      vehicleTypeRaw: string | null;
+      color: string | null;
+    }>>`
+      SELECT vin, brand, model, "makeYear", "engineVolumeCm3", "fuelType", "vehicleTypeRaw", color
+      FROM "VehicleRegistryCompact"
+      WHERE "plateKey" = ${plateKey}
+      LIMIT 1
+    `;
+    const compact = rows[0];
+    if (compact) {
+      return {
+        vin: compact.vin,
+        brand: compact.brand,
+        model: compact.model,
+        makeYear: compact.makeYear,
+        engineVolumeCm3: compact.engineVolumeCm3,
+        fuelType: compact.fuelType,
+        bodyType: compact.vehicleTypeRaw,
+        grossWeightKg: null,
+        exteriorColorName: compact.color,
+        source: "MVS_INDEX",
+      };
+    }
+  }
+
+  const legacy = await tx.vehicleRegistryEntry.findUnique({ where: { plateNormalized: plate } });
+  if (!legacy) return null;
+  return {
+    vin: legacy.vin,
+    brand: legacy.brand,
+    model: legacy.model,
+    makeYear: legacy.makeYear,
+    engineVolumeCm3: legacy.engineVolumeCm3,
+    fuelType: legacy.fuelType,
+    bodyType: legacy.bodyType ?? legacy.vehicleKind,
+    grossWeightKg: legacy.grossWeightKg,
+    exteriorColorName: null,
+    source: "MVS_OPEN_DATA",
+  };
 }
 
 export type MechanicWalkInInput = {
@@ -163,8 +239,9 @@ export async function startMechanicWalkInDiagnostic(userId: string, input: Mecha
       );
     }
 
+    const registry = await findWalkInRegistryVehicle(tx, plate);
+
     if (!vehicle) {
-      const registry = await tx.vehicleRegistryEntry.findUnique({ where: { plateNormalized: plate } });
       vehicle = await tx.vehicle.create({
         data: {
           clientId: client.id,
@@ -179,11 +256,27 @@ export async function startMechanicWalkInDiagnostic(userId: string, input: Mecha
           fuelType: registry?.fuelType || null,
           bodyType: registry?.bodyType || null,
           grossWeightKg: registry?.grossWeightKg || null,
-          vehicleDataSource: registry ? "MVS_OPEN_DATA" : "WALK_IN",
+          exteriorColorName: registry?.exteriorColorName || null,
+          vehicleDataSource: registry?.source || "WALK_IN",
+          vehicleDataConfidence: registry ? (registry.vin ? 96 : 90) : null,
         },
       });
-    } else if (vehicle.mileageKm !== mileageKm) {
-      vehicle = await tx.vehicle.update({ where: { id: vehicle.id }, data: { mileageKm } });
+    } else {
+      const data: Prisma.VehicleUpdateInput = { mileageKm };
+      if (registry) {
+        if (!vehicle.brand && registry.brand) data.brand = registry.brand;
+        if (!vehicle.model && registry.model) data.model = registry.model;
+        if (!vehicle.year && registry.makeYear) data.year = registry.makeYear;
+        if (!vehicle.vin && registry.vin) data.vin = registry.vin;
+        if (!vehicle.engineVolumeCm3 && registry.engineVolumeCm3) data.engineVolumeCm3 = registry.engineVolumeCm3;
+        if (!vehicle.fuelType && registry.fuelType) data.fuelType = registry.fuelType;
+        if (!vehicle.bodyType && registry.bodyType) data.bodyType = registry.bodyType;
+        if (!vehicle.grossWeightKg && registry.grossWeightKg) data.grossWeightKg = registry.grossWeightKg;
+        if (!vehicle.exteriorColorName && registry.exteriorColorName) data.exteriorColorName = registry.exteriorColorName;
+        if (!vehicle.vehicleDataSource || vehicle.vehicleDataSource === WALK_IN_SOURCE) data.vehicleDataSource = registry.source;
+        if (!vehicle.vehicleDataConfidence) data.vehicleDataConfidence = registry.vin ? 96 : 90;
+      }
+      vehicle = await tx.vehicle.update({ where: { id: vehicle.id }, data });
     }
 
     const registration = await tx.vehicleRegistration.findFirst({
@@ -249,6 +342,7 @@ export async function startMechanicWalkInDiagnostic(userId: string, input: Mecha
           locationId: mechanic.locationId,
           problem,
           matchedByAdditionalPhone: Boolean(additionalPhone),
+          registrySource: registry?.source || null,
         }),
       },
     });
