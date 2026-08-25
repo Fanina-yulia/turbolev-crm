@@ -127,7 +127,54 @@ export async function getStructuredDiagnostic(diagnosticRequestId: string) {
   const templateIds = inspections.map((row) => row.templateId); const templates = templateIds.length ? await prisma.diagnosticTemplate.findMany({ where: { id: { in: templateIds } } }) : []; const sections = templateIds.length ? await prisma.diagnosticTemplateSection.findMany({ where: { templateId: { in: templateIds } }, orderBy: { sortOrder: "asc" } }) : []; const items = sections.length ? await prisma.diagnosticTemplateItem.findMany({ where: { sectionId: { in: sections.map((row) => row.id) } }, orderBy: { sortOrder: "asc" } }) : [];
   const checks = inspections.length ? await prisma.diagnosticCheck.findMany({ where: { inspectionId: { in: inspections.map((row) => row.id) } } }) : []; const findings = checks.length ? await prisma.diagnosticFinding.findMany({ where: { checkId: { in: checks.map((row) => row.id) } } }) : []; const media = findings.length ? await prisma.diagnosticMedia.findMany({ where: { findingId: { in: findings.map((row) => row.id) } }, select: { id: true, findingId: true, fileName: true, mimeType: true, fileSize: true, createdAt: true }, orderBy: { createdAt: "asc" } }) : [];
   const findingByCheck = new Map(findings.map((row) => [row.checkId, row])); const mediaByFinding = new Map<string, typeof media>(); for (const row of media) mediaByFinding.set(row.findingId, [...(mediaByFinding.get(row.findingId) || []), row]); const checkByPair = new Map(checks.map((row) => [`${row.inspectionId}:${row.templateItemId}`, row])); const templateById = new Map(templates.map((row) => [row.id, row]));
-  const inspectionView = inspections.map((inspection) => { const sectionView = sections.filter((section) => section.templateId === inspection.templateId).map((section) => { const rows = items.filter((item) => item.sectionId === section.id).map((item) => { const check = checkByPair.get(`${inspection.id}:${item.id}`); const finding = check ? findingByCheck.get(check.id) : undefined; return { id: check?.id || null, templateItemId: item.id, name: item.name, position: item.position, measurementUnit: item.measurementUnit, state: check?.state || DiagnosticCheckState.NOT_CHECKED, measurementValue: check?.measurementValue?.toString() || null, measurementText: check?.measurementText || null, note: check?.note || null, finding: finding ? { id: finding.id, action: finding.action, urgency: finding.urgency, findingText: finding.findingText, suggestedWorkName: finding.suggestedWorkName, suggestedPartName: finding.suggestedPartName, media: mediaByFinding.get(finding.id) || [] } : null }; }); return { id: section.id, code: section.code, name: section.name, items: rows, counts: counts(rows) }; }); const flat = sectionView.flatMap((section) => section.items); return { id: inspection.id, templateId: inspection.templateId, templateName: templateById.get(inspection.templateId)?.name || "Діагностика", status: inspection.status, startedAt: inspection.startedAt, completedAt: inspection.completedAt, sections: sectionView, counts: counts(flat) }; });
+  const inspectionView = inspections.map((inspection) => {
+    const sectionView = sections
+      .filter((section) => section.templateId === inspection.templateId)
+      .flatMap((section) => {
+        const rows = items.filter((item) => item.sectionId === section.id).flatMap((item) => {
+          const check = checkByPair.get(`${inspection.id}:${item.id}`);
+          // Template items without a persisted check are not part of this
+          // inspection. This commonly happens when applicability removes
+          // combustion-only rows from an electric vehicle diagnostic.
+          if (!check) return [];
+          const finding = findingByCheck.get(check.id);
+          return [{
+            id: check.id,
+            templateItemId: item.id,
+            name: item.name,
+            position: item.position,
+            measurementUnit: item.measurementUnit,
+            state: check.state,
+            measurementValue: check.measurementValue?.toString() || null,
+            measurementText: check.measurementText || null,
+            note: check.note || null,
+            finding: finding ? {
+              id: finding.id,
+              action: finding.action,
+              urgency: finding.urgency,
+              findingText: finding.findingText,
+              suggestedWorkName: finding.suggestedWorkName,
+              suggestedPartName: finding.suggestedPartName,
+              media: mediaByFinding.get(finding.id) || [],
+            } : null,
+          }];
+        });
+        return rows.length
+          ? [{ id: section.id, code: section.code, name: section.name, items: rows, counts: counts(rows) }]
+          : [];
+      });
+    const flat = sectionView.flatMap((section) => section.items);
+    return {
+      id: inspection.id,
+      templateId: inspection.templateId,
+      templateName: templateById.get(inspection.templateId)?.name || "Діагностика",
+      status: inspection.status,
+      startedAt: inspection.startedAt,
+      completedAt: inspection.completedAt,
+      sections: sectionView,
+      counts: counts(flat),
+    };
+  });
   const all = inspectionView.flatMap((inspection) => inspection.sections.flatMap((section) => section.items));
   return { diagnostic: { id: diagnostic.id, status: diagnostic.status, workflowState: review?.state === DiagnosticReviewState.SUBMITTED ? "SUBMITTED" : review?.state === DiagnosticReviewState.RETURNED ? "RETURNED" : diagnostic.status, technicalConclusion: diagnostic.technicalConclusion, confirmedAt: diagnostic.confirmedAt, client: diagnostic.client, vehicle: { ...diagnostic.vehicle, label: vehicleLabel(diagnostic.vehicle) }, problem: diagnostic.lead?.need || diagnostic.lead?.comment || null, workOrder: diagnostic.workOrder, assignment, review: review || { state: DiagnosticReviewState.DRAFT, submittedAt: null, returnedAt: null, confirmedAt: null, mechanicComment: null, managerComment: null } }, inspections: inspectionView, availableTemplates: availableTemplates.map((template) => ({ id: template.id, code: template.code, name: template.name, description: template.description, added: inspections.some((inspection) => inspection.templateId === template.id) })), counts: counts(all), canSubmit: inspections.length > 0 && all.length > 0 && all.every((row) => row.state !== DiagnosticCheckState.NOT_CHECKED) };
 }

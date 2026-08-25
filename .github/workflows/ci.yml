@@ -150,6 +150,9 @@ jobs:
       - name: Diagnostic workflow smoke test
         run: npx --no-install tsx scripts/diagnostic-flow-smoke.ts
 
+      - name: Diagnostic completion view smoke test
+        run: npx --no-install tsx scripts/diagnostic-completion-view-smoke.ts
+
       - name: Mechanic walk-in diagnostic smoke test
         run: npx --no-install tsx scripts/mechanic-walk-in-smoke.ts
 
