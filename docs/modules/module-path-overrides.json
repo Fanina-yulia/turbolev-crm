@@ -2,6 +2,7 @@
   "core-platform": [
     "app/business-flow-route-bridge.tsx",
     "app/global-smart-search.tsx",
+    "app/global-smart-search-palette.tsx",
     "app/api/search/**",
     ".github/workflows/ci.yml",
     "scripts/ci-bootstrap-external-tables.sql"
