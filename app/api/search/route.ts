@@ -137,7 +137,6 @@ async function filterWorkOrdersByScope<T extends { id: string }>(rows: T[], cont
     const allowed = new Set(visible.map((row) => row.workOrderId).filter((id): id is string => Boolean(id)));
     return rows.filter((row) => allowed.has(row.id));
   }
-
   const identityFilters = [
     context.user?.id ? { mechanic: { is: { userId: context.user.id } } } : null,
     context.user?.employeeId ? { mechanic: { is: { employeeId: context.user.employeeId } } } : null,
@@ -248,7 +247,7 @@ export async function GET(request: NextRequest) {
               { technicalConclusion: { contains: q, mode: "insensitive" } },
               { client: { is: { name: { contains: q, mode: "insensitive" } } } },
               ...(phoneNeedle.length >= 3 ? [{ client: { is: { phone: { contains: phoneNeedle } } } }] : []),
-              { vehicle: { is: { plateNumber: { contains: normalized, mode: "insensitive" } } },
+              { vehicle: { is: { plateNumber: { contains: normalized, mode: "insensitive" } } } },
               { vehicle: { is: { vin: { contains: normalized, mode: "insensitive" } } } },
             ],
           },
