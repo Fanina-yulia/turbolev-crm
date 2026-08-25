@@ -10,6 +10,7 @@ import { PriceCatalogSettingsPanel } from "./price-catalog-settings-panel";
 import { SecurityEnforcementControl } from "./security-enforcement-control";
 import { SecuritySettingsPanelV2 } from "./security-settings-panel-v2";
 import { SettingsOperationsPage } from "./settings-operations-page";
+import { SettingsRouteFocusBridge } from "./settings-route-focus-bridge";
 import type { SettingsTab } from "./settings-tabs";
 import { WorkflowSettingsPanel } from "./workflow-settings-panel";
 import styles from "./settings-page.module.css";
@@ -21,6 +22,6 @@ export function SettingsPage({ tab }: { tab: SettingsTab }) {
   if (tab === "cameras") return <div className={styles.directPage}><CameraSettingsPanel/></div>;
   if (tab === "diagnosticTemplates") return <div className={styles.directPage}><DiagnosticTemplatesSettingsPanel/></div>;
   if (tab === "workPrices") return <div className={styles.directPage}><PriceCatalogSettingsPanel/></div>;
-  if (tab === "integrations") return <div className={styles.directPage}><IntegrationsSettingsHub/><MetaAccountSelectionPrompt/></div>;
-  return <SettingsOperationsPage tab={tab}/>;
+  if (tab === "integrations") return <div className={styles.directPage}><SettingsRouteFocusBridge tab={tab}/><IntegrationsSettingsHub/><MetaAccountSelectionPrompt/></div>;
+  return <><SettingsRouteFocusBridge tab={tab}/><SettingsOperationsPage tab={tab}/></>;
 }
