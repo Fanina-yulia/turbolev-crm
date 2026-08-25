@@ -34,6 +34,8 @@ assertIncludes("app/crm-route.ts", [
   "analyticsTab?: string",
   "metric?: string",
   "settingsTab?: string",
+  "supplierId?: string",
+  "provider?: string",
 ]);
 
 assertIncludes("app/planner-workspace.tsx", [
@@ -53,6 +55,50 @@ assertIncludes("app/analytics-workspace.tsx", [
   "route.metric",
   "route.locationId",
   "data-analytics-route-focus",
+]);
+
+assertIncludes("app/financial-center.tsx", [
+  "readCrmRoute",
+  "route.metric",
+  "route.from",
+  "route.to",
+  "route.locationId",
+  'navigateCrm("Замовлення-наряди", { workOrderId:',
+]);
+
+assertIncludes("app/payments-queue.tsx", [
+  "readCrmRoute",
+  "route.workOrderId",
+  "route.locationId",
+  'params.set("workOrderId", routeWorkOrderId)',
+  'navigateCrm("Оплати", { scope: next',
+]);
+
+assertIncludes("app/api/payments/route.ts", [
+  'request.nextUrl.searchParams.get("workOrderId")',
+  "requestedWorkOrderId ? [requestedWorkOrderId] : null",
+]);
+
+assertIncludes("app/global-smart-search.tsx", [
+  'type: "diagnostic"',
+  'type: "appointment"',
+  'navigateCrm("Діагностика", { diagnosticId:',
+  'navigateCrm("Планувальник", { appointmentId:',
+]);
+
+assertIncludes("app/api/search/route.ts", [
+  "canDiagnostics",
+  "canPlanner",
+  "prisma.diagnosticRequest.findMany",
+  "prisma.serviceAppointment.findMany",
+  "diagnostics:",
+  "appointments:",
+]);
+
+assertIncludes("app/settings-route-focus-bridge.tsx", [
+  "route.provider",
+  "route.supplierId",
+  'url.searchParams.set("integration", provider)',
 ]);
 
 assertIncludes("app/crm-shell.tsx", [
