@@ -11,6 +11,7 @@ export const maxDuration = 30;
 
 const RESULT_LIMIT = 6;
 const CANDIDATE_LIMIT = 24;
+const ENTITY_ID = /^[A-Za-z0-9_-]{12,}$/;
 
 function compact(value: string) {
   return value.toUpperCase().replace(/[\s._-]+/g, "");
@@ -18,6 +19,38 @@ function compact(value: string) {
 
 function digits(value: string) {
   return value.replace(/\D+/g, "");
+}
+
+function diagnosticStatusLabel(status: string) {
+  if (status === "PENDING") return "Очікує";
+  if (status === "IN_PROGRESS") return "В роботі";
+  if (status === "CONFIRMED") return "Підтверджена";
+  if (status === "CANCELLED") return "Скасована";
+  return status;
+}
+
+function appointmentStatusLabel(status: string) {
+  const labels: Record<string, string> = {
+    BOOKED: "Записаний",
+    ARRIVED: "Приїхав",
+    DIAGNOSTICS: "Діагностика",
+    WAITING_PARTS_SELECTION: "Підбір деталей",
+    WAITING_CALCULATION: "Калькуляція",
+    WAITING_APPROVAL: "Погодження",
+    WAITING_PARTS: "Очікує деталі",
+    READY_FOR_REPAIR: "Готовий до ремонту",
+    IN_REPAIR: "У ремонті",
+    WAITING_QC: "Контроль якості",
+    WAITING_PAYMENT: "Очікує оплату",
+    READY_FOR_PICKUP: "Готовий до видачі",
+    COMPLETED: "Виданий",
+    WARRANTY: "Гарантія",
+    PAUSED: "Пауза",
+    NO_SHOW: "Не приїхав",
+    CANCELLED: "Скасовано",
+    RESERVE: "Резерв",
+  };
+  return labels[status] || status;
 }
 
 function workOrderScope(context: AccessContext) {
@@ -68,29 +101,33 @@ export async function GET(request: NextRequest) {
   const q = (request.nextUrl.searchParams.get("q") || "").trim().slice(0, 120);
   const parsedNumber = parseWorkOrderNumber(q);
   if (!q || (q.length < 2 && parsedNumber == null)) {
-    return NextResponse.json({ ok: true, query: q, clients: [], vehicles: [], workOrders: [] }, { headers: { "Cache-Control": "no-store" } });
+    return NextResponse.json({ ok: true, query: q, clients: [], vehicles: [], workOrders: [], diagnostics: [], appointments: [] }, { headers: { "Cache-Control": "no-store" } });
   }
 
   const context = await getAccessContext(request);
   const canClients = context.enforcementMode !== "ENFORCED" || hasPermission(context, PERMISSIONS.CLIENTS_READ);
   const canWorkOrders = context.enforcementMode !== "ENFORCED" || hasPermission(context, PERMISSIONS.WORK_ORDERS_READ);
+  const canDiagnostics = context.enforcementMode !== "ENFORCED" || hasPermission(context, PERMISSIONS.DIAGNOSTICS_READ);
+  const canPlanner = context.enforcementMode !== "ENFORCED" || hasPermission(context, PERMISSIONS.PLANNER_READ);
 
   if (context.enforcementMode === "ENFORCED" && context.provisioningState !== "ACTIVE") {
     return NextResponse.json({ ok: false, error: context.authenticated ? "Доступ до CRM не активований." : "Потрібна авторизація." }, { status: context.authenticated ? 403 : 401 });
   }
-  if (!canClients && !canWorkOrders) {
+  if (!canClients && !canWorkOrders && !canDiagnostics && !canPlanner) {
     return NextResponse.json({ ok: false, error: "Для глобального пошуку немає доступних типів даних." }, { status: 403 });
   }
 
   const prisma = getPrisma();
   const normalized = compact(q);
   const phoneNeedle = digits(q);
+  const exactEntityId = ENTITY_ID.test(q) ? q : null;
 
   try {
     const clientsPromise = canClients
       ? prisma.client.findMany({
           where: {
             OR: [
+              ...(exactEntityId ? [{ id: exactEntityId }] : []),
               { name: { contains: q, mode: "insensitive" } },
               ...(phoneNeedle.length >= 3 ? [{ phone: { contains: phoneNeedle } }] : []),
               { vehicles: { some: { plateNumber: { contains: normalized, mode: "insensitive" } } } },
@@ -116,6 +153,7 @@ export async function GET(request: NextRequest) {
       ? prisma.vehicle.findMany({
           where: {
             OR: [
+              ...(exactEntityId ? [{ id: exactEntityId }] : []),
               { plateNumber: { contains: normalized, mode: "insensitive" } },
               { vin: { contains: normalized, mode: "insensitive" } },
               { client: { is: { name: { contains: q, mode: "insensitive" } } } },
@@ -136,11 +174,76 @@ export async function GET(request: NextRequest) {
         })
       : Promise.resolve([]);
 
+    const diagnosticsPromise = canDiagnostics
+      ? prisma.diagnosticRequest.findMany({
+          where: {
+            OR: [
+              ...(exactEntityId ? [{ id: exactEntityId }] : []),
+              { technicalConclusion: { contains: q, mode: "insensitive" } },
+              { client: { is: { name: { contains: q, mode: "insensitive" } } } },
+              ...(phoneNeedle.length >= 3 ? [{ client: { is: { phone: { contains: phoneNeedle } } } }] : []),
+              { vehicle: { is: { plateNumber: { contains: normalized, mode: "insensitive" } } } },
+              { vehicle: { is: { vin: { contains: normalized, mode: "insensitive" } } } },
+            ],
+          },
+          orderBy: { updatedAt: "desc" },
+          take: RESULT_LIMIT,
+          select: {
+            id: true,
+            status: true,
+            updatedAt: true,
+            technicalConclusion: true,
+            client: { select: { id: true, name: true, phone: true } },
+            vehicle: { select: { id: true, plateNumber: true, vin: true, brand: true, model: true, year: true } },
+          },
+        })
+      : Promise.resolve([]);
+
+    const plannerWhere = context.enforcementMode === "ENFORCED" && context.locationIds.length
+      ? { locationId: { in: context.locationIds } }
+      : {};
+    const appointmentsPromise = canPlanner
+      ? prisma.serviceAppointment.findMany({
+          where: {
+            ...plannerWhere,
+            OR: [
+              ...(exactEntityId ? [{ id: exactEntityId }] : []),
+              { customerName: { contains: q, mode: "insensitive" } },
+              ...(phoneNeedle.length >= 3 ? [{ phone: { contains: phoneNeedle } }] : []),
+              { vehicleLabel: { contains: q, mode: "insensitive" } },
+              { plateNumber: { contains: normalized, mode: "insensitive" } },
+              { problem: { contains: q, mode: "insensitive" } },
+            ],
+          },
+          orderBy: { plannedStartAt: "desc" },
+          take: RESULT_LIMIT,
+          select: {
+            id: true,
+            status: true,
+            customerName: true,
+            phone: true,
+            vehicleLabel: true,
+            plateNumber: true,
+            problem: true,
+            plannedStartAt: true,
+            clientId: true,
+            vehicleId: true,
+            location: { select: { id: true, name: true } },
+          },
+        })
+      : Promise.resolve([]);
+
     const exactNumberPromise = canWorkOrders && parsedNumber != null
       ? prisma.workOrderNumber.findUnique({ where: { number: parsedNumber }, select: { workOrderId: true, number: true } })
       : Promise.resolve(null);
 
-    const [clients, vehicles, exactNumber] = await Promise.all([clientsPromise, vehiclesPromise, exactNumberPromise]);
+    const [clients, vehicles, diagnostics, appointments, exactNumber] = await Promise.all([
+      clientsPromise,
+      vehiclesPromise,
+      diagnosticsPromise,
+      appointmentsPromise,
+      exactNumberPromise,
+    ]);
 
     let workOrders: Array<{
       id: string;
@@ -154,6 +257,7 @@ export async function GET(request: NextRequest) {
       workOrders = await prisma.workOrder.findMany({
         where: {
           OR: [
+            ...(exactEntityId ? [{ id: exactEntityId }] : []),
             ...(exactNumber?.workOrderId ? [{ id: exactNumber.workOrderId }] : []),
             { client: { is: { name: { contains: q, mode: "insensitive" } } } },
             ...(phoneNeedle.length >= 3 ? [{ client: { is: { phone: { contains: phoneNeedle } } } }] : []),
@@ -185,7 +289,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       ok: true,
       query: q,
-      capabilities: { clients: canClients, workOrders: canWorkOrders },
+      capabilities: { clients: canClients, workOrders: canWorkOrders, diagnostics: canDiagnostics, planner: canPlanner },
       clients: clients.map((client) => ({
         id: client.id,
         name: client.name,
@@ -202,6 +306,14 @@ export async function GET(request: NextRequest) {
         updatedAt: row.updatedAt,
         client: row.client,
         vehicle: row.vehicle,
+      })),
+      diagnostics: diagnostics.map((row) => ({
+        ...row,
+        statusLabel: diagnosticStatusLabel(row.status),
+      })),
+      appointments: appointments.map((row) => ({
+        ...row,
+        statusLabel: appointmentStatusLabel(row.status),
       })),
     }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
