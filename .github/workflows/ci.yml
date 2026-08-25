@@ -141,6 +141,11 @@ jobs:
       - name: Reject Prisma / migration schema drift
         run: npx prisma migrate diff --exit-code --from-config-datasource --to-schema prisma
 
+      - name: Restore external CI fixtures for runtime smoke tests
+        # Drift comparison must run without SQL-managed tables, but runtime smoke
+        # tests exercise the same MVS registry lookup used in production.
+        run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f scripts/ci-bootstrap-external-tables.sql
+
       - name: Canonical CRM contracts smoke test
         run: npm run contracts:smoke
 
