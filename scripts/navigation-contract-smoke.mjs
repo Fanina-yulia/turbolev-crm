@@ -61,14 +61,22 @@ assertIncludes("app/crm-shell.tsx", [
   "<AnalyticsWorkspace/>",
 ]);
 
+assertIncludes("app/business-flow-route-bridge.tsx", [
+  'detail?.section === "Клієнти та авто"',
+  "resolveLegacyClientVehicle",
+  'navigateCrm("Клієнти", { clientId: client.id })',
+  'navigateCrm("Авто", { vehicleId: vehicle.id })',
+]);
+
 const appFiles = walk(path.join(ROOT, "app"));
+const groupedLegacyAllowlist = new Set(["app/planner-edit-enhancer.tsx", "app/business-flow-route-bridge.tsx"]);
 const invalid = [];
 for (const file of appFiles) {
   const source = fs.readFileSync(file, "utf8");
-  if (source.includes('section: "Клієнти та авто"') || source.includes("section:'Клієнти та авто'")) {
-    invalid.push(path.relative(ROOT, file));
-  }
+  const relative = path.relative(ROOT, file).replaceAll("\\", "/");
+  const hasGroupedDestination = source.includes('section: "Клієнти та авто"') || source.includes("section:'Клієнти та авто'");
+  if (hasGroupedDestination && !groupedLegacyAllowlist.has(relative)) invalid.push(relative);
 }
-if (invalid.length) throw new Error(`Invalid grouped navigation destination «Клієнти та авто» remains in: ${invalid.join(", ")}`);
+if (invalid.length) throw new Error(`Unbridged grouped navigation destination «Клієнти та авто» remains in: ${invalid.join(", ")}`);
 
 console.log("Navigation contract smoke: OK");
