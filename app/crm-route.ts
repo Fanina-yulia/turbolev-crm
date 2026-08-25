@@ -79,8 +79,12 @@ function canonicalNavigation(section: CrmSectionLabel, params: CrmRouteParams): 
 
   if (section === "Виробництво") {
     if (["posts", "mechanics", "assigned", "resources"].includes(params.scope || "")) {
-      const { status: _status, workOrderId: _workOrderId, workOrderTab: _workOrderTab, ...context } = params;
-      return { section: "Планувальник", params: { ...context, scope: "resources" } };
+      const context: CrmRouteParams = { ...params };
+      delete context.status;
+      delete context.workOrderId;
+      delete context.workOrderTab;
+      context.scope = "resources";
+      return { section: "Планувальник", params: context };
     }
     const next = { ...params };
     if (next.status === "WAITING_QC" && !next.workOrderTab) next.workOrderTab = "qc";
@@ -89,14 +93,16 @@ function canonicalNavigation(section: CrmSectionLabel, params: CrmRouteParams): 
   }
 
   if (section === "Контроль якості") {
-    const { scope, ...context } = params;
-    let status = params.status;
-    if (!status) {
-      if (scope === "passed" || scope === "ready") status = "READY_FOR_PICKUP";
-      else if (scope === "failed" || scope === "rework") status = "REWORK";
-      else status = "WAITING_QC";
+    const context: CrmRouteParams = { ...params };
+    const scope = context.scope;
+    delete context.scope;
+    if (!context.status) {
+      if (scope === "passed" || scope === "ready") context.status = "READY_FOR_PICKUP";
+      else if (scope === "failed" || scope === "rework") context.status = "REWORK";
+      else context.status = "WAITING_QC";
     }
-    return { section: "Замовлення-наряди", params: { ...context, status, workOrderTab: params.workOrderTab || "qc" } };
+    context.workOrderTab = context.workOrderTab || "qc";
+    return { section: "Замовлення-наряди", params: context };
   }
 
   if (section === "Гарантії") {
