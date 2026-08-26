@@ -10,6 +10,7 @@ type Mode = "MATRIX" | "LEGACY" | null;
 type DiagnosticModePayload = {
   ok?: boolean;
   mode?: "MATRIX" | "LEGACY";
+  templateNames?: string[];
 };
 
 export function MechanicDiagnosticWorkspace({ diagnosticId, onBack, onChanged }: { diagnosticId: string; onBack: () => void; onChanged?: () => void }) {
@@ -49,7 +50,23 @@ export function MechanicDiagnosticWorkspace({ diagnosticId, onBack, onChanged }:
       .then(async (response) => {
         const body = await response.json().catch(() => null) as DiagnosticModePayload | null;
         if (!response.ok || !body?.ok || !body.mode) throw new Error("LOAD_FAILED");
-        if (!cancelled) setMode(body.mode);
+        if (cancelled) return;
+
+        if (body.mode === "LEGACY" && !(body.templateNames?.length)) {
+          setMode("MATRIX");
+          return;
+        }
+
+        if (body.mode === "LEGACY") {
+          const upgrade = await fetch(`/api/diagnostics/${encodeURIComponent(diagnosticId)}/matrix-start`, {
+            method: "POST",
+            credentials: "include",
+          });
+          if (!cancelled) setMode(upgrade.ok ? "MATRIX" : "LEGACY");
+          return;
+        }
+
+        setMode("MATRIX");
       })
       .catch((cause) => {
         if (!cancelled && cause instanceof Error && cause.name !== "AbortError") setMode("LEGACY");
