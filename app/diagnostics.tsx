@@ -113,9 +113,15 @@ export function Diagnostics() {
   const [conclusion, setConclusion] = useState("");
 
   const applyRoute = useCallback((nextRows: Diagnostic[]) => {
-    const diagnosticId = readCrmRoute().diagnosticId || null;
+    const route = readCrmRoute();
+    const diagnosticId = route.diagnosticId || null;
+    const vehicleId = route.vehicleId || null;
     setSelectedId((current) => {
       if (diagnosticId && nextRows.some((row) => row.id === diagnosticId)) return diagnosticId;
+      if (vehicleId) {
+        const vehicleDiagnostic = nextRows.find((row) => row.vehicle.id === vehicleId);
+        return vehicleDiagnostic?.id ?? null;
+      }
       if (current && nextRows.some((row) => row.id === current)) return current;
       return nextRows[0]?.id ?? null;
     });
@@ -191,7 +197,15 @@ export function Diagnostics() {
       <select className={registryStyles.select} value={mechanic} onChange={(event) => setMechanic(event.target.value)} aria-label="Фільтр за механіком"><option value="ALL">Усі механіки</option>{mechanics.map((name) => <option key={name} value={name}>{name}</option>)}</select>
     </div>
 
-    {readCrmRoute().diagnosticId && <div className={registryStyles.routeHint}>Відкрито Діагностичну карту з історії автомобіля.</div>}
+    {(readCrmRoute().diagnosticId || readCrmRoute().vehicleId) && <div className={registryStyles.routeHint}>
+      {readCrmRoute().diagnosticId
+        ? "Відкрито Діагностичну карту з історії автомобіля."
+        : readCrmRoute().workflowFocus === "proposal"
+          ? "Для цього автомобіля Комерційна пропозиція стане доступною після підтвердження Діагностичної карти."
+          : readCrmRoute().workflowFocus === "repair"
+            ? "Ремонт відкриється після погодження Комерційної пропозиції та створення замовлення-наряду."
+            : "Відкрито процес Діагностичної карти для цього автомобіля."}
+    </div>}
     {error && <div className={styles.error}>{error}</div>}{message && <div className={styles.success}>{message}</div>}
 
     <div className={styles.layout}>
@@ -222,7 +236,11 @@ export function Diagnostics() {
         {selected.commercialProposal && <div className={styles.woCard}><div><span>Комерційний етап</span><strong>{commercialLabels[selected.commercialProposal.stage]}</strong></div><button className={styles.secondary} type="button" onClick={() => navigateCrm("Замовлення-наряди", { workOrderId: selected.commercialProposal!.workOrderId, workOrderTab: "estimate" })}>Відкрити КП →</button></div>}
         {!selected.structured?.inspections && selected.reviewState === "CONFIRMED" && <DiagnosticReportSharePanel diagnosticId={selected.id} reviewState={selected.reviewState} workOrder={selected.workOrder} />}
         {selected.structured?.inspections ? <StructuredDiagnosticReviewPanel diagnosticId={selected.id} onChanged={load} /> : <div className={styles.actions}>{selected.status === "PENDING" && <><button className={styles.primary} disabled={saving} onClick={() => void transition("IN_PROGRESS")}>Почати стару діагностику</button><button className={styles.secondary} disabled={saving} onClick={() => void transition("CANCELLED")}>Скасувати</button></>}{selected.status === "IN_PROGRESS" && <><button className={styles.primary} disabled={saving || !conclusion.trim()} onClick={() => void transition("CONFIRMED")}>{saving ? "Зберігаю…" : "Підтвердити стару діагностику"}</button><button className={styles.secondary} disabled={saving} onClick={() => void transition("CANCELLED")}>Скасувати</button></>}{selected.status === "CONFIRMED" && <span className={styles.lockNote}>✓ Діагностику зафіксовано. Для нового циклу потрібна нова заявка на діагностику.</span>}{selected.status === "CANCELLED" && <span className={styles.lockNote}>Діагностику скасовано. Історія збережена.</span>}</div>}
-      </> : <div className={styles.empty}>Оберіть діагностику зі списку.</div>}</aside>
+      </> : readCrmRoute().vehicleId ? <div className={styles.empty}>
+        <h2>Діагностична карта для автомобіля</h2>
+        <p>Для цього автомобіля ще немає створеної діагностики. Карта зʼявиться після прибуття автомобіля на діагностику та призначення механіка.</p>
+        <button className={styles.secondary} type="button" onClick={() => navigateCrm("Авто", { vehicleId: readCrmRoute().vehicleId })}>← Повернутися до картки авто</button>
+      </div> : <div className={styles.empty}>Оберіть діагностику зі списку.</div>}</aside>
     </div>
   </div>;
 }
