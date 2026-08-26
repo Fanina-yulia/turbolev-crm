@@ -83,6 +83,9 @@ export function MechanicDiagnosticWorkspace({ diagnosticId, onBack, onChanged }:
 
   function changed() {
     onChanged?.();
+    window.dispatchEvent(new CustomEvent("turbolev:data-changed", {
+      detail: { entity: "diagnostic", diagnosticId },
+    }));
     void loadSettlement();
   }
 
