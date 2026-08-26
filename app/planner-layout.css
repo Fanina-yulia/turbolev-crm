@@ -1,0 +1,99 @@
+/* Planner calendar viewport layout. The page owns the viewport; only the
+   schedule surface scrolls when the time grid is larger than the screen. */
+.workspace:has([class*="planner-layout_calendarRoot"]){
+  display:flex!important;
+  flex-direction:column!important;
+  height:100dvh!important;
+  min-height:0!important;
+  overflow:hidden!important;
+  padding-top:18px!important;
+  padding-bottom:18px!important;
+}
+
+[class*="planner-layout_calendarRoot"]{
+  width:100%;
+  min-width:0;
+  min-height:0;
+}
+
+[class*="planner-v2_page"]{
+  display:flex!important;
+  flex-direction:column!important;
+  gap:0!important;
+  width:100%;
+  height:100%;
+  min-height:0!important;
+  padding:0!important;
+  overflow:hidden!important;
+}
+
+[class*="planner-v2_header"],
+[class*="planner-v2_toolbar"],
+[class*="planner-v2_dayRangeNav"],
+[class*="planner-v2_rangeNav"],
+[class*="planner-v2_resourceLegend"],
+[class*="planner-v2_systemMessage"],
+[class*="planner-v2_rule"]{flex:0 0 auto}
+
+[class*="planner-v2_header"]{margin-bottom:8px}
+[class*="planner-v2_toolbar"]{margin-top:0}
+[class*="planner-v2_dayRangeNav"],
+[class*="planner-v2_rangeNav"]{margin-top:7px;margin-bottom:2px}
+[class*="planner-v2_resourceLegend"]{margin:6px 0}
+[class*="planner-v2_systemMessage"]{min-height:18px;margin:2px 2px 4px}
+[class*="planner-v2_rule"]{margin:5px 3px 0}
+
+[class*="planner-v2_page"] > [class*="planner-day-view_wrap"]{
+  flex:1 1 auto;
+  min-height:0!important;
+  overflow:hidden!important;
+}
+
+[class*="planner-day-view_wrap"]{
+  display:flex!important;
+  flex-direction:column!important;
+  gap:8px!important;
+  min-height:0!important;
+  overflow:hidden!important;
+}
+
+[class*="planner-day-view_kpis"],
+[class*="planner-day-view_meta"],
+[class*="planner-day-view_legend"]{flex:0 0 auto}
+
+[class*="planner-day-view_board"]{
+  flex:1 1 auto;
+  min-height:0!important;
+  max-height:none!important;
+  overflow:auto!important;
+}
+
+[class*="planner-v2_weekBoard"]{
+  flex:1 1 auto;
+  min-height:0!important;
+  max-height:none!important;
+  overflow:auto!important;
+}
+
+@media(max-width:1100px){
+  [class*="planner-v2_header"]{gap:14px}
+  [class*="planner-v2_headerActions"]{width:100%}
+  [class*="planner-v2_headerActions"] > button{min-height:42px}
+}
+
+@media(max-width:760px){
+  .workspace:has([class*="planner-layout_calendarRoot"]){
+    height:calc(100dvh - 108px)!important;
+    min-height:calc(100dvh - 108px)!important;
+    padding:12px 14px!important;
+  }
+
+  [class*="planner-v2_header"]{gap:10px!important}
+  [class*="planner-v2_header"] h1{font-size:24px!important}
+  [class*="planner-v2_headerActions"]{width:100%;display:flex;align-items:stretch}
+  [class*="planner-v2_headerActions"] > button{flex:1 1 0}
+  [class*="planner-v2_toolbar"]{grid-template-columns:1fr!important}
+  [class*="planner-v2_searchBox"]{grid-column:auto!important}
+  [class*="planner-v2_dayRangeNav"]{grid-template-columns:36px minmax(0,1fr) 36px!important}
+  [class*="planner-v2_weekBoard"]{padding-bottom:8px}
+}
