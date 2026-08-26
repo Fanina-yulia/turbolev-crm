@@ -6,6 +6,22 @@ export type EntityCounts = {
   diagnosticRequests: number;
 };
 
+export type VehicleStatusTone = "success" | "warning" | "danger" | "neutral";
+
+export type VehicleStatusItem = {
+  state: string;
+  label: string;
+  tone: VehicleStatusTone;
+  targetId: string | null;
+  updatedAt: CrmDateTime | null;
+};
+
+export type VehicleStatusSummary = {
+  diagnostics: VehicleStatusItem;
+  proposal: VehicleStatusItem;
+  work: VehicleStatusItem;
+};
+
 export type ClientReference = {
   id: string;
   name: string | null;
@@ -162,6 +178,7 @@ export type ClientDirectoryItem = CrmClientCore & {
 export type VehicleDirectoryItem = CrmVehicleCore & {
   client: ClientReference;
   _count: EntityCounts;
+  statusSummary?: VehicleStatusSummary;
 };
 
 export type VehicleCardContract = CrmVehicleCore & {
@@ -172,6 +189,7 @@ export type VehicleCardContract = CrmVehicleCore & {
   diagnosticRequests: DiagnosticRequestReference[];
   workOrders: WorkOrderReference[];
   _count: EntityCounts;
+  statusSummary?: VehicleStatusSummary;
 };
 
 export type PersonnelItemContract = CrmEmployeeCore & {

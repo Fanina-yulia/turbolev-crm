@@ -2,12 +2,14 @@ import type {
   ClientDirectoryItem,
   VehicleCardContract,
   VehicleDirectoryItem,
+  VehicleStatusSummary,
 } from "./crm-core";
 import {
   isRecord,
   parseClientDirectoryItem,
   parseVehicleCard,
   parseVehicleDirectoryItem,
+  parseVehicleStatusSummary,
   payloadMessage,
 } from "./crm-core.parsers";
 
@@ -27,6 +29,11 @@ export type VehicleDirectoryPayload = {
   limit: number;
   pages: number;
   vehicles: VehicleDirectoryItem[];
+};
+
+export type VehicleStatusSummaryPayload = {
+  ok: true;
+  vehicles: Array<{ vehicleId: string; statusSummary: VehicleStatusSummary }>;
 };
 
 export type VehicleAppearancePatch = Pick<
@@ -98,6 +105,19 @@ export function parseVehicleDirectoryPayload(value: unknown): VehicleDirectoryPa
 export function parseVehicleCardPayload(value: unknown): VehicleCardContract | null {
   if (!isRecord(value) || value.ok !== true) return null;
   return parseVehicleCard(value.vehicle);
+}
+
+export function parseVehicleStatusSummaryPayload(value: unknown): VehicleStatusSummaryPayload | null {
+  if (!isRecord(value) || value.ok !== true || !Array.isArray(value.vehicles)) return null;
+  const vehicles: VehicleStatusSummaryPayload["vehicles"] = [];
+  for (const entry of value.vehicles) {
+    if (!isRecord(entry)) return null;
+    const vehicleId = requiredString(entry.vehicleId);
+    const statusSummary = parseVehicleStatusSummary(entry.statusSummary);
+    if (!vehicleId || !statusSummary) return null;
+    vehicles.push({ vehicleId, statusSummary });
+  }
+  return { ok: true, vehicles };
 }
 
 export function parseVehicleAppearancePayload(value: unknown): VehicleAppearancePatch | null {

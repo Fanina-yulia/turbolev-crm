@@ -14,6 +14,9 @@ import type {
   PersonnelItemContract,
   VehicleCardContract,
   VehicleDirectoryItem,
+  VehicleStatusItem,
+  VehicleStatusSummary,
+  VehicleStatusTone,
   VehicleReference,
   WorkOrderActionContract,
   WorkOrderDetailContract,
@@ -67,6 +70,33 @@ function dateString(value: unknown) {
 
 function parseCount(value: unknown) {
   return Math.max(0, Math.trunc(numberValue(value)));
+}
+
+const VEHICLE_STATUS_TONES = new Set<VehicleStatusTone>(["success", "warning", "danger", "neutral"]);
+
+export function parseVehicleStatusItem(value: unknown): VehicleStatusItem | null {
+  if (!isRecord(value)) return null;
+  const state = requiredString(value.state);
+  const label = requiredString(value.label);
+  const tone = typeof value.tone === "string" && VEHICLE_STATUS_TONES.has(value.tone as VehicleStatusTone)
+    ? value.tone as VehicleStatusTone
+    : null;
+  if (!state || !label || !tone) return null;
+  return {
+    state,
+    label,
+    tone,
+    targetId: nullableString(value.targetId),
+    updatedAt: dateString(value.updatedAt),
+  };
+}
+
+export function parseVehicleStatusSummary(value: unknown): VehicleStatusSummary | null {
+  if (!isRecord(value)) return null;
+  const diagnostics = parseVehicleStatusItem(value.diagnostics);
+  const proposal = parseVehicleStatusItem(value.proposal);
+  const work = parseVehicleStatusItem(value.work);
+  return diagnostics && proposal && work ? { diagnostics, proposal, work } : null;
 }
 
 export function parseClientReference(value: unknown): ClientReference | null {
@@ -243,6 +273,7 @@ export function parseVehicleDirectoryItem(value: unknown): VehicleDirectoryItem 
   const client = parseClientReference(value.client);
   if (!core || !client) return null;
   const count = isRecord(value._count) ? value._count : {};
+  const statusSummary = parseVehicleStatusSummary(value.statusSummary);
   return {
     ...core,
     client,
@@ -250,6 +281,7 @@ export function parseVehicleDirectoryItem(value: unknown): VehicleDirectoryItem 
       workOrders: parseCount(count.workOrders),
       diagnosticRequests: parseCount(count.diagnosticRequests),
     },
+    ...(statusSummary ? { statusSummary } : {}),
   };
 }
 
@@ -257,6 +289,7 @@ export function parseVehicleCard(value: unknown): VehicleCardContract | null {
   if (!isRecord(value)) return null;
   const directory = parseVehicleDirectoryItem(value);
   if (!directory) return null;
+  const statusSummary = parseVehicleStatusSummary(value.statusSummary);
   return {
     ...directory,
     classificationSource: nullableString(value.classificationSource),
@@ -268,6 +301,7 @@ export function parseVehicleCard(value: unknown): VehicleCardContract | null {
     workOrders: Array.isArray(value.workOrders)
       ? value.workOrders.map(parseWorkOrderReference).filter((item): item is WorkOrderReference => item !== null)
       : [],
+    ...(statusSummary ? { statusSummary } : {}),
   };
 }
 
