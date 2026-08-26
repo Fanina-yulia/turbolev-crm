@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent as ReactDragEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { zonedDateTimeToDate } from "@/src/lib/zoned-time";
 import styles from "./planner-day-view.module.css";
 import compactStyles from "./planner-day-view-compact.module.css";
@@ -61,6 +61,7 @@ const SLOT = 30;
 const DURATION_COOKIE = "turbolev_booking_duration_minutes";
 const CONTEXT_COOKIE = "turbolev_booking_context";
 const NON_BLOCKING = new Set(["NO_SHOW", "CANCELLED"]);
+const NON_DRAGGABLE = new Set(["COMPLETED", "NO_SHOW", "CANCELLED", "RESERVE"]);
 const IN_PROGRESS = new Set(["ARRIVED", "DIAGNOSTICS", "IN_REPAIR", "WAITING_QC"]);
 const WAITING = new Set(["WAITING_PARTS_SELECTION", "WAITING_CALCULATION", "WAITING_APPROVAL", "WAITING_PARTS", "READY_FOR_REPAIR", "READY_FOR_PICKUP", "PAUSED"]);
 const POST_COLORS = ["#ff6600", "#2f80ed", "#7c3aed", "#16a34a", "#d97706", "#0891b2"];
@@ -122,7 +123,7 @@ function currency(value: number) {
   return new Intl.NumberFormat("uk-UA", { style: "currency", currency: "UAH", maximumFractionDigits: 0 }).format(value);
 }
 
-export function PlannerDayView<TAppointment extends AppointmentBase>({ day, location, appointments, onOpen, onCreate, onSelection, onResize, showMetrics = true, compact = false }: {
+export function PlannerDayView<TAppointment extends AppointmentBase>({ day, location, appointments, onOpen, onCreate, onSelection, onResize, onMove, showMetrics = true, compact = false }: {
   day: string;
   location: Location;
   appointments: TAppointment[];
@@ -130,6 +131,7 @@ export function PlannerDayView<TAppointment extends AppointmentBase>({ day, loca
   onCreate: (day: string, time: string, postId: string) => void;
   onSelection?: (selection: PlannerTimeSelection) => void;
   onResize?: (appointment: TAppointment, day: string, startTime: string, endTime: string) => Promise<boolean>;
+  onMove?: (appointment: TAppointment, day: string, time: string, postId: string, durationMinutes: number) => void;
   showMetrics?: boolean;
   compact?: boolean;
 }) {
@@ -141,6 +143,9 @@ export function PlannerDayView<TAppointment extends AppointmentBase>({ day, loca
   const resizeRef = useRef<ResizeState | null>(null);
   const gridRef = useRef<HTMLDivElement | null>(null);
   const skipNextClickRef = useRef(false);
+  const [draggingAppointmentId, setDraggingAppointmentId] = useState<string | null>(null);
+  const [dropTarget, setDropTarget] = useState<{ rowId: string; slotIndex: number } | null>(null);
+  const suppressDragClickRef = useRef(false);
   const timeZone = location.timezone || "Europe/Kyiv";
   const openMinute = Number.isFinite(location.openMinute) ? location.openMinute : 540;
   const closeMinute = Number.isFinite(location.closeMinute) ? location.closeMinute : 1260;
@@ -248,9 +253,10 @@ export function PlannerDayView<TAppointment extends AppointmentBase>({ day, loca
     }
   });
 
-  function rowHasAppointment(row: Row, minute: number) {
+  function rowHasAppointment(row: Row, minute: number, ignoreId?: string) {
     const slotEnd = minute + SLOT;
     return dayAppointments.some((item) => {
+      if (item.id === ignoreId) return false;
       if (row.reception ? Boolean(item.postId) : item.postId !== row.id) return false;
       const start = localParts(item.plannedStartAt, timeZone).minute;
       const end = localParts(item.plannedEndAt, timeZone).minute;
@@ -258,10 +264,16 @@ export function PlannerDayView<TAppointment extends AppointmentBase>({ day, loca
     });
   }
 
-  function slotAvailable(row: Row, slotIndex: number) {
+  function slotAvailable(row: Row, slotIndex: number, ignoreId?: string) {
     const minute = slots[slotIndex];
-    if (minute === undefined || rowHasAppointment(row, minute)) return false;
+    if (minute === undefined || rowHasAppointment(row, minute, ignoreId)) return false;
     if (row.reception) return true;
+    const ignored = ignoreId ? dayAppointments.find((item) => item.id === ignoreId) : null;
+    if (ignored && ignored.postId === row.id) {
+      const ignoredStart = localParts(ignored.plannedStartAt, timeZone).minute;
+      const ignoredEnd = localParts(ignored.plannedEndAt, timeZone).minute;
+      if (ignoredStart < minute + SLOT && ignoredEnd > minute) return true;
+    }
     return availabilityMap.get(`${minuteLabel(minute)}:${row.id}`) === true;
   }
 
@@ -272,6 +284,67 @@ export function PlannerDayView<TAppointment extends AppointmentBase>({ day, loca
       if (!slotAvailable(row, index)) return false;
     }
     return true;
+  }
+
+  function appointmentDuration(item: TAppointment) {
+    return Math.max(SLOT, Math.round((new Date(item.plannedEndAt).getTime() - new Date(item.plannedStartAt).getTime()) / 60000));
+  }
+
+  function canDropRange(row: Row, startIndex: number, durationMinutes: number, ignoreId: string) {
+    const span = Math.max(1, Math.ceil(durationMinutes / SLOT));
+    const endIndex = startIndex + span - 1;
+    if (startIndex < 0 || endIndex >= slots.length || row.reception) return false;
+    for (let index = startIndex; index <= endIndex; index += 1) {
+      if (!slotAvailable(row, index, ignoreId)) return false;
+    }
+    return true;
+  }
+
+  function dragAppointment(event: ReactDragEvent<HTMLButtonElement>, item: TAppointment) {
+    if (NON_DRAGGABLE.has(item.status)) {
+      event.preventDefault();
+      return;
+    }
+    suppressDragClickRef.current = true;
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("text/planner-appointment", item.id);
+    setDraggingAppointmentId(item.id);
+    setDropTarget(null);
+  }
+
+  function endAppointmentDrag() {
+    setDraggingAppointmentId(null);
+    setDropTarget(null);
+    window.setTimeout(() => { suppressDragClickRef.current = false; }, 0);
+  }
+
+  function dragOverCell(event: ReactDragEvent<HTMLButtonElement>, row: Row, slotIndex: number) {
+    const id = draggingAppointmentId || event.dataTransfer.getData("text/planner-appointment");
+    const item = id ? dayAppointments.find((appointment) => appointment.id === id) : null;
+    if (!item || NON_DRAGGABLE.has(item.status)) return;
+    if (!canDropRange(row, slotIndex, appointmentDuration(item), item.id)) {
+      setDropTarget(null);
+      return;
+    }
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "move";
+    setDropTarget({ rowId: row.id, slotIndex });
+  }
+
+  function dropOnCell(event: ReactDragEvent<HTMLButtonElement>, row: Row, slotIndex: number) {
+    event.preventDefault();
+    const id = draggingAppointmentId || event.dataTransfer.getData("text/planner-appointment");
+    const item = id ? dayAppointments.find((appointment) => appointment.id === id) : null;
+    setDraggingAppointmentId(null);
+    setDropTarget(null);
+    if (!item || NON_DRAGGABLE.has(item.status)) return;
+    const durationMinutes = appointmentDuration(item);
+    if (!canDropRange(row, slotIndex, durationMinutes, item.id)) {
+      setError("Обраний період зайнятий або недоступний для цього запису.");
+      return;
+    }
+    setError("");
+    onMove?.(item, day, minuteLabel(slots[slotIndex]), row.id, durationMinutes);
   }
 
   function canResizeAppointment(item: TAppointment, startMinute: number, endMinute: number) {
@@ -474,6 +547,8 @@ export function PlannerDayView<TAppointment extends AppointmentBase>({ day, loca
             </div>
             {slots.map((minute, slotIndex) => {
               const available = slotAvailable(row, slotIndex);
+              const draggedItem = draggingAppointmentId ? dayAppointments.find((item) => item.id === draggingAppointmentId) : null;
+              const dragAvailable = draggedItem ? canDropRange(row, slotIndex, appointmentDuration(draggedItem), draggedItem.id) : false;
               const selected = selection?.rowId === row.id && slotIndex >= Math.min(selection.startIndex, selection.endIndex) && slotIndex <= Math.max(selection.startIndex, selection.endIndex);
               const cellClass = available ? styles.free : styles.busy;
               const time = minuteLabel(minute);
@@ -482,16 +557,19 @@ export function PlannerDayView<TAppointment extends AppointmentBase>({ day, loca
               const selectionLabel = selected && slotIndex === selectedStart ? `${minuteLabel(slots[selectedStart])}–${minuteLabel(slots[selectedEnd] + SLOT)}` : "";
               return <button
                 type="button"
-                aria-label={`${row.name} ${time}: ${available ? (selected ? `обрано ${selectionLabel}` : "вільно") : "зайнято"}`}
-                title={available ? `${row.name} · ${time} · вільно` : `${row.name} · ${time} · зайнято`}
-                className={`${styles.cell} ${cellClass} ${selected ? styles.selected : ""} ${compact ? compactStyles.cell : ""}`}
+                aria-label={`${row.name} ${time}: ${available || dragAvailable ? (selected ? `обрано ${selectionLabel}` : "вільно") : "зайнято"}`}
+                title={available || dragAvailable ? `${row.name} · ${time} · вільно` : `${row.name} · ${time} · зайнято`}
+                className={`${styles.cell} ${cellClass} ${selected ? styles.selected : ""} ${dropTarget?.rowId === row.id && dropTarget.slotIndex === slotIndex ? styles.dropTarget : ""} ${compact ? compactStyles.cell : ""}`}
                 key={`${row.id}-${minute}`}
                 style={{ gridColumn: slotIndex + 2, gridRow }}
-                disabled={!available}
+                disabled={!available && !dragAvailable}
                 onPointerDown={(event) => beginSelection(event, row, slotIndex)}
                 onPointerEnter={(event) => extendSelection(event, row, slotIndex)}
                 onPointerUp={(event) => commitSelection(event, row, slotIndex)}
                 onClick={() => clickSelection(row, slotIndex)}
+                onDragOver={(event) => dragOverCell(event, row, slotIndex)}
+                onDrop={(event) => dropOnCell(event, row, slotIndex)}
+                aria-dropeffect={dropTarget?.rowId === row.id && dropTarget.slotIndex === slotIndex ? "move" : undefined}
               >{selectionLabel && <span className={compactStyles.selectionLabel}>{selectionLabel}</span>}</button>;
             })}
           </div>;
@@ -516,9 +594,12 @@ export function PlannerDayView<TAppointment extends AppointmentBase>({ day, loca
           return <button
             type="button"
             key={item.id}
-            className={`${styles.event} ${styles[`event_${status.tone}`]} ${done ? styles.eventDone : ""} ${compact ? compactStyles.event : ""} ${preview ? styles.eventResizing : ""} ${preview && !preview.valid ? styles.eventResizeInvalid : ""}`}
+            className={`${styles.event} ${styles[`event_${status.tone}`]} ${done ? styles.eventDone : ""} ${compact ? compactStyles.event : ""} ${preview ? styles.eventResizing : ""} ${preview && !preview.valid ? styles.eventResizeInvalid : ""} ${draggingAppointmentId === item.id ? styles.eventDragging : ""}`}
             style={{ gridColumn: `${startIndex + 2} / span ${span}`, gridRow: rowIndex + 2, "--event-color": row.color } as CSSProperties}
-            onClick={() => onOpen(item)}
+            draggable={Boolean(onMove) && !NON_DRAGGABLE.has(item.status)}
+            onDragStart={(event) => dragAppointment(event, item)}
+            onDragEnd={endAppointmentDrag}
+            onClick={() => { if (!suppressDragClickRef.current) onOpen(item); }}
             title={`${item.plateNumber || "Без номера"} · ${minuteLabel(start)}–${minuteLabel(end)}`}
           >
             {!NON_BLOCKING.has(item.status) && <>
@@ -567,6 +648,7 @@ export function PlannerDayView<TAppointment extends AppointmentBase>({ day, loca
       <span><i className={styles.legendDone}/>Виконано</span>
       <span><i className={styles.legendFree}/>Вільний слот</span>
       <span><i className={styles.legendSelected}/>Обраний час</span>
+      {onMove && <span>Перетягніть запис: змінити пост і час</span>}
     </div>
   </div>;
 }

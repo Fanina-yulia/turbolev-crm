@@ -5,3 +5,4 @@
 .event > .resizeHandle{z-index:40!important;pointer-events:auto;cursor:ew-resize!important}
 .event > .resizeHandle:hover{background:color-mix(in srgb,var(--event-color) 16%,transparent)}
 .event > .resizeHandle::after{opacity:1;width:5px;height:42px;box-shadow:0 0 0 1px color-mix(in srgb,var(--event-color) 45%,transparent)}
+.event{cursor:grab}.event:active{cursor:grabbing}.eventDragging{opacity:.52;cursor:grabbing!important}.dropTarget{background:color-mix(in srgb,#16a34a 13%,var(--panel))!important;box-shadow:inset 0 0 0 2px #16a34a!important}
