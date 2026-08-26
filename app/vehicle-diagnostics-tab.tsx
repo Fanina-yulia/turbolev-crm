@@ -30,7 +30,7 @@ const labels: Record<WorkflowState, string> = {
   PENDING: "Очікує",
   IN_PROGRESS: "В роботі",
   SUBMITTED: "На перевірці",
-  RETURNED: "На уточненні",
+  RETURNED: "В роботі",
   CONFIRMED: "Підтверджена",
   CANCELLED: "Скасована",
 };
