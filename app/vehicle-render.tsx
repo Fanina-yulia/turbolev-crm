@@ -73,7 +73,7 @@ function readThemePaint(): ThemePaint {
   if (PAINTS.includes(explicit as ThemePaint)) return explicit as ThemePaint;
   const normalized = explicit ? `Imagin-${explicit.toLowerCase().replace(/^imagin-/, "")}` : "";
   if (PAINTS.includes(normalized as ThemePaint)) return normalized as ThemePaint;
-  return themePaintFromHex(getComputedStyle(root).getPropertyValue("--orange").trim() || "#aeb5bd");
+  return "Imagin-grey";
 }
 
 function vehicleTitle(props: VehicleRenderProps) {
