@@ -618,3 +618,7 @@ export async function testOpenAIVehicleImageConnection() {
     { method: "GET", headers: { Authorization: `Bearer ${config.apiKey}`, Accept: "application/json" } },
     12_000,
   );
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) return { ok: false, message: openAIErrorMessage(payload, `OpenAI відповів HTTP ${response.status}.`) };
+  return { ok: true, message: `OpenAI API підключено. Модель ${config.model} доступна.`, latencyMs: Date.now() - started };
+}
