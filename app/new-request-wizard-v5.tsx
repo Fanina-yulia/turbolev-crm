@@ -1,6 +1,10 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import type { PlannerAppointmentContract, PlannerLocationContract } from "@/src/lib/contracts/planner";
+import { parsePlannerBoardPayload, plannerPayloadMessage } from "@/src/lib/contracts/planner-payload.parsers";
+import { PlannerDayView } from "./planner-day-view";
+import { navigateCrm } from "./crm-route";
 import {
   classificationPatch,
   formatPhone,
@@ -13,7 +17,6 @@ import {
   parseClientLookup,
   parseMakeOptions,
   parseModelOptions,
-  parsePlannerLocations,
   parsePlateLookupCandidate,
   parseUserOptions,
   parseVinResponse,
@@ -34,14 +37,36 @@ import type {
   ModelOption,
   NewRequestWizardProps,
   OpenRequestDetail,
-  PlannerLocation,
   PreliminaryWork,
   RequestForm,
   UserOption,
   VehicleCandidate,
 } from "./new-request-wizard-v5.types";
 
-export function NewRequestWizardV5({showButton=true}:NewRequestWizardProps){
+const NEW_REQUEST_QUERY = "newRequest";
+
+function todayKey() {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Europe/Kyiv",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+}
+
+function plannerContextFor(detail: OpenRequestDetail) {
+  if (!detail.appointmentDate || !detail.appointmentTime || typeof document === "undefined") return "";
+  const raw = document.cookie.split(";").map((part) => part.trim()).find((part) => part.startsWith("turbolev_booking_context="))?.split("=").slice(1).join("=") || "";
+  if (!raw) return "";
+  try {
+    const context = JSON.parse(decodeURIComponent(raw)) as { date?: string; time?: string; postId?: string; locationId?: string };
+    return context.date === detail.appointmentDate && context.time === detail.appointmentTime ? `${context.locationId || ""}\u0000${context.postId || ""}` : "";
+  } catch {
+    return "";
+  }
+}
+
+export function NewRequestWizardV5({showButton=true,onOpenChange}:NewRequestWizardProps){
   const [open,setOpen]=useState(false);
   const [step,setStep]=useState(1);
   const [form,setForm]=useState<RequestForm>(initialRequestForm);
@@ -61,12 +86,14 @@ export function NewRequestWizardV5({showButton=true}:NewRequestWizardProps){
   const [models,setModels]=useState<ModelOption[]>([]);
   const [catalogLoading,setCatalogLoading]=useState(false);
   const [users,setUsers]=useState<UserOption[]>([]);
-  const [locations,setLocations]=useState<PlannerLocation[]>([]);
+  const [locations,setLocations]=useState<PlannerLocationContract[]>([]);
+  const [plannerAppointments,setPlannerAppointments]=useState<PlannerAppointmentContract[]>([]);
   const [plannerLoading,setPlannerLoading]=useState(false);
   const [preliminaryWorks,setPreliminaryWorks]=useState<PreliminaryWork[]>([]);
   const [preliminaryTotal,setPreliminaryTotal]=useState(0);
   const plateLookupControllerRef=useRef<AbortController|null>(null);
   const plateLookupRequestRef=useRef(0);
+  const routeOpenedRef=useRef(false);
 
   const canLeaveClient=normalizePhone(form.phone).length===12&&form.customerName.trim().length>0;
   const canLeaveVehicle=normalizePlate(form.plate).length>=6||normalizeVin(form.vin).length===17;
@@ -222,16 +249,17 @@ export function NewRequestWizardV5({showButton=true}:NewRequestWizardProps){
     if(plannerLoading)return;
     setPlannerLoading(true);
     try{
-      const from=new Date();
-      from.setHours(0,0,0,0);
-      const to=new Date(from.getTime()+7*24*60*60*1000);
+      const from=new Date(`${form.appointmentDate||todayKey()}T00:00:00`);
+      const to=new Date(from.getTime()+14*24*60*60*1000);
       const response=await fetch(`/api/planner?from=${encodeURIComponent(from.toISOString())}&to=${encodeURIComponent(to.toISOString())}`,{cache:"no-store"});
       const payload:unknown=await response.json();
-      if(!response.ok||readPayloadField(payload,"status")!=="OK")throw new Error(payloadMessage(payload,"Не вдалося завантажити ресурси"));
-      const nextLocations=parsePlannerLocations(readPayloadField(payload,"locations"));
+      const board=parsePlannerBoardPayload(payload);
+      if(!response.ok||!board)throw new Error(plannerPayloadMessage(payload,"Не вдалося завантажити Планувальник."));
+      const nextLocations=board.locations;
       setLocations(nextLocations);
+      setPlannerAppointments(board.appointments);
       setForm(current=>{
-        const location=nextLocations.find(item=>item.id===current.locationId)||nextLocations[0];
+        const location=nextLocations.find(item=>item.id===current.locationId)||nextLocations.find(item=>item.id===board.activeLocationId)||nextLocations[0];
         if(!location)return current;
         const postId=current.postId&&location.posts.some(post=>post.id===current.postId)
           ?current.postId
@@ -242,17 +270,18 @@ export function NewRequestWizardV5({showButton=true}:NewRequestWizardProps){
         return {...current,locationId:location.id,postId,mechanicId};
       });
     }catch(reason){
-      setError(reason instanceof Error?reason.message:"Не вдалося завантажити пости та майстрів.");
+      setError(reason instanceof Error?reason.message:"Не вдалося завантажити Планувальник.");
     }finally{
       setPlannerLoading(false);
     }
   }
 
-  function openWith(detail:OpenRequestDetail={}){
+  function openWith(detail:OpenRequestDetail={},pushRoute=true){
     plateLookupControllerRef.current?.abort();
     plateLookupControllerRef.current=null;
     plateLookupRequestRef.current+=1;
     const stored=typeof window!=="undefined"?window.localStorage.getItem(MANAGER_KEY)||"":"";
+    const plannerContext=plannerContextFor(detail).split("\u0000");
     setForm({
       ...initialRequestForm,
       customerName:detail.name?.trim()||"",
@@ -263,6 +292,8 @@ export function NewRequestWizardV5({showButton=true}:NewRequestWizardProps){
       vin:detail.vin?normalizeVin(detail.vin):"",
       appointmentDate:detail.appointmentDate||"",
       appointmentTime:detail.appointmentTime||"",
+      postId:detail.postId||plannerContext[1]||"",
+      locationId:detail.locationId||plannerContext[0]||"",
     });
     setStep(1);
     setError("");
@@ -278,9 +309,20 @@ export function NewRequestWizardV5({showButton=true}:NewRequestWizardProps){
     setVinMessage("");
     setPreliminaryWorks([]);
     setPreliminaryTotal(0);
+    setPlannerAppointments([]);
     setOpen(true);
+    onOpenChange?.(true);
+    if(pushRoute&&typeof window!=="undefined"){
+      const url=new URL(window.location.href);
+      if(url.searchParams.get(NEW_REQUEST_QUERY)!=="1"){
+        url.searchParams.set(NEW_REQUEST_QUERY,"1");
+        window.history.pushState({},"",`${url.pathname}${url.search}${url.hash}`);
+        routeOpenedRef.current=true;
+      }
+    }
   }
-  function close(){
+
+  function closeState(){
     plateLookupControllerRef.current?.abort();
     plateLookupControllerRef.current=null;
     plateLookupRequestRef.current+=1;
@@ -288,6 +330,23 @@ export function NewRequestWizardV5({showButton=true}:NewRequestWizardProps){
     setStep(1);
     setError("");
     setSuccess("");
+    onOpenChange?.(false);
+  }
+
+  function close(){
+    if(typeof window!=="undefined"&&routeOpenedRef.current&&new URL(window.location.href).searchParams.get(NEW_REQUEST_QUERY)==="1"){
+      routeOpenedRef.current=false;
+      window.history.back();
+      return;
+    }
+    if(typeof window!=="undefined"){
+      const url=new URL(window.location.href);
+      if(url.searchParams.has(NEW_REQUEST_QUERY)){
+        url.searchParams.delete(NEW_REQUEST_QUERY);
+        window.history.replaceState({},"",`${url.pathname}${url.search}${url.hash}`);
+      }
+    }
+    closeState();
   }
 
   useEffect(()=>{void loadUsers()},[]);
@@ -296,6 +355,24 @@ export function NewRequestWizardV5({showButton=true}:NewRequestWizardProps){
     const handler=(event:Event)=>openWith((event as CustomEvent<OpenRequestDetail>).detail||{});
     window.addEventListener("turbolev:open-new-request",handler as EventListener);
     return()=>window.removeEventListener("turbolev:open-new-request",handler as EventListener);
+  },[]);
+  useEffect(()=>{
+    const syncRoute=()=>{
+      const requested=new URL(window.location.href).searchParams.get(NEW_REQUEST_QUERY)==="1";
+      if(requested&&!open)openWith({},false);
+      if(!requested&&open)closeState();
+    };
+    syncRoute();
+    window.addEventListener("popstate",syncRoute);
+    return()=>window.removeEventListener("popstate",syncRoute);
+  },[open]);
+  useEffect(()=>{
+    const closeFromNavigation=()=>{
+      routeOpenedRef.current=false;
+      closeState();
+    };
+    window.addEventListener("turbolev:close-new-request",closeFromNavigation);
+    return()=>window.removeEventListener("turbolev:close-new-request",closeFromNavigation);
   },[]);
   useEffect(()=>{if(open)void loadMakes()},[open]);
   useEffect(()=>{if(open&&step===4&&locations.length===0)void loadPlannerResources()},[open,step,locations.length]);
@@ -524,8 +601,16 @@ export function NewRequestWizardV5({showButton=true}:NewRequestWizardProps){
         :{};
       window.dispatchEvent(new CustomEvent("turbolev:new-request",{detail:request}));
       window.dispatchEvent(new CustomEvent("turbolev:data-changed",{detail:{entity:"intake",...safePayload}}));
-      setSuccess("Клієнта записано на діагностику. Запис уже в Планувальнику.");
-      window.setTimeout(()=>close(),1100);
+      if(typeof appointmentId==="string"&&appointmentId){
+        navigateCrm("Планувальник",{
+          appointmentId,
+          date:payload.appointmentDate,
+          scope:"day",
+        });
+      }else{
+        setSuccess("Запис на СТО створено.");
+        window.setTimeout(()=>close(),1100);
+      }
     }catch(reason){
       setError(reason instanceof Error?reason.message:"Помилка створення запису");
     }finally{
@@ -539,15 +624,14 @@ export function NewRequestWizardV5({showButton=true}:NewRequestWizardProps){
 
   return <>
     {showButton&&<button className="primary" type="button" onClick={()=>openWith()}>+ Нова заявка</button>}
-    {open&&<div className="requestModalBackdrop" role="presentation" onMouseDown={event=>event.target===event.currentTarget&&close()}>
-      <form className="requestModal requestModalV4 requestFastIntake" onSubmit={saveRequest}>
+    {open&&<form className="requestPage requestModal requestModalV4 requestFastIntake" onSubmit={saveRequest}>
         <div className="requestModalHead">
           <div>
             <p className="eyebrow">TURBO LEV · НОВА ЗАЯВКА</p>
             <h2>Запис на діагностику</h2>
             <span>4 короткі кроки: авто → клієнт → потреба → час заїзду</span>
           </div>
-          <button className="requestClose" type="button" onClick={close} aria-label="Закрити">×</button>
+          <button className="requestClose" type="button" onClick={close} aria-label="Повернутися назад">←</button>
         </div>
 
         <div className="requestStepper requestStepperV4">
@@ -741,8 +825,8 @@ export function NewRequestWizardV5({showButton=true}:NewRequestWizardProps){
 
             {step===4&&<section className="requestStep requestFastStep">
               <div className="requestStepTitle">
-                <div><small>КРОК 4</small><h3>Коли чекаємо клієнта?</h3></div>
-                <span className="requestStatus booked">Запис на діагностику</span>
+                <div><small>КРОК 4</small><h3>Оберіть час у Планувальнику</h3></div>
+                <span className="requestStatus booked">Запис створиться в Планувальнику</span>
               </div>
 
               {locations.length>1&&<label className="fastLocationSelect">
@@ -755,24 +839,42 @@ export function NewRequestWizardV5({showButton=true}:NewRequestWizardProps){
                 </select>
               </label>}
 
-              <div className="bookingGrid">
-                <label><span>Дата *</span><input type="date" value={form.appointmentDate} onChange={event=>update("appointmentDate",event.target.value)}/></label>
-                <label><span>Час *</span><input type="time" value={form.appointmentTime} onChange={event=>update("appointmentTime",event.target.value)}/></label>
-                <label>
-                  <span>Пост *</span>
-                  <select value={form.postId} onChange={event=>update("postId",event.target.value)} disabled={plannerLoading||!activeLocation}>
-                    <option value="">{plannerLoading?"Завантажую…":"Оберіть пост"}</option>
-                    {activeLocation?.posts.map(post=><option key={post.id} value={post.id}>{post.name}</option>)}
-                  </select>
-                </label>
-                <label>
-                  <span>Майстер *</span>
-                  <select value={form.mechanicId} onChange={event=>update("mechanicId",event.target.value)} disabled={plannerLoading||!activeLocation}>
-                    <option value="">{plannerLoading?"Завантажую…":"Оберіть майстра"}</option>
-                    {activeLocation?.mechanics.map(mechanic=><option key={mechanic.id} value={mechanic.id}>{mechanic.name}</option>)}
-                  </select>
-                </label>
+              <div className="requestPlannerControls">
+                <label><span>Дата *</span><input type="date" min={todayKey()} value={form.appointmentDate||todayKey()} onChange={event=>{
+                  update("appointmentDate",event.target.value);
+                  update("appointmentTime","");
+                  update("postId","");
+                  update("mechanicId","");
+                }}/></label>
+                <div className="requestPlannerHint"><b>Оберіть вільну клітинку</b><span>Натисніть або протягніть мишу по посту — CRM перевірить реальну зайнятість.</span></div>
               </div>
+
+              {plannerLoading&&!activeLocation&&<div className="requestMessage">Завантажую Планувальник…</div>}
+              {activeLocation&&<PlannerDayView
+                day={form.appointmentDate||todayKey()}
+                location={activeLocation}
+                appointments={plannerAppointments}
+                onOpen={appointment=>setError(`Цей час уже зайнятий записом ${appointment.plateNumber||appointment.id}. Оберіть вільну клітинку.`)}
+                onCreate={(day,time,postId)=>{
+                  if(!postId){
+                    setError("Для нової заявки оберіть робочий пост, а не зону приймання.");
+                    return;
+                  }
+                  update("appointmentDate",day);
+                  update("appointmentTime",time);
+                  update("postId",postId);
+                  update("mechanicId","");
+                  setError("");
+                }}
+              />}
+
+              {form.appointmentTime&&<div className="requestPlannerSelection">
+                <div><small>Обраний слот</small><strong>{form.appointmentDate} · {form.appointmentTime}</strong><span>{activeLocation?.posts.find(post=>post.id===form.postId)?.name||"Зона приймання"}</span></div>
+                <label><span>Майстер *</span><select value={form.mechanicId} onChange={event=>update("mechanicId",event.target.value)} disabled={plannerLoading||!activeLocation}>
+                  <option value="">Оберіть майстра</option>
+                  {activeLocation?.mechanics.map(mechanic=><option key={mechanic.id} value={mechanic.id}>{mechanic.name}</option>)}
+                </select></label>
+              </div>}
 
               <label className="requestHiddenPricingField" aria-hidden="true">
                 <span>Попередня сума, грн</span>
@@ -801,7 +903,6 @@ export function NewRequestWizardV5({showButton=true}:NewRequestWizardProps){
               :<button type="submit" className="primary fastBookButton" disabled={saving}>{saving?"Записую…":"Записати на діагностику"}</button>}
           </div>
         </div>
-      </form>
-    </div>}
+      </form>}
   </>;
 }
