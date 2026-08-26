@@ -66,6 +66,13 @@ export function VehicleDiagnosticsTab({ vehicleId, plateNumber, vin }: Props) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [busyId, setBusyId] = useState("");
+  const [refreshTick, setRefreshTick] = useState(0);
+
+  useEffect(() => {
+    const refresh = () => setRefreshTick((current) => current + 1);
+    window.addEventListener("turbolev:data-changed", refresh);
+    return () => window.removeEventListener("turbolev:data-changed", refresh);
+  }, []);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -82,7 +89,7 @@ export function VehicleDiagnosticsTab({ vehicleId, plateNumber, vin }: Props) {
       })
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
-  }, [vehicleId]);
+  }, [vehicleId, refreshTick]);
 
   const summary = useMemo(() => ({
     total: rows.length,
