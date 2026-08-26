@@ -25,7 +25,7 @@ export async function getDiagnosticVehicleStatuses(vehicleIds: string[]) {
 
   const prisma = getPrisma();
   const requests = await prisma.diagnosticRequest.findMany({
-    where: { vehicleId: { in: ids } },
+    where: { vehicleId: { in: ids }, status: { not: "CANCELLED" } },
     orderBy: [{ updatedAt: "desc" }, { createdAt: "desc" }],
     select: { id: true, vehicleId: true, status: true, confirmedAt: true, updatedAt: true },
   });
@@ -54,8 +54,8 @@ export async function getDiagnosticVehicleStatuses(vehicleIds: string[]) {
 
   for (const vehicleId of ids) {
     const request = latestByVehicle.get(vehicleId) || null;
-    if (!request || request.status === "CANCELLED") {
-      result.set(vehicleId, statusItem("not_started", "Не було", "danger", request?.id || null, request?.updatedAt));
+    if (!request) {
+      result.set(vehicleId, statusItem("not_started", "Не було", "danger", null, null));
       continue;
     }
 
