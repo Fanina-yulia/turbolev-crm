@@ -103,6 +103,28 @@ assertNotIncludes("app/qc-queue.tsx", [
   'navigateCrm("Виробництво", { status: "REWORK" })',
 ]);
 
+assertIncludes("app/api/work-orders/[id]/qc/route.ts", [
+  "transitionWorkOrder",
+  'action === "PASS" ? "READY_FOR_PICKUP" : "REWORK"',
+  "workOrderTransitionWarning",
+  "transitionWarning: workOrderTransitionWarning",
+]);
+
+assertIncludes("app/work-order-commercial-panel.tsx", [
+  'import { navigateCrm } from "./crm-route";',
+  "return payload;",
+  "result.transitionWarning?.message",
+  "Контроль якості пройдено. ЗН переведено у «Готовий до видачі».",
+  "QC не пройдено. ЗН переведено у «Доопрацювання».",
+  'navigateCrm("Фінансовий центр")',
+]);
+
+assertIncludes("app/work-orders.tsx", [
+  'if (item.to === "CLOSED") return "Видати авто та закрити ЗН";',
+  'transition.to === "CLOSED" && !window.confirm("Підтвердити видачу авто клієнту та закриття замовлення-наряду?")',
+  "Авто видано клієнту. Замовлення-наряд закрито.",
+]);
+
 assertIncludes("app/production-board.tsx", [
   '["BLOCKED", "Блокери / пауза"]',
   'const BLOCKED_STATUSES = new Set(["WAITING_PARTS", "PAUSED", "REWORK"]);',
