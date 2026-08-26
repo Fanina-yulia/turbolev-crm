@@ -122,6 +122,7 @@ const SYSTEM_SECTION_CODES = new Set([
   "EXHAUST",
   "FLUIDS_EXTENDED",
 ]);
+const AUTO_OK_SECTION_CODES = new Set([...CHASSIS_SECTION_CODES, ...SYSTEM_SECTION_CODES]);
 const MAX_PHOTO_BYTES = 4 * 1024 * 1024;
 const MAX_PHOTO_EDGE = 1920;
 const ACCEPTED_PHOTO_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
@@ -388,9 +389,7 @@ export function MechanicDiagnosticMatrix({ diagnosticId, onBack, onChanged }: { 
       const allItemsWithSection = inspections.flatMap((inspection) => inspection.sections.flatMap((section) => section.items.map((item) => ({ item, sectionCode: section.code }))));
       const requiredChecked = allItems.filter((item) => item.state !== "NOT_CHECKED").length;
       const requiredRemaining = allItemsWithSection.filter(({ item, sectionCode }) => item.state === "NOT_CHECKED"
-        && !CHASSIS_SECTION_CODES.has(sectionCode)
-        && sectionCode !== "AXLE_SEALS_FRONT"
-        && sectionCode !== "AXLE_SEALS_REAR").length;
+        && !AUTO_OK_SECTION_CODES.has(sectionCode)).length;
       const canSubmit = allItems.length > 0 && requiredRemaining === 0;
 
       return {
@@ -575,7 +574,7 @@ export function MechanicDiagnosticMatrix({ diagnosticId, onBack, onChanged }: { 
 
   async function submit() {
     if (!data?.canSubmit || busy || savingChecks.size > 0) return;
-    if (!window.confirm("Завершити діагностику? Після цього вона буде передана сервіс-менеджеру, а редагування механіком буде заблоковано.")) return;
+    if (!window.confirm("Завершити діагностику? Усі непозначені пункти буде збережено як «Норма», після чого результат буде передано сервіс-менеджеру.")) return;
     setBusy("submit"); setError(""); setMessage("");
     try {
       const response = await fetch(`/api/diagnostics/${encodeURIComponent(diagnosticId)}/structured`, {
