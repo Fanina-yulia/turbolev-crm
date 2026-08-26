@@ -56,6 +56,12 @@ function todayKey() {
   }).format(new Date());
 }
 
+function plannerDateLabel(value: string) {
+  if (!value) return "Обрати дату";
+  const [year, month, day] = value.split("-");
+  return day && month && year ? `${day}.${month}.${year}` : value;
+}
+
 function plannerContextFor(detail: OpenRequestDetail) {
   if (!detail.appointmentDate || !detail.appointmentTime || typeof document === "undefined") return "";
   const raw = document.cookie.split(";").map((part) => part.trim()).find((part) => part.startsWith("turbolev_booking_context="))?.split("=").slice(1).join("=") || "";
@@ -96,6 +102,8 @@ export function NewRequestWizardV5({showButton=true,onOpenChange}:NewRequestWiza
   const plateLookupControllerRef=useRef<AbortController|null>(null);
   const plateLookupRequestRef=useRef(0);
   const routeOpenedRef=useRef(false);
+  const plannerDateInputRef=useRef<HTMLInputElement|null>(null);
+  const plannerLoadedDateRef=useRef("");
 
   const canLeaveClient=normalizePhone(form.phone).length===12&&form.customerName.trim().length>0;
   const hasVehicleIdentifier=normalizePlate(form.plate).length>=6||normalizeVin(form.vin).length===17;
@@ -118,6 +126,20 @@ export function NewRequestWizardV5({showButton=true,onOpenChange}:NewRequestWiza
   function update<K extends keyof RequestForm>(field:K,value:RequestForm[K]){
     setForm(current=>({...current,[field]:value}));
     setError("");
+  }
+  function openPlannerDatePicker(){
+    const input=plannerDateInputRef.current;
+    if(!input)return;
+    const pickerInput=input as HTMLInputElement & {showPicker?:()=>void};
+    try{
+      if(pickerInput.showPicker){
+        pickerInput.showPicker();
+      }else{
+        input.click();
+      }
+    }catch{
+      input.focus();
+    }
   }
   function updatePhone(value:string){
     update("phone",formatPhone(value));
@@ -254,10 +276,12 @@ export function NewRequestWizardV5({showButton=true,onOpenChange}:NewRequestWiza
     }
   }
   async function loadPlannerResources(){
-    if(plannerLoading)return;
+    const targetDate=form.appointmentDate||todayKey();
+    if(plannerLoading||plannerLoadedDateRef.current===targetDate&&locations.length>0)return;
+    plannerLoadedDateRef.current=targetDate;
     setPlannerLoading(true);
     try{
-      const from=new Date(`${form.appointmentDate||todayKey()}T00:00:00`);
+      const from=new Date(`${targetDate}T00:00:00`);
       const to=new Date(from.getTime()+14*24*60*60*1000);
       const response=await fetch(`/api/planner?from=${encodeURIComponent(from.toISOString())}&to=${encodeURIComponent(to.toISOString())}`,{cache:"no-store"});
       const payload:unknown=await response.json();
@@ -278,6 +302,7 @@ export function NewRequestWizardV5({showButton=true,onOpenChange}:NewRequestWiza
         return {...current,locationId:location.id,postId,mechanicId};
       });
     }catch(reason){
+      plannerLoadedDateRef.current="";
       setError(reason instanceof Error?reason.message:"Не вдалося завантажити Планувальник.");
     }finally{
       setPlannerLoading(false);
@@ -317,7 +342,9 @@ export function NewRequestWizardV5({showButton=true,onOpenChange}:NewRequestWiza
     setVinMessage("");
     setPreliminaryWorks([]);
     setPreliminaryTotal(0);
+    setLocations([]);
     setPlannerAppointments([]);
+    plannerLoadedDateRef.current="";
     setOpen(true);
     onOpenChange?.(true);
     if(pushRoute&&typeof window!=="undefined"){
@@ -384,6 +411,9 @@ export function NewRequestWizardV5({showButton=true,onOpenChange}:NewRequestWiza
   },[]);
   useEffect(()=>{if(open)void loadMakes()},[open]);
   useEffect(()=>{if(open&&step===4&&locations.length===0)void loadPlannerResources()},[open,step,locations.length]);
+  useEffect(()=>{
+    if(open&&step===4&&locations.length>0&&form.appointmentDate)void loadPlannerResources();
+  },[open,step,form.appointmentDate,plannerLoading]);
   useEffect(()=>{
     const handler=(event:Event)=>{
       const detail=(event as CustomEvent<{works?:PreliminaryWork[];total?:number}>).detail||{};
@@ -844,7 +874,35 @@ export function NewRequestWizardV5({showButton=true,onOpenChange}:NewRequestWiza
 
             {step===4&&<section className="requestStep requestFastStep">
               <div className="requestStepTitle">
-                <div><small>КРОК 4</small><h3>Оберіть час у Планувальнику</h3></div>
+                <div>
+                  <small>КРОК 4</small>
+                  <div className="requestPlannerTitleLine">
+                    <h3>Оберіть час у Планувальнику</h3>
+                    <span className="requestCalendarControl">
+                      <button type="button" className="requestCalendarButton" onClick={openPlannerDatePicker} title="Обрати дату">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                          <rect x="3" y="4" width="18" height="17" rx="2" />
+                          <path d="M16 2v4M8 2v4M3 10h18" />
+                        </svg>
+                        <span>{plannerDateLabel(form.appointmentDate||todayKey())}</span>
+                      </button>
+                      <input
+                        ref={plannerDateInputRef}
+                        className="requestPlannerDateInput"
+                        type="date"
+                        min={todayKey()}
+                        value={form.appointmentDate||todayKey()}
+                        onChange={event=>{
+                          const value=event.target.value;
+                          if(!value)return;
+                          setForm(current=>({...current,appointmentDate:value,appointmentTime:"",postId:"",mechanicId:""}));
+                          setError("");
+                        }}
+                        aria-label="Дата запису"
+                      />
+                    </span>
+                  </div>
+                </div>
                 <span className="requestStatus booked">Запис створиться в Планувальнику</span>
               </div>
 
@@ -858,21 +916,12 @@ export function NewRequestWizardV5({showButton=true,onOpenChange}:NewRequestWiza
                 </select>
               </label>}
 
-              <div className="requestPlannerControls">
-                <label><span>Дата *</span><input type="date" min={todayKey()} value={form.appointmentDate||todayKey()} onChange={event=>{
-                  update("appointmentDate",event.target.value);
-                  update("appointmentTime","");
-                  update("postId","");
-                  update("mechanicId","");
-                }}/></label>
-                <div className="requestPlannerHint"><b>Оберіть вільну клітинку</b><span>Натисніть або протягніть мишу по посту — CRM перевірить реальну зайнятість.</span></div>
-              </div>
-
               {plannerLoading&&!activeLocation&&<div className="requestMessage">Завантажую Планувальник…</div>}
               {activeLocation&&<PlannerDayView
                 day={form.appointmentDate||todayKey()}
                 location={activeLocation}
                 appointments={plannerAppointments}
+                showMetrics={false}
                 onOpen={appointment=>setError(`Цей час уже зайнятий записом ${appointment.plateNumber||appointment.id}. Оберіть вільну клітинку.`)}
                 onCreate={(day,time,postId)=>{
                   if(!postId){
