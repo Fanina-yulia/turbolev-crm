@@ -23,6 +23,10 @@ const AUTO_OK_SECTION_CODES = new Set([
   "REAR_BRAKES",
   "AXLE_SEALS_FRONT",
   "AXLE_SEALS_REAR",
+  "ENGINE_LEAKS",
+  "TRANSMISSION_LEAKS",
+  "EXHAUST",
+  "FLUIDS_EXTENDED",
 ]);
 
 export type DiagnosticCompletion = {
