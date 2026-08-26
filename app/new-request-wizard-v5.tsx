@@ -5,6 +5,8 @@ import type { PlannerAppointmentContract, PlannerLocationContract } from "@/src/
 import { parsePlannerBoardPayload, plannerPayloadMessage } from "@/src/lib/contracts/planner-payload.parsers";
 import { PlannerDayView } from "./planner-day-view";
 import { navigateCrm } from "./crm-route";
+import { VehiclePlate } from "./vehicle-plate";
+import foundVehicleStyles from "./new-request-wizard-vehicle-found.module.css";
 import {
   classificationPatch,
   formatPhone,
@@ -686,10 +688,14 @@ export function NewRequestWizardV5({showButton=true,onOpenChange}:NewRequestWiza
 
               {(foundVehicle||plateLookupState==="found"||vinLookupState==="found")&&<div className="vehicleFoundCompact">
                 <div className="vehicleFoundIcon">✓</div>
-                <div>
+                <div className={foundVehicleStyles.identity}>
                   <small>АВТОМОБІЛЬ ЗНАЙДЕНО</small>
                   <strong>{vehicleTitle(form)}</strong>
-                  <span>Держномер: {form.plate||"—"} · VIN: {form.vin||"не знайдено"}</span>
+                  <div className={foundVehicleStyles.plateRow}>
+                    <span className={foundVehicleStyles.label}>Держномер</span>
+                    <VehiclePlate value={form.plate} size="md" className={foundVehicleStyles.plate}/>
+                    <span className={foundVehicleStyles.vin}>VIN: {form.vin||"не знайдено"}</span>
+                  </div>
                 </div>
                 <div>
                   <small>ПРОБІГ</small>

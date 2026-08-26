@@ -1,9 +1,17 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import styles from "./mechanic-diagnostic-matrix.module.css";
+import photoStyles from "./mechanic-diagnostic-photo-controls.module.css";
 
 type CheckState = "NOT_CHECKED" | "OK" | "ATTENTION" | "DEFECT";
+type DiagnosticMedia = {
+  id: string;
+  fileName: string;
+  mimeType?: string;
+  fileSize?: number;
+  createdAt?: string;
+};
 type Finding = {
   id: string;
   action: string;
@@ -11,6 +19,7 @@ type Finding = {
   findingText: string | null;
   suggestedWorkName?: string | null;
   suggestedPartName?: string | null;
+  media?: DiagnosticMedia[];
 };
 type Check = {
   id: string | null;
@@ -113,6 +122,48 @@ const SYSTEM_SECTION_CODES = new Set([
   "EXHAUST",
   "FLUIDS_EXTENDED",
 ]);
+const MAX_PHOTO_BYTES = 4 * 1024 * 1024;
+const MAX_PHOTO_EDGE = 1920;
+const ACCEPTED_PHOTO_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
+
+function cameraIcon() {
+  return <svg viewBox="0 0 24 24" aria-hidden="true">
+    <path d="M8.7 5.5 10 3.8h4l1.3 1.7H19a2 2 0 0 1 2 2v10.2a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7.5a2 2 0 0 1 2-2h3.7Z" />
+    <circle cx="12" cy="12.5" r="4" />
+  </svg>;
+}
+
+async function resizePhoto(file: File) {
+  if (file.size <= MAX_PHOTO_BYTES) return file;
+
+  const objectUrl = URL.createObjectURL(file);
+  try {
+    const image = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const candidate = new Image();
+      candidate.onload = () => resolve(candidate);
+      candidate.onerror = () => reject(new Error("Не вдалося підготувати фото. Спробуйте зробити знімок ще раз."));
+      candidate.src = objectUrl;
+    });
+    const scale = Math.min(1, MAX_PHOTO_EDGE / Math.max(image.naturalWidth, image.naturalHeight));
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
+    canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
+    const context = canvas.getContext("2d");
+    if (!context) throw new Error("Не вдалося підготувати фото. Спробуйте зробити знімок ще раз.");
+    context.drawImage(image, 0, 0, canvas.width, canvas.height);
+
+    for (const quality of [0.84, 0.7, 0.56]) {
+      const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", quality));
+      if (blob && blob.size <= MAX_PHOTO_BYTES) {
+        const baseName = file.name.replace(/\.[^.]+$/u, "") || "diagnostic-photo";
+        return new File([blob], `${baseName}.jpg`, { type: "image/jpeg", lastModified: Date.now() });
+      }
+    }
+    throw new Error("Фото завелике. Зробіть знімок із меншою роздільною здатністю.");
+  } finally {
+    URL.revokeObjectURL(objectUrl);
+  }
+}
 
 function lower(value?: string | null) {
   return (value || "").toLocaleLowerCase("uk-UA");
@@ -255,6 +306,9 @@ export function MechanicDiagnosticMatrix({ diagnosticId, onBack, onChanged }: { 
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [comment, setComment] = useState("");
+  const [uploadingPhotoCheckId, setUploadingPhotoCheckId] = useState("");
+  const photoInputRef = useRef<HTMLInputElement>(null);
+  const photoTargetRef = useRef<{ checkId: string; itemName: string } | null>(null);
 
   const load = useCallback(async () => {
     const response = await fetch(`/api/diagnostics/${encodeURIComponent(diagnosticId)}/structured`, { cache: "no-store", credentials: "include" });
@@ -430,6 +484,51 @@ export function MechanicDiagnosticMatrix({ diagnosticId, onBack, onChanged }: { 
     });
   }
 
+  function openCamera(item: Check) {
+    if (!item.id || item.state !== "DEFECT" || locked || busy || savingChecks.has(item.id) || uploadingPhotoCheckId) return;
+    photoTargetRef.current = { checkId: item.id, itemName: item.name };
+    setError("");
+    setMessage("");
+    if (photoInputRef.current) {
+      photoInputRef.current.value = "";
+      photoInputRef.current.click();
+    }
+  }
+
+  async function uploadPhoto(event: React.ChangeEvent<HTMLInputElement>) {
+    const sourceFile = event.target.files?.[0];
+    const target = photoTargetRef.current;
+    event.target.value = "";
+    if (!sourceFile || !target) return;
+
+    setUploadingPhotoCheckId(target.checkId);
+    setError("");
+    setMessage("");
+    try {
+      if (!ACCEPTED_PHOTO_TYPES.has(sourceFile.type)) {
+        throw new Error("Підтримуються фото у форматах JPEG, PNG або WEBP.");
+      }
+      const file = await resizePhoto(sourceFile);
+      const formData = new FormData();
+      formData.append("file", file);
+      const response = await fetch(`/api/diagnostics/${encodeURIComponent(diagnosticId)}/checks/${encodeURIComponent(target.checkId)}/media`, {
+        method: "POST",
+        credentials: "include",
+        body: formData,
+      });
+      const body = await response.json().catch(() => null) as { ok?: boolean; message?: string; error?: string } | null;
+      if (!response.ok || !body?.ok) throw new Error(body?.message || body?.error || "Не вдалося зберегти фото");
+      await load();
+      setMessage(`Фото деталі «${target.itemName}» додано.`);
+      onChanged?.();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Не вдалося зберегти фото");
+    } finally {
+      photoTargetRef.current = null;
+      setUploadingPhotoCheckId("");
+    }
+  }
+
   async function completeChassis() {
     if (locked || busy || savingChecks.size > 0) return;
     const unchecked = rows.filter((row) => row.item.id && row.item.state === "NOT_CHECKED");
@@ -503,20 +602,33 @@ export function MechanicDiagnosticMatrix({ diagnosticId, onBack, onChanged }: { 
   const remaining = data.completion?.requiredRemaining ?? data.completion?.missingRequired ?? 0;
   const allChassisChecked = rows.length > 0 && rows.every((row) => row.item.state !== "NOT_CHECKED");
 
-  function renderSideCheck(row: MatrixRow | null, side: "LEFT" | "RIGHT") {
+  function renderSideCheck(row: MatrixRow | null, side: Side) {
     if (!row) return <span className={styles.emptySide} aria-hidden="true">—</span>;
     const checked = row.item.state === "DEFECT";
     const saving = Boolean(row.item.id && savingChecks.has(row.item.id));
+    const uploading = Boolean(row.item.id && uploadingPhotoCheckId === row.item.id);
     const disabled = locked || !row.item.id || Boolean(busy);
-    return <button
-      type="button"
-      className={`${styles.sideCheck} ${checked ? styles.sideCheckActive : ""} ${saving ? styles.sideCheckSaving : ""}`}
-      aria-label={`${side === "LEFT" ? "Ліва" : "Права"} сторона: ${partName(row.item)}${checked ? ", потребує заміни" : ""}`}
-      aria-pressed={checked}
-      aria-busy={saving}
-      disabled={disabled}
-      onClick={() => void toggleReplacement(row)}
-    >{checked ? "✓" : ""}</button>;
+    const sideLabel = side === "LEFT" ? "Ліва сторона" : side === "RIGHT" ? "Права сторона" : "Загальна перевірка";
+    const mediaCount = row.item.finding?.media?.length || 0;
+    return <div className={`${photoStyles.sideAction} ${side === "RIGHT" || side === "COMMON" ? photoStyles.sideActionRight : ""}`}>
+      <button
+        type="button"
+        className={`${styles.sideCheck} ${checked ? styles.sideCheckActive : ""} ${saving ? styles.sideCheckSaving : ""}`}
+        aria-label={`${sideLabel}: ${partName(row.item)}${checked ? ", потребує заміни" : ""}`}
+        aria-pressed={checked}
+        aria-busy={saving}
+        disabled={disabled || uploading}
+        onClick={() => void toggleReplacement(row)}
+      >{checked ? "✓" : ""}</button>
+      {checked && <button
+        type="button"
+        className={`${photoStyles.photoButton} ${uploading ? photoStyles.photoButtonUploading : ""}`}
+        aria-label={`${mediaCount ? "Додати ще фото" : "Сфотографувати"}: ${sideLabel.toLocaleLowerCase("uk-UA")}, ${partName(row.item)}`}
+        aria-busy={uploading}
+        disabled={disabled || saving || Boolean(uploadingPhotoCheckId)}
+        onClick={() => openCamera(row.item)}
+      >{uploading ? <span className={photoStyles.photoSpinner} /> : cameraIcon()}{mediaCount > 0 && <b>{mediaCount}</b>}</button>}
+    </div>;
   }
 
   function renderAxis(axis: Axis, groups: NodeGroup[]) {
@@ -528,25 +640,16 @@ export function MechanicDiagnosticMatrix({ diagnosticId, onBack, onChanged }: { 
       {groups.map((group) => <div className={styles.nodeSection} key={`${axis}:${group.node}`}>
         <h3>{group.node}</h3>
         <div className={styles.partRows}>
-          {group.pairs.map((pair) => <div className={styles.partRow} key={`${axis}:${group.node}:${pair.key}`}>
+          {group.pairs.map((pair) => <div className={`${styles.partRow} ${pair.left?.item.state === "DEFECT" || pair.right?.item.state === "DEFECT" ? photoStyles.partRowWithPhoto : ""}`} key={`${axis}:${group.node}:${pair.key}`}>
             {renderSideCheck(pair.left, "LEFT")}
             <strong>{pair.name}</strong>
             {renderSideCheck(pair.right, "RIGHT")}
           </div>)}
           {group.common.map((row) => {
-            const checked = row.item.state === "DEFECT";
-            const saving = Boolean(row.item.id && savingChecks.has(row.item.id));
-            return <div className={`${styles.partRow} ${styles.commonRow}`} key={row.item.id || row.item.templateItemId}>
+            return <div className={`${styles.partRow} ${styles.commonRow} ${row.item.state === "DEFECT" ? photoStyles.partRowWithPhoto : ""}`} key={row.item.id || row.item.templateItemId}>
               <span className={styles.commonMark}>ЗАГ.</span>
               <strong>{partName(row.item)}</strong>
-              <button
-                type="button"
-                className={`${styles.sideCheck} ${checked ? styles.sideCheckActive : ""} ${saving ? styles.sideCheckSaving : ""}`}
-                aria-pressed={checked}
-                aria-busy={saving}
-                disabled={locked || !row.item.id || Boolean(busy)}
-                onClick={() => void toggleReplacement(row)}
-              >{checked ? "✓" : ""}</button>
+              {renderSideCheck(row, "COMMON")}
             </div>;
           })}
         </div>
@@ -562,7 +665,7 @@ export function MechanicDiagnosticMatrix({ diagnosticId, onBack, onChanged }: { 
       </header>
       <div className={styles.columnLabels}><span>Ліва</span><b>Деталь</b><span>Права</span></div>
       <div className={styles.partRows}>
-        {pairs.map((pair) => <div className={styles.partRow} key={`${section.code}:${pair.key}`}>
+        {pairs.map((pair) => <div className={`${styles.partRow} ${pair.left?.item.state === "DEFECT" || pair.right?.item.state === "DEFECT" ? photoStyles.partRowWithPhoto : ""}`} key={`${section.code}:${pair.key}`}>
           {renderSideCheck(pair.left, "LEFT")}
           <strong>{pair.name}</strong>
           {renderSideCheck(pair.right, "RIGHT")}
@@ -618,6 +721,16 @@ export function MechanicDiagnosticMatrix({ diagnosticId, onBack, onChanged }: { 
   }
 
   return <div className={styles.page}>
+    <input
+      ref={photoInputRef}
+      className={photoStyles.photoInput}
+      type="file"
+      accept="image/*"
+      capture="environment"
+      tabIndex={-1}
+      aria-hidden="true"
+      onChange={(event) => void uploadPhoto(event)}
+    />
     <header className={styles.top}>
       <button type="button" onClick={onBack}>‹</button>
       <strong>Діагностика</strong>
