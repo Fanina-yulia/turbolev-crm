@@ -75,6 +75,12 @@ function transitionReason(item: Transition) {
   return "Умови переходу виконані.";
 }
 
+function transitionActionLabel(item: Transition) {
+  if (!item.allowed) return "Заблоковано";
+  if (item.to === "CLOSED") return "Видати авто та закрити ЗН";
+  return "Перевести";
+}
+
 function normalize(value: string | null | undefined) {
   return (value || "").trim().toUpperCase().replace(/\s/g, "");
 }
@@ -245,6 +251,7 @@ export function WorkOrders() {
 
   async function runTransition(transition: Transition) {
     if (!detail || !transition.allowed || busyTransition) return;
+    if (transition.to === "CLOSED" && !window.confirm("Підтвердити видачу авто клієнту та закриття замовлення-наряду?")) return;
     setBusyTransition(transition.to);
     setMessage(null);
     try {
@@ -261,7 +268,7 @@ export function WorkOrders() {
       }
       const workOrder = parseWorkOrderTransitionPayload(rawPayload);
       if (!workOrder) throw new Error(payloadMessage(rawPayload, "Перехід не виконано."));
-      setMessage({ kind: "success", text: `Статус змінено: ${workOrder.statusLabel}.` });
+      setMessage({ kind: "success", text: transition.to === "CLOSED" ? "Авто видано клієнту. Замовлення-наряд закрито." : `Статус змінено: ${workOrder.statusLabel}.` });
       await Promise.all([loadRows(), loadDetail(detail.id)]);
     } catch (error) {
       setMessage({ kind: "error", text: error instanceof Error ? error.message : "Не вдалося змінити статус." });
@@ -356,7 +363,7 @@ export function WorkOrders() {
               {commercialView && <section className={styles.sectionCard}><h3>Стан наряду</h3><WorkOrderCommercialPanel key={detail.id} workOrderId={detail.id} view="overview" onChanged={handleCommercialChanged} onSummary={handleCommercialSummary}/></section>}
               <section className={styles.sectionCard}>
                 <h3>Наступний крок</h3>
-                {!detail.transitions.length ? <div className={styles.emptyInline}>Наряд завершений — наступних переходів немає.</div> : <div className={styles.transitions}>{detail.transitions.map((transition) => <div className={styles.transition} key={transition.to}><div><strong>→ {transition.label}</strong><small>{transitionReason(transition)}</small></div><button type="button" disabled={!transition.allowed || Boolean(busyTransition)} onClick={() => void runTransition(transition)}>{busyTransition === transition.to ? "Змінюю…" : transition.allowed ? "Перевести" : "Заблоковано"}</button></div>)}</div>}
+                {!detail.transitions.length ? <div className={styles.emptyInline}>Наряд завершений — наступних переходів немає.</div> : <div className={styles.transitions}>{detail.transitions.map((transition) => <div className={styles.transition} key={transition.to}><div><strong>→ {transition.label}</strong><small>{transitionReason(transition)}</small></div><button type="button" disabled={!transition.allowed || Boolean(busyTransition)} onClick={() => void runTransition(transition)}>{busyTransition === transition.to ? (transition.to === "CLOSED" ? "Закриваю…" : "Змінюю…") : transitionActionLabel(transition)}</button></div>)}</div>}
               </section>
             </div>}
 

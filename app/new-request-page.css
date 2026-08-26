@@ -1,0 +1,41 @@
+.requestPage{
+  position:relative;
+  width:100%;
+  min-height:calc(100dvh - 112px);
+  overflow:visible;
+  background:var(--panel);
+  border:1px solid var(--line);
+  border-radius:18px;
+  box-shadow:0 12px 40px rgba(0,0,0,.08);
+}
+.requestPage.requestModal{width:100%!important;max-height:none!important;overflow:visible;border-radius:18px;box-shadow:0 12px 40px rgba(0,0,0,.08)}
+.requestPage.requestModalV4{width:100%!important;max-width:none!important;max-height:none!important}
+.requestPage .requestModalHead{position:sticky;top:0;z-index:12}
+.requestPage .requestScroll{overflow:visible;min-height:0}
+.requestPage .requestBody{overflow:visible}
+.requestPage .requestActions{position:sticky;bottom:0;z-index:12;border-radius:0 0 18px 18px}
+.requestPage .requestClose{font-size:20px;min-width:42px}
+.requestPlannerTitleLine{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.requestCalendarControl{position:relative;display:inline-flex}
+.requestCalendarButton{display:inline-flex;align-items:center;gap:8px;min-height:42px;padding:0 12px;border:1px solid var(--line);border-radius:10px;background:var(--panel-2);color:var(--text);font:inherit;font-size:12px;font-weight:800;cursor:pointer}
+.requestCalendarButton:hover{border-color:var(--orange);color:var(--orange)}
+.requestCalendarButton:focus-visible{outline:0;box-shadow:0 0 0 3px rgba(255,106,0,.16)}
+.requestCalendarButton svg{width:18px;height:18px;flex:0 0 auto}
+.requestPlannerDateInput{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
+.requestPlannerControls{display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap;margin-bottom:14px}
+.requestPlannerControls label{display:grid;gap:6px}
+.requestPlannerControls label>span{font-size:12px;font-weight:800;color:var(--soft-text)}
+.requestPlannerControls input{height:42px;border:1px solid var(--line);border-radius:10px;background:var(--panel-2);color:var(--text);padding:0 11px;font:inherit;font-size:12px}
+.requestPlannerControls input:focus{border-color:var(--orange);box-shadow:0 0 0 3px rgba(255,106,0,.08);outline:0}
+.requestPlannerHint{display:grid;gap:3px;min-height:42px;align-content:center;padding:0 12px;border:1px solid color-mix(in srgb,var(--orange) 24%,var(--line));border-radius:10px;background:color-mix(in srgb,var(--orange) 5%,var(--panel-2))}
+.requestPlannerHint b{font-size:12px;color:var(--orange)}
+.requestPlannerHint span{font-size:12px;color:var(--muted)}
+.requestPlannerSelection{display:grid;grid-template-columns:minmax(0,1fr) minmax(220px,320px);gap:12px;align-items:end;margin-top:14px;padding:12px;border:1px solid color-mix(in srgb,#16a34a 28%,var(--line));border-radius:13px;background:color-mix(in srgb,#16a34a 5%,var(--panel-2))}
+.requestPlannerSelection>div{display:grid;gap:3px}
+.requestPlannerSelection small,.requestPlannerSelection label>span{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;font-weight:850}
+.requestPlannerSelection strong{font-size:14px}
+.requestPlannerSelection div>span{font-size:12px;color:var(--soft-text)}
+.requestPlannerSelection label{display:grid;gap:6px}
+.requestPlannerSelection select{height:42px;border:1px solid var(--line);border-radius:10px;background:var(--panel);color:var(--text);padding:0 10px;font:inherit;font-size:12px}
+@media(max-width:900px){.requestPlannerSelection{grid-template-columns:1fr}.requestPage{min-height:calc(100dvh - 70px)}}
+@media(max-width:760px){.requestPage,.requestPage.requestModal{border-radius:12px;min-height:calc(100dvh - 36px)}.requestPage .requestModalHead{padding:15px 14px}.requestPage .requestModalHead h2{font-size:20px}.requestPage .requestStepperV4{padding:8px 12px}.requestPage .requestBody{padding:16px 12px 20px}.requestPage .requestActions{border-radius:0 0 12px 12px;padding:10px 12px}.requestPlannerHint{width:100%}}

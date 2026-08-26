@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { navigateCrm } from "./crm-route";
 import styles from "./work-order-commercial-panel.module.css";
 
 type Line = {
@@ -175,10 +176,10 @@ export function WorkOrderCommercialPanel({ workOrderId, view = "overview", onCha
       if (!response.ok || !payload.ok) throw new Error(payload.error || "Дію не виконано.");
       await load();
       onChanged?.();
-      return true;
+      return payload;
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Дію не виконано.");
-      return false;
+      return null;
     } finally {
       setBusy("");
     }
@@ -249,13 +250,22 @@ export function WorkOrderCommercialPanel({ workOrderId, view = "overview", onCha
     await act(`line:${line.id}`, `/api/work-orders/${encodeURIComponent(workOrderId)}/lines/${encodeURIComponent(line.id)}`, "PATCH", { status, actorName: "CRM / WorkOrder Center" });
   }
   async function runQc(action: string) {
-    await act(`qc:${action}`, `/api/work-orders/${encodeURIComponent(workOrderId)}/qc`, "POST", { action, performedByName: qcPerson || undefined, note: qcNote || undefined, actorName: "CRM / Контроль якості" });
+    const result = await act(`qc:${action}`, `/api/work-orders/${encodeURIComponent(workOrderId)}/qc`, "POST", { action, performedByName: qcPerson || undefined, note: qcNote || undefined, actorName: "CRM / Контроль якості" });
+    if (!result) return;
+    const warnings = [result.transitionWarning?.message, result.issueSyncWarning].filter(Boolean).join(" ");
+    if (warnings) setMessage(warnings);
+    else if (action === "PASS") setMessage("Контроль якості пройдено. ЗН переведено у «Готовий до видачі».");
+    else if (action === "FAIL") setMessage("QC не пройдено. ЗН переведено у «Доопрацювання».");
   }
   async function pay() {
     if (!accountId || !(Number(paymentAmount) > 0)) return;
     const key = typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID().replaceAll("-", "").slice(0, 64) : `${Date.now()}-${Math.random()}`.slice(0, 64);
-    const ok = await act("payment", `/api/work-orders/${encodeURIComponent(workOrderId)}/payments`, "POST", { amount: paymentAmount, moneyAccountId: accountId, idempotencyKey: key, actorName: "CRM / Каса" });
-    if (ok) setPaymentAmount("");
+    const result = await act("payment", `/api/work-orders/${encodeURIComponent(workOrderId)}/payments`, "POST", { amount: paymentAmount, moneyAccountId: accountId, idempotencyKey: key, actorName: "CRM / Каса" });
+    if (!result) return;
+    setPaymentAmount("");
+    if (result.transitionWarning?.message) setMessage(result.transitionWarning.message);
+    else if (result.workOrder?.status === "READY_FOR_PICKUP") setMessage("Оплату проведено. ЗН у статусі «Готовий до видачі».");
+    else setMessage("Оплату проведено.");
   }
 
   const nextParts = useMemo<[string, string] | null>(() => {
@@ -359,7 +369,7 @@ export function WorkOrderCommercialPanel({ workOrderId, view = "overview", onCha
 
     {view === "payment" && <div className={styles.block}>
       <div className={styles.estimateTop}><div><strong>Фіналізація та оплата</strong><small>{finance?.summary?.actualFinalized ? `До сплати ${finance.summary.receivable ? money(finance.summary.receivable, "UAH") : "—"} · оплачено ${money(finance.summary.paid, "UAH")}` : "Фінальна сума автоматично зафіксується після успішного контролю якості."}</small></div>{finance?.summary?.actualFinalized && <span className={styles.amount}>{finance.summary.fullyPaid ? "Оплачено" : `Борг ${money(finance.summary.outstanding, "UAH")}`}</span>}</div>
-      {finance?.summary?.actualFinalized && outstanding > 0 && <div className={styles.paymentForm}>{accounts.length ? <><select value={accountId} onChange={(event) => setAccountId(event.target.value)}>{accounts.map((account) => <option key={account.id} value={account.id}>{account.name} · {account.type}</option>)}</select><input value={paymentAmount} onChange={(event) => setPaymentAmount(event.target.value)} placeholder="Сума оплати"/><button className={styles.primary} disabled={Boolean(busy) || !accountId || !(Number(paymentAmount) > 0)} onClick={() => void pay()}>Прийняти оплату</button></> : <div className={styles.notice}>Немає активної каси або рахунку. Створіть Money Account у Фінансовому центрі.</div>}</div>}
+      {finance?.summary?.actualFinalized && outstanding > 0 && <div className={styles.paymentForm}>{accounts.length ? <><select value={accountId} onChange={(event) => setAccountId(event.target.value)}>{accounts.map((account) => <option key={account.id} value={account.id}>{account.name} · {account.type}</option>)}</select><input value={paymentAmount} onChange={(event) => setPaymentAmount(event.target.value)} placeholder="Сума оплати"/><button className={styles.primary} disabled={Boolean(busy) || !accountId || !(Number(paymentAmount) > 0)} onClick={() => void pay()}>Прийняти оплату</button></> : <div className={styles.notice}>Немає активної каси або рахунку. Створіть Money Account у Фінансовому центрі. <button className={styles.button} type="button" onClick={() => navigateCrm("Фінансовий центр")}>Відкрити фінансовий центр</button></div>}</div>}
     </div>}
 
     {message && <div className={styles.notice}>{message}</div>}

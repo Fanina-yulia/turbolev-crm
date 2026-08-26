@@ -35,6 +35,13 @@ type QueueResponse = {
   counts?: { due: number; partial: number; paidToday: number; debt: number };
   error?: string;
 };
+type PaymentPostResponse = {
+  ok?: boolean;
+  error?: string;
+  code?: string;
+  workOrder?: { id?: string; status?: string } | null;
+  transitionWarning?: { code?: string; message?: string } | null;
+};
 type TabId = "due" | "partial" | "paidToday" | "debt";
 
 const TABS: Array<{ id: TabId; label: string }> = [
@@ -88,6 +95,7 @@ export function PaymentsQueue() {
   const [data, setData] = useState<QueueResponse>({ ok: true, rows: [], accounts: [], counts: { due: 0, partial: 0, paidToday: 0, debt: 0 } });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
   const [paymentRow, setPaymentRow] = useState<PaymentRow | null>(null);
   const [amount, setAmount] = useState("");
   const [accountId, setAccountId] = useState("");
@@ -182,7 +190,9 @@ export function PaymentsQueue() {
 
     setSubmitting(true);
     setPaymentError("");
+    setNotice("");
     try {
+      const paidInFull = numericAmount >= paymentRow.outstanding - 0.001;
       const response = await fetch(`/api/work-orders/${encodeURIComponent(paymentRow.workOrderId)}/payments`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -193,11 +203,12 @@ export function PaymentsQueue() {
           actorName: "CRM / Каса",
         }),
       });
-      const payload = await response.json() as { ok?: boolean; error?: string; code?: string };
+      const payload = await response.json() as PaymentPostResponse;
       if (!response.ok || !payload.ok) throw new Error(payload.error || payload.code || "Не вдалося провести оплату");
       setPaymentRow(null);
+      setNotice(payload.transitionWarning?.message || (paidInFull ? "Оплату проведено. Замовлення-наряд переведено у «Готовий до видачі»." : "Часткову оплату проведено. Залишок оновлено."));
       setRefreshKey((value) => value + 1);
-      if (!routeWorkOrderId) setTab(numericAmount >= paymentRow.outstanding - 0.001 ? "paidToday" : "partial");
+      if (!routeWorkOrderId) setTab(paidInFull ? "paidToday" : "partial");
     } catch (cause) {
       setPaymentError(cause instanceof Error ? cause.message : "Не вдалося провести оплату");
     } finally {
@@ -230,6 +241,7 @@ export function PaymentsQueue() {
     </nav>
 
     {error && <div className={styles.error}>{error}</div>}
+    {notice && <div className={styles.state}>{notice}</div>}
     {loading ? <div className={styles.state}>Завантажую касову чергу…</div> : !visible.length ? <div className={styles.state}>{routeWorkOrderId ? "Для цього ЗН немає доступного фінансового зобов’язання." : "У цій черзі зараз немає замовлень."}</div> : <section className={styles.list}>
       {visible.map((row) => <article className={`${styles.card} ${row.overdue ? styles.overdueCard : ""}`} key={row.obligationId}>
         <div className={styles.cardHead}>
