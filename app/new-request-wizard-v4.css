@@ -61,3 +61,38 @@
 .clientLookupCompact>button{border:1px solid #2bb673;background:#2bb673;color:#fff;border-radius:8px;padding:7px 10px;font-size:9px;font-weight:900;cursor:pointer}
 @media(max-width:900px){.requestModalV4{width:min(100%,calc(100vw - 14px));max-height:94vh}.requestModalV4 .requestModalHead{padding:15px}.requestModalV4 .requestStepperV4{padding:8px 12px}.requestModalV4 .requestBody{padding:16px 14px 20px}.vehicleLookupPair{grid-template-columns:1fr}.requestGrid.four{grid-template-columns:repeat(2,minmax(0,1fr))}.bookingGrid{grid-template-columns:repeat(2,minmax(0,1fr))}.fastBookingSummary{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:760px){.requestModalBackdrop{padding:6px;align-items:end}.requestModalV4{max-height:96vh;border-radius:15px 15px 0 0}.requestModalV4 .requestModalHead h2{font-size:20px}.requestModalV4 .requestModalHead>div>span{display:none}.requestModalV4 .requestStepperV4 button span{display:none}.fastLookupCopy span{display:none}.fastLookupControls{grid-template-columns:minmax(0,1fr) 104px}.fastClientGrid,.requestGrid.four,.bookingGrid,.fastBookingSummary{grid-template-columns:1fr}.vehicleOwnerConflict{align-items:flex-start;flex-direction:column}.vehicleOwnerConflict>div:last-child{justify-content:flex-start}.vehicleFoundCompact{grid-template-columns:auto 1fr}.vehicleFoundCompact>div:last-child{grid-column:1/-1}.requestModalV4 .requestActions{padding:10px 12px}.fastBookButton{min-width:0}}
+
+.requestPage{
+  position:relative;
+  width:100%;
+  min-height:calc(100dvh - 112px);
+  overflow:visible;
+  background:var(--panel);
+  border:1px solid var(--line);
+  border-radius:18px;
+  box-shadow:0 12px 40px rgba(0,0,0,.08);
+}
+.requestPage.requestModal{width:100%;max-height:none;overflow:visible;border-radius:18px;box-shadow:0 12px 40px rgba(0,0,0,.08)}
+.requestPage.requestModalV4{max-width:none;max-height:none}
+.requestPage .requestModalHead{position:sticky;top:0;z-index:12}
+.requestPage .requestScroll{overflow:visible;min-height:0}
+.requestPage .requestBody{overflow:visible}
+.requestPage .requestActions{position:sticky;bottom:0;z-index:12;border-radius:0 0 18px 18px}
+.requestPage .requestClose{font-size:20px;min-width:42px}
+.requestPlannerControls{display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap;margin-bottom:14px}
+.requestPlannerControls label{display:grid;gap:6px}
+.requestPlannerControls label>span{font-size:10px;font-weight:800;color:var(--soft-text)}
+.requestPlannerControls input{height:42px;border:1px solid var(--line);border-radius:10px;background:var(--panel-2);color:var(--text);padding:0 11px;font:inherit;font-size:12px}
+.requestPlannerControls input:focus{border-color:var(--orange);box-shadow:0 0 0 3px rgba(255,106,0,.08);outline:0}
+.requestPlannerHint{display:grid;gap:3px;min-height:42px;align-content:center;padding:0 12px;border:1px solid color-mix(in srgb,var(--orange) 24%,var(--line));border-radius:10px;background:color-mix(in srgb,var(--orange) 5%,var(--panel-2))}
+.requestPlannerHint b{font-size:10px;color:var(--orange)}
+.requestPlannerHint span{font-size:9px;color:var(--muted)}
+.requestPlannerSelection{display:grid;grid-template-columns:minmax(0,1fr) minmax(220px,320px);gap:12px;align-items:end;margin-top:14px;padding:12px;border:1px solid color-mix(in srgb,#16a34a 28%,var(--line));border-radius:13px;background:color-mix(in srgb,#16a34a 5%,var(--panel-2))}
+.requestPlannerSelection>div{display:grid;gap:3px}
+.requestPlannerSelection small,.requestPlannerSelection label>span{font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;font-weight:850}
+.requestPlannerSelection strong{font-size:14px}
+.requestPlannerSelection div>span{font-size:10px;color:var(--soft-text)}
+.requestPlannerSelection label{display:grid;gap:6px}
+.requestPlannerSelection select{height:42px;border:1px solid var(--line);border-radius:10px;background:var(--panel);color:var(--text);padding:0 10px;font:inherit;font-size:12px}
+@media(max-width:900px){.requestPlannerSelection{grid-template-columns:1fr}.requestPage{min-height:calc(100dvh - 70px)}}
+@media(max-width:760px){.requestPage,.requestPage.requestModal{border-radius:12px;min-height:calc(100dvh - 36px)}.requestPage .requestModalHead{padding:15px 14px}.requestPage .requestModalHead h2{font-size:20px}.requestPage .requestStepperV4{padding:8px 12px}.requestPage .requestBody{padding:16px 12px 20px}.requestPage .requestActions{border-radius:0 0 12px 12px;padding:10px 12px}.requestPlannerHint{width:100%}}
