@@ -82,6 +82,11 @@ export type VehicleImageLibraryState = {
   generationLabel?: string | null;
 };
 
+type VehicleImageQueueOptions = {
+  themePaint?: string | null;
+  force?: boolean;
+};
+
 function cleanPart(value: string | null | undefined) {
   return (value || "").normalize("NFKC").trim().replace(/\s+/g, " ").replace(/[‐‑‒–—]/g, "-");
 }
@@ -374,10 +379,107 @@ export async function getVehicleImageLibraryState(vehicleId: string, themePaint?
   };
   const asset = await findAssetByKey(identity.libraryKey);
   if (asset?.status === "READY") return { state: "READY", assetId: asset.id, libraryKey: identity.libraryKey, autoGenerate: config?.autoGenerate ?? false, canGenerate: Boolean(config), error: null, ...extra };
-  if (asset?.status === "GENERATING") return { state: "GENERATING", assetId: asset.id, libraryKey: identity.libraryKey, autoGenerate: config?.autoGenerate ?? false, canGenerate: Boolean(config), error: null, ...extra };
+  if (asset?.status === "GENERATING" || asset?.status === "QUEUED") return { state: "GENERATING", assetId: asset.id, libraryKey: identity.libraryKey, autoGenerate: config?.autoGenerate ?? false, canGenerate: Boolean(config), error: null, ...extra };
   if (asset?.status === "ERROR") return { state: "ERROR", assetId: asset.id, libraryKey: identity.libraryKey, autoGenerate: config?.autoGenerate ?? false, canGenerate: Boolean(config), error: asset.lastError, ...extra };
   if (!config) return { state: "NOT_CONFIGURED", assetId: asset?.id ?? null, libraryKey: identity.libraryKey, autoGenerate: false, canGenerate: false, error: "OpenAI API не налаштовано.", ...extra };
   return { state: "MISSING", assetId: asset?.id ?? null, libraryKey: identity.libraryKey, autoGenerate: config.autoGenerate, canGenerate: true, error: null, ...extra };
+}
+
+/**
+ * Registers a missing vehicle image for controlled background processing.
+ * This function never calls OpenAI; it only creates/updates the shared library
+ * asset and an idempotent QUEUED job. That keeps card rendering fast and avoids
+ * a generation storm when many vehicle cards are mounted together.
+ */
+export async function enqueueVehicleImageGeneration(vehicleId: string, options?: VehicleImageQueueOptions) {
+  const config = await getOpenAIVehicleImageConfig();
+  const vehicle = await loadVehicleDescriptor(vehicleId);
+  if (!vehicle) return { state: "MISSING_DATA" as const, assetId: null, libraryKey: null, queued: false, error: "Автомобіль не знайдено." };
+  if (!vehicle.make || !vehicle.model) return { state: "MISSING_DATA" as const, assetId: null, libraryKey: null, queued: false, error: "Для генерації потрібні марка і модель." };
+  if (!config) return { state: "NOT_CONFIGURED" as const, assetId: null, libraryKey: null, queued: false, error: "OpenAI API не налаштовано." };
+  if (!config.autoGenerate) return { state: "NOT_CONFIGURED" as const, assetId: null, libraryKey: null, queued: false, error: "Автоматична генерація зображень вимкнена." };
+
+  const theme = normalizedTheme(options?.themePaint);
+  const paint = getOpenAIVehiclePaint(vehicle, theme);
+  const identity = await imageIdentity(vehicle, theme, paint);
+  const existing = await findAssetByKey(identity.libraryKey);
+  const base = {
+    assetId: existing?.id ?? null,
+    libraryKey: identity.libraryKey,
+    templateKey: identity.templateKey,
+    variantKey: identity.variantKey,
+    normalizedColor: identity.normalizedColor,
+    generationLabel: identity.generationLabel,
+  };
+
+  if (existing?.status === "READY" || existing?.status === "GENERATING" || existing?.status === "QUEUED") {
+    return { state: existing.status === "READY" ? "READY" as const : "GENERATING" as const, ...base, queued: false, error: null };
+  }
+
+  const now = Date.now();
+  if (existing?.status === "ERROR" && !options?.force && now - new Date(existing.updatedAt).getTime() < ERROR_RETRY_MS) {
+    return { state: "ERROR" as const, ...base, queued: false, error: existing.lastError };
+  }
+
+  const assetId = existing?.id || `vimg_${randomUUID().replace(/-/g, "")}`;
+  const prompt = masterPrompt(vehicle, paint, identity);
+  const pool = getSqlPool();
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [`vehicle-image-queue:${identity.libraryKey}`]);
+    await client.query(
+      `INSERT INTO public."VehicleImageLibraryAsset"
+         ("id","libraryKey","make","model","year","bodyType","theme","provider","providerModel","promptVersion","promptText","status","lastError","templateKey","variantKey","normalizedColor","generationFrom","generationTo","sourceAssetId","generationMode","createdAt","updatedAt")
+       VALUES ($1,$2,$3,$4,$5,$6,$7,'OPENAI',$8,$9,$10,'QUEUED',NULL,$11,$12,$13,$14,$15,NULL,'PENDING',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)
+       ON CONFLICT ("libraryKey") DO UPDATE SET
+         "make"=EXCLUDED."make","model"=EXCLUDED."model","year"=EXCLUDED."year","bodyType"=EXCLUDED."bodyType","theme"=EXCLUDED."theme",
+         "provider"='OPENAI',"providerModel"=EXCLUDED."providerModel","promptVersion"=EXCLUDED."promptVersion","promptText"=EXCLUDED."promptText",
+         "status"='QUEUED',"lastError"=NULL,"templateKey"=EXCLUDED."templateKey","variantKey"=EXCLUDED."variantKey",
+         "normalizedColor"=EXCLUDED."normalizedColor","generationFrom"=EXCLUDED."generationFrom","generationTo"=EXCLUDED."generationTo",
+         "sourceAssetId"=NULL,"generationMode"='PENDING',"updatedAt"=CURRENT_TIMESTAMP`,
+      [
+        assetId,
+        identity.libraryKey,
+        vehicle.make,
+        vehicle.model,
+        vehicle.year,
+        vehicle.bodyType,
+        theme,
+        config.model,
+        PROMPT_VERSION,
+        prompt,
+        identity.templateKey,
+        identity.variantKey,
+        identity.normalizedColor,
+        identity.generationFrom,
+        identity.generationTo,
+      ],
+    );
+
+    const activeJob = await client.query(
+      `SELECT "id" FROM public."VehicleImageGenerationJob"
+        WHERE "libraryKey"=$1 AND "vehicleId"=$2 AND "assetId"=$3 AND "status" IN ('QUEUED','PROCESSING')
+        ORDER BY "createdAt" DESC LIMIT 1`,
+      [identity.libraryKey, vehicleId, assetId],
+    );
+    if (!activeJob.rowCount) {
+      await client.query(
+        `INSERT INTO public."VehicleImageGenerationJob"
+          ("id","libraryKey","vehicleId","assetId","status","attempts","requestedAt","createdAt","updatedAt")
+         VALUES ($1,$2,$3,$4,'QUEUED',0,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)`,
+        [`vimgjob_${randomUUID().replace(/-/g, "")}`, identity.libraryKey, vehicleId, assetId],
+      );
+    }
+    await client.query("COMMIT");
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => undefined);
+    throw error;
+  } finally {
+    client.release();
+  }
+
+  return { state: "GENERATING" as const, ...base, assetId, queued: true, error: null };
 }
 
 function openAIErrorMessage(payload: unknown, fallback: string) {
@@ -467,8 +569,16 @@ async function editPngFromReference(config: VehicleImageConfig, reference: Refer
 }
 
 async function createJob(libraryKey: string, vehicleId: string, assetId: string) {
+  const pool = getSqlPool();
+  const active = await pool.query(
+    `SELECT "id" FROM public."VehicleImageGenerationJob"
+      WHERE "libraryKey"=$1 AND "vehicleId"=$2 AND "assetId"=$3 AND "status"='PROCESSING'
+      ORDER BY "createdAt" DESC LIMIT 1`,
+    [libraryKey, vehicleId, assetId],
+  );
+  if (active.rowCount) return String((active.rows[0] as { id: string }).id);
   const id = `vimgjob_${randomUUID().replace(/-/g, "")}`;
-  await getSqlPool().query(
+  await pool.query(
     `INSERT INTO public."VehicleImageGenerationJob" ("id","libraryKey","vehicleId","assetId","status","attempts","requestedAt","startedAt","createdAt","updatedAt") VALUES ($1,$2,$3,$4,'PROCESSING',1,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)`,
     [id, libraryKey, vehicleId, assetId],
   );

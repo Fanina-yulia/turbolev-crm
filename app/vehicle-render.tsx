@@ -99,7 +99,6 @@ export function VehicleRender(props: VehicleRenderProps) {
   const [libraryError, setLibraryError] = useState<string | null>(null);
   const [resolving, setResolving] = useState(false);
   const [manualResolveEpoch, setManualResolveEpoch] = useState(0);
-  const forcedRetryRef = useRef<string | null>(null);
   const activeVehicleRef = useRef(props.id);
 
   useEffect(() => {
@@ -169,32 +168,12 @@ export function VehicleRender(props: VehicleRenderProps) {
           return;
         }
 
-        const retryKey = `${props.id}:${themePaint}`;
-        const retryFailedGeneration = state === "ERROR"
-          && library?.autoGenerate
-          && library.canGenerate
-          && forcedRetryRef.current !== retryKey;
-        const startMissingGeneration = state === "MISSING" && library?.autoGenerate && library.canGenerate;
-        if (!retryFailedGeneration && !startMissingGeneration) return;
-        if (retryFailedGeneration) forcedRetryRef.current = retryKey;
-
-        const generation = await fetch(`/api/vehicles/${encodeURIComponent(props.id)}/image`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ themePaint, force: retryFailedGeneration }),
-        });
-        const result = await generation.json().catch(() => null) as VehicleImageApiPayload | null;
-        if (cancelled) return;
-        if (generation.ok && result?.ok && result.image) {
-          setLibraryState("READY");
-          setLibraryError(null);
-          setFailed(false);
-          setLibraryVersion((value) => value + 1);
-          return;
-        }
-        if (result?.generation?.state === "GENERATING") {
+        // Page rendering must never call OpenAI. The GET endpoint registers a
+        // missing image in the durable queue; this card only waits for the
+        // worker to finish and then reloads the shared library asset.
+        if (state === "MISSING" && library?.autoGenerate && library.canGenerate) {
           setLibraryState("GENERATING");
-          schedulePoll();
+          if (pollAttempts < 40) schedulePoll(3000);
         }
       } catch {
         // Missing or unavailable renders must stay as a safe local silhouette.
