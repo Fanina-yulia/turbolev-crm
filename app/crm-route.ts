@@ -3,6 +3,8 @@
 import { slugFromSection, type CrmSectionLabel } from "./crm-navigation";
 
 export type CrmRouteParams = {
+  filter?: string;
+  filterLabel?: string;
   status?: string;
   scope?: string;
 
@@ -36,6 +38,8 @@ export type CrmRouteParams = {
 };
 
 export const CRM_ROUTE_KEYS: Array<keyof CrmRouteParams> = [
+  "filter",
+  "filterLabel",
   "status",
   "scope",
   "inquiryId",

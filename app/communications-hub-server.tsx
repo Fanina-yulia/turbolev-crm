@@ -4,6 +4,7 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "rea
 import { ClientCardDrawer } from "./client-card-drawer";
 import { CommunicationsVehicleCardDrawer } from "./communications-vehicle-card-drawer";
 import { VehicleBrandLogo } from "./vehicle-brand-logo";
+import { readCrmRoute } from "./crm-route";
 import styles from "./communications-contact-inbox.module.css";
 import {
   buildCommunicationConversations,
@@ -16,7 +17,7 @@ import {
   type CommunicationMessage as Message,
 } from "@/src/domain/communications-inbox";
 
-type Filter = "ALL" | "NEW" | "NEEDS_REPLY" | "MISSED" | "MESSAGES" | Channel;
+type Filter = "ALL" | "ACTIVE" | "NEW" | "NEEDS_REPLY" | "MISSED" | "MESSAGES" | Channel;
 type BinotelHealth = { ok: boolean; databaseConfigured: boolean; restConfigured: boolean; webhookTokenConfigured: boolean; websocketConfigured: boolean; companyIdConfigured: boolean; webhookPath: string; missing: string[]; optionalMissing: string[] };
 type LinkedVehicle = { id: string; plateNumber?: string | null; vin?: string | null; brand?: string | null; model?: string | null; year?: number | null };
 type LinkedClientCard = { id: string; name?: string | null; phone: string; vehicles: LinkedVehicle[] };
@@ -188,6 +189,13 @@ export function CommunicationsHub() {
   const [clientSearch, setClientSearch] = useState("");
   const [clientResults, setClientResults] = useState<ClientSearchItem[]>([]);
   const [clientSearching, setClientSearching] = useState(false);
+
+  const routeFilter = (value: string | undefined): Filter => {
+    const candidate = String(value || "").toUpperCase();
+    return (["ALL", "ACTIVE", "NEW", "NEEDS_REPLY", "MISSED", "MESSAGES", ...channels] as string[]).includes(candidate)
+      ? candidate as Filter
+      : "ALL";
+  };
   const [linkingClientId, setLinkingClientId] = useState("");
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const messageEndRef = useRef<HTMLDivElement | null>(null);
@@ -234,6 +242,12 @@ export function CommunicationsHub() {
   }, [load, loadIntegrationStatus]);
 
   useEffect(() => { void load(); void loadBinotelHealth(); void loadIntegrationStatus(); }, [load, loadBinotelHealth, loadIntegrationStatus]);
+  useEffect(() => {
+    const syncRoute = () => setFilter(routeFilter(readCrmRoute().filter));
+    syncRoute();
+    window.addEventListener("popstate", syncRoute);
+    return () => window.removeEventListener("popstate", syncRoute);
+  }, []);
   useEffect(() => {
     const refresh = () => { void load(true); };
     window.addEventListener("turbolev:data-changed", refresh);
@@ -304,12 +318,14 @@ export function CommunicationsHub() {
 
   const counts = useMemo(() => ({
     ALL: conversations.length,
+    ACTIVE: conversations.filter((item) => !["CLOSED", "SPAM", "NOT_OUR_CLIENT"].includes(item.lifecycleState)).length,
     NEW: conversations.filter((item) => item.unreadCount > 0).length,
     NEEDS_REPLY: conversations.filter((item) => item.actionState === "MISSED" || item.actionState === "NEEDS_REPLY").length,
     MISSED: conversations.filter((item) => item.unresolvedMissedCount > 0).length,
     MESSAGES: conversations.filter((item) => item.hasMessages).length,
   }), [conversations]);
   const visible = useMemo(() => conversations.filter((conversation) => {
+    if (filter === "ACTIVE" && ["CLOSED", "SPAM", "NOT_OUR_CLIENT"].includes(conversation.lifecycleState)) return false;
     if (filter === "NEW" && conversation.unreadCount === 0) return false;
     if (filter === "NEEDS_REPLY" && conversation.actionState !== "MISSED" && conversation.actionState !== "NEEDS_REPLY") return false;
     if (filter === "MISSED" && conversation.unresolvedMissedCount === 0) return false;
@@ -486,6 +502,7 @@ export function CommunicationsHub() {
 
   const filterPills: { key: Filter; label: string; count: number }[] = [
     { key: "ALL", label: "Усі", count: counts.ALL },
+    { key: "ACTIVE", label: "Активні", count: counts.ACTIVE },
     { key: "NEW", label: "Нові", count: counts.NEW },
     { key: "NEEDS_REPLY", label: "Потрібна відповідь", count: counts.NEEDS_REPLY },
     { key: "MISSED", label: "Пропущені", count: counts.MISSED },
@@ -516,7 +533,19 @@ export function CommunicationsHub() {
         </article>;
       })}</div>
     </section> : <>
-      <nav className={styles.filters} aria-label="Фільтри комунікацій">{filterPills.map((item) => <button key={item.key} className={`${styles.filterButton} ${filter === item.key ? styles.active : ""}`} onClick={() => setFilter(item.key)}>{item.label}<span>{item.count}</span></button>)}</nav>
+      <nav className={styles.filters} aria-label="Фільтри комунікацій">{filterPills.map((item) => <button key={item.key} className={`${styles.filterButton} ${filter === item.key ? styles.active : ""}`} onClick={() => {
+        setFilter(item.key);
+        const url = new URL(window.location.href);
+        if (item.key === "ALL") {
+          url.searchParams.delete("filter");
+          url.searchParams.delete("filterLabel");
+        } else {
+          url.searchParams.set("filter", item.key);
+          url.searchParams.set("filterLabel", item.label);
+        }
+        window.history.pushState({}, "", `${url.pathname}${url.search}${url.hash}`);
+        window.dispatchEvent(new PopStateEvent("popstate"));
+      }}>{item.label}<span>{item.count}</span></button>)}</nav>
       <section className={styles.shell}>
         <aside className={styles.left}>
           <div className={styles.search}><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Пошук: клієнт, телефон, авто, номер..."/><button onClick={() => void load()} aria-label="Оновити">↻</button></div>

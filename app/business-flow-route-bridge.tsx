@@ -37,9 +37,9 @@ function kyivDateKey() {
 
 function canonicalizeLegacy(detail: LegacyNavigateDetail): CanonicalTarget | null {
   if (typeof detail === "string") {
-    if (["Активні", "Ліди", "Звернення", "Нові звернення"].includes(detail)) {
-      return { section: "Комунікації", params: {} };
-    }
+    if (detail === "Активні" || detail === "Ліди") return { section: "Комунікації", params: { filter: "ACTIVE", filterLabel: "Активні" } };
+    if (detail === "Нові звернення") return { section: "Комунікації", params: { filter: "NEW", filterLabel: "Нові" } };
+    if (detail === "Звернення") return { section: "Комунікації", params: {} };
     if (detail === "Виробництво") return { section: "Планувальник", params: { scope: "resources" } };
     if (detail === "Контроль якості") return { section: "Замовлення-наряди", params: { status: "WAITING_QC", workOrderTab: "qc" } };
     if (detail === "Гарантії") return { section: "Замовлення-наряди", params: { workOrderTab: "history" } };
