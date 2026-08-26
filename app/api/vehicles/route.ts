@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { toVehicleDirectoryItem } from "@/src/lib/contracts/crm-core.server";
 import { getPrisma } from "@/src/lib/prisma";
+import { resolveVehicleColorByPlate } from "@/src/services/vehicle-registry-color.service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -69,9 +70,14 @@ export async function GET(request: NextRequest) {
       take: limit,
       select: vehicleSelect,
     });
+    const enrichedVehicles = await Promise.all(vehicles.map(async (vehicle) => {
+      if (vehicle.exteriorColorConfirmed) return vehicle;
+      const color = await resolveVehicleColorByPlate(vehicle.plateNumber, vehicle.id, vehicle.vin).catch(() => null);
+      return color ? { ...vehicle, ...color } : vehicle;
+    }));
 
     return NextResponse.json(
-      { ok: true, total, page: safePage, limit, pages, vehicles: vehicles.map(toVehicleDirectoryItem) },
+      { ok: true, total, page: safePage, limit, pages, vehicles: enrichedVehicles.map(toVehicleDirectoryItem) },
       { headers: { "Cache-Control": "no-store" } },
     );
   } catch (error) {
