@@ -16,7 +16,7 @@
 }
 
 .workflowItem + .workflowItem{border-left:1px solid var(--line)}
-.workflowItem small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:10px;text-transform:uppercase;letter-spacing:.02em}
+.workflowItem small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;text-transform:uppercase;letter-spacing:.02em}
 .workflowIcon{width:29px;height:29px;display:grid;place-items:center;flex:0 0 auto;border:1px solid currentColor;border-radius:9px}
 .workflowIcon svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-linecap:round;stroke-linejoin:round;stroke-width:1.7}
 .workflow_danger{color:#ef4444;background:rgba(239,68,68,.08)}
@@ -25,7 +25,7 @@
 
 @media(max-width:760px){
   .workflowItem{gap:5px;padding:9px 4px}
-  .workflowItem small{font-size:9px}
+  .workflowItem small{font-size:11px}
   .workflowIcon{width:27px;height:27px}
   .workflowIcon svg{width:16px;height:16px}
 }
