@@ -151,11 +151,13 @@ export function CrmShell({ initialSection, initialSettingsTab }: { initialSectio
   const [openGroup,setOpenGroup]=useState<string|null>(()=>groupForSection(initialActive));
   const [settingsTab,setSettingsTab]=useState<SettingsTab>(initialTab);
   const [mobileNavOpen,setMobileNavOpen]=useState(false);
+  const [newRequestOpen,setNewRequestOpen]=useState(false);
   const access=useCrmAccess();
 
   const navigateTo = useCallback((next: CrmSectionLabel, historyMode: "push" | "replace" = "push", filter = "", filterLabel = "") => {
     const resolved=resolveCrmSection(next);
-    setActive(resolved); setOpenGroup(groupForSection(resolved)); setWorkflowFilter(filter); setWorkflowFilterLabel(filterLabel); setMobileNavOpen(false);
+    window.dispatchEvent(new Event("turbolev:close-new-request"));
+    setNewRequestOpen(false); setActive(resolved); setOpenGroup(groupForSection(resolved)); setWorkflowFilter(filter); setWorkflowFilterLabel(filterLabel); setMobileNavOpen(false);
     const url = new URL(window.location.href); const slug = slugFromSection(resolved);
     if (slug === "overview") url.searchParams.delete("section"); else url.searchParams.set("section", slug);
     clearTypedRouteParams(url);
@@ -167,7 +169,8 @@ export function CrmShell({ initialSection, initialSettingsTab }: { initialSectio
   }, []);
 
   const navigateSettings = useCallback((tab:SettingsTab,historyMode:"push"|"replace"="push")=>{
-    setActive("Налаштування");setOpenGroup(groupForSection("Налаштування"));setWorkflowFilter("");setWorkflowFilterLabel("");setSettingsTab(tab);setMobileNavOpen(false);
+    window.dispatchEvent(new Event("turbolev:close-new-request"));
+    setNewRequestOpen(false);setActive("Налаштування");setOpenGroup(groupForSection("Налаштування"));setWorkflowFilter("");setWorkflowFilterLabel("");setSettingsTab(tab);setMobileNavOpen(false);
     const url=new URL(window.location.href);url.searchParams.set("section","settings");url.searchParams.set("settingsTab",tab);url.searchParams.delete("filter");url.searchParams.delete("filterLabel");
     for(const key of CRM_ROUTE_KEYS){if(key!=="settingsTab"&&key!=="supplierId"&&key!=="provider")url.searchParams.delete(key);}
     const nextUrl=`${url.pathname}${url.search}${url.hash}`;
@@ -261,7 +264,11 @@ export function CrmShell({ initialSection, initialSettingsTab }: { initialSectio
       })}</nav>
       <div className="sidebarFoot"><span className="liveDot"/> {access.enforced?(access.snapshot?.user?.name||"Захищений режим"):"Станція онлайн"}</div>
     </aside>
-    <div className={active==="Огляд станції"?shellStyles.globalNewRequest:undefined}><NewRequestLauncher showButton={active==="Огляд станції"&&canCreateRequest}/></div>
-    <section className={`workspace ${active==="Огляд станції"?shellStyles.workspaceWithFloatingAction:""}`}>{!activeAllowed?accessDenied:<>{active!=="Огляд станції"&&active!=="Налаштування"&&filterBanner}{active==="Мої задачі"?<MyTasks/>:active==="Нові звернення"?<NewInquiries/>:active==="Комунікації"?<CommunicationsHub/>:active==="Активні"?<LeadsBoardV2/>:active==="Клієнти"?<ClientsDirectory/>:active==="Авто"?<VehiclesDirectory/>:active==="Планувальник"?<PlannerWorkspace/>:active==="Діагностика"?<Diagnostics/>:active==="Замовлення-наряди"?<WorkOrders/>:active==="Виробництво"?<ProductionBoard/>:active==="Контроль якості"?<QcQueue/>:active==="Підбір запчастин"?<PartsCatalog/>:active==="Закупівлі та склад"?<ProcurementWorkspace/>:active==="Фінансовий центр"?<FinancialCenter/>:active==="Оплати"?<PaymentsQueue/>:active==="Гарантії"?<WarrantyCenter/>:active==="Аналітика"?<AnalyticsWorkspace/>:active==="Налаштування"?<SettingsPage tab={settingsTab}/>:active==="Огляд станції"?<RoleAwareOverview access={access.snapshot}/>:<div className="comingSoon"><p className="eyebrow">TURBO LEV CRM</p><h1>{active}</h1><p>Розділ тимчасово недоступний.</p></div>}</>}</section>
+    <section className={`workspace ${active==="Огляд станції"&&!newRequestOpen?shellStyles.workspaceWithFloatingAction:""} ${newRequestOpen?shellStyles.workspaceRequestOpen:""}`}>
+      <div className={active==="Огляд станції"&&!newRequestOpen?shellStyles.globalNewRequest:undefined}>
+        <NewRequestLauncher showButton={active==="Огляд станції"&&!newRequestOpen&&canCreateRequest} onOpenChange={setNewRequestOpen}/>
+      </div>
+      {!newRequestOpen&&(!activeAllowed?accessDenied:<>{active!=="Огляд станції"&&active!=="Налаштування"&&filterBanner}{active==="Мої задачі"?<MyTasks/>:active==="Нові звернення"?<NewInquiries/>:active==="Комунікації"?<CommunicationsHub/>:active==="Активні"?<LeadsBoardV2/>:active==="Клієнти"?<ClientsDirectory/>:active==="Авто"?<VehiclesDirectory/>:active==="Планувальник"?<PlannerWorkspace/>:active==="Діагностика"?<Diagnostics/>:active==="Замовлення-наряди"?<WorkOrders/>:active==="Виробництво"?<ProductionBoard/>:active==="Контроль якості"?<QcQueue/>:active==="Підбір запчастин"?<PartsCatalog/>:active==="Закупівлі та склад"?<ProcurementWorkspace/>:active==="Фінансовий центр"?<FinancialCenter/>:active==="Оплати"?<PaymentsQueue/>:active==="Гарантії"?<WarrantyCenter/>:active==="Аналітика"?<AnalyticsWorkspace/>:active==="Налаштування"?<SettingsPage tab={settingsTab}/>:active==="Огляд станції"?<RoleAwareOverview access={access.snapshot}/>:<div className="comingSoon"><p className="eyebrow">TURBO LEV CRM</p><h1>{active}</h1><p>Розділ тимчасово недоступний.</p></div>}</>) }
+    </section>
   </main>;
 }
