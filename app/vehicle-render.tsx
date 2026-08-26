@@ -69,7 +69,8 @@ function themePaintFromHex(value: string): ThemePaint {
 function readThemePaint(): ThemePaint {
   if (typeof window === "undefined") return "Imagin-grey";
   const root = document.documentElement;
-  const explicit = root.dataset.vehiclePaint || root.dataset.accentColor || "";
+  // The CRM accent is an interface color, never a vehicle paint fallback.
+  const explicit = root.dataset.vehiclePaint || "";
   if (PAINTS.includes(explicit as ThemePaint)) return explicit as ThemePaint;
   const normalized = explicit ? `Imagin-${explicit.toLowerCase().replace(/^imagin-/, "")}` : "";
   if (PAINTS.includes(normalized as ThemePaint)) return normalized as ThemePaint;
