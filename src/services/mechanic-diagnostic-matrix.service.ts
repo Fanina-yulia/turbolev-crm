@@ -19,26 +19,80 @@ import {
   StructuredDiagnosticError,
 } from "@/src/services/structured-diagnostics.service";
 
-function requestedTemplateCode(problem: string | null | undefined) {
-  const text = (problem || "").toLocaleLowerCase("uk-UA");
-  if (/(ходов|підвіск|рульов|сайлент|кульов|стабіліз|амортиз|привід|шрус)/u.test(text)) return "SUSPENSION_MATRIX";
-  if (/(гальм|колод|супорт|гальмів|тормоз|диск)/u.test(text)) return "BRAKES";
-  if (/(комп'ют|компют|check engine|помилк|електрон|діагностик.*двиг)/u.test(text)) return "COMPUTER_DIAGNOSTICS";
-  return "BASIC_INSPECTION";
+const DEFAULT_DIAGNOSTIC_TEMPLATE_CODE = "SUSPENSION_MATRIX";
+
+async function currentTemplateItems(templateId: string, code: string, profile: Awaited<ReturnType<typeof getVehicleDiagnosticProfile>>) {
+  const prisma = getPrisma();
+  const seed = DIAGNOSTIC_TEMPLATE_SEEDS.find((item) => item.code === code);
+  const currentSectionCodes = seed?.sections.map((section) => section.code) ?? [];
+  const sections = await prisma.diagnosticTemplateSection.findMany({
+    where: {
+      templateId,
+      ...(currentSectionCodes.length ? { code: { in: currentSectionCodes } } : {}),
+    },
+    select: { id: true, code: true },
+  });
+  if (!sections.length) return [];
+
+  const seedItemCodes = new Set(
+    seed?.sections.flatMap((section) => section.items.map((item) => `${section.code}:${item.code}`)) ?? [],
+  );
+  const sectionCodeById = new Map(sections.map((section) => [section.id, section.code]));
+  return (await prisma.diagnosticTemplateItem.findMany({
+    where: { sectionId: { in: sections.map((section) => section.id) } },
+    select: { id: true, code: true, sectionId: true },
+  })).filter((item) => {
+    const sectionCode = sectionCodeById.get(item.sectionId) || "";
+    const seeded = !seedItemCodes.size || seedItemCodes.has(`${sectionCode}:${item.code}`);
+    return seeded && isDiagnosticItemApplicable(profile, sectionCode, item.code);
+  });
 }
 
-async function appointmentProblem(input: { vehicleId: string | null; mechanicId: string }) {
-  if (!input.vehicleId) return null;
-  const appointment = await getPrisma().serviceAppointment.findFirst({
-    where: {
-      vehicleId: input.vehicleId,
-      mechanicId: input.mechanicId,
-      status: { notIn: ["CANCELLED", "NO_SHOW", "COMPLETED"] },
-    },
-    orderBy: [{ updatedAt: "desc" }, { plannedStartAt: "desc" }],
-    select: { problem: true },
+async function ensureBaselineMatrixInspection(input: {
+  diagnosticRequestId: string;
+  mechanicId: string;
+  profile: Awaited<ReturnType<typeof getVehicleDiagnosticProfile>>;
+}) {
+  const prisma = getPrisma();
+  const template = await prisma.diagnosticTemplate.findFirst({
+    where: { code: DEFAULT_DIAGNOSTIC_TEMPLATE_CODE, isActive: true },
   });
-  return appointment?.problem || null;
+  if (!template) {
+    throw new StructuredDiagnosticError("TEMPLATE_NOT_FOUND", "Шаблон діагностики ходової не знайдено.", 404);
+  }
+
+  let inspection = await prisma.diagnosticInspection.findUnique({
+    where: {
+      diagnosticRequestId_templateId: {
+        diagnosticRequestId: input.diagnosticRequestId,
+        templateId: template.id,
+      },
+    },
+  });
+
+  if (!inspection) {
+    const items = await currentTemplateItems(template.id, DEFAULT_DIAGNOSTIC_TEMPLATE_CODE, input.profile);
+    inspection = await prisma.$transaction(async (tx) => {
+      const created = await tx.diagnosticInspection.create({
+        data: {
+          diagnosticRequestId: input.diagnosticRequestId,
+          templateId: template.id,
+          mechanicId: input.mechanicId,
+          status: DiagnosticInspectionStatus.IN_PROGRESS,
+          startedAt: new Date(),
+        },
+      });
+      if (items.length) {
+        await tx.diagnosticCheck.createMany({
+          data: items.map((item) => ({ inspectionId: created.id, templateItemId: item.id })),
+          skipDuplicates: true,
+        });
+      }
+      return created;
+    });
+  }
+
+  return inspection;
 }
 
 export async function startMechanicDiagnosticByType(userId: string, diagnosticRequestId: string) {
@@ -49,10 +103,7 @@ export async function startMechanicDiagnosticByType(userId: string, diagnosticRe
     throw new StructuredDiagnosticError("DIAGNOSTIC_NOT_ASSIGNED", "Ця діагностика не призначена цьому автомеханіку.", 403);
   }
 
-  const diagnostic = await prisma.diagnosticRequest.findUnique({
-    where: { id: diagnosticRequestId },
-    include: { lead: { select: { need: true, comment: true } } },
-  });
+  const diagnostic = await prisma.diagnosticRequest.findUnique({ where: { id: diagnosticRequestId } });
   if (!diagnostic) throw new StructuredDiagnosticError("DIAGNOSTIC_NOT_FOUND", "Діагностику не знайдено.", 404);
   if (
     diagnostic.status === DiagnosticRequestStatus.CONFIRMED
@@ -68,63 +119,17 @@ export async function startMechanicDiagnosticByType(userId: string, diagnosticRe
 
   await ensureDefaultDiagnosticTemplates();
   const profile = await getVehicleDiagnosticProfile(diagnosticRequestId);
-  const inspectionCount = await prisma.diagnosticInspection.count({ where: { diagnosticRequestId } });
 
-  if (!inspectionCount) {
-    let problem = [diagnostic.lead?.need, diagnostic.lead?.comment].filter(Boolean).join(" · ");
-    if (!problem) problem = await appointmentProblem({ vehicleId: diagnostic.vehicleId, mechanicId: mechanic.id }) || "";
-    const code = requestedTemplateCode(problem);
-    const template = await prisma.diagnosticTemplate.findFirst({ where: { code, isActive: true } });
-    if (!template) throw new StructuredDiagnosticError("TEMPLATE_NOT_FOUND", "Шаблон діагностики не знайдено.", 404);
+  await ensureBaselineMatrixInspection({
+    diagnosticRequestId,
+    mechanicId: mechanic.id,
+    profile,
+  });
 
-    const seed = DIAGNOSTIC_TEMPLATE_SEEDS.find((item) => item.code === code);
-    const currentSectionCodes = seed?.sections.map((section) => section.code) ?? [];
-    const sections = await prisma.diagnosticTemplateSection.findMany({
-      where: {
-        templateId: template.id,
-        ...(currentSectionCodes.length ? { code: { in: currentSectionCodes } } : {}),
-      },
-      select: { id: true, code: true },
-    });
-    const seedItemCodes = new Set(seed?.sections.flatMap((section) => section.items.map((item) => `${section.code}:${item.code}`)) ?? []);
-    const sectionCodeById = new Map(sections.map((section) => [section.id, section.code]));
-    const items = sections.length
-      ? (await prisma.diagnosticTemplateItem.findMany({
-          where: { sectionId: { in: sections.map((item) => item.id) } },
-          select: { id: true, code: true, sectionId: true },
-        })).filter((item) => {
-          const sectionCode = sectionCodeById.get(item.sectionId) || "";
-          const seeded = !seedItemCodes.size || seedItemCodes.has(`${sectionCode}:${item.code}`);
-          return seeded && isDiagnosticItemApplicable(profile, sectionCode, item.code);
-        })
-      : [];
-
-    await prisma.$transaction(async (tx) => {
-      const inspection = await tx.diagnosticInspection.create({
-        data: {
-          diagnosticRequestId,
-          templateId: template.id,
-          mechanicId: mechanic.id,
-          status: DiagnosticInspectionStatus.IN_PROGRESS,
-          startedAt: new Date(),
-        },
-      });
-      if (items.length) {
-        await tx.diagnosticCheck.createMany({
-          data: items.map((item) => ({ inspectionId: inspection.id, templateItemId: item.id })),
-          skipDuplicates: true,
-        });
-      }
-    });
-  }
-
-  // Шаблон може змінитися, поки діагностика вже в роботі. Додаємо нові
-  // пункти до активного огляду, не скидаючи вже зроблені механіком відмітки.
   const activeInspections = await prisma.diagnosticInspection.findMany({
     where: { diagnosticRequestId },
     select: { id: true, templateId: true },
   });
-  let hasMatrixInspection = false;
   if (activeInspections.length) {
     const templates = await prisma.diagnosticTemplate.findMany({
       where: { id: { in: Array.from(new Set(activeInspections.map((inspection) => inspection.templateId))) } },
@@ -134,25 +139,8 @@ export async function startMechanicDiagnosticByType(userId: string, diagnosticRe
 
     for (const inspection of activeInspections) {
       const code = templateCodeById.get(inspection.templateId);
-      if (code === "SUSPENSION_MATRIX") hasMatrixInspection = true;
-      const seed = DIAGNOSTIC_TEMPLATE_SEEDS.find((item) => item.code === code);
-      if (!seed) continue;
-      const currentSectionCodes = seed.sections.map((section) => section.code);
-      const sections = await prisma.diagnosticTemplateSection.findMany({
-        where: { templateId: inspection.templateId, code: { in: currentSectionCodes } },
-        select: { id: true, code: true },
-      });
-      if (!sections.length) continue;
-      const sectionCodeById = new Map(sections.map((section) => [section.id, section.code]));
-      const seedItemCodes = new Set(seed.sections.flatMap((section) => section.items.map((item) => `${section.code}:${item.code}`)));
-      const items = (await prisma.diagnosticTemplateItem.findMany({
-        where: { sectionId: { in: sections.map((section) => section.id) } },
-        select: { id: true, code: true, sectionId: true },
-      })).filter((item) => {
-        const sectionCode = sectionCodeById.get(item.sectionId) || "";
-        return seedItemCodes.has(`${sectionCode}:${item.code}`)
-          && isDiagnosticItemApplicable(profile, sectionCode, item.code);
-      });
+      if (!code) continue;
+      const items = await currentTemplateItems(inspection.templateId, code, profile);
       if (items.length) {
         await prisma.diagnosticCheck.createMany({
           data: items.map((item) => ({ inspectionId: inspection.id, templateItemId: item.id })),
@@ -162,10 +150,8 @@ export async function startMechanicDiagnosticByType(userId: string, diagnosticRe
     }
   }
 
-  if (hasMatrixInspection) {
-    await ensureExtendedDiagnosticMatrix(diagnosticRequestId);
-    await removeUnapplicableUncheckedChecks(diagnosticRequestId, profile);
-  }
+  await ensureExtendedDiagnosticMatrix(diagnosticRequestId);
+  await removeUnapplicableUncheckedChecks(diagnosticRequestId, profile);
 
   if (diagnostic.status === DiagnosticRequestStatus.PENDING) {
     await prisma.diagnosticRequest.update({
@@ -180,6 +166,7 @@ export async function startMechanicDiagnosticByType(userId: string, diagnosticRe
         action: "STATUS_PENDING_TO_IN_PROGRESS",
         metadata: toPrismaJson({
           source: "MECHANIC_DIAGNOSTIC_MATRIX",
+          defaultTemplate: DEFAULT_DIAGNOSTIC_TEMPLATE_CODE,
           vehicleProfile: profile ? {
             fuelKind: profile.fuelKind,
             driveKind: profile.driveKind,

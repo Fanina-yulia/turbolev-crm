@@ -37,18 +37,38 @@ export type DiagnosticCompletion = {
   autoFillRemaining: number;
 };
 
-export async function getRequiredDiagnosticCompletion(diagnosticRequestId: string): Promise<DiagnosticCompletion> {
+async function effectiveInspectionIds(diagnosticRequestId: string) {
   const prisma = getPrisma();
   const inspections = await prisma.diagnosticInspection.findMany({
     where: { diagnosticRequestId },
-    select: { id: true },
+    select: { id: true, templateId: true },
   });
-  if (!inspections.length) {
+  if (!inspections.length) return [];
+
+  const templateIds = Array.from(new Set(inspections.map((inspection) => inspection.templateId)));
+  const templates = await prisma.diagnosticTemplate.findMany({
+    where: { id: { in: templateIds } },
+    select: { id: true, code: true },
+  });
+  const matrixTemplateIds = new Set(
+    templates.filter((template) => template.code === "SUSPENSION_MATRIX").map((template) => template.id),
+  );
+
+  const effective = matrixTemplateIds.size
+    ? inspections.filter((inspection) => matrixTemplateIds.has(inspection.templateId))
+    : inspections;
+  return effective.map((inspection) => inspection.id);
+}
+
+export async function getRequiredDiagnosticCompletion(diagnosticRequestId: string): Promise<DiagnosticCompletion> {
+  const prisma = getPrisma();
+  const inspectionIds = await effectiveInspectionIds(diagnosticRequestId);
+  if (!inspectionIds.length) {
     return { canSubmit: false, total: 0, checked: 0, requiredTotal: 0, requiredChecked: 0, requiredRemaining: 0, optionalTotal: 0, optionalRemaining: 0, autoFillRemaining: 0 };
   }
 
   const checks = await prisma.diagnosticCheck.findMany({
-    where: { inspectionId: { in: inspections.map((item) => item.id) } },
+    where: { inspectionId: { in: inspectionIds } },
     select: { templateItemId: true, state: true },
   });
   if (!checks.length) {
@@ -96,11 +116,8 @@ export async function getRequiredDiagnosticCompletion(diagnosticRequestId: strin
 
 async function markAutoFillChecksOk(diagnosticRequestId: string) {
   const prisma = getPrisma();
-  const inspections = await prisma.diagnosticInspection.findMany({
-    where: { diagnosticRequestId },
-    select: { id: true },
-  });
-  if (!inspections.length) return 0;
+  const inspectionIds = await effectiveInspectionIds(diagnosticRequestId);
+  if (!inspectionIds.length) return 0;
 
   const sections = await prisma.diagnosticTemplateSection.findMany({
     where: { code: { in: Array.from(AUTO_OK_SECTION_CODES) } },
@@ -116,7 +133,7 @@ async function markAutoFillChecksOk(diagnosticRequestId: string) {
 
   const result = await prisma.diagnosticCheck.updateMany({
     where: {
-      inspectionId: { in: inspections.map((inspection) => inspection.id) },
+      inspectionId: { in: inspectionIds },
       templateItemId: { in: items.map((item) => item.id) },
       state: DiagnosticCheckState.NOT_CHECKED,
     },
