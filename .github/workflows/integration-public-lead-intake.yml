@@ -1,0 +1,47 @@
+name: Integration Public Lead Intake
+
+on:
+  pull_request:
+    paths:
+      - "app/api/integration/v1/leads/route.ts"
+      - "src/services/integration-public-lead.service.ts"
+      - "src/services/communications-server.service.ts"
+      - "src/security/service-access-context.ts"
+      - "src/security/integration-api-request-guard.ts"
+      - "src/lib/contracts/integration/v1/**"
+      - "scripts/integration-api-v1-lead-contract-smoke.ts"
+      - ".github/workflows/integration-public-lead-intake.yml"
+  push:
+    branches: [main]
+    paths:
+      - "app/api/integration/v1/leads/route.ts"
+      - "src/services/integration-public-lead.service.ts"
+      - "src/services/communications-server.service.ts"
+      - "src/security/service-access-context.ts"
+      - "src/security/integration-api-request-guard.ts"
+      - "src/lib/contracts/integration/v1/**"
+      - "scripts/integration-api-v1-lead-contract-smoke.ts"
+      - ".github/workflows/integration-public-lead-intake.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  lead-intake-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+      - name: TypeScript check
+        run: npx tsc --noEmit
+      - name: Public lead contract smoke
+        run: npx --no-install tsx scripts/integration-api-v1-lead-contract-smoke.ts
