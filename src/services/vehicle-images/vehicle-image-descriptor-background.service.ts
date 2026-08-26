@@ -188,7 +188,7 @@ export async function generateVehicleImageForConfirmedDescriptor(
   const config = await getOpenAIVehicleImageConfig();
   if (!config) return { state: "NOT_CONFIGURED" as const, assetId: null, libraryKey: null };
 
-  const theme = normalizeThemePaint(options?.themePaint, "Imagin-orange");
+  const theme = normalizeThemePaint(options?.themePaint, "Imagin-grey");
   const paint = getOpenAIVehiclePaint(input, theme);
   const libraryKey = libraryKeyFor(input, paint);
   const prompt = masterPrompt(input, paint);
