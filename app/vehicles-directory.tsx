@@ -86,6 +86,7 @@ export function VehiclesDirectory() {
   const [vehicleCard, setVehicleCard] = useState<VehicleCard | null>(null);
   const [vehicleLoading, setVehicleLoading] = useState(false);
   const [drawerTab, setDrawerTab] = useState<VehicleDrawerTab>("overview");
+  const vehicleIds = vehicles.map((vehicle) => vehicle.id).join(",");
 
   useEffect(() => {
     const controller = new AbortController();
@@ -123,6 +124,29 @@ export function VehiclesDirectory() {
       window.clearTimeout(timer);
     };
   }, [query, page]);
+
+  useEffect(() => {
+    if (!vehicleIds) return;
+    const controller = new AbortController();
+    const refreshStatuses = async () => {
+      try {
+        const statusResponse = await fetch(`/api/vehicles/status-summary?ids=${vehicleIds.split(",").map((id) => encodeURIComponent(id)).join(",")}`, { cache: "no-store", signal: controller.signal });
+        const statusPayload: unknown = await statusResponse.json().catch(() => null);
+        const statuses = parseVehicleStatusSummaryPayload(statusPayload);
+        if (!statusResponse.ok || !statuses) return;
+        const byVehicle = new Map(statuses.vehicles.map((item) => [item.vehicleId, item.statusSummary]));
+        setVehicles((current) => current.map((vehicle) => ({ ...vehicle, statusSummary: byVehicle.get(vehicle.id) || vehicle.statusSummary })));
+      } catch (cause) {
+        if (cause instanceof Error && cause.name !== "AbortError") console.error("Vehicle status live refresh failed", cause);
+      }
+    };
+    const onDataChanged = () => void refreshStatuses();
+    window.addEventListener("turbolev:data-changed", onDataChanged);
+    return () => {
+      controller.abort();
+      window.removeEventListener("turbolev:data-changed", onDataChanged);
+    };
+  }, [vehicleIds]);
 
   useEffect(() => {
     const syncFromRoute = () => setVehicleId(readCrmRoute().vehicleId || null);
@@ -177,6 +201,20 @@ export function VehiclesDirectory() {
     navigateCrm("Авто", { vehicleId: id });
   }
 
+  function openVehicleStatus(kind: keyof VehicleStatusSummary, vehicle: Vehicle) {
+    const status = vehicle.statusSummary?.[kind] || fallbackStatusSummary()[kind];
+    if (kind === "diagnostics") {
+      if (status.targetId) navigateCrm("Діагностика", { diagnosticId: status.targetId });
+      else openVehicle(vehicle.id);
+      return;
+    }
+    if (status.targetId) {
+      navigateCrm("Замовлення-наряди", { workOrderId: status.targetId, workOrderTab: kind === "proposal" ? "estimate" : undefined });
+      return;
+    }
+    openVehicle(vehicle.id);
+  }
+
   function closeVehicle() {
     navigateCrm("Авто");
   }
@@ -207,35 +245,37 @@ export function VehiclesDirectory() {
     <div className={styles.summary}>Знайдено автомобілів: <b>{total}</b>{total > 0 && <span> · сторінка {page} з {pages}</span>}</div>
     {error && <div className={styles.error}>{error}</div>}
     {loading ? <div className={styles.state}>Завантажую автомобілі…</div> : !vehicles.length ? <div className={styles.state}>Нічого не знайдено.</div> : <div className={styles.grid}>
-      {vehicles.map((vehicle, index) => <button key={vehicle.id} className={styles.card} onClick={() => openVehicle(vehicle.id)}>
-        <div className={styles.vehicleHero}>
-          <div className={styles.vehicleCopy}>
-            <div className={styles.vehicleTitleLine}>
-              <VehicleBrandLogo brand={vehicle.brand} size={38} />
-              <span className={styles.identityText}>
-                <strong>{vehicleTitle(vehicle)}</strong>
-                <small>{vehicle.plateNumber || "Без держномера"}</small>
-              </span>
+      {vehicles.map((vehicle, index) => <article key={vehicle.id} className={styles.card}>
+        <button type="button" className={styles.cardMain} onClick={() => openVehicle(vehicle.id)}>
+          <div className={styles.vehicleHero}>
+            <div className={styles.vehicleCopy}>
+              <div className={styles.vehicleTitleLine}>
+                <VehicleBrandLogo brand={vehicle.brand} size={38} />
+                <span className={styles.identityText}>
+                  <strong>{vehicleTitle(vehicle)}</strong>
+                  <small>{vehicle.plateNumber || "Без держномера"}</small>
+                </span>
+              </div>
+              <small className={styles.vehicleVin}>{vehicle.vin ? `VIN: ${vehicle.vin}` : "VIN не вказаний"}</small>
             </div>
-            <small className={styles.vehicleVin}>{vehicle.vin ? `VIN: ${vehicle.vin}` : "VIN не вказаний"}</small>
+            <VehicleImage vehicle={vehicle} size="card" eager={index < 6} />
+            <span className={styles.chevron}>›</span>
           </div>
-          <VehicleImage vehicle={vehicle} size="card" eager={index < 6} />
-          <span className={styles.chevron}>›</span>
-        </div>
-        <div className={styles.ownerLine}>
-          <span><small>Власник</small><b>{vehicle.client.name?.trim() || "Клієнт без імені"}</b></span>
-          <span>{vehicle.client.phone}</span>
-        </div>
+          <div className={styles.ownerLine}>
+            <span><small>Власник</small><b>{vehicle.client.name?.trim() || "Клієнт без імені"}</b></span>
+            <span>{vehicle.client.phone}</span>
+          </div>
+        </button>
         <div className={workflowStyles.workflow} aria-label="Статуси автомобіля">
           {WORKFLOW_META.map(({ key, label, icon }) => {
             const status = vehicle.statusSummary?.[key] || fallbackStatusSummary()[key];
-            return <span className={workflowStyles.workflowItem} key={key} title={`${label}: ${status.label}`}>
+            return <button type="button" className={workflowStyles.workflowItem} key={key} title={`${label}: ${status.label}`} onClick={() => openVehicleStatus(key, vehicle)}>
               <i className={`${workflowStyles.workflowIcon} ${workflowStyles[`workflow_${status.tone}`]}`}><WorkflowIcon kind={icon} /></i>
               <small>{label}</small>
-            </span>;
+            </button>;
           })}
         </div>
-      </button>)}
+      </article>)}
     </div>}
 
     {!loading && total > PAGE_SIZE && <nav className={styles.pagination} aria-label="Сторінки автомобілів">
