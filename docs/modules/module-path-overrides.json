@@ -14,7 +14,8 @@
     "app/vehicle-health-enhancer.tsx",
     "app/api/vehicle-issues/**",
     "src/services/vehicle-issues.service.ts",
-    "src/services/vin-intelligence.service.ts"
+    "src/services/vin-intelligence.service.ts",
+    "app/vehicle-workflow.module.css"
   ],
   "dashboard-analytics": [
     "app/analytics-workspace.tsx",
