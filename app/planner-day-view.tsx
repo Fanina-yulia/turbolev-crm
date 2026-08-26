@@ -57,6 +57,15 @@ export type PlannerTimeSelection = {
   postId: string;
 };
 
+export type PlannerDayMetrics = {
+  total: number;
+  completed: number;
+  inProgress: number;
+  waiting: number;
+  freeSlots: number;
+  revenue: number;
+};
+
 const SLOT = 30;
 const DURATION_COOKIE = "turbolev_booking_duration_minutes";
 const CONTEXT_COOKIE = "turbolev_booking_context";
@@ -123,7 +132,7 @@ function currency(value: number) {
   return new Intl.NumberFormat("uk-UA", { style: "currency", currency: "UAH", maximumFractionDigits: 0 }).format(value);
 }
 
-export function PlannerDayView<TAppointment extends AppointmentBase>({ day, location, appointments, onOpen, onCreate, onSelection, onResize, onMove, showMetrics = true, compact = false }: {
+export function PlannerDayView<TAppointment extends AppointmentBase>({ day, location, appointments, onOpen, onCreate, onSelection, onResize, onMove, onMetrics, showMetrics = true, compact = false }: {
   day: string;
   location: Location;
   appointments: TAppointment[];
@@ -131,6 +140,7 @@ export function PlannerDayView<TAppointment extends AppointmentBase>({ day, loca
   onCreate: (day: string, time: string, postId: string) => void;
   onSelection?: (selection: PlannerTimeSelection) => void;
   onResize?: (appointment: TAppointment, day: string, startTime: string, endTime: string) => Promise<boolean>;
+  onMetrics?: (metrics: PlannerDayMetrics) => void;
   onMove?: (appointment: TAppointment, day: string, time: string, postId: string, durationMinutes: number) => void;
   showMetrics?: boolean;
   compact?: boolean;
@@ -234,6 +244,10 @@ export function PlannerDayView<TAppointment extends AppointmentBase>({ day, loca
     }, 0);
     return { total: dayAppointments.length, completed, inProgress, waiting, freeSlots, revenue };
   }, [dayAppointments, availabilityMap]);
+
+  useEffect(() => {
+    onMetrics?.(metrics);
+  }, [metrics, onMetrics]);
 
   const resizeHandler = onResize ?? (async (item: TAppointment, resizeDay: string, startTime: string, endTime: string) => {
     const start = zonedDateTimeToDate(resizeDay, startTime, timeZone);
