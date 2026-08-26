@@ -10,6 +10,9 @@ type SearchPayload = {
   clients?: Array<{ id: string; name?: string | null; phone?: string | null }>;
   vehicles?: Array<{ id: string; plateNumber?: string | null; vin?: string | null; client?: { id: string } | null }>;
 };
+type DiagnosticListPayload = {
+  diagnostics?: Array<{ id: string; vehicle?: { id?: string | null } | null }>;
+};
 
 const ENTITY_ID = /^[A-Za-z0-9_-]{12,}$/;
 const PAYMENT_LABELS: Record<string, string> = {
@@ -113,6 +116,23 @@ async function resolveLegacyClientVehicle(detail: Exclude<LegacyNavigateDetail, 
   navigateCrm(wantsClient ? "Клієнти" : "Авто");
 }
 
+async function resolveDiagnosticVehicleRoute(vehicleId: string, lastApplied: { current: string }) {
+  if (!vehicleId || lastApplied.current === vehicleId) return;
+  lastApplied.current = vehicleId;
+  try {
+    const response = await fetch("/api/diagnostics?limit=500", { cache: "no-store", credentials: "include" });
+    const payload = await response.json().catch(() => null) as DiagnosticListPayload | null;
+    if (!response.ok || !Array.isArray(payload?.diagnostics)) return;
+    const diagnostic = payload.diagnostics.find((item) => item.vehicle?.id === vehicleId);
+    if (!diagnostic?.id) return;
+    const current = readCrmRoute();
+    if (current.diagnosticId || current.vehicleId !== vehicleId) return;
+    navigateCrm("Діагностика", { ...current, diagnosticId: diagnostic.id });
+  } catch {
+    return;
+  }
+}
+
 function setNativeInput(input: HTMLInputElement, value: string) {
   if (input.value === value) return;
   const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
@@ -182,6 +202,7 @@ function currentSectionSlug() {
 export function BusinessFlowRouteBridge() {
   const previousSection = useRef("");
   const lastDiagnosticId = useRef("");
+  const diagnosticVehicleApplied = useRef("");
   const paymentApplied = useRef("");
   const financeApplied = useRef("");
 
@@ -206,7 +227,11 @@ export function BusinessFlowRouteBridge() {
     const syncContext = () => {
       const section = currentSectionSlug();
       const route = readCrmRoute();
+      if (section !== "diagnostics") diagnosticVehicleApplied.current = "";
       if (section === "diagnostics" && route.diagnosticId) lastDiagnosticId.current = route.diagnosticId;
+      if (section === "diagnostics" && route.vehicleId && !route.diagnosticId) {
+        void resolveDiagnosticVehicleRoute(route.vehicleId, diagnosticVehicleApplied);
+      }
       if (section === "parts" && !route.diagnosticId && previousSection.current === "diagnostics" && lastDiagnosticId.current) {
         navigateCrm("Підбір запчастин", {
           ...route,
