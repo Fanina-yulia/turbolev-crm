@@ -85,11 +85,22 @@ assertIncludes("app/payments-queue.tsx", [
   "route.locationId",
   'params.set("workOrderId", routeWorkOrderId)',
   'navigateCrm("Оплати", { scope: next',
+  "transitionWarning?: { code?: string; message?: string } | null;",
+  "setNotice(payload.transitionWarning?.message ||",
+  "Замовлення-наряд переведено у «Готовий до видачі».",
 ]);
 
 assertIncludes("app/api/payments/route.ts", [
   'request.nextUrl.searchParams.get("workOrderId")',
   "requestedWorkOrderId ? [requestedWorkOrderId] : null",
+]);
+
+assertIncludes("app/qc-queue.tsx", [
+  'navigateCrm("Замовлення-наряди", { workOrderId: card.id, workOrderTab: "works" })',
+  "Відкрити доопрацювання →",
+]);
+assertNotIncludes("app/qc-queue.tsx", [
+  'navigateCrm("Виробництво", { status: "REWORK" })',
 ]);
 
 assertIncludes("app/global-smart-search.tsx", [
