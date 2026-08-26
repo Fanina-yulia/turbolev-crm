@@ -1,22 +1,22 @@
 .plateQuickLookup{padding:16px 25px;border-bottom:1px solid var(--line);background:linear-gradient(180deg,rgba(255,106,0,.045),transparent)}
 .plateQuickCopy{display:flex;justify-content:space-between;gap:18px;align-items:flex-end;margin-bottom:10px}
 .plateQuickCopy b{font-size:12px}
-.plateQuickCopy span{font-size:9px;color:var(--muted);text-align:right}
+.plateQuickCopy span{font-size:11px;color:var(--muted);text-align:right}
 .plateQuickControls{display:grid;grid-template-columns:minmax(180px,300px) auto;gap:8px;align-items:center}
 .plateQuickControls input{height:45px;width:100%;border:1px solid var(--line);background:var(--panel-2);color:var(--text);border-radius:11px;padding:0 14px;outline:0;text-transform:uppercase;font-family:ui-monospace,"SFMono-Regular",Menlo,monospace;font-size:17px;font-weight:900;letter-spacing:.13em}
 .plateQuickControls input:focus{border-color:var(--orange);box-shadow:0 0 0 3px rgba(255,106,0,.1)}
 .plateQuickControls button{height:45px;border:1px solid var(--orange);background:rgba(255,106,0,.1);color:var(--orange);border-radius:11px;padding:0 16px;font-weight:850;cursor:pointer}
-.vehicleLookupState{margin-top:10px;padding:10px 12px;border-radius:10px;font-size:10px;color:var(--muted);background:var(--panel-2);border:1px solid var(--line)}
+.vehicleLookupState{margin-top:10px;padding:10px 12px;border-radius:10px;font-size:11px;color:var(--muted);background:var(--panel-2);border:1px solid var(--line)}
 .vehicleLookupResult{margin-top:10px;border-radius:12px;padding:12px 13px;display:grid;grid-template-columns:34px minmax(180px,1.4fr) minmax(130px,.8fr) minmax(130px,.8fr) auto;gap:12px;align-items:center}
 .vehicleLookupResult.found{border:1px solid rgba(43,182,115,.28);background:rgba(43,182,115,.065)}
 .vehicleLookupResult.empty{grid-template-columns:34px 1fr;border:1px solid rgba(255,106,0,.23);background:rgba(255,106,0,.055)}
 .vehicleLookupIcon{width:30px;height:30px;border-radius:9px;display:grid;place-items:center;background:var(--panel);border:1px solid var(--line);font-weight:900;color:var(--orange)}
 .vehicleLookupResult.found .vehicleLookupIcon{color:var(--green);border-color:rgba(43,182,115,.3)}
 .vehicleLookupMain,.vehicleLookupMeta,.vehicleLookupResult.empty>div:last-child{display:grid;gap:3px;min-width:0}
-.vehicleLookupMain>b,.vehicleLookupMeta small,.vehicleLookupResult.empty b{font-size:9px;color:var(--muted)}
+.vehicleLookupMain>b,.vehicleLookupMeta small,.vehicleLookupResult.empty b{font-size:11px;color:var(--muted)}
 .vehicleLookupMain strong{font-size:13px}
-.vehicleLookupMain span,.vehicleLookupMeta span,.vehicleLookupResult.empty span{font-size:9px;color:var(--soft-text);overflow-wrap:anywhere}
+.vehicleLookupMain span,.vehicleLookupMeta span,.vehicleLookupResult.empty span{font-size:11px;color:var(--soft-text);overflow-wrap:anywhere}
 .vehicleLookupMeta b{font-size:11px}
-.lookupUseButton{border:1px solid rgba(43,182,115,.34);background:rgba(43,182,115,.1);color:var(--green);border-radius:9px;padding:9px 11px;font-size:9px;font-weight:850;cursor:pointer;white-space:nowrap}
+.lookupUseButton{border:1px solid rgba(43,182,115,.34);background:rgba(43,182,115,.1);color:var(--green);border-radius:9px;padding:9px 11px;font-size:11px;font-weight:850;cursor:pointer;white-space:nowrap}
 @media(max-width:900px){.vehicleLookupResult.found{grid-template-columns:34px 1fr auto}.vehicleLookupMeta{display:none}}
 @media(max-width:760px){.plateQuickLookup{padding:13px 14px}.plateQuickCopy{align-items:flex-start;flex-direction:column;gap:4px}.plateQuickCopy span{text-align:left}.plateQuickControls{grid-template-columns:1fr auto}.vehicleLookupResult.found{grid-template-columns:30px 1fr}.lookupUseButton{grid-column:1/-1}.vehicleLookupResult.empty{grid-template-columns:30px 1fr}}

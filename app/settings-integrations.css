@@ -6,44 +6,44 @@
 .integrationCategoryTabs button:hover{border-color:rgba(255,102,0,.34)}
 .integrationCategoryTabs button.active{border-color:rgba(255,102,0,.55);background:rgba(255,102,0,.08);box-shadow:inset 3px 0 0 var(--orange)}
 .integrationCategoryTabs strong{font-size:12px}
-.integrationCategoryTabs span{font-size:9px;color:var(--muted);line-height:1.4}
+.integrationCategoryTabs span{font-size:11px;color:var(--muted);line-height:1.4}
 .integrationSettingsList{display:flex;flex-direction:column;gap:11px}
 .integrationSettingsCard{border:1px solid var(--line);background:var(--panel-2);border-radius:14px;padding:15px;min-width:0}
 .integrationSettingsTop{display:flex;align-items:flex-start;justify-content:space-between;gap:14px}
 .integrationSettingsIdentity{display:flex;gap:11px;align-items:center;min-width:0}
 .integrationSettingsIdentity>div{display:flex;flex-direction:column;gap:3px;min-width:0}
 .integrationSettingsIdentity strong{font-size:14px;color:var(--text)}
-.integrationSettingsIdentity span{font-size:10px;color:var(--muted);line-height:1.4}
-.integrationSettingsMark{width:39px;height:39px;display:grid!important;place-items:center;border-radius:10px;border:1px solid rgba(255,102,0,.25);background:rgba(255,102,0,.08);color:var(--orange)!important;font-size:10px!important;font-weight:900;flex:0 0 auto}
+.integrationSettingsIdentity span{font-size:11px;color:var(--muted);line-height:1.4}
+.integrationSettingsMark{width:39px;height:39px;display:grid!important;place-items:center;border-radius:10px;border:1px solid rgba(255,102,0,.25);background:rgba(255,102,0,.08);color:var(--orange)!important;font-size:11px!important;font-weight:900;flex:0 0 auto}
 .integrationSettingsBadges{display:flex;align-items:center;gap:6px;flex-wrap:wrap;justify-content:flex-end}
-.integrationSource{font-size:8px;color:var(--muted);border:1px solid var(--line);border-radius:999px;padding:5px 7px;background:var(--panel)}
+.integrationSource{font-size:11px;color:var(--muted);border:1px solid var(--line);border-radius:999px;padding:5px 7px;background:var(--panel)}
 .integrationCredentialSummary{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;margin-top:12px}
 .integrationCredentialSummary>div{border:1px solid var(--line);background:var(--panel);border-radius:9px;padding:8px 9px;display:grid;gap:3px;min-width:0}
-.integrationCredentialSummary small{font-size:8px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
-.integrationCredentialSummary code{font-size:10px;color:var(--soft-text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.integrationCredentialSummary small{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
+.integrationCredentialSummary code{font-size:11px;color:var(--soft-text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .integrationEditor{margin-top:13px;padding:13px;border:1px solid rgba(255,102,0,.24);background:rgba(255,102,0,.035);border-radius:11px}
 .integrationFields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
 .integrationFields label{display:grid;gap:5px;min-width:0}
-.integrationFields label>span{font-size:9px;color:var(--soft-text)}
+.integrationFields label>span{font-size:11px;color:var(--soft-text)}
 .integrationFields label b{color:var(--orange);margin-left:3px}
-.integrationFields input{width:100%;border:1px solid var(--line);background:var(--panel);color:var(--text);border-radius:9px;padding:9px 10px;outline:0;font-size:10px}
+.integrationFields input{width:100%;border:1px solid var(--line);background:var(--panel);color:var(--text);border-radius:9px;padding:9px 10px;outline:0;font-size:11px}
 .integrationFields input:focus{border-color:var(--orange);box-shadow:0 0 0 2px rgba(255,102,0,.08)}
 .integrationFields input::placeholder{color:var(--muted);opacity:.72}
 .integrationEditorActions{display:flex;gap:8px;margin-top:11px}
-.integrationEditorActions button{border:1px solid var(--line);background:var(--button-bg);color:var(--button-text);border-radius:9px;padding:8px 11px;cursor:pointer;font-size:10px}
+.integrationEditorActions button{border:1px solid var(--line);background:var(--button-bg);color:var(--button-text);border-radius:9px;padding:8px 11px;cursor:pointer;font-size:11px}
 .integrationEditorActions .integrationSave{border-color:var(--orange);background:var(--orange);color:#111;font-weight:800}
 .integrationEditorActions button:disabled{opacity:.55;cursor:default}
 .integrationSettingsActions{display:flex;align-items:center;gap:8px;margin-top:13px;padding-top:12px;border-top:1px solid var(--line);flex-wrap:wrap}
-.integrationSettingsActions button{border:1px solid var(--line);background:var(--panel);color:var(--soft-text);border-radius:9px;padding:8px 10px;cursor:pointer;font-size:10px}
+.integrationSettingsActions button{border:1px solid var(--line);background:var(--panel);color:var(--soft-text);border-radius:9px;padding:8px 10px;cursor:pointer;font-size:11px}
 .integrationSettingsActions button:first-child{border-color:rgba(255,102,0,.28);color:var(--orange);background:rgba(255,102,0,.06)}
 .integrationSettingsActions button:hover{border-color:rgba(255,102,0,.35)}
 .integrationSettingsActions button:disabled{opacity:.42;cursor:not-allowed}
 .integrationSettingsActions .danger{margin-left:auto;color:#e85d5d;border-color:rgba(232,93,93,.2);background:rgba(232,93,93,.04)}
 .integrationOneTime{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;border:1px solid rgba(240,180,41,.32);background:rgba(240,180,41,.07);border-radius:11px;padding:12px;margin:0 0 13px}
 .integrationOneTime>div{display:grid;gap:5px;min-width:0}
-.integrationOneTime strong{font-size:10px;color:var(--yellow)}
-.integrationOneTime span{font-size:9px;color:var(--muted);line-height:1.45}
-.integrationOneTime code{font-size:9px;color:var(--text);overflow-wrap:anywhere;user-select:all}
-.integrationOneTime button{border:1px solid rgba(240,180,41,.3);background:rgba(240,180,41,.08);color:var(--yellow);border-radius:8px;padding:7px 9px;cursor:pointer;font-size:9px;white-space:nowrap}
-.settingsToast{position:fixed;right:24px;top:24px;z-index:4000;background:#183b2d;color:#b9f6d2;border:1px solid rgba(43,182,115,.35);padding:11px 14px;border-radius:10px;box-shadow:0 12px 40px rgba(0,0,0,.32);font-size:10px}
+.integrationOneTime strong{font-size:11px;color:var(--yellow)}
+.integrationOneTime span{font-size:11px;color:var(--muted);line-height:1.45}
+.integrationOneTime code{font-size:11px;color:var(--text);overflow-wrap:anywhere;user-select:all}
+.integrationOneTime button{border:1px solid rgba(240,180,41,.3);background:rgba(240,180,41,.08);color:var(--yellow);border-radius:8px;padding:7px 9px;cursor:pointer;font-size:11px;white-space:nowrap}
+.settingsToast{position:fixed;right:24px;top:24px;z-index:4000;background:#183b2d;color:#b9f6d2;border:1px solid rgba(43,182,115,.35);padding:11px 14px;border-radius:10px;box-shadow:0 12px 40px rgba(0,0,0,.32);font-size:11px}
 @media(max-width:760px){.integrationSettingsHead{flex-direction:column}.integrationCategoryTabs{grid-template-columns:1fr}.integrationCredentialSummary,.integrationFields{grid-template-columns:1fr}.integrationSettingsTop{flex-direction:column}.integrationSettingsBadges{justify-content:flex-start}.integrationSettingsActions .danger{margin-left:0}.integrationOneTime{flex-direction:column}}

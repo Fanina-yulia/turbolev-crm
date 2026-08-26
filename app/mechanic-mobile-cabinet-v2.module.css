@@ -132,7 +132,7 @@
 .safeNote { margin:0 4px; color:#758293; font-size:12px; line-height:1.45; }
 
 .lifecycleCard { padding:18px; display:grid; gap:11px; }
-.lifecycleEyebrow { color:#7c8997; letter-spacing:.12em; font-size:10px; font-weight:900; }
+.lifecycleEyebrow { color:#7c8997; letter-spacing:.12em; font-size:11px; font-weight:900; }
 .actionGrid { display:grid; grid-template-columns:1fr 1fr; gap:9px; }
 .actionGrid .primaryButton { min-width:0; }
 .pauseButton { border:1px solid #e0a66e; background:#fff7ef; color:#a84a00; }
@@ -153,7 +153,7 @@
 .urgencyPicker button { min-width:0; border:1px solid #d9e0e7; background:#f8fafb; border-radius:12px; padding:10px 7px; text-align:left; cursor:pointer; color:#21303f; }
 .urgencyPicker b,.urgencyPicker span { display:block; }
 .urgencyPicker b { font-size:12px; }
-.urgencyPicker span { margin-top:3px; font-size:9px; line-height:1.25; color:#788594; }
+.urgencyPicker span { margin-top:3px; font-size:11px; line-height:1.25; color:#788594; }
 .urgencyPicker .urgencyActive { border-color:#ff8c45; background:#fff2e9; box-shadow:0 0 0 2px rgba(255,101,0,.08); }
 .urgencyPicker .urgencyActive[data-urgency="CRITICAL"] { border-color:#e66b6b; background:#fff0f0; }
 .photoPicker { min-height:52px; border:1px dashed #ff9b5a; border-radius:14px; background:#fff6f0; color:#9e4100; display:grid; place-items:center; padding:12px; cursor:pointer; font-size:14px; font-weight:850; }
@@ -162,7 +162,7 @@
 .fileRow { display:flex; justify-content:space-between; align-items:center; gap:10px; padding:10px 11px; border:1px solid #e0e6ec; border-radius:12px; background:#f8fafb; }
 .fileRow > div { min-width:0; }
 .fileRow b { display:block; max-width:330px; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; font-size:12px; }
-.fileRow span { display:block; margin-top:2px; color:#7a8794; font-size:10px; }
+.fileRow span { display:block; margin-top:2px; color:#7a8794; font-size:11px; }
 .fileRow button { width:34px; height:34px; border:0; border-radius:10px; background:#eef1f4; color:#536170; font-size:20px; cursor:pointer; flex:0 0 auto; }
 .findingTip { margin:0; padding:11px 12px; border-radius:12px; background:#eef6ff; color:#3d5d7d; font-size:11px; line-height:1.45; }
 
@@ -186,7 +186,7 @@
 .bottomNav { position:absolute; left:0; right:0; bottom:0; height:76px; padding:7px 8px max(7px,env(safe-area-inset-bottom)); display:grid; grid-template-columns:repeat(5,1fr); background:#0d1722; border-top:1px solid rgba(255,255,255,.08); z-index:20; }
 .bottomNav button { border:0; background:transparent; color:#aeb8c3; display:grid; place-items:center; align-content:center; gap:3px; min-width:0; cursor:pointer; }
 .bottomNav span { font-size:21px; line-height:1; }
-.bottomNav b { font-size:10px; font-weight:700; white-space:nowrap; }
+.bottomNav b { font-size:11px; font-weight:700; white-space:nowrap; }
 .bottomNav .navActive { color:#ff6500; }
 
 .toast,.successToast { position:absolute; left:16px; right:16px; bottom:88px; z-index:30; display:flex; gap:10px; align-items:center; justify-content:space-between; padding:12px 14px; border-radius:14px; box-shadow:0 8px 30px rgba(0,0,0,.15); }
@@ -208,10 +208,10 @@
   .heroHeader { padding:22px 20px 18px; }
   .metrics { gap:5px; }
   .metrics > div { padding-inline:2px; }
-  .metrics span { font-size:10px; }
+  .metrics span { font-size:11px; }
   .jobMeta,.detailMeta { gap:5px; }
   .jobMeta b,.detailMeta b { font-size:12px; }
-  .bottomNav b { font-size:9px; }
+  .bottomNav b { font-size:11px; }
   .urgencyPicker { grid-template-columns:1fr; }
   .actionGrid { grid-template-columns:1fr; }
   .findingSummary { align-items:flex-start; flex-direction:column; }

@@ -2,13 +2,22 @@
 :root{
   --crm-sidebar-width:265px;
   --settings-content-padding:28px 34px 56px;
-  --crm-body-size:15px;
-  --crm-control-size:14px;
-  --crm-meta-size:12px;
+  /* CRM typography contract. No visible interface copy may render below 11px. */
+  --crm-font-floor:11px;
+  --crm-font-helper:12px;
+  --crm-font-meta:13px;
+  --crm-font-label:14px;
+  --crm-font-control:15px;
+  --crm-font-copy:16px;
+  --crm-font-section-title:22px;
+  --crm-font-page-title:30px;
+  --crm-body-size:var(--crm-font-copy);
+  --crm-control-size:var(--crm-font-control);
+  --crm-meta-size:var(--crm-font-helper);
   --ui-font:"OpenAI Sans","Inter","Segoe UI Variable Text","Segoe UI",ui-sans-serif,-apple-system,BlinkMacSystemFont,Roboto,Helvetica,Arial,sans-serif;
-  --ui-size:15px;
-  --ui-small:13px;
-  --ui-label:12px;
+  --ui-size:var(--crm-font-copy);
+  --ui-small:var(--crm-font-meta);
+  --ui-label:var(--crm-font-helper);
 }
 
 html,body,button,input,textarea,select{font-family:var(--ui-font)!important}

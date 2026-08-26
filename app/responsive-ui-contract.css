@@ -3,10 +3,6 @@
    interface scale and fluid desktop/tablet geometry for every CRM module. */
 
 :root{
-  --crm-font-meta:13px;
-  --crm-font-label:14px;
-  --crm-font-control:15px;
-  --crm-font-copy:16px;
   --crm-sidebar-fluid:clamp(220px,14vw,265px);
   --crm-gutter-x:clamp(14px,2vw,34px);
   --crm-gutter-bottom:clamp(30px,4vw,60px);
@@ -164,7 +160,7 @@ body{min-width:0;max-width:100%;font-size:var(--crm-font-copy)!important;line-he
   .topActions>button{min-width:0;flex:1 1 140px}
 }
 
-/* Plate artwork is the only intentional sub-12px visual exception. */
+/* Plate artwork is the only intentional sub-11px visual exception. */
 .uaPlateCountry small{font-size:6px!important;line-height:1!important}
 
 /* Analytics / Funnel — Turbo LEV product layout.

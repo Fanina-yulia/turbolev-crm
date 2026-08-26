@@ -4,15 +4,21 @@ import { spawnSync } from "node:child_process";
 
 const ROOTS = ["app", "src"];
 const EXTENSIONS = new Set([".css", ".scss", ".tsx", ".ts", ".jsx", ".js"]);
-const MIN_FONT_PX = 12;
-const changedOnly = process.env.VERCEL === "1"
-  || process.env.GITHUB_ACTIONS === "true"
-  || process.argv.includes("--changed");
+const MIN_FONT_PX = 11;
+// Full-source validation is the default in every environment, including Vercel
+// and GitHub Actions. `--changed` remains an explicit local fast path only.
+const changedOnly = process.argv.includes("--changed");
 
 const patterns = [
-  /font-size\s*:\s*(\d+(?:\.\d+)?)px/gi,
-  /fontSize\s*:\s*["'`](\d+(?:\.\d+)?)px["'`]/g,
-  /text-\[(\d+(?:\.\d+)?)px\]/g,
+  { regex: /font-size\s*:\s*(\d+(?:\.\d+)?)px/gi, violates: (value) => value < MIN_FONT_PX },
+  { regex: /fontSize\s*:\s*["'`](\d+(?:\.\d+)?)px["'`]/g, violates: (value) => value < MIN_FONT_PX },
+  { regex: /fontSize\s*:\s*(\d+(?:\.\d+)?)(?=\s*[,}])/g, violates: (value) => value < MIN_FONT_PX },
+  { regex: /text-\[(\d+(?:\.\d+)?)px\]/g, violates: (value) => value < MIN_FONT_PX },
+  { regex: /\bfont\s*:\s*[^;{}]*?(\d+(?:\.\d+)?)px/gi, violates: (value) => value < MIN_FONT_PX },
+  { regex: /font-size\s*:\s*((?:\d+\.)?\d+|\.\d+)rem/gi, violates: (value) => value * 16 < MIN_FONT_PX },
+  // A direct sub-1em declaration can fall below the floor when nested. Wrap it
+  // in max(<relative size>, var(--crm-font-floor)) when relative scaling matters.
+  { regex: /font-size\s*:\s*((?:\d+\.)?\d+|\.\d+)em/gi, violates: (value) => value < 1 },
 ];
 
 function allowedSelectorLiteral(source, matchIndex) {
@@ -24,7 +30,7 @@ function allowedVisualException(source, matchIndex, value) {
   if (allowedSelectorLiteral(source, matchIndex)) return true;
   if (value > 6) return false;
   const context = source.slice(Math.max(0, matchIndex - 180), matchIndex + 180);
-  return /uaPlateCountry|plateCountry|plateUa|plateUA/i.test(context);
+  return /uaPlateCountry|uaBand|plateCountry|plateUa|plateUA/i.test(context);
 }
 
 async function walk(dir) {
@@ -94,12 +100,12 @@ for (const file of files) {
     if (error?.code === "ENOENT") continue;
     throw error;
   }
-  for (const pattern of patterns) {
+  for (const { regex: pattern, violates } of patterns) {
     pattern.lastIndex = 0;
     let match;
     while ((match = pattern.exec(source))) {
       const value = Number(match[1]);
-      if (!Number.isFinite(value) || value >= MIN_FONT_PX) continue;
+      if (!Number.isFinite(value) || !violates(value)) continue;
       if (allowedVisualException(source, match.index, value)) continue;
       const line = source.slice(0, match.index).split("\n").length;
       violations.push({ file: relative(process.cwd(), file), line, token: match[0] });
@@ -108,9 +114,9 @@ for (const file of files) {
 }
 
 if (violations.length) {
-  console.error(`\n[ui-font-floor] Found ${violations.length} newly changed UI font sizes below ${MIN_FONT_PX}px:`);
+  console.error(`\n[ui-font-floor] Found ${violations.length} UI font sizes below ${MIN_FONT_PX}px:`);
   for (const item of violations) console.error(`  ${item.file}:${item.line}  ${item.token}`);
-  console.error("\n[ui-font-floor] New operational UI text must be at least 12px. The only allowed exception is tiny UA artwork inside the licence-plate graphic.\n");
+  console.error(`\n[ui-font-floor] All visible CRM text must be at least ${MIN_FONT_PX}px. The only allowed exception is tiny UA artwork inside the licence-plate graphic.\n`);
   process.exit(1);
 }
 
