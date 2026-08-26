@@ -43,32 +43,33 @@ export function MechanicDiagnosticWorkspace({ diagnosticId, onBack, onChanged }:
     const controller = new AbortController();
     setMode(null);
 
-    void fetch(`/api/diagnostics/${encodeURIComponent(diagnosticId)}/structured?mode=1`, {
+    // Active mechanic diagnostics must be synchronized by a real mutation before
+    // rendering. This route is deliberately outside the coordinator's old matrix-start
+    // cache shortcut, so chassis checks and fluids cannot be replaced by stale bootstrap data.
+    void fetch(`/api/cabinet/mechanic/diagnostics/${encodeURIComponent(diagnosticId)}/bootstrap`, {
+      method: "POST",
       credentials: "include",
       signal: controller.signal,
       cache: "no-store",
     })
       .then(async (response) => {
         const body = await response.json().catch(() => null) as DiagnosticModePayload | null;
-        if (!response.ok || !body?.ok || !body.mode) throw new Error("LOAD_FAILED");
         if (cancelled) return;
-
-        // Always attempt an idempotent matrix sync before opening the mechanic workspace.
-        // Active legacy records are upgraded, existing matrix records get missing checks/fluids,
-        // while locked historical legacy diagnostics safely stay in the legacy read-only view.
-        const sync = await fetch(`/api/diagnostics/${encodeURIComponent(diagnosticId)}/matrix-start`, {
-          method: "POST",
-          credentials: "include",
-          cache: "no-store",
-        });
-        if (cancelled) return;
-
-        if (sync.ok || body.mode === "MATRIX") {
-          setMode("MATRIX");
+        if (response.ok && body?.ok && body.mode) {
+          setMode(body.mode);
           return;
         }
 
-        setMode("LEGACY");
+        // Closed historical diagnostics cannot be mutated. Fall back to the read-only
+        // mode resolver so they continue to open safely in the legacy viewer.
+        const fallback = await fetch(`/api/diagnostics/${encodeURIComponent(diagnosticId)}/structured?mode=1`, {
+          credentials: "include",
+          signal: controller.signal,
+          cache: "no-store",
+        });
+        const fallbackBody = await fallback.json().catch(() => null) as DiagnosticModePayload | null;
+        if (!fallback.ok || !fallbackBody?.ok || !fallbackBody.mode) throw new Error("LOAD_FAILED");
+        if (!cancelled) setMode(fallbackBody.mode);
       })
       .catch((cause) => {
         if (!cancelled && cause instanceof Error && cause.name !== "AbortError") setMode("LEGACY");
