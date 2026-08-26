@@ -1,6 +1,8 @@
 import { LeadStatus, PlannerAppointmentStatus, Prisma } from "@/src/generated/prisma/client";
 import { mapUiSourceToLeadSource } from "@/src/domain/workflow/lead";
 import { getPrisma } from "@/src/lib/prisma";
+import { lookupVehicleByPlate } from "@/src/services/vehicle-lookup.service";
+import { decodeVinIntelligence } from "@/src/services/vin-intelligence.service";
 
 export class IntakeValidationError extends Error {}
 export class IntakeConflictError extends Error {}
@@ -104,13 +106,81 @@ function worksSummary(works: Array<{ name:string; quantity:number; total:number;
   return `Попередні роботи:\n${lines.join("\n")}`;
 }
 
+async function enrichVehicleInput(input: IntakeInput, plateNormalized: string | null, requestedVin: string | null) {
+  const enriched: IntakeInput = { ...input };
+  let effectiveVin = requestedVin;
+
+  if ((!clean(enriched.make, 100) || !clean(enriched.model, 120)) && plateNormalized) {
+    try {
+      const lookup = await lookupVehicleByPlate(plateNormalized);
+      const vehicle = lookup.status === "FOUND" ? lookup.vehicle : null;
+      if (vehicle) {
+        effectiveVin ||= normalizeVin(vehicle.vin) || null;
+        enriched.vin = effectiveVin || enriched.vin;
+        if (!clean(enriched.make, 100)) enriched.make = vehicle.make || undefined;
+        if (!clean(enriched.model, 120)) enriched.model = vehicle.model || undefined;
+        enriched.year ||= vehicle.year || undefined;
+        enriched.mileage ||= vehicle.mileageKm || undefined;
+        enriched.engine ||= vehicle.engine || undefined;
+        enriched.engineVolume ||= vehicle.engineVolumeL || undefined;
+        enriched.fuelType ||= vehicle.fuelType || undefined;
+        enriched.bodyType ||= vehicle.bodyType || undefined;
+        enriched.grossWeight ||= vehicle.grossWeightKg || undefined;
+        enriched.driveType ||= vehicle.driveType || undefined;
+        enriched.vehicleType ||= vehicle.vehicleType;
+        enriched.turboLevClass ||= vehicle.turboLevClass;
+        enriched.priceCoefficient ||= vehicle.priceCoefficient;
+        enriched.classificationSource ||= vehicle.classificationSource;
+        enriched.classificationConfidence ||= vehicle.classificationConfidence;
+        enriched.vehicleDataSource = vehicle.vehicleDataSource || enriched.vehicleDataSource;
+        enriched.vehicleDataConfidence = vehicle.vehicleDataConfidence || enriched.vehicleDataConfidence;
+      }
+    } catch (error) {
+      console.warn("Plate enrichment before intake save unavailable", error);
+    }
+  }
+
+  if ((!clean(enriched.make, 100) || !clean(enriched.model, 120)) && effectiveVin?.length === 17) {
+    try {
+      const decoded = await decodeVinIntelligence(effectiveVin);
+      const vehicle = decoded.status === "FOUND" ? decoded.vehicle : null;
+      if (vehicle) {
+        enriched.vin = effectiveVin;
+        if (!clean(enriched.make, 100)) enriched.make = vehicle.make || undefined;
+        if (!clean(enriched.model, 120)) enriched.model = vehicle.model || undefined;
+        enriched.year ||= vehicle.year || undefined;
+        enriched.engine ||= vehicle.engine || undefined;
+        enriched.engineVolume ||= vehicle.engineVolumeL || undefined;
+        enriched.fuelType ||= vehicle.fuelType || undefined;
+        enriched.bodyType ||= vehicle.bodyType || undefined;
+        enriched.driveType ||= vehicle.driveType || undefined;
+        enriched.vehicleType ||= vehicle.vehicleType || undefined;
+        enriched.vehicleDataSource = decoded.sourceDetail;
+        enriched.vehicleDataConfidence = decoded.confidence;
+      }
+    } catch (error) {
+      console.warn("VIN enrichment before intake save unavailable", error);
+    }
+  }
+
+  if (!clean(enriched.make, 100) || !clean(enriched.model, 120)) {
+    throw new IntakeValidationError(
+      "CRM не змогла визначити марку та модель за цим держномером/VIN. Відкрийте «Уточнити дані автомобіля вручну» та вкажіть марку і модель.",
+    );
+  }
+
+  return enriched;
+}
+
 export async function createIntake(input: IntakeInput) {
   const prisma = getPrisma();
   const phoneNormalized = normalizePhone(input.phone);
-  const vin = normalizeVin(input.vin) || null;
-  if (vin && vin.length !== 17) throw new IntakeValidationError("VIN повинен містити 17 символів або бути порожнім.");
+  const requestedVin = normalizeVin(input.vin) || null;
+  if (requestedVin && requestedVin.length !== 17) throw new IntakeValidationError("VIN повинен містити 17 символів або бути порожнім.");
   const plateNormalized = normalizePlate(input.plate) || null;
-  if (!plateNormalized && !vin) throw new IntakeValidationError("Вкажіть державний номер або VIN автомобіля.");
+  if (!plateNormalized && !requestedVin) throw new IntakeValidationError("Вкажіть державний номер або VIN автомобіля.");
+  const vehicleInput = await enrichVehicleInput(input, plateNormalized, requestedVin);
+  const vin = normalizeVin(vehicleInput.vin) || null;
 
   const appointmentDate = clean(input.appointmentDate, 10);
   const appointmentTime = clean(input.appointmentTime, 8);
@@ -166,24 +236,24 @@ export async function createIntake(input: IntakeInput) {
     }
 
     const vehicleData = {
-      brand: clean(input.make, 100),
-      model: clean(input.model, 120),
-      year: toInt(input.year),
-      mileageKm: toInt(input.mileage),
-      engineName: clean(input.engine, 200),
-      engineVolumeCm3: input.engineVolume ? Math.round((Number(String(input.engineVolume).replace(",", ".")) || 0) * 1000) || null : null,
-      fuelType: clean(input.fuelType, 80),
-      bodyType: clean(input.bodyType, 80),
-      grossWeightKg: toInt(input.grossWeight),
-      driveType: clean(input.driveType, 80),
-      vehicleType: clean(input.vehicleType, 80),
-      turboLevClass: clean(input.turboLevClass, 80),
-      priceCoefficient: toDecimal(input.priceCoefficient) ?? 1,
-      classificationSource: clean(input.classificationSource, 80),
-      classificationConfidence: toInt(input.classificationConfidence),
-      manualClassOverride: Boolean(input.manualClassOverride),
-      vehicleDataSource: clean(input.vehicleDataSource, 100),
-      vehicleDataConfidence: toInt(input.vehicleDataConfidence),
+      brand: clean(vehicleInput.make, 100),
+      model: clean(vehicleInput.model, 120),
+      year: toInt(vehicleInput.year),
+      mileageKm: toInt(vehicleInput.mileage),
+      engineName: clean(vehicleInput.engine, 200),
+      engineVolumeCm3: vehicleInput.engineVolume ? Math.round((Number(String(vehicleInput.engineVolume).replace(",", ".")) || 0) * 1000) || null : null,
+      fuelType: clean(vehicleInput.fuelType, 80),
+      bodyType: clean(vehicleInput.bodyType, 80),
+      grossWeightKg: toInt(vehicleInput.grossWeight),
+      driveType: clean(vehicleInput.driveType, 80),
+      vehicleType: clean(vehicleInput.vehicleType, 80),
+      turboLevClass: clean(vehicleInput.turboLevClass, 80),
+      priceCoefficient: toDecimal(vehicleInput.priceCoefficient) ?? 1,
+      classificationSource: clean(vehicleInput.classificationSource, 80),
+      classificationConfidence: toInt(vehicleInput.classificationConfidence),
+      manualClassOverride: Boolean(vehicleInput.manualClassOverride),
+      vehicleDataSource: clean(vehicleInput.vehicleDataSource, 100),
+      vehicleDataConfidence: toInt(vehicleInput.vehicleDataConfidence),
       lastVehicleLookupAt: new Date(),
     };
 
@@ -193,7 +263,7 @@ export async function createIntake(input: IntakeInput) {
         data: {
           ...vehicleData,
           clientId: needsReassign ? client.id : vehicle.clientId,
-          plateNumber: clean(input.plate, 24) || vehicle.plateNumber,
+          plateNumber: clean(vehicleInput.plate, 24) || vehicle.plateNumber,
           plateNormalized: plateNormalized || vehicle.plateNormalized,
           vin: vin || vehicle.vin,
         },
@@ -203,7 +273,7 @@ export async function createIntake(input: IntakeInput) {
         data: {
           clientId: client.id,
           ...vehicleData,
-          plateNumber: clean(input.plate, 24),
+          plateNumber: clean(vehicleInput.plate, 24),
           plateNormalized,
           vin,
         },

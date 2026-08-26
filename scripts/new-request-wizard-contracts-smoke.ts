@@ -1,4 +1,4 @@
-import { parseClientLookup } from "../app/new-request-wizard-v5.model";
+import { parseClientLookup, parseVinResponse } from "../app/new-request-wizard-v5.model";
 import type { NewRequestClientLookupContract } from "../src/lib/contracts/new-request-wizard";
 
 function assert(condition: unknown, message: string): asserts condition {
@@ -59,5 +59,22 @@ assert(
   parseClientLookup({ id: "client_bad", name: "Без телефону", vehicles: [] }) === null,
   "client lookup without phone should be rejected",
 );
+
+const registryVin = parseVinResponse({
+  status: "FOUND",
+  source: "MVS_INDEX",
+  sourceDetail: "MVS_OPEN_DATA_COMPACT_BY_VIN_2021",
+  confidence: 96,
+  vehicle: {
+    make: "VOLKSWAGEN",
+    model: "PASSAT",
+    year: 2004,
+    engineVolumeL: 1.896,
+    fuelType: "ДИЗЕЛЬНЕ ПАЛИВО",
+  },
+});
+assert(registryVin?.vehicle?.make === "VOLKSWAGEN", "MVS VIN make should reach the wizard");
+assert(registryVin.vehicle.model === "PASSAT", "MVS VIN model should reach the wizard");
+assert(registryVin.source === "MVS_INDEX", "MVS VIN source should be preserved");
 
 console.log("New request wizard contracts smoke: OK");

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { decodeVinIntelligence } from "@/src/services/vin-intelligence.service";
 import { validateVin } from "@/src/domain/vin";
 import { classifyVehicle, TURBO_LEV_CLASS_LABELS } from "@/src/domain/vehicle-intelligence";
+import { MVS_OPEN_DATA_SOURCE_URL } from "@/src/services/mvs-open-data.provider";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -51,7 +52,9 @@ export async function GET(request: Request) {
         label: TURBO_LEV_CLASS_LABELS[classification.turboLevClass],
         autoPriceAdjustmentAllowed: classification.confidence >= 85 && classification.turboLevClass !== "UNKNOWN",
       } : null,
-      attributionUrl: "https://vpic.nhtsa.dot.gov/",
+      attributionUrl: result.source === "MVS_INDEX" || result.sourceDetail.startsWith("MVS_")
+        ? MVS_OPEN_DATA_SOURCE_URL
+        : "https://vpic.nhtsa.dot.gov/",
     });
   } catch (error) {
     console.error("VIN intelligence lookup failed", error);

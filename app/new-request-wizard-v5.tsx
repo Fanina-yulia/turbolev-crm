@@ -69,7 +69,13 @@ export function NewRequestWizardV5({showButton=true}:NewRequestWizardProps){
   const plateLookupRequestRef=useRef(0);
 
   const canLeaveClient=normalizePhone(form.phone).length===12&&form.customerName.trim().length>0;
-  const canLeaveVehicle=normalizePlate(form.plate).length>=6||normalizeVin(form.vin).length===17;
+  const hasVehicleIdentifier=normalizePlate(form.plate).length>=6||normalizeVin(form.vin).length===17;
+  const hasVehicleIdentity=form.make.trim().length>0&&form.model.trim().length>0;
+  const canLeaveVehicle=hasVehicleIdentifier&&hasVehicleIdentity;
+  const vehicleNeedsManualIdentity=hasVehicleIdentifier
+    &&plateLookupState!=="searching"
+    &&vinLookupState!=="searching"
+    &&!hasVehicleIdentity;
   const activeLocation=useMemo(
     ()=>locations.find(location=>location.id===form.locationId)||locations[0]||null,
     [locations,form.locationId],
@@ -446,8 +452,10 @@ export function NewRequestWizardV5({showButton=true}:NewRequestWizardProps){
 
   function goNext(){
     if(step===1){
-      if(!canLeaveVehicle)return setError("Скажіть державний номер авто або вкажіть повний VIN.");
+      if(!hasVehicleIdentifier)return setError("Скажіть державний номер авто або вкажіть повний VIN.");
       if(form.vin&&normalizeVin(form.vin).length!==17)return setError("VIN має містити 17 символів.");
+      if(plateLookupState==="searching"||vinLookupState==="searching")return setError("Зачекайте, CRM ще визначає автомобіль.");
+      if(!hasVehicleIdentity)return setError("CRM не визначила марку та модель автоматично. Вкажіть їх у блоці «Уточнити дані автомобіля вручну».");
       setStep(2);
       setError("");
       return;
@@ -473,6 +481,7 @@ export function NewRequestWizardV5({showButton=true}:NewRequestWizardProps){
 
   async function saveRequest(event:FormEvent){
     event.preventDefault();
+    if(!canLeaveVehicle)return setError("Поверніться до кроку «Автомобіль» і вкажіть марку та модель.");
     if(!form.appointmentDate||!form.appointmentTime)return setError("Вкажіть дату та час заїзду.");
     if(!form.postId)return setError("Оберіть пост СТО.");
     if(!form.mechanicId)return setError("Закріпіть майстра.");
@@ -616,7 +625,11 @@ export function NewRequestWizardV5({showButton=true}:NewRequestWizardProps){
                 <div><b>VIN</b><span>{vinMessage}</span></div>
               </div>}
 
-              <details className="vehicleAdvanced">
+              {vehicleNeedsManualIdentity&&<div className="requestMessage error">
+                Марку або модель не знайдено у реєстрі. Уточніть ці дані вручну — CRM не буде створювати неповну картку авто.
+              </div>}
+
+              <details className="vehicleAdvanced" open={vehicleNeedsManualIdentity||undefined}>
                 <summary>Уточнити дані автомобіля вручну</summary>
                 <div className="vehicleAdvancedBody">
                   <div className="requestGrid four vehicleCatalogGrid">
@@ -797,7 +810,7 @@ export function NewRequestWizardV5({showButton=true}:NewRequestWizardProps){
           <div>
             {step>1&&<button type="button" className="ghost" onClick={()=>{setStep(current=>Math.max(1,current-1));setError("")}}>← Назад</button>}
             {step<4
-              ?<button type="button" className="primary" onClick={goNext}>{step===1&&!canLeaveVehicle?"Вкажіть номер авто":step===2&&!canLeaveClient?"Заповніть клієнта":"Далі →"}</button>
+              ?<button type="button" className="primary" onClick={goNext}>{step===1&&!hasVehicleIdentifier?"Вкажіть номер авто":step===1&&!hasVehicleIdentity?"Уточніть марку і модель":step===2&&!canLeaveClient?"Заповніть клієнта":"Далі →"}</button>
               :<button type="submit" className="primary fastBookButton" disabled={saving}>{saving?"Записую…":"Записати на діагностику"}</button>}
           </div>
         </div>

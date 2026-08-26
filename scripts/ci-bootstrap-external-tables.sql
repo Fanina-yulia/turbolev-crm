@@ -19,3 +19,7 @@ CREATE TABLE IF NOT EXISTS "VehicleRegistryCompact" (
   "sourceYear" SMALLINT NOT NULL,
   "color" VARCHAR(48)
 );
+
+CREATE INDEX IF NOT EXISTS "VehicleRegistryCompact_vin_idx"
+  ON "VehicleRegistryCompact" ("vin")
+  WHERE "vin" IS NOT NULL;

@@ -7,6 +7,7 @@ import {
 } from "@/src/domain/vehicle-intelligence";
 import { normalizeRegistrationPlate } from "@/src/domain/registration-plate";
 import { lookupMvsOpenDataByPlate, MVS_OPEN_DATA_SOURCE_URL } from "@/src/services/mvs-open-data.provider";
+import { decodeVinIntelligence } from "@/src/services/vin-intelligence.service";
 
 export { normalizeRegistrationPlate };
 
@@ -58,6 +59,8 @@ type CompactRegistryRow = {
   vehicleTypeRaw: string | null;
   sourceYear: number;
 };
+
+type LookupVehicle = NonNullable<GlobalVehicleLookupResponse["vehicle"]>;
 
 function registrationPlateKey(plate: string): bigint | null {
   if (!/^[A-Z0-9]{6,10}$/.test(plate)) return null;
@@ -306,23 +309,137 @@ function mapLiveMvs(plate: string, mvs: Awaited<ReturnType<typeof lookupMvsOpenD
   };
 }
 
+function mergeVehicleData(
+  base: LookupVehicle,
+  supplement: Partial<LookupVehicle>,
+  supplementSource: string,
+  supplementConfidence: number,
+): LookupVehicle {
+  const merged: LookupVehicle = {
+    ...base,
+    vin: base.vin || supplement.vin || null,
+    make: base.make || supplement.make || null,
+    model: base.model || supplement.model || null,
+    year: base.year ?? supplement.year ?? null,
+    mileageKm: base.mileageKm ?? supplement.mileageKm ?? null,
+    engine: base.engine || supplement.engine || null,
+    engineVolumeCm3: base.engineVolumeCm3 ?? supplement.engineVolumeCm3 ?? null,
+    engineVolumeL: base.engineVolumeL ?? supplement.engineVolumeL ?? null,
+    fuelType: base.fuelType || supplement.fuelType || null,
+    bodyType: base.bodyType || supplement.bodyType || null,
+    grossWeightKg: base.grossWeightKg ?? supplement.grossWeightKg ?? null,
+    driveType: base.driveType || supplement.driveType || null,
+    registrationDate: base.registrationDate || supplement.registrationDate || null,
+    sourceYear: base.sourceYear ?? supplement.sourceYear ?? null,
+  };
+  const changed = merged.vin !== base.vin
+    || merged.make !== base.make
+    || merged.model !== base.model
+    || merged.year !== base.year
+    || merged.engineVolumeCm3 !== base.engineVolumeCm3;
+
+  if (changed) {
+    merged.vehicleDataSource = [base.vehicleDataSource, supplementSource].filter(Boolean).join("+");
+    merged.vehicleDataConfidence = Math.max(base.vehicleDataConfidence, supplementConfidence);
+  }
+
+  if (!merged.manualClassOverride) {
+    const classification = classifyVehicle({
+      make: merged.make ?? "",
+      model: merged.model ?? "",
+      year: merged.year?.toString() ?? "",
+      engine: merged.engine ?? "",
+      engineVolume: merged.engineVolumeL?.toString() ?? "",
+      fuelType: merged.fuelType ?? "",
+      bodyType: merged.bodyType ?? "",
+      grossWeight: merged.grossWeightKg?.toString() ?? "",
+      driveType: merged.driveType ?? "",
+      vehicleType: merged.vehicleType,
+    });
+    merged.vehicleType = classification.vehicleType;
+    merged.turboLevClass = classification.turboLevClass;
+    merged.turboLevClassLabel = TURBO_LEV_CLASS_LABELS[classification.turboLevClass];
+    merged.priceCoefficient = classification.priceCoefficient;
+    merged.classificationSource = changed
+      ? `${supplementSource}+RULES`
+      : merged.classificationSource;
+    merged.classificationConfidence = classification.confidence;
+    merged.classificationReason = classification.reason;
+  }
+
+  return merged;
+}
+
+function mergeLookupResponses(
+  base: GlobalVehicleLookupResponse,
+  supplement: GlobalVehicleLookupResponse,
+): GlobalVehicleLookupResponse {
+  if (!base.vehicle || !supplement.vehicle) return base;
+  return {
+    ...base,
+    attributionUrl: base.attributionUrl || supplement.attributionUrl,
+    message: [base.message, supplement.message].filter(Boolean).join(" · ") || undefined,
+    vehicle: mergeVehicleData(
+      base.vehicle,
+      supplement.vehicle,
+      supplement.vehicle.vehicleDataSource,
+      supplement.vehicle.vehicleDataConfidence,
+    ),
+  };
+}
+
+async function enrichLookupByVin(result: GlobalVehicleLookupResponse): Promise<GlobalVehicleLookupResponse> {
+  const current = result.vehicle;
+  if (!current?.vin || (current.make && current.model)) return result;
+  try {
+    const decoded = await decodeVinIntelligence(current.vin);
+    if (decoded.status !== "FOUND" || !decoded.vehicle) return result;
+    const vehicle = decoded.vehicle;
+    return {
+      ...result,
+      vehicle: mergeVehicleData(current, {
+        vin: vehicle.vin,
+        make: vehicle.make,
+        model: vehicle.model,
+        year: vehicle.year,
+        engine: vehicle.engine,
+        engineVolumeCm3: vehicle.engineVolumeL ? Math.round(vehicle.engineVolumeL * 1000) : null,
+        engineVolumeL: vehicle.engineVolumeL,
+        fuelType: vehicle.fuelType,
+        bodyType: vehicle.bodyType,
+        driveType: vehicle.driveType,
+      }, decoded.sourceDetail, decoded.confidence),
+    };
+  } catch (error) {
+    console.warn("VIN enrichment after plate lookup unavailable", error);
+    return result;
+  }
+}
+
 export async function lookupVehicleByPlate(rawPlate: string, options?: { deep?: boolean }): Promise<GlobalVehicleLookupResponse> {
   const plate = normalizeRegistrationPlate(rawPlate);
   if (plate.length < 6) return { status: "NOT_FOUND", lookupLevel: "EXTERNAL_REQUIRED", plate };
 
+  let crm: GlobalVehicleLookupResponse | null = null;
   try {
-    const crm = await lookupCrmVehicle(plate);
-    if (crm) return crm;
+    crm = await lookupCrmVehicle(plate);
+    if (crm?.vehicle?.make && crm.vehicle.model) return crm;
   } catch (error) {
     console.warn("CRM vehicle lookup unavailable; continuing with MVS index", error);
   }
 
+  let indexed: GlobalVehicleLookupResponse | null = null;
   try {
-    const indexed = await lookupRegistryIndex(plate);
-    if (indexed) return indexed;
+    indexed = await lookupRegistryIndex(plate);
   } catch (error) {
     console.warn("MVS registry index lookup unavailable", error);
   }
+
+  if (crm) {
+    const enriched = indexed ? mergeLookupResponses(crm, indexed) : crm;
+    return enrichLookupByVin(enriched);
+  }
+  if (indexed) return enrichLookupByVin(indexed);
 
   if (options?.deep) {
     try {
