@@ -184,7 +184,7 @@ export function ClientCardDrawer({open,name,phone,channel,existingLeadId,onClose
     navigate("Замовлення-наряди",activeWorkOrder.id,"Комерційна пропозиція");
   }
   function openActive(){
-    if(existingLeadId){navigate("Ліди",existingLeadId,"Активне звернення");return}
+    if(existingLeadId){setMessage("Звернення вже передано в роботу.");return}
     onCreateLead();
   }
 
@@ -237,7 +237,7 @@ export function ClientCardDrawer({open,name,phone,channel,existingLeadId,onClose
             <button type="button" onClick={()=>{if(vehicleHistory.length)setHistoryOpen(value=>!value);else void openHistory()}}>Історія обслуговування</button>
             <button type="button" className={!activeWorkOrder?"softDisabled":""} onClick={openCommercial}>Комерційна пропозиція</button>
             <button type="button" onClick={onClose}>Комунікації</button>
-            <button type="button" onClick={openActive}>{existingLeadId?"Відкрити в Активних":"+ Додати в Активні"}</button>
+            <button type="button" onClick={openActive}>{existingLeadId?"✓ В роботі":"+ Передати в роботу"}</button>
           </div>
           {!activeWorkOrder&&<small className="gateHint">КП з’являється після підтвердженої діагностики — Hard Gate бізнес-процесу не обходимо.</small>}
         </section>
