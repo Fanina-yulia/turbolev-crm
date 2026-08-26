@@ -1,4 +1,8 @@
-import { parseClientLookup, parseVinResponse } from "../app/new-request-wizard-v5.model";
+import {
+  parseClientLookup,
+  parseVinResponse,
+  vehicleCandidateConfirmsVin,
+} from "../app/new-request-wizard-v5.model";
 import type { NewRequestClientLookupContract } from "../src/lib/contracts/new-request-wizard";
 
 function assert(condition: unknown, message: string): asserts condition {
@@ -76,5 +80,20 @@ const registryVin = parseVinResponse({
 assert(registryVin?.vehicle?.make === "VOLKSWAGEN", "MVS VIN make should reach the wizard");
 assert(registryVin.vehicle.model === "PASSAT", "MVS VIN model should reach the wizard");
 assert(registryVin.source === "MVS_INDEX", "MVS VIN source should be preserved");
+
+const plateVehicle = {
+  plate: "AE0914MH",
+  vin: "Y7WNL1M18E0029926",
+  make: "GEELY",
+  model: "EMGRAND X7",
+};
+assert(
+  vehicleCandidateConfirmsVin(plateVehicle, "Y7WNL1M18E0029926"),
+  "a VIN returned by the plate registry should remain confirmed",
+);
+assert(
+  !vehicleCandidateConfirmsVin(plateVehicle, "WVWZZZ1JZXW000001"),
+  "a different VIN must not inherit the plate lookup confirmation",
+);
 
 console.log("New request wizard contracts smoke: OK");
