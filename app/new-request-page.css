@@ -15,6 +15,13 @@
 .requestPage .requestBody{overflow:visible}
 .requestPage .requestActions{position:sticky;bottom:0;z-index:12;border-radius:0 0 18px 18px}
 .requestPage .requestClose{font-size:20px;min-width:42px}
+.requestPlannerTitleLine{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.requestCalendarControl{position:relative;display:inline-flex}
+.requestCalendarButton{display:inline-flex;align-items:center;gap:8px;min-height:42px;padding:0 12px;border:1px solid var(--line);border-radius:10px;background:var(--panel-2);color:var(--text);font:inherit;font-size:12px;font-weight:800;cursor:pointer}
+.requestCalendarButton:hover{border-color:var(--orange);color:var(--orange)}
+.requestCalendarButton:focus-visible{outline:0;box-shadow:0 0 0 3px rgba(255,106,0,.16)}
+.requestCalendarButton svg{width:18px;height:18px;flex:0 0 auto}
+.requestPlannerDateInput{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
 .requestPlannerControls{display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap;margin-bottom:14px}
 .requestPlannerControls label{display:grid;gap:6px}
 .requestPlannerControls label>span{font-size:12px;font-weight:800;color:var(--soft-text)}
