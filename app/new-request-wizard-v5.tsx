@@ -961,12 +961,6 @@ export function NewRequestWizardV5({showButton=true,onOpenChange}:NewRequestWiza
                 <input tabIndex={-1} value={form.preliminaryAmount} onChange={event=>update("preliminaryAmount",event.target.value)}/>
               </label>
 
-              <div className="fastBookingSummary">
-                <article><small>Авто</small><strong>{vehicleTitle(form)}</strong><span>{form.plate||form.vin}</span></article>
-                <article><small>Клієнт</small><strong>{form.customerName}</strong><span>{form.phone}</span></article>
-                <article><small>Діагностика</small><strong>{form.category||"Первинний огляд"}</strong><span>{form.complaint||`${preliminaryWorks.length} попередніх робіт`}</span></article>
-                <article><small>Роботи</small><strong>{preliminaryWorks.length||0} позицій</strong><span>{preliminaryTotal>0?`${Math.round(preliminaryTotal).toLocaleString("uk-UA")} грн попередньо`:"Без попереднього кошторису"}</span></article>
-              </div>
             </section>}
 
             {error&&<div className="requestMessage error">{error}</div>}
