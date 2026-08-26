@@ -344,14 +344,22 @@ export function PlannerDayView<TAppointment extends AppointmentBase>({ day, loca
     const onPointerUp = () => {
       const active = resizeRef.current;
       resizeRef.current = null;
-      setResize(null);
-      if (!active || !active.valid || (active.startMinute === active.originalStartMinute && active.endMinute === active.originalEndMinute)) return;
+      if (!active || !active.valid || (active.startMinute === active.originalStartMinute && active.endMinute === active.originalEndMinute)) {
+        setResize(null);
+        return;
+      }
       const item = dayAppointments.find((appointment) => appointment.id === active.id);
-      if (!item) return;
+      if (!item) {
+        setResize(null);
+        return;
+      }
       const startTime = minuteLabel(active.startMinute);
       const endTime = minuteLabel(active.endMinute);
       void resizeHandler(item, day, startTime, endTime).then((ok) => {
-        if (!ok) setError("Не вдалося змінити час: пост або механік зайнятий у цьому діапазоні.");
+        setResize(null);
+        if (!ok) {
+          setError("Не вдалося змінити час: пост або механік зайнятий у цьому діапазоні.");
+        }
       });
     };
     window.addEventListener("pointermove", onPointerMove, { passive: false });
