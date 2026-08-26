@@ -26,6 +26,15 @@ function buttonText(button: Element | null | undefined) {
   return String(button?.textContent || "").replace(/\s+/g, " ").trim();
 }
 
+function kyivDateKey() {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Europe/Kyiv",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+}
+
 function canonicalizeLegacy(detail: LegacyNavigateDetail): CanonicalTarget | null {
   if (typeof detail === "string") {
     if (["Активні", "Ліди", "Звернення", "Нові звернення"].includes(detail)) {
@@ -46,14 +55,23 @@ function canonicalizeLegacy(detail: LegacyNavigateDetail): CanonicalTarget | nul
   if (section === "Нові звернення") {
     return { section: "Комунікації", params: ENTITY_ID.test(filter) ? { inquiryId: filter } : {} };
   }
+  if (section === "Планувальник" && filter === "today") {
+    return { section: "Планувальник", params: { date: kyivDateKey(), scope: "day" } };
+  }
   if (section === "Планувальник" && ENTITY_ID.test(filter)) {
     return { section: "Планувальник", params: { appointmentId: filter } };
   }
   if (section === "Діагностика" && ENTITY_ID.test(filter)) {
     return { section: "Діагностика", params: { diagnosticId: filter } };
   }
+  if (section === "Замовлення-наряди" && filter === "approval") {
+    return { section: "Замовлення-наряди", params: { status: "WAITING_APPROVAL", workOrderTab: "estimate" } };
+  }
   if (section === "Замовлення-наряди" && ENTITY_ID.test(filter)) {
     return { section: "Замовлення-наряди", params: { workOrderId: filter } };
+  }
+  if (section === "Підбір запчастин" && filter === "waiting-parts") {
+    return { section: "Закупівлі та склад", params: {} };
   }
   if (section === "Контроль якості") {
     return { section: "Замовлення-наряди", params: { status: "WAITING_QC", workOrderTab: "qc" } };
