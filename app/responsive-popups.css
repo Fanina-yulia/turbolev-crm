@@ -9,10 +9,9 @@
 /* Central popup surfaces: semantic dialogs plus direct modal/dialog/popup
    children of overlays/backdrops. Drawers are handled separately below. */
 html:not([data-settings-page="true"]) :is(
-  [role="dialog"],
-  [aria-modal="true"],
+  [role="dialog"]:not(.requestPage),
+  [aria-modal="true"]:not(.requestPage),
   .settingsModal,
-  .requestModalV4,
   [class*="backdrop" i] > :is(
     section,
     [class*="modal" i],
@@ -61,11 +60,11 @@ html:not([data-settings-page="true"]) :is(
 
 /* Legacy/simple central panels often used overflow:hidden. When height is
    constrained that would clip fields/buttons, so make the actual panel scroll.
-   New Request is excluded because it already owns a dedicated .requestScroll
-   region and intentionally keeps its header/footer fixed. */
+   New Request is excluded because it is a full page and owns document-flow
+   layout rather than a constrained popup scroll region. */
 html:not([data-settings-page="true"]) :is(
-  [role="dialog"],
-  [aria-modal="true"],
+  [role="dialog"]:not(.requestPage),
+  [aria-modal="true"]:not(.requestPage),
   .settingsModal,
   [class*="backdrop" i] > :is(
     section,
@@ -79,7 +78,7 @@ html:not([data-settings-page="true"]) :is(
     [class*="dialog" i],
     [class*="popup" i]
   )
-):not(.requestModalV4){
+):not(.requestPage){
   overflow:auto!important;
   overscroll-behavior:contain;
 }
@@ -133,10 +132,9 @@ html:not([data-settings-page="true"]) .tlDockPanel :is(p,span,strong,b,small,cod
 
 /* Media and embedded content must never force a popup/drawer wider than the viewport. */
 html:not([data-settings-page="true"]) :is(
-  [role="dialog"],
-  [aria-modal="true"],
+  [role="dialog"]:not(.requestPage),
+  [aria-modal="true"]:not(.requestPage),
   .settingsModal,
-  .requestModalV4,
   .tlCallPopup,
   .tlDockPanel,
   [class*="backdrop" i] > :is(
@@ -159,10 +157,9 @@ html:not([data-settings-page="true"]) :is(
 
 /* Prevent long VINs, phone numbers, API strings etc. from widening surfaces. */
 html:not([data-settings-page="true"]) :is(
-  [role="dialog"],
-  [aria-modal="true"],
+  [role="dialog"]:not(.requestPage),
+  [aria-modal="true"]:not(.requestPage),
   .settingsModal,
-  .requestModalV4,
   [class*="backdrop" i] > :is(
     section,
     [class*="modal" i],
@@ -196,10 +193,9 @@ html:not([data-settings-page="true"]) :is(
   :root{--crm-popup-edge-gap:6px}
 
   html:not([data-settings-page="true"]) :is(
-    [role="dialog"],
-    [aria-modal="true"],
+    [role="dialog"]:not(.requestPage),
+    [aria-modal="true"]:not(.requestPage),
     .settingsModal,
-    .requestModalV4,
     [class*="backdrop" i] > :is(
       section,
       [class*="modal" i],

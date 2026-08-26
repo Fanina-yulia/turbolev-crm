@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState, type CSSProperties, type MouseEvent as ReactMouseEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 import styles from "./planner-day-view.module.css";
+import compactStyles from "./planner-day-view-compact.module.css";
 
 type Post = { id: string; name: string; sortOrder?: number; capabilities?: string[] };
 type Mechanic = { id: string; name: string; sortOrder?: number };
@@ -35,6 +36,15 @@ type AvailabilityResponse = { status: string; slots?: AvailabilitySlot[]; messag
 type Row = { id: string; name: string; type: string; reception?: boolean; color: string };
 type SlotSelection = { rowId: string; startIndex: number; endIndex: number };
 type StatusMeta = { label: string; tone: "blue" | "green" | "orange" | "amber" | "red" | "gray" | "violet" | "cyan" };
+
+export type PlannerTimeSelection = {
+  day: string;
+  startTime: string;
+  endTime: string;
+  durationMinutes: number;
+  locationId: string;
+  postId: string;
+};
 
 const SLOT = 30;
 const DURATION_COOKIE = "turbolev_booking_duration_minutes";
@@ -101,18 +111,21 @@ function currency(value: number) {
   return new Intl.NumberFormat("uk-UA", { style: "currency", currency: "UAH", maximumFractionDigits: 0 }).format(value);
 }
 
-export function PlannerDayView<TAppointment extends AppointmentBase>({ day, location, appointments, onOpen, onCreate, showMetrics = true }: {
+export function PlannerDayView<TAppointment extends AppointmentBase>({ day, location, appointments, onOpen, onCreate, onSelection, showMetrics = true, compact = false }: {
   day: string;
   location: Location;
   appointments: TAppointment[];
   onOpen: (appointment: TAppointment) => void;
   onCreate: (day: string, time: string, postId: string) => void;
+  onSelection?: (selection: PlannerTimeSelection) => void;
   showMetrics?: boolean;
+  compact?: boolean;
 }) {
   const [availability, setAvailability] = useState<AvailabilityResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [selection, setSelection] = useState<SlotSelection | null>(null);
+  const skipNextClickRef = useRef(false);
   const timeZone = location.timezone || "Europe/Kyiv";
   const openMinute = Number.isFinite(location.openMinute) ? location.openMinute : 540;
   const closeMinute = Number.isFinite(location.closeMinute) ? location.closeMinute : 1260;
@@ -154,6 +167,11 @@ export function PlannerDayView<TAppointment extends AppointmentBase>({ day, loca
     window.addEventListener("blur", cancelSelection);
     return () => window.removeEventListener("blur", cancelSelection);
   }, []);
+
+  useEffect(() => {
+    setSelection(null);
+    skipNextClickRef.current = false;
+  }, [day, location.id]);
 
   const dayAppointments = useMemo(() => appointments
     .filter((item) => item.locationId === location.id && localParts(item.plannedStartAt, timeZone).day === day && item.status !== "CANCELLED")
@@ -221,37 +239,64 @@ export function PlannerDayView<TAppointment extends AppointmentBase>({ day, loca
     return true;
   }
 
-  function beginSelection(event: ReactMouseEvent<HTMLButtonElement>, row: Row, slotIndex: number) {
+  function beginSelection(event: ReactPointerEvent<HTMLButtonElement>, row: Row, slotIndex: number) {
     if (event.button !== 0 || !slotAvailable(row, slotIndex)) return;
     event.preventDefault();
+    skipNextClickRef.current = false;
     setSelection({ rowId: row.id, startIndex: slotIndex, endIndex: slotIndex });
   }
 
-  function extendSelection(event: ReactMouseEvent<HTMLButtonElement>, row: Row, slotIndex: number) {
+  function extendSelection(event: ReactPointerEvent<HTMLButtonElement>, row: Row, slotIndex: number) {
     if (!selection || selection.rowId !== row.id || event.buttons !== 1) return;
     if (!canSelectRange(row, selection.startIndex, slotIndex)) return;
     setSelection((current) => current ? { ...current, endIndex: slotIndex } : current);
   }
 
-  function commitSelection(event: ReactMouseEvent<HTMLButtonElement>, row: Row, slotIndex: number) {
-    if (!selection || selection.rowId !== row.id) return;
-    event.preventDefault();
-    const endIndex = canSelectRange(row, selection.startIndex, slotIndex) ? slotIndex : selection.endIndex;
-    const from = Math.min(selection.startIndex, endIndex);
-    const to = Math.max(selection.startIndex, endIndex);
+  function finishSelection(row: Row, slotIndex: number, activeSelection: SlotSelection) {
+    const endIndex = canSelectRange(row, activeSelection.startIndex, slotIndex) ? slotIndex : activeSelection.endIndex;
+    const from = Math.min(activeSelection.startIndex, endIndex);
+    const to = Math.max(activeSelection.startIndex, endIndex);
     const startTime = minuteLabel(slots[from]);
+    const endTime = minuteLabel(slots[to] + SLOT);
     const durationMinutes = (to - from + 1) * SLOT;
+    const selected: PlannerTimeSelection = {
+      day,
+      startTime,
+      endTime,
+      durationMinutes,
+      locationId: location.id,
+      postId: row.reception ? "" : row.id,
+    };
     const context = {
       date: day,
       time: startTime,
+      endTime,
       durationMinutes,
       locationId: location.id,
       postId: row.reception ? "" : row.id,
     };
     document.cookie = `${DURATION_COOKIE}=${durationMinutes}; Path=/; Max-Age=1800; SameSite=Lax`;
     document.cookie = `${CONTEXT_COOKIE}=${encodeURIComponent(JSON.stringify(context))}; Path=/; Max-Age=1800; SameSite=Lax`;
-    setSelection(null);
+    // Keep the range highlighted so the chosen appointment time remains visible in the grid.
+    setSelection({ rowId: row.id, startIndex: from, endIndex: to });
+    onSelection?.(selected);
     onCreate(day, startTime, row.reception ? "" : row.id);
+  }
+
+  function commitSelection(event: ReactPointerEvent<HTMLButtonElement>, row: Row, slotIndex: number) {
+    if (!selection || selection.rowId !== row.id) return;
+    event.preventDefault();
+    skipNextClickRef.current = true;
+    finishSelection(row, slotIndex, selection);
+  }
+
+  function clickSelection(row: Row, slotIndex: number) {
+    if (skipNextClickRef.current) {
+      skipNextClickRef.current = false;
+      return;
+    }
+    if (!slotAvailable(row, slotIndex)) return;
+    finishSelection(row, slotIndex, { rowId: row.id, startIndex: slotIndex, endIndex: slotIndex });
   }
 
   const resourceWidth = 164;
@@ -263,7 +308,7 @@ export function PlannerDayView<TAppointment extends AppointmentBase>({ day, loca
   const nowRatio = showNow ? (nowMinute - openMinute) / totalDayMinutes : 0;
   const nowStyle = { left: `calc(${resourceWidth}px + (100% - ${resourceWidth}px) * ${nowRatio})` } as CSSProperties;
 
-  return <div className={styles.wrap}>
+  return <div className={`${styles.wrap} ${compact ? compactStyles.root : ""}`}>
     {showMetrics && <section className={styles.kpis} aria-label="Показники дня">
       <article><span className={styles.kpiIcon}>▣</span><div><strong>{metrics.total}</strong><small>Записів<br/>на сьогодні</small></div></article>
       <article><span className={`${styles.kpiIcon} ${styles.kpiGreen}`}>✓</span><div><strong>{metrics.completed}</strong><small>Завершено</small></div></article>
@@ -273,21 +318,21 @@ export function PlannerDayView<TAppointment extends AppointmentBase>({ day, loca
       <article><span className={`${styles.kpiIcon} ${styles.kpiGreen}`}>₴</span><div><strong>{currency(metrics.revenue)}</strong><small>Очікуваний виторг<br/>за день</small></div></article>
     </section>}
 
-    <div className={styles.meta}>
+    <div className={`${styles.meta} ${compact ? compactStyles.meta : ""}`}>
       <div><strong>{location.name}</strong> · {minuteLabel(openMinute)}–{minuteLabel(closeMinute)} · крок 30 хв</div>
-      <div>{loading ? "Оновлюю доступність…" : error || "Затисніть мишу на вільній клітинці та протягніть до часу завершення"}</div>
+      <div>{loading ? "Оновлюю доступність…" : error || "Натисніть на вільний слот або протягніть до часу завершення"}</div>
     </div>
 
-    <div className={styles.board}>
-      <div className={styles.grid} style={gridStyle} onMouseLeave={() => selection && setSelection(selection)}>
-        <div className={styles.corner} style={{ gridColumn: 1, gridRow: 1 }}>Пости / ресурси</div>
-        {slots.map((minute, index) => <div className={styles.time} key={minute} style={{ gridColumn: index + 2, gridRow: 1 }}>{minuteLabel(minute)}</div>)}
+    <div className={`${styles.board} ${compact ? compactStyles.board : ""}`}>
+      <div className={`${styles.grid} ${compact ? compactStyles.grid : ""}`} style={gridStyle} onMouseLeave={() => selection && setSelection(selection)}>
+        <div className={`${styles.corner} ${compact ? compactStyles.corner : ""}`} style={{ gridColumn: 1, gridRow: 1 }}>Пости / ресурси</div>
+        {slots.map((minute, index) => <div className={`${styles.time} ${compact ? compactStyles.time : ""}`} key={minute} style={{ gridColumn: index + 2, gridRow: 1 }}>{minuteLabel(minute)}</div>)}
 
         {rows.map((row, rowIndex) => {
           const gridRow = rowIndex + 2;
           const loadPercent = resourceLoad.get(row.id) || 0;
           return <div key={row.id} style={{ display: "contents" }}>
-            <div className={styles.resource} style={{ gridColumn: 1, gridRow, "--resource-color": row.color } as CSSProperties}>
+            <div className={`${styles.resource} ${compact ? compactStyles.resource : ""}`} style={{ gridColumn: 1, gridRow, "--resource-color": row.color } as CSSProperties}>
               <div className={styles.resourceTitle}><i/><b>{row.name}</b><button type="button" tabIndex={-1} aria-hidden="true">⋮</button></div>
               <span>{row.type}</span>
               <div className={styles.resourceProgress}><i style={{ width: `${loadPercent}%` }}/></div>
@@ -298,18 +343,22 @@ export function PlannerDayView<TAppointment extends AppointmentBase>({ day, loca
               const selected = selection?.rowId === row.id && slotIndex >= Math.min(selection.startIndex, selection.endIndex) && slotIndex <= Math.max(selection.startIndex, selection.endIndex);
               const cellClass = available ? styles.free : styles.busy;
               const time = minuteLabel(minute);
+              const selectedStart = selection && selection.rowId === row.id ? Math.min(selection.startIndex, selection.endIndex) : -1;
+              const selectedEnd = selection && selection.rowId === row.id ? Math.max(selection.startIndex, selection.endIndex) : -1;
+              const selectionLabel = selected && slotIndex === selectedStart ? `${minuteLabel(slots[selectedStart])}–${minuteLabel(slots[selectedEnd] + SLOT)}` : "";
               return <button
                 type="button"
-                aria-label={`${row.name} ${time}: ${available ? "вільно" : "зайнято"}`}
+                aria-label={`${row.name} ${time}: ${available ? (selected ? `обрано ${selectionLabel}` : "вільно") : "зайнято"}`}
                 title={available ? `${row.name} · ${time} · вільно` : `${row.name} · ${time} · зайнято`}
-                className={`${styles.cell} ${cellClass} ${selected ? styles.selected : ""}`}
+                className={`${styles.cell} ${cellClass} ${selected ? styles.selected : ""} ${compact ? compactStyles.cell : ""}`}
                 key={`${row.id}-${minute}`}
                 style={{ gridColumn: slotIndex + 2, gridRow }}
                 disabled={!available}
-                onMouseDown={(event) => beginSelection(event, row, slotIndex)}
-                onMouseEnter={(event) => extendSelection(event, row, slotIndex)}
-                onMouseUp={(event) => commitSelection(event, row, slotIndex)}
-              />;
+                onPointerDown={(event) => beginSelection(event, row, slotIndex)}
+                onPointerEnter={(event) => extendSelection(event, row, slotIndex)}
+                onPointerUp={(event) => commitSelection(event, row, slotIndex)}
+                onClick={() => clickSelection(row, slotIndex)}
+              >{selectionLabel && <span className={compactStyles.selectionLabel}>{selectionLabel}</span>}</button>;
             })}
           </div>;
         })}
@@ -330,7 +379,7 @@ export function PlannerDayView<TAppointment extends AppointmentBase>({ day, loca
           return <button
             type="button"
             key={item.id}
-            className={`${styles.event} ${styles[`event_${status.tone}`]} ${done ? styles.eventDone : ""}`}
+            className={`${styles.event} ${styles[`event_${status.tone}`]} ${done ? styles.eventDone : ""} ${compact ? compactStyles.event : ""}`}
             style={{ gridColumn: `${startIndex + 2} / span ${span}`, gridRow: rowIndex + 2, "--event-color": row.color } as CSSProperties}
             onClick={() => onOpen(item)}
             title={`${item.plateNumber || "Без номера"} · ${minuteLabel(start)}–${minuteLabel(end)}`}
@@ -347,7 +396,7 @@ export function PlannerDayView<TAppointment extends AppointmentBase>({ day, loca
       {!location.posts.length && <div className={styles.empty}>У локації ще не створено жодного сервісного поста.</div>}
     </div>
 
-    <div className={styles.legend}>
+    <div className={`${styles.legend} ${compact ? compactStyles.legend : ""}`}>
       <span><i className={styles.legendGreen}/>Підтверджено</span>
       <span><i className={styles.legendBlue}/>В роботі</span>
       <span><i className={styles.legendOrange}/>Очікує запчастини</span>

@@ -88,7 +88,7 @@ export function NewRequestStep3Enhancer(){
     let lastModal:HTMLElement|null=null;
 
     const tick=()=>{
-      const modal=document.querySelector(".requestModal") as HTMLElement|null;
+      const modal=(document.querySelector('[data-page="new-request"]')||document.querySelector(".requestModal")) as HTMLElement|null;
       if(!modal){
         vehicle={...EMPTY_VEHICLE};
         selected=new Set<string>();
