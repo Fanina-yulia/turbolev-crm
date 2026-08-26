@@ -6,10 +6,20 @@ export type EntityCounts = {
   diagnosticRequests: number;
 };
 
-export type VehicleWorkflowIndicator = {
-  diagnosticCard: "NONE" | "IN_PROGRESS" | "READY";
-  commercialProposal: "NOT_SENT" | "PENDING" | "APPROVED";
-  repair: "NOT_STARTED" | "IN_PROGRESS" | "PAID";
+export type VehicleStatusTone = "success" | "warning" | "danger" | "neutral";
+
+export type VehicleStatusItem = {
+  state: string;
+  label: string;
+  tone: VehicleStatusTone;
+  targetId: string | null;
+  updatedAt: CrmDateTime | null;
+};
+
+export type VehicleStatusSummary = {
+  diagnostics: VehicleStatusItem;
+  proposal: VehicleStatusItem;
+  work: VehicleStatusItem;
 };
 
 export type ClientReference = {
@@ -168,7 +178,7 @@ export type ClientDirectoryItem = CrmClientCore & {
 export type VehicleDirectoryItem = CrmVehicleCore & {
   client: ClientReference;
   _count: EntityCounts;
-  workflow: VehicleWorkflowIndicator;
+  statusSummary?: VehicleStatusSummary;
 };
 
 export type VehicleCardContract = CrmVehicleCore & {
@@ -179,7 +189,7 @@ export type VehicleCardContract = CrmVehicleCore & {
   diagnosticRequests: DiagnosticRequestReference[];
   workOrders: WorkOrderReference[];
   _count: EntityCounts;
-  workflow: VehicleWorkflowIndicator;
+  statusSummary?: VehicleStatusSummary;
 };
 
 export type PersonnelItemContract = CrmEmployeeCore & {

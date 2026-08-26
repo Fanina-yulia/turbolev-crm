@@ -1,12 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { VehicleCardContract, VehicleDirectoryItem, VehicleWorkflowIndicator } from "@/src/lib/contracts/crm-core";
+import type { VehicleCardContract, VehicleDirectoryItem, VehicleStatusSummary } from "@/src/lib/contracts/crm-core";
 import {
   parseVehicleAppearancePayload,
   parseVehicleCardPayload,
   parseVehicleDirectoryPayload,
   parseVehicleImageRefreshPayload,
+  parseVehicleStatusSummaryPayload,
   payloadMessage,
 } from "@/src/lib/contracts/directory-payload.parsers";
 import { CustomerCabinetCard } from "./customer-cabinet-card";
@@ -41,10 +42,6 @@ function engineText(vehicle: Vehicle | VehicleCard) {
   return "—";
 }
 
-function workflowStatus(indicator: VehicleWorkflowIndicator, kind: keyof VehicleWorkflowIndicator) {
-  return indicator[kind];
-}
-
 function WorkflowIcon({ kind }: { kind: "diagnosticCard" | "commercialProposal" | "repair" }) {
   if (kind === "diagnosticCard") return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3.5h7l3 3V20.5H7z"/><path d="M14 3.5v4h4M9.5 12h5M9.5 15.5h5"/></svg>;
   if (kind === "commercialProposal") return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4.5h14v15H5z"/><path d="M8 8h8M8 11.5h8M8 15h4"/><path d="m15.5 15.5 1.2 1.2 2.3-2.5"/></svg>;
@@ -52,10 +49,15 @@ function WorkflowIcon({ kind }: { kind: "diagnosticCard" | "commercialProposal" 
 }
 
 const WORKFLOW_META = [
-  { key: "diagnosticCard", label: "Діагностична карта", states: { NONE: "Не було діагностики", IN_PROGRESS: "Діагностика триває", READY: "Сформована" } },
-  { key: "commercialProposal", label: "Комерційна пропозиція", states: { NOT_SENT: "Не відправлена", PENDING: "На розгляді", APPROVED: "Погоджена" } },
-  { key: "repair", label: "Ремонт", states: { NOT_STARTED: "Не розпочато", IN_PROGRESS: "У ремонті", PAID: "Оплачено" } },
+  { key: "diagnostics", icon: "diagnosticCard", label: "Діагностична карта" },
+  { key: "proposal", icon: "commercialProposal", label: "Комерційна пропозиція" },
+  { key: "work", icon: "repair", label: "Ремонт" },
 ] as const;
+
+function fallbackStatusSummary(): VehicleStatusSummary {
+  const empty = { state: "not_started", label: "Не розпочато", tone: "danger" as const, targetId: null, updatedAt: null };
+  return { diagnostics: { ...empty, label: "Не було" }, proposal: { ...empty, label: "Не відправлена" }, work: empty };
+}
 
 function VehicleImage({ vehicle, size = "card", eager = false }: { vehicle: Vehicle | VehicleCard; size?: "mini" | "card" | "drawer" | "hero"; eager?: boolean }) {
   return <VehicleRender
@@ -100,6 +102,15 @@ export function VehiclesDirectory() {
         setVehicles(data.vehicles);
         setTotal(data.total);
         setPages(data.pages);
+        if (data.vehicles.length) {
+          const statusResponse = await fetch(`/api/vehicles/status-summary?ids=${data.vehicles.map((vehicle) => encodeURIComponent(vehicle.id)).join(",")}`, { cache: "no-store", signal: controller.signal });
+          const statusPayload: unknown = await statusResponse.json().catch(() => null);
+          const statuses = parseVehicleStatusSummaryPayload(statusPayload);
+          if (statuses) {
+            const byVehicle = new Map(statuses.vehicles.map((item) => [item.vehicleId, item.statusSummary]));
+            setVehicles((current) => current.map((vehicle) => ({ ...vehicle, statusSummary: byVehicle.get(vehicle.id) || vehicle.statusSummary })));
+          }
+        }
         if (data.page !== page) setPage(data.page);
       } catch (cause) {
         if ((cause as Error).name !== "AbortError") setError(cause instanceof Error ? cause.message : "Помилка завантаження");
@@ -216,10 +227,10 @@ export function VehiclesDirectory() {
           <span>{vehicle.client.phone}</span>
         </div>
         <div className={workflowStyles.workflow} aria-label="Статуси автомобіля">
-          {WORKFLOW_META.map(({ key, label, states }) => {
-            const status = workflowStatus(vehicle.workflow, key);
-            return <span className={workflowStyles.workflowItem} key={key} title={`${label}: ${(states as Record<string, string>)[status] || status}`}>
-              <i className={`${workflowStyles.workflowIcon} ${workflowStyles[`workflow_${status}`]}`}><WorkflowIcon kind={key} /></i>
+          {WORKFLOW_META.map(({ key, label, icon }) => {
+            const status = vehicle.statusSummary?.[key] || fallbackStatusSummary()[key];
+            return <span className={workflowStyles.workflowItem} key={key} title={`${label}: ${status.label}`}>
+              <i className={`${workflowStyles.workflowIcon} ${workflowStyles[`workflow_${status.tone}`]}`}><WorkflowIcon kind={icon} /></i>
               <small>{label}</small>
             </span>;
           })}

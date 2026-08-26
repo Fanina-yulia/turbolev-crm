@@ -19,9 +19,9 @@
 .workflowItem small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:10px;text-transform:uppercase;letter-spacing:.02em}
 .workflowIcon{width:29px;height:29px;display:grid;place-items:center;flex:0 0 auto;border:1px solid currentColor;border-radius:9px}
 .workflowIcon svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-linecap:round;stroke-linejoin:round;stroke-width:1.7}
-.workflow_NONE,.workflow_NOT_SENT,.workflow_NOT_STARTED{color:#ef4444;background:rgba(239,68,68,.08)}
-.workflow_IN_PROGRESS,.workflow_PENDING{color:#d97706;background:rgba(217,119,6,.1)}
-.workflow_READY,.workflow_APPROVED,.workflow_PAID{color:#16a34a;background:rgba(22,163,74,.1)}
+.workflow_danger{color:#ef4444;background:rgba(239,68,68,.08)}
+.workflow_warning{color:#d97706;background:rgba(217,119,6,.1)}
+.workflow_success{color:#16a34a;background:rgba(22,163,74,.1)}
 
 @media(max-width:760px){
   .workflowItem{gap:5px;padding:9px 4px}
