@@ -1,0 +1,62 @@
+.identity {
+  gap: 4px !important;
+  min-width: 0;
+}
+
+.plateRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  margin-top: 3px;
+  flex-wrap: wrap;
+}
+
+.plateRow .label {
+  color: var(--muted) !important;
+  font-size: 12px !important;
+  font-weight: 700;
+}
+
+.plateRow .plate {
+  height: 44px;
+  border-radius: 7px;
+  color: #10151b !important;
+  font-size: 22px !important;
+  box-shadow: 0 2px 5px rgb(0 0 0 / 20%);
+}
+
+.plateRow .plate > span:first-child {
+  width: 23px;
+  color: #fff !important;
+}
+
+.plateRow .plate > span:last-child {
+  padding-right: 11px;
+  padding-left: 11px;
+  color: #10151b !important;
+  font-size: inherit !important;
+}
+
+.plateRow .vin {
+  min-width: 0;
+  color: var(--soft-text) !important;
+  font-size: 12px !important;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 560px) {
+  .plateRow {
+    gap: 6px;
+  }
+
+  .plateRow .label,
+  .plateRow .vin {
+    flex-basis: 100%;
+  }
+
+  .plateRow .plate {
+    height: 42px;
+    font-size: 21px !important;
+  }
+}
