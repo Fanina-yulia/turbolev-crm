@@ -35,7 +35,7 @@ export type CrmRouteParams = {
   supplierId?: string;
   provider?: string;
   newRequest?: string;
-  workflowFocus?: "diagnostics" | "proposal" | "repair";
+  workflowFocus?: string;
 };
 
 export const CRM_ROUTE_KEYS: Array<keyof CrmRouteParams> = [
