@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getPrisma } from "@/src/lib/prisma";
 import type { VehicleStatusItem, VehicleStatusSummary, VehicleStatusTone } from "@/src/lib/contracts/crm-core";
+import { getDiagnosticVehicleStatuses } from "@/src/services/diagnostic-vehicle-status.service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -26,16 +27,6 @@ function item(
   updatedAt: Date | null | undefined,
 ): VehicleStatusItem {
   return { state, label, tone, targetId, updatedAt: updatedAt ? updatedAt.toISOString() : null };
-}
-
-function diagnosticStatus(row: { id: string; status: string; updatedAt: Date; confirmedAt: Date | null } | null): VehicleStatusItem {
-  if (!row || row.status === "CANCELLED") {
-    return item("not_started", "Не було", "danger", row?.id || null, row?.updatedAt);
-  }
-  if (row.status === "CONFIRMED" || row.confirmedAt) {
-    return item("completed", "Сформована", "success", row.id, row.updatedAt);
-  }
-  return item("in_progress", "Триває", "warning", row.id, row.updatedAt);
 }
 
 function proposalStatus(row: {
@@ -96,32 +87,30 @@ export async function GET(request: NextRequest) {
 
   try {
     const prisma = getPrisma();
-    const vehicles = await prisma.vehicle.findMany({
-      where: { id: { in: ids } },
-      select: {
-        id: true,
-        diagnosticRequests: {
-          orderBy: [{ updatedAt: "desc" }, { createdAt: "desc" }],
-          take: 1,
-          select: { id: true, status: true, updatedAt: true, confirmedAt: true },
-        },
-        workOrders: {
-          orderBy: [{ updatedAt: "desc" }, { createdAt: "desc" }],
-          take: 1,
-          select: {
-            id: true,
-            status: true,
-            closedAt: true,
-            updatedAt: true,
-            estimates: {
-              orderBy: [{ revision: "desc" }, { updatedAt: "desc" }],
-              take: 1,
-              select: { id: true, status: true, updatedAt: true, sentAt: true, approvedAt: true, rejectedAt: true },
+    const [vehicles, diagnosticStatuses] = await Promise.all([
+      prisma.vehicle.findMany({
+        where: { id: { in: ids } },
+        select: {
+          id: true,
+          workOrders: {
+            orderBy: [{ updatedAt: "desc" }, { createdAt: "desc" }],
+            take: 1,
+            select: {
+              id: true,
+              status: true,
+              closedAt: true,
+              updatedAt: true,
+              estimates: {
+                orderBy: [{ revision: "desc" }, { updatedAt: "desc" }],
+                take: 1,
+                select: { id: true, status: true, updatedAt: true, sentAt: true, approvedAt: true, rejectedAt: true },
+              },
             },
           },
         },
-      },
-    });
+      }),
+      getDiagnosticVehicleStatuses(ids),
+    ]);
 
     const workOrderIds = vehicles
       .map((vehicle) => vehicle.workOrders[0]?.id)
@@ -142,12 +131,11 @@ export async function GET(request: NextRequest) {
     }
 
     const result = vehicles.map((vehicle) => {
-      const diagnostic = vehicle.diagnosticRequests[0] || null;
       const workOrder = vehicle.workOrders[0] || null;
       const estimate = workOrder?.estimates[0] || null;
       const obligation = workOrder ? obligationsByWorkOrder.get(workOrder.id) || null : null;
       const statuses: VehicleStatusSummary = {
-        diagnostics: diagnosticStatus(diagnostic),
+        diagnostics: diagnosticStatuses.get(vehicle.id) || item("not_started", "Не було", "danger", null, null),
         proposal: proposalStatus(estimate, workOrder?.id || null),
         work: workStatus(workOrder, obligation),
       };

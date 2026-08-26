@@ -1,6 +1,7 @@
 import { DiagnosticRequestStatus, Prisma } from "@/src/generated/prisma/client";
 import { getPrisma } from "@/src/lib/prisma";
 import { toPrismaJson } from "@/src/lib/prisma-json";
+import { linkDiagnosticVisit } from "@/src/services/diagnostic-visit-link.service";
 import { startStructuredDiagnostic } from "@/src/services/structured-diagnostics.service";
 
 const CLOSED_APPOINTMENT_STATUSES = ["CANCELLED", "NO_SHOW", "RESERVE", "COMPLETED"] as const;
@@ -356,6 +357,12 @@ export async function startMechanicWalkInDiagnostic(userId: string, input: Mecha
     };
   }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
 
+  await linkDiagnosticVisit({
+    diagnosticRequestId: created.diagnosticRequestId,
+    appointmentId: created.appointmentId,
+    vehicleId: created.vehicleId,
+    source: "WALK_IN",
+  });
   await startStructuredDiagnostic(userId, created.diagnosticRequestId);
   await prisma.serviceAppointment.updateMany({
     where: { id: created.appointmentId, source: WALK_IN_SOURCE, status: { in: ["ARRIVED", "DIAGNOSTICS"] } },

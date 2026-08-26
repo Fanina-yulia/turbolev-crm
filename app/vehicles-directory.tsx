@@ -86,6 +86,7 @@ export function VehiclesDirectory() {
   const [vehicleCard, setVehicleCard] = useState<VehicleCard | null>(null);
   const [vehicleLoading, setVehicleLoading] = useState(false);
   const [drawerTab, setDrawerTab] = useState<VehicleDrawerTab>("overview");
+  const vehicleIds = vehicles.map((vehicle) => vehicle.id).join(",");
 
   useEffect(() => {
     const controller = new AbortController();
@@ -123,6 +124,30 @@ export function VehiclesDirectory() {
       window.clearTimeout(timer);
     };
   }, [query, page]);
+
+  useEffect(() => {
+    if (!vehicleIds) return;
+    const controller = new AbortController();
+    const refreshStatuses = async () => {
+      try {
+        const encodedIds = vehicleIds.split(",").map((id) => encodeURIComponent(id)).join(",");
+        const statusResponse = await fetch(`/api/vehicles/status-summary?ids=${encodedIds}`, { cache: "no-store", signal: controller.signal });
+        const statusPayload: unknown = await statusResponse.json().catch(() => null);
+        const statuses = parseVehicleStatusSummaryPayload(statusPayload);
+        if (!statusResponse.ok || !statuses) return;
+        const byVehicle = new Map(statuses.vehicles.map((item) => [item.vehicleId, item.statusSummary]));
+        setVehicles((current) => current.map((vehicle) => ({ ...vehicle, statusSummary: byVehicle.get(vehicle.id) || vehicle.statusSummary })));
+      } catch (cause) {
+        if (cause instanceof Error && cause.name !== "AbortError") console.error("Vehicle status live refresh failed", cause);
+      }
+    };
+    const onDataChanged = () => void refreshStatuses();
+    window.addEventListener("turbolev:data-changed", onDataChanged);
+    return () => {
+      controller.abort();
+      window.removeEventListener("turbolev:data-changed", onDataChanged);
+    };
+  }, [vehicleIds]);
 
   useEffect(() => {
     const syncFromRoute = () => setVehicleId(readCrmRoute().vehicleId || null);
