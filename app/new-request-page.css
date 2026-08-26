@@ -2,18 +2,55 @@
   position:relative;
   width:100%;
   min-height:calc(100dvh - 112px);
+  display:flex;
+  flex-direction:column;
   overflow:visible;
   background:var(--panel);
   border:1px solid var(--line);
   border-radius:18px;
   box-shadow:0 12px 40px rgba(0,0,0,.08);
 }
-.requestPage.requestModal{width:100%!important;max-height:none!important;overflow:visible;border-radius:18px;box-shadow:0 12px 40px rgba(0,0,0,.08)}
-.requestPage.requestModalV4{width:100%!important;max-width:none!important;max-height:none!important}
-.requestPage .requestModalHead{position:sticky;top:0;z-index:12}
-.requestPage .requestScroll{overflow:visible;min-height:0}
-.requestPage .requestBody{overflow:visible}
-.requestPage .requestActions{position:sticky;bottom:0;z-index:12;border-radius:0 0 18px 18px}
+.requestPage.requestModal,
+.requestPage.requestModalV4{
+  width:100%!important;
+  max-width:none!important;
+  max-height:none!important;
+  min-height:calc(100dvh - 112px)!important;
+  overflow:visible!important;
+  display:flex!important;
+  flex-direction:column!important;
+  border-radius:18px;
+  box-shadow:0 12px 40px rgba(0,0,0,.08);
+}
+.requestPage .requestModalHead{
+  position:relative;
+  inset:auto;
+  z-index:auto;
+  flex:0 0 auto;
+}
+.requestPage .requestStepper{
+  position:relative;
+  inset:auto;
+  z-index:auto;
+  flex:0 0 auto;
+}
+.requestPage .requestScroll{
+  flex:0 0 auto;
+  min-height:0;
+  max-height:none!important;
+  overflow:visible!important;
+  overscroll-behavior:auto;
+}
+.requestPage .requestBody{overflow:visible;min-height:0}
+.requestPage .requestActions{
+  position:relative;
+  inset:auto;
+  z-index:auto;
+  flex:0 0 auto;
+  margin-top:0;
+  border-radius:0 0 18px 18px;
+  box-shadow:none;
+}
 .requestPage .requestClose{font-size:20px;min-width:42px}
 .requestPlannerTitleLine{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .requestCalendarControl{position:relative;display:inline-flex}
@@ -37,5 +74,7 @@
 .requestPlannerSelection div>span{font-size:12px;color:var(--soft-text)}
 .requestPlannerSelection label{display:grid;gap:6px}
 .requestPlannerSelection select{height:42px;border:1px solid var(--line);border-radius:10px;background:var(--panel);color:var(--text);padding:0 10px;font:inherit;font-size:12px}
-@media(max-width:900px){.requestPlannerSelection{grid-template-columns:1fr}.requestPage{min-height:calc(100dvh - 70px)}}
-@media(max-width:760px){.requestPage,.requestPage.requestModal{border-radius:12px;min-height:calc(100dvh - 36px)}.requestPage .requestModalHead{padding:15px 14px}.requestPage .requestModalHead h2{font-size:20px}.requestPage .requestStepperV4{padding:8px 12px}.requestPage .requestBody{padding:16px 12px 20px}.requestPage .requestActions{border-radius:0 0 12px 12px;padding:10px 12px}.requestPlannerHint{width:100%}}
+@media(max-width:900px){.requestPlannerSelection{grid-template-columns:1fr}.requestPage,.requestPage.requestModal,.requestPage.requestModalV4{min-height:calc(100dvh - 70px)!important}}
+@media(max-width:760px){.requestPage,.requestPage.requestModal,.requestPage.requestModalV4{border-radius:12px;min-height:calc(100dvh - 36px)!important}.requestPage .requestModalHead{padding:15px 14px}.requestPage .requestModalHead h2{font-size:20px}.requestPage .requestStepperV4{padding:8px 12px}.requestPage .requestBody{padding:16px 12px 20px}.requestPage .requestActions{border-radius:0 0 12px 12px;padding:10px 12px}.requestPlannerHint{width:100%}}
+.requestPlannerStep{gap:8px}.requestPlannerStep .requestStepTitle{margin-bottom:0}.requestPlannerStep .fastLocationSelect{margin:0}.requestPlannerStep .requestPlannerSelection{margin-top:0;padding:8px 10px;gap:8px}.requestPlannerStep .requestPlannerSelection strong{font-size:13px}.requestPlannerStep .requestPlannerSelection select{height:36px}.requestPlannerStep .requestPlannerSelection small,.requestPlannerStep .requestPlannerSelection label>span{font-size:12px}.requestPlannerStep .requestPlannerSelection div>span{font-size:12px}.requestPlannerStep .requestMessage{padding:8px 10px;font-size:12px}
+@media(max-width:900px){.requestPlannerStep .requestStepTitle{gap:8px}.requestPlannerStep .requestStatus{font-size:12px}.requestPlannerStep .requestPlannerSelection{grid-template-columns:1fr}.requestPlannerStep .requestPlannerSelection select{height:38px}}

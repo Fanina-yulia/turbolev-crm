@@ -3,7 +3,7 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import type { PlannerAppointmentContract, PlannerLocationContract } from "@/src/lib/contracts/planner";
 import { parsePlannerBoardPayload, plannerPayloadMessage } from "@/src/lib/contracts/planner-payload.parsers";
-import { PlannerDayView } from "./planner-day-view";
+import { PlannerDayView, type PlannerTimeSelection } from "./planner-day-view";
 import { navigateCrm } from "./crm-route";
 import { VehiclePlate } from "./vehicle-plate";
 import foundVehicleStyles from "./new-request-wizard-vehicle-found.module.css";
@@ -97,6 +97,7 @@ export function NewRequestWizardV5({showButton=true,onOpenChange}:NewRequestWiza
   const [users,setUsers]=useState<UserOption[]>([]);
   const [locations,setLocations]=useState<PlannerLocationContract[]>([]);
   const [plannerAppointments,setPlannerAppointments]=useState<PlannerAppointmentContract[]>([]);
+  const [plannerSelection,setPlannerSelection]=useState<PlannerTimeSelection|null>(null);
   const [plannerLoading,setPlannerLoading]=useState(false);
   const [preliminaryWorks,setPreliminaryWorks]=useState<PreliminaryWork[]>([]);
   const [preliminaryTotal,setPreliminaryTotal]=useState(0);
@@ -345,6 +346,7 @@ export function NewRequestWizardV5({showButton=true,onOpenChange}:NewRequestWiza
     setPreliminaryTotal(0);
     setLocations([]);
     setPlannerAppointments([]);
+    setPlannerSelection(null);
     plannerLoadedDateRef.current="";
     setOpen(true);
     onOpenChange?.(true);
@@ -677,7 +679,12 @@ export function NewRequestWizardV5({showButton=true,onOpenChange}:NewRequestWiza
 
   return <>
     {showButton&&<button className="primary" type="button" onClick={()=>openWith()}>+ Нова заявка</button>}
-    {open&&<form className="requestPage requestModal requestModalV4 requestFastIntake" onSubmit={saveRequest}>
+    {open&&<form
+      className="requestPage requestModal requestModalV4 requestFastIntake"
+      data-surface="page"
+      data-page="new-request"
+      onSubmit={saveRequest}
+    >
         <div className="requestModalHead">
           <div>
             <p className="eyebrow">TURBO LEV · НОВА ЗАЯВКА</p>
@@ -884,7 +891,7 @@ export function NewRequestWizardV5({showButton=true,onOpenChange}:NewRequestWiza
               </div>
             </section>}
 
-            {step===4&&<section className="requestStep requestFastStep">
+            {step===4&&<section className="requestStep requestFastStep requestPlannerStep">
               <div className="requestStepTitle">
                 <div>
                   <small>КРОК 4</small>
@@ -908,6 +915,7 @@ export function NewRequestWizardV5({showButton=true,onOpenChange}:NewRequestWiza
                           const value=event.target.value;
                           if(!value)return;
                           setForm(current=>({...current,appointmentDate:value,appointmentTime:"",postId:"",mechanicId:""}));
+                          setPlannerSelection(null);
                           setError("");
                         }}
                         aria-label="Дата запису"
@@ -923,6 +931,7 @@ export function NewRequestWizardV5({showButton=true,onOpenChange}:NewRequestWiza
                 <select value={form.locationId} onChange={event=>{
                   const location=locations.find(item=>item.id===event.target.value);
                   setForm(current=>({...current,locationId:event.target.value,postId:location?.posts.length===1?location.posts[0].id:"",mechanicId:location?.mechanics.length===1?location.mechanics[0].id:""}));
+                  setPlannerSelection(null);
                 }}>
                   {locations.map(location=><option value={location.id} key={location.id}>{location.name}</option>)}
                 </select>
@@ -934,6 +943,7 @@ export function NewRequestWizardV5({showButton=true,onOpenChange}:NewRequestWiza
                 location={activeLocation}
                 appointments={plannerAppointments}
                 showMetrics={false}
+                compact
                 onOpen={appointment=>setError(`Цей час уже зайнятий записом ${appointment.plateNumber||appointment.id}. Оберіть вільну клітинку.`)}
                 onCreate={(day,time,postId)=>{
                   if(!postId){
@@ -946,10 +956,11 @@ export function NewRequestWizardV5({showButton=true,onOpenChange}:NewRequestWiza
                   update("mechanicId","");
                   setError("");
                 }}
+                onSelection={selection=>setPlannerSelection(selection)}
               />}
 
               {form.appointmentTime&&<div className="requestPlannerSelection">
-                <div><small>Обраний слот</small><strong>{form.appointmentDate} · {form.appointmentTime}</strong><span>{activeLocation?.posts.find(post=>post.id===form.postId)?.name||"Зона приймання"}</span></div>
+                <div><small>Обраний слот</small><strong>{form.appointmentDate} · {form.appointmentTime}{plannerSelection?.endTime?`–${plannerSelection.endTime}`:""}</strong><span>{activeLocation?.posts.find(post=>post.id===form.postId)?.name||"Зона приймання"}{plannerSelection?.durationMinutes?` · ${plannerSelection.durationMinutes} хв`:""}</span></div>
                 <label><span>Майстер *</span><select value={form.mechanicId} onChange={event=>update("mechanicId",event.target.value)} disabled={plannerLoading||!activeLocation}>
                   <option value="">Оберіть майстра</option>
                   {activeLocation?.mechanics.map(mechanic=><option key={mechanic.id} value={mechanic.id}>{mechanic.name}</option>)}

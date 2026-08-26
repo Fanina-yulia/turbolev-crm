@@ -1,7 +1,13 @@
 .workspaceRequestOpen{
   padding-top:24px!important;
+  padding-bottom:clamp(28px,4vw,60px)!important;
+  min-height:0!important;
+  overflow:visible!important;
 }
 
 .workspaceRequestOpen > div{
+  display:block;
   width:100%;
+  min-width:0;
+  max-width:none;
 }

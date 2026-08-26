@@ -96,7 +96,7 @@ export function NewRequestPricingBridge(){
   useEffect(()=>{
     let wasOpen=false;
     const tick=()=>{
-      const modal=document.querySelector(".requestModal") as HTMLElement|null;
+      const modal=(document.querySelector('[data-page="new-request"]')||document.querySelector(".requestModal")) as HTMLElement|null;
       if(!modal){
         if(wasOpen){setHost(null);setStep(0);setVehicle(EMPTY_VEHICLE);setPricing(null);setCatalog([]);setSelected([]);setManualWorks([]);setManualInput("");setCalculation(null);setQuery("");setCategory("");setError("")}
         wasOpen=false;
