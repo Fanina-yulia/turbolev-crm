@@ -36,6 +36,12 @@ assertIncludes("app/crm-route.ts", [
   "settingsTab?: string",
   "supplierId?: string",
   "provider?: string",
+  "function canonicalNavigation",
+  'section === "Виробництво"',
+  'scope = "resources"',
+  'section: "Планувальник"',
+  'section === "Контроль якості"',
+  'workOrderTab = context.workOrderTab || "qc"',
 ]);
 
 assertIncludes("app/planner-workspace.tsx", [
@@ -112,6 +118,10 @@ assertIncludes("app/business-flow-route-bridge.tsx", [
   "resolveLegacyClientVehicle",
   'navigateCrm("Клієнти", { clientId: client.id })',
   'navigateCrm("Авто", { vehicleId: vehicle.id })',
+  "resolveDiagnosticVehicleRoute",
+  'fetch("/api/diagnostics?limit=500"',
+  "current.vehicleId !== vehicleId",
+  "diagnosticVehicleApplied",
 ]);
 
 const appFiles = walk(path.join(ROOT, "app"));
