@@ -103,6 +103,14 @@ assertNotIncludes("app/qc-queue.tsx", [
   'navigateCrm("Виробництво", { status: "REWORK" })',
 ]);
 
+assertIncludes("app/production-board.tsx", [
+  '["BLOCKED", "Блокери / пауза"]',
+  'const BLOCKED_STATUSES = new Set(["WAITING_PARTS", "PAUSED", "REWORK"]);',
+  'if (filter === "BLOCKED") return BLOCKED_STATUSES.has(card.status);',
+  'onClick={() => setFilter("BLOCKED")}',
+  'data.cards.filter((card) => matchesProductionFilter(card, code)).length',
+]);
+
 assertIncludes("app/global-smart-search.tsx", [
   'type: "diagnostic"',
   'type: "appointment"',
