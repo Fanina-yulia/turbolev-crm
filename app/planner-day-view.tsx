@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
+import { zonedDateTimeToDate } from "@/src/lib/zoned-time";
 import styles from "./planner-day-view.module.css";
 import compactStyles from "./planner-day-view-compact.module.css";
 
@@ -35,6 +36,16 @@ type AvailabilitySlot = { time: string; posts: Array<{ id: string; available: bo
 type AvailabilityResponse = { status: string; slots?: AvailabilitySlot[]; message?: string };
 type Row = { id: string; name: string; type: string; reception?: boolean; color: string };
 type SlotSelection = { rowId: string; startIndex: number; endIndex: number };
+type ResizeEdge = "start" | "end";
+type ResizeState = {
+  id: string;
+  edge: ResizeEdge;
+  startMinute: number;
+  endMinute: number;
+  originalStartMinute: number;
+  originalEndMinute: number;
+  valid: boolean;
+};
 type StatusMeta = { label: string; tone: "blue" | "green" | "orange" | "amber" | "red" | "gray" | "violet" | "cyan" };
 
 export type PlannerTimeSelection = {
@@ -111,13 +122,14 @@ function currency(value: number) {
   return new Intl.NumberFormat("uk-UA", { style: "currency", currency: "UAH", maximumFractionDigits: 0 }).format(value);
 }
 
-export function PlannerDayView<TAppointment extends AppointmentBase>({ day, location, appointments, onOpen, onCreate, onSelection, showMetrics = true, compact = false }: {
+export function PlannerDayView<TAppointment extends AppointmentBase>({ day, location, appointments, onOpen, onCreate, onSelection, onResize, showMetrics = true, compact = false }: {
   day: string;
   location: Location;
   appointments: TAppointment[];
   onOpen: (appointment: TAppointment) => void;
   onCreate: (day: string, time: string, postId: string) => void;
   onSelection?: (selection: PlannerTimeSelection) => void;
+  onResize?: (appointment: TAppointment, day: string, startTime: string, endTime: string) => Promise<boolean>;
   showMetrics?: boolean;
   compact?: boolean;
 }) {
@@ -125,6 +137,9 @@ export function PlannerDayView<TAppointment extends AppointmentBase>({ day, loca
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [selection, setSelection] = useState<SlotSelection | null>(null);
+  const [resize, setResize] = useState<ResizeState | null>(null);
+  const resizeRef = useRef<ResizeState | null>(null);
+  const gridRef = useRef<HTMLDivElement | null>(null);
   const skipNextClickRef = useRef(false);
   const timeZone = location.timezone || "Europe/Kyiv";
   const openMinute = Number.isFinite(location.openMinute) ? location.openMinute : 540;
@@ -171,6 +186,8 @@ export function PlannerDayView<TAppointment extends AppointmentBase>({ day, loca
   useEffect(() => {
     setSelection(null);
     skipNextClickRef.current = false;
+    setResize(null);
+    resizeRef.current = null;
   }, [day, location.id]);
 
   const dayAppointments = useMemo(() => appointments
@@ -213,6 +230,24 @@ export function PlannerDayView<TAppointment extends AppointmentBase>({ day, loca
     return { total: dayAppointments.length, completed, inProgress, waiting, freeSlots, revenue };
   }, [dayAppointments, availabilityMap]);
 
+  const resizeHandler = onResize ?? (async (item: TAppointment, resizeDay: string, startTime: string, endTime: string) => {
+    const start = zonedDateTimeToDate(resizeDay, startTime, timeZone);
+    const end = zonedDateTimeToDate(resizeDay, endTime, timeZone);
+    try {
+      const response = await fetch(`/api/planner/${item.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ plannedStartAt: start.toISOString(), plannedEndAt: end.toISOString() }),
+      });
+      const payload = await response.json().catch(() => null) as { status?: string } | null;
+      if (!response.ok || payload?.status !== "OK") return false;
+      window.dispatchEvent(new Event("turbolev:planner-refresh"));
+      return true;
+    } catch {
+      return false;
+    }
+  });
+
   function rowHasAppointment(row: Row, minute: number) {
     const slotEnd = minute + SLOT;
     return dayAppointments.some((item) => {
@@ -238,6 +273,90 @@ export function PlannerDayView<TAppointment extends AppointmentBase>({ day, loca
     }
     return true;
   }
+
+  function canResizeAppointment(item: TAppointment, startMinute: number, endMinute: number) {
+    if (startMinute < openMinute || endMinute > closeMinute || endMinute - startMinute < SLOT) return false;
+    return !dayAppointments.some((other) => {
+      if (other.id === item.id || NON_BLOCKING.has(other.status)) return false;
+      if (other.postId !== item.postId) return false;
+      const otherStart = localParts(other.plannedStartAt, timeZone).minute;
+      const otherEnd = localParts(other.plannedEndAt, timeZone).minute;
+      return otherStart < endMinute && otherEnd > startMinute;
+    });
+  }
+
+  function minuteBoundaryFromPointer(clientX: number) {
+    const grid = gridRef.current;
+    if (!grid || !slots.length) return null;
+    const rect = grid.getBoundingClientRect();
+    const timeWidth = rect.width - resourceWidth;
+    if (timeWidth <= 0) return null;
+    const rawIndex = Math.round(((clientX - rect.left - resourceWidth) / timeWidth) * slots.length);
+    const index = Math.max(0, Math.min(slots.length, rawIndex));
+    return openMinute + index * SLOT;
+  }
+
+  function startResize(event: ReactPointerEvent<HTMLSpanElement>, item: TAppointment, edge: ResizeEdge) {
+    if (NON_BLOCKING.has(item.status)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const originalStartMinute = localParts(item.plannedStartAt, timeZone).minute;
+    const originalEndMinute = Math.max(originalStartMinute + SLOT, localParts(item.plannedEndAt, timeZone).minute);
+    const next: ResizeState = {
+      id: item.id,
+      edge,
+      startMinute: originalStartMinute,
+      endMinute: originalEndMinute,
+      originalStartMinute,
+      originalEndMinute,
+      valid: true,
+    };
+    resizeRef.current = next;
+    setResize(next);
+  }
+
+  useEffect(() => {
+    if (!resize) return;
+    const onPointerMove = (event: PointerEvent) => {
+      const active = resizeRef.current;
+      if (!active) return;
+      event.preventDefault();
+      const boundary = minuteBoundaryFromPointer(event.clientX);
+      if (boundary == null) return;
+      const nextStart = active.edge === "start" ? boundary : active.originalStartMinute;
+      const nextEnd = active.edge === "end" ? boundary : active.originalEndMinute;
+      const item = dayAppointments.find((appointment) => appointment.id === active.id);
+      const next = {
+        ...active,
+        startMinute: nextStart,
+        endMinute: nextEnd,
+        valid: Boolean(item && canResizeAppointment(item, nextStart, nextEnd)),
+      };
+      resizeRef.current = next;
+      setResize(next);
+    };
+    const onPointerUp = () => {
+      const active = resizeRef.current;
+      resizeRef.current = null;
+      setResize(null);
+      if (!active || !active.valid || (active.startMinute === active.originalStartMinute && active.endMinute === active.originalEndMinute)) return;
+      const item = dayAppointments.find((appointment) => appointment.id === active.id);
+      if (!item) return;
+      const startTime = minuteLabel(active.startMinute);
+      const endTime = minuteLabel(active.endMinute);
+      void resizeHandler(item, day, startTime, endTime).then((ok) => {
+        if (!ok) setError("Не вдалося змінити час: пост або механік зайнятий у цьому діапазоні.");
+      });
+    };
+    window.addEventListener("pointermove", onPointerMove, { passive: false });
+    window.addEventListener("pointerup", onPointerUp);
+    window.addEventListener("pointercancel", onPointerUp);
+    return () => {
+      window.removeEventListener("pointermove", onPointerMove);
+      window.removeEventListener("pointerup", onPointerUp);
+      window.removeEventListener("pointercancel", onPointerUp);
+    };
+  }, [resize, resizeHandler, dayAppointments, day, openMinute, timeZone, slots]);
 
   function beginSelection(event: ReactPointerEvent<HTMLButtonElement>, row: Row, slotIndex: number) {
     if (event.button !== 0 || !slotAvailable(row, slotIndex)) return;
@@ -324,7 +443,7 @@ export function PlannerDayView<TAppointment extends AppointmentBase>({ day, loca
     </div>
 
     <div className={`${styles.board} ${compact ? compactStyles.board : ""}`}>
-      <div className={`${styles.grid} ${compact ? compactStyles.grid : ""}`} style={gridStyle} onMouseLeave={() => selection && setSelection(selection)}>
+      <div ref={gridRef} className={`${styles.grid} ${compact ? compactStyles.grid : ""}`} style={gridStyle} onMouseLeave={() => selection && setSelection(selection)}>
         <div className={`${styles.corner} ${compact ? compactStyles.corner : ""}`} style={{ gridColumn: 1, gridRow: 1 }}>Пости / ресурси</div>
         {slots.map((minute, index) => <div className={`${styles.time} ${compact ? compactStyles.time : ""}`} key={minute} style={{ gridColumn: index + 2, gridRow: 1 }}>{minuteLabel(minute)}</div>)}
 
@@ -366,8 +485,11 @@ export function PlannerDayView<TAppointment extends AppointmentBase>({ day, loca
         {dayAppointments.map((item) => {
           const rowIndex = item.postId ? rows.findIndex((row) => row.id === item.postId) : rows.findIndex((row) => row.reception);
           if (rowIndex < 0) return null;
-          const start = localParts(item.plannedStartAt, timeZone).minute;
-          const end = localParts(item.plannedEndAt, timeZone).minute;
+          const originalStart = localParts(item.plannedStartAt, timeZone).minute;
+          const originalEnd = localParts(item.plannedEndAt, timeZone).minute;
+          const preview = resize?.id === item.id ? resize : null;
+          const start = preview?.startMinute ?? originalStart;
+          const end = preview?.endMinute ?? originalEnd;
           const clippedStart = Math.max(openMinute, start);
           const clippedEnd = Math.min(closeMinute, Math.max(clippedStart + SLOT, end));
           if (clippedStart >= closeMinute || clippedEnd <= openMinute) return null;
@@ -379,11 +501,37 @@ export function PlannerDayView<TAppointment extends AppointmentBase>({ day, loca
           return <button
             type="button"
             key={item.id}
-            className={`${styles.event} ${styles[`event_${status.tone}`]} ${done ? styles.eventDone : ""} ${compact ? compactStyles.event : ""}`}
+            className={`${styles.event} ${styles[`event_${status.tone}`]} ${done ? styles.eventDone : ""} ${compact ? compactStyles.event : ""} ${preview ? styles.eventResizing : ""} ${preview && !preview.valid ? styles.eventResizeInvalid : ""}`}
             style={{ gridColumn: `${startIndex + 2} / span ${span}`, gridRow: rowIndex + 2, "--event-color": row.color } as CSSProperties}
             onClick={() => onOpen(item)}
             title={`${item.plateNumber || "Без номера"} · ${minuteLabel(start)}–${minuteLabel(end)}`}
           >
+            {!NON_BLOCKING.has(item.status) && <>
+              <span
+                className={`${styles.resizeHandle} ${styles.resizeHandleStart}`}
+                role="slider"
+                tabIndex={0}
+                aria-label="Змінити час початку запису"
+                aria-valuemin={openMinute}
+                aria-valuemax={closeMinute - SLOT}
+                aria-valuenow={start}
+                onPointerDown={(event) => startResize(event, item, "start")}
+                onPointerUp={(event) => event.stopPropagation()}
+                onClick={(event) => event.stopPropagation()}
+              />
+              <span
+                className={`${styles.resizeHandle} ${styles.resizeHandleEnd}`}
+                role="slider"
+                tabIndex={0}
+                aria-label="Змінити час завершення запису"
+                aria-valuemin={openMinute + SLOT}
+                aria-valuemax={closeMinute}
+                aria-valuenow={end}
+                onPointerDown={(event) => startResize(event, item, "end")}
+                onPointerUp={(event) => event.stopPropagation()}
+                onClick={(event) => event.stopPropagation()}
+              />
+            </>}
             <small className={styles.eventTime}>{minuteLabel(start)}–{minuteLabel(end)}</small>
             <strong>{item.plateNumber || "БЕЗ НОМЕРА"}</strong>
             <b>{item.vehicleLabel || "Автомобіль"}</b>
