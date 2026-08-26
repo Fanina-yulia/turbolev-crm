@@ -10,6 +10,7 @@ import "./sidebar-groups.css";
 import "./crm-core.css";
 import "./new-request-wizard.css";
 import "./new-request-wizard-v4.css";
+import "./new-request-page.css";
 import "./vehicle-identification-v3.css";
 import "./vehicle-configuration.css";
 import "./vehicle-lookup.css";
