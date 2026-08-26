@@ -6,6 +6,11 @@ import {
   updateQualityControl,
   WorkOrderQualityError,
 } from "@/src/services/work-order-qc.service";
+import {
+  transitionWorkOrder,
+  WorkOrderNotFoundError,
+  WorkOrderTransitionError,
+} from "@/src/services/work-orders.service";
 import { markWorkOrderIssues } from "@/src/services/vehicle-issues.service";
 
 export const runtime = "nodejs";
@@ -22,6 +27,21 @@ function errorResponse(error: unknown) {
     );
   }
   return NextResponse.json({ ok: false, error: "Не вдалося виконати контроль якості." }, { status: 500 });
+}
+
+function transitionWarning(error: unknown, action: string) {
+  const targetLabel = action === "PASS" ? "«Готовий до видачі»" : "«Доопрацювання»";
+  if (error instanceof WorkOrderTransitionError) {
+    return {
+      code: error.decision.code,
+      message: `Результат QC збережено, але ЗН не вдалося автоматично перевести у ${targetLabel}. Перевірте блокуючі умови.`,
+      missingGates: error.decision.missingGates,
+    };
+  }
+  if (error instanceof WorkOrderNotFoundError) {
+    return { code: "WORK_ORDER_NOT_FOUND", message: "Результат QC збережено, але пов'язаний ЗН не знайдено." };
+  }
+  return { code: "TRANSITION_FAILED", message: `Результат QC збережено, але ЗН не вдалося автоматично перевести у ${targetLabel}.` };
 }
 
 export async function GET(_request: Request, context: RouteContext) {
@@ -47,6 +67,8 @@ export async function POST(request: Request, context: RouteContext) {
       const qualityControl = await updateQualityControl(id, body, actorName);
       let issueSync: Awaited<ReturnType<typeof markWorkOrderIssues>> | null = null;
       let issueSyncWarning: string | null = null;
+      let workOrder = null;
+      let workOrderTransitionWarning = null;
       if (action === "PASS" || action === "FAIL") {
         try {
           issueSync = await markWorkOrderIssues(id, action === "PASS" ? VehicleIssueStatus.RESOLVED : VehicleIssueStatus.IN_REPAIR);
@@ -57,8 +79,14 @@ export async function POST(request: Request, context: RouteContext) {
           issueSyncWarning = issueError instanceof Error ? issueError.message : "Не вдалося синхронізувати стан автомобіля.";
           console.error("Vehicle issue QC sync failed", { workOrderId: id, action, issueError });
         }
+        try {
+          workOrder = await transitionWorkOrder(id, action === "PASS" ? "READY_FOR_PICKUP" : "REWORK", actorName);
+        } catch (transitionError) {
+          workOrderTransitionWarning = transitionWarning(transitionError, action);
+          console.error("Inline QC work-order transition failed", { workOrderId: id, action, transitionError });
+        }
       }
-      return NextResponse.json({ ok: true, qualityControl, issueSync, issueSyncWarning });
+      return NextResponse.json({ ok: true, qualityControl, issueSync, issueSyncWarning, workOrder, transitionWarning: workOrderTransitionWarning });
     }
     const task = await ensureQualityControlTask(id, actorName);
     const qualityControl = await getQualityControlState(id);
