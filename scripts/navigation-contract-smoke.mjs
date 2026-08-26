@@ -122,6 +122,10 @@ assertIncludes("app/business-flow-route-bridge.tsx", [
   'fetch("/api/diagnostics?limit=500"',
   "current.vehicleId !== vehicleId",
   "diagnosticVehicleApplied",
+  'section === "Планувальник" && filter === "today"',
+  'status: "WAITING_APPROVAL", workOrderTab: "estimate"',
+  'section === "Підбір запчастин" && filter === "waiting-parts"',
+  'section: "Закупівлі та склад"',
 ]);
 
 const appFiles = walk(path.join(ROOT, "app"));
