@@ -10,6 +10,7 @@ type Mode = "MATRIX" | "LEGACY" | null;
 type DiagnosticModePayload = {
   ok?: boolean;
   mode?: "MATRIX" | "LEGACY";
+  templateNames?: string[];
 };
 
 export function MechanicDiagnosticWorkspace({ diagnosticId, onBack, onChanged }: { diagnosticId: string; onBack: () => void; onChanged?: () => void }) {
@@ -49,7 +50,28 @@ export function MechanicDiagnosticWorkspace({ diagnosticId, onBack, onChanged }:
       .then(async (response) => {
         const body = await response.json().catch(() => null) as DiagnosticModePayload | null;
         if (!response.ok || !body?.ok || !body.mode) throw new Error("LOAD_FAILED");
-        if (!cancelled) setMode(body.mode);
+        if (cancelled) return;
+
+        // Нові діагностики без створеного огляду одразу відкриваємо в новому
+        // інтерфейсі, але не стартуємо їх до натискання механіком кнопки.
+        if (body.mode === "LEGACY" && !(body.templateNames?.length)) {
+          setMode("MATRIX");
+          return;
+        }
+
+        // Активні старі діагностики з BASIC_INSPECTION безпечно доповнюємо
+        // матрицею ходової + рідинами. Закриті/передані записи повернуть 409
+        // і залишаться в історичному legacy-режимі без зміни даних.
+        if (body.mode === "LEGACY") {
+          const upgrade = await fetch(`/api/diagnostics/${encodeURIComponent(diagnosticId)}/matrix-start`, {
+            method: "POST",
+            credentials: "include",
+          });
+          if (!cancelled) setMode(upgrade.ok ? "MATRIX" : "LEGACY");
+          return;
+        }
+
+        setMode("MATRIX");
       })
       .catch((cause) => {
         if (!cancelled && cause instanceof Error && cause.name !== "AbortError") setMode("LEGACY");
