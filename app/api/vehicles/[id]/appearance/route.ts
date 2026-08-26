@@ -1,6 +1,6 @@
 import { after, NextRequest, NextResponse } from "next/server";
 import { getPrisma } from "@/src/lib/prisma";
-import { generateVehicleImageInBackground } from "@/src/services/vehicle-images/vehicle-image-background.service";
+import { enqueueVehicleImageGeneration } from "@/src/services/vehicle-images/openai-library.service";
 import { invalidateVehicleImages } from "@/src/services/vehicle-images/vehicle-image.service";
 
 export const runtime = "nodejs";
@@ -59,7 +59,7 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
     if (vehicle.brand && vehicle.model) {
       after(async () => {
         try {
-          await generateVehicleImageInBackground(id);
+          await enqueueVehicleImageGeneration(id, { force: true });
         } catch (error) {
           console.error("background vehicle image color variant generation failed", {
             vehicleId: id,

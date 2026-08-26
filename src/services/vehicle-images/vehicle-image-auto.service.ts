@@ -2,7 +2,7 @@ import "server-only";
 
 import { getPrisma } from "@/src/lib/prisma";
 import { resolveVehicleColorByPlate } from "@/src/services/vehicle-registry-color.service";
-import { generateVehicleImageInBackground } from "./vehicle-image-background.service";
+import { enqueueVehicleImageGeneration } from "./openai-library.service";
 
 /**
  * Automatic image entry point for persisted CRM vehicles.
@@ -55,5 +55,5 @@ export async function autoGenerateVehicleImage(vehicleId: string) {
     }
   }
 
-  return generateVehicleImageInBackground(vehicleId);
+  return enqueueVehicleImageGeneration(vehicleId);
 }

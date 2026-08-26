@@ -4,6 +4,7 @@ import {
   generateVehicleImageInBackground,
   getVehicleImageDeliveryState,
 } from "@/src/services/vehicle-images/vehicle-image-background.service";
+import { enqueueVehicleImageGeneration } from "@/src/services/vehicle-images/openai-library.service";
 import { authorize } from "@/src/security/authorize";
 import { PERMISSIONS } from "@/src/security/permissions";
 
@@ -45,6 +46,19 @@ function scheduleBackground(vehicleId: string, themePaint: string | null, force 
   });
 }
 
+function scheduleQueue(vehicleId: string, themePaint: string | null, force = false) {
+  after(async () => {
+    try {
+      await enqueueVehicleImageGeneration(vehicleId, { themePaint, force });
+    } catch (error) {
+      console.error("vehicle image queue registration failed", {
+        vehicleId,
+        message: error instanceof Error ? error.message : "unknown error",
+      });
+    }
+  });
+}
+
 export async function GET(request: NextRequest, context: { params: Promise<{ id: string }> }) {
   const { id } = await context.params;
   const themePaint = request.nextUrl.searchParams.get("theme");
@@ -56,6 +70,9 @@ export async function GET(request: NextRequest, context: { params: Promise<{ id:
 
     if (library.state === "GENERATING" && library.needsOptimization) {
       scheduleBackground(id, themePaint);
+    }
+    if (library.state === "MISSING" && library.autoGenerate && library.canGenerate) {
+      scheduleQueue(id, themePaint);
     }
 
     return NextResponse.json(
@@ -115,7 +132,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
       );
     }
 
-    scheduleBackground(id, themePaint, force);
+    scheduleQueue(id, themePaint, force);
 
     return NextResponse.json(
       {

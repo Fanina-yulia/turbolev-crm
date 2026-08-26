@@ -1,6 +1,7 @@
+import { after } from "next/server";
 import { NextRequest, NextResponse } from "next/server";
 import { markVehicleImageFailure, resolveVehicleImage } from "@/src/services/vehicle-images/vehicle-image.service";
-import { getVehicleLibraryAsset } from "@/src/services/vehicle-images/openai-library.service";
+import { enqueueVehicleImageGeneration, getVehicleLibraryAsset } from "@/src/services/vehicle-images/openai-library.service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -32,7 +33,19 @@ export async function GET(request: NextRequest, context: { params: Promise<{ id:
 
   try {
     const image = await resolveVehicleImage(id, { themePaint });
-    if (!image) return missingImageResponse();
+    if (!image) {
+      // Rendering a card only registers missing work for the queue. It never
+      // starts a remote generation during the user's request.
+      after(async () => {
+        await enqueueVehicleImageGeneration(id, { themePaint }).catch((error) => {
+          console.warn("vehicle image render queue registration failed", {
+            vehicleId: id,
+            message: error instanceof Error ? error.message : "unknown error",
+          });
+        });
+      });
+      return missingImageResponse();
+    }
 
     if (image.provider === "OPENAI") {
       const libraryAsset = await getVehicleLibraryAsset(image.assetId);

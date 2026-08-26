@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import "./globals.css";
-import "./planner-day-view.module.css";
 import "./theme-semantic-contract.css";
 import "./scrollbars.css";
 import "./theme-fixes.css";

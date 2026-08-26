@@ -1,13 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { VehicleCardContract, VehicleDirectoryItem, VehicleStatusItem, VehicleStatusSummary } from "@/src/lib/contracts/crm-core";
+import type { VehicleCardContract, VehicleDirectoryItem } from "@/src/lib/contracts/crm-core";
 import {
   parseVehicleAppearancePayload,
   parseVehicleCardPayload,
   parseVehicleDirectoryPayload,
   parseVehicleImageRefreshPayload,
-  parseVehicleStatusSummaryPayload,
   payloadMessage,
 } from "@/src/lib/contracts/directory-payload.parsers";
 import { CustomerCabinetCard } from "./customer-cabinet-card";
@@ -56,60 +55,6 @@ function VehicleImage({ vehicle, size = "card", eager = false }: { vehicle: Vehi
   />;
 }
 
-type VehicleStatusKind = keyof VehicleStatusSummary;
-
-const STATUS_FALLBACK: VehicleStatusItem = {
-  state: "loading",
-  label: "Завантаження",
-  tone: "neutral",
-  targetId: null,
-  updatedAt: null,
-};
-
-function StatusIcon({ kind }: { kind: VehicleStatusKind }) {
-  if (kind === "diagnostics") {
-    return <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 3.5h6M8.5 12.5l2 2 5-5"/></svg>;
-  }
-  if (kind === "proposal") {
-    return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v5h5M9 12h6M9 16h6"/></svg>;
-  }
-  return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m14.7 6.3 3-3a3 3 0 0 1 4.2 4.2l-3 3"/><path d="m17.3 8.7-8.6 8.6a2.1 2.1 0 1 1-3-3l8.6-8.6"/><path d="m5 19-2 2M8 21l-2-2"/></svg>;
-}
-
-function VehicleStatusCell({
-  kind,
-  title,
-  status,
-  onClick,
-}: {
-  kind: VehicleStatusKind;
-  title: string;
-  status?: VehicleStatusItem;
-  onClick: () => void;
-}) {
-  const current = status || STATUS_FALLBACK;
-  const toneClass = current.tone === "success"
-    ? styles.statusSuccess
-    : current.tone === "warning"
-      ? styles.statusWarning
-      : current.tone === "danger"
-        ? styles.statusDanger
-        : styles.statusNeutral;
-  return <button
-    type="button"
-    className={`${styles.statusCell} ${toneClass || ""}`}
-    onClick={onClick}
-    title={`${title}: ${current.label}`}
-    aria-label={`${title}: ${current.label}`}
-  >
-    <span className={styles.statusIcon}><StatusIcon kind={kind}/></span>
-    <span className={styles.statusCopy}>
-      <small>{title}</small>
-      <b>{current.label}</b>
-    </span>
-  </button>;
-}
-
 export function VehiclesDirectory() {
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(1);
@@ -122,7 +67,6 @@ export function VehiclesDirectory() {
   const [vehicleCard, setVehicleCard] = useState<VehicleCard | null>(null);
   const [vehicleLoading, setVehicleLoading] = useState(false);
   const [drawerTab, setDrawerTab] = useState<VehicleDrawerTab>("overview");
-  const [vehicleStatuses, setVehicleStatuses] = useState<Record<string, VehicleStatusSummary>>({});
 
   useEffect(() => {
     const controller = new AbortController();
@@ -151,27 +95,6 @@ export function VehiclesDirectory() {
       window.clearTimeout(timer);
     };
   }, [query, page]);
-
-  useEffect(() => {
-    const ids = vehicles.map((vehicle) => vehicle.id);
-    if (!ids.length) {
-      setVehicleStatuses({});
-      return;
-    }
-    const controller = new AbortController();
-    void (async () => {
-      try {
-        const response = await fetch(`/api/vehicles/status-summary?ids=${encodeURIComponent(ids.join(","))}`, { cache: "no-store", signal: controller.signal });
-        const payload: unknown = await response.json().catch(() => null);
-        const data = parseVehicleStatusSummaryPayload(payload);
-        if (!response.ok || !data) return;
-        setVehicleStatuses(Object.fromEntries(data.vehicles.map((item) => [item.vehicleId, item.statusSummary])));
-      } catch (cause) {
-        if ((cause as Error).name !== "AbortError") console.error("vehicle statuses load failed", cause);
-      }
-    })();
-    return () => controller.abort();
-  }, [vehicles]);
 
   useEffect(() => {
     const syncFromRoute = () => setVehicleId(readCrmRoute().vehicleId || null);
@@ -226,19 +149,6 @@ export function VehiclesDirectory() {
     navigateCrm("Авто", { vehicleId: id });
   }
 
-  function openVehicleStatus(kind: VehicleStatusKind, vehicleId: string, summary?: VehicleStatusSummary) {
-    const targetId = summary?.[kind].targetId || null;
-    if (kind === "diagnostics") {
-      navigateCrm("Діагностика", targetId ? { diagnosticId: targetId } : { vehicleId });
-      return;
-    }
-    if (kind === "proposal") {
-      navigateCrm("Замовлення-наряди", targetId ? { workOrderId: targetId, workOrderTab: "estimate" } : { status: "WAITING_APPROVAL" });
-      return;
-    }
-    navigateCrm("Замовлення-наряди", targetId ? { workOrderId: targetId, workOrderTab: "overview" } : {});
-  }
-
   function closeVehicle() {
     navigateCrm("Авто");
   }
@@ -269,36 +179,31 @@ export function VehiclesDirectory() {
     <div className={styles.summary}>Знайдено автомобілів: <b>{total}</b>{total > 0 && <span> · сторінка {page} з {pages}</span>}</div>
     {error && <div className={styles.error}>{error}</div>}
     {loading ? <div className={styles.state}>Завантажую автомобілі…</div> : !vehicles.length ? <div className={styles.state}>Нічого не знайдено.</div> : <div className={styles.grid}>
-      {vehicles.map((vehicle, index) => {
-        const summary = vehicleStatuses[vehicle.id];
-        return <article key={vehicle.id} className={styles.card}>
-          <button type="button" className={styles.cardMain} onClick={() => openVehicle(vehicle.id)}>
-            <div className={styles.vehicleHero}>
-              <div className={styles.vehicleCopy}>
-                <div className={styles.vehicleTitleLine}>
-                  <VehicleBrandLogo brand={vehicle.brand} size={38} />
-                  <span className={styles.identityText}>
-                    <strong>{vehicleTitle(vehicle)}</strong>
-                    <small>{vehicle.plateNumber || "Без держномера"}</small>
-                  </span>
-                </div>
-                <small className={styles.vehicleVin}>{vehicle.vin ? `VIN: ${vehicle.vin}` : "VIN не вказаний"}</small>
-              </div>
-              <VehicleImage vehicle={vehicle} size="card" eager={index < 6} />
-              <span className={styles.chevron}>›</span>
+      {vehicles.map((vehicle, index) => <button key={vehicle.id} className={styles.card} onClick={() => openVehicle(vehicle.id)}>
+        <div className={styles.vehicleHero}>
+          <div className={styles.vehicleCopy}>
+            <div className={styles.vehicleTitleLine}>
+              <VehicleBrandLogo brand={vehicle.brand} size={38} />
+              <span className={styles.identityText}>
+                <strong>{vehicleTitle(vehicle)}</strong>
+                <small>{vehicle.plateNumber || "Без держномера"}</small>
+              </span>
             </div>
-            <div className={styles.ownerLine}>
-              <span><small>Власник</small><b>{vehicle.client.name?.trim() || "Клієнт без імені"}</b></span>
-              <span>{vehicle.client.phone}</span>
-            </div>
-          </button>
-          <div className={styles.statuses} aria-label={`Статуси автомобіля ${vehicleTitle(vehicle)}`}>
-            <VehicleStatusCell kind="diagnostics" title="Діагностична карта" status={summary?.diagnostics} onClick={() => openVehicleStatus("diagnostics", vehicle.id, summary)}/>
-            <VehicleStatusCell kind="proposal" title="Пропозиція" status={summary?.proposal} onClick={() => openVehicleStatus("proposal", vehicle.id, summary)}/>
-            <VehicleStatusCell kind="work" title="Роботи" status={summary?.work} onClick={() => openVehicleStatus("work", vehicle.id, summary)}/>
+            <small className={styles.vehicleVin}>{vehicle.vin ? `VIN: ${vehicle.vin}` : "VIN не вказаний"}</small>
           </div>
-        </article>;
-      })}
+          <VehicleImage vehicle={vehicle} size="card" eager={index < 6} />
+          <span className={styles.chevron}>›</span>
+        </div>
+        <div className={styles.ownerLine}>
+          <span><small>Власник</small><b>{vehicle.client.name?.trim() || "Клієнт без імені"}</b></span>
+          <span>{vehicle.client.phone}</span>
+        </div>
+        <div className={styles.stats}>
+          <span><small>Замовлення</small><b>{vehicle._count.workOrders}</b></span>
+          <span><small>Діагностики</small><b>{vehicle._count.diagnosticRequests}</b></span>
+          <span><small>Пробіг</small><b>{vehicle.mileageKm ? `${vehicle.mileageKm.toLocaleString("uk-UA")} км` : "—"}</b></span>
+        </div>
+      </button>)}
     </div>}
 
     {!loading && total > PAGE_SIZE && <nav className={styles.pagination} aria-label="Сторінки автомобілів">
@@ -444,8 +349,8 @@ function VehicleAppearanceEditor({ vehicle, onSaved }: { vehicle: VehicleCard; o
   }
 
   return <section className={styles.panel}>
-    <div className={styles.panelTitleRow}><h3>Колір кузова</h3><span>{vehicle.exteriorColorConfirmed ? "Підтверджено" : "AUTO: колір теми"}</span></div>
-    <p className={styles.colorHint}>Якщо реальний колір підтверджено, CRM використовує його. Якщо ні — зображення адаптується до активного акцентного кольору CRM.</p>
+    <div className={styles.panelTitleRow}><h3>Колір кузова</h3><span>{vehicle.exteriorColorConfirmed ? "Підтверджено" : "Не підтверджено"}</span></div>
+    <p className={styles.colorHint}>Якщо колір знайдено у довіднику МВС за держномером або підтверджено вручну, CRM використовує його. Якщо даних немає — показує нейтральний render без вигаданого кольору.</p>
     <div className={styles.colorForm}>
       <label><span>Назва кольору</span><input value={name} onChange={(event) => setName(event.target.value)} placeholder="Crystal White Pearl"/></label>
       <label><span>Код фарби</span><input value={paintCode} onChange={(event) => setPaintCode(event.target.value)} placeholder="707"/></label>
