@@ -75,6 +75,8 @@ export type OpenRequestDetail = {
   vin?: string;
   appointmentDate?: string;
   appointmentTime?: string;
+  postId?: string;
+  locationId?: string;
   inquiryId?: string;
 };
 
@@ -111,4 +113,7 @@ export type VinApiResponse = {
   } | null;
 };
 
-export type NewRequestWizardProps = { showButton?: boolean };
+export type NewRequestWizardProps = {
+  showButton?: boolean;
+  onOpenChange?: (open: boolean) => void;
+};
