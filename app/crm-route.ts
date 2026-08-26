@@ -32,6 +32,7 @@ export type CrmRouteParams = {
   settingsTab?: string;
   supplierId?: string;
   provider?: string;
+  newRequest?: string;
 };
 
 export const CRM_ROUTE_KEYS: Array<keyof CrmRouteParams> = [
@@ -59,6 +60,7 @@ export const CRM_ROUTE_KEYS: Array<keyof CrmRouteParams> = [
   "settingsTab",
   "supplierId",
   "provider",
+  "newRequest",
 ];
 
 export function readCrmRoute(): CrmRouteParams {
