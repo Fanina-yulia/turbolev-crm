@@ -18,6 +18,10 @@ export type ResolvedVehicleColor = {
   sourceYear: number | null;
 };
 
+const COLOR_CACHE_TTL_MS = 5 * 60 * 1000;
+const resolvedColorCache = new Map<string, { expiresAt: number; value: ResolvedVehicleColor | null }>();
+const inFlightColorLookups = new Map<string, Promise<ResolvedVehicleColor | null>>();
+
 function registrationPlateKey(plate: string): bigint | null {
   if (!/^[A-Z0-9]{6,10}$/.test(plate)) return null;
   let value = 0n;
@@ -80,7 +84,7 @@ export async function lookupRegistryVehicleColorByVin(rawVin: string | null | un
   }
 }
 
-export async function resolveVehicleColorByPlate(
+async function resolveVehicleColorUncached(
   rawPlate: string | null | undefined,
   vehicleId?: string | null,
   rawVin?: string | null,
@@ -119,4 +123,29 @@ export async function resolveVehicleColorByPlate(
     exteriorColorConfirmed: true,
     sourceYear: registry.sourceYear,
   };
+}
+
+export async function resolveVehicleColorByPlate(
+  rawPlate: string | null | undefined,
+  vehicleId?: string | null,
+  rawVin?: string | null,
+): Promise<ResolvedVehicleColor | null> {
+  const key = [vehicleId || "", normalizeRegistrationPlate(rawPlate || ""), (rawVin || "").trim().toUpperCase()].join("|");
+  if (!key.replace(/\|/g, "")) return resolveVehicleColorUncached(rawPlate, vehicleId, rawVin);
+
+  const cached = resolvedColorCache.get(key);
+  if (cached && cached.expiresAt > Date.now()) return cached.value;
+  if (cached) resolvedColorCache.delete(key);
+
+  const active = inFlightColorLookups.get(key);
+  if (active) return active;
+
+  const request = resolveVehicleColorUncached(rawPlate, vehicleId, rawVin)
+    .then((value) => {
+      resolvedColorCache.set(key, { expiresAt: Date.now() + COLOR_CACHE_TTL_MS, value });
+      return value;
+    })
+    .finally(() => inFlightColorLookups.delete(key));
+  inFlightColorLookups.set(key, request);
+  return request;
 }
