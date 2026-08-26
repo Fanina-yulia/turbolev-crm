@@ -30,6 +30,7 @@ import {
   resolveTurboLevClass,
   resolveVehicleType,
   STORAGE_KEY,
+  vehicleCandidateConfirmsVin,
   vehicleTitle,
 } from "./new-request-wizard-v5.model";
 import type {
@@ -499,6 +500,8 @@ export function NewRequestWizardV5({showButton=true,onOpenChange}:NewRequestWiza
       applyVehicle(candidate);
       applyVehicleOwner(candidate);
       setPlateLookupState("found");
+      setVinMessage("");
+      setVinLookupState(normalizeVin(candidate.vin||"").length===17?"found":"idle");
     }catch(reason){
       if(controller.signal.aborted||(reason instanceof DOMException&&reason.name==="AbortError"))return;
       if(requestId!==plateLookupRequestRef.current)return;
@@ -516,14 +519,18 @@ export function NewRequestWizardV5({showButton=true,onOpenChange}:NewRequestWiza
       return;
     }
     setVinLookupState("searching");
-    setFoundVehicle(null);
     try{
       const response=await fetch(`/api/vehicles/vin?vin=${encodeURIComponent(vin)}`,{cache:"no-store"});
       const payload:unknown=await response.json();
       const data=parseVinResponse(payload);
       if(!response.ok||!data||data.status!=="FOUND"||!data.vehicle){
+        if(plateLookupState==="found"&&vehicleCandidateConfirmsVin(foundVehicle,vin)){
+          setVinLookupState("found");
+          setVinMessage("");
+          return;
+        }
         setVinLookupState("not-found");
-        setVinMessage(data?.message||"VIN не знайдено. Авто можна записати та уточнити дані пізніше.");
+        setVinMessage(data?.message||"Додаткові дані за VIN не розшифровано. Авто можна записати та уточнити дані пізніше.");
         return;
       }
       const v=data.vehicle;
@@ -545,6 +552,11 @@ export function NewRequestWizardV5({showButton=true,onOpenChange}:NewRequestWiza
       setVinMessage(data.warning||"VIN успішно розшифровано.");
       if(v.make)void loadModels(v.make);
     }catch{
+      if(plateLookupState==="found"&&vehicleCandidateConfirmsVin(foundVehicle,vin)){
+        setVinLookupState("found");
+        setVinMessage("");
+        return;
+      }
       setVinLookupState("unavailable");
       setVinMessage("VIN-декодер тимчасово недоступний. Авто можна записати та уточнити пізніше.");
     }
@@ -661,7 +673,7 @@ export function NewRequestWizardV5({showButton=true,onOpenChange}:NewRequestWiza
 
   const phoneButton=phoneLookupState==="searching"?"Шукаю…":phoneLookupState==="found"?"✓ Знайдено":phoneLookupState==="not-found"?"Не знайдено":phoneLookupState==="unavailable"?"Недоступно":"Знайти";
   const plateButton=plateLookupState==="searching"?"Шукаю…":plateLookupState==="found"?"✓ Знайдено":plateLookupState==="not-found"?"Не знайдено":plateLookupState==="unavailable"?"Недоступно":"Знайти";
-  const vinButton=vinLookupState==="searching"?"Шукаю…":vinLookupState==="found"?"✓ Знайдено":vinLookupState==="not-found"?"Не знайдено":vinLookupState==="unavailable"?"Недоступно":"Знайти";
+  const vinButton=vinLookupState==="searching"?"Шукаю…":vinLookupState==="found"?"✓ Знайдено":vinLookupState==="not-found"?"Не розшифровано":vinLookupState==="unavailable"?"Недоступно":"Знайти";
 
   return <>
     {showButton&&<button className="primary" type="button" onClick={()=>openWith()}>+ Нова заявка</button>}
@@ -716,7 +728,7 @@ export function NewRequestWizardV5({showButton=true,onOpenChange}:NewRequestWiza
                 </div>
               </div>
 
-              {(foundVehicle||plateLookupState==="found"||vinLookupState==="found")&&<div className="vehicleFoundCompact">
+              {foundVehicle&&<div className="vehicleFoundCompact">
                 <div className="vehicleFoundIcon">✓</div>
                 <div className={foundVehicleStyles.identity}>
                   <small>АВТОМОБІЛЬ ЗНАЙДЕНО</small>

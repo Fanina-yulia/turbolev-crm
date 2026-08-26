@@ -144,6 +144,12 @@ export function normalizeVin(value: string) {
   return value.toUpperCase().replace(/[^A-HJ-NPR-Z0-9]/g, "").slice(0, 17);
 }
 
+export function vehicleCandidateConfirmsVin(candidate: VehicleCandidate | null, value: string) {
+  const candidateVin = normalizeVin(candidate?.vin || "");
+  const requestedVin = normalizeVin(value);
+  return candidateVin.length === 17 && candidateVin === requestedVin;
+}
+
 export function normalizePhone(value: string) {
   const digits = value.replace(/\D/g, "");
   if (!digits) return "";
