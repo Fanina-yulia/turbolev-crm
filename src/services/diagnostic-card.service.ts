@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { DiagnosticCardRevisionKind, DiagnosticReviewState, Prisma } from "@/src/generated/prisma/client";
 import { getPrisma } from "@/src/lib/prisma";
 import { toPrismaJson } from "@/src/lib/prisma-json";
+import { getDiagnosticVisitContext } from "@/src/services/diagnostic-visit-link.service";
 import { getStructuredDiagnostic } from "@/src/services/structured-diagnostics.service";
 
 export class DiagnosticCardError extends Error {
@@ -32,6 +33,19 @@ type DiagnosticCardSnapshot = {
     plateNumber: string | null;
     vin: string | null;
     mileageKm: number | null;
+  };
+  visit?: {
+    appointmentId: string | null;
+    plannedStartAt: string | null;
+    plannedEndAt: string | null;
+    actualArrivalAt: string | null;
+    actualStartAt: string | null;
+    actualEndAt: string | null;
+    locationId: string | null;
+    postId: string | null;
+    mechanicId: string | null;
+    problem: string | null;
+    source: string | null;
   };
   client: { id: string; name: string | null; phone: string };
   problem: string | null;
@@ -87,6 +101,10 @@ function clean(value: string | null | undefined) {
   return next || null;
 }
 
+function iso(value: Date | null | undefined) {
+  return value ? value.toISOString() : null;
+}
+
 async function buildCardSource(
   diagnosticRequestId: string,
   options: { reviewerUserId?: string | null; technicalConclusion?: string | null } = {},
@@ -97,11 +115,26 @@ async function buildCardSource(
     throw new DiagnosticCardError("DIAGNOSTIC_CARD_EMPTY", "Діагностичну карту можна сформувати лише зі структурованої діагностики.", 409);
   }
   const assignment = view.diagnostic.assignment;
-  const [mechanic, station, reviewer] = await Promise.all([
+  const [mechanic, station, reviewer, visitContext] = await Promise.all([
     assignment?.mechanicId ? prisma.serviceMechanic.findUnique({ where: { id: assignment.mechanicId }, select: { id: true, name: true } }) : null,
     assignment?.locationId ? prisma.serviceLocation.findUnique({ where: { id: assignment.locationId }, select: { id: true, name: true } }) : null,
     options.reviewerUserId ? prisma.user.findUnique({ where: { id: options.reviewerUserId }, select: { id: true, name: true } }) : null,
+    getDiagnosticVisitContext(diagnosticRequestId),
   ]);
+
+  const visit = {
+    appointmentId: visitContext.appointmentId,
+    plannedStartAt: iso(visitContext.plannedStartAt),
+    plannedEndAt: iso(visitContext.plannedEndAt),
+    actualArrivalAt: iso(visitContext.actualArrivalAt),
+    actualStartAt: iso(visitContext.actualStartAt),
+    actualEndAt: iso(visitContext.actualEndAt),
+    locationId: visitContext.locationId,
+    postId: visitContext.postId,
+    mechanicId: visitContext.mechanicId,
+    problem: visitContext.problem,
+    source: visitContext.source,
+  };
 
   const findings = view.inspections.flatMap((inspection) => inspection.sections.flatMap((section) => section.items.flatMap((item) => item.finding ? [{ inspection, section, item, finding: item.finding }] : [])));
   const critical = findings.filter(({ finding }) => finding.urgency === "CRITICAL").length;
@@ -137,6 +170,7 @@ async function buildCardSource(
   const source = {
     diagnosticRequestId,
     vehicle: view.diagnostic.vehicle,
+    visit,
     client: view.diagnostic.client,
     problem: view.diagnostic.problem,
     assignment,
@@ -161,6 +195,7 @@ async function buildCardSource(
         vin: view.diagnostic.vehicle.vin,
         mileageKm: view.diagnostic.vehicle.mileageKm,
       },
+      visit,
       client: { id: view.diagnostic.client.id, name: view.diagnostic.client.name, phone: view.diagnostic.client.phone },
       problem: view.diagnostic.problem,
       station: { id: assignment?.locationId || null, name: station?.name || null },
@@ -230,7 +265,7 @@ export async function ensureDiagnosticCardReviewRevision(
         entityType: "DiagnosticCard",
         entityId: card.id,
         action: "DIAGNOSTIC_CARD_REVIEW_GENERATED",
-        metadata: toPrismaJson({ diagnosticRequestId, number: card.number, revision: revisionNumber, sourceFingerprint: built.sourceFingerprint }),
+        metadata: toPrismaJson({ diagnosticRequestId, number: card.number, revision: revisionNumber, sourceFingerprint: built.sourceFingerprint, appointmentId: built.snapshotWithoutIdentity.visit?.appointmentId || null }),
       },
     });
     return { card, revision, created: true };
@@ -299,7 +334,7 @@ export async function finalizeDiagnosticCard(
         entityType: "DiagnosticCard",
         entityId: card.id,
         action: "DIAGNOSTIC_CARD_CONFIRMED",
-        metadata: toPrismaJson({ diagnosticRequestId, number: card.number, revision: currentRevision, sourceFingerprint: built.sourceFingerprint }),
+        metadata: toPrismaJson({ diagnosticRequestId, number: card.number, revision: currentRevision, sourceFingerprint: built.sourceFingerprint, appointmentId: built.snapshotWithoutIdentity.visit?.appointmentId || null }),
       },
     });
     return { card, revision, created: true };
