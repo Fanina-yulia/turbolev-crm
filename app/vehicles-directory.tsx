@@ -349,8 +349,8 @@ function VehicleAppearanceEditor({ vehicle, onSaved }: { vehicle: VehicleCard; o
   }
 
   return <section className={styles.panel}>
-    <div className={styles.panelTitleRow}><h3>Колір кузова</h3><span>{vehicle.exteriorColorConfirmed ? "Підтверджено" : "AUTO: колір теми"}</span></div>
-    <p className={styles.colorHint}>Якщо реальний колір підтверджено, CRM використовує його. Якщо ні — зображення адаптується до активного акцентного кольору CRM.</p>
+    <div className={styles.panelTitleRow}><h3>Колір кузова</h3><span>{vehicle.exteriorColorConfirmed ? "Підтверджено" : "Не підтверджено"}</span></div>
+    <p className={styles.colorHint}>Якщо колір знайдено у довіднику МВС за держномером або підтверджено вручну, CRM використовує його. Якщо даних немає — показує нейтральний render без вигаданого кольору.</p>
     <div className={styles.colorForm}>
       <label><span>Назва кольору</span><input value={name} onChange={(event) => setName(event.target.value)} placeholder="Crystal White Pearl"/></label>
       <label><span>Код фарби</span><input value={paintCode} onChange={(event) => setPaintCode(event.target.value)} placeholder="707"/></label>
