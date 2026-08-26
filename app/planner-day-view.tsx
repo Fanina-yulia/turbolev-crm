@@ -355,12 +355,13 @@ export function PlannerDayView<TAppointment extends AppointmentBase>({ day, loca
       });
     };
     window.addEventListener("pointermove", onPointerMove, { passive: false });
-    window.addEventListener("pointerup", onPointerUp);
-    window.addEventListener("pointercancel", onPointerUp);
+    // Capture release before the handle stops propagation to prevent the card opening.
+    window.addEventListener("pointerup", onPointerUp, true);
+    window.addEventListener("pointercancel", onPointerUp, true);
     return () => {
       window.removeEventListener("pointermove", onPointerMove);
-      window.removeEventListener("pointerup", onPointerUp);
-      window.removeEventListener("pointercancel", onPointerUp);
+      window.removeEventListener("pointerup", onPointerUp, true);
+      window.removeEventListener("pointercancel", onPointerUp, true);
     };
   }, [resize, resizeHandler, dayAppointments, day, openMinute, timeZone, slots]);
 
