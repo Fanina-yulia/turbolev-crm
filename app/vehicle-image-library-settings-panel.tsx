@@ -41,6 +41,19 @@ type TestVehicle = {
   bodyType: string | null;
   plateNumber: string | null;
   imageState?: string;
+  imageError?: string | null;
+};
+
+type TestSetPayload = {
+  ok?: boolean;
+  vehicles?: TestVehicle[];
+  processingVehicles?: TestVehicle[];
+  incompleteVehicles?: TestVehicle[];
+  blockedVehicles?: TestVehicle[];
+  totalMissing?: number;
+  totalWithoutReadyImage?: number;
+  auditFailures?: number;
+  error?: string;
 };
 
 type TestRunState = {
@@ -92,6 +105,17 @@ function badge(asset: Asset) {
   return { label: asset.status || "Очікує", className: styles.badgeNeutral };
 }
 
+function testVehicleText(vehicle: TestVehicle) {
+  const identity = [vehicle.make, vehicle.model].filter(Boolean).join(" ") || "Автомобіль без марки та моделі";
+  return `${identity}${vehicle.year ? ` · ${vehicle.year}` : ""}${vehicle.plateNumber ? ` · ${vehicle.plateNumber}` : " · без держномера"}`;
+}
+
+function missingIdentityText(vehicle: TestVehicle) {
+  if (!vehicle.make && !vehicle.model) return "не вказані марка та модель";
+  if (!vehicle.make) return "не вказана марка";
+  return "не вказана модель";
+}
+
 export function VehicleImageLibrarySettingsPanel() {
   const [assets, setAssets] = useState<Asset[]>([]);
   const [loading, setLoading] = useState(true);
@@ -100,7 +124,11 @@ export function VehicleImageLibrarySettingsPanel() {
   const [search, setSearch] = useState("");
   const [busy, setBusy] = useState<Record<string, string>>({});
   const [testVehicles, setTestVehicles] = useState<TestVehicle[]>([]);
+  const [processingVehicles, setProcessingVehicles] = useState<TestVehicle[]>([]);
+  const [incompleteVehicles, setIncompleteVehicles] = useState<TestVehicle[]>([]);
+  const [blockedVehicles, setBlockedVehicles] = useState<TestVehicle[]>([]);
   const [testVehicleTotal, setTestVehicleTotal] = useState(0);
+  const [auditFailures, setAuditFailures] = useState(0);
   const [testSetLoading, setTestSetLoading] = useState(true);
   const [testRun, setTestRun] = useState<TestRunState>({ running: false, completed: 0, total: 0, current: "", failures: 0 });
 
@@ -123,10 +151,14 @@ export function VehicleImageLibrarySettingsPanel() {
     setTestSetLoading(true);
     try {
       const response = await fetch("/api/vehicle-images/library/test-set", { cache: "no-store" });
-      const payload = await response.json().catch(() => null) as { ok?: boolean; vehicles?: TestVehicle[]; totalMissing?: number; error?: string } | null;
+      const payload = await response.json().catch(() => null) as TestSetPayload | null;
       if (!response.ok || !payload?.ok) throw new Error(payload?.error || "Не вдалося знайти автомобілі без зображення.");
       setTestVehicles(payload.vehicles || []);
-      setTestVehicleTotal(Number(payload.totalMissing ?? payload.vehicles?.length ?? 0));
+      setProcessingVehicles(payload.processingVehicles || []);
+      setIncompleteVehicles(payload.incompleteVehicles || []);
+      setBlockedVehicles(payload.blockedVehicles || []);
+      setTestVehicleTotal(Number(payload.totalWithoutReadyImage ?? payload.totalMissing ?? payload.vehicles?.length ?? 0));
+      setAuditFailures(Number(payload.auditFailures || 0));
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Не вдалося знайти автомобілі без зображення.");
     } finally {
@@ -166,7 +198,7 @@ export function VehicleImageLibrarySettingsPanel() {
         throw new Error(testPayload?.message || testPayload?.error || "OpenAI API для зображень ще не налаштовано.");
       }
 
-      const list = testVehicles.map((vehicle) => `• ${vehicle.make} ${vehicle.model}${vehicle.year ? ` ${vehicle.year}` : ""}${vehicle.plateNumber ? ` · ${vehicle.plateNumber}` : ""}`).join("\n");
+      const list = testVehicles.map((vehicle) => `• ${testVehicleText(vehicle)}`).join("\n");
       const confirmed = window.confirm(
         `Згенерувати зображення для ${testVehicles.length} реальних автомобілів CRM, у яких його ще немає?\n\n${list}\n\nПлатний OpenAI API-запит виконується тільки якщо готового зображення справді немає.`,
       );
@@ -325,17 +357,33 @@ export function VehicleImageLibrarySettingsPanel() {
       <div className={styles.testCopy}>
         <span className={styles.testEyebrow}>Контроль якості бібліотеки</span>
         <h3>Реальні автомобілі CRM без зображення</h3>
-        <p>Тут показуються тільки автомобілі, які дійсно мають картку в CRM, заповнені марку та модель, але для їхнього модельного й кольорового варіанта ще немає готового зображення.</p>
+        <p>Перевіряються всі картки авто. Готовим вважається лише файл, який уже можна показати в CRM; окремо видно генерацію, помилки та картки з неповними даними.</p>
         <div className={styles.testVehicles}>
-          {testVehicles.map((vehicle) => <span key={vehicle.id}>{vehicle.make} {vehicle.model}{vehicle.year ? ` · ${vehicle.year}` : ""}{vehicle.plateNumber ? ` · ${vehicle.plateNumber}` : ""}</span>)}
-          {!testSetLoading && !testVehicles.length ? <span>Усі перевірені автомобілі CRM уже мають готові зображення</span> : null}
+          {testVehicles.map((vehicle) => <span key={vehicle.id}>Потрібна генерація · {testVehicleText(vehicle)}</span>)}
+          {processingVehicles.map((vehicle) => <span key={vehicle.id}>Готується · {testVehicleText(vehicle)}</span>)}
+          {incompleteVehicles.map((vehicle) => <span key={vehicle.id}>Уточніть дані · {testVehicleText(vehicle)} · {missingIdentityText(vehicle)}</span>)}
+          {blockedVehicles.map((vehicle) => <span key={vehicle.id}>Генерація недоступна · {testVehicleText(vehicle)}{vehicle.imageError ? ` · ${vehicle.imageError}` : ""}</span>)}
+          {!testSetLoading && testVehicleTotal === 0 && auditFailures === 0 ? <span>Усі автомобілі CRM уже мають готові до показу зображення</span> : null}
+          {!testSetLoading && auditFailures > 0 ? <span>Не вдалося перевірити карток: {auditFailures}. Оновіть перевірку.</span> : null}
         </div>
       </div>
       <div className={styles.testAction}>
         <button type="button" onClick={() => void runTestSet()} disabled={testSetLoading || testRun.running || !testVehicles.length}>
-          {testRun.running ? `Генерація ${testRun.completed}/${testRun.total}` : testSetLoading ? "Перевіряю CRM…" : testVehicles.length ? `Згенерувати ${testVehicles.length} авто` : "Немає авто без зображення"}
+          {testRun.running
+            ? `Генерація ${testRun.completed}/${testRun.total}`
+            : testSetLoading
+              ? "Перевіряю CRM…"
+              : testVehicles.length
+                ? `Згенерувати ${testVehicles.length} авто`
+                : processingVehicles.length
+                  ? "Зображення готуються"
+                  : incompleteVehicles.length
+                    ? "Уточніть дані авто"
+                    : blockedVehicles.length || auditFailures
+                      ? "Перевірка потребує уваги"
+                      : "Усі зображення готові"}
         </button>
-        <small>{testVehicleTotal > testVehicles.length ? `Показано ${testVehicles.length} із ${testVehicleTotal} знайдених авто без зображення. ` : ""}Готові варіанти не генеруються повторно.</small>
+        <small>{testVehicleTotal ? `Без готового зображення: ${testVehicleTotal}. До генерації готові: ${testVehicles.length}. ` : ""}Готові варіанти не генеруються повторно.</small>
         {testRun.running ? <div className={styles.testProgress}><span style={{ width: `${testRun.total ? Math.round(testRun.completed / testRun.total * 100) : 0}%` }}/><b>{testRun.current}</b></div> : null}
       </div>
     </div>

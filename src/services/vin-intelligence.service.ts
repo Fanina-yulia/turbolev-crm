@@ -30,7 +30,7 @@ export type FieldConfidence = Record<keyof Omit<VinVehicle, "vin"> | "vin", numb
 export type VinIntelligence = {
   status: "FOUND" | "NOT_FOUND";
   vin: string;
-  source: "CACHE" | "VPIC_LOCAL" | "NHTSA_VPIC_API";
+  source: "CACHE" | "MVS_INDEX" | "VPIC_LOCAL" | "NHTSA_VPIC_API";
   sourceDetail: string;
   confidence: number;
   fieldConfidence: FieldConfidence;
@@ -42,6 +42,17 @@ export type VinIntelligence = {
 
 const VPIC_API = "https://vpic.nhtsa.dot.gov/api/vehicles/DecodeVinValues";
 const CACHE_TTL_MS = 365 * 24 * 60 * 60 * 1000;
+
+type CompactRegistryVinRow = {
+  vin: string | null;
+  brand: string | null;
+  model: string | null;
+  makeYear: number | null;
+  engineVolumeCm3: number | null;
+  fuelType: string | null;
+  vehicleTypeRaw: string | null;
+  sourceYear: number;
+};
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
@@ -267,6 +278,69 @@ async function writeCache(result: VinIntelligence) {
   }
 }
 
+async function decodeRegistryIndex(
+  vin: string,
+  validation: ReturnType<typeof validateVin>,
+): Promise<VinIntelligence | null> {
+  try {
+    const prisma = getPrisma();
+    const rows = await prisma.$queryRaw<CompactRegistryVinRow[]>`
+      SELECT vin, brand, model, "makeYear", "engineVolumeCm3", "fuelType", "vehicleTypeRaw", "sourceYear"
+      FROM "VehicleRegistryCompact"
+      WHERE vin = ${vin}
+      ORDER BY "sourceYear" DESC, (model IS NOT NULL) DESC, (brand IS NOT NULL) DESC
+      LIMIT 1
+    `;
+    const row = rows[0];
+    // A partial registry row must not hide a more complete cached/vPIC result.
+    if (!row?.brand?.trim() || !row.model?.trim()) return null;
+
+    const engineVolumeL = row.engineVolumeCm3 && row.engineVolumeCm3 > 0
+      ? row.engineVolumeCm3 / 1000
+      : null;
+    const vehicle: VinVehicle = {
+      vin,
+      wmi: validation.wmi,
+      region: validation.region,
+      make: row.brand.trim(),
+      model: row.model.trim(),
+      year: row.makeYear,
+      trim: null,
+      series: null,
+      bodyType: row.vehicleTypeRaw?.trim() || null,
+      vehicleType: row.vehicleTypeRaw?.trim() || null,
+      engine: engineVolumeL
+        ? `${engineVolumeL.toFixed(1)} ${row.fuelType || ""}`.trim()
+        : row.fuelType?.trim() || null,
+      engineVolumeL,
+      cylinders: null,
+      fuelType: row.fuelType?.trim() || null,
+      secondaryFuelType: null,
+      driveType: null,
+      transmission: null,
+      plantCountry: null,
+      plantCompany: null,
+      manufacturer: row.brand.trim(),
+    };
+    const fieldConfidence = baseConfidence(vehicle);
+    return {
+      status: "FOUND",
+      vin,
+      source: "MVS_INDEX",
+      sourceDetail: `MVS_OPEN_DATA_COMPACT_BY_VIN_${row.sourceYear}`,
+      confidence: overallConfidence(fieldConfidence),
+      fieldConfidence,
+      validation,
+      warning: null,
+      vehicle,
+      cached: false,
+    };
+  } catch (error) {
+    console.warn("Compact MVS VIN lookup unavailable; continuing with vPIC", error);
+    return null;
+  }
+}
+
 async function decodeLocal(vin: string, validation: ReturnType<typeof validateVin>): Promise<VinIntelligence | null> {
   if (process.env.VPIC_LOCAL_ENABLED === "false") return null;
   try {
@@ -369,6 +443,12 @@ export async function decodeVinIntelligence(rawVin: string, options: { forceRefr
   const validation = validateVin(rawVin);
   if (!validation.formatValid) throw new Error("INVALID_VIN_FORMAT");
   if (validation.northAmerican && validation.checkDigit.status === "INVALID") throw new Error("INVALID_VIN_CHECK_DIGIT");
+
+  // The MVS index is authoritative for vehicles registered in Ukraine and often
+  // contains European models that the US-oriented vPIC decoder cannot identify.
+  // It must be checked before the cache because older cached vPIC rows may be partial.
+  const registry = await decodeRegistryIndex(validation.vin, validation);
+  if (registry) return registry;
 
   if (!options.forceRefresh) {
     const cached = await readCache(validation.vin);
