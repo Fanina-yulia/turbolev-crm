@@ -15,15 +15,10 @@ function findVehicle(client:Client, text:string){const hay=norm(text);return cli
 
 function currentThemePaint(){
   const root=document.documentElement;
-  const explicit=root.dataset.vehiclePaint||root.dataset.accentColor||"";
+  // Keep UI accent colors separate from vehicle paint variants.
+  const explicit=root.dataset.vehiclePaint||"";
   if(/^Imagin-(black|grey|white|blue|yellow|red|orange|green)$/i.test(explicit))return `Imagin-${explicit.split('-').pop()?.toLowerCase()}`;
-  const hex=getComputedStyle(root).getPropertyValue('--orange').trim().replace('#','');
-  if(!/^[0-9a-f]{6}$/i.test(hex))return 'Imagin-orange';
-  const r=parseInt(hex.slice(0,2),16),g=parseInt(hex.slice(2,4),16),b=parseInt(hex.slice(4,6),16);
-  if(r>g*1.35&&r>b*1.25)return g>100?'Imagin-orange':'Imagin-red';
-  if(b>r*1.2&&b>g*1.05)return 'Imagin-blue';
-  if(g>r*1.15&&g>b*1.05)return 'Imagin-green';
-  return 'Imagin-orange';
+  return 'Imagin-grey';
 }
 
 function ensureVehicleImage(button:HTMLElement,v:Vehicle){
