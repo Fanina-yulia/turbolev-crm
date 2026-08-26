@@ -41,7 +41,7 @@ type ThemePaint = typeof PAINTS[number];
 
 function themePaintFromHex(value: string): ThemePaint {
   const raw = value.trim().replace(/^#/, "");
-  if (!/^[0-9a-f]{6}$/i.test(raw)) return "Imagin-orange";
+  if (!/^[0-9a-f]{6}$/i.test(raw)) return "Imagin-grey";
   const r = Number.parseInt(raw.slice(0, 2), 16) / 255;
   const g = Number.parseInt(raw.slice(2, 4), 16) / 255;
   const b = Number.parseInt(raw.slice(4, 6), 16) / 255;
@@ -67,13 +67,13 @@ function themePaintFromHex(value: string): ThemePaint {
 }
 
 function readThemePaint(): ThemePaint {
-  if (typeof window === "undefined") return "Imagin-orange";
+  if (typeof window === "undefined") return "Imagin-grey";
   const root = document.documentElement;
   const explicit = root.dataset.vehiclePaint || root.dataset.accentColor || "";
   if (PAINTS.includes(explicit as ThemePaint)) return explicit as ThemePaint;
   const normalized = explicit ? `Imagin-${explicit.toLowerCase().replace(/^imagin-/, "")}` : "";
   if (PAINTS.includes(normalized as ThemePaint)) return normalized as ThemePaint;
-  return themePaintFromHex(getComputedStyle(root).getPropertyValue("--orange").trim() || "#ff6600");
+  return themePaintFromHex(getComputedStyle(root).getPropertyValue("--orange").trim() || "#aeb5bd");
 }
 
 function vehicleTitle(props: VehicleRenderProps) {
@@ -91,7 +91,7 @@ function placeholderTitle(state: LibraryState["state"], resolving: boolean, inte
 export function VehicleRender(props: VehicleRenderProps) {
   const size = props.size || "card";
   const clickToResolve = props.interactiveMissing ?? size === "drawer";
-  const [themePaint, setThemePaint] = useState<ThemePaint>("Imagin-orange");
+  const [themePaint, setThemePaint] = useState<ThemePaint>("Imagin-grey");
   const [failed, setFailed] = useState(false);
   const [libraryVersion, setLibraryVersion] = useState(0);
   const [libraryState, setLibraryState] = useState<LibraryState["state"]>();

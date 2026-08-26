@@ -52,11 +52,11 @@ function genericFromHex(value: string | null | undefined) {
   return "Imagin-red";
 }
 
-export function normalizeThemePaint(value: string | null | undefined, fallback = "Imagin-orange") {
+export function normalizeThemePaint(value: string | null | undefined, fallback = "Imagin-grey") {
   if (value && GENERIC_PAINTS.has(value)) return value;
   const normalized = value ? `Imagin-${value.toLowerCase().replace(/^imagin-/, "")}` : "";
   if (GENERIC_PAINTS.has(normalized)) return normalized;
-  return GENERIC_PAINTS.has(fallback) ? fallback : "Imagin-orange";
+  return GENERIC_PAINTS.has(fallback) ? fallback : "Imagin-grey";
 }
 
 function realColor(query: NormalizedVehicleImageQuery): VehicleImageColorDecision | null {

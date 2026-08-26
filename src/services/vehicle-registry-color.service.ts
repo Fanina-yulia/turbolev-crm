@@ -55,9 +55,35 @@ export async function lookupRegistryVehicleColorByPlate(rawPlate: string | null 
   }
 }
 
+export async function lookupRegistryVehicleColorByVin(rawVin: string | null | undefined): Promise<RegistryVehicleColor | null> {
+  const vin = (rawVin || "").trim().toUpperCase();
+  if (!/^[A-HJ-NPR-Z0-9]{17}$/.test(vin)) return null;
+
+  try {
+    const result = await getSqlPool().query<{ color: string | null; sourceYear: number }>(
+      `SELECT color, "sourceYear"
+         FROM public."VehicleRegistryCompact"
+        WHERE upper(trim(vin))=$1
+          AND color IS NOT NULL
+          AND btrim(color) <> ''
+        ORDER BY "sourceYear" DESC
+        LIMIT 1`,
+      [vin],
+    );
+    const row = result.rows[0];
+    const color = row?.color?.trim();
+    if (!color) return null;
+    return { color: color.slice(0, 120), sourceYear: Number(row.sourceYear) };
+  } catch (error) {
+    if (error instanceof Error && /column .*color.* does not exist|42703/i.test(error.message)) return null;
+    throw error;
+  }
+}
+
 export async function resolveVehicleColorByPlate(
   rawPlate: string | null | undefined,
   vehicleId?: string | null,
+  rawVin?: string | null,
 ): Promise<ResolvedVehicleColor | null> {
   if (vehicleId) {
     const vehicle = await getPrisma().vehicle.findUnique({
@@ -82,7 +108,8 @@ export async function resolveVehicleColorByPlate(
     }
   }
 
-  const registry = await lookupRegistryVehicleColorByPlate(rawPlate);
+  const registry = await lookupRegistryVehicleColorByPlate(rawPlate)
+    || await lookupRegistryVehicleColorByVin(rawVin);
   if (!registry) return null;
   return {
     exteriorColorName: registry.color,

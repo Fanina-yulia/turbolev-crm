@@ -94,7 +94,7 @@ async function buildCompatibilityPrompt(vehicleId: string, themePaint?: string |
   const identity = [vehicle.brand.trim(), vehicle.model.trim(), vehicle.year || null, vehicle.bodyType?.trim() || null]
     .filter(Boolean)
     .join(" ");
-  const theme = normalizeThemePaint(themePaint, "Imagin-orange");
+  const theme = normalizeThemePaint(themePaint, "Imagin-grey");
   const paint = getOpenAIVehiclePaint({
     exteriorColorName: vehicle.exteriorColorName,
     exteriorColorHex: vehicle.exteriorColorHex,

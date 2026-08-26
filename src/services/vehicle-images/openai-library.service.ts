@@ -2,6 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { getPrisma } from "@/src/lib/prisma";
 import { getSqlPool } from "@/src/lib/sql";
 import { getIntegrationCredential } from "@/src/services/integration-credentials.service";
+import { resolveVehicleColorByPlate } from "@/src/services/vehicle-registry-color.service";
 import { normalizeThemePaint } from "./vehicle-color.service";
 import { getOpenAIVehiclePaint, type OpenAIVehiclePaintSpec } from "./openai-vehicle-paint";
 import { resolveVehicleGeneration } from "./vehicle-generation-catalog.service";
@@ -28,6 +29,8 @@ type VehicleImageConfig = {
 
 type VehicleDescriptor = {
   vehicleId: string;
+  plateNumber: string | null;
+  vin: string | null;
   make: string;
   model: string;
   year: number | null;
@@ -123,6 +126,8 @@ async function loadVehicleDescriptor(vehicleId: string): Promise<VehicleDescript
     where: { id: vehicleId },
     select: {
       id: true,
+      plateNumber: true,
+      vin: true,
       brand: true,
       model: true,
       year: true,
@@ -135,22 +140,28 @@ async function loadVehicleDescriptor(vehicleId: string): Promise<VehicleDescript
     },
   });
   if (!vehicle) return null;
+  const registryColor = !vehicle.exteriorColorConfirmed
+    ? await resolveVehicleColorByPlate(vehicle.plateNumber, vehicle.id, vehicle.vin).catch(() => null)
+    : null;
+  const exteriorColor = registryColor || vehicle;
   return {
     vehicleId: vehicle.id,
+    plateNumber: vehicle.plateNumber,
+    vin: vehicle.vin,
     make: cleanPart(vehicle.brand),
     model: cleanPart(vehicle.model),
     year: vehicle.year,
     bodyType: cleanPart(vehicle.bodyType) || null,
-    exteriorColorName: cleanPart(vehicle.exteriorColorName) || null,
-    exteriorColorHex: cleanPart(vehicle.exteriorColorHex) || null,
-    exteriorPaintCode: cleanPart(vehicle.exteriorPaintCode) || null,
-    exteriorColorSource: vehicle.exteriorColorSource ? String(vehicle.exteriorColorSource) : null,
-    exteriorColorConfirmed: vehicle.exteriorColorConfirmed,
+    exteriorColorName: cleanPart(exteriorColor.exteriorColorName) || null,
+    exteriorColorHex: cleanPart(exteriorColor.exteriorColorHex) || null,
+    exteriorPaintCode: cleanPart(exteriorColor.exteriorPaintCode) || null,
+    exteriorColorSource: exteriorColor.exteriorColorSource ? String(exteriorColor.exteriorColorSource) : null,
+    exteriorColorConfirmed: exteriorColor.exteriorColorConfirmed,
   };
 }
 
 function normalizedTheme(themePaint?: string | null) {
-  return normalizeThemePaint(themePaint, "Imagin-orange");
+  return normalizeThemePaint(themePaint, "Imagin-grey");
 }
 
 function colorFamilyFromHex(value: string | null | undefined) {
