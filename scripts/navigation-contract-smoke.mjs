@@ -14,6 +14,13 @@ function assertIncludes(relative, snippets) {
   }
 }
 
+function assertNotIncludes(relative, snippets) {
+  const source = read(relative);
+  for (const snippet of snippets) {
+    if (source.includes(snippet)) throw new Error(`${relative}: stale navigation contract fragment remains: ${snippet}`);
+  }
+}
+
 function walk(dir) {
   const result = [];
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -126,6 +133,29 @@ assertIncludes("app/business-flow-route-bridge.tsx", [
   'status: "WAITING_APPROVAL", workOrderTab: "estimate"',
   'section === "Підбір запчастин" && filter === "waiting-parts"',
   'section: "Закупівлі та склад"',
+]);
+
+assertIncludes("app/client-card-drawer-core.tsx", [
+  'setMessage("Звернення вже передано в роботу.")',
+  'existingLeadId?"✓ В роботі":"+ Передати в роботу"',
+]);
+
+assertIncludes("app/active-terminology-bridge.tsx", [
+  '["Для додавання в Активні потрібне серверне з\'єднання", "Для передачі звернення в роботу потрібне серверне з\'єднання"]',
+  '["Контакт уже є в Активних", "Контакт уже передано в роботу"]',
+  '["Контакт додано в Активні", "Контакт передано в роботу"]',
+]);
+
+assertIncludes("app/diagnostics.tsx", [
+  'RETURNED: { label: "В роботі"',
+  'if (filter === "IN_PROGRESS") return workflowState(row) === "IN_PROGRESS" || workflowState(row) === "RETURNED";',
+  "Основний процес: Очікує → В роботі → На перевірці → Підтверджена.",
+]);
+assertNotIncludes("app/diagnostics.tsx", [
+  '{ value: "RETURNED", label: "На уточненні" }',
+]);
+assertIncludes("app/vehicle-diagnostics-tab.tsx", [
+  'RETURNED: "В роботі"',
 ]);
 
 const appFiles = walk(path.join(ROOT, "app"));

@@ -35,13 +35,13 @@ type Diagnostic = {
   structured?: { inspections: number; checked: number; defects: number; attention: number };
 };
 type ApiResponse = { ok: boolean; diagnostics?: Diagnostic[]; diagnostic?: Diagnostic; workOrder?: Diagnostic["workOrder"]; error?: string; message?: string };
-type Filter = "ALL" | "PENDING" | "IN_PROGRESS" | "SUBMITTED" | "RETURNED" | "CONFIRMED" | "COMMERCIAL" | "CANCELLED";
+type Filter = "ALL" | "PENDING" | "IN_PROGRESS" | "SUBMITTED" | "CONFIRMED" | "COMMERCIAL" | "CANCELLED";
 
 const statusMeta: Record<WorkflowState, { label: string; note: string }> = {
   PENDING: { label: "Очікує", note: "Діагностика підготовлена до старту" },
   IN_PROGRESS: { label: "В роботі", note: "Механік проводить діагностику; CRM зберігає результати" },
   SUBMITTED: { label: "На перевірці", note: "Механік завершив діагностику; сервіс-менеджер перевіряє ДК" },
-  RETURNED: { label: "На уточненні", note: "Сервіс-менеджер повернув ДК механіку для уточнення" },
+  RETURNED: { label: "В роботі", note: "ДК повернено механіку з коментарем; діагностика знову в роботі" },
   CONFIRMED: { label: "Підтверджена", note: "Діагностична карта зафіксована та доступна для комерційного етапу" },
   CANCELLED: { label: "Скасована", note: "Діагностику закрито без підтвердженої ДК" },
 };
@@ -50,7 +50,6 @@ const filters: Array<{ value: Filter; label: string }> = [
   { value: "PENDING", label: "Очікують" },
   { value: "IN_PROGRESS", label: "В роботі" },
   { value: "SUBMITTED", label: "На перевірці" },
-  { value: "RETURNED", label: "На уточненні" },
   { value: "CONFIRMED", label: "Підтверджені" },
   { value: "COMMERCIAL", label: "Комерційна пропозиція" },
   { value: "CANCELLED", label: "Скасовані" },
@@ -84,8 +83,7 @@ function matchesFilter(row: Diagnostic, filter: Filter) {
   if (filter === "ALL") return true;
   if (filter === "COMMERCIAL") return Boolean(row.status === "CONFIRMED" && row.commercialProposal);
   if (filter === "SUBMITTED") return workflowState(row) === "SUBMITTED";
-  if (filter === "RETURNED") return workflowState(row) === "RETURNED";
-  if (filter === "IN_PROGRESS") return workflowState(row) === "IN_PROGRESS";
+  if (filter === "IN_PROGRESS") return workflowState(row) === "IN_PROGRESS" || workflowState(row) === "RETURNED";
   return row.status === filter;
 }
 function matchesSearch(row: Diagnostic, query: string) {
@@ -182,7 +180,7 @@ export function Diagnostics() {
   const filterCount = (value: Filter) => rows.filter((row) => matchesFilter(row, value)).length;
 
   return <div className={styles.page}>
-    <header className={styles.head}><div><p className={styles.eyebrow}>СЕРВІС · ДІАГНОСТИКА</p><h1>Всі діагностики</h1><p>Єдиний реєстр усіх діагностик СТО. Основний процес: Очікує → В роботі → На перевірці → На уточненні / Підтверджена. Комерційна пропозиція відображається окремо й не змінює статус ДК.</p></div><button className={styles.refresh} onClick={() => void load()} disabled={loading}>{loading ? "Оновлюю…" : "Оновити"}</button></header>
+    <header className={styles.head}><div><p className={styles.eyebrow}>СЕРВІС · ДІАГНОСТИКА</p><h1>Всі діагностики</h1><p>Єдиний реєстр усіх діагностик СТО. Основний процес: Очікує → В роботі → На перевірці → Підтверджена. Повернення ДК механіку не створює окремого статусу — вона знову відображається «В роботі». Комерційна пропозиція відображається окремо й не змінює статус ДК.</p></div><button className={styles.refresh} onClick={() => void load()} disabled={loading}>{loading ? "Оновлюю…" : "Оновити"}</button></header>
 
     <section className={styles.kpis}><div><span>Очікують</span><strong>{counts.waiting}</strong></div><div><span>В роботі</span><strong>{counts.inWork}</strong></div><div><span>На перевірці</span><strong>{counts.submitted}</strong></div><div><span>Підтверджені</span><strong>{counts.confirmed}</strong></div></section>
 
