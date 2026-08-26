@@ -44,11 +44,19 @@ const FILTERS = [
   ["ALL", "Усі"],
   ["READY_FOR_REPAIR", "Готові"],
   ["IN_REPAIR", "У ремонті"],
+  ["BLOCKED", "Блокери / пауза"],
   ["PAUSED", "Пауза"],
   ["REWORK", "Доопрацювання"],
   ["WAITING_PARTS", "Очікують деталі"],
   ["WAITING_QC", "На QC"],
 ] as const;
+const BLOCKED_STATUSES = new Set(["WAITING_PARTS", "PAUSED", "REWORK"]);
+
+function matchesProductionFilter(card: Card, filter: string) {
+  if (filter === "ALL") return true;
+  if (filter === "BLOCKED") return BLOCKED_STATUSES.has(card.status);
+  return card.status === filter;
+}
 
 function formatTime(value: string | null, timezone = "Europe/Kyiv") {
   if (!value) return "—";
@@ -134,7 +142,7 @@ export function ProductionBoard() {
 
   const cards = useMemo(() => {
     const q = search.trim().toLocaleLowerCase("uk-UA");
-    return (data?.cards || []).filter((card) => filter === "ALL" || card.status === filter).filter((card) => {
+    return (data?.cards || []).filter((card) => matchesProductionFilter(card, filter)).filter((card) => {
       if (!q) return true;
       return [formatWorkOrderNumber(card.number), card.plate, card.vehicle, card.mechanic?.name, card.post?.name, card.problem, ...card.works.map((work) => work.description)]
         .filter(Boolean).join(" ").toLocaleLowerCase("uk-UA").includes(q);
@@ -160,7 +168,7 @@ export function ProductionBoard() {
   const counts = useMemo(() => ({
     ready: (data?.cards || []).filter((card) => card.status === "READY_FOR_REPAIR").length,
     repair: (data?.cards || []).filter((card) => card.status === "IN_REPAIR").length,
-    blocked: (data?.cards || []).filter((card) => ["WAITING_PARTS", "PAUSED", "REWORK"].includes(card.status)).length,
+    blocked: (data?.cards || []).filter((card) => BLOCKED_STATUSES.has(card.status)).length,
     qc: (data?.cards || []).filter((card) => card.status === "WAITING_QC").length,
   }), [data?.cards]);
 
@@ -204,7 +212,7 @@ export function ProductionBoard() {
     <section className={styles.kpis}>
       <button type="button" onClick={() => setFilter("READY_FOR_REPAIR")}><span>Готові до ремонту</span><strong>{counts.ready}</strong></button>
       <button type="button" onClick={() => setFilter("IN_REPAIR")}><span>У ремонті</span><strong>{counts.repair}</strong></button>
-      <button type="button" onClick={() => setFilter("PAUSED")}><span>Блокери / пауза</span><strong>{counts.blocked}</strong></button>
+      <button type="button" onClick={() => setFilter("BLOCKED")}><span>Блокери / пауза</span><strong>{counts.blocked}</strong></button>
       <button type="button" onClick={() => setFilter("WAITING_QC")}><span>Передано на QC</span><strong>{counts.qc}</strong></button>
     </section>
 
@@ -216,7 +224,7 @@ export function ProductionBoard() {
       <label className={styles.search}><span>⌕</span><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="ЗН, авто, пост, механік або робота…"/>{search && <button type="button" onClick={() => setSearch("")}>×</button>}</label>
     </section>
 
-    <nav className={styles.filters}>{FILTERS.map(([code, label]) => <button type="button" key={code} className={filter === code ? styles.activeFilter : ""} onClick={() => setFilter(code)}>{label}<b>{code === "ALL" ? data.cards.length : data.cards.filter((card) => card.status === code).length}</b></button>)}</nav>
+    <nav className={styles.filters}>{FILTERS.map(([code, label]) => <button type="button" key={code} className={filter === code ? styles.activeFilter : ""} onClick={() => setFilter(code)}>{label}<b>{data.cards.filter((card) => matchesProductionFilter(card, code)).length}</b></button>)}</nav>
     {message && <div className={styles.notice}>{message}</div>}
 
     <div className={styles.board}>
