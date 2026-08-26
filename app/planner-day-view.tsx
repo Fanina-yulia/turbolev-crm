@@ -300,6 +300,12 @@ export function PlannerDayView<TAppointment extends AppointmentBase>({ day, loca
     if (NON_BLOCKING.has(item.status)) return;
     event.preventDefault();
     event.stopPropagation();
+    try {
+      event.currentTarget.setPointerCapture(event.pointerId);
+    } catch {
+      // Pointer capture is not available in a few older embedded browsers;
+      // the window-level listeners below still handle the drag in that case.
+    }
     const originalStartMinute = localParts(item.plannedStartAt, timeZone).minute;
     const originalEndMinute = Math.max(originalStartMinute + SLOT, localParts(item.plannedEndAt, timeZone).minute);
     const next: ResizeState = {
