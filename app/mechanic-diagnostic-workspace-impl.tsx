@@ -46,27 +46,29 @@ export function MechanicDiagnosticWorkspace({ diagnosticId, onBack, onChanged }:
     void fetch(`/api/diagnostics/${encodeURIComponent(diagnosticId)}/structured?mode=1`, {
       credentials: "include",
       signal: controller.signal,
+      cache: "no-store",
     })
       .then(async (response) => {
         const body = await response.json().catch(() => null) as DiagnosticModePayload | null;
         if (!response.ok || !body?.ok || !body.mode) throw new Error("LOAD_FAILED");
         if (cancelled) return;
 
-        if (body.mode === "LEGACY" && !(body.templateNames?.length)) {
+        // Always attempt an idempotent matrix sync before opening the mechanic workspace.
+        // Active legacy records are upgraded, existing matrix records get missing checks/fluids,
+        // while locked historical legacy diagnostics safely stay in the legacy read-only view.
+        const sync = await fetch(`/api/diagnostics/${encodeURIComponent(diagnosticId)}/matrix-start`, {
+          method: "POST",
+          credentials: "include",
+          cache: "no-store",
+        });
+        if (cancelled) return;
+
+        if (sync.ok || body.mode === "MATRIX") {
           setMode("MATRIX");
           return;
         }
 
-        if (body.mode === "LEGACY") {
-          const upgrade = await fetch(`/api/diagnostics/${encodeURIComponent(diagnosticId)}/matrix-start`, {
-            method: "POST",
-            credentials: "include",
-          });
-          if (!cancelled) setMode(upgrade.ok ? "MATRIX" : "LEGACY");
-          return;
-        }
-
-        setMode("MATRIX");
+        setMode("LEGACY");
       })
       .catch((cause) => {
         if (!cancelled && cause instanceof Error && cause.name !== "AbortError") setMode("LEGACY");
