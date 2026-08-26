@@ -113,9 +113,15 @@ export function Diagnostics() {
   const [conclusion, setConclusion] = useState("");
 
   const applyRoute = useCallback((nextRows: Diagnostic[]) => {
-    const diagnosticId = readCrmRoute().diagnosticId || null;
+    const route = readCrmRoute();
+    const diagnosticId = route.diagnosticId || null;
+    const vehicleId = route.vehicleId || null;
     setSelectedId((current) => {
       if (diagnosticId && nextRows.some((row) => row.id === diagnosticId)) return diagnosticId;
+      if (vehicleId) {
+        const vehicleDiagnostic = nextRows.find((row) => row.vehicle.id === vehicleId);
+        return vehicleDiagnostic?.id ?? null;
+      }
       if (current && nextRows.some((row) => row.id === current)) return current;
       return nextRows[0]?.id ?? null;
     });
@@ -143,15 +149,6 @@ export function Diagnostics() {
     window.addEventListener("popstate", sync);
     return () => window.removeEventListener("popstate", sync);
   }, [applyRoute, rows]);
-  useEffect(() => {
-    const refresh = (event: Event) => {
-      const detail = (event as CustomEvent<{ origin?: string }>).detail;
-      if (detail?.origin === "diagnostics-screen") return;
-      void load();
-    };
-    window.addEventListener("turbolev:data-changed", refresh);
-    return () => window.removeEventListener("turbolev:data-changed", refresh);
-  }, [load]);
 
   const mechanics = useMemo(() => Array.from(new Set(rows.map((row) => row.assignedMechanic?.name).filter((value): value is string => Boolean(value)))).sort((a, b) => a.localeCompare(b, "uk")), [rows]);
   const visible = useMemo(() => rows.filter((row) => matchesFilter(row, filter) && matchesSearch(row, search) && (mechanic === "ALL" || row.assignedMechanic?.name === mechanic)), [rows, filter, search, mechanic]);
@@ -165,13 +162,6 @@ export function Diagnostics() {
     confirmed: rows.filter((row) => row.status === "CONFIRMED").length,
   }), [rows]);
 
-  async function broadcastChanged(diagnosticId: string, vehicleId?: string | null) {
-    await load();
-    window.dispatchEvent(new CustomEvent("turbolev:data-changed", {
-      detail: { entity: "diagnostic", diagnosticId, vehicleId: vehicleId || null, origin: "diagnostics-screen" },
-    }));
-  }
-
   async function transition(status: DiagnosticStatus) {
     if (!selected) return;
     setSaving(true); setError(""); setMessage("");
@@ -184,7 +174,7 @@ export function Diagnostics() {
       });
       const data = await response.json() as ApiResponse;
       if (!response.ok || !data.ok || !data.diagnostic) throw new Error(data.message || data.error || "Не вдалося змінити статус");
-      await broadcastChanged(selected.id, selected.vehicle.id);
+      await load();
       setMessage(status === "CONFIRMED" ? "Діагностичну карту підтверджено." : "Статус діагностики оновлено.");
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Помилка зміни статусу");
@@ -207,7 +197,15 @@ export function Diagnostics() {
       <select className={registryStyles.select} value={mechanic} onChange={(event) => setMechanic(event.target.value)} aria-label="Фільтр за механіком"><option value="ALL">Усі механіки</option>{mechanics.map((name) => <option key={name} value={name}>{name}</option>)}</select>
     </div>
 
-    {readCrmRoute().diagnosticId && <div className={registryStyles.routeHint}>Відкрито Діагностичну карту з історії автомобіля.</div>}
+    {(readCrmRoute().diagnosticId || readCrmRoute().vehicleId) && <div className={registryStyles.routeHint}>
+      {readCrmRoute().diagnosticId
+        ? "Відкрито Діагностичну карту з історії автомобіля."
+        : readCrmRoute().workflowFocus === "proposal"
+          ? "Для цього автомобіля Комерційна пропозиція стане доступною після підтвердження Діагностичної карти."
+          : readCrmRoute().workflowFocus === "repair"
+            ? "Ремонт відкриється після погодження Комерційної пропозиції та створення замовлення-наряду."
+            : "Відкрито процес Діагностичної карти для цього автомобіля."}
+    </div>}
     {error && <div className={styles.error}>{error}</div>}{message && <div className={styles.success}>{message}</div>}
 
     <div className={styles.layout}>
@@ -237,8 +235,12 @@ export function Diagnostics() {
         <label className={styles.conclusion}><span>Технічний висновок</span><textarea rows={selected.structured?.inspections ? 5 : 8} value={conclusion} disabled={selected.status === "CANCELLED" || Boolean(selected.structured?.inspections) || selected.status === "CONFIRMED"} placeholder={selected.structured?.inspections ? "Висновок перевіряється у Діагностичній карті нижче." : "Опишіть підтверджені дефекти, результати перевірки та рекомендовані роботи…"} onChange={(event) => setConclusion(event.target.value)} /><small>{selected.structured?.inspections ? "Для структурованої діагностики висновок та ДК формуються у блоці нижче." : "Для старої діагностики заповніть висновок вручну."}</small></label>
         {selected.commercialProposal && <div className={styles.woCard}><div><span>Комерційний етап</span><strong>{commercialLabels[selected.commercialProposal.stage]}</strong></div><button className={styles.secondary} type="button" onClick={() => navigateCrm("Замовлення-наряди", { workOrderId: selected.commercialProposal!.workOrderId, workOrderTab: "estimate" })}>Відкрити КП →</button></div>}
         {!selected.structured?.inspections && selected.reviewState === "CONFIRMED" && <DiagnosticReportSharePanel diagnosticId={selected.id} reviewState={selected.reviewState} workOrder={selected.workOrder} />}
-        {selected.structured?.inspections ? <StructuredDiagnosticReviewPanel diagnosticId={selected.id} onChanged={() => broadcastChanged(selected.id, selected.vehicle.id)} /> : <div className={styles.actions}>{selected.status === "PENDING" && <><button className={styles.primary} disabled={saving} onClick={() => void transition("IN_PROGRESS")}>Почати стару діагностику</button><button className={styles.secondary} disabled={saving} onClick={() => void transition("CANCELLED")}>Скасувати</button></>}{selected.status === "IN_PROGRESS" && <><button className={styles.primary} disabled={saving || !conclusion.trim()} onClick={() => void transition("CONFIRMED")}>{saving ? "Зберігаю…" : "Підтвердити стару діагностику"}</button><button className={styles.secondary} disabled={saving} onClick={() => void transition("CANCELLED")}>Скасувати</button></>}{selected.status === "CONFIRMED" && <span className={styles.lockNote}>✓ Діагностику зафіксовано. Для нового циклу потрібна нова заявка на діагностику.</span>}{selected.status === "CANCELLED" && <span className={styles.lockNote}>Діагностику скасовано. Історія збережена.</span>}</div>}
-      </> : <div className={styles.empty}>Оберіть діагностику зі списку.</div>}</aside>
+        {selected.structured?.inspections ? <StructuredDiagnosticReviewPanel diagnosticId={selected.id} onChanged={load} /> : <div className={styles.actions}>{selected.status === "PENDING" && <><button className={styles.primary} disabled={saving} onClick={() => void transition("IN_PROGRESS")}>Почати стару діагностику</button><button className={styles.secondary} disabled={saving} onClick={() => void transition("CANCELLED")}>Скасувати</button></>}{selected.status === "IN_PROGRESS" && <><button className={styles.primary} disabled={saving || !conclusion.trim()} onClick={() => void transition("CONFIRMED")}>{saving ? "Зберігаю…" : "Підтвердити стару діагностику"}</button><button className={styles.secondary} disabled={saving} onClick={() => void transition("CANCELLED")}>Скасувати</button></>}{selected.status === "CONFIRMED" && <span className={styles.lockNote}>✓ Діагностику зафіксовано. Для нового циклу потрібна нова заявка на діагностику.</span>}{selected.status === "CANCELLED" && <span className={styles.lockNote}>Діагностику скасовано. Історія збережена.</span>}</div>}
+      </> : readCrmRoute().vehicleId ? <div className={styles.empty}>
+        <h2>Діагностична карта для автомобіля</h2>
+        <p>Для цього автомобіля ще немає створеної діагностики. Карта зʼявиться після прибуття автомобіля на діагностику та призначення механіка.</p>
+        <button className={styles.secondary} type="button" onClick={() => navigateCrm("Авто", { vehicleId: readCrmRoute().vehicleId })}>← Повернутися до картки авто</button>
+      </div> : <div className={styles.empty}>Оберіть діагностику зі списку.</div>}</aside>
     </div>
   </div>;
 }

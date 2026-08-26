@@ -35,6 +35,7 @@ export type CrmRouteParams = {
   supplierId?: string;
   provider?: string;
   newRequest?: string;
+  workflowFocus?: string;
 };
 
 export const CRM_ROUTE_KEYS: Array<keyof CrmRouteParams> = [
@@ -65,6 +66,7 @@ export const CRM_ROUTE_KEYS: Array<keyof CrmRouteParams> = [
   "supplierId",
   "provider",
   "newRequest",
+  "workflowFocus",
 ];
 
 export function readCrmRoute(): CrmRouteParams {

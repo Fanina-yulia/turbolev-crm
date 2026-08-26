@@ -86,7 +86,6 @@ export function VehiclesDirectory() {
   const [vehicleCard, setVehicleCard] = useState<VehicleCard | null>(null);
   const [vehicleLoading, setVehicleLoading] = useState(false);
   const [drawerTab, setDrawerTab] = useState<VehicleDrawerTab>("overview");
-  const vehicleIds = vehicles.map((vehicle) => vehicle.id).join(",");
 
   useEffect(() => {
     const controller = new AbortController();
@@ -124,30 +123,6 @@ export function VehiclesDirectory() {
       window.clearTimeout(timer);
     };
   }, [query, page]);
-
-  useEffect(() => {
-    if (!vehicleIds) return;
-    const controller = new AbortController();
-    const refreshStatuses = async () => {
-      try {
-        const encodedIds = vehicleIds.split(",").map((id) => encodeURIComponent(id)).join(",");
-        const statusResponse = await fetch(`/api/vehicles/status-summary?ids=${encodedIds}`, { cache: "no-store", signal: controller.signal });
-        const statusPayload: unknown = await statusResponse.json().catch(() => null);
-        const statuses = parseVehicleStatusSummaryPayload(statusPayload);
-        if (!statusResponse.ok || !statuses) return;
-        const byVehicle = new Map(statuses.vehicles.map((item) => [item.vehicleId, item.statusSummary]));
-        setVehicles((current) => current.map((vehicle) => ({ ...vehicle, statusSummary: byVehicle.get(vehicle.id) || vehicle.statusSummary })));
-      } catch (cause) {
-        if (cause instanceof Error && cause.name !== "AbortError") console.error("Vehicle status live refresh failed", cause);
-      }
-    };
-    const onDataChanged = () => void refreshStatuses();
-    window.addEventListener("turbolev:data-changed", onDataChanged);
-    return () => {
-      controller.abort();
-      window.removeEventListener("turbolev:data-changed", onDataChanged);
-    };
-  }, [vehicleIds]);
 
   useEffect(() => {
     const syncFromRoute = () => setVehicleId(readCrmRoute().vehicleId || null);
@@ -211,24 +186,29 @@ export function VehiclesDirectory() {
   }
 
   function openWorkflow(vehicle: Vehicle, key: (typeof WORKFLOW_META)[number]["key"], targetId: string | null) {
-    if (key === "diagnostics") {
-      if (targetId) {
-        navigateCrm("Діагностика", { diagnosticId: targetId });
-      } else {
-        openNewRequestForVehicle(vehicle);
-      }
+    if (key === "diagnostics" && targetId) {
+      navigateCrm("Діагностика", { diagnosticId: targetId, vehicleId: vehicle.id, workflowFocus: "diagnostics" });
       return;
     }
 
-    if (targetId) {
+    if (key !== "diagnostics" && targetId) {
       navigateCrm("Замовлення-наряди", {
         workOrderId: targetId,
+        vehicleId: vehicle.id,
         workOrderTab: key === "proposal" ? "estimate" : "overview",
       });
       return;
     }
 
-    openNewRequestForVehicle(vehicle);
+    // Відсутній наступний документ не повинен повертати користувача у майстер
+    // запису. Відкриваємо картку процесу для цього самого автомобіля:
+    // тут видно поточний етап і передумови наступного документа.
+    navigateCrm("Діагностика", {
+      vehicleId: vehicle.id,
+      plate: vehicle.plateNumber || "",
+      vin: vehicle.vin || "",
+      workflowFocus: key,
+    });
   }
 
   function openVehicle(id: string) {
