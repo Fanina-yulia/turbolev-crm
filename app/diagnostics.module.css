@@ -142,7 +142,7 @@
 .layout {
   display: grid;
   grid-template-columns: minmax(310px, 36%) minmax(0, 1fr);
-  align-items: start;
+  align-items: stretch;
   gap: 12px;
 }
 
@@ -157,7 +157,8 @@
 
 .list {
   display: grid;
-  max-height: calc(100vh - 270px);
+  height: min(720px, calc(100dvh - 330px));
+  min-height: 420px;
   overflow-y: auto;
 }
 
@@ -271,9 +272,8 @@
 
 .detail {
   container: diagnostic-detail / inline-size;
-  position: sticky;
-  top: 14px;
-  max-height: calc(100vh - 120px);
+  height: min(720px, calc(100dvh - 330px));
+  min-height: 420px;
   padding: 16px;
   overflow: auto;
 }
@@ -466,12 +466,13 @@
   }
 
   .list {
-    max-height: 420px;
+    height: 420px;
+    min-height: 0;
   }
 
   .detail {
-    position: static;
-    max-height: none;
+    height: auto;
+    min-height: 0;
   }
 
   .kpis {

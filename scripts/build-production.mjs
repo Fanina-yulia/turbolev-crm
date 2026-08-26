@@ -12,7 +12,9 @@ function exitFrom(result) {
 }
 
 function run(args) {
-  const result = spawnSync(npx, args, {
+  const command = args[0] === "tsx" ? process.execPath : npx;
+  const commandArgs = args[0] === "tsx" ? ["--import", "tsx", ...args.slice(1)] : args;
+  const result = spawnSync(command, commandArgs, {
     stdio: "inherit",
     env: process.env,
   });

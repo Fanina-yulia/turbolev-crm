@@ -826,7 +826,10 @@ export function NewRequestWizardV5({showButton=true,onOpenChange}:NewRequestWiza
                 </label>
                 <label>
                   <span>Телефон *</span>
-                  <input value={form.phone} onChange={event=>updatePhone(event.target.value)} inputMode="tel" placeholder="+380 67 123 45 67"/>
+                  <span className="inlinePhoneLookup">
+                    <input value={form.phone} onChange={event=>updatePhone(event.target.value)} inputMode="tel" placeholder="+380 67 123 45 67"/>
+                    <button type="button" className={`lookupState-${phoneLookupState}`} onClick={()=>void lookupPhone()} disabled={phoneLookupState==="searching"}>{phoneButton}</button>
+                  </span>
                 </label>
                 <label>
                   <span>Джерело</span>
@@ -845,23 +848,14 @@ export function NewRequestWizardV5({showButton=true,onOpenChange}:NewRequestWiza
                 </label>
               </div>
 
-              <div className="fastLookupCard">
-                <div className="fastLookupCopy">
-                  <b>Перевірити клієнта за телефоном</b>
-                  <span>Якщо це постійний клієнт, підтягнемо його картку</span>
+              <p className="phoneLookupHint">Кнопка «{phoneButton}» перевіряє клієнта за номером і підставляє його картку, якщо клієнт уже є в CRM.</p>
+              {phoneLookupState==="found"&&foundClient&&<div className="clientLookupCompact fastClientResult">
+                <div>
+                  <b>{foundClient.name||"Невідомий клієнт"}</b>
+                  <span>{formatPhone(foundClient.phone)} · {foundClient.vehicles?.length||0} авто</span>
                 </div>
-                <div className="fastLookupControls">
-                  <input value={form.phone} onChange={event=>updatePhone(event.target.value)} placeholder="+380 67 123 45 67" inputMode="tel"/>
-                  <button type="button" className={`lookupState-${phoneLookupState}`} onClick={()=>void lookupPhone()} disabled={phoneLookupState==="searching"}>{phoneButton}</button>
-                </div>
-                {phoneLookupState==="found"&&foundClient&&<div className="clientLookupCompact fastClientResult">
-                  <div>
-                    <b>{foundClient.name||"Невідомий клієнт"}</b>
-                    <span>{formatPhone(foundClient.phone)} · {foundClient.vehicles?.length||0} авто</span>
-                  </div>
-                  <button type="button" onClick={()=>useClient(foundClient)}>Використати</button>
-                </div>}
-              </div>
+                <button type="button" onClick={()=>useClient(foundClient)}>Використати</button>
+              </div>}
 
               {vehicleConflict&&<div className={`vehicleOwnerConflict ${allowReassign?"confirmed":""}`}>
                 <div>
