@@ -1,0 +1,49 @@
+.calendarRoot{
+  display:flex;
+  flex:1 1 auto;
+  min-width:0;
+  min-height:0;
+  height:100%;
+}
+
+.headerActions{
+  display:flex;
+  align-items:center;
+  justify-content:flex-end;
+  flex-wrap:wrap;
+  gap:8px;
+  max-width:100%;
+}
+
+.viewToggle{
+  display:inline-flex;
+  flex:0 0 auto;
+  gap:3px;
+  padding:3px;
+  border:1px solid var(--line);
+  border-radius:10px;
+  background:var(--panel);
+}
+
+.viewButton{
+  min-height:36px;
+  padding:0 13px;
+  border:0;
+  border-radius:7px;
+  background:transparent;
+  color:var(--muted);
+  font:inherit;
+  font-size:14px;
+  font-weight:800;
+  white-space:nowrap;
+  cursor:pointer;
+}
+
+.viewButton:hover{background:var(--panel-2);color:var(--text)}
+.viewActive{background:var(--text);color:var(--bg)}
+.viewActive:hover{background:var(--text);color:var(--bg)}
+@media(max-width:760px){
+  .headerActions{width:100%;justify-content:stretch}
+  .viewToggle{flex:1 1 100%;width:100%}
+  .viewButton{flex:1 1 0;min-height:40px}
+}
