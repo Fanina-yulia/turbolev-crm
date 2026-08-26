@@ -11,6 +11,7 @@ import { CRM_ROUTE_KEYS, navigateCrm, type CrmRouteParams } from "./crm-route";
 import { PERMISSIONS } from "@/src/security/permissions";
 import { turboLevLogoDark, turboLevLogoLight } from "@/src/brand/logos";
 import shellStyles from "./crm-shell.module.css";
+import requestShellStyles from "./new-request-shell.module.css";
 
 type NavigateDetail = string | { section: CrmSectionLabel; filter?: string; filterLabel?: string };
 type LegacyRoute = { section: CrmSectionLabel; params: CrmRouteParams };
@@ -264,7 +265,7 @@ export function CrmShell({ initialSection, initialSettingsTab }: { initialSectio
       })}</nav>
       <div className="sidebarFoot"><span className="liveDot"/> {access.enforced?(access.snapshot?.user?.name||"Захищений режим"):"Станція онлайн"}</div>
     </aside>
-    <section className={`workspace ${active==="Огляд станції"&&!newRequestOpen?shellStyles.workspaceWithFloatingAction:""} ${newRequestOpen?shellStyles.workspaceRequestOpen:""}`}>
+    <section className={`workspace ${active==="Огляд станції"&&!newRequestOpen?shellStyles.workspaceWithFloatingAction:""} ${newRequestOpen?requestShellStyles.workspaceRequestOpen:""}`}>
       <div className={active==="Огляд станції"&&!newRequestOpen?shellStyles.globalNewRequest:undefined}>
         <NewRequestLauncher showButton={active==="Огляд станції"&&!newRequestOpen&&canCreateRequest} onOpenChange={setNewRequestOpen}/>
       </div>
