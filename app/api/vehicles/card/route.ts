@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getPrisma } from "@/src/lib/prisma";
 import { resolveVehicleColorByPlate } from "@/src/services/vehicle-registry-color.service";
+import { getVehicleWorkflowIndicators } from "@/src/services/vehicle-workflow-indicators.service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -61,7 +62,9 @@ export async function GET(request: NextRequest) {
     const color = vehicle.exteriorColorConfirmed
       ? null
       : await resolveVehicleColorByPlate(vehicle.plateNumber, vehicle.id, vehicle.vin).catch(() => null);
-    return NextResponse.json({ ok: true, vehicle: color ? { ...vehicle, ...color } : vehicle }, { headers: { "Cache-Control": "no-store" } });
+    const indicators = await getVehicleWorkflowIndicators([vehicle.id]);
+    const enriched = color ? { ...vehicle, ...color } : vehicle;
+    return NextResponse.json({ ok: true, vehicle: { ...enriched, workflow: indicators.get(vehicle.id) } }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
     console.error("vehicle card GET failed", error);
     return NextResponse.json({ ok: false, error: "Не вдалося відкрити картку автомобіля." }, { status: 500 });

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { toVehicleDirectoryItem } from "@/src/lib/contracts/crm-core.server";
 import { getPrisma } from "@/src/lib/prisma";
+import { getVehicleWorkflowIndicators } from "@/src/services/vehicle-workflow-indicators.service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -69,8 +70,16 @@ export async function GET(request: NextRequest) {
       take: limit,
       select: vehicleSelect,
     });
+    const indicators = await getVehicleWorkflowIndicators(vehicles.map((vehicle) => vehicle.id));
     return NextResponse.json(
-      { ok: true, total, page: safePage, limit, pages, vehicles: vehicles.map(toVehicleDirectoryItem) },
+      {
+        ok: true,
+        total,
+        page: safePage,
+        limit,
+        pages,
+        vehicles: vehicles.map((vehicle) => toVehicleDirectoryItem(vehicle, indicators.get(vehicle.id)!)),
+      },
       { headers: { "Cache-Control": "no-store" } },
     );
   } catch (error) {

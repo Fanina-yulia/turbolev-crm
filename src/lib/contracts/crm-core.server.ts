@@ -4,6 +4,7 @@ import type {
   ClientDirectoryItem,
   CrmDecimal,
   VehicleDirectoryItem,
+  VehicleWorkflowIndicator,
   WorkOrderReference,
 } from "./crm-core";
 
@@ -106,7 +107,7 @@ export function toClientDirectoryItem(row: ServerClientDirectoryItem): ClientDir
   };
 }
 
-export function toVehicleDirectoryItem(row: ServerVehicleDirectoryItem): VehicleDirectoryItem {
+export function toVehicleDirectoryItem(row: ServerVehicleDirectoryItem, workflow: VehicleWorkflowIndicator): VehicleDirectoryItem {
   return {
     id: row.id,
     clientId: row.clientId,
@@ -135,5 +136,6 @@ export function toVehicleDirectoryItem(row: ServerVehicleDirectoryItem): Vehicle
     updatedAt: iso(row.updatedAt),
     client: row.client,
     _count: row._count,
+    workflow,
   };
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { VehicleCardContract, VehicleDirectoryItem } from "@/src/lib/contracts/crm-core";
+import type { VehicleCardContract, VehicleDirectoryItem, VehicleWorkflowIndicator } from "@/src/lib/contracts/crm-core";
 import {
   parseVehicleAppearancePayload,
   parseVehicleCardPayload,
@@ -16,6 +16,7 @@ import { VehicleRender } from "./vehicle-render";
 import { VehicleDiagnosticsTab } from "./vehicle-diagnostics-tab";
 import styles from "./directory-pages.module.css";
 import tabStyles from "./vehicle-card-tabs.module.css";
+import workflowStyles from "./vehicle-workflow.module.css";
 
 type Vehicle = VehicleDirectoryItem;
 type VehicleCard = VehicleCardContract;
@@ -39,6 +40,22 @@ function engineText(vehicle: Vehicle | VehicleCard) {
   if (vehicle.engineVolumeCm3) return `${(vehicle.engineVolumeCm3 / 1000).toFixed(1)} л`;
   return "—";
 }
+
+function workflowStatus(indicator: VehicleWorkflowIndicator, kind: keyof VehicleWorkflowIndicator) {
+  return indicator[kind];
+}
+
+function WorkflowIcon({ kind }: { kind: "diagnosticCard" | "commercialProposal" | "repair" }) {
+  if (kind === "diagnosticCard") return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3.5h7l3 3V20.5H7z"/><path d="M14 3.5v4h4M9.5 12h5M9.5 15.5h5"/></svg>;
+  if (kind === "commercialProposal") return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4.5h14v15H5z"/><path d="M8 8h8M8 11.5h8M8 15h4"/><path d="m15.5 15.5 1.2 1.2 2.3-2.5"/></svg>;
+  return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 13.5h2l2-5h7l2 5h3v4h-2"/><path d="M6 17.5H4v-2M18 17.5h2"/><circle cx="8" cy="17.5" r="1.7"/><circle cx="16" cy="17.5" r="1.7"/><path d="M8 13.5h7"/></svg>;
+}
+
+const WORKFLOW_META = [
+  { key: "diagnosticCard", label: "Діагностична карта", states: { NONE: "Не було діагностики", IN_PROGRESS: "Діагностика триває", READY: "Сформована" } },
+  { key: "commercialProposal", label: "Комерційна пропозиція", states: { NOT_SENT: "Не відправлена", PENDING: "На розгляді", APPROVED: "Погоджена" } },
+  { key: "repair", label: "Ремонт", states: { NOT_STARTED: "Не розпочато", IN_PROGRESS: "У ремонті", PAID: "Оплачено" } },
+] as const;
 
 function VehicleImage({ vehicle, size = "card", eager = false }: { vehicle: Vehicle | VehicleCard; size?: "mini" | "card" | "drawer" | "hero"; eager?: boolean }) {
   return <VehicleRender
@@ -198,10 +215,14 @@ export function VehiclesDirectory() {
           <span><small>Власник</small><b>{vehicle.client.name?.trim() || "Клієнт без імені"}</b></span>
           <span>{vehicle.client.phone}</span>
         </div>
-        <div className={styles.stats}>
-          <span><small>Замовлення</small><b>{vehicle._count.workOrders}</b></span>
-          <span><small>Діагностики</small><b>{vehicle._count.diagnosticRequests}</b></span>
-          <span><small>Пробіг</small><b>{vehicle.mileageKm ? `${vehicle.mileageKm.toLocaleString("uk-UA")} км` : "—"}</b></span>
+        <div className={workflowStyles.workflow} aria-label="Статуси автомобіля">
+          {WORKFLOW_META.map(({ key, label, states }) => {
+            const status = workflowStatus(vehicle.workflow, key);
+            return <span className={workflowStyles.workflowItem} key={key} title={`${label}: ${(states as Record<string, string>)[status] || status}`}>
+              <i className={`${workflowStyles.workflowIcon} ${workflowStyles[`workflow_${status}`]}`}><WorkflowIcon kind={key} /></i>
+              <small>{label}</small>
+            </span>;
+          })}
         </div>
       </button>)}
     </div>}
