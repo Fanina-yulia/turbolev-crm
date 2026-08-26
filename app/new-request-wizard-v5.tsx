@@ -119,6 +119,7 @@ export function NewRequestWizardV5({showButton=true,onOpenChange}:NewRequestWiza
     ()=>locations.find(location=>location.id===form.locationId)||locations[0]||null,
     [locations,form.locationId],
   );
+  const plannerEntry=form.source==="PLANNER";
   const responsibleOptions=useMemo(()=>{
     const names=users.map(item=>item.name);
     if(form.responsible&&!names.includes(form.responsible))names.unshift(form.responsible);
@@ -597,17 +598,22 @@ export function NewRequestWizardV5({showButton=true,onOpenChange}:NewRequestWiza
     }
     if(step===3){
       if(!form.complaint.trim()&&preliminaryWorks.length===0)return setError("Коротко опишіть проблему або додайте хоча б одну попередню роботу.");
+      if(plannerEntry){
+        setError("");
+        void saveRequest();
+        return;
+      }
       setStep(4);
       setError("");
     }
   }
 
-  async function saveRequest(event:FormEvent){
-    event.preventDefault();
+  async function saveRequest(event?:FormEvent){
+    event?.preventDefault();
     if(!canLeaveVehicle)return setError("Поверніться до кроку «Автомобіль» і вкажіть марку та модель.");
     if(!form.appointmentDate||!form.appointmentTime)return setError("Вкажіть дату та час заїзду.");
     if(!form.postId)return setError("Оберіть пост СТО.");
-    if(!form.mechanicId)return setError("Закріпіть майстра.");
+    if(!plannerEntry&&!form.mechanicId)return setError("Закріпіть майстра.");
     if(!canLeaveClient)return setError("Вкажіть ім’я, прізвище та коректний номер телефону.");
     if(vehicleConflict&&!allowReassign)return setError("Потрібно підтвердити переприв’язування автомобіля.");
     setSaving(true);
@@ -689,13 +695,13 @@ export function NewRequestWizardV5({showButton=true,onOpenChange}:NewRequestWiza
           <div>
             <p className="eyebrow">TURBO LEV · НОВА ЗАЯВКА</p>
             <h2>Запис на діагностику</h2>
-            <span>4 короткі кроки: авто → клієнт → потреба → час заїзду</span>
+            <span>{plannerEntry?"3 короткі кроки: авто → клієнт → потреба · час уже вибрано":"4 короткі кроки: авто → клієнт → потреба → час заїзду"}</span>
           </div>
           <button className="requestClose" type="button" onClick={close} aria-label="Повернутися назад">←</button>
         </div>
 
         <div className="requestStepper requestStepperV4">
-          {["Автомобіль","Клієнт","Проблема","Запис"].map((label,index)=>{
+          {(plannerEntry?["Автомобіль","Клієнт","Проблема"]:["Автомобіль","Клієнт","Проблема","Запис"]).map((label,index)=>{
             const n=index+1;
             const done=n<step;
             return <button
@@ -885,7 +891,7 @@ export function NewRequestWizardV5({showButton=true,onOpenChange}:NewRequestWiza
               </div>
             </section>}
 
-            {step===4&&<section className="requestStep requestFastStep requestPlannerStep">
+            {step===4&&!plannerEntry&&<section className="requestStep requestFastStep requestPlannerStep">
               <div className="requestStepTitle">
                 <div>
                   <small>КРОК 4</small>
@@ -977,9 +983,11 @@ export function NewRequestWizardV5({showButton=true,onOpenChange}:NewRequestWiza
           <button type="button" className="ghost" onClick={close}>Скасувати</button>
           <div>
             {step>1&&<button type="button" className="ghost" onClick={()=>{setStep(current=>Math.max(1,current-1));setError("")}}>← Назад</button>}
-            {step<4
+            {step<4&&!(plannerEntry&&step===3)
               ?<button type="button" className="primary" onClick={goNext}>{step===1&&!hasVehicleIdentifier?"Вкажіть номер авто":step===1&&!hasVehicleIdentity?"Уточніть марку і модель":step===2&&!canLeaveClient?"Заповніть клієнта":"Далі →"}</button>
-              :<button type="submit" className="primary fastBookButton" disabled={saving}>{saving?"Записую…":"Записати на діагностику"}</button>}
+              :plannerEntry
+                ?<button type="button" className="primary fastBookButton" disabled={saving} onClick={goNext}>{saving?"Створюю…":"Створити запис"}</button>
+                :<button type="submit" className="primary fastBookButton" disabled={saving}>{saving?"Записую…":"Записати на діагностику"}</button>}
           </div>
         </div>
       </form>}
