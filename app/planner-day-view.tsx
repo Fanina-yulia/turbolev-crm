@@ -101,12 +101,13 @@ function currency(value: number) {
   return new Intl.NumberFormat("uk-UA", { style: "currency", currency: "UAH", maximumFractionDigits: 0 }).format(value);
 }
 
-export function PlannerDayView<TAppointment extends AppointmentBase>({ day, location, appointments, onOpen, onCreate }: {
+export function PlannerDayView<TAppointment extends AppointmentBase>({ day, location, appointments, onOpen, onCreate, showMetrics = true }: {
   day: string;
   location: Location;
   appointments: TAppointment[];
   onOpen: (appointment: TAppointment) => void;
   onCreate: (day: string, time: string, postId: string) => void;
+  showMetrics?: boolean;
 }) {
   const [availability, setAvailability] = useState<AvailabilityResponse | null>(null);
   const [loading, setLoading] = useState(false);
@@ -263,14 +264,14 @@ export function PlannerDayView<TAppointment extends AppointmentBase>({ day, loca
   const nowStyle = { left: `calc(${resourceWidth}px + (100% - ${resourceWidth}px) * ${nowRatio})` } as CSSProperties;
 
   return <div className={styles.wrap}>
-    <section className={styles.kpis} aria-label="Показники дня">
+    {showMetrics && <section className={styles.kpis} aria-label="Показники дня">
       <article><span className={styles.kpiIcon}>▣</span><div><strong>{metrics.total}</strong><small>Записів<br/>на сьогодні</small></div></article>
       <article><span className={`${styles.kpiIcon} ${styles.kpiGreen}`}>✓</span><div><strong>{metrics.completed}</strong><small>Завершено</small></div></article>
       <article><span className={`${styles.kpiIcon} ${styles.kpiBlue}`}>◌</span><div><strong>{metrics.inProgress}</strong><small>В роботі</small></div></article>
       <article><span className={`${styles.kpiIcon} ${styles.kpiOrange}`}>◷</span><div><strong>{metrics.waiting}</strong><small>Очікують</small></div></article>
       <article><span className={`${styles.kpiIcon} ${styles.kpiGreen}`}>◴</span><div><strong>{metrics.freeSlots}</strong><small>Вільних слотів<br/>по 30 хв</small></div></article>
       <article><span className={`${styles.kpiIcon} ${styles.kpiGreen}`}>₴</span><div><strong>{currency(metrics.revenue)}</strong><small>Очікуваний виторг<br/>за день</small></div></article>
-    </section>
+    </section>}
 
     <div className={styles.meta}>
       <div><strong>{location.name}</strong> · {minuteLabel(openMinute)}–{minuteLabel(closeMinute)} · крок 30 хв</div>
