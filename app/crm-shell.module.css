@@ -18,6 +18,14 @@
   padding-top:86px!important;
 }
 
+.workspaceRequestOpen{
+  padding-top:24px!important;
+}
+
+.workspaceRequestOpen > div{
+  width:100%;
+}
+
 .mobileNavToggle{
   display:none;
 }
