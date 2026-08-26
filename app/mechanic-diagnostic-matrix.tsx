@@ -693,9 +693,21 @@ export function MechanicDiagnosticMatrix({ diagnosticId, onBack, onChanged }: { 
       <div className={styles.systemRows}>
         {section.items.map((item) => {
           const saving = Boolean(item.id && savingChecks.has(item.id));
+          const uploading = Boolean(item.id && uploadingPhotoCheckId === item.id);
+          const mediaCount = item.finding?.media?.length || 0;
           const choices = systemChoices(section, item);
           return <div className={styles.systemRow} key={item.id || item.templateItemId}>
-            <strong>{item.name}</strong>
+            <div className={photoStyles.systemItemHeader}>
+              <strong>{item.name}</strong>
+              {item.state === "DEFECT" && <button
+                type="button"
+                className={`${photoStyles.photoButton} ${uploading ? photoStyles.photoButtonUploading : ""}`}
+                aria-label={`${mediaCount ? "Додати ще фото" : "Сфотографувати"}: ${item.name}`}
+                aria-busy={uploading}
+                disabled={locked || !item.id || Boolean(busy) || saving || Boolean(uploadingPhotoCheckId)}
+                onClick={() => openCamera(item)}
+              >{uploading ? <span className={photoStyles.photoSpinner} /> : cameraIcon()}{mediaCount > 0 && <b>{mediaCount}</b>}</button>}
+            </div>
             <div className={styles.stateChoices}>
               {choices.map((choice) => {
                 const active = item.state === choice.state;
