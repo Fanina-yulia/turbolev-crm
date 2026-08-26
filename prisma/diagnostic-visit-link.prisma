@@ -1,0 +1,11 @@
+model DiagnosticVisitLink {
+  id                  String   @id @default(cuid())
+  diagnosticRequestId String   @unique
+  appointmentId       String   @unique @db.VarChar(64)
+  vehicleId           String
+  source              String   @db.VarChar(32)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@index([vehicleId, createdAt])
+}

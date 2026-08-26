@@ -3,6 +3,7 @@ import { evaluateWorkflowTransition } from "@/src/domain/workflow";
 import { getPrisma } from "@/src/lib/prisma";
 import { toPrismaJson } from "@/src/lib/prisma-json";
 import { ensureLeadArrivalInTransaction } from "@/src/services/lead-arrival.service";
+import { linkDiagnosticVisitInTransaction } from "@/src/services/diagnostic-visit-link.service";
 import {
   normalizeAppointmentPayload,
   parsePlannerStatus,
@@ -185,7 +186,13 @@ export async function arrivePlannerAppointment(id: string, body: Record<string, 
       };
     }
 
-    if (diagnosticRequestId && !followupWorkVisit) {
+    if (diagnosticRequestId && vehicleId && !followupWorkVisit) {
+      await linkDiagnosticVisitInTransaction(tx, {
+        diagnosticRequestId,
+        appointmentId: id,
+        vehicleId,
+        source: "PLANNER",
+      });
       await tx.diagnosticAssignment.upsert({
         where: { diagnosticRequestId },
         create: { diagnosticRequestId, locationId: input.locationId, mechanicId: input.mechanicId },
