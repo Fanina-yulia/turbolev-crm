@@ -21,6 +21,11 @@ export async function linkDiagnosticVisitInTransaction(tx: Prisma.TransactionCli
   return tx.diagnosticVisitLink.create({ data: input });
 }
 
+export async function linkDiagnosticVisit(input: DiagnosticVisitLinkInput) {
+  const prisma = getPrisma();
+  return prisma.$transaction((tx) => linkDiagnosticVisitInTransaction(tx, input));
+}
+
 type AuditVisitRow = {
   appointmentId: string | null;
 };
