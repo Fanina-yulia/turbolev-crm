@@ -173,6 +173,39 @@ export function VehiclesDirectory() {
     window.dispatchEvent(new CustomEvent("turbolev:open-new-request", { detail }));
   }
 
+  function openNewRequestForVehicle(vehicle: Vehicle) {
+    window.dispatchEvent(new CustomEvent("turbolev:open-new-request", {
+      detail: {
+        source: "VEHICLES",
+        plate: vehicle.plateNumber || "",
+        vin: vehicle.vin || "",
+        name: vehicle.client.name || "",
+        phone: vehicle.client.phone || "",
+      },
+    }));
+  }
+
+  function openWorkflow(vehicle: Vehicle, key: (typeof WORKFLOW_META)[number]["key"], targetId: string | null) {
+    if (key === "diagnostics") {
+      if (targetId) {
+        navigateCrm("Діагностика", { diagnosticId: targetId });
+      } else {
+        openNewRequestForVehicle(vehicle);
+      }
+      return;
+    }
+
+    if (targetId) {
+      navigateCrm("Замовлення-наряди", {
+        workOrderId: targetId,
+        workOrderTab: key === "proposal" ? "estimate" : "overview",
+      });
+      return;
+    }
+
+    openNewRequestForVehicle(vehicle);
+  }
+
   function openVehicle(id: string) {
     navigateCrm("Авто", { vehicleId: id });
   }
@@ -207,7 +240,20 @@ export function VehiclesDirectory() {
     <div className={styles.summary}>Знайдено автомобілів: <b>{total}</b>{total > 0 && <span> · сторінка {page} з {pages}</span>}</div>
     {error && <div className={styles.error}>{error}</div>}
     {loading ? <div className={styles.state}>Завантажую автомобілі…</div> : !vehicles.length ? <div className={styles.state}>Нічого не знайдено.</div> : <div className={styles.grid}>
-      {vehicles.map((vehicle, index) => <button key={vehicle.id} className={styles.card} onClick={() => openVehicle(vehicle.id)}>
+      {vehicles.map((vehicle, index) => <article
+        key={vehicle.id}
+        className={styles.card}
+        role="button"
+        tabIndex={0}
+        onClick={() => openVehicle(vehicle.id)}
+        onKeyDown={(event) => {
+          if (event.target !== event.currentTarget) return;
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            openVehicle(vehicle.id);
+          }
+        }}
+      >
         <div className={styles.vehicleHero}>
           <div className={styles.vehicleCopy}>
             <div className={styles.vehicleTitleLine}>
@@ -229,13 +275,23 @@ export function VehiclesDirectory() {
         <div className={workflowStyles.workflow} aria-label="Статуси автомобіля">
           {WORKFLOW_META.map(({ key, label, icon }) => {
             const status = vehicle.statusSummary?.[key] || fallbackStatusSummary()[key];
-            return <span className={workflowStyles.workflowItem} key={key} title={`${label}: ${status.label}`}>
+            return <button
+              type="button"
+              className={workflowStyles.workflowItem}
+              key={key}
+              title={`${label}: ${status.label}`}
+              aria-label={`${label}: ${status.label}`}
+              onClick={(event) => {
+                event.stopPropagation();
+                openWorkflow(vehicle, key, status.targetId);
+              }}
+            >
               <i className={`${workflowStyles.workflowIcon} ${workflowStyles[`workflow_${status.tone}`]}`}><WorkflowIcon kind={icon} /></i>
               <small>{label}</small>
-            </span>;
+            </button>;
           })}
         </div>
-      </button>)}
+      </article>)}
     </div>}
 
     {!loading && total > PAGE_SIZE && <nav className={styles.pagination} aria-label="Сторінки автомобілів">
