@@ -536,7 +536,7 @@ export function PlannerDayView<TAppointment extends AppointmentBase>({ day, loca
       <article><span className={`${styles.kpiIcon} ${styles.kpiGreen}`}>₴</span><div><strong>{currency(metrics.revenue)}</strong><small>Очікуваний виторг<br/>за день</small></div></article>
     </section>}
 
-    {error && <div className={styles.inlineError} role="status">{error}</div>
+    {error && <div className={styles.inlineError} role="status">{error}</div>}
 
     <div className={`${styles.board} ${compact ? compactStyles.board : ""}`}>
       <div ref={gridRef} className={`${styles.grid} ${compact ? compactStyles.grid : ""}`} style={gridStyle} onMouseLeave={() => selection && setSelection(selection)}>
