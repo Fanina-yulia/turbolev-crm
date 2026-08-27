@@ -123,7 +123,7 @@ export function ServiceTimeline(props: Props) {
   const canOpenContext = !props.workOrderId;
   function openWorkOrder(event: TimelineEvent) {
     if (!event.workOrderId) return;
-    navigateCrm("Замовлення-наряди", { workOrderId: event.workOrderId, workOrderTab: "history" });
+    navigateCrm("Комерційна пропозиція", { workOrderId: event.workOrderId, workOrderTab: "history" });
   }
 
   return <section className={`${styles.timeline} ${props.compact ? styles.compact : ""}`}>
