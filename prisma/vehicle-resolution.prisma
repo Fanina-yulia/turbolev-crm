@@ -60,6 +60,8 @@ model VehicleReference {
   externalIds          VehicleReferenceExternalId[]
   resolutionCandidates VehicleResolutionCandidate[]
   resolutions          VehicleResolution[]
+  fitments             VehicleFitment[]
+  crmVehicleLinks      VehicleCatalogLink[]
 
   @@index([makeNormalized, modelNormalized], map: "vehicle_reference_make_model_idx")
   @@index([makeNormalized, modelNormalized, productionStartYear, productionEndYear], map: "vehicle_reference_make_model_years_idx")
