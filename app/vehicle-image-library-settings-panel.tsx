@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { VehiclePlate } from "./vehicle-plate";
 import styles from "./vehicle-image-library-settings-panel.module.css";
 
 type Asset = {
@@ -108,6 +109,11 @@ function badge(asset: Asset) {
 function testVehicleText(vehicle: TestVehicle) {
   const identity = [vehicle.make, vehicle.model].filter(Boolean).join(" ") || "Автомобіль без марки та моделі";
   return `${identity}${vehicle.year ? ` · ${vehicle.year}` : ""}${vehicle.plateNumber ? ` · ${vehicle.plateNumber}` : " · без держномера"}`;
+}
+
+function testVehicleTextWithoutPlate(vehicle: TestVehicle) {
+  const identity = [vehicle.make, vehicle.model].filter(Boolean).join(" ") || "Автомобіль без марки та моделі";
+  return `${identity}${vehicle.year ? ` · ${vehicle.year}` : ""}`;
 }
 
 function missingIdentityText(vehicle: TestVehicle) {
@@ -359,10 +365,10 @@ export function VehicleImageLibrarySettingsPanel() {
         <h3>Реальні автомобілі CRM без зображення</h3>
         <p>Перевіряються всі картки авто. Готовим вважається лише файл, який уже можна показати в CRM; окремо видно генерацію, помилки та картки з неповними даними.</p>
         <div className={styles.testVehicles}>
-          {testVehicles.map((vehicle) => <span key={vehicle.id}>Потрібна генерація · {testVehicleText(vehicle)}</span>)}
-          {processingVehicles.map((vehicle) => <span key={vehicle.id}>Готується · {testVehicleText(vehicle)}</span>)}
-          {incompleteVehicles.map((vehicle) => <span key={vehicle.id}>Уточніть дані · {testVehicleText(vehicle)} · {missingIdentityText(vehicle)}</span>)}
-          {blockedVehicles.map((vehicle) => <span key={vehicle.id}>Генерація недоступна · {testVehicleText(vehicle)}{vehicle.imageError ? ` · ${vehicle.imageError}` : ""}</span>)}
+          {testVehicles.map((vehicle) => <span key={vehicle.id}>Потрібна генерація · {testVehicleTextWithoutPlate(vehicle)}{vehicle.plateNumber ? <> · <VehiclePlate value={vehicle.plateNumber} size="sm" /></> : " · без держномера"}</span>)}
+          {processingVehicles.map((vehicle) => <span key={vehicle.id}>Готується · {testVehicleTextWithoutPlate(vehicle)}{vehicle.plateNumber ? <> · <VehiclePlate value={vehicle.plateNumber} size="sm" /></> : " · без держномера"}</span>)}
+          {incompleteVehicles.map((vehicle) => <span key={vehicle.id}>Уточніть дані · {testVehicleTextWithoutPlate(vehicle)}{vehicle.plateNumber ? <> · <VehiclePlate value={vehicle.plateNumber} size="sm" /></> : " · без держномера"} · {missingIdentityText(vehicle)}</span>)}
+          {blockedVehicles.map((vehicle) => <span key={vehicle.id}>Генерація недоступна · {testVehicleTextWithoutPlate(vehicle)}{vehicle.plateNumber ? <> · <VehiclePlate value={vehicle.plateNumber} size="sm" /></> : " · без держномера"}{vehicle.imageError ? ` · ${vehicle.imageError}` : ""}</span>)}
           {!testSetLoading && testVehicleTotal === 0 && auditFailures === 0 ? <span>Усі автомобілі CRM уже мають готові до показу зображення</span> : null}
           {!testSetLoading && auditFailures > 0 ? <span>Не вдалося перевірити карток: {auditFailures}. Оновіть перевірку.</span> : null}
         </div>

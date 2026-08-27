@@ -1,4 +1,5 @@
 import styles from "./vehicle-plate.module.css";
+import { formatRegistrationPlate, normalizeRegistrationPlate } from "../src/domain/registration-plate";
 
 type VehiclePlateSize = "xs" | "sm" | "md";
 
@@ -9,35 +10,12 @@ type VehiclePlateProps = {
   title?: string;
 };
 
-const CYRILLIC_TO_LATIN: Record<string, string> = {
-  А: "A",
-  В: "B",
-  Е: "E",
-  І: "I",
-  К: "K",
-  М: "M",
-  Н: "H",
-  О: "O",
-  Р: "P",
-  С: "C",
-  Т: "T",
-  Х: "X",
-  У: "Y",
-};
-
 export function normalizeVehiclePlate(value?: string | null) {
-  const source = (value || "")
-    .normalize("NFKC")
-    .toUpperCase()
-    .replace(/[\s\-–—·.]/g, "");
-  return [...source].map((char) => CYRILLIC_TO_LATIN[char] || char).join("");
+  return normalizeRegistrationPlate(value || "");
 }
 
 export function formatVehiclePlate(value?: string | null) {
-  const normalized = normalizeVehiclePlate(value);
-  const standard = normalized.match(/^([A-Z]{2})(\d{4})([A-Z]{2})$/);
-  if (standard) return `${standard[1]} ${standard[2]} ${standard[3]}`;
-  return (value || "—").trim() || "—";
+  return formatRegistrationPlate(value);
 }
 
 export function VehiclePlate({ value, size = "sm", className = "", title }: VehiclePlateProps) {

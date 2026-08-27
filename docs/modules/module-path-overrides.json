@@ -18,7 +18,12 @@
     "app/api/vehicle-issues/**",
     "src/services/vehicle-issues.service.ts",
     "src/services/vin-intelligence.service.ts",
-    "app/vehicle-workflow.module.css"
+    "app/vehicle-workflow.module.css",
+    "app/vehicle-identity.tsx",
+    "src/domain/registration-plate.ts"
+  ],
+  "diagnostics": [
+    "src/services/structured-diagnostics.service.ts"
   ],
   "dashboard-analytics": [
     "app/analytics-workspace.tsx",

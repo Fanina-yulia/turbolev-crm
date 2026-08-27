@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { navigateCrm, readCrmRoute } from "./crm-route";
+import { VehiclePlate } from "./vehicle-plate";
 import styles from "./payments-queue.module.css";
 
 type Account = { id: string; name: string; type: "CASH" | "BANK" | "CARD" | "ACQUIRING" | "OTHER"; currency: string; locationId: string | null };
@@ -251,7 +252,7 @@ export function PaymentsQueue() {
         </div>
         <div className={styles.mainRow}>
           <div className={styles.identity}>
-            <strong>{row.vehicle.plateNumber || carTitle(row)}</strong>
+            {row.vehicle.plateNumber ? <VehiclePlate value={row.vehicle.plateNumber} size="sm" /> : <strong>{carTitle(row)}</strong>}
             <span>{carTitle(row)}</span>
             <small>{row.client.name || "Клієнт без імені"} · {row.client.phone}</small>
           </div>

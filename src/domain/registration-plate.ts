@@ -11,6 +11,7 @@ const CYRILLIC_TO_LATIN: Record<string, string> = {
   "Р": "P",
   "Т": "T",
   "Х": "X",
+  "У": "Y",
 };
 
 /**
@@ -24,4 +25,14 @@ export function normalizeRegistrationPlate(value: string) {
     .map((char) => CYRILLIC_TO_LATIN[char] ?? char)
     .join("")
     .slice(0, 10);
+}
+
+/**
+ * Canonical human-readable form used by every CRM plate surface.
+ * Standard Ukrainian plates are rendered as "AA 1234 BB".
+ */
+export function formatRegistrationPlate(value?: string | null) {
+  const normalized = normalizeRegistrationPlate(value || "");
+  const standard = normalized.match(/^([A-Z]{2})(\d{4})([A-Z]{2})$/);
+  return standard ? `${standard[1]} ${standard[2]} ${standard[3]}` : normalized || "—";
 }
