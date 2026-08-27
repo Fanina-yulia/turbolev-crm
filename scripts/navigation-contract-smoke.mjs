@@ -14,6 +14,13 @@ function assertIncludes(relative, snippets) {
   }
 }
 
+function assertIncludesOneOf(relative, alternatives) {
+  const source = read(relative);
+  if (!alternatives.some((snippet) => source.includes(snippet))) {
+    throw new Error(`${relative}: missing navigation contract alternatives: ${alternatives.join(" OR ")}`);
+  }
+}
+
 function assertNotIncludes(relative, snippets) {
   const source = read(relative);
   for (const snippet of snippets) {
@@ -157,8 +164,11 @@ assertIncludes("app/settings-route-focus-bridge.tsx", [
 
 assertIncludes("app/crm-shell.tsx", [
   "<PlannerWorkspace/>",
-  "<ProcurementWorkspace/>",
   "<AnalyticsWorkspace/>",
+]);
+assertIncludesOneOf("app/crm-shell.tsx", [
+  "<PartsProcurementWorkspace/>",
+  "<ProcurementWorkspace/>",
 ]);
 
 assertIncludes("app/business-flow-route-bridge.tsx", [
