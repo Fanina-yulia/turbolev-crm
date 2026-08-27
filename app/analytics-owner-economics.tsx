@@ -93,31 +93,31 @@ export function AnalyticsOwnerEconomics({ from, to, locationId }: Props) {
   return <>
     <section className={styles.financeCardsWide}>
       <div><small>Клієнтів у когорті</small><strong>{data.cohort.servedClients}</strong></div>
-      <div><small>Їх завершених ЗН за весь час</small><strong>{data.cohort.lifetimeOrders}</strong></div>
+      <div><small>Їх завершених КП за весь час</small><strong>{data.cohort.lifetimeOrders}</strong></div>
       <div><small>Lifetime виручка когорти</small><strong>{money(data.cohort.lifetimeRevenue)}</strong></div>
       <div><small>Lifetime валовий прибуток</small><strong>{money(data.cohort.lifetimeGrossProfit)}</strong></div>
     </section>
 
     <section className={styles.panel}>
-      <header><div><small>ACTUAL · ЗАКРИТІ ЗН</small><h2>Прибуток по авто / замовленнях</h2></div><span>без алокації OPEX</span></header>
+      <header><div><small>ACTUAL · ЗАКРИТІ КП</small><h2>Прибуток по авто / замовленнях</h2></div><span>без алокації OPEX</span></header>
       <p className={styles.note}>Валовий прибуток = фактична виручка − прямі витрати. OPEX не розподіляється по конкретному авто, тому «операційний прибуток на авто» не вигадується.</p>
       <div className={styles.tableWrap}><table>
-        <thead><tr><th>ЗН / авто</th><th>Клієнт</th><th>Виручка</th><th>Прямі витрати</th><th>Валовий прибуток</th><th>Маржа</th><th>Закрито</th></tr></thead>
+        <thead><tr><th>КП / авто</th><th>Клієнт</th><th>Виручка</th><th>Прямі витрати</th><th>Валовий прибуток</th><th>Маржа</th><th>Закрито</th></tr></thead>
         <tbody>{data.workOrders.length ? data.workOrders.map((row) => <tr key={row.workOrderId}>
-          <td>{drillButton(() => navigateCrm("Замовлення-наряди", { workOrderId: row.workOrderId }), <><b>{row.displayNumber}</b><br/><span>{row.vehicle} · {row.plateNumber || row.vin || "—"}</span></>)}</td>
+          <td>{drillButton(() => navigateCrm("Комерційна пропозиція", { workOrderId: row.workOrderId }), <><b>{row.displayNumber}</b><br/><span>{row.vehicle} · {row.plateNumber || row.vin || "—"}</span></>)}</td>
           <td>{drillButton(() => navigateCrm("Клієнти", { clientId: row.clientId }), row.clientName)}</td>
           <td>{money(row.grossRevenue, row.currency)}</td>
           <td>{money(row.directCost, row.currency)}</td>
           <td><strong>{money(row.grossProfit, row.currency)}</strong></td>
           <td><strong>{percent(row.grossMarginPct)}</strong></td>
           <td>{date(row.closedAt)}</td>
-        </tr>) : <tr><td colSpan={7}>У вибраному періоді немає закритих ЗН з ACTUAL finance snapshot.</td></tr>}</tbody>
+        </tr>) : <tr><td colSpan={7}>У вибраному періоді немає закритих КП з ACTUAL finance snapshot.</td></tr>}</tbody>
       </table></div>
     </section>
 
     <section className={styles.panel}>
-      <header><div><small>CLIENT LTV · ФАКТ</small><h2>LTV клієнтів, обслугованих у періоді</h2></div><span>усі завершені ЗН у доступному scope</span></header>
-      <p className={styles.note}>Період формує когорту клієнтів. Для кожного клієнта lifetime-показники рахуються за всіма його закритими ЗН з ACTUAL finance snapshot у доступній станції або мережі.</p>
+      <header><div><small>CLIENT LTV · ФАКТ</small><h2>LTV клієнтів, обслугованих у періоді</h2></div><span>усі завершені КП у доступному scope</span></header>
+      <p className={styles.note}>Період формує когорту клієнтів. Для кожного клієнта lifetime-показники рахуються за всіма його закритими КП з ACTUAL finance snapshot у доступній станції або мережі.</p>
       <div className={styles.tableWrap}><table>
         <thead><tr><th>Клієнт</th><th>Візитів</th><th>Lifetime виручка</th><th>Lifetime валовий прибуток</th><th>Середній чек</th><th>Маржа</th><th>Перший / останній</th></tr></thead>
         <tbody>{data.clientLtv.length ? data.clientLtv.map((row) => <tr key={row.clientId}>

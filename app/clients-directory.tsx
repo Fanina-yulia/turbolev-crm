@@ -217,12 +217,12 @@ export function ClientsDirectory() {
               <CustomerCabinetCard clientId={selected.id} />
             </section>
             <section className={styles.panel}>
-              <h3>Замовлення-наряди <span>{selected._count.workOrders}</span></h3>
-              {selected.workOrders.length ? <div className={styles.relatedList}>{selected.workOrders.map((workOrder) => <button key={workOrder.id} onClick={() => navigateCrm("Замовлення-наряди", { workOrderId: workOrder.id })}>
+              <h3>Комерційна пропозиція <span>{selected._count.workOrders}</span></h3>
+              {selected.workOrders.length ? <div className={styles.relatedList}>{selected.workOrders.map((workOrder) => <button key={workOrder.id} onClick={() => navigateCrm("Комерційна пропозиція", { workOrderId: workOrder.id })}>
                 <strong>{workOrder.status}</strong>
                 <small>{dateText(workOrder.closedAt || workOrder.updatedAt || workOrder.createdAt)}</small>
                 <span>›</span>
-              </button>)}</div> : <div className={styles.emptyInline}>Замовлень-нарядів ще немає.</div>}
+              </button>)}</div> : <div className={styles.emptyInline}>Комерційних пропозицій ще немає.</div>}
             </section>
           </div>
           <footer className={styles.drawerFooter}><button className={styles.primary} onClick={openNewRequest}>+ Нова заявка</button></footer>

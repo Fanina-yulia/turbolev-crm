@@ -208,7 +208,7 @@ export function PartsRoleCabinetHome({ role, userName }: { role: RoleCode; userN
       <button type="button" className={summary.overdueEta ? styles.critical : ""} onClick={() => openProcurement("ORDERED")}><span>ETA протерміновано</span><strong>{summary.overdueEta}</strong><small>поставка мала вже прибути</small></button>
       <button type="button" className={summary.noSupplier ? styles.warning : ""} onClick={() => openProcurement("SELECTING")}><span>Без постачальника</span><strong>{summary.noSupplier}</strong><small>є незакриті позиції</small></button>
       <button type="button" className={summary.paymentBlocked ? styles.warning : ""} onClick={() => openProcurement("APPROVED")}><span>Блокує передоплата</span><strong>{summary.paymentBlocked}</strong><small>замовлення чекають підтвердження</small></button>
-      <button type="button" className={summary.repairBlockers ? styles.warning : ""} onClick={() => navigateCrm("Замовлення-наряди", { status: "WAITING_PARTS" })}><span>Авто чекають деталі</span><strong>{summary.repairBlockers}</strong><small>операційний блокер ремонту</small></button>
+      <button type="button" className={summary.repairBlockers ? styles.warning : ""} onClick={() => navigateCrm("Комерційна пропозиція", { status: "WAITING_PARTS" })}><span>Авто чекають деталі</span><strong>{summary.repairBlockers}</strong><small>операційний блокер ремонту</small></button>
     </section>
 
     <div className={styles.columns}>
@@ -238,7 +238,7 @@ export function PartsRoleCabinetHome({ role, userName }: { role: RoleCode; userN
           <button type="button" onClick={() => openProcurement("ORDERED")}>Поставки в дорозі<span>ETA та приймання →</span></button>
           <button type="button" onClick={() => openProcurement("PARTIAL")}>Часткові поставки<span>закрити недопоставки →</span></button>
           <button type="button" onClick={() => openProcurement("RECEIVED")}>Отримано<span>видати / встановити в ремонт →</span></button>
-          <button type="button" onClick={() => navigateCrm("Замовлення-наряди", { status: "WAITING_PARTS" })}>Авто, що чекають деталі<span>бачити вплив на ремонт →</span></button>
+          <button type="button" onClick={() => navigateCrm("Комерційна пропозиція", { status: "WAITING_PARTS" })}>Авто, що чекають деталі<span>бачити вплив на ремонт →</span></button>
         </div>
         <div className={styles.truthNote}><strong>Один операційний контур</strong><span>Цей кабінет не створює нових статусів. Він читає ту саму чергу `Підбір → До замовлення → В дорозі → Частково отримано → Отримано`, яку вже використовує CRM.</span></div>
       </aside>

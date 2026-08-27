@@ -96,7 +96,7 @@ async function activeLines(tx: Tx, workOrderId: string) {
 }
 
 function buildSnapshot(lines: CommercialLine[]) {
-  if (!lines.length) throw new WorkOrderCommercialError("NO_LINE_ITEMS", "Додайте роботи або деталі до замовлення-наряду.");
+  if (!lines.length) throw new WorkOrderCommercialError("NO_LINE_ITEMS", "Додайте роботи або деталі до комерційної пропозиції.");
   const currencies = [...new Set(lines.map((line) => line.currency.toUpperCase()))];
   if (currencies.length !== 1) {
     throw new WorkOrderCommercialError("MIXED_CURRENCIES", "Кошторис не може містити рядки в різних валютах.");
@@ -232,7 +232,7 @@ export async function ensurePartsRequestTx(
 
   const partLines = estimateState.lines.filter((line) => line.type === "PART");
   if (!partLines.length) {
-    throw new WorkOrderCommercialError("NO_PART_LINES", "У замовленні-наряді немає деталей, для яких потрібен PartsRequest.");
+    throw new WorkOrderCommercialError("NO_PART_LINES", "У комерційній пропозиції немає деталей, для яких потрібен PartsRequest.");
   }
 
   const request = await tx.partsRequest.create({
@@ -360,7 +360,7 @@ export async function decideEstimate(
         where: { id: estimate.id },
         data: { status: "SUPERSEDED", supersededAt: new Date() },
       });
-      throw new WorkOrderCommercialError("ESTIMATE_SCOPE_CHANGED", "Склад або ціни наряду змінилися після відправки. Сформуйте нову ревізію кошторису.");
+      throw new WorkOrderCommercialError("ESTIMATE_SCOPE_CHANGED", "Склад або ціни комерційної пропозиції змінилися після відправки. Сформуйте нову ревізію кошторису.");
     }
 
     const now = new Date();

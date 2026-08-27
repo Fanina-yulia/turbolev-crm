@@ -414,7 +414,7 @@ export async function getClientGarageSnapshot(clientId: string): Promise<ClientG
         id: order.id,
         kind: "SERVICE",
         title: "Сервіс / ремонт",
-        subtitle: `Замовлення-наряд ${order.id.slice(-8).toUpperCase()}`,
+        subtitle: `Комерційна пропозиція ${order.id.slice(-8).toUpperCase()}`,
         status: (WORK_ORDER_STATUS[order.status]?.label || order.status),
         date: (order.closedAt || order.updatedAt || order.createdAt).toISOString(),
         amount: estimate ? numberValue(estimate.totalAmount) : null,

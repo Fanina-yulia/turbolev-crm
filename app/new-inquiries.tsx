@@ -332,7 +332,7 @@ export function NewInquiries() {
             </button> : <section className={flowStyles.vehicleFocusMissing}><strong>Автомобіль не визначено</strong><span>У клієнта не знайдено прив’язаного авто.</span></section>}
 
             {selectedWorkOrder && <section className={`${flowStyles.vehicleJourney} ${workOrderNeedsAttention(selectedWorkOrder.status) ? flowStyles.vehicleJourneyAttention : ""}`}>
-              <div className={flowStyles.journeyHeader}><div><span>Авто зараз у роботі</span><strong>{selectedWorkOrder.statusLabel}</strong></div><button type="button" onClick={() => navigateCrm("Замовлення-наряди", { workOrderId: selectedWorkOrder.id })}>Наряд →</button></div>
+              <div className={flowStyles.journeyHeader}><div><span>Авто зараз у роботі</span><strong>{selectedWorkOrder.statusLabel}</strong></div><button type="button" onClick={() => navigateCrm("Комерційна пропозиція", { workOrderId: selectedWorkOrder.id })}>КП →</button></div>
               <div className={flowStyles.journeySteps} aria-label={`Поточний етап: ${selectedWorkOrder.statusLabel}`}>
                 {WORK_ORDER_JOURNEY.map((label, index) => {
                   const current = workOrderJourneyIndex(selectedWorkOrder.status);
@@ -343,7 +343,7 @@ export function NewInquiries() {
             </section>}
 
             <section className={flowStyles.singleActionHub}>
-              {selectedWorkOrder ? <button type="button" className={flowStyles.singlePrimaryAction} onClick={() => navigateCrm("Замовлення-наряди", { workOrderId: selectedWorkOrder.id })}>Відкрити поточний наряд →</button>
+              {selectedWorkOrder ? <button type="button" className={flowStyles.singlePrimaryAction} onClick={() => navigateCrm("Комерційна пропозиція", { workOrderId: selectedWorkOrder.id })}>Відкрити поточний КП →</button>
                 : selected.existingLead ? <button type="button" className={flowStyles.singlePrimaryAction} onClick={() => navigateCrm("Активні")}>Відкрити активну заявку →</button>
                   : <button type="button" className={flowStyles.singlePrimaryAction} onClick={() => openRequest(selected)}>+ Створити замовлення</button>}
             </section>

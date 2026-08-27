@@ -47,7 +47,7 @@ const METRIC_TEXT: Record<string, string[]> = {
   overdueReceivables: ["Дебіторка"],
   overduePayables: ["Кредиторка"],
   diagnostics: ["Діагностика"],
-  conversionToWorkOrder: ["Конверс", "Замовлення-наряд"],
+  conversionToWorkOrder: ["Конверс", "Комерційна пропозиція"],
   parts: ["Запчастини"],
   pendingParts: ["Очіку", "детал"],
 };

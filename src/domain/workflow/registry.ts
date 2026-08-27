@@ -102,7 +102,7 @@ const workOrderStatuses: readonly WorkflowStatusDefinition[] = [
   { code: "WAITING_QC", label: "Очікує контроль якості", stage: "QUALITY_CONTROL", tone: "warning", sortOrder: 70, system: true, responsibleRoles: QC },
   { code: "REWORK", label: "Повернено на доопрацювання", stage: "REPAIR", tone: "danger", sortOrder: 80, system: true, responsibleRoles: ["SERVICE_MANAGER", "MECHANIC", "QUALITY_CONTROLLER"] },
   { code: "READY_FOR_PICKUP", label: "Готовий до видачі", stage: "DELIVERY", tone: "success", sortOrder: 90, system: true, responsibleRoles: SERVICE },
-  { code: "WAITING_PAYMENT", label: "Очікує оплату (legacy)", stage: "PAYMENT", tone: "warning", sortOrder: 100, system: true, legacy: true, compatibilityOnly: true, responsibleRoles: FINANCE, description: "Залишено для старих ЗН. Поточний стан оплати зберігається у фінансовому контурі; фізично готове авто має статус READY_FOR_PICKUP." },
+  { code: "WAITING_PAYMENT", label: "Очікує оплату (legacy)", stage: "PAYMENT", tone: "warning", sortOrder: 100, system: true, legacy: true, compatibilityOnly: true, responsibleRoles: FINANCE, description: "Залишено для старих КП. Поточний стан оплати зберігається у фінансовому контурі; фізично готове авто має статус READY_FOR_PICKUP." },
   { code: "CLOSED", label: "Закритий / виданий", stage: "CLOSED", tone: "success", sortOrder: 110, system: true, terminal: true, responsibleRoles: SERVICE },
   { code: "CANCELLED", label: "Скасований", stage: "CLOSED", tone: "neutral", sortOrder: 120, system: true, terminal: true, responsibleRoles: SERVICE },
 ];
@@ -225,7 +225,7 @@ export const WORKFLOW_DEFINITIONS: Readonly<Record<string, WorkflowDefinition>> 
     transitions: [transition("PENDING", "IN_PROGRESS"), transition("PENDING", "CANCELLED"), transition("IN_PROGRESS", "CONFIRMED", { actions: ["CREATE_WORK_ORDER"] }), transition("IN_PROGRESS", "CANCELLED")],
   },
   WORK_ORDER: {
-    entity: "WORK_ORDER", label: "Замовлення-наряд", kind: "PROCESS", description: "Фактичний виробничий контур після підтвердженої діагностики.", statuses: workOrderStatuses,
+    entity: "WORK_ORDER", label: "Комерційна пропозиція", kind: "PROCESS", description: "Фактичний виробничий контур після підтвердженої діагностики.", statuses: workOrderStatuses,
     aliases: { QUOTE_DRAFT: "WAITING_APPROVAL", CLIENT_APPROVAL: "WAITING_APPROVAL", PARTS_PAYMENT: "WAITING_PARTS", PARTS_ORDERED: "WAITING_PARTS", REPAIR: "IN_REPAIR", QUALITY_CONTROL: "WAITING_QC", READY: "READY_FOR_PICKUP", WORK_PAYMENT: "READY_FOR_PICKUP", PAID: "READY_FOR_PICKUP", AFTERSALES: "CLOSED" },
     transitions: [
       transition("PARTS_REVIEW", "WAITING_APPROVAL", { actions: ["CREATE_ESTIMATE"] }), transition("PARTS_REVIEW", "WAITING_PARTS", { actions: ["OPEN_PARTS_REQUEST"] }), transition("PARTS_REVIEW", "READY_FOR_REPAIR"), transition("PARTS_REVIEW", "PAUSED"), transition("PARTS_REVIEW", "CANCELLED"),

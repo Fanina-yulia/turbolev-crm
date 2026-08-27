@@ -226,7 +226,7 @@ export function AnalyticsFunnelVisuals({ funnel, from, to, locationId, variant =
     { key: "scheduled", label: "Записано на СТО", count: funnel.scheduled, conversion: leadToBooking, open: () => navigateCrm("Планувальник", { date: from, scope: "week" }) },
     { key: "arrived", label: "Приїхали", count: funnel.arrived, conversion: funnel.bookingToArrivalPct, open: () => navigateCrm("Планувальник", { status: "ARRIVED", date: to, scope: "day" }) },
     { key: "diagnostics", label: "Дійшли до діагностики", count: funnel.diagnosticsReached, conversion: funnel.arrivalToDiagnosticsPct, open: () => navigateCrm("Діагностика") },
-    { key: "workOrder", label: "Створено ЗН", count: funnel.workOrderLinked, conversion: funnel.diagnosticsToWorkOrderPct, open: () => navigateCrm("Замовлення-наряди") },
+    { key: "workOrder", label: "Створено КП", count: funnel.workOrderLinked, conversion: funnel.diagnosticsToWorkOrderPct, open: () => navigateCrm("Комерційна пропозиція") },
     { key: "repair", label: "Передано в ремонт", count: funnel.repairReached, conversion: funnel.workOrderToRepairPct, open: () => navigateCrm("Виробництво") },
     { key: "completed", label: "Роботу завершено", count: funnel.completed, conversion: funnel.repairToCompletedPct, open: () => navigateCrm("Планувальник", { status: "COMPLETED", date: to, scope: "day" }) },
   ];
@@ -235,8 +235,8 @@ export function AnalyticsFunnelVisuals({ funnel, from, to, locationId, variant =
     { key: "lead-booking", label: "Звернення → запис", shortLabel: "Зверн.→запис", from: leadCount, to: funnel.scheduled, conversionPct: leadToBooking, open: () => navigateCrm("Ліди") },
     { key: "booking-arrival", label: "Запис → візит", shortLabel: "Запис→візит", from: funnel.scheduled, to: funnel.arrived, conversionPct: funnel.bookingToArrivalPct, open: () => navigateCrm("Планувальник", { date: to, scope: "week" }) },
     { key: "arrival-diagnostics", label: "Візит → діагностика", shortLabel: "Візит→діагн.", from: funnel.arrived, to: funnel.diagnosticsReached, conversionPct: funnel.arrivalToDiagnosticsPct, open: () => navigateCrm("Діагностика") },
-    { key: "diagnostics-wo", label: "Діагностика → ЗН", shortLabel: "Діагн.→ЗН", from: funnel.diagnosticsReached, to: funnel.workOrderLinked, conversionPct: funnel.diagnosticsToWorkOrderPct, open: () => navigateCrm("Замовлення-наряди") },
-    { key: "wo-repair", label: "ЗН → ремонт", shortLabel: "ЗН→ремонт", from: funnel.workOrderLinked, to: funnel.repairReached, conversionPct: funnel.workOrderToRepairPct, open: () => navigateCrm("Виробництво") },
+    { key: "diagnostics-wo", label: "Діагностика → КП", shortLabel: "Діагн.→КП", from: funnel.diagnosticsReached, to: funnel.workOrderLinked, conversionPct: funnel.diagnosticsToWorkOrderPct, open: () => navigateCrm("Комерційна пропозиція") },
+    { key: "wo-repair", label: "КП → ремонт", shortLabel: "КП→ремонт", from: funnel.workOrderLinked, to: funnel.repairReached, conversionPct: funnel.workOrderToRepairPct, open: () => navigateCrm("Виробництво") },
     { key: "repair-complete", label: "Ремонт → завершено", shortLabel: "Ремонт→готово", from: funnel.repairReached, to: funnel.completed, conversionPct: funnel.repairToCompletedPct, open: () => navigateCrm("Виробництво") },
   ];
 

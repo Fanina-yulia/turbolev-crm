@@ -194,7 +194,7 @@ export function ProductionBoard() {
   }
 
   function openWorkOrder(card: Card) {
-    navigateCrm("Замовлення-наряди", { workOrderId: card.id, workOrderTab: "works" });
+    navigateCrm("Комерційна пропозиція", { workOrderId: card.id, workOrderTab: "works" });
   }
 
   if (loading && !data) return <div className={styles.state}>Завантажую виробничу дошку…</div>;
@@ -221,7 +221,7 @@ export function ProductionBoard() {
         <button type="button" className={groupMode === "posts" ? styles.active : ""} disabled={data.role === "MECHANIC"} onClick={() => setGroupMode("posts")}>Пости</button>
         <button type="button" className={groupMode === "mechanics" ? styles.active : ""} onClick={() => setGroupMode("mechanics")}>Механіки</button>
       </div>
-      <label className={styles.search}><span>⌕</span><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="ЗН, авто, пост, механік або робота…"/>{search && <button type="button" onClick={() => setSearch("")}>×</button>}</label>
+      <label className={styles.search}><span>⌕</span><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="КП, авто, пост, механік або робота…"/>{search && <button type="button" onClick={() => setSearch("")}>×</button>}</label>
     </section>
 
     <nav className={styles.filters}>{FILTERS.map(([code, label]) => <button type="button" key={code} className={filter === code ? styles.activeFilter : ""} onClick={() => setFilter(code)}>{label}<b>{data.cards.filter((card) => matchesProductionFilter(card, code)).length}</b></button>)}</nav>
@@ -245,7 +245,7 @@ export function ProductionBoard() {
             <div className={styles.works}>{card.works.length ? card.works.map((work) => <div key={work.id}><span>{work.status === "COMPLETED" ? "✓" : "•"}</span><p>{work.description}</p></div>) : <p className={styles.problem}>{card.problem || "Роботи не деталізовані"}</p>}</div>
             <div className={styles.progress}><div><i style={{ width: `${card.workCount ? Math.round(card.completedWorkCount / card.workCount * 100) : 0}%` }}/></div><span>{card.completedWorkCount}/{card.workCount} робіт</span></div>
             <footer>
-              <button type="button" className={styles.secondary} onClick={() => openWorkOrder(card)}>Роботи ЗН</button>
+              <button type="button" className={styles.secondary} onClick={() => openWorkOrder(card)}>Роботи КП</button>
               {data.canWrite && actionsFor(card).map((action) => <button type="button" key={action} className={action === "FINISH" ? styles.finish : styles.primary} disabled={Boolean(busy)} onClick={() => void runAction(card, action)}>{busy === `${card.id}:${action}` ? "…" : actionLabel(action)}</button>)}
             </footer>
           </article>) : <div className={styles.empty}>Немає активних робіт.</div>}</div>

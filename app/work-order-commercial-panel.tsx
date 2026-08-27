@@ -120,7 +120,7 @@ export function WorkOrderCommercialPanel({ workOrderId, view = "overview", onCha
       const responses = await Promise.all(urls.map((url) => fetch(url, { cache: "no-store" })));
       const payloads = await Promise.all(responses.map((response) => response.json()));
       const firstError = responses.findIndex((response, index) => !response.ok || !payloads[index]?.ok);
-      if (firstError >= 0) throw new Error(payloads[firstError]?.error || "Не вдалося завантажити дані наряду.");
+      if (firstError >= 0) throw new Error(payloads[firstError]?.error || "Не вдалося завантажити дані комерційної пропозиції.");
       setData(payloads[0].commercial);
       setQc(payloads[1].qualityControl);
       setFinance(payloads[2]);
@@ -254,8 +254,8 @@ export function WorkOrderCommercialPanel({ workOrderId, view = "overview", onCha
     if (!result) return;
     const warnings = [result.transitionWarning?.message, result.issueSyncWarning].filter(Boolean).join(" ");
     if (warnings) setMessage(warnings);
-    else if (action === "PASS") setMessage("Контроль якості пройдено. ЗН переведено у «Готовий до видачі».");
-    else if (action === "FAIL") setMessage("QC не пройдено. ЗН переведено у «Доопрацювання».");
+    else if (action === "PASS") setMessage("Контроль якості пройдено. Комерційну пропозицію переведено у «Готовий до видачі».");
+    else if (action === "FAIL") setMessage("QC не пройдено. Комерційну пропозицію переведено у «Доопрацювання».");
   }
   async function pay() {
     if (!accountId || !(Number(paymentAmount) > 0)) return;
@@ -264,7 +264,7 @@ export function WorkOrderCommercialPanel({ workOrderId, view = "overview", onCha
     if (!result) return;
     setPaymentAmount("");
     if (result.transitionWarning?.message) setMessage(result.transitionWarning.message);
-    else if (result.workOrder?.status === "READY_FOR_PICKUP") setMessage("Оплату проведено. ЗН у статусі «Готовий до видачі».");
+    else if (result.workOrder?.status === "READY_FOR_PICKUP") setMessage("Оплату проведено. КП у статусі «Готовий до видачі».");
     else setMessage("Оплату проведено.");
   }
 
@@ -278,8 +278,8 @@ export function WorkOrderCommercialPanel({ workOrderId, view = "overview", onCha
               : null;
   }, [data?.partsRequest?.status]);
 
-  if (loading && !data) return <div className={styles.empty}>Завантажую дані замовлення-наряду…</div>;
-  if (!data) return <div className={styles.notice}>{message || "Дані наряду недоступні."}</div>;
+  if (loading && !data) return <div className={styles.empty}>Завантажую дані комерційної пропозиції…</div>;
+  if (!data) return <div className={styles.notice}>{message || "Дані комерційної пропозиції недоступні."}</div>;
 
   return <div className={styles.panel}>
     {view === "overview" && <>
@@ -327,7 +327,7 @@ export function WorkOrderCommercialPanel({ workOrderId, view = "overview", onCha
       <div className={styles.block}>
         <div className={styles.blockTitle}><div><strong>Позиції запчастин</strong><small>Підбір, ціни та склад деталей цього ремонту.</small></div><span className={styles.counter}>{partLines.length}</span></div>
         <div className={styles.lineList}>{partLines.map((line) => <div className={styles.line} key={line.id}><div><strong>{line.description}</strong><small>{[line.brand, line.article].filter(Boolean).join(" · ") || line.status} · {num(line.plannedQuantity)} × {money(line.plannedUnitPrice, line.currency)} · закупка {money(line.plannedUnitCost, line.currency)}</small></div><div className={styles.lineActions}><span className={styles.amount}>{money(num(line.plannedQuantity) * num(line.plannedUnitPrice) - num(line.plannedDiscount), line.currency)}</span></div></div>)}</div>
-        {!partLines.length && <div className={styles.empty}>Запчастин у наряді ще немає.</div>}
+        {!partLines.length && <div className={styles.empty}>Запчастин у комерційній пропозиції ще немає.</div>}
 
         <div className={styles.searchBox}>
           <strong>Додати деталь із пропозицій постачальників</strong>
@@ -346,7 +346,7 @@ export function WorkOrderCommercialPanel({ workOrderId, view = "overview", onCha
       </div>
 
       <div className={styles.block}>
-        <div className={styles.estimateTop}><div><strong>Заявка на запчастини</strong><small>{data.partsRequest ? `${data.partsRequest.status} · ${data.partsRequest.items.length} позицій` : `У наряді ${data.requiredPartsCount} обов'язкових позицій`}</small></div></div>
+        <div className={styles.estimateTop}><div><strong>Заявка на запчастини</strong><small>{data.partsRequest ? `${data.partsRequest.status} · ${data.partsRequest.items.length} позицій` : `У комерційній пропозиції ${data.requiredPartsCount} обов'язкових позицій`}</small></div></div>
         {!data.partsRequest && <div className={styles.toolbar}><button className={styles.button} disabled={Boolean(busy) || !partLines.length} onClick={() => void act("parts-open", `/api/work-orders/${encodeURIComponent(workOrderId)}/parts-request`, "POST", { actorName: "CRM / WorkOrder Center" })}>Створити заявку на закупівлю</button></div>}
         {data.partsRequest && <><div className={styles.toolbar}>{nextParts && <button className={styles.button} disabled={Boolean(busy)} onClick={() => void advanceParts(nextParts[0])}>{nextParts[1]}</button>}<label className={styles.check}><input type="checkbox" checked={data.partsRequest.paymentRequired} onChange={(event) => void act("payment-required", `/api/parts-requests/${encodeURIComponent(data.partsRequest!.id)}`, "PATCH", { paymentRequired: event.target.checked })}/>Передоплата деталей</label>{data.partsRequest.paymentRequired && !data.partsRequest.paymentConfirmedAt && <button className={styles.button} onClick={() => void act("payment-confirm", `/api/parts-requests/${encodeURIComponent(data.partsRequest!.id)}`, "PATCH", { paymentConfirmed: true })}>Оплату деталей підтверджено</button>}</div><div className={styles.partList}>{data.partsRequest.items.map((item) => {
           const received = Math.min(100, Math.round((num(item.receivedQuantity) / Math.max(.001, num(item.quantity))) * 100));

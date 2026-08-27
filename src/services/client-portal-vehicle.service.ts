@@ -446,7 +446,7 @@ export async function getClientVehiclePortalDetail(clientId: string, vehicleId: 
   if (workOrder) {
     documents.push({
       key: `work-order-${workOrder.id}`,
-      title: "Замовлення-наряд",
+      title: "Комерційна пропозиція",
       subtitle: `№ ${workOrder.id.slice(-8).toUpperCase()}`,
       status: ["CLOSED", "COMPLETED"].includes(workOrder.status) ? "Закрито" : "Активний",
       date: (workOrder.closedAt || workOrder.createdAt).toISOString(),

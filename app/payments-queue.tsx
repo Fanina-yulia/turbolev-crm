@@ -206,7 +206,7 @@ export function PaymentsQueue() {
       const payload = await response.json() as PaymentPostResponse;
       if (!response.ok || !payload.ok) throw new Error(payload.error || payload.code || "Не вдалося провести оплату");
       setPaymentRow(null);
-      setNotice(payload.transitionWarning?.message || (paidInFull ? "Оплату проведено. Замовлення-наряд переведено у «Готовий до видачі»." : "Часткову оплату проведено. Залишок оновлено."));
+      setNotice(payload.transitionWarning?.message || (paidInFull ? "Оплату проведено. Комерційну пропозицію переведено у «Готовий до видачі»." : "Часткову оплату проведено. Залишок оновлено."));
       setRefreshKey((value) => value + 1);
       if (!routeWorkOrderId) setTab(paidInFull ? "paidToday" : "partial");
     } catch (cause) {
@@ -221,19 +221,19 @@ export function PaymentsQueue() {
       <div>
         <p className={styles.eyebrow}>TURBO LEV · КАСА</p>
         <h1>Оплати</h1>
-        <span>{routeWorkOrderId ? "Відкрито конкретний замовлення-наряд" : "Що потрібно отримати від клієнтів і що вже надійшло сьогодні"}</span>
+        <span>{routeWorkOrderId ? "Відкрито конкретний комерційна пропозиція" : "Що потрібно отримати від клієнтів і що вже надійшло сьогодні"}</span>
       </div>
       <button className={styles.refresh} type="button" onClick={() => setRefreshKey((value) => value + 1)} disabled={loading}>↻ Оновити</button>
     </header>
 
     <section className={styles.kpis}>
-      <article><small>До отримання</small><strong>{money(outstandingTotal)}</strong><span>{rows.filter((row) => row.outstanding > 0).length} ЗН</span></article>
-      <article><small>Оплачено сьогодні</small><strong>{money(paidTodayTotal)}</strong><span>{counts.paidToday} ЗН</span></article>
-      <article className={debtTotal > 0 ? styles.dangerKpi : ""}><small>Прострочений борг</small><strong>{money(debtTotal)}</strong><span>{counts.debt} ЗН</span></article>
+      <article><small>До отримання</small><strong>{money(outstandingTotal)}</strong><span>{rows.filter((row) => row.outstanding > 0).length} КП</span></article>
+      <article><small>Оплачено сьогодні</small><strong>{money(paidTodayTotal)}</strong><span>{counts.paidToday} КП</span></article>
+      <article className={debtTotal > 0 ? styles.dangerKpi : ""}><small>Прострочений борг</small><strong>{money(debtTotal)}</strong><span>{counts.debt} КП</span></article>
     </section>
 
     <div className={styles.toolbar}>
-      <label className={styles.search}><span>⌕</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="ПІБ, телефон, номер авто, VIN або ЗН..." />{query && <button type="button" onClick={() => setQuery("")}>×</button>}</label>
+      <label className={styles.search}><span>⌕</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="ПІБ, телефон, номер авто, VIN або КП..." />{query && <button type="button" onClick={() => setQuery("")}>×</button>}</label>
     </div>
 
     <nav className={styles.tabs} aria-label="Черги оплат">
@@ -242,10 +242,10 @@ export function PaymentsQueue() {
 
     {error && <div className={styles.error}>{error}</div>}
     {notice && <div className={styles.state}>{notice}</div>}
-    {loading ? <div className={styles.state}>Завантажую касову чергу…</div> : !visible.length ? <div className={styles.state}>{routeWorkOrderId ? "Для цього ЗН немає доступного фінансового зобов’язання." : "У цій черзі зараз немає замовлень."}</div> : <section className={styles.list}>
+    {loading ? <div className={styles.state}>Завантажую касову чергу…</div> : !visible.length ? <div className={styles.state}>{routeWorkOrderId ? "Для цього КП немає доступного фінансового зобов’язання." : "У цій черзі зараз немає замовлень."}</div> : <section className={styles.list}>
       {visible.map((row) => <article className={`${styles.card} ${row.overdue ? styles.overdueCard : ""}`} key={row.obligationId}>
         <div className={styles.cardHead}>
-          <button className={styles.woLink} type="button" onClick={() => navigateCrm("Замовлення-наряди", { workOrderId: row.workOrderId, workOrderTab: "payment" })}>{row.workOrderLabel}</button>
+          <button className={styles.woLink} type="button" onClick={() => navigateCrm("Комерційна пропозиція", { workOrderId: row.workOrderId, workOrderTab: "payment" })}>{row.workOrderLabel}</button>
           <span className={styles.status}>{row.workOrderStatusLabel}</span>
           {row.overdue && <span className={styles.overdue}>Прострочено</span>}
         </div>
@@ -267,7 +267,7 @@ export function PaymentsQueue() {
           {row.lastPaymentAt && <span>Остання оплата: <b>{dateTimeText(row.lastPaymentAt)}</b></span>}
         </div>
         <div className={styles.actions}>
-          <button type="button" onClick={() => navigateCrm("Замовлення-наряди", { workOrderId: row.workOrderId, workOrderTab: "payment" })}>Відкрити ЗН</button>
+          <button type="button" onClick={() => navigateCrm("Комерційна пропозиція", { workOrderId: row.workOrderId, workOrderTab: "payment" })}>Відкрити КП</button>
           {row.outstanding > 0 && <button type="button" className={styles.pay} onClick={() => openPayment(row)}>Прийняти оплату</button>}
         </div>
       </article>)}
