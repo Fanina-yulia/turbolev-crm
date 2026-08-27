@@ -102,7 +102,7 @@ const workOrderStatuses: readonly WorkflowStatusDefinition[] = [
   { code: "WAITING_QC", label: "Очікує контроль якості", stage: "QUALITY_CONTROL", tone: "warning", sortOrder: 70, system: true, responsibleRoles: QC },
   { code: "REWORK", label: "Повернено на доопрацювання", stage: "REPAIR", tone: "danger", sortOrder: 80, system: true, responsibleRoles: ["SERVICE_MANAGER", "MECHANIC", "QUALITY_CONTROLLER"] },
   { code: "READY_FOR_PICKUP", label: "Готовий до видачі", stage: "DELIVERY", tone: "success", sortOrder: 90, system: true, responsibleRoles: SERVICE },
-  { code: "WAITING_PAYMENT", label: "Очікує оплату (legacy)", stage: "PAYMENT", tone: "warning", sortOrder: 100, system: true, legacy: true, compatibilityOnly: true, responsibleRoles: FINANCE, description: "Залишено для старих ЗН. Поточний стан оплати зберігається у фінансовому контурі; фізично готове авто має статус READY_FOR_PICKUP." },
+  { code: "WAITING_PAYMENT", label: "Очікує оплату (legacy)", stage: "PAYMENT", tone: "warning", sortOrder: 100, system: true, legacy: true, compatibilityOnly: true, responsibleRoles: FINANCE, description: "Залишено для старих КП. Поточний стан оплати зберігається у фінансовому контурі; фізично готове авто має статус READY_FOR_PICKUP." },
   { code: "CLOSED", label: "Закритий / виданий", stage: "CLOSED", tone: "success", sortOrder: 110, system: true, terminal: true, responsibleRoles: SERVICE },
   { code: "CANCELLED", label: "Скасований", stage: "CLOSED", tone: "neutral", sortOrder: 120, system: true, terminal: true, responsibleRoles: SERVICE },
 ];
