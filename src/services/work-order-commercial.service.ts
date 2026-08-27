@@ -96,7 +96,7 @@ async function activeLines(tx: Tx, workOrderId: string) {
 }
 
 function buildSnapshot(lines: CommercialLine[]) {
-  if (!lines.length) throw new WorkOrderCommercialError("NO_LINE_ITEMS", "Додайте роботи або деталі до замовлення-наряду.");
+  if (!lines.length) throw new WorkOrderCommercialError("NO_LINE_ITEMS", "Додайте роботи або деталі до комерційної пропозиції.");
   const currencies = [...new Set(lines.map((line) => line.currency.toUpperCase()))];
   if (currencies.length !== 1) {
     throw new WorkOrderCommercialError("MIXED_CURRENCIES", "Кошторис не може містити рядки в різних валютах.");
