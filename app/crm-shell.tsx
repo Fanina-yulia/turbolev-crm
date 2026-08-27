@@ -75,20 +75,20 @@ function legacyRoute(section:CrmSectionLabel,filter:string):LegacyRoute|null{
   const value=filter.trim();
 
   if(section==="Виробництво"){
-    if(value==="in-repair"||value==="in_repair")return{section:"Замовлення-наряди",params:{status:"IN_REPAIR"}};
-    if(value==="ready"||value==="ready-for-repair"||value==="ready_for_repair")return{section:"Замовлення-наряди",params:{status:"READY_FOR_REPAIR"}};
-    if(value==="waiting-parts"||value==="waiting_parts")return{section:"Замовлення-наряди",params:{status:"WAITING_PARTS",workOrderTab:"parts"}};
-    if(value==="qc-ready"||value==="waiting_qc")return{section:"Замовлення-наряди",params:{status:"WAITING_QC",workOrderTab:"qc"}};
+    if(value==="in-repair"||value==="in_repair")return{section:"Комерційна пропозиція",params:{status:"IN_REPAIR"}};
+    if(value==="ready"||value==="ready-for-repair"||value==="ready_for_repair")return{section:"Комерційна пропозиція",params:{status:"READY_FOR_REPAIR"}};
+    if(value==="waiting-parts"||value==="waiting_parts")return{section:"Комерційна пропозиція",params:{status:"WAITING_PARTS",workOrderTab:"parts"}};
+    if(value==="qc-ready"||value==="waiting_qc")return{section:"Комерційна пропозиція",params:{status:"WAITING_QC",workOrderTab:"qc"}};
     if(value==="mechanics"||value==="assigned"||value==="posts")return{section:"Планувальник",params:{scope:"resources"}};
     return{section:"Планувальник",params:{scope:"resources"}};
   }
 
   if(section==="Контроль якості"){
-    if(value==="ready"||value==="ready_for_pickup"||value==="passed")return{section:"Замовлення-наряди",params:{status:"READY_FOR_PICKUP",workOrderTab:"qc"}};
-    if(value==="in-progress"||value==="in_progress")return{section:"Замовлення-наряди",params:{status:"WAITING_QC",workOrderTab:"qc"}};
-    if(value==="failed"||value==="rework")return{section:"Замовлення-наряди",params:{status:"REWORK",workOrderTab:"qc"}};
-    if(value==="qc-ready"||value==="waiting_qc"||value==="waiting")return{section:"Замовлення-наряди",params:{status:"WAITING_QC",workOrderTab:"qc"}};
-    return{section:"Замовлення-наряди",params:{status:"WAITING_QC",workOrderTab:"qc"}};
+    if(value==="ready"||value==="ready_for_pickup"||value==="passed")return{section:"Комерційна пропозиція",params:{status:"READY_FOR_PICKUP",workOrderTab:"qc"}};
+    if(value==="in-progress"||value==="in_progress")return{section:"Комерційна пропозиція",params:{status:"WAITING_QC",workOrderTab:"qc"}};
+    if(value==="failed"||value==="rework")return{section:"Комерційна пропозиція",params:{status:"REWORK",workOrderTab:"qc"}};
+    if(value==="qc-ready"||value==="waiting_qc"||value==="waiting")return{section:"Комерційна пропозиція",params:{status:"WAITING_QC",workOrderTab:"qc"}};
+    return{section:"Комерційна пропозиція",params:{status:"WAITING_QC",workOrderTab:"qc"}};
   }
 
   if(section==="Закупівлі та склад"){
@@ -108,7 +108,7 @@ function legacyRoute(section:CrmSectionLabel,filter:string):LegacyRoute|null{
     return value?{section,params:{workOrderId:value}}:null;
   }
 
-  if(section==="Замовлення-наряди"){
+  if(section==="Комерційна пропозиція"){
     if(!value)return null;
     const statuses:Record<string,string>={
       approval:"WAITING_APPROVAL",
@@ -269,7 +269,7 @@ export function CrmShell({ initialSection, initialSettingsTab }: { initialSectio
       <div className={active==="Огляд станції"&&!newRequestOpen?shellStyles.globalNewRequest:undefined}>
         <NewRequestLauncher showButton={active==="Огляд станції"&&!newRequestOpen&&canCreateRequest} onOpenChange={setNewRequestOpen}/>
       </div>
-      {!newRequestOpen&&(!activeAllowed?accessDenied:<>{active!=="Огляд станції"&&active!=="Налаштування"&&filterBanner}{active==="Мої задачі"?<MyTasks/>:active==="Нові звернення"?<NewInquiries/>:active==="Комунікації"?<CommunicationsHub/>:active==="Активні"?<LeadsBoardV2/>:active==="Клієнти"?<ClientsDirectory/>:active==="Авто"?<VehiclesDirectory/>:active==="Планувальник"?<PlannerWorkspace/>:active==="Діагностика"?<Diagnostics/>:active==="Замовлення-наряди"?<WorkOrders/>:active==="Виробництво"?<ProductionBoard/>:active==="Контроль якості"?<QcQueue/>:active==="Підбір запчастин"?<PartsCatalog/>:active==="Закупівлі та склад"?<ProcurementWorkspace/>:active==="Фінансовий центр"?<FinancialCenter/>:active==="Оплати"?<PaymentsQueue/>:active==="Гарантії"?<WarrantyCenter/>:active==="Аналітика"?<AnalyticsWorkspace/>:active==="Налаштування"?<SettingsPage tab={settingsTab}/>:active==="Огляд станції"?<RoleAwareOverview access={access.snapshot}/>:<div className="comingSoon"><p className="eyebrow">TURBO LEV CRM</p><h1>{active}</h1><p>Розділ тимчасово недоступний.</p></div>}</>) }
+      {!newRequestOpen&&(!activeAllowed?accessDenied:<>{active!=="Огляд станції"&&active!=="Налаштування"&&filterBanner}{active==="Мої задачі"?<MyTasks/>:active==="Нові звернення"?<NewInquiries/>:active==="Комунікації"?<CommunicationsHub/>:active==="Активні"?<LeadsBoardV2/>:active==="Клієнти"?<ClientsDirectory/>:active==="Авто"?<VehiclesDirectory/>:active==="Планувальник"?<PlannerWorkspace/>:active==="Діагностика"?<Diagnostics/>:active==="Комерційна пропозиція"?<WorkOrders/>:active==="Виробництво"?<ProductionBoard/>:active==="Контроль якості"?<QcQueue/>:active==="Підбір запчастин"?<PartsCatalog/>:active==="Закупівлі та склад"?<ProcurementWorkspace/>:active==="Фінансовий центр"?<FinancialCenter/>:active==="Оплати"?<PaymentsQueue/>:active==="Гарантії"?<WarrantyCenter/>:active==="Аналітика"?<AnalyticsWorkspace/>:active==="Налаштування"?<SettingsPage tab={settingsTab}/>:active==="Огляд станції"?<RoleAwareOverview access={access.snapshot}/>:<div className="comingSoon"><p className="eyebrow">TURBO LEV CRM</p><h1>{active}</h1><p>Розділ тимчасово недоступний.</p></div>}</>) }
     </section>
   </main>;
 }
