@@ -76,7 +76,7 @@ assertIncludes("app/financial-center.tsx", [
   "route.from",
   "route.to",
   "route.locationId",
-  'navigateCrm("Замовлення-наряди", { workOrderId:',
+  'navigateCrm("Комерційна пропозиція", { workOrderId:',
 ]);
 
 assertIncludes("app/payments-queue.tsx", [
@@ -87,7 +87,7 @@ assertIncludes("app/payments-queue.tsx", [
   'navigateCrm("Оплати", { scope: next',
   "transitionWarning?: { code?: string; message?: string } | null;",
   "setNotice(payload.transitionWarning?.message ||",
-  "Замовлення-наряд переведено у «Готовий до видачі».",
+  "Комерційна пропозиція переведено у «Готовий до видачі».",
 ]);
 
 assertIncludes("app/api/payments/route.ts", [
@@ -96,7 +96,7 @@ assertIncludes("app/api/payments/route.ts", [
 ]);
 
 assertIncludes("app/qc-queue.tsx", [
-  'navigateCrm("Замовлення-наряди", { workOrderId: card.id, workOrderTab: "works" })',
+  'navigateCrm("Комерційна пропозиція", { workOrderId: card.id, workOrderTab: "works" })',
   "Відкрити доопрацювання →",
 ]);
 assertNotIncludes("app/qc-queue.tsx", [
@@ -121,8 +121,8 @@ assertIncludes("app/work-order-commercial-panel.tsx", [
 
 assertIncludes("app/work-orders.tsx", [
   'if (item.to === "CLOSED") return "Видати авто та закрити ЗН";',
-  'transition.to === "CLOSED" && !window.confirm("Підтвердити видачу авто клієнту та закриття замовлення-наряду?")',
-  "Авто видано клієнту. Замовлення-наряд закрито.",
+  'transition.to === "CLOSED" && !window.confirm("Підтвердити видачу авто клієнту та закриття комерційної пропозиції?")',
+  "Авто видано клієнту. Комерційна пропозиція закрито.",
 ]);
 
 assertIncludes("app/production-board.tsx", [
