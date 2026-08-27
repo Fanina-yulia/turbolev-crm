@@ -166,7 +166,7 @@ async function ensureReceivable(
       counterpartyName: context.workOrder.client.name,
       sourceEntity: SOURCE_FINALIZATION,
       sourceEntityId,
-      description: `До оплати за замовлення-нарядом ${workOrderId}`,
+      description: `До оплати за комерційною пропозицією ${workOrderId}`,
       metadata: calculationMetadata(calculation, { workOrderId }),
     },
   });
