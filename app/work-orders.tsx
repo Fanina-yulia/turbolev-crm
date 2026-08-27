@@ -268,7 +268,7 @@ export function WorkOrders() {
       }
       const workOrder = parseWorkOrderTransitionPayload(rawPayload);
       if (!workOrder) throw new Error(payloadMessage(rawPayload, "Перехід не виконано."));
-      setMessage({ kind: "success", text: transition.to === "CLOSED" ? "Авто видано клієнту. Комерційна пропозиція закрито." : `Статус змінено: ${workOrder.statusLabel}.` });
+      setMessage({ kind: "success", text: transition.to === "CLOSED" ? "Авто видано клієнту. Комерційну пропозицію закрито." : `Статус змінено: ${workOrder.statusLabel}.` });
       await Promise.all([loadRows(), loadDetail(detail.id)]);
     } catch (error) {
       setMessage({ kind: "error", text: error instanceof Error ? error.message : "Не вдалося змінити статус." });
@@ -316,7 +316,7 @@ export function WorkOrders() {
 
     <div className={styles.layout}>
       <section className={styles.list}>
-        {loading && !rows.length ? <div className={styles.empty}>Завантажую комерційні пропозиції…</div> : !filtered.length ? <div className={styles.empty}>За вибраним статусом або комерційних пропозицій немає.</div> : filtered.map((item) => <button type="button" key={item.id} className={`${styles.row} ${selectedId === item.id ? styles.rowActive : ""}`} onClick={() => chooseWorkOrder(item)}>
+        {loading && !rows.length ? <div className={styles.empty}>Завантажую комерційні пропозиції…</div> : !filtered.length ? <div className={styles.empty}>За вибраним статусом або пошуком комерційних пропозицій немає.</div> : filtered.map((item) => <button type="button" key={item.id} className={`${styles.row} ${selectedId === item.id ? styles.rowActive : ""}`} onClick={() => chooseWorkOrder(item)}>
           <div>
             <div className={styles.rowTitle}><span style={{ fontFamily: "ui-monospace,SFMono-Regular,Menlo,monospace", fontWeight: 850, fontSize: 12, color: "var(--orange)" }}>{formatWorkOrderNumber(item.number)}</span><strong>{vehicleName(item)}</strong>{item.vehicle.plateNumber && <span className={styles.plate}>{item.vehicle.plateNumber}</span>}</div>
             <div className={styles.rowMeta}>{item.client.name || "Клієнт без імені"} · {item.client.phone}<br/>Оновлено {formatDate(item.updatedAt)}</div>
@@ -326,7 +326,7 @@ export function WorkOrders() {
       </section>
 
       <aside className={styles.detail}>
-        {detailLoading && !detail ? <div className={styles.empty}>Завантажую картку…</div> : !detail ? <div className={styles.empty}>Оберіть комерційна пропозиція зі списку.</div> : <>
+        {detailLoading && !detail ? <div className={styles.empty}>Завантажую картку…</div> : !detail ? <div className={styles.empty}>Оберіть комерційну пропозицію зі списку.</div> : <>
           <div className={styles.detailSticky}>
             <div className={styles.summaryTop}>
               <div className={styles.summaryIdentity}>
