@@ -68,5 +68,5 @@
 .uaLicensePlate[data-plate-size="lg"]:not([data-plate-placement="leading"])::after,
 .uaLicensePlate[data-plate-size="lg"][data-plate-placement="leading"]::before{border-radius:7px!important}
 .uaLicensePlateAuto:not([data-plate-placement="leading"])::before,
-.uaLicensePlateAuto[data-plate-placement="leading"]::after{font-size:10px!important}
+.uaLicensePlateAuto[data-plate-placement="leading"]::after{font-size:11px!important}
 @media(max-width:760px){.uaLicensePlate[data-plate-size="lg"]{--ua-plate-h:46px;--ua-plate-blue-w:24px;--ua-plate-number-size:15px;--ua-plate-min-w:142px}}
