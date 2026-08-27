@@ -146,7 +146,6 @@ export function PlannerDayView<TAppointment extends AppointmentBase>({ day, loca
   compact?: boolean;
 }) {
   const [availability, setAvailability] = useState<AvailabilityResponse | null>(null);
-  const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [selection, setSelection] = useState<SlotSelection | null>(null);
   const [resize, setResize] = useState<ResizeState | null>(null);
@@ -174,7 +173,6 @@ export function PlannerDayView<TAppointment extends AppointmentBase>({ day, loca
 
   useEffect(() => {
     const controller = new AbortController();
-    setLoading(true);
     setError("");
     void (async () => {
       try {
@@ -186,7 +184,6 @@ export function PlannerDayView<TAppointment extends AppointmentBase>({ day, loca
       } catch (cause) {
         if ((cause as Error).name !== "AbortError") setError(cause instanceof Error ? cause.message : "Не вдалося перевірити доступність.");
       } finally {
-        if (!controller.signal.aborted) setLoading(false);
       }
     })();
     return () => controller.abort();
@@ -539,10 +536,7 @@ export function PlannerDayView<TAppointment extends AppointmentBase>({ day, loca
       <article><span className={`${styles.kpiIcon} ${styles.kpiGreen}`}>₴</span><div><strong>{currency(metrics.revenue)}</strong><small>Очікуваний виторг<br/>за день</small></div></article>
     </section>}
 
-    <div className={`${styles.meta} ${compact ? compactStyles.meta : ""}`}>
-      <div><strong>{location.name}</strong> · {minuteLabel(openMinute)}–{minuteLabel(closeMinute)} · крок 30 хв</div>
-      <div>{loading ? "Оновлюю доступність…" : error || "Натисніть на вільний слот або протягніть до часу завершення"}</div>
-    </div>
+    {error && <div className={styles.inlineError} role="status">{error}</div>}
 
     <div className={`${styles.board} ${compact ? compactStyles.board : ""}`}>
       <div ref={gridRef} className={`${styles.grid} ${compact ? compactStyles.grid : ""}`} style={gridStyle} onMouseLeave={() => selection && setSelection(selection)}>
