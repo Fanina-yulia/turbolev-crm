@@ -4,9 +4,12 @@ on:
   pull_request:
     paths:
       - "src/services/*supplier*"
+      - "app/api/parts/qa/**"
       - "scripts/supplier-ingestion-smoke.ts"
       - "scripts/unique-trade-shadow-ingestion-smoke.ts"
+      - "scripts/unique-trade-shadow-preview-qa-smoke.ts"
       - "scripts/unique-trade-shadow-ingestion-smoke.ts"
+      - "scripts/unique-trade-shadow-preview-qa-smoke.ts"
       - "prisma/catalog.prisma"
       - "prisma/supplier-ingestion.prisma"
       - ".github/workflows/supplier-ingestion.yml"
@@ -14,6 +17,7 @@ on:
     branches: [main]
     paths:
       - "src/services/*supplier*"
+      - "app/api/parts/qa/**"
       - "scripts/supplier-ingestion-smoke.ts"
       - "prisma/catalog.prisma"
       - "prisma/supplier-ingestion.prisma"
