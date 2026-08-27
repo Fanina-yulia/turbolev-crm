@@ -110,7 +110,7 @@ export function VehicleDiagnosticsTab({ vehicleId, plateNumber, vin }: Props) {
       const body = await response.json().catch(() => null) as { ok?: boolean; workOrder?: { id?: string }; error?: string; message?: string } | null;
       if (!response.ok || !body?.ok || !body.workOrder?.id) throw new Error(body?.message || body?.error || "Не вдалося створити Комерційну пропозицію");
       window.dispatchEvent(new CustomEvent("turbolev:data-changed"));
-      navigateCrm("Комерційна пропозиція", { workOrderId: body.workOrder.id, workOrderTab: "estimate" });
+      navigateCrm("Авто", { vehicleId, vehiclePage: "commercial-offer", workOrderId: body.workOrder.id, workOrderTab: "estimate" });
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Не вдалося створити Комерційну пропозицію");
     } finally {
@@ -144,9 +144,9 @@ export function VehicleDiagnosticsTab({ vehicleId, plateNumber, vin }: Props) {
           {row.commercialProposal ? <span className={styles.commercial}>{commercialLabels[row.commercialProposal.stage] || "Комерційна пропозиція"}</span> : state === "CONFIRMED" ? <span>КП не створена</span> : null}
         </div>
         <div className={styles.actions}>
-          <button type="button" className={styles.primary} onClick={() => navigateCrm("Діагностика", { diagnosticId: row.id })}>Відкрити ДК</button>
+          <button type="button" className={styles.primary} onClick={() => navigateCrm("Авто", { vehicleId, vehiclePage: "diagnostic-card", diagnosticId: row.id })}>Відкрити ДК</button>
           {state === "CONFIRMED" && <button type="button" onClick={() => navigateCrm("Підбір запчастин", { diagnosticId: row.id, vehicleId, plate: plateNumber || "", vin: vin || "" })}>Підібрати запчастини</button>}
-          {row.commercialProposal ? <button type="button" onClick={() => navigateCrm("Комерційна пропозиція", { workOrderId: row.commercialProposal!.workOrderId, workOrderTab: "estimate" })}>Відкрити КП</button> : state === "CONFIRMED" ? <button type="button" disabled={busyId === row.id} onClick={() => void createCommercialProposal(row)}>{busyId === row.id ? "Створюю…" : "Створити КП"}</button> : null}
+          {row.commercialProposal ? <button type="button" onClick={() => navigateCrm("Авто", { vehicleId, vehiclePage: "commercial-offer", workOrderId: row.commercialProposal!.workOrderId, workOrderTab: "estimate" })}>Відкрити КП</button> : state === "CONFIRMED" ? <button type="button" disabled={busyId === row.id} onClick={() => void createCommercialProposal(row)}>{busyId === row.id ? "Створюю…" : "Створити КП"}</button> : null}
         </div>
       </article>;
     })}</div>
