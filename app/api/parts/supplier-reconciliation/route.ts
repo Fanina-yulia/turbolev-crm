@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getAccessContext, hasPermission } from "@/src/security/access-context";
+import { authorize as authorizePermission } from "@/src/security/authorize";
 import { PERMISSIONS } from "@/src/security/permissions";
 import {
   escalateSupplierReconciliationTask,
@@ -14,21 +14,27 @@ import {
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-async function authorize(request: NextRequest, write = false) {
-  const context = await getAccessContext(request);
-  if (context.provisioningState !== "ACTIVE" || !context.user) {
-    return { ok: false as const, response: NextResponse.json({ ok: false, error: "Потрібна авторизація." }, { status: 401 }) };
-  }
-  const permission = write ? PERMISSIONS.PROCUREMENT_WRITE : PERMISSIONS.PROCUREMENT_READ;
-  if (context.enforcementMode === "ENFORCED" && !hasPermission(context, permission)) {
-    return { ok: false as const, response: NextResponse.json({ ok: false, error: "Недостатньо прав для supplier reconciliation." }, { status: 403 }) };
+async function authorizeReconciliation(request: NextRequest, write = false) {
+  const permission = write ? PERMISSIONS.PARTS_WRITE : PERMISSIONS.PARTS_READ;
+  // Supplier identity mappings are global canonical data. LOCATION/ASSIGNED scope
+  // must never be enough to read or mutate the reconciliation workspace.
+  const decision = await authorizePermission(permission, {
+    request,
+    strict: true,
+    minimumScope: "ALL",
+  });
+  if (!decision.allowed || !decision.context.user) {
+    return {
+      ok: false as const,
+      response: decision.response ?? NextResponse.json({ ok: false, error: "FORBIDDEN" }, { status: 403 }),
+    };
   }
   return {
     ok: true as const,
-    context,
+    context: decision.context,
     actor: {
-      actorId: context.user.id,
-      actorName: context.user.employeeName || context.user.name || "CRM / Закупівлі",
+      actorId: decision.context.user.id,
+      actorName: decision.context.user.employeeName || decision.context.user.name || "CRM / Запчастини",
     },
   };
 }
@@ -38,12 +44,12 @@ function errorResponse(error: unknown) {
     const status = error.code === "NOT_FOUND" ? 404 : error.code === "INVALID_INPUT" ? 400 : 409;
     return NextResponse.json({ ok: false, error: error.message, code: error.code }, { status });
   }
-  console.error("supplier reconciliation API failed", error instanceof Error ? error.message : "unknown");
+  console.error("supplier reconciliation API failed", error instanceof Error ? error.name : "unknown");
   return NextResponse.json({ ok: false, error: "Не вдалося виконати supplier reconciliation." }, { status: 500 });
 }
 
 export async function GET(request: NextRequest) {
-  const auth = await authorize(request, false);
+  const auth = await authorizeReconciliation(request, false);
   if (!auth.ok) return auth.response;
   try {
     const params = request.nextUrl.searchParams;
@@ -67,7 +73,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const auth = await authorize(request, true);
+  const auth = await authorizeReconciliation(request, true);
   if (!auth.ok) return auth.response;
   try {
     const body = await request.json().catch(() => ({})) as Record<string, unknown>;
