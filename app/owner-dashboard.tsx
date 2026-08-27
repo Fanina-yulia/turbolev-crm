@@ -139,7 +139,7 @@ function Delta({ current, previous, invert = false }: { current: number | null |
 
 function routeAttention(item: DashboardAttention) {
   const workOrderId = item.workOrderId;
-  if (workOrderId) return () => navigateCrm("Замовлення-наряди", { workOrderId });
+  if (workOrderId) return () => navigateCrm("Комерційна пропозиція", { workOrderId });
   const vehicleId = item.vehicleId;
   if (vehicleId) return () => navigateCrm("Авто", { vehicleId });
   return () => navigateCrm("Планувальник", { appointmentId: item.appointmentId });
@@ -252,10 +252,10 @@ export function OwnerControlCenter({ userName }: { userName?: string | null }) {
     </section>
 
     <section className={styles.liveStrip} aria-label="Стан мережі зараз">
-      <button type="button" onClick={() => navigateCrm("Замовлення-наряди")}><span>Активні авто</span><strong>{operations?.activeNow ?? 0}</strong><small>у потоці мережі зараз</small></button>
-      <button type="button" onClick={() => navigateCrm("Замовлення-наряди", { status: "IN_REPAIR" })}><span>У ремонті</span><strong>{operations?.inRepairNow ?? 0}</strong><small>фактична активна робота</small></button>
+      <button type="button" onClick={() => navigateCrm("Комерційна пропозиція")}><span>Активні авто</span><strong>{operations?.activeNow ?? 0}</strong><small>у потоці мережі зараз</small></button>
+      <button type="button" onClick={() => navigateCrm("Комерційна пропозиція", { status: "IN_REPAIR" })}><span>У ремонті</span><strong>{operations?.inRepairNow ?? 0}</strong><small>фактична активна робота</small></button>
       <button type="button" className={(operations?.overdueNow ?? 0) > 0 ? styles.danger : ""} onClick={() => navigateCrm("Аналітика")}><span>Протерміновано</span><strong>{operations?.overdueNow ?? 0}</strong><small>вийшли за плановий час</small></button>
-      <button type="button" onClick={() => navigateCrm("Замовлення-наряди", { status: "READY_FOR_PICKUP" })}><span>Готові до видачі</span><strong>{operations?.readyNow ?? 0}</strong><small>оплата контролюється окремо</small></button>
+      <button type="button" onClick={() => navigateCrm("Комерційна пропозиція", { status: "READY_FOR_PICKUP" })}><span>Готові до видачі</span><strong>{operations?.readyNow ?? 0}</strong><small>оплата контролюється окремо</small></button>
     </section>
 
     <div className={styles.twoColumns}>
@@ -266,9 +266,9 @@ export function OwnerControlCenter({ userName }: { userName?: string | null }) {
           <button type="button" onClick={() => navigateCrm("Планувальник")}><span>Заплановано</span><strong>{funnel?.scheduled ?? 0}</strong><small>за вибраний період</small></button>
           <button type="button" onClick={() => navigateCrm("Планувальник")}><span>Приїхали</span><strong>{funnel?.arrived ?? 0}</strong><small>{percent(funnel?.bookingToArrivalPct)} від запису</small></button>
           <button type="button" onClick={() => navigateCrm("Діагностика")}><span>Діагностика</span><strong>{funnel?.diagnosticsReached ?? 0}</strong><small>{percent(funnel?.arrivalToDiagnosticsPct)} від приїздів</small></button>
-          <button type="button" onClick={() => navigateCrm("Замовлення-наряди")}><span>Замовлення-наряд</span><strong>{funnel?.workOrderLinked ?? 0}</strong><small>{percent(funnel?.diagnosticsToWorkOrderPct)} від діагностики</small></button>
-          <button type="button" onClick={() => navigateCrm("Замовлення-наряди", { status: "IN_REPAIR" })}><span>Ремонт</span><strong>{funnel?.repairReached ?? 0}</strong><small>{percent(funnel?.workOrderToRepairPct)} від ЗН</small></button>
-          <button type="button" onClick={() => navigateCrm("Замовлення-наряди")}><span>Завершено</span><strong>{funnel?.completed ?? 0}</strong><small>{percent(funnel?.bookingToCompletedPct)} від запису</small></button>
+          <button type="button" onClick={() => navigateCrm("Комерційна пропозиція")}><span>Комерційна пропозиція</span><strong>{funnel?.workOrderLinked ?? 0}</strong><small>{percent(funnel?.diagnosticsToWorkOrderPct)} від діагностики</small></button>
+          <button type="button" onClick={() => navigateCrm("Комерційна пропозиція", { status: "IN_REPAIR" })}><span>Ремонт</span><strong>{funnel?.repairReached ?? 0}</strong><small>{percent(funnel?.workOrderToRepairPct)} від КП</small></button>
+          <button type="button" onClick={() => navigateCrm("Комерційна пропозиція")}><span>Завершено</span><strong>{funnel?.completed ?? 0}</strong><small>{percent(funnel?.bookingToCompletedPct)} від запису</small></button>
         </div>
       </section>
 
@@ -277,8 +277,8 @@ export function OwnerControlCenter({ userName }: { userName?: string | null }) {
         <div className={styles.qualityGrid}>
           <button type="button" onClick={() => navigateCrm("Аналітика")}><span>Середній цикл</span><strong>{duration(operations?.averageCycleMinutes)}</strong><small>від приймання до завершення</small></button>
           <button type="button" onClick={() => navigateCrm("Аналітика")}><span>Вчасно завершено</span><strong>{percent(operations?.onTimeCompletedPct)}</strong><small>{operations?.timedCompleted ?? 0} авто з фактичним часом</small></button>
-          <button type="button" onClick={() => navigateCrm("Замовлення-наряди", { status: "WAITING_PARTS" })}><span>Очікують деталі</span><strong>{operations?.waitingPartsNow ?? 0}</strong><small>операційний блокер</small></button>
-          <button type="button" onClick={() => navigateCrm("Замовлення-наряди", { status: "WAITING_APPROVAL" })}><span>Очікують рішення</span><strong>{operations?.waitingApprovalNow ?? 0}</strong><small>погодження / калькуляція</small></button>
+          <button type="button" onClick={() => navigateCrm("Комерційна пропозиція", { status: "WAITING_PARTS" })}><span>Очікують деталі</span><strong>{operations?.waitingPartsNow ?? 0}</strong><small>операційний блокер</small></button>
+          <button type="button" onClick={() => navigateCrm("Комерційна пропозиція", { status: "WAITING_APPROVAL" })}><span>Очікують рішення</span><strong>{operations?.waitingApprovalNow ?? 0}</strong><small>погодження / калькуляція</small></button>
         </div>
         <div className={styles.delayList}>{operations?.delayReasons?.length ? operations.delayReasons.slice(0, 5).map((item) => <div key={item.code}><span>{item.label}</span><strong>{item.count}</strong></div>) : <div className={styles.empty}>Критичних причин затримки зараз не зафіксовано.</div>}</div>
       </section>
@@ -315,7 +315,7 @@ export function OwnerControlCenter({ userName }: { userName?: string | null }) {
     <section className={styles.quickActions}>
       <button type="button" onClick={() => navigateCrm("Аналітика")}><strong>Аналітика</strong><span>KPI, воронка, виробництво, фінанси →</span></button>
       <button type="button" onClick={() => navigateCrm("Фінансовий центр")}><strong>Фінанси</strong><span>виручка, прибуток, cash flow →</span></button>
-      <button type="button" onClick={() => navigateCrm("Замовлення-наряди")}><strong>Сервісний потік</strong><span>активні авто та блокери →</span></button>
+      <button type="button" onClick={() => navigateCrm("Комерційна пропозиція")}><strong>Сервісний потік</strong><span>активні авто та блокери →</span></button>
       <button type="button" onClick={() => navigateCrm("Закупівлі та склад")}><strong>Запчастини</strong><span>закупівлі, склад і постачання →</span></button>
       <button type="button" onClick={() => navigateCrm("Планувальник")}><strong>Планувальник</strong><span>завантаження та майбутні записи →</span></button>
       <button type="button" onClick={() => navigateCrm("Активні")}><strong>Активні</strong><span>поточні звернення та конверсія →</span></button>
