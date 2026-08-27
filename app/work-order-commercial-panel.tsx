@@ -254,8 +254,8 @@ export function WorkOrderCommercialPanel({ workOrderId, view = "overview", onCha
     if (!result) return;
     const warnings = [result.transitionWarning?.message, result.issueSyncWarning].filter(Boolean).join(" ");
     if (warnings) setMessage(warnings);
-    else if (action === "PASS") setMessage("Контроль якості пройдено. ЗН переведено у «Готовий до видачі».");
-    else if (action === "FAIL") setMessage("QC не пройдено. ЗН переведено у «Доопрацювання».");
+    else if (action === "PASS") setMessage("Контроль якості пройдено. КП переведено у «Готовий до видачі».");
+    else if (action === "FAIL") setMessage("QC не пройдено. КП переведено у «Доопрацювання».");
   }
   async function pay() {
     if (!accountId || !(Number(paymentAmount) > 0)) return;
@@ -264,7 +264,7 @@ export function WorkOrderCommercialPanel({ workOrderId, view = "overview", onCha
     if (!result) return;
     setPaymentAmount("");
     if (result.transitionWarning?.message) setMessage(result.transitionWarning.message);
-    else if (result.workOrder?.status === "READY_FOR_PICKUP") setMessage("Оплату проведено. ЗН у статусі «Готовий до видачі».");
+    else if (result.workOrder?.status === "READY_FOR_PICKUP") setMessage("Оплату проведено. КП у статусі «Готовий до видачі».");
     else setMessage("Оплату проведено.");
   }
 
@@ -279,7 +279,7 @@ export function WorkOrderCommercialPanel({ workOrderId, view = "overview", onCha
   }, [data?.partsRequest?.status]);
 
   if (loading && !data) return <div className={styles.empty}>Завантажую дані комерційної пропозиції…</div>;
-  if (!data) return <div className={styles.notice}>{message || "Дані наряду недоступні."}</div>;
+  if (!data) return <div className={styles.notice}>{message || "Дані комерційної пропозиції недоступні."}</div>;
 
   return <div className={styles.panel}>
     {view === "overview" && <>
@@ -327,7 +327,7 @@ export function WorkOrderCommercialPanel({ workOrderId, view = "overview", onCha
       <div className={styles.block}>
         <div className={styles.blockTitle}><div><strong>Позиції запчастин</strong><small>Підбір, ціни та склад деталей цього ремонту.</small></div><span className={styles.counter}>{partLines.length}</span></div>
         <div className={styles.lineList}>{partLines.map((line) => <div className={styles.line} key={line.id}><div><strong>{line.description}</strong><small>{[line.brand, line.article].filter(Boolean).join(" · ") || line.status} · {num(line.plannedQuantity)} × {money(line.plannedUnitPrice, line.currency)} · закупка {money(line.plannedUnitCost, line.currency)}</small></div><div className={styles.lineActions}><span className={styles.amount}>{money(num(line.plannedQuantity) * num(line.plannedUnitPrice) - num(line.plannedDiscount), line.currency)}</span></div></div>)}</div>
-        {!partLines.length && <div className={styles.empty}>Запчастин у наряді ще немає.</div>}
+        {!partLines.length && <div className={styles.empty}>Запчастин у комерційній пропозиції ще немає.</div>}
 
         <div className={styles.searchBox}>
           <strong>Додати деталь із пропозицій постачальників</strong>
