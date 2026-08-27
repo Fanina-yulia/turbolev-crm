@@ -74,7 +74,7 @@ function Dashboard({ data, userName }: { data: ServiceAdvisorCabinetLinkedPayloa
     } else if (action === "APPROVE") {
       if (!window.confirm("Погодити цю несправність до подальшого опрацювання? Це внутрішнє рішення сервісу і не замінює погодження кошторису клієнтом.")) return;
     } else if (action === "ADD_TO_ESTIMATE") {
-      if (!window.confirm("Додати цю несправність у замовлення-наряд як нову чернеткову позицію кошторису? Ціну потрібно буде вказати окремо.")) return;
+      if (!window.confirm("Додати цю несправність у комерційна пропозиція як нову чернеткову позицію кошторису? Ціну потрібно буде вказати окремо.")) return;
     }
 
     setBusyFinding(`${finding.id}:${action}`);
@@ -92,7 +92,7 @@ function Dashboard({ data, userName }: { data: ServiceAdvisorCabinetLinkedPayloa
       setActionMessage(body.message || "Рішення збережено.");
       window.dispatchEvent(new CustomEvent("turbolev:data-changed"));
       if (action === "ADD_TO_ESTIMATE") {
-        nav("Замовлення-наряди", finding.workOrderId, `${finding.plate} · ${finding.vehicle}`);
+        nav("Комерційна пропозиція", finding.workOrderId, `${finding.plate} · ${finding.vehicle}`);
       }
     } catch (cause) {
       setActionError(cause instanceof Error ? cause.message : "Не вдалося зберегти рішення");
@@ -117,7 +117,7 @@ function Dashboard({ data, userName }: { data: ServiceAdvisorCabinetLinkedPayloa
     <section className={styles.kpis}>
       <button onClick={() => nav("Планувальник", "today", "Сьогодні")}><span>Авто сьогодні</span><strong>{k.today}</strong><small>у плані станції</small></button>
       <button onClick={() => nav("Діагностика", "active", "На діагностиці")}><span>Приймання / діагностика</span><strong>{k.arrived}</strong><small>потребують уваги</small></button>
-      <button onClick={() => nav("Замовлення-наряди", "approval", "Очікують погодження")}><span>Погодження</span><strong>{k.approval}</strong><small>кошториси клієнтів</small></button>
+      <button onClick={() => nav("Комерційна пропозиція", "approval", "Очікують погодження")}><span>Погодження</span><strong>{k.approval}</strong><small>кошториси клієнтів</small></button>
       <button onClick={() => nav("Підбір запчастин", "waiting-parts", "Очікують деталі")}><span>Запчастини</span><strong>{k.waitingParts}</strong><small>у підборі / очікуванні</small></button>
       <button onClick={() => nav("Виробництво", "in-repair", "Ремонт")}><span>У ремонті</span><strong>{k.inRepair}</strong><small>у виробничому потоці</small></button>
       <button className={k.mechanicFindings ? styles.alertKpi : ""} onClick={() => document.getElementById("service-advisor-findings")?.scrollIntoView({ behavior: "smooth", block: "start" })}><span>Виявлено механіком</span><strong>{k.mechanicFindings}</strong><small>потребують рішення</small></button>
@@ -133,7 +133,7 @@ function Dashboard({ data, userName }: { data: ServiceAdvisorCabinetLinkedPayloa
         <div className={styles.panelHead} id="service-advisor-findings"><div><span className={styles.eyebrow}>ВИЯВЛЕНО МЕХАНІКОМ</span><h2>Потребує рішення</h2></div></div>
         <div className={styles.actionNotice}>Внутрішнє рішення сервісу не є погодженням кошторису клієнтом.</div>
         <div className={styles.findingList}>{findings.length ? findings.map((finding) => <article className={styles.findingRow} key={finding.id}>
-          <button className={styles.findingMain} type="button" onClick={() => nav("Замовлення-наряди", finding.workOrderId, `${finding.plate} · ${finding.vehicle}`)}>
+          <button className={styles.findingMain} type="button" onClick={() => nav("Комерційна пропозиція", finding.workOrderId, `${finding.plate} · ${finding.vehicle}`)}>
             <div className={styles.findingTop}><b>{finding.plate} · {finding.vehicle}</b><em data-urgency={finding.urgency}>{urgencyLabel(finding.urgency)}</em></div>
             <span>{finding.workDescription}</span><strong>{finding.findingText}</strong>{finding.recommendation && <small>Рекомендація: {finding.recommendation}</small>}<small>{finding.mechanic} · {time(finding.submittedAt)}</small>
           </button>
@@ -155,7 +155,7 @@ function Dashboard({ data, userName }: { data: ServiceAdvisorCabinetLinkedPayloa
         <div className={styles.panelHead}><div><span className={styles.eyebrow}>ДІАГНОСТИКА</span><h2>Потребує опрацювання</h2></div></div>
         <div className={styles.list}>{diagnostics.length ? diagnostics.map((d) => <button key={d.id} className={styles.row} onClick={() => nav("Діагностика", d.id, `${d.plate} · ${d.vehicle}`)}><div><b>{d.plate}</b></div><div><b>{d.vehicle}</b><small>{d.client}</small></div><em className={styles.badge}>{statusLabels[d.status] || d.status}</em></button>) : <div className={styles.empty}>Активних діагностик немає.</div>}</div>
         <div className={styles.panelHead}><div><span className={styles.eyebrow}>ШВИДКІ ДІЇ</span></div></div>
-        <div className={styles.quick}><button onClick={() => nav("Діагностика")}>Діагностика</button><button onClick={() => nav("Замовлення-наряди")}>Кошториси</button><button onClick={() => nav("Підбір запчастин")}>Запчастини</button><button onClick={() => nav("Клієнти")}>Клієнти</button></div>
+        <div className={styles.quick}><button onClick={() => nav("Діагностика")}>Діагностика</button><button onClick={() => nav("Комерційна пропозиція")}>Кошториси</button><button onClick={() => nav("Підбір запчастин")}>Запчастини</button><button onClick={() => nav("Клієнти")}>Клієнти</button></div>
       </aside>
     </div>
   </div>;
