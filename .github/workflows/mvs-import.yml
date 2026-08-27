@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       years:
-        description: "Comma-separated years; blank means recent registry years"
+        description: "Comma-separated years; blank means recovery set"
         required: false
-        default: "2026,2025,2024,2023,2022,2021,2020"
+        default: "2023,2022,2018,2017"
   push:
     branches: [main]
     paths:
@@ -45,14 +45,14 @@ jobs:
           REQUESTED_YEARS: ${{ github.event.inputs.years }}
         run: |
           if [ "$EVENT_NAME" = "schedule" ]; then
-            YEARS="2026"
+            YEARS="2023,2022,2018,2017"
           elif [ "$EVENT_NAME" = "push" ]; then
-            YEARS="2026,2025,2024,2023,2022,2021,2020"
+            YEARS="2023,2022,2018,2017"
             echo "MVS_RESUME_RECOVERY=true" >> "$GITHUB_ENV"
           elif [ -n "$REQUESTED_YEARS" ]; then
             YEARS="$REQUESTED_YEARS"
           else
-            YEARS="2026,2025,2024,2023,2022,2021,2020"
+            YEARS="2023,2022,2018,2017"
           fi
           echo "MVS_IMPORT_YEARS=$YEARS" >> "$GITHUB_ENV"
           echo "Will import MVS years: $YEARS"
