@@ -87,7 +87,7 @@ assertIncludes("app/payments-queue.tsx", [
   'navigateCrm("Оплати", { scope: next',
   "transitionWarning?: { code?: string; message?: string } | null;",
   "setNotice(payload.transitionWarning?.message ||",
-  "Комерційна пропозиція переведено у «Готовий до видачі».",
+  "Комерційну пропозицію переведено у «Готовий до видачі».",
 ]);
 
 assertIncludes("app/api/payments/route.ts", [
@@ -114,15 +114,15 @@ assertIncludes("app/work-order-commercial-panel.tsx", [
   'import { navigateCrm } from "./crm-route";',
   "return payload;",
   "result.transitionWarning?.message",
-  "Контроль якості пройдено. КП переведено у «Готовий до видачі».",
-  "QC не пройдено. КП переведено у «Доопрацювання».",
+  "Контроль якості пройдено. Комерційну пропозицію переведено у «Готовий до видачі».",
+  "QC не пройдено. Комерційну пропозицію переведено у «Доопрацювання».",
   'navigateCrm("Фінансовий центр")',
 ]);
 
 assertIncludes("app/work-orders.tsx", [
   'if (item.to === "CLOSED") return "Видати авто та закрити КП";',
   'transition.to === "CLOSED" && !window.confirm("Підтвердити видачу авто клієнту та закриття комерційної пропозиції?")',
-  "Авто видано клієнту. Комерційна пропозиція закрито.",
+  "Авто видано клієнту. Комерційну пропозицію закрито.",
 ]);
 
 assertIncludes("app/production-board.tsx", [
