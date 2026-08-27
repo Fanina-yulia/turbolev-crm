@@ -240,7 +240,7 @@ export function WarrantyCenter() {
     </section>
 
     <div className={styles.toolbar}>
-      <label className={styles.search}><span>⌕</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Клієнт, телефон, номер авто, VIN, ЗН або робота..." />{query && <button type="button" onClick={() => setQuery("")}>×</button>}</label>
+      <label className={styles.search}><span>⌕</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Клієнт, телефон, номер авто, VIN, КП або робота..." />{query && <button type="button" onClick={() => setQuery("")}>×</button>}</label>
     </div>
 
     <nav className={styles.tabs} aria-label="Гарантійні черги">
