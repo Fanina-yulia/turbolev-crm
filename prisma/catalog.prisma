@@ -90,6 +90,7 @@ model Brand {
   aliases      BrandAlias[]
   externalRefs BrandExternalReference[]
   products     Product[]
+  vehicleFitments VehicleFitment[]
 
   @@index([status, canonicalName])
   @@index([mergedIntoId])
@@ -260,6 +261,7 @@ model Product {
   supplierResolvedReconciliations SupplierReconciliationTask[]     @relation("SupplierResolvedProduct")
   supplierReconciliationCandidates SupplierReconciliationCandidate[]
   supplierOffers                  SupplierOffer[]
+  vehicleFitments                 VehicleFitment[]
 
   @@unique([brandId, mpnNormalized])
   @@index([mpnSearchNormalized])
