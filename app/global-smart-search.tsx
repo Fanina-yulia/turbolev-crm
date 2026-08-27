@@ -165,7 +165,7 @@ export function GlobalSmartSearch() {
   ], [data]);
 
   const choose = (item: FlatResult) => {
-    if (item.type === "workOrder") navigateCrm("Замовлення-наряди", { workOrderId: item.row.id, workOrderTab: "overview" });
+    if (item.type === "workOrder") navigateCrm("Комерційна пропозиція", { workOrderId: item.row.id, workOrderTab: "overview" });
     else if (item.type === "diagnostic") navigateCrm("Діагностика", { diagnosticId: item.row.id });
     else if (item.type === "appointment") navigateCrm("Планувальник", { appointmentId: item.row.id });
     else if (item.type === "vehicle") navigateCrm("Авто", { vehicleId: item.row.id });
@@ -219,7 +219,7 @@ export function GlobalSmartSearch() {
       {!data.ok && <div className={styles.message}>{data.error || "Пошук недоступний"}</div>}
       {empty && <div className={styles.message}><b>Нічого не знайдено</b><span>Перевірте ПІБ, телефон, держномер, VIN, номер ЗН, діагностику або запис.</span></div>}
 
-      {(data.workOrders || []).length > 0 && <ResultGroup title="Замовлення-наряди">
+      {(data.workOrders || []).length > 0 && <ResultGroup title="Комерційна пропозиція">
         {(data.workOrders || []).map((row) => {
           const index = flat.findIndex((item) => item.key === `wo-${row.id}`);
           return <button key={row.id} type="button" role="option" aria-selected={index === activeIndex} className={`${styles.result} ${index === activeIndex ? styles.resultActive : ""}`} onMouseEnter={() => setActiveIndex(index)} onClick={() => choose({ key: `wo-${row.id}`, type: "workOrder", row })}>
