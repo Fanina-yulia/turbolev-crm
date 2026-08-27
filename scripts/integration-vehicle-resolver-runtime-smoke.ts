@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { webcrypto } from "node:crypto";
 import { getPrisma } from "@/src/lib/prisma";
 import { servicePrincipalHash, testOnlyResetOidcCache } from "@/src/security/service-access-context";
@@ -166,6 +167,11 @@ try {
     },
   });
 
+  const routeSource = readFileSync("app/api/integration/v1/vehicle/resolve/route.ts", "utf8");
+  assert.match(routeSource, /searchParams\.get\("resolutionId"\)/, "polling URL must use only opaque resolutionId");
+  assert.doesNotMatch(routeSource, /searchParams\.get\("(?:vin|plate|identifier)"\)/i, "VIN/plate/identifier must never be read from polling URL");
+  assert.doesNotMatch(routeSource, /console\.(?:log|warn|error)[\s\S]{0,180}\b(?:payload|vin|plate|identifier)\b/i, "route logs must not include raw request identity fields");
+
   const unauthenticated = await POST(new Request("https://crm.example.test/api/integration/v1/vehicle/resolve", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -237,6 +243,16 @@ try {
   assert.ok(!JSON.stringify(vinRow).includes(vin), "raw VIN must never be persisted in VehicleResolution");
   assert.ok(vinRow.requestFingerprint.startsWith("hmac-sha256:"));
 
+  const vinRouteResponse = await POST(new Request("https://crm.example.test/api/integration/v1/vehicle/resolve", {
+    method: "POST",
+    headers: authHeaders(primaryToken, "runtime-smoke-idempotency-vin-0001"),
+    body: JSON.stringify({ inputType: "VIN", vin }),
+  }));
+  assert.equal(vinRouteResponse.status, 200);
+  const vinRouteText = await vinRouteResponse.text();
+  assert.ok(!vinRouteText.includes(vin), "raw VIN must never be returned by resolver route");
+  assert.ok(vinRouteText.includes("WVW"), "masked VIN context should remain useful");
+
   const plate = "KA7584CI";
   const plateResult = await resolveVehicleRequest(
     { inputType: "PLATE", plate, countryCode: "UA" },
@@ -260,6 +276,41 @@ try {
   assert.equal(names.has("vin"), false);
   assert.equal(names.has("plate"), false);
   assert.equal(names.has("platenumber"), false);
+
+  const enumerationWindowMs = 3_600_000;
+  const windowStart = new Date(Math.floor(Date.now() / enumerationWindowMs) * enumerationWindowMs);
+  const resetAt = new Date(windowStart.getTime() + enumerationWindowMs);
+  await prisma.integrationRateLimitBucket.deleteMany({
+    where: {
+      principalHash: primaryPrincipalHash,
+      bucketKey: "vehicle.resolve.enumeration",
+      windowStart,
+      windowSeconds: 3_600,
+    },
+  });
+  await prisma.integrationRateLimitBucket.create({
+    data: {
+      id: "runtime_smoke_enumeration_budget",
+      principalHash: primaryPrincipalHash,
+      bucketKey: "vehicle.resolve.enumeration",
+      windowStart,
+      windowSeconds: 3_600,
+      count: 300,
+      expiresAt: new Date(resetAt.getTime() + 5 * 60_000),
+    },
+  });
+  const idempotencyCountBeforeLimit = await prisma.integrationIdempotencyRecord.count();
+  const enumerationDenied = await POST(new Request("https://crm.example.test/api/integration/v1/vehicle/resolve", {
+    method: "POST",
+    headers: authHeaders(primaryToken, "runtime-smoke-idempotency-enumeration-0001"),
+    body: JSON.stringify(manualBody),
+  }));
+  assert.equal(enumerationDenied.status, 429);
+  const enumerationBody = await enumerationDenied.json();
+  assert.equal(enumerationBody.error.code, "RATE_LIMITED");
+  assert.match(enumerationBody.error.message, /enumeration budget/i);
+  assert.ok(Number(enumerationDenied.headers.get("retry-after")) >= 1);
+  assert.equal(await prisma.integrationIdempotencyRecord.count(), idempotencyCountBeforeLimit, "denied enumeration request must not allocate idempotency state");
 
   console.log("integration-vehicle-resolver-runtime-smoke: ok");
 } finally {
