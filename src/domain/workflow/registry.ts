@@ -225,7 +225,7 @@ export const WORKFLOW_DEFINITIONS: Readonly<Record<string, WorkflowDefinition>> 
     transitions: [transition("PENDING", "IN_PROGRESS"), transition("PENDING", "CANCELLED"), transition("IN_PROGRESS", "CONFIRMED", { actions: ["CREATE_WORK_ORDER"] }), transition("IN_PROGRESS", "CANCELLED")],
   },
   WORK_ORDER: {
-    entity: "WORK_ORDER", label: "Замовлення-наряд", kind: "PROCESS", description: "Фактичний виробничий контур після підтвердженої діагностики.", statuses: workOrderStatuses,
+    entity: "WORK_ORDER", label: "Комерційна пропозиція", kind: "PROCESS", description: "Фактичний виробничий контур після підтвердженої діагностики.", statuses: workOrderStatuses,
     aliases: { QUOTE_DRAFT: "WAITING_APPROVAL", CLIENT_APPROVAL: "WAITING_APPROVAL", PARTS_PAYMENT: "WAITING_PARTS", PARTS_ORDERED: "WAITING_PARTS", REPAIR: "IN_REPAIR", QUALITY_CONTROL: "WAITING_QC", READY: "READY_FOR_PICKUP", WORK_PAYMENT: "READY_FOR_PICKUP", PAID: "READY_FOR_PICKUP", AFTERSALES: "CLOSED" },
     transitions: [
       transition("PARTS_REVIEW", "WAITING_APPROVAL", { actions: ["CREATE_ESTIMATE"] }), transition("PARTS_REVIEW", "WAITING_PARTS", { actions: ["OPEN_PARTS_REQUEST"] }), transition("PARTS_REVIEW", "READY_FOR_REPAIR"), transition("PARTS_REVIEW", "PAUSED"), transition("PARTS_REVIEW", "CANCELLED"),
