@@ -1,0 +1,66 @@
+name: Supplier Reconciliation Workspace
+
+on:
+  pull_request:
+    paths:
+      - "src/services/*supplier*"
+      - "app/parts-supplier-reconciliation.*"
+      - "app/api/parts/supplier-reconciliation/**"
+      - "scripts/supplier-reconciliation-smoke.ts"
+      - "prisma/**"
+      - ".github/workflows/supplier-reconciliation.yml"
+  push:
+    branches: [main]
+    paths:
+      - "src/services/*supplier*"
+      - "app/parts-supplier-reconciliation.*"
+      - "app/api/parts/supplier-reconciliation/**"
+      - "scripts/supplier-reconciliation-smoke.ts"
+      - "prisma/**"
+      - ".github/workflows/supplier-reconciliation.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  reconciliation-smoke:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: turbolev_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d turbolev_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/turbolev_ci
+      DATABASE_URL_UNPOOLED: postgresql://postgres:postgres@localhost:5432/turbolev_ci
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+      - name: Validate Prisma schema
+        run: npx prisma validate
+      - name: TypeScript contract check
+        run: npx tsc --noEmit
+      - name: Apply full migration history to disposable PostgreSQL 18
+        run: bash scripts/ci-migrate-with-external-fixtures.sh
+      - name: Supplier reconciliation DB smoke
+        run: npx --no-install tsx scripts/supplier-reconciliation-smoke.ts
