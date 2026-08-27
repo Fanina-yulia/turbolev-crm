@@ -143,6 +143,7 @@ model GenericArticle {
   externalRefs GenericArticleExternalReference[]
   categories   CategoryGenericArticle[]
   products     Product[]
+  vehicleFitments VehicleFitment[]
 
   @@index([status, name])
   @@index([mergedIntoId])
@@ -260,6 +261,7 @@ model Product {
   supplierResolvedReconciliations SupplierReconciliationTask[]     @relation("SupplierResolvedProduct")
   supplierReconciliationCandidates SupplierReconciliationCandidate[]
   supplierOffers                  SupplierOffer[]
+  vehicleFitments                 VehicleFitment[]
 
   @@unique([brandId, mpnNormalized])
   @@index([mpnSearchNormalized])
