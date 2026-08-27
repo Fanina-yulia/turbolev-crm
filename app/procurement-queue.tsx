@@ -183,7 +183,7 @@ export function ProcurementQueue() {
     </header>
 
     <section className={styles.kpis}>{LANES.map(([category, label]) => <button type="button" key={category} className={focus === category ? styles.kpiActive : ""} onClick={() => setFocus((current) => current === category ? null : category)}><span>{label}</span><strong>{counts[category]}</strong></button>)}</section>
-    <label className={styles.search}><span>⌕</span><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="ЗН, авто, VIN, артикул, деталь або постачальник…"/>{search && <button type="button" onClick={() => setSearch("")}>×</button>}</label>
+    <label className={styles.search}><span>⌕</span><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="КП, авто, VIN, артикул, деталь або постачальник…"/>{search && <button type="button" onClick={() => setSearch("")}>×</button>}</label>
     {message && <div className={styles.notice}>{message}</div>}
 
     <div className={styles.board}>
