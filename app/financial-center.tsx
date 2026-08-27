@@ -170,7 +170,7 @@ export function FinancialCenter() {
     {metric && <section className={styles.drilldown}>
       <div className={styles.drillHead}><div><p className="eyebrow">DRILL-DOWN</p><h2>{METRIC_LABEL[metric]}</h2><span>{periodLabel}{locationId ? ` · ${data?.locations.find((item) => item.id === locationId)?.name || locationId}` : " · усі локації"}</span></div><button onClick={closeDrill}>Закрити</button></div>
       {detailLoading ? <div className={styles.drillState}>Завантажую деталізацію…</div> : detailRows.length === 0 ? <div className={styles.drillState}>За цим показником немає рядків.</div> : <div className={styles.detailTable}>
-        <div className={styles.detailHead}><span>Дата</span><span>Опис</span><span>Тип</span><span>ЗН</span><span>Сума</span></div>
+        <div className={styles.detailHead}><span>Дата</span><span>Опис</span><span>Тип</span><span>КП</span><span>Сума</span></div>
         {detailRows.map((row) => <div className={styles.detailRow} key={row.id}><span>{dateText(row.date)}</span><span>{row.description}</span><span>{row.type}</span><span>{row.workOrderId ? <button type="button" onClick={() => navigateCrm("Комерційна пропозиція", { workOrderId: row.workOrderId!, workOrderTab: "overview" })}>{row.workOrderLabel || "Відкрити КП"}</button> : "—"}</span><strong>{money(row.amount, data?.currency || "UAH")}</strong></div>)}
       </div>}
     </section>}
