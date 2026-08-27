@@ -79,6 +79,10 @@ export function readCrmRoute(): CrmRouteParams {
   const result: CrmRouteParams = {};
   for (const key of CRM_ROUTE_KEYS) {
     const value = params.get(key);
+    if (key === "vehiclePage") {
+      if (value === "diagnostic-card" || value === "commercial-offer" || value === "service-history") result.vehiclePage = value;
+      continue;
+    }
     if (value) result[key] = value;
   }
   return result;
