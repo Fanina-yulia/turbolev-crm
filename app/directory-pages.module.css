@@ -1,4 +1,6 @@
 .page{padding:28px 34px 48px;min-height:100%;background:var(--bg);color:var(--text)}
+.fullPageSurface{display:block;min-width:0;width:100%}
+.pageRecord> :not(.fullPageSurface){display:none}
 .header{display:flex;justify-content:space-between;align-items:flex-start;gap:24px;padding-bottom:22px;border-bottom:1px solid var(--line)}
 .header h1{margin:4px 0 6px;font-size:38px;line-height:1.05}
 .header>div>span{color:var(--muted);font-size:16px}
