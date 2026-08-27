@@ -105,6 +105,7 @@ export function Diagnostics() {
   const [filter, setFilter] = useState<Filter>("ALL");
   const [search, setSearch] = useState("");
   const [mechanic, setMechanic] = useState("ALL");
+  const [vehicleIdFilter, setVehicleIdFilter] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -116,14 +117,12 @@ export function Diagnostics() {
     const route = readCrmRoute();
     const diagnosticId = route.diagnosticId || null;
     const vehicleId = route.vehicleId || null;
+    setVehicleIdFilter(vehicleId);
+    const matchingRows = nextRows.filter((row) => !vehicleId || row.vehicle.id === vehicleId);
     setSelectedId((current) => {
-      if (diagnosticId && nextRows.some((row) => row.id === diagnosticId)) return diagnosticId;
-      if (vehicleId) {
-        const vehicleDiagnostic = nextRows.find((row) => row.vehicle.id === vehicleId);
-        return vehicleDiagnostic?.id ?? null;
-      }
-      if (current && nextRows.some((row) => row.id === current)) return current;
-      return nextRows[0]?.id ?? null;
+      if (diagnosticId && matchingRows.some((row) => row.id === diagnosticId)) return diagnosticId;
+      if (current && matchingRows.some((row) => row.id === current)) return current;
+      return matchingRows[0]?.id ?? null;
     });
   }, []);
 
@@ -131,7 +130,10 @@ export function Diagnostics() {
     setLoading(true);
     setError("");
     try {
-      const response = await fetch("/api/diagnostics?limit=500", { cache: "no-store", credentials: "include" });
+      const route = readCrmRoute();
+      const params = new URLSearchParams({ limit: "500" });
+      if (route.vehicleId) params.set("vehicleId", route.vehicleId);
+      const response = await fetch(`/api/diagnostics?${params.toString()}`, { cache: "no-store", credentials: "include" });
       const data = await response.json() as ApiResponse;
       if (!response.ok || !data.ok || !data.diagnostics) throw new Error(data.message || data.error || "Не вдалося завантажити діагностики");
       setRows(data.diagnostics);
@@ -151,7 +153,7 @@ export function Diagnostics() {
   }, [applyRoute, rows]);
 
   const mechanics = useMemo(() => Array.from(new Set(rows.map((row) => row.assignedMechanic?.name).filter((value): value is string => Boolean(value)))).sort((a, b) => a.localeCompare(b, "uk")), [rows]);
-  const visible = useMemo(() => rows.filter((row) => matchesFilter(row, filter) && matchesSearch(row, search) && (mechanic === "ALL" || row.assignedMechanic?.name === mechanic)), [rows, filter, search, mechanic]);
+  const visible = useMemo(() => rows.filter((row) => (!vehicleIdFilter || row.vehicle.id === vehicleIdFilter) && matchesFilter(row, filter) && matchesSearch(row, search) && (mechanic === "ALL" || row.assignedMechanic?.name === mechanic)), [rows, vehicleIdFilter, filter, search, mechanic]);
   const selected = rows.find((item) => item.id === selectedId) ?? null;
   useEffect(() => { setConclusion(selected?.technicalConclusion ?? ""); setMessage(""); }, [selectedId, selected?.technicalConclusion]);
 

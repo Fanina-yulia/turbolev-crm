@@ -14,26 +14,16 @@ import { CustomerCabinetCard } from "./customer-cabinet-card";
 import { navigateCrm, readCrmRoute } from "./crm-route";
 import { VehicleBrandLogo } from "./vehicle-brand-logo";
 import { VehicleRender } from "./vehicle-render";
-import { VehicleDiagnosticsTab } from "./vehicle-diagnostics-tab";
 import styles from "./directory-pages.module.css";
 import tabStyles from "./vehicle-card-tabs.module.css";
 import workflowStyles from "./vehicle-workflow.module.css";
 
 type Vehicle = VehicleDirectoryItem;
 type VehicleCard = VehicleCardContract;
-type VehicleDrawerTab = "overview" | "diagnostics" | "history";
-
 const PAGE_SIZE = 24;
 
 function vehicleTitle(vehicle: Vehicle | VehicleCard) {
   return [vehicle.brand, vehicle.model, vehicle.year].filter(Boolean).join(" ") || "Автомобіль";
-}
-
-function dateText(value: string | null | undefined) {
-  if (!value) return "—";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "—";
-  return new Intl.DateTimeFormat("uk-UA", { day: "2-digit", month: "2-digit", year: "numeric" }).format(date);
 }
 
 function engineText(vehicle: Vehicle | VehicleCard) {
@@ -85,7 +75,6 @@ export function VehiclesDirectory() {
   const [vehicleId, setVehicleId] = useState<string | null>(null);
   const [vehicleCard, setVehicleCard] = useState<VehicleCard | null>(null);
   const [vehicleLoading, setVehicleLoading] = useState(false);
-  const [drawerTab, setDrawerTab] = useState<VehicleDrawerTab>("overview");
   const vehicleIds = vehicles.map((vehicle) => vehicle.id).join(",");
 
   useEffect(() => {
@@ -157,7 +146,6 @@ export function VehiclesDirectory() {
   }, []);
 
   useEffect(() => {
-    setDrawerTab("overview");
     if (!vehicleId) {
       setVehicleCard(null);
       return;
@@ -238,6 +226,18 @@ export function VehiclesDirectory() {
 
   function openVehicle(id: string) {
     navigateCrm("Авто", { vehicleId: id });
+  }
+
+  function openVehiclePage(page: "diagnostics" | "proposal" | "history") {
+    if (!vehicleCard) return;
+    if (page === "diagnostics") {
+      navigateCrm("Діагностика", { vehicleId: vehicleCard.id });
+      return;
+    }
+    navigateCrm("Замовлення-наряди", {
+      vehicleId: vehicleCard.id,
+      workOrderTab: page === "proposal" ? "estimate" : "history",
+    });
   }
 
   function closeVehicle() {
@@ -345,57 +345,35 @@ export function VehiclesDirectory() {
           </header>
 
           <nav className={tabStyles.tabs} aria-label="Розділи картки автомобіля">
-            <button type="button" className={drawerTab === "overview" ? tabStyles.active : ""} onClick={() => setDrawerTab("overview")}>Огляд</button>
-            <button type="button" className={drawerTab === "diagnostics" ? tabStyles.active : ""} onClick={() => setDrawerTab("diagnostics")}>Діагностика</button>
-            <button type="button" className={drawerTab === "history" ? tabStyles.active : ""} onClick={() => setDrawerTab("history")}>Сервісна історія</button>
+            <button type="button" onClick={() => openVehiclePage("diagnostics")}>Діагностична карта</button>
+            <button type="button" onClick={() => openVehiclePage("proposal")}>Комерційна пропозиція</button>
+            <button type="button" onClick={() => openVehiclePage("history")}>Сервісна історія</button>
           </nav>
 
           <div className={styles.drawerBody}>
-            {drawerTab === "overview" && <>
-              <section className={styles.panel}>
-                <h3>Власник</h3>
-                <button className={styles.ownerButton} onClick={() => navigateCrm("Клієнти", { clientId: vehicleCard.client.id })}>
-                  <span><strong>{vehicleCard.client.name || "Клієнт без імені"}</strong><small>{vehicleCard.client.phone}</small></span><span>›</span>
-                </button>
-              </section>
-              <section className={styles.panel}>
-                <CustomerCabinetCard clientId={vehicleCard.client.id} vehicleId={vehicleCard.id} />
-              </section>
-              <section className={styles.panel}>
-                <h3>Технічні дані</h3>
-                <div className={styles.facts}>
-                  <span><small>Марка</small><b>{vehicleCard.brand || "—"}</b></span>
-                  <span><small>Модель</small><b>{vehicleCard.model || "—"}</b></span>
-                  <span><small>Рік</small><b>{vehicleCard.year || "—"}</b></span>
-                  <span><small>VIN</small><b>{vehicleCard.vin || "—"}</b></span>
-                  <span><small>Пробіг</small><b>{vehicleCard.mileageKm ? `${vehicleCard.mileageKm.toLocaleString("uk-UA")} км` : "—"}</b></span>
-                  <span><small>Двигун</small><b>{engineText(vehicleCard)}</b></span>
-                  <span><small>Паливо</small><b>{vehicleCard.fuelType || "—"}</b></span>
-                  <span><small>Привід</small><b>{vehicleCard.driveType || "—"}</b></span>
-                </div>
-              </section>
-              <VehicleAppearanceEditor vehicle={vehicleCard} onSaved={updateVehicleCard}/>
-            </>}
-
-            {drawerTab === "diagnostics" && <section className={styles.panel}>
-              <h3>Діагностика</h3>
-              <VehicleDiagnosticsTab vehicleId={vehicleCard.id} plateNumber={vehicleCard.plateNumber} vin={vehicleCard.vin}/>
-            </section>}
-
-            {drawerTab === "history" && <section className={styles.panel}>
-              <h3>Сервісна історія</h3>
+            <section className={styles.panel}>
+              <h3>Власник</h3>
+              <button className={styles.ownerButton} onClick={() => navigateCrm("Клієнти", { clientId: vehicleCard.client.id })}>
+                <span><strong>{vehicleCard.client.name || "Клієнт без імені"}</strong><small>{vehicleCard.client.phone}</small></span><span>›</span>
+              </button>
+            </section>
+            <section className={styles.panel}>
+              <CustomerCabinetCard clientId={vehicleCard.client.id} vehicleId={vehicleCard.id} />
+            </section>
+            <section className={styles.panel}>
+              <h3>Технічні дані</h3>
               <div className={styles.facts}>
-                <span><small>Замовлення</small><b>{vehicleCard._count.workOrders}</b></span>
-                <span><small>Діагностики</small><b>{vehicleCard._count.diagnosticRequests}</b></span>
-                <span><small>Створено</small><b>{dateText(vehicleCard.createdAt)}</b></span>
-                <span><small>Оновлено</small><b>{dateText(vehicleCard.updatedAt)}</b></span>
+                <span><small>Марка</small><b>{vehicleCard.brand || "—"}</b></span>
+                <span><small>Модель</small><b>{vehicleCard.model || "—"}</b></span>
+                <span><small>Рік</small><b>{vehicleCard.year || "—"}</b></span>
+                <span><small>VIN</small><b>{vehicleCard.vin || "—"}</b></span>
+                <span><small>Пробіг</small><b>{vehicleCard.mileageKm ? `${vehicleCard.mileageKm.toLocaleString("uk-UA")} км` : "—"}</b></span>
+                <span><small>Двигун</small><b>{engineText(vehicleCard)}</b></span>
+                <span><small>Паливо</small><b>{vehicleCard.fuelType || "—"}</b></span>
+                <span><small>Привід</small><b>{vehicleCard.driveType || "—"}</b></span>
               </div>
-              {vehicleCard.workOrders.length ? <div className={styles.relatedList}>{vehicleCard.workOrders.map((workOrder) => <button key={workOrder.id} onClick={() => navigateCrm("Замовлення-наряди", { workOrderId: workOrder.id })}>
-                <strong>{workOrder.status}</strong>
-                <small>{dateText(workOrder.closedAt || workOrder.updatedAt || workOrder.createdAt)}</small>
-                <span>›</span>
-              </button>)}</div> : null}
-            </section>}
+            </section>
+            <VehicleAppearanceEditor vehicle={vehicleCard} onSaved={updateVehicleCard}/>
           </div>
           <footer className={styles.drawerFooter}><button className={styles.primary} onClick={openNewRequest}>+ Нова заявка</button></footer>
         </>}
