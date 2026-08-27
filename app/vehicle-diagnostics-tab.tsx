@@ -1,11 +1,12 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import type { VehicleCardContract } from "@/src/lib/contracts/crm-core";
 import { navigateCrm } from "./crm-route";
-import styles from "./vehicle-diagnostics-tab.module.css";
+import styles from "./vehicle-diagnostic-card.module.css";
 
 type WorkflowState = "PENDING" | "IN_PROGRESS" | "SUBMITTED" | "RETURNED" | "CONFIRMED" | "CANCELLED";
-type Row = {
+type DiagnosticRow = {
   id: string;
   status: "PENDING" | "IN_PROGRESS" | "CONFIRMED" | "CANCELLED";
   workflowState?: Exclude<WorkflowState, "RETURNED">;
@@ -20,135 +21,158 @@ type Row = {
   commercialProposal?: { workOrderId: string; stage: string } | null;
 };
 
-type Props = {
-  vehicleId: string;
-  plateNumber?: string | null;
-  vin?: string | null;
+type DiagnosticMedia = { id: string; fileName: string; mimeType: string; fileSize: number; createdAt: string };
+type DiagnosticFinding = { id: string; action: string; urgency: string; findingText: string | null; suggestedWorkName: string | null; suggestedPartName: string | null; media: DiagnosticMedia[] };
+type DiagnosticItem = { id: string; templateItemId: string; name: string; position: string | null; state: string; measurementUnit: string | null; measurementValue: string | null; measurementText: string | null; note: string | null; finding: DiagnosticFinding | null };
+type DiagnosticSection = { id: string; name: string; items: DiagnosticItem[]; counts: { total: number; checked: number; ok: number; attention: number; defect: number } };
+type DiagnosticInspection = { id: string; templateName: string; sections: DiagnosticSection[]; counts: { total: number; checked: number; ok: number; attention: number; defect: number } };
+type DiagnosticView = {
+  diagnostic: {
+    id: string;
+    status: string;
+    workflowState: string;
+    technicalConclusion: string | null;
+    confirmedAt: string | null;
+    client: { id: string; name: string | null; phone: string };
+    vehicle: { id: string; label: string; brand: string | null; model: string | null; year: number | null; plateNumber: string | null; vin: string | null; mileageKm: number | null };
+    problem: string | null;
+    workOrder: { id: string; status: string } | null;
+    assignment: { mechanicId: string | null } | null;
+    review: { state: string; mechanicComment: string | null; managerComment: string | null };
+  };
+  inspections: DiagnosticInspection[];
+  counts: { total: number; checked: number; ok: number; attention: number; defect: number };
 };
 
-const labels: Record<WorkflowState, string> = {
-  PENDING: "Очікує",
-  IN_PROGRESS: "В роботі",
-  SUBMITTED: "На перевірці",
-  RETURNED: "В роботі",
-  CONFIRMED: "Підтверджена",
-  CANCELLED: "Скасована",
-};
-const commercialLabels: Record<string, string> = {
-  PARTS_SELECTION: "Підбір запчастин",
-  DRAFT: "КП · Чернетка",
-  SENT: "КП · Відправлена",
-  APPROVED: "КП · Погоджена",
-  REJECTED: "КП · Відхилена",
-  SUPERSEDED: "КП · Нова ревізія",
-};
+type Props = { vehicle: VehicleCardContract; diagnosticId?: string | null };
 
-function stateOf(row: Row): WorkflowState {
-  if (row.reviewState === "RETURNED") return "RETURNED";
-  return row.workflowState || row.status;
-}
-function stateClass(state: WorkflowState) {
-  if (state === "PENDING") return styles.waiting;
-  if (state === "IN_PROGRESS" || state === "RETURNED") return styles.working;
-  if (state === "SUBMITTED") return styles.review;
-  if (state === "CONFIRMED") return styles.confirmed;
-  return styles.cancelled;
-}
-function dateText(value: string | null | undefined) {
-  if (!value) return "—";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "—";
-  return new Intl.DateTimeFormat("uk-UA", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }).format(date);
-}
+const workflowLabels: Record<WorkflowState, string> = { PENDING: "Очікує", IN_PROGRESS: "В роботі", SUBMITTED: "На перевірці", RETURNED: "В роботі", CONFIRMED: "Підтверджена", CANCELLED: "Скасована" };
+const urgencyLabels: Record<string, string> = { CRITICAL: "Критично", SOON: "Найближчим часом", INFO: "Рекомендовано" };
+const actionLabels: Record<string, string> = { REPLACE: "Заміна", REPAIR: "Ремонт", ADJUST: "Регулювання", CLEAN: "Обслуговування", ADDITIONAL_DIAGNOSTICS: "Додаткова діагностика", NONE: "Потребує оцінки" };
 
-export function VehicleDiagnosticsTab({ vehicleId, plateNumber, vin }: Props) {
-  const [rows, setRows] = useState<Row[]>([]);
+function stateOf(row: DiagnosticRow): WorkflowState { if (row.reviewState === "RETURNED") return "RETURNED"; return row.workflowState || row.status; }
+function dateText(value: string | null | undefined) { if (!value) return "—"; const date = new Date(value); return Number.isNaN(date.getTime()) ? "—" : new Intl.DateTimeFormat("uk-UA", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }).format(date); }
+function vehicleTitle(vehicle: VehicleCardContract) { return [vehicle.brand, vehicle.model, vehicle.year].filter(Boolean).join(" ") || "Автомобіль"; }
+
+export function VehicleDiagnosticsTab({ vehicle, diagnosticId }: Props) {
+  const [rows, setRows] = useState<DiagnosticRow[]>([]);
+  const [selectedId, setSelectedId] = useState<string | null>(diagnosticId || null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [busyId, setBusyId] = useState("");
   const [refreshTick, setRefreshTick] = useState(0);
-
-  useEffect(() => {
-    const refresh = () => setRefreshTick((current) => current + 1);
-    window.addEventListener("turbolev:data-changed", refresh);
-    return () => window.removeEventListener("turbolev:data-changed", refresh);
-  }, []);
+  const [busyId, setBusyId] = useState("");
 
   useEffect(() => {
     const controller = new AbortController();
-    setLoading(true);
-    setError("");
-    void fetch(`/api/diagnostics?vehicleId=${encodeURIComponent(vehicleId)}&limit=100`, { cache: "no-store", credentials: "include", signal: controller.signal })
+    setLoading(true); setError("");
+    void fetch(`/api/diagnostics?vehicleId=${encodeURIComponent(vehicle.id)}&limit=100`, { cache: "no-store", credentials: "include", signal: controller.signal })
       .then(async (response) => {
-        const body = await response.json().catch(() => null) as { ok?: boolean; diagnostics?: Row[]; error?: string } | null;
-        if (!response.ok || !body?.ok || !Array.isArray(body.diagnostics)) throw new Error(body?.error || "Не вдалося завантажити діагностики автомобіля");
+        const body = await response.json().catch(() => null) as { ok?: boolean; diagnostics?: DiagnosticRow[]; error?: string } | null;
+        if (!response.ok || !body?.ok || !Array.isArray(body.diagnostics)) throw new Error(body?.error || "Не вдалося завантажити діагностичні карти автомобіля.");
         if (!controller.signal.aborted) setRows(body.diagnostics);
       })
-      .catch((cause) => {
-        if (!controller.signal.aborted && cause instanceof Error && cause.name !== "AbortError") setError(cause.message);
-      })
+      .catch((cause) => { if (!controller.signal.aborted && cause instanceof Error && cause.name !== "AbortError") setError(cause.message); })
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
-  }, [vehicleId, refreshTick]);
+  }, [vehicle.id, refreshTick]);
 
-  const summary = useMemo(() => ({
-    total: rows.length,
-    active: rows.filter((row) => ["PENDING", "IN_PROGRESS", "SUBMITTED", "RETURNED"].includes(stateOf(row))).length,
-    confirmed: rows.filter((row) => stateOf(row) === "CONFIRMED").length,
-    defects: rows.reduce((sum, row) => sum + (row.structured?.defects || 0), 0),
-  }), [rows]);
+  useEffect(() => {
+    if (!rows.length) { setSelectedId(null); return; }
+    if (diagnosticId && rows.some((row) => row.id === diagnosticId)) { setSelectedId(diagnosticId); return; }
+    if (!selectedId || !rows.some((row) => row.id === selectedId)) {
+      const latest = [...rows].sort((a, b) => new Date(b.updatedAt || b.createdAt).getTime() - new Date(a.updatedAt || a.createdAt).getTime())[0];
+      setSelectedId(latest?.id || null);
+    }
+  }, [diagnosticId, rows, selectedId]);
 
-  function bookDiagnostic() {
-    window.dispatchEvent(new CustomEvent("turbolev:open-new-request", { detail: { source: "VEHICLE", plate: plateNumber || "", vin: vin || "" } }));
-  }
-
-  async function createCommercialProposal(row: Row) {
-    setBusyId(row.id);
-    setError("");
+  const selected = rows.find((row) => row.id === selectedId) || null;
+  async function createCommercialProposal(row: DiagnosticRow) {
+    setBusyId(row.id); setError("");
     try {
       const response = await fetch(`/api/diagnostics/${encodeURIComponent(row.id)}/commercial-proposal`, { method: "POST", credentials: "include" });
       const body = await response.json().catch(() => null) as { ok?: boolean; workOrder?: { id?: string }; error?: string; message?: string } | null;
-      if (!response.ok || !body?.ok || !body.workOrder?.id) throw new Error(body?.message || body?.error || "Не вдалося створити Комерційну пропозицію");
+      if (!response.ok || !body?.ok || !body.workOrder?.id) throw new Error(body?.message || body?.error || "Не вдалося створити Комерційну пропозицію.");
       window.dispatchEvent(new CustomEvent("turbolev:data-changed"));
-      navigateCrm("Авто", { vehicleId, vehiclePage: "commercial-offer", workOrderId: body.workOrder.id, workOrderTab: "estimate" });
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Не вдалося створити Комерційну пропозицію");
-    } finally {
-      setBusyId("");
-    }
+      navigateCrm("Авто", { vehicleId: vehicle.id, vehiclePage: "commercial-offer", workOrderId: body.workOrder.id, workOrderTab: "estimate" });
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "Не вдалося створити Комерційну пропозицію."); }
+    finally { setBusyId(""); }
   }
+  function openDiagnostic(row: DiagnosticRow) { navigateCrm("Діагностика", { diagnosticId: row.id, vehicleId: vehicle.id }); }
+  function openCommercial(row: DiagnosticRow) { if (row.commercialProposal?.workOrderId) navigateCrm("Авто", { vehicleId: vehicle.id, vehiclePage: "commercial-offer", workOrderId: row.commercialProposal.workOrderId, workOrderTab: "estimate" }); }
 
-  if (loading) return <div className={styles.loading}>Завантажую історію діагностик…</div>;
-  if (error && !rows.length) return <div className={styles.error}>{error}</div>;
-  if (!rows.length) return <div className={styles.empty}>Для цього автомобіля діагностики ще не проводились.<div className={styles.actions}><button type="button" className={styles.primary} onClick={bookDiagnostic}>+ Записати на діагностику</button></div></div>;
+  if (loading) return <div className={styles.state}>Завантажую Діагностичну карту…</div>;
+  if (error && !rows.length) return <div className={styles.error}>{error}<button type="button" onClick={() => setRefreshTick((value) => value + 1)}>Повторити</button></div>;
+  if (!rows.length) return <div className={styles.empty}><strong>Діагностичних карт ще немає</strong><span>Карта з’явиться після проведення діагностики автомобіля.</span><button type="button" onClick={() => window.dispatchEvent(new CustomEvent("turbolev:open-new-request", { detail: { source: "VEHICLE", plate: vehicle.plateNumber || "", vin: vehicle.vin || "" } }))}>+ Записати на діагностику</button></div>;
 
   return <div className={styles.wrap}>
-    <div className={styles.summary}>
-      <div><span>Усього діагностик</span><strong>{summary.total}</strong></div>
-      <div><span>Активні</span><strong>{summary.active}</strong></div>
-      <div><span>Підтверджені ДК</span><strong>{summary.confirmed}</strong></div>
-      <div><span>Виявлено дефектів</span><strong>{summary.defects}</strong></div>
-    </div>
+    <div className={styles.historyBar}><div><span className={styles.eyebrow}>ІСТОРІЯ ДІАГНОСТИК</span><strong>{vehicleTitle(vehicle)}</strong></div><div className={styles.historyItems}>{rows.map((row) => { const state = stateOf(row); return <button type="button" key={row.id} className={selectedId === row.id ? styles.historyActive : ""} onClick={() => setSelectedId(row.id)}><b>{row.diagnosticCard?.number || "Діагностика"}</b><span>{workflowLabels[state]}</span><small>{dateText(row.confirmedAt || row.updatedAt || row.createdAt)}</small></button>; })}</div></div>
     {error ? <div className={styles.error}>{error}</div> : null}
-    <div className={styles.list}>{rows.map((row) => {
-      const state = stateOf(row);
-      const title = row.diagnosticCard?.number || (state === "CONFIRMED" ? "Історична діагностика" : "Діагностика в процесі");
-      return <article className={styles.card} key={row.id}>
-        <div className={styles.top}><span className={`${styles.status} ${stateClass(state)}`}>{labels[state]}</span><time>{dateText(row.confirmedAt || row.updatedAt || row.createdAt)}</time></div>
-        <h4>{title}</h4>
-        <p>{row.assignedMechanic?.name ? `Механік: ${row.assignedMechanic.name}` : "Механік не вказаний"}</p>
-        <div className={styles.meta}>
-          {row.structured?.inspections ? <span>{row.structured.checked} перевірено</span> : null}
-          {row.structured?.defects ? <span>{row.structured.defects} деф.</span> : null}
-          {row.structured?.attention ? <span>{row.structured.attention} увага</span> : null}
-          {row.commercialProposal ? <span className={styles.commercial}>{commercialLabels[row.commercialProposal.stage] || "Комерційна пропозиція"}</span> : state === "CONFIRMED" ? <span>КП не створена</span> : null}
-        </div>
-        <div className={styles.actions}>
-          <button type="button" className={styles.primary} onClick={() => navigateCrm("Авто", { vehicleId, vehiclePage: "diagnostic-card", diagnosticId: row.id })}>Відкрити ДК</button>
-          {state === "CONFIRMED" && <button type="button" onClick={() => navigateCrm("Підбір запчастин", { diagnosticId: row.id, vehicleId, plate: plateNumber || "", vin: vin || "" })}>Підібрати запчастини</button>}
-          {row.commercialProposal ? <button type="button" onClick={() => navigateCrm("Авто", { vehicleId, vehiclePage: "commercial-offer", workOrderId: row.commercialProposal!.workOrderId, workOrderTab: "estimate" })}>Відкрити КП</button> : state === "CONFIRMED" ? <button type="button" disabled={busyId === row.id} onClick={() => void createCommercialProposal(row)}>{busyId === row.id ? "Створюю…" : "Створити КП"}</button> : null}
-        </div>
-      </article>;
-    })}</div>
+    {selected ? <DiagnosticCardDetail vehicle={vehicle} row={selected} busy={busyId === selected.id} onOpenDiagnostic={() => openDiagnostic(selected)} onCreateProposal={() => void createCommercialProposal(selected)} onOpenCommercial={() => openCommercial(selected)} /> : null}
   </div>;
+}
+
+function DiagnosticCardDetail({ vehicle, row, busy, onOpenDiagnostic, onCreateProposal, onOpenCommercial }: { vehicle: VehicleCardContract; row: DiagnosticRow; busy: boolean; onOpenDiagnostic: () => void; onCreateProposal: () => void; onOpenCommercial: () => void }) {
+  const [view, setView] = useState<DiagnosticView | null>(null);
+  const [cardNumber, setCardNumber] = useState(row.diagnosticCard?.number || "");
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [selectedFindingId, setSelectedFindingId] = useState<string | null>(null);
+  const [activePhotoId, setActivePhotoId] = useState<string | null>(null);
+  const [lightboxPhoto, setLightboxPhoto] = useState<DiagnosticMedia | null>(null);
+
+  useEffect(() => {
+    const controller = new AbortController(); setLoading(true); setError("");
+    void Promise.all([
+      fetch(`/api/diagnostics/${encodeURIComponent(row.id)}/structured`, { cache: "no-store", credentials: "include", signal: controller.signal }),
+      fetch(`/api/diagnostics/${encodeURIComponent(row.id)}/card`, { cache: "no-store", credentials: "include", signal: controller.signal }),
+    ]).then(async ([structuredResponse, cardResponse]) => {
+      const structuredBody = await structuredResponse.json().catch(() => null) as { ok?: boolean; diagnostic?: DiagnosticView["diagnostic"]; inspections?: DiagnosticInspection[]; counts?: DiagnosticView["counts"]; message?: string; error?: string } | null;
+      if (!structuredResponse.ok || !structuredBody?.ok || !structuredBody.diagnostic || !Array.isArray(structuredBody.inspections) || !structuredBody.counts) throw new Error(structuredBody?.message || structuredBody?.error || "Не вдалося завантажити діагностичну карту.");
+      const cardBody = await cardResponse.json().catch(() => null) as { ok?: boolean; card?: { number?: string } | null } | null;
+      if (cardBody?.card?.number) setCardNumber(cardBody.card.number);
+      if (!controller.signal.aborted) setView({ diagnostic: structuredBody.diagnostic, inspections: structuredBody.inspections, counts: structuredBody.counts });
+    }).catch((cause) => { if (!controller.signal.aborted && cause instanceof Error && cause.name !== "AbortError") setError(cause.message); })
+      .finally(() => { if (!controller.signal.aborted) setLoading(false); });
+    return () => controller.abort();
+  }, [row.id]);
+
+  const findings = useMemo(() => view?.inspections.flatMap((inspection) => inspection.sections.flatMap((section) => section.items.filter((item) => item.state === "ATTENTION" || item.state === "DEFECT").map((item) => ({ section: section.name, item })))) || [], [view]);
+  const selectedFinding = findings.find(({ item }) => item.id === selectedFindingId) || findings[0] || null;
+  const photos = selectedFinding?.item.finding?.media || [];
+  const activePhoto = photos.find((photo) => photo.id === activePhotoId) || photos[0] || null;
+  const parts = findings.filter(({ item }) => Boolean(item.finding?.suggestedPartName || item.finding?.action === "REPLACE"));
+  const state = stateOf(row);
+  const confirmed = state === "CONFIRMED";
+
+  useEffect(() => { if (!selectedFindingId || !findings.some(({ item }) => item.id === selectedFindingId)) setSelectedFindingId(findings[0]?.item.id || null); }, [findings, selectedFindingId]);
+  const firstPhotoId = photos[0]?.id || null;
+  useEffect(() => { setActivePhotoId(firstPhotoId); }, [selectedFinding?.item.id, firstPhotoId]);
+
+  if (loading) return <div className={styles.state}>Завантажую результати діагностики…</div>;
+  if (error || !view) return <div className={styles.error}>{error || "Діагностичну карту не знайдено."}<button type="button" onClick={onOpenDiagnostic}>Відкрити діагностику</button></div>;
+
+  return <article className={styles.card}>
+    <header className={styles.cardHeader}><div><span className={styles.eyebrow}>ДІАГНОСТИЧНА КАРТА</span><h3>{cardNumber || "Результати діагностики"}</h3><p>{dateText(row.confirmedAt || row.updatedAt || row.createdAt)} · {row.assignedMechanic?.name ? `Механік: ${row.assignedMechanic.name}` : "Механік не вказаний"}</p></div><span className={`${styles.status} ${confirmed ? styles.statusGood : state === "CANCELLED" ? styles.statusMuted : styles.statusWork}`}>{workflowLabels[state]}</span></header>
+    <div className={styles.vehicleFacts}><span><small>Автомобіль</small><b>{vehicleTitle(vehicle)}</b></span><span><small>Держномер</small><b>{vehicle.plateNumber || "—"}</b></span><span><small>VIN</small><b>{vehicle.vin || "—"}</b></span><span><small>Пробіг</small><b>{vehicle.mileageKm ? `${vehicle.mileageKm.toLocaleString("uk-UA")} км` : "—"}</b></span><span><small>Власник</small><b>{vehicle.client.name || "—"}</b></span></div>
+    <div className={styles.metrics}><span><small>Перевірено</small><b>{view.counts.checked}/{view.counts.total}</b></span><span className={styles.metricGood}><small>Норма</small><b>{view.counts.ok}</b></span><span className={styles.metricAttention}><small>Увага</small><b>{view.counts.attention}</b></span><span className={styles.metricDanger}><small>Дефекти</small><b>{view.counts.defect}</b></span></div>
+    <div className={styles.workspaceGrid}>
+      <section className={styles.diagramPanel} aria-label="Схема автомобіля"><div className={styles.panelHeading}><div><span className={styles.eyebrow}>СХЕМА АВТОМОБІЛЯ</span><h4>Проблемні зони</h4></div><span className={styles.legend}><i className={styles.legendDanger}/>Критично <i className={styles.legendAttention}/>Увага</span></div><VehicleSchematic findings={findings} selectedId={selectedFinding?.item.id || null} onSelect={setSelectedFindingId}/>{!findings.length && <div className={styles.healthy}><b>Автомобіль перевірено</b><span>Критичних несправностей не зафіксовано.</span></div>}</section>
+      <section className={styles.partsPanel} aria-label="Деталі до заміни"><div className={styles.panelHeading}><div><span className={styles.eyebrow}>РЕКОМЕНДАЦІЇ</span><h4>Деталі до заміни</h4></div><b className={styles.countBadge}>{parts.length}</b></div>{!parts.length && <div className={styles.panelEmpty}>Деталі до заміни за результатами цієї діагностики не визначені.</div>}<div className={styles.findingList}>{parts.map(({ section, item }, index) => <button type="button" className={`${styles.findingRow} ${selectedFinding?.item.id === item.id ? styles.findingSelected : ""}`} key={item.id} onClick={() => setSelectedFindingId(item.id)}><span className={`${styles.findingNumber} ${item.state === "DEFECT" ? styles.findingNumberDanger : styles.findingNumberAttention}`}>{index + 1}</span><span className={styles.findingCopy}><strong>{item.finding?.suggestedPartName || item.name}</strong><small>{section} · {item.finding?.findingText || item.note || "Виявлено несправність"}</small><em>{urgencyLabels[item.finding?.urgency || "INFO"] || item.finding?.urgency || "Рекомендовано"}</em></span><span className={styles.findingAction}>{actionLabels[item.finding?.action || "REPLACE"] || "Заміна"}</span></button>)}</div></section>
+      <section className={styles.evidencePanel} aria-label="Фото проблемного місця"><div className={styles.panelHeading}><div><span className={styles.eyebrow}>ДОКАЗИ ДЕФЕКТУ</span><h4>Фото проблемного місця</h4></div>{photos.length ? <span className={styles.photoCounter}>{Math.max(1, photos.findIndex((photo) => photo.id === activePhoto?.id) + 1)}/{photos.length}</span> : null}</div>{activePhoto ? <><button type="button" className={styles.photoMain} onClick={() => setLightboxPhoto(activePhoto)}><img src={`/api/diagnostics/${encodeURIComponent(row.id)}/media/${encodeURIComponent(activePhoto.id)}`} alt={activePhoto.fileName}/><span>Збільшити фото</span></button><div className={styles.thumbnails}>{photos.map((photo) => <button type="button" key={photo.id} className={activePhoto.id === photo.id ? styles.thumbnailActive : ""} onClick={() => setActivePhotoId(photo.id)}><img src={`/api/diagnostics/${encodeURIComponent(row.id)}/media/${encodeURIComponent(photo.id)}`} alt={photo.fileName}/></button>)}</div><div className={styles.evidenceSummary}><strong>{selectedFinding?.item.finding?.suggestedPartName || selectedFinding?.item.name || "Проблемна зона"}</strong><span>{selectedFinding?.section || "—"}</span><p>{selectedFinding?.item.finding?.findingText || selectedFinding?.item.note || "Додатковий опис відсутній."}</p></div></> : <div className={styles.noPhoto}><span aria-hidden="true">▧</span><b>Фото не прикріплені</b><small>Механік може додати фото проблемного місця у своєму кабінеті.</small></div>}</section>
+    </div>
+    <section className={styles.conclusion}><div><span className={styles.eyebrow}>ВИСНОВОК</span><h4>Коментар механіка</h4><p>{view.diagnostic.review.mechanicComment || view.diagnostic.technicalConclusion || "Коментар до діагностики ще не доданий."}</p></div><div className={styles.actionArea}>{confirmed ? row.commercialProposal ? <button type="button" className={styles.primaryAction} onClick={onOpenCommercial}>Відкрити Комерційну пропозицію →</button> : <button type="button" className={styles.primaryAction} disabled={busy} onClick={onCreateProposal}>{busy ? "Створюю…" : "Сформувати Комерційну пропозицію →"}</button> : <button type="button" className={styles.secondaryAction} onClick={onOpenDiagnostic}>Відкрити робочу діагностику →</button>}</div></section>
+    {lightboxPhoto ? <div className={styles.lightbox} role="dialog" aria-modal="true" aria-label="Збільшене фото" onMouseDown={(event) => { if (event.target === event.currentTarget) setLightboxPhoto(null); }}><button type="button" className={styles.lightboxClose} onClick={() => setLightboxPhoto(null)} aria-label="Закрити">×</button><img src={`/api/diagnostics/${encodeURIComponent(row.id)}/media/${encodeURIComponent(lightboxPhoto.id)}`} alt={lightboxPhoto.fileName}/></div> : null}
+  </article>;
+}
+
+const markerPoints = [[210, 92], [126, 172], [294, 172], [112, 300], [308, 300], [126, 444], [294, 444], [210, 558]] as const;
+
+function VehicleSchematic({ findings, selectedId, onSelect }: { findings: Array<{ section: string; item: DiagnosticItem }>; selectedId: string | null; onSelect: (id: string) => void }) {
+  return <div className={styles.schematicWrap}><svg className={styles.schematic} viewBox="0 0 420 640" role="img" aria-label="Схема автомобіля з проблемними зонами">
+    <defs><linearGradient id="carBody" x1="0" x2="1"><stop offset="0" stopColor="#eef2f4"/><stop offset=".5" stopColor="#ffffff"/><stop offset="1" stopColor="#dce3e6"/></linearGradient></defs>
+    <rect x="82" y="25" width="256" height="590" rx="116" fill="url(#carBody)" stroke="#7f8b95" strokeWidth="3"/><path d="M114 170 Q210 112 306 170 L294 248 Q210 270 126 248 Z" fill="#9ba9b1" opacity=".6" stroke="#64727c" strokeWidth="2"/><path d="M126 392 Q210 370 294 392 L306 484 Q210 548 114 484 Z" fill="#9ba9b1" opacity=".45" stroke="#64727c" strokeWidth="2"/><path d="M124 290 H296 M124 350 H296" stroke="#87949c" strokeWidth="2" opacity=".65"/><path d="M118 78 Q210 42 302 78 M118 545 Q210 592 302 545" fill="none" stroke="#9aa6ad" strokeWidth="3"/>
+    {["112 126", "308 126", "112 438", "308 438"].map((point) => { const [cx, cy] = point.split(" "); return <rect key={point} x={Number(cx) - 14} y={Number(cy) - 34} width="28" height="68" rx="12" fill="#37434d"/>; })}
+    {["140 90", "280 90", "140 530", "280 530"].map((point) => { const [cx, cy] = point.split(" "); return <circle key={point} cx={cx} cy={cy} r="18" fill="#4a5660" stroke="#242d34" strokeWidth="4"/>; })}
+    {findings.map(({ item }, index) => { const [cx, cy] = markerPoints[index % markerPoints.length]; const danger = item.state === "DEFECT" || item.finding?.urgency === "CRITICAL"; const active = item.id === selectedId; return <g key={item.id} className={styles.marker} role="button" tabIndex={0} aria-label={`Проблема ${index + 1}: ${item.name}`} onClick={() => onSelect(item.id)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onSelect(item.id); } }}><circle cx={cx} cy={cy} r={active ? 24 : 20} fill={danger ? "#e84b3c" : "#f39a20"} stroke="#fff" strokeWidth="4"/><text x={cx} y={cy + 6} textAnchor="middle" fill="#fff" fontSize="16" fontWeight="800">{index + 1}</text></g>; })}
+  </svg><div className={styles.diagramHint}>Натисніть на маркер, щоб переглянути несправність і фото.</div></div>;
 }
