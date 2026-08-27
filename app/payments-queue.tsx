@@ -206,7 +206,7 @@ export function PaymentsQueue() {
       const payload = await response.json() as PaymentPostResponse;
       if (!response.ok || !payload.ok) throw new Error(payload.error || payload.code || "Не вдалося провести оплату");
       setPaymentRow(null);
-      setNotice(payload.transitionWarning?.message || (paidInFull ? "Оплату проведено. Комерційна пропозиція переведено у «Готовий до видачі»." : "Часткову оплату проведено. Залишок оновлено."));
+      setNotice(payload.transitionWarning?.message || (paidInFull ? "Оплату проведено. Комерційну пропозицію переведено у «Готовий до видачі»." : "Часткову оплату проведено. Залишок оновлено."));
       setRefreshKey((value) => value + 1);
       if (!routeWorkOrderId) setTab(paidInFull ? "paidToday" : "partial");
     } catch (cause) {
