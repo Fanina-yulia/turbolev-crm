@@ -7,6 +7,7 @@ export type CrmRouteParams = {
   filterLabel?: string;
   status?: string;
   scope?: string;
+  assignedUserId?: string;
 
   inquiryId?: string;
   clientId?: string;
@@ -43,6 +44,7 @@ export const CRM_ROUTE_KEYS: Array<keyof CrmRouteParams> = [
   "filterLabel",
   "status",
   "scope",
+  "assignedUserId",
   "inquiryId",
   "clientId",
   "vehicleId",
