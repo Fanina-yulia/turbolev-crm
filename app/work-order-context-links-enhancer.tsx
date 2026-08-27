@@ -49,7 +49,7 @@ export function WorkOrderContextLinksEnhancer() {
       cancelAnimationFrame(frame);
       frame = requestAnimationFrame(() => {
         if (!context) return setHost(null);
-        const tabs = document.querySelector<HTMLElement>('nav[aria-label="Розділи замовлення-наряду"]');
+        const tabs = document.querySelector<HTMLElement>('nav[aria-label="Розділи комерційної пропозиції"]');
         if (!tabs) return setHost(null);
         const parent = tabs.parentElement;
         if (!parent) return setHost(null);
