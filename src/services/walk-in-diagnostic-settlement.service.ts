@@ -7,7 +7,7 @@ const WALK_IN_MARKER = "WALK_IN_DIAGNOSTIC:";
 const FINANCE_SOURCE = "WALK_IN_DIAGNOSTIC";
 const PAYMENT_SOURCE = "WALK_IN_DIAGNOSTIC_PAYMENT";
 
-type PaymentMethod = "CASH" | "ONLINE";
+export type WalkInPaymentMethod = "CASH" | "TERMINAL" | "ONLINE";
 
 export class WalkInDiagnosticSettlementError extends Error {
   readonly code: string;
@@ -41,7 +41,22 @@ async function mechanicContext(userId: string, diagnosticRequestId: string) {
 }
 
 async function findWalkInAppointment(diagnosticRequestId: string) {
-  return getPrisma().serviceAppointment.findFirst({
+  const prisma = getPrisma();
+  const link = await prisma.diagnosticVisitLink.findUnique({
+    where: { diagnosticRequestId },
+    select: { appointmentId: true, source: true },
+  });
+
+  // The visit link is the canonical relation. The comment lookup remains as a
+  // compatibility fallback for walk-ins created before the link was persisted.
+  if (link?.source === WALK_IN_SOURCE) {
+    const linked = await prisma.serviceAppointment.findFirst({
+      where: { id: link.appointmentId, source: WALK_IN_SOURCE, status: { not: "CANCELLED" } },
+    });
+    if (linked) return linked;
+  }
+
+  return prisma.serviceAppointment.findFirst({
     where: {
       source: WALK_IN_SOURCE,
       comment: { contains: `${WALK_IN_MARKER}${diagnosticRequestId}` },
@@ -82,7 +97,7 @@ async function resolveDiagnosticPrice() {
   };
 }
 
-async function resolveMoneyAccount(locationId: string, method: PaymentMethod) {
+async function resolveMoneyAccount(locationId: string, method: WalkInPaymentMethod) {
   const accounts = await getPrisma().moneyAccount.findMany({
     where: {
       isActive: true,
@@ -205,14 +220,21 @@ export async function getWalkInDiagnosticSettlement(userId: string, diagnosticRe
     vehicle: diagnostic.vehicle,
     client: diagnostic.client,
     mechanic: { id: mechanic.id, name: mechanic.name },
-    canPay: submitted && !paid && Boolean(price),
+    // The mechanic enters the final amount in the cabinet. A configured price
+    // is only a suggested default and is not a prerequisite for a walk-in.
+    canPay: submitted && !paid,
     canChooseRoute: submitted && paid && appointment.status === "WAITING_PAYMENT",
   };
 }
 
-export async function payWalkInDiagnostic(userId: string, diagnosticRequestId: string, method: PaymentMethod) {
-  if (method !== "CASH" && method !== "ONLINE") {
-    throw new WalkInDiagnosticSettlementError("PAYMENT_METHOD_REQUIRED", "Оберіть готівку або онлайн-оплату.");
+export async function payWalkInDiagnostic(
+  userId: string,
+  diagnosticRequestId: string,
+  method: WalkInPaymentMethod,
+  amountInput?: unknown,
+) {
+  if (method !== "CASH" && method !== "TERMINAL" && method !== "ONLINE") {
+    throw new WalkInDiagnosticSettlementError("PAYMENT_METHOD_REQUIRED", "Оберіть готівку або термінал.");
   }
   const { mechanic } = await mechanicContext(userId, diagnosticRequestId);
   const prisma = getPrisma();
@@ -228,17 +250,28 @@ export async function payWalkInDiagnostic(userId: string, diagnosticRequestId: s
   if (review?.state !== "SUBMITTED" && review?.state !== "CONFIRMED") {
     throw new WalkInDiagnosticSettlementError("DIAGNOSTIC_NOT_COMPLETED", "Спочатку завершіть діагностику.", 409);
   }
-  if (!price) {
-    throw new WalkInDiagnosticSettlementError("DIAGNOSTIC_PRICE_NOT_CONFIGURED", "Вартість діагностики не налаштована у прайсі робіт. Зверніться до сервіс-менеджера.", 409);
+  const enteredAmount = typeof amountInput === "number"
+    ? amountInput
+    : typeof amountInput === "string" && amountInput.trim()
+      ? Number(amountInput.replace(",", "."))
+      : null;
+  const amount = enteredAmount == null
+    ? price?.amount ?? null
+    : Number.isFinite(enteredAmount) && enteredAmount > 0
+      ? new Prisma.Decimal(enteredAmount.toFixed(2))
+      : null;
+  if (!amount || amount.lessThanOrEqualTo(0)) {
+    throw new WalkInDiagnosticSettlementError("DIAGNOSTIC_AMOUNT_REQUIRED", "Введіть суму оплати більше 0 грн.", 409);
   }
-  if (price.currency !== "UAH") {
+  const currency = price?.currency || "UAH";
+  if (currency !== "UAH") {
     throw new WalkInDiagnosticSettlementError("DIAGNOSTIC_CURRENCY_UNSUPPORTED", "Оплата позапланової діагностики зараз підтримує прайс у гривні.", 409);
   }
   const account = await resolveMoneyAccount(mechanic.locationId, method);
   if (!account) {
     throw new WalkInDiagnosticSettlementError(
       "MONEY_ACCOUNT_NOT_CONFIGURED",
-      method === "CASH" ? "Не налаштована активна каса для цієї станції." : "Не налаштований активний рахунок для онлайн-оплати.",
+      method === "CASH" ? "Не налаштована активна каса для цієї станції." : "Не налаштований активний рахунок для термінала.",
       409,
     );
   }
@@ -267,8 +300,8 @@ export async function payWalkInDiagnostic(userId: string, diagnosticRequestId: s
         data: {
           status: "POSTED",
           pnlSection: "REVENUE",
-          amount: price.amount,
-          currency: price.currency,
+          amount,
+          currency,
           recognizedAt: now,
           categoryId: revenueCategory.id,
           costCenterId: costCenter?.id || null,
@@ -278,7 +311,7 @@ export async function payWalkInDiagnostic(userId: string, diagnosticRequestId: s
           sourceEntity: FINANCE_SOURCE,
           sourceEntityId: `${diagnosticRequestId}:revenue`,
           description: `Позапланова діагностика · ${diagnostic.vehicle.plateNumber || diagnosticRequestId}`,
-          metadata: toPrismaJson({ diagnosticRequestId, appointmentId: appointment.id, serviceCatalogItemId: price.itemId }),
+          metadata: toPrismaJson({ diagnosticRequestId, appointmentId: appointment.id, serviceCatalogItemId: price?.itemId || null, amountEntered: enteredAmount != null }),
           createdById: userId,
           postedAt: now,
         },
@@ -293,9 +326,9 @@ export async function payWalkInDiagnostic(userId: string, diagnosticRequestId: s
         data: {
           direction: "RECEIVABLE",
           status: "OPEN",
-          amount: price.amount,
+          amount,
           settledAmount: 0,
-          currency: price.currency,
+          currency,
           issuedAt: now,
           dueAt: now,
           categoryId: revenueCategory.id,
@@ -307,12 +340,12 @@ export async function payWalkInDiagnostic(userId: string, diagnosticRequestId: s
           sourceEntity: FINANCE_SOURCE,
           sourceEntityId: `${diagnosticRequestId}:receivable`,
           description: `До оплати за позапланову діагностику ${diagnostic.vehicle.plateNumber || "авто"}`,
-          metadata: toPrismaJson({ diagnosticRequestId, appointmentId: appointment.id, serviceCatalogItemId: price.itemId }),
+          metadata: toPrismaJson({ diagnosticRequestId, appointmentId: appointment.id, serviceCatalogItemId: price?.itemId || null, amountEntered: enteredAmount != null }),
         },
       });
     }
-    if (!decimal(obligation.amount).equals(price.amount)) {
-      throw new WalkInDiagnosticSettlementError("PRICE_CONFLICT", "Сума діагностики вже зафіксована з іншою вартістю. Потрібна перевірка сервіс-менеджера.", 409);
+    if (!decimal(obligation.amount).equals(amount)) {
+      throw new WalkInDiagnosticSettlementError("AMOUNT_CONFLICT", "Сума діагностики вже зафіксована. Перевірте оплату або зверніться до сервіс-менеджера.", 409);
     }
 
     const payment = await tx.cashTransaction.create({
@@ -320,8 +353,8 @@ export async function payWalkInDiagnostic(userId: string, diagnosticRequestId: s
         kind: "INFLOW",
         status: "POSTED",
         flowSection: "OPERATING",
-        amount: price.amount,
-        currency: price.currency,
+        amount,
+        currency,
         occurredAt: now,
         toAccountId: account.id,
         categoryId: paymentCategory.id,
@@ -332,7 +365,7 @@ export async function payWalkInDiagnostic(userId: string, diagnosticRequestId: s
         sourceEntity: PAYMENT_SOURCE,
         sourceEntityId: `${diagnosticRequestId}:payment`,
         description: `Оплата позапланової діагностики · ${diagnostic.vehicle.plateNumber || diagnosticRequestId}`,
-        metadata: toPrismaJson({ diagnosticRequestId, appointmentId: appointment.id, paymentMethod: method, serviceCatalogItemId: price.itemId }),
+        metadata: toPrismaJson({ diagnosticRequestId, appointmentId: appointment.id, paymentMethod: method === "ONLINE" ? "TERMINAL" : method, serviceCatalogItemId: price?.itemId || null }),
         createdById: userId,
         postedAt: now,
       },
@@ -340,7 +373,7 @@ export async function payWalkInDiagnostic(userId: string, diagnosticRequestId: s
 
     const updatedObligation = await tx.financialObligation.update({
       where: { id: obligation.id },
-      data: { settledAmount: price.amount, status: "PAID", settledAt: now },
+      data: { settledAmount: amount, status: "PAID", settledAt: now },
     });
     await tx.serviceAppointment.updateMany({
       where: { id: appointment.id, source: WALK_IN_SOURCE, status: { in: ["DIAGNOSTICS", "WAITING_PAYMENT"] } },
@@ -355,7 +388,7 @@ export async function payWalkInDiagnostic(userId: string, diagnosticRequestId: s
         action: "WALK_IN_DIAGNOSTIC_PAYMENT_POSTED",
         before: toPrismaJson(obligation),
         after: toPrismaJson(updatedObligation),
-        metadata: toPrismaJson({ paymentId: payment.id, appointmentId: appointment.id, amount: price.amount.toFixed(2), method, moneyAccountId: account.id }),
+        metadata: toPrismaJson({ paymentId: payment.id, appointmentId: appointment.id, amount: amount.toFixed(2), method: method === "ONLINE" ? "TERMINAL" : method, moneyAccountId: account.id }),
       },
     });
   });

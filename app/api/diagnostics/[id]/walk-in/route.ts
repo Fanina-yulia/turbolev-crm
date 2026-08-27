@@ -47,7 +47,12 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
 
     if (action === "PAY") {
       const method = String(body.paymentMethod || "").toUpperCase();
-      const result = await payWalkInDiagnostic(access.context.user.id, id, method === "CASH" ? "CASH" : method === "ONLINE" ? "ONLINE" : method as "CASH" | "ONLINE");
+      const result = await payWalkInDiagnostic(
+        access.context.user.id,
+        id,
+        method === "CASH" ? "CASH" : method === "TERMINAL" || method === "ONLINE" ? "TERMINAL" : method as "CASH" | "TERMINAL",
+        body.amount,
+      );
       return NextResponse.json({ ok: true, ...result });
     }
     if (action === "COMPLETE_VISIT" || action === "SEND_TO_REPAIR_FLOW") {

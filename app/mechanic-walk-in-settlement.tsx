@@ -43,29 +43,57 @@ export function MechanicWalkInSettlement({ diagnosticId, data, onRefresh, onBack
 }) {
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
+  const [amount, setAmount] = useState(data.price?.amount ? String(Number(data.price.amount)) : "");
 
-  async function act(action: "PAY" | "COMPLETE_VISIT" | "SEND_TO_REPAIR_FLOW", paymentMethod?: "CASH" | "ONLINE") {
+  async function postAction(body: Record<string, unknown>) {
+    const response = await fetch(`/api/diagnostics/${encodeURIComponent(diagnosticId)}/walk-in`, {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const next = await response.json().catch(() => null) as WalkInSettlementPayload | null;
+    if (!response.ok || !next?.ok) throw new Error(next?.message || next?.error || "Не вдалося виконати дію");
+    return next;
+  }
+
+  async function pay(paymentMethod: "CASH" | "TERMINAL") {
     if (busy) return;
-    if (action === "PAY") {
-      const label = paymentMethod === "CASH" ? "готівкою" : "онлайн";
-      if (!window.confirm(`Підтвердити оплату ${money(data.price?.amount, data.price?.currency)} ${label}?`)) return;
+    const normalizedAmount = Number(amount.replace(",", "."));
+    if (!Number.isFinite(normalizedAmount) || normalizedAmount <= 0) {
+      setError("Введіть суму оплати більше 0 грн.");
+      return;
     }
-    setBusy(action + (paymentMethod || ""));
+    const label = paymentMethod === "CASH" ? "готівкою" : "терміналом";
+    if (!window.confirm(`Підтвердити оплату ${money(normalizedAmount.toFixed(2), "UAH")} ${label}?`)) return;
+    setBusy(`PAY${paymentMethod}`);
     setError("");
     try {
-      const response = await fetch(`/api/diagnostics/${encodeURIComponent(diagnosticId)}/walk-in`, {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action, paymentMethod }),
-      });
-      const body = await response.json().catch(() => null) as WalkInSettlementPayload | null;
-      if (!response.ok || !body?.ok) throw new Error(body?.message || body?.error || "Не вдалося виконати дію");
-      await onRefresh();
+      await postAction({ action: "PAY", paymentMethod, amount: normalizedAmount.toFixed(2) });
+      // The mechanic has one action: persist payment and close the walk-in visit.
+      await postAction({ action: "COMPLETE_VISIT" });
       window.dispatchEvent(new CustomEvent("turbolev:mechanic-refresh"));
       window.dispatchEvent(new CustomEvent("turbolev:data-changed"));
+      onBack();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Не вдалося виконати дію");
+      await onRefresh().catch(() => undefined);
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function completePaidVisit() {
+    if (busy) return;
+    setBusy("COMPLETE_VISIT");
+    setError("");
+    try {
+      await postAction({ action: "COMPLETE_VISIT" });
+      window.dispatchEvent(new CustomEvent("turbolev:mechanic-refresh"));
+      window.dispatchEvent(new CustomEvent("turbolev:data-changed"));
+      onBack();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Не вдалося завершити візит");
     } finally {
       setBusy("");
     }
@@ -108,28 +136,39 @@ export function MechanicWalkInSettlement({ diagnosticId, data, onRefresh, onBack
 
       {!data.paid ? <section className={styles.paymentCard}>
         <span>До сплати</span>
-        <strong>{data.price ? money(data.price.amount, data.price.currency) : "Ціна не налаштована"}</strong>
-        <small>{data.price?.label || "Вартість діагностики повинна бути задана у Прайсі робіт."}</small>
-        {data.price && <div className={styles.methods}>
-          <button type="button" disabled={!data.canPay || Boolean(busy)} onClick={() => void act("PAY", "CASH")}>
-            <b>💵</b><strong>Готівка</strong><span>{busy === "PAYCASH" ? "Проводжу оплату…" : "Оплачено в касу"}</span>
+        <label className={styles.amountField}>
+          <span>Сума діагностики, грн</span>
+          <input
+            type="number"
+            inputMode="decimal"
+            min="0.01"
+            step="0.01"
+            value={amount}
+            onChange={(event) => setAmount(event.target.value)}
+            placeholder={data.price?.amount || "Введіть суму"}
+            disabled={!data.canPay || Boolean(busy)}
+          />
+        </label>
+        <small>{data.price?.label || "Механік вносить фактично прийняту суму."}</small>
+        <div className={styles.methods}>
+          <button type="button" disabled={!data.canPay || Boolean(busy)} onClick={() => void pay("CASH")}>
+            <b>💵</b><strong>Оплачено готівкою</strong><span>{busy === "PAYCASH" ? "Фіксую оплату…" : "Прийняти готівку"}</span>
           </button>
-          <button type="button" disabled={!data.canPay || Boolean(busy)} onClick={() => void act("PAY", "ONLINE")}>
-            <b>💳</b><strong>Онлайн-оплата</strong><span>{busy === "PAYONLINE" ? "Проводжу оплату…" : "Картка / еквайринг / банк"}</span>
+          <button type="button" disabled={!data.canPay || Boolean(busy)} onClick={() => void pay("TERMINAL")}>
+            <b>💳</b><strong>Оплачено терміналом</strong><span>{busy === "PAYTERMINAL" ? "Фіксую оплату…" : "Підтвердити оплату через POS"}</span>
           </button>
-        </div>}
-        {!data.price && <div className={styles.warning}>Вартість діагностики не налаштована. Додайте активну позицію типу «Діагностика» у Прайсі робіт.</div>}
+        </div>
       </section> : <section className={styles.paymentCard}>
         <div className={styles.paidBadge}>✓ ОПЛАЧЕНО</div>
         <strong>{money(data.payment?.amount || data.price?.amount, data.price?.currency)}</strong>
         <small>{data.payment?.account?.name || "Оплата проведена"}</small>
         <h2>Що робимо з автомобілем?</h2>
         <div className={styles.routes}>
-          <button type="button" className={styles.secondary} disabled={!data.canChooseRoute || Boolean(busy)} onClick={() => void act("COMPLETE_VISIT")}>
-            Завершити візит
-            <span>Клієнт забирає авто після діагностики</span>
+          <button type="button" className={styles.primary} disabled={Boolean(busy)} onClick={() => void completePaidVisit()}>
+            На головний екран
+            <span>{busy === "COMPLETE_VISIT" ? "Завершую візит…" : "Оплату вже зафіксовано"}</span>
           </button>
-          <button type="button" className={styles.primary} disabled={!data.canChooseRoute || Boolean(busy)} onClick={() => void act("SEND_TO_REPAIR_FLOW")}>
+          <button type="button" className={styles.secondary} disabled={!data.canChooseRoute || Boolean(busy)} onClick={() => void postAction({ action: "SEND_TO_REPAIR_FLOW" }).then(onRefresh).catch((cause) => setError(cause instanceof Error ? cause.message : "Не вдалося передати автомобіль"))}>
             Передати на розрахунок ремонту →
             <span>Далі: ДК → роботи → деталі → погодження</span>
           </button>
