@@ -144,7 +144,7 @@ export function StructuredDiagnosticReviewPanel({ diagnosticId, onChanged }: { d
 
   function openCommercialProposal() {
     if (!view?.diagnostic.workOrder) return;
-    navigateCrm("Замовлення-наряди", { workOrderId: view.diagnostic.workOrder.id, workOrderTab: "estimate" });
+    navigateCrm("Комерційна пропозиція", { workOrderId: view.diagnostic.workOrder.id, workOrderTab: "estimate" });
   }
 
   if (loading) return <div className={styles.state}>Завантажую Діагностичну карту…</div>;
