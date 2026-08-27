@@ -13,7 +13,7 @@ import styles from "./vehicle-record-workspace.module.css";
 
 export type VehicleRecordPage = "diagnostic-card" | "commercial-offer" | "service-history";
 
-type Props = { vehicle: VehicleCardContract | null; loading: boolean; page: VehicleRecordPage; onClose: () => void; };
+type Props = { vehicle: VehicleCardContract | null; loading: boolean; page: VehicleRecordPage; diagnosticId?: string | null; onClose: () => void; };
 
 function title(vehicle: VehicleCardContract) { return [vehicle.brand, vehicle.model, vehicle.year].filter(Boolean).join(" ") || "Автомобіль"; }
 
@@ -23,7 +23,7 @@ function dateText(value: string | null | undefined) { if (!value) return "—"; 
 
 function pageDescription(page: VehicleRecordPage) { if (page === "diagnostic-card") return "Результати та історія діагностичних перевірок цього автомобіля."; if (page === "commercial-offer") return "Підбір робіт і запчастин для ремонту цього автомобіля."; return "Повна хронологія обслуговування, ремонтів і оплат цього автомобіля."; }
 
-export function VehicleRecordWorkspace({ vehicle, loading, page, onClose }: Props) {
+export function VehicleRecordWorkspace({ vehicle, loading, page, diagnosticId, onClose }: Props) {
   const [workOrders, setWorkOrders] = useState<WorkOrderListItemContract[]>([]);
   const [selectedWorkOrderId, setSelectedWorkOrderId] = useState<string | null>(null);
   const [proposalLoading, setProposalLoading] = useState(false);
@@ -62,7 +62,7 @@ export function VehicleRecordWorkspace({ vehicle, loading, page, onClose }: Prop
 
     <section className={styles.content}>
       <div className={styles.contentHeading}><div><span className={styles.eyebrow}>КАРТКА АВТОМОБІЛЯ</span><h2>{pageTitle(page)}</h2><p>{pageDescription(page)}</p></div><button type="button" className={styles.cardLink} onClick={() => navigateCrm("Авто", { vehicleId: vehicle.id })}>← Картка автомобіля</button></div>
-      {page === "diagnostic-card" && <VehicleDiagnosticsTab vehicleId={vehicle.id} plateNumber={vehicle.plateNumber} vin={vehicle.vin} />}
+      {page === "diagnostic-card" && <VehicleDiagnosticsTab vehicle={vehicle} diagnosticId={diagnosticId} />}
       {page === "service-history" && <ServiceTimeline vehicleId={vehicle.id} />}
       {page === "commercial-offer" && <div className={styles.proposalSection}>
         {proposalLoading && <div className={styles.state}>Завантажую комерційні пропозиції…</div>}
