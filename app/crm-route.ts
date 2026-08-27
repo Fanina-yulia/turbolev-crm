@@ -12,6 +12,7 @@ export type CrmRouteParams = {
   inquiryId?: string;
   clientId?: string;
   vehicleId?: string;
+  vehiclePage?: "diagnostic-card" | "commercial-offer" | "service-history";
   appointmentId?: string;
   diagnosticId?: string;
   findingId?: string;
@@ -48,6 +49,7 @@ export const CRM_ROUTE_KEYS: Array<keyof CrmRouteParams> = [
   "inquiryId",
   "clientId",
   "vehicleId",
+  "vehiclePage",
   "appointmentId",
   "diagnosticId",
   "findingId",
@@ -77,6 +79,10 @@ export function readCrmRoute(): CrmRouteParams {
   const result: CrmRouteParams = {};
   for (const key of CRM_ROUTE_KEYS) {
     const value = params.get(key);
+    if (key === "vehiclePage") {
+      if (value === "diagnostic-card" || value === "commercial-offer" || value === "service-history") result.vehiclePage = value;
+      continue;
+    }
     if (value) result[key] = value;
   }
   return result;
