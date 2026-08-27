@@ -222,7 +222,7 @@ export function ClientsDirectory() {
                 <strong>{workOrder.status}</strong>
                 <small>{dateText(workOrder.closedAt || workOrder.updatedAt || workOrder.createdAt)}</small>
                 <span>›</span>
-              </button>)}</div> : <div className={styles.emptyInline}>Замовлень-нарядів ще немає.</div>}
+              </button>)}</div> : <div className={styles.emptyInline}>Комерційних пропозицій ще немає.</div>}
             </section>
           </div>
           <footer className={styles.drawerFooter}><button className={styles.primary} onClick={openNewRequest}>+ Нова заявка</button></footer>
