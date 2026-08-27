@@ -258,23 +258,23 @@ function taskAction(task: TaskLike): AttentionAction | null {
   if (task.sourceType === "LEAD") return { label: "Відкрити", section: "Активні" };
   if (task.sourceType === "APPOINTMENT") return { label: "Відкрити запис", section: "Планувальник", params: task.sourceId ? { appointmentId: task.sourceId } : undefined };
   if (task.sourceType === "DIAGNOSTIC") {
-    if (workOrderId) return { label: "Відкрити", section: "Замовлення-наряди", params: { workOrderId, workOrderTab: workOrderTab || "diagnostic" } };
+    if (workOrderId) return { label: "Відкрити", section: "Комерційна пропозиція", params: { workOrderId, workOrderTab: workOrderTab || "diagnostic" } };
     return { label: "Відкрити діагностику", section: "Діагностика", params: task.vehicleId ? { vehicleId: task.vehicleId } : undefined };
   }
-  if (task.sourceType === "ESTIMATE") return { label: "Відкрити кошторис", section: "Замовлення-наряди", params: workOrderId ? { workOrderId, workOrderTab: workOrderTab || "estimate" } : undefined };
-  if (task.sourceType === "WORK_ORDER") return { label: "Відкрити ЗН", section: "Замовлення-наряди", params: workOrderId ? { workOrderId, workOrderTab: workOrderTab || "overview" } : undefined };
+  if (task.sourceType === "ESTIMATE") return { label: "Відкрити кошторис", section: "Комерційна пропозиція", params: workOrderId ? { workOrderId, workOrderTab: workOrderTab || "estimate" } : undefined };
+  if (task.sourceType === "WORK_ORDER") return { label: "Відкрити КП", section: "Комерційна пропозиція", params: workOrderId ? { workOrderId, workOrderTab: workOrderTab || "overview" } : undefined };
   if (task.sourceType === "PARTS_REQUEST") return workOrderId
-    ? { label: "Відкрити запчастини", section: "Замовлення-наряди", params: { workOrderId, workOrderTab: workOrderTab || "parts" } }
+    ? { label: "Відкрити запчастини", section: "Комерційна пропозиція", params: { workOrderId, workOrderTab: workOrderTab || "parts" } }
     : { label: "Відкрити підбір", section: "Підбір запчастин", params: task.vehicleId ? { vehicleId: task.vehicleId } : undefined };
   if (task.sourceType === "PAYMENT") return workOrderId
-    ? { label: "Відкрити оплату", section: "Замовлення-наряди", params: { workOrderId, workOrderTab: workOrderTab || "payment" } }
+    ? { label: "Відкрити оплату", section: "Комерційна пропозиція", params: { workOrderId, workOrderTab: workOrderTab || "payment" } }
     : { label: "Відкрити оплати", section: "Оплати" };
   if (task.sourceType === "QC") return workOrderId
-    ? { label: "Відкрити контроль", section: "Замовлення-наряди", params: { workOrderId, workOrderTab: workOrderTab || "qc" } }
-    : { label: "Відкрити контроль", section: "Замовлення-наряди", params: { scope: "qc" } };
+    ? { label: "Відкрити контроль", section: "Комерційна пропозиція", params: { workOrderId, workOrderTab: workOrderTab || "qc" } }
+    : { label: "Відкрити контроль", section: "Комерційна пропозиція", params: { scope: "qc" } };
   if (task.sourceType === "WARRANTY") return workOrderId
-    ? { label: "Відкрити гарантію", section: "Замовлення-наряди", params: { workOrderId, workOrderTab: workOrderTab || "history" } }
-    : { label: "Відкрити гарантії", section: "Замовлення-наряди", params: { scope: "warranty" } };
+    ? { label: "Відкрити гарантію", section: "Комерційна пропозиція", params: { workOrderId, workOrderTab: workOrderTab || "history" } }
+    : { label: "Відкрити гарантії", section: "Комерційна пропозиція", params: { scope: "warranty" } };
   return null;
 }
 
@@ -734,7 +734,7 @@ export async function buildAttentionCenter(options: AttentionCenterOptions): Pro
         currency: null,
         counterparty: row.customerName || null,
         action: row.workOrderId
-          ? { label: "Відкрити запчастини", section: "Замовлення-наряди", params: { workOrderId: row.workOrderId, workOrderTab: "parts" } }
+          ? { label: "Відкрити запчастини", section: "Комерційна пропозиція", params: { workOrderId: row.workOrderId, workOrderTab: "parts" } }
           : appointmentAction,
         metadata: { status: row.status, workOrderId: row.workOrderId, plateNumber: row.plateNumber },
       }, now));
