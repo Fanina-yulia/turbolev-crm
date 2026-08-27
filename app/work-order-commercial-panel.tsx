@@ -254,8 +254,8 @@ export function WorkOrderCommercialPanel({ workOrderId, view = "overview", onCha
     if (!result) return;
     const warnings = [result.transitionWarning?.message, result.issueSyncWarning].filter(Boolean).join(" ");
     if (warnings) setMessage(warnings);
-    else if (action === "PASS") setMessage("Контроль якості пройдено. КП переведено у «Готовий до видачі».");
-    else if (action === "FAIL") setMessage("QC не пройдено. КП переведено у «Доопрацювання».");
+    else if (action === "PASS") setMessage("Контроль якості пройдено. Комерційну пропозицію переведено у «Готовий до видачі».");
+    else if (action === "FAIL") setMessage("QC не пройдено. Комерційну пропозицію переведено у «Доопрацювання».");
   }
   async function pay() {
     if (!accountId || !(Number(paymentAmount) > 0)) return;
