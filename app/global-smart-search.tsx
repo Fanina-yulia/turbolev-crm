@@ -206,7 +206,7 @@ export function GlobalSmartSearch() {
         onChange={(event) => { setQuery(event.target.value); setOpen(true); }}
         onFocus={() => setOpen(true)}
         onKeyDown={onKeyDown}
-        placeholder="ПІБ, телефон, номер, VIN, ЗН, ДК, запис"
+        placeholder="ПІБ, телефон, номер, VIN, КП, ДК, запис"
         aria-label="Глобальний пошук CRM"
         aria-expanded={open}
         aria-controls="crm-global-search-results"
@@ -217,13 +217,13 @@ export function GlobalSmartSearch() {
 
     {open && hasQuery && <div className={styles.panel} id="crm-global-search-results" role="listbox">
       {!data.ok && <div className={styles.message}>{data.error || "Пошук недоступний"}</div>}
-      {empty && <div className={styles.message}><b>Нічого не знайдено</b><span>Перевірте ПІБ, телефон, держномер, VIN, номер ЗН, діагностику або запис.</span></div>}
+      {empty && <div className={styles.message}><b>Нічого не знайдено</b><span>Перевірте ПІБ, телефон, держномер, VIN, номер КП, діагностику або запис.</span></div>}
 
       {(data.workOrders || []).length > 0 && <ResultGroup title="Комерційна пропозиція">
         {(data.workOrders || []).map((row) => {
           const index = flat.findIndex((item) => item.key === `wo-${row.id}`);
           return <button key={row.id} type="button" role="option" aria-selected={index === activeIndex} className={`${styles.result} ${index === activeIndex ? styles.resultActive : ""}`} onMouseEnter={() => setActiveIndex(index)} onClick={() => choose({ key: `wo-${row.id}`, type: "workOrder", row })}>
-            <span className={styles.badge}>ЗН</span><span className={styles.resultBody}><strong>{row.numberLabel} · {row.vehicle.plateNumber || carLabel(row.vehicle)}</strong><small>{carLabel(row.vehicle)} · {row.client.name || row.client.phone}</small></span><span className={styles.status}>{row.statusLabel}</span>
+            <span className={styles.badge}>КП</span><span className={styles.resultBody}><strong>{row.numberLabel} · {row.vehicle.plateNumber || carLabel(row.vehicle)}</strong><small>{carLabel(row.vehicle)} · {row.client.name || row.client.phone}</small></span><span className={styles.status}>{row.statusLabel}</span>
           </button>;
         })}
       </ResultGroup>}
