@@ -72,7 +72,7 @@ export async function runMechanicWalkInSmoke() {
     phone: string;
     name: string;
     mileage: number;
-    paymentMethod: "CASH" | "ONLINE";
+    paymentMethod: "CASH" | "TERMINAL";
     route: "COMPLETE_VISIT" | "SEND_TO_REPAIR_FLOW";
     expectedClientId?: string;
   }) {
@@ -134,10 +134,11 @@ export async function runMechanicWalkInSmoke() {
     assert.equal(waiting?.status, "WAITING_PAYMENT");
     assert.equal(await prisma.workOrder.count({ where: { diagnosticRequestId: created.diagnosticRequestId } }), 0, "walk-in submit/payment gate must not create WorkOrder");
 
-    const paid = await payWalkInDiagnostic(mechanicUserId, created.diagnosticRequestId, input.paymentMethod);
+    const paid = await payWalkInDiagnostic(mechanicUserId, created.diagnosticRequestId, input.paymentMethod, input.paymentMethod === "CASH" ? "600" : "725.50");
     assert.equal(paid.paid, true);
     assert(paid.payment, "payment must create a posted CashTransaction");
     assert.equal(paid.payment?.account?.type, input.paymentMethod === "CASH" ? "CASH" : "ACQUIRING");
+    assert.equal(paid.payment?.amount, input.paymentMethod === "CASH" ? "600.00" : "725.50");
     assert.equal(await prisma.cashTransaction.count({ where: { sourceEntity: "WALK_IN_DIAGNOSTIC_PAYMENT", sourceEntityId: `${created.diagnosticRequestId}:payment`, status: "POSTED" } }), 1);
 
     await chooseWalkInPostPaymentRoute(mechanicUserId, created.diagnosticRequestId, input.route);
@@ -208,7 +209,7 @@ export async function runMechanicWalkInSmoke() {
       phone: `+38068${String(Date.now() + 1).slice(-7)}`,
       name: "Walk In Online",
       mileage: 65432,
-      paymentMethod: "ONLINE",
+      paymentMethod: "TERMINAL",
       route: "COMPLETE_VISIT",
     });
 
@@ -218,7 +219,7 @@ export async function runMechanicWalkInSmoke() {
       clientDedup: "primary and additional phone identities reuse Client",
       idempotency: "double submit reuses appointment and diagnostic",
       diagnosticCard: "submit creates standard REVIEW revision",
-      payment: "cash and online create diagnostic CashTransaction",
+      payment: "cash and terminal create diagnostic CashTransaction",
       hardGate: "no WorkOrder before confirmed diagnostic card",
       routes: "complete visit or send to repair calculation",
     }, null, 2));
