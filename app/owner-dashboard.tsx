@@ -307,8 +307,8 @@ export function OwnerControlCenter({ userName }: { userName?: string | null }) {
       </section>
 
       <section className={styles.panel}>
-        <div className={styles.panelHead}><div><p className="eyebrow">ТРЕНД</p><h2>Закриті ЗН та виручка</h2></div><button type="button" onClick={() => navigateCrm("Аналітика")}>Періоди →</button></div>
-        <div className={styles.trend}>{trend.length ? trend.map((item) => <div key={item.date}><span>{dateLabel(item.date)}</span><i><b style={{ width: `${Math.max(4, (Math.abs(item.revenue || item.closed || 0) / trendMax) * 100)}%` }} /></i><strong>{item.revenue != null ? money(item.revenue) : `${item.closed} ЗН`}</strong></div>) : <div className={styles.empty}>Ще немає даних для тренду за період.</div>}</div>
+        <div className={styles.panelHead}><div><p className="eyebrow">ТРЕНД</p><h2>Закриті КП та виручка</h2></div><button type="button" onClick={() => navigateCrm("Аналітика")}>Періоди →</button></div>
+        <div className={styles.trend}>{trend.length ? trend.map((item) => <div key={item.date}><span>{dateLabel(item.date)}</span><i><b style={{ width: `${Math.max(4, (Math.abs(item.revenue || item.closed || 0) / trendMax) * 100)}%` }} /></i><strong>{item.revenue != null ? money(item.revenue) : `${item.closed} КП`}</strong></div>) : <div className={styles.empty}>Ще немає даних для тренду за період.</div>}</div>
       </section>
     </div>
 
