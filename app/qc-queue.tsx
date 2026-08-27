@@ -133,7 +133,7 @@ export function QcQueue() {
   }
 
   function openWorkOrder(card: Card) {
-    navigateCrm("Замовлення-наряди", { workOrderId: card.id, workOrderTab: "qc" });
+    navigateCrm("Комерційна пропозиція", { workOrderId: card.id, workOrderTab: "qc" });
   }
 
   if (loading && !data) return <div className={styles.state}>Завантажую чергу контролю якості…</div>;
@@ -175,7 +175,7 @@ export function QcQueue() {
               {data.canWrite && card.category === "WAITING" && <button type="button" className={styles.primary} disabled={Boolean(busy)} onClick={() => void act(card, "START")}>{busy === `${card.id}:START` ? "…" : "Почати перевірку"}</button>}
               {data.canWrite && card.category === "IN_PROGRESS" && <><button type="button" className={styles.pass} disabled={Boolean(busy)} onClick={() => void act(card, "PASS")}>{busy === `${card.id}:PASS` ? "…" : "Пройдено → готове до видачі"}</button><button type="button" className={styles.fail} disabled={Boolean(busy)} onClick={() => void act(card, "FAIL")}>{busy === `${card.id}:FAIL` ? "…" : "Не пройдено → доопрацювання"}</button></>}
               {data.canWrite && card.category === "FAILED" && card.workOrderStatus === "WAITING_QC" && <button type="button" className={styles.fail} disabled={Boolean(busy)} onClick={() => void act(card, "MOVE_REWORK")}>Передати на доопрацювання</button>}
-              {card.category === "FAILED" && card.workOrderStatus === "REWORK" && <button type="button" className={styles.secondary} onClick={() => navigateCrm("Замовлення-наряди", { workOrderId: card.id, workOrderTab: "works" })}>Відкрити доопрацювання →</button>}
+              {card.category === "FAILED" && card.workOrderStatus === "REWORK" && <button type="button" className={styles.secondary} onClick={() => navigateCrm("Комерційна пропозиція", { workOrderId: card.id, workOrderTab: "works" })}>Відкрити доопрацювання →</button>}
               {data.canWrite && card.category === "PASSED" && card.workOrderStatus === "WAITING_QC" && <button type="button" className={styles.pass} disabled={Boolean(busy)} onClick={() => void act(card, "MOVE_PICKUP")}>Підтвердити готовність до видачі</button>}
             </footer>
           </article>) : <div className={styles.empty}>Черга порожня.</div>}</div>
