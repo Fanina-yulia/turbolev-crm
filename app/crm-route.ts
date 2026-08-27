@@ -97,7 +97,7 @@ function canonicalNavigation(section: CrmSectionLabel, params: CrmRouteParams): 
     const next = { ...params };
     if (next.status === "WAITING_QC" && !next.workOrderTab) next.workOrderTab = "qc";
     if (next.status === "WAITING_PARTS" && !next.workOrderTab) next.workOrderTab = "parts";
-    return { section: "Замовлення-наряди", params: next };
+    return { section: "Комерційна пропозиція", params: next };
   }
 
   if (section === "Контроль якості") {
@@ -110,11 +110,11 @@ function canonicalNavigation(section: CrmSectionLabel, params: CrmRouteParams): 
       else context.status = "WAITING_QC";
     }
     context.workOrderTab = context.workOrderTab || "qc";
-    return { section: "Замовлення-наряди", params: context };
+    return { section: "Комерційна пропозиція", params: context };
   }
 
   if (section === "Гарантії") {
-    return { section: "Замовлення-наряди", params: { ...params, workOrderTab: params.workOrderTab || "history" } };
+    return { section: "Комерційна пропозиція", params: { ...params, workOrderTab: params.workOrderTab || "history" } };
   }
 
   return { section, params };
