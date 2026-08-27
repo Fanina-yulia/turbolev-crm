@@ -251,7 +251,7 @@ export function WarrantyCenter() {
     {loading ? <div className={styles.state}>Завантажую гарантійний центр…</div> : !visible.length ? <div className={styles.state}>У цій черзі зараз немає робіт.</div> : <section className={styles.list}>
       {visible.map((row) => <article key={row.lineId} className={`${styles.card} ${row.warrantyStatus === "EXPIRED" ? styles.expiredCard : ""}`}>
         <div className={styles.cardHead}>
-          <button className={styles.woLink} type="button" onClick={() => navigateCrm("Замовлення-наряди", { workOrderId: row.workOrderId, workOrderTab: "overview" })}>{row.workOrderLabel}</button>
+          <button className={styles.woLink} type="button" onClick={() => navigateCrm("Комерційна пропозиція", { workOrderId: row.workOrderId, workOrderTab: "overview" })}>{row.workOrderLabel}</button>
           <span className={`${styles.badge} ${warrantyClass(row)}`}>{warrantyLabel(row)}</span>
           {row.openClaim && <span className={`${styles.badge} ${styles.claim}`}>Звернення · {CLAIM_LABELS[row.openClaim.status]}</span>}
         </div>
@@ -283,7 +283,7 @@ export function WarrantyCenter() {
         </div>}
 
         <div className={styles.actions}>
-          <button type="button" onClick={() => navigateCrm("Замовлення-наряди", { workOrderId: row.workOrderId, workOrderTab: "overview" })}>Відкрити ЗН</button>
+          <button type="button" onClick={() => navigateCrm("Комерційна пропозиція", { workOrderId: row.workOrderId, workOrderTab: "overview" })}>Відкрити КП</button>
           {canWrite && row.openClaim && <button className={styles.primary} type="button" onClick={() => openClaimEdit(row)}>Опрацювати звернення</button>}
           {canWrite && !row.openClaim && <button className={styles.primary} type="button" onClick={() => openNewClaim(row)}>Зареєструвати звернення</button>}
         </div>
