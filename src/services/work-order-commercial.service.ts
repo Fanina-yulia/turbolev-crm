@@ -360,7 +360,7 @@ export async function decideEstimate(
         where: { id: estimate.id },
         data: { status: "SUPERSEDED", supersededAt: new Date() },
       });
-      throw new WorkOrderCommercialError("ESTIMATE_SCOPE_CHANGED", "Склад або ціни наряду змінилися після відправки. Сформуйте нову ревізію кошторису.");
+      throw new WorkOrderCommercialError("ESTIMATE_SCOPE_CHANGED", "Склад або ціни комерційної пропозиції змінилися після відправки. Сформуйте нову ревізію кошторису.");
     }
 
     const now = new Date();
