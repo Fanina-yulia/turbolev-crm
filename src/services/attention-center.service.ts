@@ -840,7 +840,7 @@ export async function buildAttentionCenter(options: AttentionCenterOptions): Pro
       sourceId: order.id,
       taskId: null,
       title,
-      description: order.workOrderId ? `Пов’язано із ЗН ${order.workOrderId}` : null,
+      description: order.workOrderId ? `Пов’язано із КП ${order.workOrderId}` : null,
       reason,
       category: "SUPPLIERS",
       level,
