@@ -88,23 +88,23 @@ function vehicleAction(row: StationAttentionVehicle): StationManagerControlActio
   }
   if (["PARTS_SELECTION_STALLED", "PARTS_ETA_OVERDUE", "PARTS_ETA_MISSING"].includes(primaryCode)) {
     return row.workOrderId
-      ? { label: "Відкрити запчастини", section: "Замовлення-наряди", params: { workOrderId: row.workOrderId, workOrderTab: "parts" } }
+      ? { label: "Відкрити запчастини", section: "Комерційна пропозиція", params: { workOrderId: row.workOrderId, workOrderTab: "parts" } }
       : { label: "Відкрити запис", section: "Планувальник", params: { appointmentId: row.appointmentId } };
   }
   if (["CALCULATION_STALLED", "APPROVAL_STALLED"].includes(primaryCode) && row.workOrderId) {
-    return { label: "Відкрити кошторис", section: "Замовлення-наряди", params: { workOrderId: row.workOrderId, workOrderTab: "estimate" } };
+    return { label: "Відкрити кошторис", section: "Комерційна пропозиція", params: { workOrderId: row.workOrderId, workOrderTab: "estimate" } };
   }
   if (primaryCode === "QC_STALLED" && row.workOrderId) {
-    return { label: "Відкрити QC", section: "Замовлення-наряди", params: { workOrderId: row.workOrderId, workOrderTab: "qc" } };
+    return { label: "Відкрити QC", section: "Комерційна пропозиція", params: { workOrderId: row.workOrderId, workOrderTab: "qc" } };
   }
   if (primaryCode === "PAYMENT_STALLED" && row.workOrderId) {
-    return { label: "Відкрити оплату", section: "Замовлення-наряди", params: { workOrderId: row.workOrderId, workOrderTab: "payment" } };
+    return { label: "Відкрити оплату", section: "Комерційна пропозиція", params: { workOrderId: row.workOrderId, workOrderTab: "payment" } };
   }
   if (primaryCode === "WARRANTY_OPEN" && row.workOrderId) {
-    return { label: "Відкрити гарантію", section: "Замовлення-наряди", params: { workOrderId: row.workOrderId, workOrderTab: "history" } };
+    return { label: "Відкрити гарантію", section: "Комерційна пропозиція", params: { workOrderId: row.workOrderId, workOrderTab: "history" } };
   }
   if (row.workOrderId) {
-    return { label: "Відкрити ЗН", section: "Замовлення-наряди", params: { workOrderId: row.workOrderId, workOrderTab: "overview" } };
+    return { label: "Відкрити КП", section: "Комерційна пропозиція", params: { workOrderId: row.workOrderId, workOrderTab: "overview" } };
   }
   return { label: "Відкрити запис", section: "Планувальник", params: { appointmentId: row.appointmentId } };
 }
@@ -312,7 +312,7 @@ export async function buildStationManagerControlCenter(input: {
       plate: appointment.plateNumber,
       vehicle: appointment.vehicleLabel,
       customer: appointment.customerName,
-      action: { label: "Відкрити кошторис", section: "Замовлення-наряди", params: { workOrderId: estimate.workOrderId, workOrderTab: "estimate" } },
+      action: { label: "Відкрити кошторис", section: "Комерційна пропозиція", params: { workOrderId: estimate.workOrderId, workOrderTab: "estimate" } },
     });
   }
 
@@ -338,7 +338,7 @@ export async function buildStationManagerControlCenter(input: {
       plate: appointment.plateNumber,
       vehicle: appointment.vehicleLabel,
       customer: appointment.customerName,
-      action: { label: "Відкрити погодження", section: "Замовлення-наряди", params: { workOrderId: estimate.workOrderId, workOrderTab: "estimate" } },
+      action: { label: "Відкрити погодження", section: "Комерційна пропозиція", params: { workOrderId: estimate.workOrderId, workOrderTab: "estimate" } },
     });
   }
 
