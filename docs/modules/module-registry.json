@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated": "2026-08-26",
+  "updated": "2026-08-27",
   "rule": "Every production change must be assigned to at least one module. Start analysis from the module passport, then inspect declared dependencies only when the change can affect them.",
   "modules": [
     {
@@ -605,6 +605,7 @@
         "app/settings-*",
         "app/*settings*",
         "app/api/settings/**",
+        "app/api/integration/**",
         "src/services/integration-*",
         "src/services/*settings*"
       ],
