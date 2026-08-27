@@ -5,6 +5,8 @@ on:
     paths:
       - "src/services/*supplier*"
       - "scripts/supplier-ingestion-smoke.ts"
+      - "scripts/unique-trade-shadow-ingestion-smoke.ts"
+      - "scripts/unique-trade-shadow-ingestion-smoke.ts"
       - "prisma/catalog.prisma"
       - "prisma/supplier-ingestion.prisma"
       - ".github/workflows/supplier-ingestion.yml"
