@@ -38,7 +38,7 @@ type Response = {
 const LANES: Array<[Category, string, string]> = [
   ["WAITING", "Очікує перевірки", "Нове QC або повторна перевірка"],
   ["IN_PROGRESS", "На перевірці", "Контроль якості вже розпочато"],
-  ["FAILED", "Доопрацювання", "QC не пройдено або ЗН повернений у ремонт"],
+  ["FAILED", "Доопрацювання", "QC не пройдено або КП повернений у ремонт"],
   ["PASSED", "Пройдено сьогодні", "Авто пройшли контроль якості сьогодні"],
 ];
 
@@ -141,7 +141,7 @@ export function QcQueue() {
 
   return <div className={styles.page}>
     <header className={styles.header}>
-      <div><p>TURBO LEV · КОНТРОЛЬ ЯКОСТІ</p><h1>Черга QC</h1><span>{data.location.name} · одна черга поверх існуючих ЗН та QC-спроб</span></div>
+      <div><p>TURBO LEV · КОНТРОЛЬ ЯКОСТІ</p><h1>Черга QC</h1><span>{data.location.name} · одна черга поверх існуючих КП та QC-спроб</span></div>
       <div className={styles.headerActions}>
         {data.locations.length > 1 && <select value={locationId} onChange={(event) => void load(event.target.value)}>{data.locations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}</select>}
         <button type="button" onClick={() => void load()} disabled={loading}>{loading ? "Оновлюю…" : "Оновити"}</button>
@@ -151,7 +151,7 @@ export function QcQueue() {
     <section className={styles.kpis}>{LANES.map(([category, label]) => <button type="button" key={category} className={focus === category ? styles.kpiActive : ""} onClick={() => setFocus((current) => current === category ? null : category)}><span>{label}</span><strong>{counts[category]}</strong></button>)}</section>
 
     <section className={styles.toolbar}>
-      <label className={styles.search}><span>⌕</span><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="ЗН, авто, пост, механік або примітка…"/>{search && <button type="button" onClick={() => setSearch("")}>×</button>}</label>
+      <label className={styles.search}><span>⌕</span><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="КП, авто, пост, механік або примітка…"/>{search && <button type="button" onClick={() => setSearch("")}>×</button>}</label>
       <label className={styles.reviewer}><span>Перевіряє</span><input value={reviewer} onChange={(event) => setReviewer(event.target.value)} placeholder="ПІБ контролера"/></label>
     </section>
     {message && <div className={styles.notice}>{message}</div>}
@@ -171,7 +171,7 @@ export function QcQueue() {
             {card.category === "IN_PROGRESS" && <textarea value={notes[card.id] || ""} onChange={(event) => setNotes((current) => ({ ...current, [card.id]: event.target.value }))} placeholder="Результат перевірки / що потрібно виправити" rows={3}/>} 
             {card.performedByName && <div className={styles.performed}>Перевіряв: <b>{card.performedByName}</b></div>}
             <footer>
-              <button type="button" className={styles.secondary} onClick={() => openWorkOrder(card)}>Відкрити QC у ЗН</button>
+              <button type="button" className={styles.secondary} onClick={() => openWorkOrder(card)}>Відкрити QC у КП</button>
               {data.canWrite && card.category === "WAITING" && <button type="button" className={styles.primary} disabled={Boolean(busy)} onClick={() => void act(card, "START")}>{busy === `${card.id}:START` ? "…" : "Почати перевірку"}</button>}
               {data.canWrite && card.category === "IN_PROGRESS" && <><button type="button" className={styles.pass} disabled={Boolean(busy)} onClick={() => void act(card, "PASS")}>{busy === `${card.id}:PASS` ? "…" : "Пройдено → готове до видачі"}</button><button type="button" className={styles.fail} disabled={Boolean(busy)} onClick={() => void act(card, "FAIL")}>{busy === `${card.id}:FAIL` ? "…" : "Не пройдено → доопрацювання"}</button></>}
               {data.canWrite && card.category === "FAILED" && card.workOrderStatus === "WAITING_QC" && <button type="button" className={styles.fail} disabled={Boolean(busy)} onClick={() => void act(card, "MOVE_REWORK")}>Передати на доопрацювання</button>}
