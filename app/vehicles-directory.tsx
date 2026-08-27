@@ -14,6 +14,7 @@ import { CustomerCabinetCard } from "./customer-cabinet-card";
 import { navigateCrm, readCrmRoute } from "./crm-route";
 import { VehicleBrandLogo } from "./vehicle-brand-logo";
 import { VehicleRender } from "./vehicle-render";
+import { VehicleRecordWorkspace, type VehicleRecordPage } from "./vehicle-record-workspace";
 import styles from "./directory-pages.module.css";
 import tabStyles from "./vehicle-card-tabs.module.css";
 import workflowStyles from "./vehicle-workflow.module.css";
@@ -75,6 +76,7 @@ export function VehiclesDirectory() {
   const [vehicleId, setVehicleId] = useState<string | null>(null);
   const [vehicleCard, setVehicleCard] = useState<VehicleCard | null>(null);
   const [vehicleLoading, setVehicleLoading] = useState(false);
+  const [vehiclePage, setVehiclePage] = useState<VehicleRecordPage | null>(null);
   const vehicleIds = vehicles.map((vehicle) => vehicle.id).join(",");
 
   useEffect(() => {
@@ -139,7 +141,7 @@ export function VehiclesDirectory() {
   }, [vehicleIds]);
 
   useEffect(() => {
-    const syncFromRoute = () => setVehicleId(readCrmRoute().vehicleId || null);
+    const syncFromRoute = () => { const route = readCrmRoute(); const page = route.vehiclePage; setVehicleId(route.vehicleId || null); setVehiclePage(page === "diagnostic-card" || page === "commercial-offer" || page === "service-history" ? page : null); };
     syncFromRoute();
     window.addEventListener("popstate", syncFromRoute);
     return () => window.removeEventListener("popstate", syncFromRoute);
@@ -199,47 +201,18 @@ export function VehiclesDirectory() {
   }
 
   function openWorkflow(vehicle: Vehicle, key: (typeof WORKFLOW_META)[number]["key"], targetId: string | null) {
-    if (key === "diagnostics" && targetId) {
-      navigateCrm("Діагностика", { diagnosticId: targetId, vehicleId: vehicle.id, workflowFocus: "diagnostics" });
-      return;
-    }
-
-    if (key !== "diagnostics" && targetId) {
-      navigateCrm("Замовлення-наряди", {
-        workOrderId: targetId,
-        vehicleId: vehicle.id,
-        workOrderTab: key === "proposal" ? "estimate" : "overview",
-      });
-      return;
-    }
-
-    // Відсутній наступний документ не повинен повертати користувача у майстер
-    // запису. Відкриваємо картку процесу для цього самого автомобіля:
-    // тут видно поточний етап і передумови наступного документа.
-    navigateCrm("Діагностика", {
-      vehicleId: vehicle.id,
-      plate: vehicle.plateNumber || "",
-      vin: vehicle.vin || "",
-      workflowFocus: key,
-    });
+    const vehiclePage: VehicleRecordPage = key === "diagnostics" ? "diagnostic-card" : key === "proposal" ? "commercial-offer" : "service-history";
+    navigateCrm("Авто", { vehicleId: vehicle.id, vehiclePage, workOrderId: key === "proposal" ? targetId || undefined : undefined, diagnosticId: key === "diagnostics" ? targetId || undefined : undefined, workOrderTab: key === "proposal" ? "estimate" : undefined });
   }
-
   function openVehicle(id: string) {
     navigateCrm("Авто", { vehicleId: id });
   }
 
   function openVehiclePage(page: "diagnostics" | "proposal" | "history") {
     if (!vehicleCard) return;
-    if (page === "diagnostics") {
-      navigateCrm("Діагностика", { vehicleId: vehicleCard.id });
-      return;
-    }
-    navigateCrm("Замовлення-наряди", {
-      vehicleId: vehicleCard.id,
-      workOrderTab: page === "proposal" ? "estimate" : "history",
-    });
+    const vehiclePage: VehicleRecordPage = page === "diagnostics" ? "diagnostic-card" : page === "proposal" ? "commercial-offer" : "service-history";
+    navigateCrm("Авто", { vehicleId: vehicleCard.id, vehiclePage });
   }
-
   function closeVehicle() {
     navigateCrm("Авто");
   }
@@ -248,6 +221,8 @@ export function VehiclesDirectory() {
     setVehicleCard(next);
     setVehicles((current) => current.map((vehicle) => vehicle.id === next.id ? { ...vehicle, ...next, client: next.client } : vehicle));
   }
+
+  if (vehicleId && vehiclePage) return <VehicleRecordWorkspace vehicle={vehicleCard} loading={vehicleLoading} page={vehiclePage} onClose={closeVehicle}/>;
 
   return <div className={styles.page}>
     <header className={styles.header}>
