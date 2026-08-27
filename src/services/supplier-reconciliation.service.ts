@@ -25,7 +25,7 @@ type MutationBase = Actor & {
 
 export class SupplierReconciliationError extends Error {
   constructor(
-    public readonly code: "NOT_FOUND" | "INVALID_STATE" | "INVALID_PRODUCT" | "INVALID_INPUT",
+    public readonly code: "NOT_FOUND" | "INVALID_STATE" | "INVALID_PRODUCT" | "INVALID_INPUT" | "CONCURRENT_UPDATE",
     message: string,
   ) {
     super(message);
@@ -207,6 +207,18 @@ export async function searchSupplierReconciliationProducts(query: string, take =
   return rows;
 }
 
+async function acquireTaskMutationLock(tx: Prisma.TransactionClient, taskId: string) {
+  const result = await tx.$queryRaw<Array<{ locked: boolean }>>`
+    SELECT pg_try_advisory_xact_lock(hashtextextended(${taskId}, 0)) AS locked
+  `;
+  if (result[0]?.locked !== true) {
+    throw new SupplierReconciliationError(
+      "CONCURRENT_UPDATE",
+      "Задача reconciliation вже змінюється іншим запитом. Оновіть чергу та повторіть дію.",
+    );
+  }
+}
+
 async function loadMutableTask(tx: Prisma.TransactionClient, taskId: string) {
   const task = await tx.supplierReconciliationTask.findUnique({
     where: { id: taskId },
@@ -232,6 +244,7 @@ function auditData(value: unknown) {
 export async function startReviewSupplierReconciliationTask(input: MutationBase) {
   const prisma = getPrisma();
   return prisma.$transaction(async (tx) => {
+    await acquireTaskMutationLock(tx, input.taskId);
     const task = await loadMutableTask(tx, input.taskId);
     const before = { status: task.status, resolutionType: task.resolutionType, notes: task.notes };
     const updated = await tx.supplierReconciliationTask.update({
@@ -258,6 +271,7 @@ export async function resolveSupplierReconciliationTask(input: MutationBase & { 
   if (!productId) throw new SupplierReconciliationError("INVALID_INPUT", "Оберіть canonical Product.");
   const prisma = getPrisma();
   return prisma.$transaction(async (tx) => {
+    await acquireTaskMutationLock(tx, input.taskId);
     const task = await loadMutableTask(tx, input.taskId);
     const product = await tx.product.findUnique({
       where: { id: productId },
@@ -366,6 +380,7 @@ export async function resolveSupplierReconciliationTask(input: MutationBase & { 
 export async function rejectSupplierReconciliationTask(input: MutationBase) {
   const prisma = getPrisma();
   return prisma.$transaction(async (tx) => {
+    await acquireTaskMutationLock(tx, input.taskId);
     const task = await loadMutableTask(tx, input.taskId);
     const notes = cleanNotes(input.notes);
     const now = new Date();
@@ -400,6 +415,7 @@ export async function rejectSupplierReconciliationTask(input: MutationBase) {
 export async function escalateSupplierReconciliationTask(input: MutationBase) {
   const prisma = getPrisma();
   return prisma.$transaction(async (tx) => {
+    await acquireTaskMutationLock(tx, input.taskId);
     const task = await loadMutableTask(tx, input.taskId);
     const notes = cleanNotes(input.notes);
     const updated = await tx.supplierReconciliationTask.update({
