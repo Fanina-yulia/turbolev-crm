@@ -177,11 +177,11 @@ export function ClientCardDrawer({open,name,phone,channel,existingLeadId,onClose
   function openHistory(){
     if(!activeVehicle)return setMessage("Оберіть автомобіль.");
     if(!vehicleHistory.length)return setMessage("Для цього автомобіля історії обслуговування ще немає.");
-    navigate("Замовлення-наряди",activeVehicle.id,`Історія ${activeVehicle.plateNumber||activeVehicle.brand||"авто"}`);
+    navigate("Комерційна пропозиція",activeVehicle.id,`Історія ${activeVehicle.plateNumber||activeVehicle.brand||"авто"}`);
   }
   function openCommercial(){
-    if(!activeWorkOrder)return setMessage("Комерційна пропозиція доступна після підтвердженої діагностики та створення замовлення-наряду.");
-    navigate("Замовлення-наряди",activeWorkOrder.id,"Комерційна пропозиція");
+    if(!activeWorkOrder)return setMessage("Комерційна пропозиція доступна після підтвердженої діагностики та створення комерційної пропозиції.");
+    navigate("Комерційна пропозиція",activeWorkOrder.id,"Комерційна пропозиція");
   }
   function openActive(){
     if(existingLeadId){setMessage("Звернення вже передано в роботу.");return}
@@ -227,12 +227,12 @@ export function ClientCardDrawer({open,name,phone,channel,existingLeadId,onClose
         {activeVehicle&&<section className="clientBlock activeVehicleBlock">
           <div className="clientBlockTitle"><b>Активне авто</b><span>{activeVehicle.plateNumber||"без номера"}</span></div>
           <div className="activeVehicleSummary"><VehicleBrandLogo brand={activeVehicle.brand} size={58}/><div><strong>{[activeVehicle.brand,activeVehicle.model,activeVehicle.year].filter(Boolean).join(" · ")||"Автомобіль"}</strong><span>{activeVehicle.plateNumber||"Без держномера"}</span><small>VIN {activeVehicle.vin||"не визначено"}</small></div></div>
-          {historyOpen&&<div className="inlineHistory">{vehicleHistory.length?vehicleHistory.map(item=><div key={item.id}><span>{displayDate(item.createdAt)}</span><strong>{item.status}</strong><button type="button" onClick={()=>navigate("Замовлення-наряди",item.id,"Історія обслуговування")}>Відкрити</button></div>):<p>Історії обслуговування ще немає.</p>}</div>}
+          {historyOpen&&<div className="inlineHistory">{vehicleHistory.length?vehicleHistory.map(item=><div key={item.id}><span>{displayDate(item.createdAt)}</span><strong>{item.status}</strong><button type="button" onClick={()=>navigate("Комерційна пропозиція",item.id,"Історія обслуговування")}>Відкрити</button></div>):<p>Історії обслуговування ще немає.</p>}</div>}
         </section>}
 
         <section className="clientBlock actionsBlock">
           <div className="clientBlockTitle"><b>Наступна дія</b><span>для вибраного авто</span></div>
-          <button className="nextAction" type="button" onClick={activeWorkOrder?()=>navigate("Замовлення-наряди",activeWorkOrder.id,"Поточний ремонт"):openDiagnosticBooking}>{activeWorkOrder?"Відкрити поточний ремонт":"Записати на діагностику"}</button>
+          <button className="nextAction" type="button" onClick={activeWorkOrder?()=>navigate("Комерційна пропозиція",activeWorkOrder.id,"Поточний ремонт"):openDiagnosticBooking}>{activeWorkOrder?"Відкрити поточний ремонт":"Записати на діагностику"}</button>
           <div className="actionGrid">
             <button type="button" onClick={()=>{if(vehicleHistory.length)setHistoryOpen(value=>!value);else void openHistory()}}>Історія обслуговування</button>
             <button type="button" className={!activeWorkOrder?"softDisabled":""} onClick={openCommercial}>Комерційна пропозиція</button>
