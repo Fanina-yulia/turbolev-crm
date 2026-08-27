@@ -81,7 +81,7 @@ function attentionRoute(item: DashboardData["attention"][number]): { section: Cr
           : ["WAITING_CALCULATION","WAITING_APPROVAL"].includes(item.status)
             ? "estimate"
             : "overview";
-    return { section: "Замовлення-наряди", params: { workOrderId: item.workOrderId, workOrderTab: tab } };
+    return { section: "Комерційна пропозиція", params: { workOrderId: item.workOrderId, workOrderTab: tab } };
   }
   if (item.vehicleId) return { section: "Авто", params: { vehicleId: item.vehicleId } };
   return { section: "Планувальник", params: { appointmentId: item.appointmentId } };
@@ -96,15 +96,15 @@ export function StationOverview(){
     {name:"Нові заявки",value:data.pipeline.newLeads,sub:"активні заявки Neon",section:"Ліди"},
     {name:"Записані",value:data.pipeline.booked,sub:"є запис у планувальнику",section:"Планувальник",params:{status:"BOOKED"}},
     {name:"На діагностиці",value:data.pipeline.diagnostics,sub:"активні заявки",section:"Діагностика"},
-    {name:"Погодження",value:data.pipeline.approval,sub:"очікують рішення",section:"Замовлення-наряди",params:{status:"WAITING_APPROVAL"}},
-    {name:"Очікують деталі",value:data.pipeline.waitingParts,sub:"блокер постачання",section:"Замовлення-наряди",params:{status:"WAITING_PARTS"}},
-    {name:"В ремонті",value:data.pipeline.inRepair,sub:"активна робота",section:"Замовлення-наряди",params:{status:"IN_REPAIR"}},
-    {name:"QC / готові",value:data.pipeline.qcReady,sub:"контроль / видача",section:"Замовлення-наряди",params:{scope:"qc"}},
+    {name:"Погодження",value:data.pipeline.approval,sub:"очікують рішення",section:"Комерційна пропозиція",params:{status:"WAITING_APPROVAL"}},
+    {name:"Очікують деталі",value:data.pipeline.waitingParts,sub:"блокер постачання",section:"Комерційна пропозиція",params:{status:"WAITING_PARTS"}},
+    {name:"В ремонті",value:data.pipeline.inRepair,sub:"активна робота",section:"Комерційна пропозиція",params:{status:"IN_REPAIR"}},
+    {name:"QC / готові",value:data.pipeline.qcReady,sub:"контроль / видача",section:"Комерційна пропозиція",params:{scope:"qc"}},
   ]:[],[data]);
 
   const kpiRoutes=useMemo<WorkflowRoute[]>(()=>[
     {name:"Авто сьогодні",value:data?.kpis.carsToday??"—",sub:`${data?.kpis.booked??0} ще записані`,section:"Планувальник"},
-    {name:"В роботі",value:data?.kpis.inRepair??"—",sub:`${data?.kpis.postsOccupied??0} постів зайнято`,section:"Замовлення-наряди",params:{status:"IN_REPAIR"}},
+    {name:"В роботі",value:data?.kpis.inRepair??"—",sub:`${data?.kpis.postsOccupied??0} постів зайнято`,section:"Комерційна пропозиція",params:{status:"IN_REPAIR"}},
     {name:"Виручка сьогодні",value:money(data?.kpis.revenue??null),sub:"проведені платежі за сьогодні",section:"Фінансовий центр"},
     {name:"Валовий прибуток",value:money(data?.kpis.grossProfit??null),sub:"виручка мінус прямі витрати",section:"Фінансовий центр"},
   ],[data]);
@@ -134,8 +134,8 @@ export function StationOverview(){
     }):[],[data]);
 
   const blockers:WorkflowRoute[]=[
-    {name:"Погодження клієнта",value:data?.blockers.approval??0,sub:"активних авто",section:"Замовлення-наряди",params:{status:"WAITING_APPROVAL"}},
-    {name:"Очікування деталей",value:data?.blockers.waitingParts??0,sub:"авто заблоковано деталями",section:"Замовлення-наряди",params:{status:"WAITING_PARTS"}},
+    {name:"Погодження клієнта",value:data?.blockers.approval??0,sub:"активних авто",section:"Комерційна пропозиція",params:{status:"WAITING_APPROVAL"}},
+    {name:"Очікування деталей",value:data?.blockers.waitingParts??0,sub:"авто заблоковано деталями",section:"Комерційна пропозиція",params:{status:"WAITING_PARTS"}},
     {name:"Не приїхали / no-show",value:data?.blockers.noShow??0,sub:"потрібен контакт із клієнтом",section:"Планувальник",params:{status:"NO_SHOW"}},
   ];
 
