@@ -117,16 +117,13 @@ export function VehicleRender(props: VehicleRenderProps) {
     setManualResolveEpoch(0);
   }, [props.id]);
 
+  // Do not probe the metadata endpoint for every card on initial load.
+  // The image request itself is lazy and the server endpoint registers missing
+  // assets in the background queue. Poll only after an explicit drawer retry.
   useEffect(() => {
+    if (manualResolveEpoch === 0) return;
     let cancelled = false;
     let pollTimer: ReturnType<typeof setTimeout> | null = null;
-    let pollAttempts = 0;
-
-    const schedulePoll = (delayMs = 3000) => {
-      if (cancelled) return;
-      pollAttempts += 1;
-      pollTimer = setTimeout(() => void inspect(), delayMs);
-    };
 
     const inspect = async () => {
       try {
@@ -144,39 +141,16 @@ export function VehicleRender(props: VehicleRenderProps) {
           return;
         }
 
-        const library = data.library;
-        const state = library?.state || "MISSING";
+        const state = data.library?.state || "MISSING";
         setLibraryState(state);
-        setLibraryError(library?.error || null);
-
+        setLibraryError(data.library?.error || null);
         if (state === "GENERATING") {
-          if (clickToResolve) setResolving(true);
-          if (pollAttempts < 40) schedulePoll(3000);
-          else {
-            setResolving(false);
-            setLibraryError("Генерація триває довше очікуваного. Натисніть повторно через хвилину.");
-          }
-          return;
-        }
-
-        if (clickToResolve) {
-          if (manualResolveEpoch > 0 && state === "MISSING" && pollAttempts < 10) {
-            schedulePoll(1800);
-            return;
-          }
+          pollTimer = setTimeout(() => void inspect(), 3000);
+        } else {
           setResolving(false);
-          return;
-        }
-
-        // Page rendering must never call OpenAI. The GET endpoint registers a
-        // missing image in the durable queue; this card only waits for the
-        // worker to finish and then reloads the shared library asset.
-        if (state === "MISSING" && library?.autoGenerate && library.canGenerate) {
-          setLibraryState("GENERATING");
-          if (pollAttempts < 40) schedulePoll(3000);
         }
       } catch {
-        // Missing or unavailable renders must stay as a safe local silhouette.
+        // A missing image must never block the CRM page.
       }
     };
 
@@ -185,8 +159,7 @@ export function VehicleRender(props: VehicleRenderProps) {
       cancelled = true;
       if (pollTimer) clearTimeout(pollTimer);
     };
-  }, [props.id, props.updatedAt, themePaint, clickToResolve, manualResolveEpoch]);
-
+  }, [props.id, themePaint, manualResolveEpoch]);
   async function resolveMissingImage() {
     if (!clickToResolve || resolving || libraryState === "GENERATING") return;
     const requestedVehicleId = props.id;
