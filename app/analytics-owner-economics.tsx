@@ -104,7 +104,7 @@ export function AnalyticsOwnerEconomics({ from, to, locationId }: Props) {
       <div className={styles.tableWrap}><table>
         <thead><tr><th>ЗН / авто</th><th>Клієнт</th><th>Виручка</th><th>Прямі витрати</th><th>Валовий прибуток</th><th>Маржа</th><th>Закрито</th></tr></thead>
         <tbody>{data.workOrders.length ? data.workOrders.map((row) => <tr key={row.workOrderId}>
-          <td>{drillButton(() => navigateCrm("Замовлення-наряди", { workOrderId: row.workOrderId }), <><b>{row.displayNumber}</b><br/><span>{row.vehicle} · {row.plateNumber || row.vin || "—"}</span></>)}</td>
+          <td>{drillButton(() => navigateCrm("Комерційна пропозиція", { workOrderId: row.workOrderId }), <><b>{row.displayNumber}</b><br/><span>{row.vehicle} · {row.plateNumber || row.vin || "—"}</span></>)}</td>
           <td>{drillButton(() => navigateCrm("Клієнти", { clientId: row.clientId }), row.clientName)}</td>
           <td>{money(row.grossRevenue, row.currency)}</td>
           <td>{money(row.directCost, row.currency)}</td>
