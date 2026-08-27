@@ -41,8 +41,8 @@ function canonicalizeLegacy(detail: LegacyNavigateDetail): CanonicalTarget | nul
     if (detail === "Нові звернення") return { section: "Комунікації", params: { filter: "NEW", filterLabel: "Нові" } };
     if (detail === "Звернення") return { section: "Комунікації", params: {} };
     if (detail === "Виробництво") return { section: "Планувальник", params: { scope: "resources" } };
-    if (detail === "Контроль якості") return { section: "Замовлення-наряди", params: { status: "WAITING_QC", workOrderTab: "qc" } };
-    if (detail === "Гарантії") return { section: "Замовлення-наряди", params: { workOrderTab: "history" } };
+    if (detail === "Контроль якості") return { section: "Комерційна пропозиція", params: { status: "WAITING_QC", workOrderTab: "qc" } };
+    if (detail === "Гарантії") return { section: "Комерційна пропозиція", params: { workOrderTab: "history" } };
     return null;
   }
 
@@ -64,20 +64,20 @@ function canonicalizeLegacy(detail: LegacyNavigateDetail): CanonicalTarget | nul
   if (section === "Діагностика" && ENTITY_ID.test(filter)) {
     return { section: "Діагностика", params: { diagnosticId: filter } };
   }
-  if (section === "Замовлення-наряди" && filter === "approval") {
-    return { section: "Замовлення-наряди", params: { status: "WAITING_APPROVAL", workOrderTab: "estimate" } };
+  if (section === "Комерційна пропозиція" && filter === "approval") {
+    return { section: "Комерційна пропозиція", params: { status: "WAITING_APPROVAL", workOrderTab: "estimate" } };
   }
-  if (section === "Замовлення-наряди" && ENTITY_ID.test(filter)) {
-    return { section: "Замовлення-наряди", params: { workOrderId: filter } };
+  if (section === "Комерційна пропозиція" && ENTITY_ID.test(filter)) {
+    return { section: "Комерційна пропозиція", params: { workOrderId: filter } };
   }
   if (section === "Підбір запчастин" && filter === "waiting-parts") {
     return { section: "Закупівлі та склад", params: {} };
   }
   if (section === "Контроль якості") {
-    return { section: "Замовлення-наряди", params: { status: "WAITING_QC", workOrderTab: "qc" } };
+    return { section: "Комерційна пропозиція", params: { status: "WAITING_QC", workOrderTab: "qc" } };
   }
   if (section === "Гарантії") {
-    return { section: "Замовлення-наряди", params: ENTITY_ID.test(filter) ? { workOrderId: filter, workOrderTab: "history" } : { workOrderTab: "history" } };
+    return { section: "Комерційна пропозиція", params: ENTITY_ID.test(filter) ? { workOrderId: filter, workOrderTab: "history" } : { workOrderTab: "history" } };
   }
   if (section === "Виробництво") {
     if (["posts", "mechanics", "assigned"].includes(filter)) return { section: "Планувальник", params: { scope: "resources" } };
@@ -93,8 +93,8 @@ function canonicalizeLegacy(detail: LegacyNavigateDetail): CanonicalTarget | nul
       "qc-ready": "WAITING_QC",
     };
     const status = statuses[filter];
-    if (status === "WAITING_QC") return { section: "Замовлення-наряди", params: { status, workOrderTab: "qc" } };
-    if (status) return { section: "Замовлення-наряди", params: { status, workOrderTab: status === "WAITING_PARTS" ? "parts" : "overview" } };
+    if (status === "WAITING_QC") return { section: "Комерційна пропозиція", params: { status, workOrderTab: "qc" } };
+    if (status) return { section: "Комерційна пропозиція", params: { status, workOrderTab: status === "WAITING_PARTS" ? "parts" : "overview" } };
     return { section: "Планувальник", params: { scope: "resources" } };
   }
   return null;
@@ -275,7 +275,7 @@ export function BusinessFlowRouteBridge() {
       const filter = url.searchParams.get("filter") || "";
       if ((section === "workorders" || section === "work-orders") && ENTITY_ID.test(filter)) {
         event.preventDefault();
-        navigateCrm("Замовлення-наряди", { workOrderId: filter });
+        navigateCrm("Комерційна пропозиція", { workOrderId: filter });
       }
     };
     document.addEventListener("click", onAnchor, true);
