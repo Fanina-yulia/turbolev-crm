@@ -114,13 +114,13 @@ assertIncludes("app/work-order-commercial-panel.tsx", [
   'import { navigateCrm } from "./crm-route";',
   "return payload;",
   "result.transitionWarning?.message",
-  "Контроль якості пройдено. ЗН переведено у «Готовий до видачі».",
-  "QC не пройдено. ЗН переведено у «Доопрацювання».",
+  "Контроль якості пройдено. КП переведено у «Готовий до видачі».",
+  "QC не пройдено. КП переведено у «Доопрацювання».",
   'navigateCrm("Фінансовий центр")',
 ]);
 
 assertIncludes("app/work-orders.tsx", [
-  'if (item.to === "CLOSED") return "Видати авто та закрити ЗН";',
+  'if (item.to === "CLOSED") return "Видати авто та закрити КП";',
   'transition.to === "CLOSED" && !window.confirm("Підтвердити видачу авто клієнту та закриття комерційної пропозиції?")',
   "Авто видано клієнту. Комерційна пропозиція закрито.",
 ]);
