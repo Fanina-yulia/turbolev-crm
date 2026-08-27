@@ -174,7 +174,7 @@ export function VehicleHealthEnhancer() {
       {issue.resolutionNote ? <div className="vehicleHealthResolution">{issue.resolutionNote}</div> : null}
       <div className="vehicleHealthActions">
         {issue.sourceDiagnosticId ? <button type="button" onClick={() => navigateCrm("Діагностика", { diagnosticId: issue.sourceDiagnosticId! })}>Відкрити ДК</button> : null}
-        {issue.workOrderId ? <button type="button" className="primary" onClick={() => navigateCrm("Замовлення-наряди", { workOrderId: issue.workOrderId!, workOrderTab: ["QUOTED", "WAITING_CUSTOMER", "APPROVED"].includes(issue.status) ? "estimate" : undefined })}>{workOrderActionLabel(issue.status)}</button> : null}
+        {issue.workOrderId ? <button type="button" className="primary" onClick={() => navigateCrm("Комерційна пропозиція", { workOrderId: issue.workOrderId!, workOrderTab: ["QUOTED", "WAITING_CUSTOMER", "APPROVED"].includes(issue.status) ? "estimate" : undefined })}>{workOrderActionLabel(issue.status)}</button> : null}
         {issue.sourceDiagnosticId && !issue.workOrderId && !["RESOLVED", "DISMISSED"].includes(issue.status) ? <button type="button" onClick={() => navigateCrm("Підбір запчастин", { diagnosticId: issue.sourceDiagnosticId! })}>Підібрати запчастини</button> : null}
         {!(["RESOLVED", "DISMISSED", "DEFERRED"].includes(issue.status)) ? <button type="button" disabled={busy === issue.id} onClick={() => void mutate(issue, "DEFER")}>Відкласти</button> : null}
         {!(["RESOLVED", "DISMISSED"].includes(issue.status)) ? <button type="button" disabled={busy === issue.id} onClick={() => void mutate(issue, "DISMISS")}>Відхилити</button> : <button type="button" disabled={busy === issue.id} onClick={() => void mutate(issue, "REOPEN")}>Відкрити знову</button>}
