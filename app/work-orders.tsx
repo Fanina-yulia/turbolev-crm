@@ -153,7 +153,7 @@ export function WorkOrders() {
       const response = await fetch("/api/work-orders", { cache: "no-store" });
       const rawPayload: unknown = await response.json();
       const payload = parseWorkOrderListPayload(rawPayload);
-      if (!response.ok || !payload) throw new Error(payloadMessage(rawPayload, "Не вдалося завантажити замовлення-наряди."));
+      if (!response.ok || !payload) throw new Error(payloadMessage(rawPayload, "Не вдалося завантажити комерційні пропозиції."));
       const rawRows = payload.workOrders;
       let numberMap = new Map<string, number>();
       if (rawRows.length) {
@@ -223,16 +223,16 @@ export function WorkOrders() {
   }
 
   function chooseFilter(code: string) {
-    navigateCrm("Замовлення-наряди", code === "ALL" ? {} : { status: code });
+    navigateCrm("Комерційна пропозиція", code === "ALL" ? {} : { status: code });
   }
 
   function chooseWorkOrder(item: WorkOrderRow) {
-    navigateCrm("Замовлення-наряди", routeForWorkOrder(item.id));
+    navigateCrm("Комерційна пропозиція", routeForWorkOrder(item.id));
   }
 
   function chooseTab(tab: WorkOrderTab) {
     if (!detail) return;
-    navigateCrm("Замовлення-наряди", routeForWorkOrder(detail.id, tab));
+    navigateCrm("Комерційна пропозиція", routeForWorkOrder(detail.id, tab));
   }
 
   function openDocuments() {
@@ -251,7 +251,7 @@ export function WorkOrders() {
 
   async function runTransition(transition: Transition) {
     if (!detail || !transition.allowed || busyTransition) return;
-    if (transition.to === "CLOSED" && !window.confirm("Підтвердити видачу авто клієнту та закриття замовлення-наряду?")) return;
+    if (transition.to === "CLOSED" && !window.confirm("Підтвердити видачу авто клієнту та закриття комерційної пропозиції?")) return;
     setBusyTransition(transition.to);
     setMessage(null);
     try {
@@ -268,7 +268,7 @@ export function WorkOrders() {
       }
       const workOrder = parseWorkOrderTransitionPayload(rawPayload);
       if (!workOrder) throw new Error(payloadMessage(rawPayload, "Перехід не виконано."));
-      setMessage({ kind: "success", text: transition.to === "CLOSED" ? "Авто видано клієнту. Замовлення-наряд закрито." : `Статус змінено: ${workOrder.statusLabel}.` });
+      setMessage({ kind: "success", text: transition.to === "CLOSED" ? "Авто видано клієнту. Комерційна пропозиція закрито." : `Статус змінено: ${workOrder.statusLabel}.` });
       await Promise.all([loadRows(), loadDetail(detail.id)]);
     } catch (error) {
       setMessage({ kind: "error", text: error instanceof Error ? error.message : "Не вдалося змінити статус." });
@@ -283,7 +283,7 @@ export function WorkOrders() {
     <header className={styles.head}>
       <div>
         <p className={styles.eyebrow}>СЕРВІС · ЗАМОВЛЕННЯ-НАРЯДИ</p>
-        <h1>Замовлення-наряди</h1>
+        <h1>Комерційна пропозиція</h1>
         <p>Один наряд веде автомобіль від підтвердженої діагностики до ремонту, контролю якості та оплати. Усі дії зібрані в одній картці без дублювання даних.</p>
       </div>
       <button className={styles.refresh} type="button" onClick={() => void loadRows()} disabled={loading}>{loading ? "Оновлюю…" : "Оновити"}</button>
@@ -316,7 +316,7 @@ export function WorkOrders() {
 
     <div className={styles.layout}>
       <section className={styles.list}>
-        {loading && !rows.length ? <div className={styles.empty}>Завантажую замовлення-наряди…</div> : !filtered.length ? <div className={styles.empty}>За вибраним статусом або пошуком нарядів немає.</div> : filtered.map((item) => <button type="button" key={item.id} className={`${styles.row} ${selectedId === item.id ? styles.rowActive : ""}`} onClick={() => chooseWorkOrder(item)}>
+        {loading && !rows.length ? <div className={styles.empty}>Завантажую комерційні пропозиції…</div> : !filtered.length ? <div className={styles.empty}>За вибраним статусом або пошуком нарядів немає.</div> : filtered.map((item) => <button type="button" key={item.id} className={`${styles.row} ${selectedId === item.id ? styles.rowActive : ""}`} onClick={() => chooseWorkOrder(item)}>
           <div>
             <div className={styles.rowTitle}><span style={{ fontFamily: "ui-monospace,SFMono-Regular,Menlo,monospace", fontWeight: 850, fontSize: 12, color: "var(--orange)" }}>{formatWorkOrderNumber(item.number)}</span><strong>{vehicleName(item)}</strong>{item.vehicle.plateNumber && <span className={styles.plate}>{item.vehicle.plateNumber}</span>}</div>
             <div className={styles.rowMeta}>{item.client.name || "Клієнт без імені"} · {item.client.phone}<br/>Оновлено {formatDate(item.updatedAt)}</div>
@@ -326,7 +326,7 @@ export function WorkOrders() {
       </section>
 
       <aside className={styles.detail}>
-        {detailLoading && !detail ? <div className={styles.empty}>Завантажую картку…</div> : !detail ? <div className={styles.empty}>Оберіть замовлення-наряд зі списку.</div> : <>
+        {detailLoading && !detail ? <div className={styles.empty}>Завантажую картку…</div> : !detail ? <div className={styles.empty}>Оберіть комерційна пропозиція зі списку.</div> : <>
           <div className={styles.detailSticky}>
             <div className={styles.summaryTop}>
               <div className={styles.summaryIdentity}>
@@ -344,7 +344,7 @@ export function WorkOrders() {
               <span><small>Оплачено</small><b>{commercialSummary ? money(commercialSummary.paid) : "…"}</b></span>
               <span><small>Борг</small><b className={commercialSummary?.outstanding ? styles.debt : ""}>{commercialSummary ? money(commercialSummary.outstanding) : "…"}</b></span>
             </div>
-            <nav className={styles.tabs} aria-label="Розділи замовлення-наряду">
+            <nav className={styles.tabs} aria-label="Розділи комерційної пропозиції">
               {WORK_ORDER_TABS.map(([code, label]) => <button type="button" key={code} className={activeTab === code ? styles.activeTab : ""} onClick={() => chooseTab(code)}>{label}</button>)}
             </nav>
           </div>
