@@ -14,6 +14,7 @@ import {
   beginIdempotentOperation,
   completeIdempotentOperation,
   correlationIdForRequest,
+  enforceIntegrationRateLimit,
   integrationRateLimitHeaders,
   prepareIntegrationRequest,
   requiredIdempotencyKey,
@@ -33,6 +34,9 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const POST_OPERATION = "POST:/api/integration/v1/vehicle/resolve";
+const RESOLVE_BURST_BUDGET = { bucketKey: "vehicle.resolve", limit: 30, windowSeconds: 60 } as const;
+const RESOLVE_ENUMERATION_BUDGET = { bucketKey: "vehicle.resolve.enumeration", limit: 300, windowSeconds: 3_600 } as const;
+const POLL_BURST_BUDGET = { bucketKey: "vehicle.resolve.poll", limit: 120, windowSeconds: 60 } as const;
 
 function meta(correlationId: string) {
   return {
@@ -103,6 +107,17 @@ function unknownFailure(error: unknown, correlationId: string, rateLimit: Integr
   return failure("INTERNAL_ERROR", 500, "Internal integration error.", correlationId, rateLimit, { retryable: true });
 }
 
+function rateLimited(
+  message: string,
+  correlationId: string,
+  limit: IntegrationRateLimitResult,
+) {
+  return failure("RATE_LIMITED", 429, message, correlationId, limit, {
+    retryable: true,
+    details: { retryAfterSeconds: limit.retryAfterSeconds },
+  });
+}
+
 export async function POST(request: Request) {
   let correlationId = correlationIdForRequest(request);
   let rateLimit: IntegrationRateLimitResult | null = null;
@@ -110,16 +125,19 @@ export async function POST(request: Request) {
 
   try {
     const context = await prepareIntegrationRequest(request, "vehicle:resolve", {
-      rateLimit: { bucketKey: "vehicle.resolve", limit: 30, windowSeconds: 60 },
+      rateLimit: RESOLVE_BURST_BUDGET,
     });
     correlationId = context.correlationId;
     rateLimit = context.rateLimit;
 
     if (rateLimit && !rateLimit.allowed) {
-      return failure("RATE_LIMITED", 429, "Vehicle resolution rate limit exceeded.", correlationId, rateLimit, {
-        retryable: true,
-        details: { retryAfterSeconds: rateLimit.retryAfterSeconds },
-      });
+      return rateLimited("Vehicle resolution burst rate limit exceeded.", correlationId, rateLimit);
+    }
+
+    const enumerationLimit = await enforceIntegrationRateLimit(context.service, RESOLVE_ENUMERATION_BUDGET);
+    if (!enumerationLimit.allowed) {
+      rateLimit = enumerationLimit;
+      return rateLimited("Vehicle resolution enumeration budget exceeded.", correlationId, enumerationLimit);
     }
 
     let payload: unknown;
@@ -195,16 +213,13 @@ export async function GET(request: Request) {
 
   try {
     const context = await prepareIntegrationRequest(request, "vehicle:read", {
-      rateLimit: { bucketKey: "vehicle.resolve.poll", limit: 120, windowSeconds: 60 },
+      rateLimit: POLL_BURST_BUDGET,
     });
     correlationId = context.correlationId;
     rateLimit = context.rateLimit;
 
     if (rateLimit && !rateLimit.allowed) {
-      return failure("RATE_LIMITED", 429, "Vehicle resolution polling rate limit exceeded.", correlationId, rateLimit, {
-        retryable: true,
-        details: { retryAfterSeconds: rateLimit.retryAfterSeconds },
-      });
+      return rateLimited("Vehicle resolution polling rate limit exceeded.", correlationId, rateLimit);
     }
 
     const resolutionId = validateOpaqueId(new URL(request.url).searchParams.get("resolutionId"), "resolutionId");
