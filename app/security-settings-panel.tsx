@@ -12,7 +12,7 @@ type UserItem = { id:string; name:string; email:string|null; authLinked:boolean;
 type Catalog = { ok:boolean; config:{enforcementMode:"SHADOW"|"ENFORCED";bootstrapCompleted:boolean;allowSelfRegistration:boolean}|null; roles:Role[]; permissions:Permission[]; users:UserItem[] };
 
 const SCOPE_LABELS:Record<Scope,string>={SELF:"Тільки своє",ASSIGNED:"Призначене",TEAM:"Команда",LOCATION:"Станція",ALL:"Вся мережа"};
-const MODULE_LABELS:Record<string,string>={OVERVIEW:"Огляд станції",COMMUNICATIONS:"Комунікації",LEADS:"Ліди",CLIENTS:"Клієнти та авто",PLANNER:"Планувальник",DIAGNOSTICS:"Діагностика",WORK_ORDERS:"Замовлення-наряди",PRODUCTION:"Виробництво",QC:"Контроль якості",PARTS:"Підбір запчастин",PROCUREMENT:"Закупівлі",FINANCE:"Фінанси",PAYMENTS:"Оплати",PAYROLL:"Зарплата",PERSONNEL:"Персонал",WARRANTY:"Гарантії",ANALYTICS:"Аналітика",SETTINGS:"Налаштування",AUDIT:"Аудит",SECURITY:"Безпека"};
+const MODULE_LABELS:Record<string,string>={OVERVIEW:"Огляд станції",COMMUNICATIONS:"Комунікації",LEADS:"Ліди",CLIENTS:"Клієнти та авто",PLANNER:"Планувальник",DIAGNOSTICS:"Діагностика",WORK_ORDERS:"Комерційна пропозиція",PRODUCTION:"Виробництво",QC:"Контроль якості",PARTS:"Підбір запчастин",PROCUREMENT:"Закупівлі",FINANCE:"Фінанси",PAYMENTS:"Оплати",PAYROLL:"Зарплата",PERSONNEL:"Персонал",WARRANTY:"Гарантії",ANALYTICS:"Аналітика",SETTINGS:"Налаштування",AUDIT:"Аудит",SECURITY:"Безпека"};
 
 async function jsonRequest(url:string, options?:RequestInit){
   const response=await fetch(url,{cache:"no-store",...options,headers:{"Content-Type":"application/json",Accept:"application/json",...(options?.headers||{})}});
