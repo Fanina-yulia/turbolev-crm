@@ -81,12 +81,12 @@ function StationManagerLinkedCabinet({ data, userName }: { data: LinkedStationMa
   const flow: FlowRoute[] = [
     { label: "Заплановано сьогодні", value: data.flow.booked, section: "Планувальник", params: { status: "BOOKED" } },
     { label: "Приймання / діагностика", value: data.flow.diagnostics, section: "Діагностика" },
-    { label: "Погодження", value: data.flow.approval, section: "Замовлення-наряди", params: { status: "WAITING_APPROVAL" } },
+    { label: "Погодження", value: data.flow.approval, section: "Комерційна пропозиція", params: { status: "WAITING_APPROVAL" } },
     { label: "Очікують деталі", value: data.flow.waitingParts, section: "Виробництво", params: { status: "WAITING_PARTS" } },
     { label: "Готові до ремонту", value: data.flow.readyForRepair, section: "Виробництво", params: { status: "READY_FOR_REPAIR" } },
     { label: "У ремонті", value: data.flow.inRepair, section: "Виробництво", params: { status: "IN_REPAIR" } },
     { label: "Контроль якості", value: data.flow.qc, section: "Контроль якості", params: { scope: "waiting" } },
-    { label: "Готові до видачі", value: data.flow.ready, section: "Замовлення-наряди", params: { status: "READY_FOR_PICKUP" } },
+    { label: "Готові до видачі", value: data.flow.ready, section: "Комерційна пропозиція", params: { status: "READY_FOR_PICKUP" } },
   ];
 
   const filteredAttention = useMemo(
@@ -179,7 +179,7 @@ function StationManagerLinkedCabinet({ data, userName }: { data: LinkedStationMa
         <div className={styles.quickGrid}>
           <button type="button" onClick={() => navigateCrm("Нові звернення")}>Нові звернення<span>дзвінки та вхідні запити →</span></button>
           <button type="button" onClick={() => navigateCrm("Діагностика")}>Діагностика<span>черга та підтвердження →</span></button>
-          <button type="button" onClick={() => navigateCrm("Замовлення-наряди")}>Замовлення-наряди<span>КП, погодження та статуси →</span></button>
+          <button type="button" onClick={() => navigateCrm("Комерційна пропозиція")}>Комерційна пропозиція<span>КП, погодження та статуси →</span></button>
           <button type="button" onClick={() => navigateCrm("Виробництво", { status: "IN_REPAIR" })}>Ремонт у роботі<span>пости та активні роботи →</span></button>
           <button type="button" onClick={() => navigateCrm("Контроль якості")}>Контроль якості<span>черга QC та результати →</span></button>
           <button type="button" onClick={() => navigateCrm("Підбір запчастин")}>Запчастини<span>підбір і постачання →</span></button>
