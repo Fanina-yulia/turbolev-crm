@@ -232,7 +232,7 @@ export async function ensurePartsRequestTx(
 
   const partLines = estimateState.lines.filter((line) => line.type === "PART");
   if (!partLines.length) {
-    throw new WorkOrderCommercialError("NO_PART_LINES", "У замовленні-наряді немає деталей, для яких потрібен PartsRequest.");
+    throw new WorkOrderCommercialError("NO_PART_LINES", "У комерційній пропозиції немає деталей, для яких потрібен PartsRequest.");
   }
 
   const request = await tx.partsRequest.create({
