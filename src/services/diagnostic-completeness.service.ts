@@ -14,21 +14,6 @@ import {
   StructuredDiagnosticError,
 } from "@/src/services/structured-diagnostics.service";
 
-const AUTO_OK_SECTION_CODES = new Set([
-  "FRONT_SUSPENSION",
-  "FRONT_STEERING",
-  "FRONT_DRIVE",
-  "FRONT_BRAKES",
-  "REAR_SUSPENSION",
-  "REAR_BRAKES",
-  "AXLE_SEALS_FRONT",
-  "AXLE_SEALS_REAR",
-  "ENGINE_LEAKS",
-  "TRANSMISSION_LEAKS",
-  "EXHAUST",
-  "FLUIDS_EXTENDED",
-]);
-
 export type DiagnosticCompletion = {
   canSubmit: boolean;
   total: number;
@@ -99,11 +84,12 @@ export async function getRequiredDiagnosticCompletion(diagnosticRequestId: strin
   const required = checks.filter((item) => itemMetaById.get(item.templateItemId)?.isRequired !== false);
   const optional = checks.filter((item) => itemMetaById.get(item.templateItemId)?.isRequired === false);
   const isChecked = (state: DiagnosticCheckState) => state !== DiagnosticCheckState.NOT_CHECKED;
-  const isAutoFill = (templateItemId: string) => AUTO_OK_SECTION_CODES.has(itemMetaById.get(templateItemId)?.sectionCode || "");
   const requiredChecked = required.filter((item) => isChecked(item.state)).length;
   const optionalChecked = optional.filter((item) => isChecked(item.state)).length;
-  const requiredBlocking = required.filter((item) => !isChecked(item.state) && !isAutoFill(item.templateItemId));
-  const autoFillRemaining = required.filter((item) => !isChecked(item.state) && isAutoFill(item.templateItemId)).length;
+  // The mechanic records exceptions only. Every untouched applicable check is
+  // confirmed as OK when the diagnostic is submitted, regardless of section.
+  const requiredBlocking: typeof required = [];
+  const autoFillRemaining = required.filter((item) => !isChecked(item.state)).length;
 
   return {
     canSubmit: requiredBlocking.length === 0,
@@ -123,22 +109,9 @@ async function markAutoFillChecksOk(diagnosticRequestId: string) {
   const inspectionIds = await effectiveInspectionIds(diagnosticRequestId);
   if (!inspectionIds.length) return 0;
 
-  const sections = await prisma.diagnosticTemplateSection.findMany({
-    where: { code: { in: Array.from(AUTO_OK_SECTION_CODES) } },
-    select: { id: true },
-  });
-  if (!sections.length) return 0;
-
-  const items = await prisma.diagnosticTemplateItem.findMany({
-    where: { sectionId: { in: sections.map((section) => section.id) } },
-    select: { id: true },
-  });
-  if (!items.length) return 0;
-
   const result = await prisma.diagnosticCheck.updateMany({
     where: {
       inspectionId: { in: inspectionIds },
-      templateItemId: { in: items.map((item) => item.id) },
       state: DiagnosticCheckState.NOT_CHECKED,
     },
     data: {

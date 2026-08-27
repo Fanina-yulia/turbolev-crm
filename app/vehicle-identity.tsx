@@ -2,6 +2,7 @@
 
 import { VehicleBrandLogo } from "./vehicle-brand-logo";
 import { VehicleRender } from "./vehicle-render";
+import { VehiclePlate as SharedVehiclePlate } from "./vehicle-plate";
 import styles from "./vehicle-identity.module.css";
 
 export type VehicleIdentityData = {
@@ -31,12 +32,7 @@ export function vehicleIdentityTitle(vehicle: VehicleIdentityData) {
 }
 
 export function VehiclePlate({ plateNumber, compact = false }: { plateNumber?: string | null; compact?: boolean }) {
-  const value = (plateNumber || "").trim().toUpperCase();
-  if (!value) return <span className={`${styles.plateMissing} ${compact ? styles.plateCompact : ""}`}>Без держномера</span>;
-  return <span className={`${styles.plate} ${compact ? styles.plateCompact : ""}`} aria-label={`Державний номер ${value}`}>
-    <span className={styles.uaBand}><i/><b>UA</b></span>
-    <strong>{value}</strong>
-  </span>;
+  return <SharedVehiclePlate value={plateNumber} size={compact ? "xs" : "sm"}/>;
 }
 
 export function VehicleVisual({ vehicle, variant = "summary" }: { vehicle: VehicleIdentityData; variant?: "summary" | "choice" | "hero" }) {

@@ -122,7 +122,6 @@ const SYSTEM_SECTION_CODES = new Set([
   "EXHAUST",
   "FLUIDS_EXTENDED",
 ]);
-const AUTO_OK_SECTION_CODES = new Set([...CHASSIS_SECTION_CODES, ...SYSTEM_SECTION_CODES]);
 const MAX_PHOTO_BYTES = 4 * 1024 * 1024;
 const MAX_PHOTO_EDGE = 1920;
 const ACCEPTED_PHOTO_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
@@ -386,10 +385,10 @@ export function MechanicDiagnosticMatrix({ diagnosticId, onBack, onChanged }: { 
       if (!changed) return current;
 
       const allItems = inspections.flatMap((inspection) => inspection.sections.flatMap((section) => section.items));
-      const allItemsWithSection = inspections.flatMap((inspection) => inspection.sections.flatMap((section) => section.items.map((item) => ({ item, sectionCode: section.code }))));
       const requiredChecked = allItems.filter((item) => item.state !== "NOT_CHECKED").length;
-      const requiredRemaining = allItemsWithSection.filter(({ item, sectionCode }) => item.state === "NOT_CHECKED"
-        && !AUTO_OK_SECTION_CODES.has(sectionCode)).length;
+      // Only exceptions are entered manually. All untouched items are saved as
+      // "Норма" by the server when the mechanic completes the diagnostic.
+      const requiredRemaining = 0;
       const canSubmit = allItems.length > 0 && requiredRemaining === 0;
 
       return {

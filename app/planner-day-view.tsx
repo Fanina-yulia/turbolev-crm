@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent as ReactDragEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { zonedDateTimeToDate } from "@/src/lib/zoned-time";
+import { VehiclePlate } from "./vehicle-plate";
 import styles from "./planner-day-view.module.css";
 import compactStyles from "./planner-day-view-compact.module.css";
 
@@ -637,7 +638,7 @@ export function PlannerDayView<TAppointment extends AppointmentBase>({ day, loca
               />
             </>}
             <small className={styles.eventTime}>{minuteLabel(start)}–{minuteLabel(end)}</small>
-            <strong>{item.plateNumber || "БЕЗ НОМЕРА"}</strong>
+            <VehiclePlate value={item.plateNumber} size="xs" />
             <b>{item.vehicleLabel || "Автомобіль"}</b>
             <span>{item.problem || item.customerName || item.mechanic?.name || "Запис на СТО"}</span>
             <em><i/>{status.label}</em>

@@ -2,17 +2,6 @@ import { DiagnosticCheckState } from "@/src/generated/prisma/client";
 import { getPrisma } from "@/src/lib/prisma";
 import type { DiagnosticCompletion } from "@/src/services/diagnostic-completeness.service";
 
-const AUTO_OK_SECTION_CODES = new Set([
-  "FRONT_SUSPENSION",
-  "FRONT_STEERING",
-  "FRONT_DRIVE",
-  "FRONT_BRAKES",
-  "REAR_SUSPENSION",
-  "REAR_BRAKES",
-  "AXLE_SEALS_FRONT",
-  "AXLE_SEALS_REAR",
-]);
-
 type ViewItem = {
   id?: string | null;
   templateItemId: string;
@@ -67,8 +56,10 @@ export async function getCompletionFromMechanicView(inspections: ViewInspection[
   const optional = rows.filter((item) => requiredById.get(item.templateItemId) === false);
   const requiredChecked = required.filter((item) => isChecked(item.state)).length;
   const optionalChecked = optional.filter((item) => isChecked(item.state)).length;
-  const requiredBlocking = required.filter((item) => !isChecked(item.state) && !AUTO_OK_SECTION_CODES.has(item.sectionCode));
-  const autoFillRemaining = required.filter((item) => !isChecked(item.state) && AUTO_OK_SECTION_CODES.has(item.sectionCode)).length;
+  // Mechanics mark only problems. Unmarked checks are saved as OK on submit,
+  // so an untouched check must never disable the completion action.
+  const requiredBlocking: typeof required = [];
+  const autoFillRemaining = required.filter((item) => !isChecked(item.state)).length;
 
   return {
     canSubmit: requiredBlocking.length === 0,

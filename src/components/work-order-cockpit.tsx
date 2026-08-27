@@ -1,4 +1,5 @@
 import { VehicleRender } from "@/app/vehicle-render";
+import { VehiclePlate } from "@/app/vehicle-plate";
 import styles from "./work-order-cockpit.module.css";
 
 export type AttentionCar = {
@@ -60,7 +61,7 @@ export function WorkOrderCockpit({ cars,onOpen,onAll }: { cars: AttentionCar[]; 
             <div className={styles.identity}>
               <strong className={styles.title}>{item.brand} {item.model} · {item.year}</strong>
               <div className={styles.meta}>
-                <span className={styles.plate} aria-label={`Державний номер ${item.plate}`}>{item.plate}</span>
+                <VehiclePlate value={item.plate} size="sm" />
                 <span className={`badge ${item.tone}`}>{item.status}</span>
               </div>
               {item.problem&&<small className={styles.problem}>{item.problem}</small>}

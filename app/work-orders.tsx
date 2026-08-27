@@ -17,6 +17,7 @@ import {
 import { formatWorkOrderNumber } from "@/src/domain/work-order-number";
 import { navigateCrm, readCrmRoute, type CrmRouteParams } from "./crm-route";
 import { WorkOrderCommercialPanel, type WorkOrderCommercialSummary, type WorkOrderCommercialView } from "./work-order-commercial-panel";
+import { VehiclePlate } from "./vehicle-plate";
 import styles from "./work-orders.module.css";
 
 type WorkOrderRow = WorkOrderListItemContract;
@@ -318,7 +319,7 @@ export function WorkOrders() {
       <section className={styles.list}>
         {loading && !rows.length ? <div className={styles.empty}>Завантажую комерційні пропозиції…</div> : !filtered.length ? <div className={styles.empty}>За вибраним статусом або пошуком комерційних пропозицій немає.</div> : filtered.map((item) => <button type="button" key={item.id} className={`${styles.row} ${selectedId === item.id ? styles.rowActive : ""}`} onClick={() => chooseWorkOrder(item)}>
           <div>
-            <div className={styles.rowTitle}><span style={{ fontFamily: "ui-monospace,SFMono-Regular,Menlo,monospace", fontWeight: 850, fontSize: 12, color: "var(--orange)" }}>{formatWorkOrderNumber(item.number)}</span><strong>{vehicleName(item)}</strong>{item.vehicle.plateNumber && <span className={styles.plate}>{item.vehicle.plateNumber}</span>}</div>
+            <div className={styles.rowTitle}><span style={{ fontFamily: "ui-monospace,SFMono-Regular,Menlo,monospace", fontWeight: 850, fontSize: 12, color: "var(--orange)" }}>{formatWorkOrderNumber(item.number)}</span><strong>{vehicleName(item)}</strong>{item.vehicle.plateNumber && <VehiclePlate value={item.vehicle.plateNumber} size="xs" />}</div>
             <div className={styles.rowMeta}>{item.client.name || "Клієнт без імені"} · {item.client.phone}<br/>Оновлено {formatDate(item.updatedAt)}</div>
           </div>
           <span className={styles.status}>{item.statusLabel}</span>
@@ -330,7 +331,7 @@ export function WorkOrders() {
           <div className={styles.detailSticky}>
             <div className={styles.summaryTop}>
               <div className={styles.summaryIdentity}>
-                <div className={styles.summaryPlate}>{detail.vehicle.plateNumber || "БЕЗ НОМЕРА"}</div>
+                <div className={styles.summaryPlate}><VehiclePlate value={detail.vehicle.plateNumber} size="md" /></div>
                 <div><small>{formatWorkOrderNumber(selectedNumber)}</small><h2>{vehicleName(detail)}</h2><button type="button" onClick={() => navigateCrm("Клієнти", { clientId: detail.client.id })}>{detail.client.name || detail.client.phone}</button></div>
               </div>
               <div className={styles.summaryStatus}>
@@ -355,7 +356,7 @@ export function WorkOrders() {
                 <div className={styles.field}><span>Номер КП</span><strong>{formatWorkOrderNumber(selectedNumber)}</strong></div>
                 <div className={styles.field}><span>Клієнт</span><button type="button" onClick={() => navigateCrm("Клієнти", { clientId: detail.client.id })}><strong>{detail.client.name || detail.client.phone}</strong></button></div>
                 <div className={styles.field}><span>Автомобіль</span><button type="button" onClick={() => navigateCrm("Авто", { vehicleId: detail.vehicle.id })}><strong>{vehicleName(detail)}</strong></button></div>
-                <div className={styles.field}><span>Держномер</span><strong>{detail.vehicle.plateNumber || "—"}</strong></div>
+                <div className={styles.field}><span>Держномер</span><VehiclePlate value={detail.vehicle.plateNumber} size="sm" /></div>
                 <div className={styles.field}><span>VIN</span><strong>{detail.vehicle.vin || "—"}</strong></div>
                 <div className={styles.field}><span>Пробіг</span><strong>{detail.vehicle.mileageKm ? `${detail.vehicle.mileageKm.toLocaleString("uk-UA")} км` : "—"}</strong></div>
                 <div className={styles.field}><span>Планувальник</span><strong>{detail.appointment ? `${formatDate(detail.appointment.plannedStartAt)} · ${detail.appointment.post?.name || "Без поста"}` : "Не зв'язано"}</strong></div>
