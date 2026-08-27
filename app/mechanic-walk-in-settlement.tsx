@@ -23,6 +23,11 @@ export type WalkInSettlementPayload = {
   error?: string;
 };
 
+type PaymentSuccess = {
+  method: "CASH" | "TERMINAL";
+  amount: string;
+};
+
 function vehicleLabel(data: WalkInSettlementPayload) {
   const vehicle = data.vehicle;
   if (!vehicle) return "Автомобіль";
@@ -44,6 +49,7 @@ export function MechanicWalkInSettlement({ diagnosticId, data, onRefresh, onBack
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
   const [amount, setAmount] = useState(data.price?.amount ? String(Number(data.price.amount)) : "");
+  const [success, setSuccess] = useState<PaymentSuccess | null>(null);
 
   async function postAction(body: Record<string, unknown>) {
     const response = await fetch(`/api/diagnostics/${encodeURIComponent(diagnosticId)}/walk-in`, {
@@ -64,17 +70,16 @@ export function MechanicWalkInSettlement({ diagnosticId, data, onRefresh, onBack
       setError("Введіть суму оплати більше 0 грн.");
       return;
     }
-    const label = paymentMethod === "CASH" ? "готівкою" : "терміналом";
-    if (!window.confirm(`Підтвердити оплату ${money(normalizedAmount.toFixed(2), "UAH")} ${label}?`)) return;
+
     setBusy(`PAY${paymentMethod}`);
     setError("");
     try {
       await postAction({ action: "PAY", paymentMethod, amount: normalizedAmount.toFixed(2) });
-      // The mechanic has one action: persist payment and close the walk-in visit.
       await postAction({ action: "COMPLETE_VISIT" });
       window.dispatchEvent(new CustomEvent("turbolev:mechanic-refresh"));
       window.dispatchEvent(new CustomEvent("turbolev:data-changed"));
-      onBack();
+      setSuccess({ method: paymentMethod, amount: normalizedAmount.toFixed(2) });
+      window.setTimeout(onBack, 1200);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Не вдалося виконати дію");
       await onRefresh().catch(() => undefined);
@@ -97,6 +102,17 @@ export function MechanicWalkInSettlement({ diagnosticId, data, onRefresh, onBack
     } finally {
       setBusy("");
     }
+  }
+
+  if (success) {
+    return <div className={styles.page}>
+      <main className={styles.center}>
+        <div className={styles.successIcon}>✓</div>
+        <h1>Дякую!</h1>
+        <p>Оплату {success.method === "CASH" ? "готівкою" : "терміналом"} прийнято. Діагностику завершено.</p>
+        <div className={styles.paidLine}>Оплачено: <b>{money(success.amount, "UAH")}</b></div>
+      </main>
+    </div>;
   }
 
   if (data.completed) {
@@ -152,10 +168,10 @@ export function MechanicWalkInSettlement({ diagnosticId, data, onRefresh, onBack
         <small>{data.price?.label || "Механік вносить фактично прийняту суму."}</small>
         <div className={styles.methods}>
           <button type="button" disabled={!data.canPay || Boolean(busy)} onClick={() => void pay("CASH")}>
-            <b>💵</b><strong>Оплачено готівкою</strong><span>{busy === "PAYCASH" ? "Фіксую оплату…" : "Прийняти готівку"}</span>
+            <b>💵</b><strong>Готівка</strong><span>{busy === "PAYCASH" ? "Фіксую оплату…" : "Прийняти оплату"}</span>
           </button>
           <button type="button" disabled={!data.canPay || Boolean(busy)} onClick={() => void pay("TERMINAL")}>
-            <b>💳</b><strong>Оплачено терміналом</strong><span>{busy === "PAYTERMINAL" ? "Фіксую оплату…" : "Підтвердити оплату через POS"}</span>
+            <b>💳</b><strong>Термінал</strong><span>{busy === "PAYTERMINAL" ? "Фіксую оплату…" : "Прийняти оплату"}</span>
           </button>
         </div>
       </section> : <section className={styles.paymentCard}>
