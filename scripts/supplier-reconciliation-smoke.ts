@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { getPrisma } from "../src/lib/prisma";
 import {
   escalateSupplierReconciliationTask,
@@ -6,6 +7,7 @@ import {
   rejectSupplierReconciliationTask,
   resolveSupplierReconciliationTask,
   searchSupplierReconciliationProducts,
+  SupplierReconciliationError,
 } from "../src/services/supplier-reconciliation.service";
 
 const prisma = getPrisma();
@@ -64,10 +66,10 @@ const batch = await prisma.supplierImportBatch.create({
     adapterVersion: "qa-reconciliation/1",
     schemaVersion: "qa/1",
     semanticFingerprint: `fingerprint-${stamp}`,
-    recordsReceived: 5,
-    recordsValid: 5,
+    recordsReceived: 6,
+    recordsValid: 6,
     recordsMatched: 0,
-    recordsAmbiguous: 5,
+    recordsAmbiguous: 6,
   },
 });
 
@@ -180,6 +182,35 @@ assert.equal(await prisma.product.count(), productCountBeforeEscalate);
 assert.equal(await prisma.supplierOffer.count({ where: { supplierId: supplier.id, integrationScope: stamp } }), 0);
 assert.equal(await prisma.auditEvent.count({ where: { entityId: escalateFixture.task.id, action: "SUPPLIER_RECONCILIATION_ESCALATED" } }), 1);
 
+// Two staff actions targeting the same canonical mapping may race. Exactly one is
+// allowed to commit; the other must fail closed via advisory lock or closed-state recheck.
+const raceFixture = await makeTask("RACE", "AMBIGUOUS");
+const raceResults = await Promise.allSettled([
+  resolveSupplierReconciliationTask({ ...actor, taskId: raceFixture.task.id, productId: productA.id, notes: "race A" }),
+  resolveSupplierReconciliationTask({ ...actor, taskId: raceFixture.task.id, productId: productB.id, notes: "race B" }),
+]);
+const fulfilledRace = raceResults.filter((result): result is PromiseFulfilledResult<Awaited<ReturnType<typeof resolveSupplierReconciliationTask>>> => result.status === "fulfilled");
+const rejectedRace = raceResults.filter((result): result is PromiseRejectedResult => result.status === "rejected");
+assert.equal(fulfilledRace.length, 1);
+assert.equal(rejectedRace.length, 1);
+assert.equal(fulfilledRace[0].value.status, "RESOLVED");
+assert.ok(rejectedRace[0].reason instanceof SupplierReconciliationError);
+assert.ok(["CONCURRENT_UPDATE", "INVALID_STATE"].includes((rejectedRace[0].reason as SupplierReconciliationError).code));
+const raceTask = await prisma.supplierReconciliationTask.findUniqueOrThrow({ where: { id: raceFixture.task.id } });
+assert.equal(raceTask.status, "RESOLVED");
+const raceMapping = await prisma.supplierIdentityMapping.findUniqueOrThrow({
+  where: {
+    supplierId_integrationScope_supplierRecordKey: {
+      supplierId: supplier.id,
+      integrationScope: stamp,
+      supplierRecordKey: raceFixture.record.supplierRecordKey,
+    },
+  },
+});
+assert.equal(raceMapping.productId, fulfilledRace[0].value.product.id);
+assert.equal(await prisma.auditEvent.count({ where: { entityId: raceFixture.task.id, action: "SUPPLIER_RECONCILIATION_RESOLVED" } }), 1);
+assert.equal(await prisma.supplierIdentityMapping.count({ where: { supplierId: supplier.id, integrationScope: stamp, supplierRecordKey: raceFixture.record.supplierRecordKey } }), 1);
+
 const secretFixture = await makeTask("SECRET", "AMBIGUOUS", { secretEvidence: true });
 const listed = await listSupplierReconciliationTasks({ statuses: ["OPEN"], q: secretFixture.record.supplierRecordKey, take: 10 });
 assert.equal(listed.tasks.length, 1);
@@ -192,6 +223,23 @@ const activeSearch = await searchSupplierReconciliationProducts(`${stamp}-A`, 30
 assert.ok(activeSearch.some((row) => row.id === productA.id));
 const inactiveSearch = await searchSupplierReconciliationProducts("Reconciliation hidden product", 30);
 assert.equal(inactiveSearch.some((row) => row.id === inactiveProduct.id), false);
+
+// Canonical supplier identity is global, so the route must fail closed even if the
+// system's global enforcement mode is SHADOW and must require ALL scope under the
+// same PARTS_* permissions used by the /api/parts security policy.
+const routeSource = readFileSync(
+  new URL("../app/api/parts/supplier-reconciliation/route.ts", import.meta.url),
+  "utf8",
+);
+assert.equal(routeSource.includes("authorizePermission"), true);
+assert.equal(routeSource.includes("strict: true"), true);
+assert.equal(routeSource.includes('minimumScope: "ALL"'), true);
+assert.equal(routeSource.includes("PERMISSIONS.PARTS_READ"), true);
+assert.equal(routeSource.includes("PERMISSIONS.PARTS_WRITE"), true);
+assert.equal(routeSource.includes('enforcementMode === "ENFORCED"'), false);
+assert.equal(routeSource.includes("getAccessContext"), false);
+assert.equal(routeSource.includes("PERMISSIONS.PROCUREMENT_READ"), false);
+assert.equal(routeSource.includes("PERMISSIONS.PROCUREMENT_WRITE"), false);
 
 console.log("supplier-reconciliation-smoke: PASS");
 await prisma.$disconnect();
