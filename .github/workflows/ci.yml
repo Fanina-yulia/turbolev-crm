@@ -200,6 +200,8 @@ jobs:
         env:
           NODE_OPTIONS: --conditions=react-server
         run: npx --no-install tsx scripts/communication-activation-diagnostics-smoke.ts
+      - name: Ukrainian license plate smoke test
+        run: npx --no-install tsx scripts/ukrainian-license-plate-smoke.ts
 
       - name: Production build
         run: npm run build
