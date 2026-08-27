@@ -167,7 +167,7 @@ export function ProcurementQueue() {
   }
 
   function openWorkOrder(card: Card) {
-    navigateCrm("Замовлення-наряди", { workOrderId: card.workOrderId, workOrderTab: "parts" });
+    navigateCrm("Комерційна пропозиція", { workOrderId: card.workOrderId, workOrderTab: "parts" });
   }
 
   if (loading && !data) return <div className={styles.state}>Завантажую закупівлі та склад…</div>;
@@ -214,7 +214,7 @@ export function ProcurementQueue() {
                 </div>;
               })}</div>
               <footer>
-                <button type="button" className={styles.secondary} onClick={() => openWorkOrder(card)}>Відкрити ЗН</button>
+                <button type="button" className={styles.secondary} onClick={() => openWorkOrder(card)}>Відкрити КП</button>
                 {card.category === "SELECTING" && <button type="button" className={styles.secondary} onClick={() => openParts(card)}>Підібрати деталі</button>}
                 {data.canWrite && card.paymentRequired && !card.paymentConfirmedAt && <button type="button" className={styles.pay} disabled={Boolean(busy)} onClick={() => void act(card, "CONFIRM_PAYMENT")}>Підтвердити передоплату</button>}
                 {data.canWrite && !card.paymentRequired && ["SELECTED", "APPROVED", "ORDER_REQUIRED"].includes(card.status) && <button type="button" className={styles.secondary} disabled={Boolean(busy)} onClick={() => void act(card, "SET_PAYMENT_REQUIRED", { paymentRequired: true })}>Потрібна передоплата</button>}
