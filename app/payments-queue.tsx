@@ -227,13 +227,13 @@ export function PaymentsQueue() {
     </header>
 
     <section className={styles.kpis}>
-      <article><small>До отримання</small><strong>{money(outstandingTotal)}</strong><span>{rows.filter((row) => row.outstanding > 0).length} ЗН</span></article>
-      <article><small>Оплачено сьогодні</small><strong>{money(paidTodayTotal)}</strong><span>{counts.paidToday} ЗН</span></article>
-      <article className={debtTotal > 0 ? styles.dangerKpi : ""}><small>Прострочений борг</small><strong>{money(debtTotal)}</strong><span>{counts.debt} ЗН</span></article>
+      <article><small>До отримання</small><strong>{money(outstandingTotal)}</strong><span>{rows.filter((row) => row.outstanding > 0).length} КП</span></article>
+      <article><small>Оплачено сьогодні</small><strong>{money(paidTodayTotal)}</strong><span>{counts.paidToday} КП</span></article>
+      <article className={debtTotal > 0 ? styles.dangerKpi : ""}><small>Прострочений борг</small><strong>{money(debtTotal)}</strong><span>{counts.debt} КП</span></article>
     </section>
 
     <div className={styles.toolbar}>
-      <label className={styles.search}><span>⌕</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="ПІБ, телефон, номер авто, VIN або ЗН..." />{query && <button type="button" onClick={() => setQuery("")}>×</button>}</label>
+      <label className={styles.search}><span>⌕</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="ПІБ, телефон, номер авто, VIN або КП..." />{query && <button type="button" onClick={() => setQuery("")}>×</button>}</label>
     </div>
 
     <nav className={styles.tabs} aria-label="Черги оплат">
@@ -242,7 +242,7 @@ export function PaymentsQueue() {
 
     {error && <div className={styles.error}>{error}</div>}
     {notice && <div className={styles.state}>{notice}</div>}
-    {loading ? <div className={styles.state}>Завантажую касову чергу…</div> : !visible.length ? <div className={styles.state}>{routeWorkOrderId ? "Для цього ЗН немає доступного фінансового зобов’язання." : "У цій черзі зараз немає замовлень."}</div> : <section className={styles.list}>
+    {loading ? <div className={styles.state}>Завантажую касову чергу…</div> : !visible.length ? <div className={styles.state}>{routeWorkOrderId ? "Для цього КП немає доступного фінансового зобов’язання." : "У цій черзі зараз немає замовлень."}</div> : <section className={styles.list}>
       {visible.map((row) => <article className={`${styles.card} ${row.overdue ? styles.overdueCard : ""}`} key={row.obligationId}>
         <div className={styles.cardHead}>
           <button className={styles.woLink} type="button" onClick={() => navigateCrm("Комерційна пропозиція", { workOrderId: row.workOrderId, workOrderTab: "payment" })}>{row.workOrderLabel}</button>
