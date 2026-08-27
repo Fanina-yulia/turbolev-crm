@@ -101,7 +101,7 @@ export async function getServiceTimeline(scope: TimelineScope, options: Timeline
 
   for (const workOrder of workOrders) {
     const ctx = contextFor(workOrder.id);
-    push({ id: `wo-created-${workOrder.id}`, occurredAt: workOrder.createdAt, kind: "STATUS", title: "Замовлення-наряд створено", detail: formatWorkOrderNumber(ctx.workOrderNumber), ...ctx });
+    push({ id: `wo-created-${workOrder.id}`, occurredAt: workOrder.createdAt, kind: "STATUS", title: "Комерційна пропозиція створено", detail: formatWorkOrderNumber(ctx.workOrderNumber), ...ctx });
   }
 
   const diagnosticWhere = scope.workOrderId
@@ -229,7 +229,7 @@ export async function getServiceTimeline(scope: TimelineScope, options: Timeline
       push({ id: `audit-${audit.id}`, occurredAt: audit.createdAt, kind: "STATUS", title: `Статус ЗН → ${statusLabel(to)}`, detail: `${statusLabel(from)} → ${statusLabel(to)}`, actor: options.includeActors ? audit.actorName : null, ...contextFor(audit.entityId) });
     }
     for (const workOrder of workOrders) {
-      if (workOrder.closedAt && !auditClosed.has(workOrder.id)) push({ id: `wo-closed-${workOrder.id}`, occurredAt: workOrder.closedAt, kind: "STATUS", title: "Замовлення-наряд закрито", ...contextFor(workOrder.id) });
+      if (workOrder.closedAt && !auditClosed.has(workOrder.id)) push({ id: `wo-closed-${workOrder.id}`, occurredAt: workOrder.closedAt, kind: "STATUS", title: "Комерційна пропозиція закрито", ...contextFor(workOrder.id) });
     }
   }
 
