@@ -54,7 +54,7 @@ export class WorkOrderDocumentPackageError extends Error {
 export async function getWorkOrderDocumentPackage(workOrderId: string) {
   const prisma = getPrisma();
   const workOrder = await getWorkOrder(workOrderId);
-  if (!workOrder) throw new WorkOrderDocumentPackageError("WORK_ORDER_NOT_FOUND", "Замовлення-наряд не знайдено.", 404);
+  if (!workOrder) throw new WorkOrderDocumentPackageError("WORK_ORDER_NOT_FOUND", "Комерційна пропозиція не знайдено.", 404);
 
   const [numberRow, lines, estimates, cardState, finance, timeline] = await Promise.all([
     prisma.workOrderNumber.findUnique({ where: { workOrderId }, select: { number: true } }),
