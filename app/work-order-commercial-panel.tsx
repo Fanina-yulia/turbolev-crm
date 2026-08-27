@@ -278,7 +278,7 @@ export function WorkOrderCommercialPanel({ workOrderId, view = "overview", onCha
               : null;
   }, [data?.partsRequest?.status]);
 
-  if (loading && !data) return <div className={styles.empty}>Завантажую дані замовлення-наряду…</div>;
+  if (loading && !data) return <div className={styles.empty}>Завантажую дані комерційної пропозиції…</div>;
   if (!data) return <div className={styles.notice}>{message || "Дані наряду недоступні."}</div>;
 
   return <div className={styles.panel}>
