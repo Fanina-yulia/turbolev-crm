@@ -295,7 +295,7 @@ export function PartsCatalog() {
     {selectionResult && <section className={styles.panel}>
       <div className={styles.head}><div><p>ЗБЕРЕЖЕНО В КОМЕРЦІЙНОМУ ПРОЦЕСІ</p><h2>{selectionResult.selected.brand ? `${selectionResult.selected.brand} · ${selectionResult.selected.article}` : selectionResult.selected.article}</h2></div><span className={styles.badge}>ГОТОВО</span></div>
       <div className={styles.vehicleMeta}><span>Постачальник: {selectionResult.selected.supplierName}</span><span>Закупка: {formatMoney(selectionResult.selected.purchasePrice, selectionResult.selected.currency)}</span><span>Націнка: {selectionResult.selected.markupPercent}%</span><span>Продаж: {formatMoney(selectionResult.selected.sellPrice, selectionResult.selected.currency)}</span></div>
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12 }}><button className={styles.primary} type="button" onClick={() => navigateCrm("Комерційна пропозиція", { workOrderId: selectionResult.workOrderId, workOrderTab: "estimate" })}>Відкрити КП</button><button type="button" onClick={() => navigateCrm("Комерційна пропозиція", { workOrderId: selectionResult.workOrderId, workOrderTab: "parts" })}>Відкрити запчастини ЗН</button></div>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12 }}><button className={styles.primary} type="button" onClick={() => navigateCrm("Комерційна пропозиція", { workOrderId: selectionResult.workOrderId, workOrderTab: "estimate" })}>Відкрити КП</button><button type="button" onClick={() => navigateCrm("Комерційна пропозиція", { workOrderId: selectionResult.workOrderId, workOrderTab: "parts" })}>Відкрити запчастини КП</button></div>
     </section>}
 
     <section className={styles.panel}>
