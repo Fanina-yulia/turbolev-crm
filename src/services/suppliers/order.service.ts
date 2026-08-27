@@ -276,7 +276,7 @@ export async function submitSupplierOrder(input: { orderId: string; confirmation
   if (!order) throw new Error("Замовлення постачальнику не знайдено.");
   if (order.status !== "DRAFT") throw new Error("Відправити можна лише draft замовлення.");
   if (order.supplier.code !== "UNIQUE_TRADE") throw new Error("Live submit зараз увімкнений лише для Юнік Трейд.");
-  if (!order.workOrderId) throw new Error("Supplier order не прив'язаний до замовлення-наряду.");
+  if (!order.workOrderId) throw new Error("Supplier order не прив'язаний до комерційної пропозиції.");
 
   const request = await prisma.partsRequest.findFirst({
     where: { workOrderId: order.workOrderId, items: { some: { supplierOrderId: order.id } } },
