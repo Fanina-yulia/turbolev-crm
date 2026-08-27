@@ -78,7 +78,7 @@ async function findCompatibleReadyLibraryAsset(
   }
 }
 
-export async function resolveVehicleImage(vehicleId: string, options?: { themePaint?: string | null; force?: boolean }) {
+async function resolveVehicleImageUncached(vehicleId: string, options?: { themePaint?: string | null; force?: boolean }) {
   const prisma = getPrisma();
   const vehicle = await prisma.vehicle.findUnique({
     where: { id: vehicleId },
@@ -138,10 +138,57 @@ export async function resolveVehicleImage(vehicleId: string, options?: { themePa
   };
 }
 
+
+const VEHICLE_IMAGE_RESOLUTION_TTL_MS = 60_000;
+const VEHICLE_IMAGE_MISSING_TTL_MS = 10_000;
+const resolvedVehicleImageCache = new Map<string, { expiresAt: number; value: ResolvedVehicleImage | null }>();
+const inFlightVehicleImageResolutions = new Map<string, Promise<ResolvedVehicleImage | null>>();
+
+function vehicleImageCacheKey(vehicleId: string, themePaint?: string | null) {
+  return `${vehicleId}:${themePaint?.trim() || ""}`;
+}
+
+/**
+ * A page can request the same image through the metadata endpoint and the
+ * image element at nearly the same time. Reuse the in-flight resolution and
+ * keep the short-lived result in this serverless instance so those requests
+ * do not fan out into duplicate DB/catalog lookups.
+ */
+export async function resolveVehicleImage(
+  vehicleId: string,
+  options?: { themePaint?: string | null; force?: boolean },
+) {
+  if (options?.force) return resolveVehicleImageUncached(vehicleId, options);
+
+  const key = vehicleImageCacheKey(vehicleId, options?.themePaint);
+  const cached = resolvedVehicleImageCache.get(key);
+  if (cached && cached.expiresAt > Date.now()) return cached.value;
+  if (cached) resolvedVehicleImageCache.delete(key);
+
+  const active = inFlightVehicleImageResolutions.get(key);
+  if (active) return active;
+
+  const request = resolveVehicleImageUncached(vehicleId, options)
+    .then((value) => {
+      resolvedVehicleImageCache.set(key, {
+        value,
+        expiresAt: Date.now() + (value ? VEHICLE_IMAGE_RESOLUTION_TTL_MS : VEHICLE_IMAGE_MISSING_TTL_MS),
+      });
+      return value;
+    })
+    .finally(() => inFlightVehicleImageResolutions.delete(key));
+
+  inFlightVehicleImageResolutions.set(key, request);
+  return request;
+}
+
 export async function invalidateVehicleImages(vehicleId: string) {
   // The OpenAI library is shared between vehicles, so changing one vehicle must never
   // delete a shared model image. Only old per-vehicle provider cache entries are cleared.
   await getPrisma().vehicleImageAsset.deleteMany({ where: { vehicleId, status: { not: "MANUAL" } } });
+  for (const key of resolvedVehicleImageCache.keys()) {
+    if (key.startsWith(`${vehicleId}:`)) resolvedVehicleImageCache.delete(key);
+  }
 }
 
 export async function markVehicleImageFailure(assetId: string, message: string) {
