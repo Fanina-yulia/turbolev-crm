@@ -194,7 +194,7 @@ export function ProductionBoard() {
   }
 
   function openWorkOrder(card: Card) {
-    navigateCrm("Замовлення-наряди", { workOrderId: card.id, workOrderTab: "works" });
+    navigateCrm("Комерційна пропозиція", { workOrderId: card.id, workOrderTab: "works" });
   }
 
   if (loading && !data) return <div className={styles.state}>Завантажую виробничу дошку…</div>;
