@@ -209,7 +209,7 @@ export async function getServiceTimeline(scope: TimelineScope, options: Timeline
     });
     for (const snapshot of snapshots) {
       const at = snapshot.lockedAt || snapshot.calculatedAt;
-      push({ id: `finance-${snapshot.id}`, occurredAt: at, kind: "FINANCE", title: "Фінанси ЗН фіналізовано", detail: `Виручка ${numberOf(snapshot.grossRevenue).toLocaleString("uk-UA")} ₴ · валовий прибуток ${numberOf(snapshot.grossProfit).toLocaleString("uk-UA")} ₴ · маржа ${numberOf(snapshot.grossMarginPercent).toLocaleString("uk-UA")}%`, ...contextFor(snapshot.workOrderId) });
+      push({ id: `finance-${snapshot.id}`, occurredAt: at, kind: "FINANCE", title: "Фінанси КП фіналізовано", detail: `Виручка ${numberOf(snapshot.grossRevenue).toLocaleString("uk-UA")} ₴ · валовий прибуток ${numberOf(snapshot.grossProfit).toLocaleString("uk-UA")} ₴ · маржа ${numberOf(snapshot.grossMarginPercent).toLocaleString("uk-UA")}%`, ...contextFor(snapshot.workOrderId) });
     }
   }
 
@@ -226,7 +226,7 @@ export async function getServiceTimeline(scope: TimelineScope, options: Timeline
       const from = match[1];
       const to = match[2];
       if (to === "CLOSED") auditClosed.add(audit.entityId);
-      push({ id: `audit-${audit.id}`, occurredAt: audit.createdAt, kind: "STATUS", title: `Статус ЗН → ${statusLabel(to)}`, detail: `${statusLabel(from)} → ${statusLabel(to)}`, actor: options.includeActors ? audit.actorName : null, ...contextFor(audit.entityId) });
+      push({ id: `audit-${audit.id}`, occurredAt: audit.createdAt, kind: "STATUS", title: `Статус КП → ${statusLabel(to)}`, detail: `${statusLabel(from)} → ${statusLabel(to)}`, actor: options.includeActors ? audit.actorName : null, ...contextFor(audit.entityId) });
     }
     for (const workOrder of workOrders) {
       if (workOrder.closedAt && !auditClosed.has(workOrder.id)) push({ id: `wo-closed-${workOrder.id}`, occurredAt: workOrder.closedAt, kind: "STATUS", title: "Комерційна пропозиція закрито", ...contextFor(workOrder.id) });
