@@ -5,7 +5,10 @@
     "app/global-smart-search-palette.tsx",
     "app/api/search/**",
     ".github/workflows/ci.yml",
-    "scripts/ci-bootstrap-external-tables.sql"
+    "scripts/ci-bootstrap-external-tables.sql",
+    "app/ukrainian-license-plate.tsx",
+    "app/ukrainian-license-plate-bridge.tsx",
+    "app/ukrainian-license-plate.css"
   ],
   "communications": [
     "app/legacy-active-action-bridge.tsx"
