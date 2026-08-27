@@ -1,0 +1,86 @@
+name: Integration Vehicle Resolver Runtime
+
+on:
+  pull_request:
+    paths:
+      - "app/api/integration/v1/vehicle/resolve/route.ts"
+      - "src/services/integration-vehicle-resolution.service.ts"
+      - "src/security/service-access-context.ts"
+      - "src/security/integration-api-request-guard.ts"
+      - "src/security/api-policy.ts"
+      - "src/lib/contracts/integration/v1/**"
+      - "src/lib/vehicle-identity.ts"
+      - "src/services/vehicle-lookup-unified.service.ts"
+      - "prisma/integration-api.prisma"
+      - "prisma/vehicle-resolution.prisma"
+      - "prisma/migrations/*integration_api_request_guards/**"
+      - "prisma/migrations/*vehicle_resolution_core/**"
+      - "scripts/integration-vehicle-resolver-runtime-smoke.ts"
+      - ".github/workflows/integration-vehicle-resolver-runtime.yml"
+  push:
+    branches: [main]
+    paths:
+      - "app/api/integration/v1/vehicle/resolve/route.ts"
+      - "src/services/integration-vehicle-resolution.service.ts"
+      - "src/security/service-access-context.ts"
+      - "src/security/integration-api-request-guard.ts"
+      - "src/security/api-policy.ts"
+      - "src/lib/contracts/integration/v1/**"
+      - "src/lib/vehicle-identity.ts"
+      - "src/services/vehicle-lookup-unified.service.ts"
+      - "prisma/integration-api.prisma"
+      - "prisma/vehicle-resolution.prisma"
+      - "prisma/migrations/*integration_api_request_guards/**"
+      - "prisma/migrations/*vehicle_resolution_core/**"
+      - "scripts/integration-vehicle-resolver-runtime-smoke.ts"
+      - ".github/workflows/integration-vehicle-resolver-runtime.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  resolver-runtime-smoke:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: turbolev_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d turbolev_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      NODE_ENV: test
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/turbolev_ci
+      DATABASE_URL_UNPOOLED: postgresql://postgres:postgres@localhost:5432/turbolev_ci
+      VEHICLE_RESOLUTION_FINGERPRINT_SECRET: runtime-ci-secret-vehicle-resolution-2026-abcdef
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+      - name: Validate Prisma schema
+        run: npx prisma validate
+      - name: Generate Prisma client
+        run: npx prisma generate
+      - name: TypeScript check
+        run: npx tsc --noEmit
+      - name: Apply full migration history to disposable PostgreSQL 18
+        run: bash scripts/ci-migrate-with-external-fixtures.sh
+      - name: Vehicle resolver runtime smoke
+        run: npx --no-install tsx scripts/integration-vehicle-resolver-runtime-smoke.ts
