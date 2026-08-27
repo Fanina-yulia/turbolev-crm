@@ -2,11 +2,15 @@ import { DiagnosticRequestStatus, Prisma } from "@/src/generated/prisma/client";
 import { getPrisma } from "@/src/lib/prisma";
 import { toPrismaJson } from "@/src/lib/prisma-json";
 import { linkDiagnosticVisit } from "@/src/services/diagnostic-visit-link.service";
+import { addDateKey, minuteLabel, zonedDateKey, zonedDateTimeToDate } from "@/src/lib/zoned-time";
+import { normalizePlannerSchedule } from "@/src/services/planner-availability.service";
+import { PLANNER_BLOCKING_STATUSES } from "@/src/services/planner.service";
 import { startStructuredDiagnostic } from "@/src/services/structured-diagnostics.service";
 
 const CLOSED_APPOINTMENT_STATUSES = ["CANCELLED", "NO_SHOW", "RESERVE", "COMPLETED"] as const;
 const WALK_IN_SOURCE = "WALK_IN";
 const WALK_IN_MARKER = "WALK_IN_DIAGNOSTIC:";
+const WALK_IN_DURATION_MINUTES = 60;
 const CYR_TO_LAT: Record<string, string> = {
   А: "A", В: "B", Е: "E", І: "I", К: "K", М: "M", Н: "H", О: "O", Р: "P", С: "C", Т: "T", Х: "X", У: "Y",
 };
@@ -68,6 +72,83 @@ function vehicleLabel(vehicle: { brand: string | null; model: string | null; yea
 function diagnosticIdFromWalkInComment(comment: string | null | undefined) {
   const match = comment?.match(/WALK_IN_DIAGNOSTIC:([^\s]+)/);
   return match?.[1] || null;
+}
+
+function overlaps(start: Date, end: Date, otherStart: Date, otherEnd: Date) {
+  return start < otherEnd && end > otherStart;
+}
+
+function weekdayForDateKey(dateKey: string) {
+  const weekday = new Date(`${dateKey}T12:00:00Z`).getUTCDay();
+  return weekday === 0 ? 7 : weekday;
+}
+
+function activeAppointmentWindow(now: Date, timezone: string) {
+  const centerDay = zonedDateKey(now, timezone);
+  return {
+    from: zonedDateTimeToDate(addDateKey(centerDay, -5), "00:00", timezone),
+    to: zonedDateTimeToDate(addDateKey(centerDay, 6), "00:00", timezone),
+  };
+}
+
+async function findNearestWalkInSlot(tx: Prisma.TransactionClient, locationId: string, from: Date) {
+  const [location, scheduleSetting] = await Promise.all([
+    tx.serviceLocation.findUnique({
+      where: { id: locationId },
+      select: {
+        id: true,
+        timezone: true,
+        openMinute: true,
+        closeMinute: true,
+        posts: { where: { isActive: true }, orderBy: [{ sortOrder: "asc" }, { name: "asc" }], select: { id: true } },
+      },
+    }),
+    tx.crmSetting.findUnique({ where: { key: "work_schedule" }, select: { value: true } }),
+  ]);
+  if (!location) throw new MechanicWalkInError("LOCATION_NOT_FOUND", "Локацію СТО не знайдено.", 404);
+
+  const timezone = location.timezone || "Europe/Kyiv";
+  const schedule = normalizePlannerSchedule(scheduleSetting?.value, location.openMinute, location.closeMinute);
+  const searchUntil = new Date(from.getTime() + 31 * 24 * 60 * 60 * 1000);
+  const appointments = await tx.serviceAppointment.findMany({
+    where: {
+      locationId,
+      status: { in: [...PLANNER_BLOCKING_STATUSES] },
+      plannedStartAt: { lt: searchUntil },
+      plannedEndAt: { gt: from },
+    },
+    select: { postId: true, plannedStartAt: true, plannedEndAt: true },
+  });
+
+  const nowParts = Object.fromEntries(new Intl.DateTimeFormat("en-GB", {
+    timeZone: timezone,
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(from).map((part) => [part.type, part.value]));
+  const currentMinute = Number(nowParts.hour) * 60 + Number(nowParts.minute);
+  let dayKey = zonedDateKey(from, timezone);
+
+  for (let dayOffset = 0; dayOffset < 31; dayOffset += 1) {
+    if (dayOffset > 0) dayKey = addDateKey(dayKey, 1);
+    const daySchedule = schedule.find((item) => item.day === weekdayForDateKey(dayKey));
+    if (!daySchedule?.enabled) continue;
+    const firstMinute = dayOffset === 0
+      ? Math.max(daySchedule.openMinute, Math.ceil(currentMinute / 30) * 30)
+      : daySchedule.openMinute;
+
+    for (let minute = firstMinute; minute + WALK_IN_DURATION_MINUTES <= daySchedule.closeMinute; minute += 30) {
+      const start = zonedDateTimeToDate(dayKey, minuteLabel(minute), timezone);
+      const end = new Date(start.getTime() + WALK_IN_DURATION_MINUTES * 60_000);
+      if (start < from) continue;
+      const overlapping = appointments.filter((item) => overlaps(start, end, item.plannedStartAt, item.plannedEndAt));
+      const post = location.posts.find((candidate) => !overlapping.some((item) => item.postId === candidate.id));
+      if (location.posts.length > 0 && !post) continue;
+      return { start, end, postId: post?.id || null };
+    }
+  }
+
+  throw new MechanicWalkInError("NO_AVAILABLE_SLOT", "Не знайдено доступного слота для діагностики у робочому графіку СТО.", 409);
 }
 
 function plateCandidates(raw: string, canonical: string) {
@@ -149,7 +230,7 @@ export async function startMechanicWalkInDiagnostic(userId: string, input: Mecha
   const prisma = getPrisma();
   const mechanic = await prisma.serviceMechanic.findFirst({
     where: { userId, isActive: true },
-    select: { id: true, name: true, locationId: true },
+    select: { id: true, name: true, locationId: true, location: { select: { timezone: true } } },
     orderBy: { updatedAt: "desc" },
   });
   if (!mechanic) throw new MechanicWalkInError("MECHANIC_NOT_LINKED", "Профіль механіка не прив’язаний до станції.", 403);
@@ -172,11 +253,13 @@ export async function startMechanicWalkInDiagnostic(userId: string, input: Mecha
   const created = await prisma.$transaction(async (tx) => {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`mechanic-walk-in:${mechanic.locationId}:${plate}`}))`;
 
+    const window = activeAppointmentWindow(new Date(), mechanic.location.timezone || "Europe/Kyiv");
     const activeAppointments = await tx.serviceAppointment.findMany({
       where: {
         locationId: mechanic.locationId,
         status: { notIn: [...CLOSED_APPOINTMENT_STATUSES] },
         plateNumber: { not: null },
+        plannedStartAt: { gte: window.from, lt: window.to },
       },
       orderBy: [{ actualArrivalAt: "desc" }, { plannedStartAt: "desc" }],
       take: 250,
@@ -299,11 +382,11 @@ export async function startMechanicWalkInDiagnostic(userId: string, input: Mecha
     await tx.diagnosticReview.create({ data: { diagnosticRequestId: diagnostic.id } });
 
     const now = new Date();
-    const plannedEndAt = new Date(now.getTime() + 60 * 60 * 1000);
+    const slot = await findNearestWalkInSlot(tx, mechanic.locationId, now);
     const appointment = await tx.serviceAppointment.create({
       data: {
         locationId: mechanic.locationId,
-        postId: null,
+        postId: slot.postId,
         mechanicId: mechanic.id,
         leadId: null,
         clientId: client.id,
@@ -318,8 +401,8 @@ export async function startMechanicWalkInDiagnostic(userId: string, input: Mecha
         comment: `${WALK_IN_MARKER}${diagnostic.id}`,
         source: WALK_IN_SOURCE,
         priority: 1,
-        plannedStartAt: now,
-        plannedEndAt,
+        plannedStartAt: slot.start,
+        plannedEndAt: slot.end,
         actualArrivalAt: now,
         createdById: userId,
       },
@@ -341,6 +424,9 @@ export async function startMechanicWalkInDiagnostic(userId: string, input: Mecha
           diagnosticRequestId: diagnostic.id,
           mechanicId: mechanic.id,
           locationId: mechanic.locationId,
+          plannedStartAt: slot.start,
+          plannedEndAt: slot.end,
+          postId: slot.postId,
           problem,
           matchedByAdditionalPhone: Boolean(additionalPhone),
           registrySource: registry?.source || null,

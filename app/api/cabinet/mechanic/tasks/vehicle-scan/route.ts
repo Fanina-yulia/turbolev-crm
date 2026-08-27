@@ -1,8 +1,10 @@
+import { DiagnosticRequestStatus, Prisma } from "@/src/generated/prisma/client";
 import { NextRequest, NextResponse } from "next/server";
 import { authorize } from "@/src/security/authorize";
 import { PERMISSIONS } from "@/src/security/permissions";
 import { getPrisma } from "@/src/lib/prisma";
 import { toPrismaJson } from "@/src/lib/prisma-json";
+import { addDateKey, zonedDateKey, zonedDateTimeToDate } from "@/src/lib/zoned-time";
 import { getIntegrationCredential } from "@/src/services/integration-credentials.service";
 import { arrivePlannerAppointment } from "@/src/services/planner-arrival.service";
 import { startStructuredDiagnostic } from "@/src/services/structured-diagnostics.service";
@@ -29,6 +31,17 @@ type NextAction = {
   reason?: string | null;
 };
 
+class ScanContinuationError extends Error {
+  readonly code: string;
+  readonly status: number;
+  constructor(code: string, message: string, status = 409) {
+    super(message);
+    this.name = "ScanContinuationError";
+    this.code = code;
+    this.status = status;
+  }
+}
+
 function clean(value: unknown, max = 120) {
   return typeof value === "string" ? value.trim().slice(0, max) : "";
 }
@@ -54,6 +67,80 @@ function plateCandidates(raw: string, canonical: string) {
 function vehicleLabel(vehicle: { brand: string | null; model: string | null; year: number | null } | null | undefined) {
   if (!vehicle) return "Автомобіль";
   return [vehicle.brand, vehicle.model, vehicle.year].filter(Boolean).join(" ") || "Автомобіль";
+}
+
+function appointmentWindow(now: Date, timezone: string) {
+  const centerDay = zonedDateKey(now, timezone);
+  return {
+    from: zonedDateTimeToDate(addDateKey(centerDay, -5), "00:00", timezone),
+    to: zonedDateTimeToDate(addDateKey(centerDay, 6), "00:00", timezone),
+  };
+}
+
+async function continueAssignedAppointmentDiagnostic(input: {
+  userId: string;
+  mechanic: { id: string; name: string; locationId: string };
+  appointmentId: string;
+}) {
+  const prisma = getPrisma();
+  const diagnosticRequestId = await prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`mechanic-scan-continue:${input.appointmentId}`}))`;
+    const appointment = await tx.serviceAppointment.findUnique({ where: { id: input.appointmentId } });
+    if (!appointment || appointment.locationId !== input.mechanic.locationId || ["CANCELLED", "NO_SHOW", "RESERVE", "COMPLETED"].includes(appointment.status)) {
+      throw new ScanContinuationError("APPOINTMENT_NOT_ACTIVE", "Актуальний запис автомобіля не знайдено.", 404);
+    }
+
+    const linkedVisitRows = await tx.$queryRaw<Array<{ diagnosticRequestId: string }>>`
+      SELECT "diagnosticRequestId" FROM "DiagnosticVisitLink" WHERE "appointmentId" = ${appointment.id} LIMIT 1
+    `;
+    const linkedVisit = linkedVisitRows[0] || null;
+    let diagnostic = linkedVisit
+      ? await tx.diagnosticRequest.findFirst({ where: { id: linkedVisit.diagnosticRequestId, status: { not: DiagnosticRequestStatus.CANCELLED } } })
+      : null;
+    diagnostic = diagnostic || (appointment.workOrderId
+      ? await tx.diagnosticRequest.findFirst({ where: { workOrder: { is: { id: appointment.workOrderId } }, status: { not: DiagnosticRequestStatus.CANCELLED } }, orderBy: { updatedAt: "desc" } })
+      : null);
+    if (!diagnostic && appointment.vehicleId) {
+      diagnostic = await tx.diagnosticRequest.findFirst({ where: { vehicleId: appointment.vehicleId, status: { not: DiagnosticRequestStatus.CANCELLED } }, orderBy: [{ updatedAt: "desc" }, { createdAt: "desc" }] });
+    }
+    if (!diagnostic) {
+      if (!appointment.clientId || !appointment.vehicleId) {
+        throw new ScanContinuationError("CLIENT_VEHICLE_REQUIRED", "У записі не вказані клієнт або автомобіль. Потрібна перевірка сервіс-менеджера.");
+      }
+      diagnostic = await tx.diagnosticRequest.create({ data: { clientId: appointment.clientId, vehicleId: appointment.vehicleId, status: DiagnosticRequestStatus.PENDING } });
+    }
+
+    const review = await tx.diagnosticReview.findUnique({ where: { diagnosticRequestId: diagnostic.id }, select: { state: true } });
+    if (diagnostic.status === DiagnosticRequestStatus.CONFIRMED || review?.state === "SUBMITTED" || review?.state === "CONFIRMED") {
+      throw new ScanContinuationError("DIAGNOSTIC_LOCKED", "Ця діагностика вже завершена або передана сервіс-менеджеру.");
+    }
+
+    const previousAssignment = await tx.diagnosticAssignment.findUnique({ where: { diagnosticRequestId: diagnostic.id }, select: { mechanicId: true, locationId: true } });
+    await tx.diagnosticAssignment.upsert({
+      where: { diagnosticRequestId: diagnostic.id },
+      create: { diagnosticRequestId: diagnostic.id, locationId: input.mechanic.locationId, mechanicId: input.mechanic.id },
+      update: { locationId: input.mechanic.locationId, mechanicId: input.mechanic.id },
+    });
+    await tx.diagnosticReview.upsert({ where: { diagnosticRequestId: diagnostic.id }, create: { diagnosticRequestId: diagnostic.id }, update: {} });
+    await tx.serviceAppointment.update({
+      where: { id: appointment.id },
+      data: { status: "DIAGNOSTICS", actualArrivalAt: appointment.actualArrivalAt || new Date(), actualStartAt: appointment.actualStartAt || new Date() },
+    });
+    await tx.auditEvent.create({
+      data: {
+        actorId: input.userId,
+        actorName: input.mechanic.name,
+        entityType: "DiagnosticRequest",
+        entityId: diagnostic.id,
+        action: "MECHANIC_DIAGNOSTIC_CONTINUED_FROM_SCAN",
+        metadata: toPrismaJson({ appointmentId: appointment.id, previousMechanicId: previousAssignment?.mechanicId || null, previousLocationId: previousAssignment?.locationId || null, mechanicId: input.mechanic.id, locationId: input.mechanic.locationId }),
+      },
+    });
+    return diagnostic.id;
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+
+  await startStructuredDiagnostic(input.userId, diagnosticRequestId);
+  return diagnosticRequestId;
 }
 
 function extractResponseText(payload: unknown) {
@@ -133,15 +220,18 @@ async function recognizePlateFromImage(file: File) {
 async function resolveNextAction(input: {
   userId: string;
   mechanicId: string;
+  diagnosticRequestId?: string | null;
   vehicleId: string | null;
   workOrderId: string | null;
 }) : Promise<NextAction> {
   const prisma = getPrisma();
-  const diagnostic = input.vehicleId ? await prisma.diagnosticRequest.findFirst({
-    where: { vehicleId: input.vehicleId, status: { not: "CANCELLED" } },
-    orderBy: [{ updatedAt: "desc" }, { createdAt: "desc" }],
-    select: { id: true, status: true },
-  }) : null;
+  const diagnostic = input.diagnosticRequestId
+    ? await prisma.diagnosticRequest.findFirst({ where: { id: input.diagnosticRequestId, status: { not: "CANCELLED" } }, select: { id: true, status: true } })
+    : input.vehicleId ? await prisma.diagnosticRequest.findFirst({
+        where: { vehicleId: input.vehicleId, status: { not: "CANCELLED" } },
+        orderBy: [{ updatedAt: "desc" }, { createdAt: "desc" }],
+        select: { id: true, status: true },
+      }) : null;
   const review = diagnostic ? await prisma.diagnosticReview.findUnique({
     where: { diagnosticRequestId: diagnostic.id },
     select: { state: true },
@@ -207,7 +297,7 @@ export async function POST(request: NextRequest) {
     const prisma = getPrisma();
     const mechanic = await prisma.serviceMechanic.findFirst({
       where: { userId: access.context.user.id, isActive: true },
-      select: { id: true, name: true, locationId: true },
+      select: { id: true, name: true, locationId: true, location: { select: { timezone: true } } },
     });
     if (!mechanic) return NextResponse.json({ ok: false, error: "MECHANIC_NOT_LINKED", message: "Профіль механіка не прив’язаний до станції." }, { status: 403 });
 
@@ -215,6 +305,7 @@ export async function POST(request: NextRequest) {
     let rawPlate = "";
     let confidence: number | null = null;
     let confirm = false;
+    let continueExisting = false;
     let source = "MANUAL";
 
     if (contentType.includes("multipart/form-data")) {
@@ -222,6 +313,7 @@ export async function POST(request: NextRequest) {
       const image = form.get("image");
       const manualPlate = clean(form.get("plate"), 32);
       confirm = clean(form.get("confirm"), 8).toLowerCase() === "true";
+      continueExisting = clean(form.get("continueExisting"), 8).toLowerCase() === "true";
       if (manualPlate) {
         rawPlate = manualPlate;
       } else if (image instanceof File) {
@@ -235,17 +327,20 @@ export async function POST(request: NextRequest) {
       rawPlate = clean(body.plate, 32);
       confidence = typeof body.confidence === "number" ? Math.round(body.confidence) : null;
       confirm = body.confirm === true;
+      continueExisting = body.continueExisting === true;
       source = clean(body.source, 32) || "MANUAL";
     }
 
     const normalized = canonicalPlate(rawPlate);
     if (normalized.length < 5) return NextResponse.json({ ok: false, error: "PLATE_REQUIRED", message: "Не вдалося визначити номер. Спробуйте ще раз або введіть його вручну." }, { status: 400 });
 
+    const window = appointmentWindow(new Date(), mechanic.location.timezone || "Europe/Kyiv");
     const appointments = await prisma.serviceAppointment.findMany({
       where: {
         locationId: mechanic.locationId,
         status: { notIn: [...CLOSED_APPOINTMENT_STATUSES] },
         plateNumber: { not: null },
+        plannedStartAt: { gte: window.from, lt: window.to },
       },
       include: { mechanic: { select: { id: true, name: true } }, post: { select: { id: true, name: true } } },
       orderBy: [{ updatedAt: "desc" }, { plannedStartAt: "asc" }],
@@ -287,6 +382,28 @@ export async function POST(request: NextRequest) {
       ? (assignedToMe ? "ASSIGNED" : "ASSIGNED_TO_OTHER")
       : (vehicle ? "WALK_IN_EXISTING_VEHICLE" : "WALK_IN_NEW_VEHICLE");
 
+    const linkedVisitRows = appointment
+      ? await prisma.$queryRaw<Array<{ diagnosticRequestId: string }>>`
+          SELECT "diagnosticRequestId" FROM "DiagnosticVisitLink" WHERE "appointmentId" = ${appointment.id} LIMIT 1
+        `
+      : [];
+    const linkedVisit = linkedVisitRows[0] || null;
+    const existingAppointmentAction = appointment
+      ? await resolveNextAction({
+          userId: access.context.user.id,
+          mechanicId: mechanic.id,
+          diagnosticRequestId: linkedVisit?.diagnosticRequestId || null,
+          vehicleId: null,
+          workOrderId: appointment.workOrderId || null,
+        })
+      : null;
+
+    const otherDiagnosticCanStart = Boolean(
+      appointment
+      && !appointment.workOrderId
+      && (!linkedVisit || existingAppointmentAction?.type === "DIAGNOSTIC"),
+    );
+
     let nextAction: NextAction = assignedToMe
       ? await resolveNextAction({
           userId: access.context.user.id,
@@ -303,9 +420,10 @@ export async function POST(request: NextRequest) {
               : "Автомобіль не знайдено в базі та активних записах. Можна оформити позапланову діагностику.",
           }
         : {
-            type: "NONE",
-            label: "Авто не закріплене за вами",
-            reason: appointment.mechanicId
+            type: otherDiagnosticCanStart ? "DIAGNOSTIC" : "NONE",
+            label: otherDiagnosticCanStart ? "Продовжити діагностику" : "Авто не закріплене за вами",
+            diagnosticId: existingAppointmentAction?.diagnosticId || null,
+            reason: appointment?.mechanicId
               ? `Автомобіль призначений іншому механіку${appointment.mechanic?.name ? `: ${appointment.mechanic.name}` : ""}.`
               : "Автомобіль має активний запис, але не призначений вам.",
           };
@@ -315,11 +433,22 @@ export async function POST(request: NextRequest) {
     let diagnosticRequestId: string | null = nextAction.diagnosticId || null;
 
     if (confirm) {
-      if (!assignedToMe || !appointment) {
+      const continuingAssignedOther = Boolean(continueExisting && appointment && scenario === "ASSIGNED_TO_OTHER");
+      if ((!assignedToMe && !continuingAssignedOther) || !appointment) {
         return NextResponse.json({ ok: false, error: "VEHICLE_NOT_ASSIGNED", message: "Цей автомобіль не закріплений за вами." }, { status: 403 });
       }
 
-      const shouldApplyArrival = appointment.status === "BOOKED" || appointment.status === "ARRIVED";
+      if (continuingAssignedOther) {
+        diagnosticRequestId = await continueAssignedAppointmentDiagnostic({
+          userId: access.context.user.id,
+          mechanic: { id: mechanic.id, name: mechanic.name, locationId: mechanic.locationId },
+          appointmentId: appointment.id,
+        });
+        finalAppointmentStatus = "DIAGNOSTICS";
+        nextAction = { type: "DIAGNOSTIC", label: "Продовжити діагностику", diagnosticId: diagnosticRequestId };
+      }
+
+      const shouldApplyArrival = !continuingAssignedOther && (appointment.status === "BOOKED" || appointment.status === "ARRIVED");
       if (shouldApplyArrival) {
         const arrival = await arrivePlannerAppointment(appointment.id, {});
         if (!arrival.ok) {
@@ -351,11 +480,12 @@ export async function POST(request: NextRequest) {
         diagnosticRequestId = nextAction.diagnosticId || diagnosticRequestId;
       }
 
-      if (diagnosticRequestId && nextAction.type === "DIAGNOSTIC") {
+      if (!continuingAssignedOther && diagnosticRequestId && nextAction.type === "DIAGNOSTIC") {
         await startStructuredDiagnostic(access.context.user.id, diagnosticRequestId);
         nextAction = await resolveNextAction({
           userId: access.context.user.id,
           mechanicId: mechanic.id,
+          diagnosticRequestId: linkedVisit?.diagnosticRequestId || null,
           vehicleId: vehicle?.id || appointment.vehicleId || null,
           workOrderId: appointment.workOrderId || null,
         });
@@ -406,7 +536,7 @@ export async function POST(request: NextRequest) {
         mileageKm: vehicle?.mileageKm ?? null,
       } : { eligible: false, existingVehicle: false, existingClient: null, mileageKm: null },
       nextAction,
-      confirmed: confirm && assignedToMe,
+      confirmed: confirm && (assignedToMe || (continueExisting && scenario === "ASSIGNED_TO_OTHER")),
       arrivalApplied,
       diagnosticRequestId,
     }, { headers: { "Cache-Control": "no-store" } });
@@ -417,6 +547,7 @@ export async function POST(request: NextRequest) {
     if (code === "INVALID_IMAGE_TYPE") return NextResponse.json({ ok: false, error: code, message: "Потрібне фото номерного знака." }, { status: 400 });
     if (code === "PLATE_NOT_READABLE" || code === "OPENAI_RECOGNITION_FAILED") return NextResponse.json({ ok: false, error: code, message: "Не вдалося впевнено прочитати номер. Спробуйте ще раз або введіть номер вручну." }, { status: 422 });
     if (code === "AbortError") return NextResponse.json({ ok: false, error: "RECOGNITION_TIMEOUT", message: "Розпізнавання зайняло надто багато часу. Спробуйте ще раз." }, { status: 504 });
+    if (error instanceof ScanContinuationError) return NextResponse.json({ ok: false, error: error.code, message: error.message }, { status: error.status });
     console.error("POST mechanic vehicle scan failed", error);
     return NextResponse.json({ ok: false, error: "VEHICLE_SCAN_FAILED", message: "Не вдалося перевірити автомобіль." }, { status: 500 });
   }

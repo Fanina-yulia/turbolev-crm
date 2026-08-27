@@ -107,6 +107,7 @@ export function MechanicVehicleScanner() {
     result?.walkIn?.eligible
     && (result.scenario === "WALK_IN_EXISTING_VEHICLE" || result.scenario === "WALK_IN_NEW_VEHICLE"),
   );
+  const assignedToOther = result?.scenario === "ASSIGNED_TO_OTHER" && Boolean(result.appointment);
 
   useEffect(() => {
     let cancelled = false;
@@ -218,7 +219,7 @@ export function MechanicVehicleScanner() {
     profileButton?.click();
   }
 
-  async function requestScan(input: File | string, confirm = false, existing?: ScanResult, silent = false) {
+  async function requestScan(input: File | string, confirm = false, existing?: ScanResult, silent = false, continueExisting = false) {
     scanAbortRef.current?.abort();
     const controller = new AbortController();
     scanAbortRef.current = controller;
@@ -243,7 +244,7 @@ export function MechanicVehicleScanner() {
           method: "POST",
           credentials: "include",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ plate, confirm, source: existing?.recognition?.source || "MANUAL" }),
+          body: JSON.stringify({ plate, confirm, continueExisting, source: existing?.recognition?.source || "MANUAL" }),
           signal: controller.signal,
         });
       }
@@ -387,6 +388,21 @@ export function MechanicVehicleScanner() {
       window.dispatchEvent(new CustomEvent("turbolev:mechanic-open-task", { detail: { taskId: action.taskId } }));
       return;
     }
+    window.dispatchEvent(new CustomEvent("turbolev:mechanic-refresh"));
+  }
+
+  async function continueAssignedDiagnostic() {
+    if (!result?.recognition?.plate || !assignedToOther) return;
+    const continued = await requestScan(result.recognition.plate, true, result, false, true);
+    if (!continued?.confirmed) return;
+    const diagnosticId = continued.diagnosticRequestId || continued.nextAction?.diagnosticId || null;
+    if (!diagnosticId) {
+      setError("Не вдалося відкрити діагностичну карту цього автомобіля.");
+      return;
+    }
+    setOpen(false);
+    reset();
+    window.dispatchEvent(new CustomEvent("turbolev:mechanic-open-diagnostic", { detail: { diagnosticId } }));
     window.dispatchEvent(new CustomEvent("turbolev:mechanic-refresh"));
   }
 
@@ -537,6 +553,7 @@ export function MechanicVehicleScanner() {
 
             {walkInEligible && <button type="button" className={styles.confirm} onClick={() => setWalkInMode(true)}>Продовжити позапланову діагностику →</button>}
             {!autoAdvanceToDiagnostic && result.assignedToMe && result.nextAction && ["DIAGNOSTIC", "REPAIR"].includes(result.nextAction.type) && <button type="button" className={styles.confirm} disabled={busy} onClick={() => void confirmVehicle()}>{busy ? "Підтверджую…" : `Підтвердити авто та ${result.nextAction.type === "DIAGNOSTIC" ? "перейти до діагностики" : "перейти до ремонту"} →`}</button>}
+            {assignedToOther && result.nextAction?.type === "DIAGNOSTIC" && <button type="button" className={styles.confirm} disabled={busy} onClick={() => void continueAssignedDiagnostic()}>{busy ? "Відкриваю діагностику…" : "Продовжити діагностику →"}</button>}
             {autoAdvanceToDiagnostic && error && <button type="button" className={styles.confirm} disabled={busy} onClick={() => { autoAdvanceRef.current = ""; setError(""); setCountdown(3); void confirmVehicle(); }}>{busy ? "Підтверджую…" : "Повторити перехід до діагностики →"}</button>}
             {result.assignedToMe && result.nextAction?.type === "WAITING" && !awaitingVehicleConfirmation && !autoAdvanceToDiagnostic && <div className={styles.waiting}>Дію поки заблоковано workflow CRM. Статус зміниться автоматично після наступного етапу.</div>}
             {!autoAdvanceToDiagnostic && <div className={styles.resultButtons}><button type="button" onClick={() => { reset(); setOpen(true); }}>Сканувати інше авто</button><button type="button" onClick={close}>Закрити</button></div>}

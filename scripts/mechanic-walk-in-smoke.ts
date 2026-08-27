@@ -14,6 +14,7 @@ const prisma = getPrisma();
 export async function runMechanicWalkInSmoke() {
   const suffix = `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
   const locationId = `walkin_loc_${suffix}`;
+  const postId = `walkin_post_${suffix}`;
   const mechanicId = `walkin_mech_${suffix}`;
   const mechanicUserId = `walkin_user_${suffix}`;
   const priceItemId = `walkin_price_${suffix}`;
@@ -94,7 +95,10 @@ export async function runMechanicWalkInSmoke() {
     assert(appointment);
     assert.equal(appointment.source, "WALK_IN");
     assert.equal(appointment.status, "DIAGNOSTICS");
-    assert.equal(appointment.postId, null, "walk-in can begin diagnostics without a post");
+    assert.equal(appointment.postId, postId, "walk-in must reserve the first available planner post");
+    assert.equal((appointment.plannedEndAt.getTime() - appointment.plannedStartAt.getTime()) / 60000, 60);
+    const slotMinute = Number(new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/Kyiv", minute: "2-digit" }).format(appointment.plannedStartAt));
+    assert([0, 30].includes(slotMinute), "walk-in planner slot must start on a 30-minute boundary");
     assert.equal(appointment.mechanicId, mechanicId);
     assert.equal(appointment.phone, input.phone, "walk-in visit keeps the phone actually provided at intake");
 
@@ -145,6 +149,7 @@ export async function runMechanicWalkInSmoke() {
   await cleanup();
   try {
     await prisma.serviceLocation.create({ data: { id: locationId, name: `Walk-in smoke ${suffix}` } });
+    await prisma.servicePost.create({ data: { id: postId, locationId, name: `Walk-in post ${suffix}` } });
     await prisma.serviceMechanic.create({ data: { id: mechanicId, locationId, userId: mechanicUserId, name: `Walk-in mechanic ${suffix}` } });
     await prisma.serviceCatalogItem.create({
       data: {
