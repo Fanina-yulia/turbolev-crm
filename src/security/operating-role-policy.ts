@@ -143,7 +143,7 @@ export const TURBO_LEV_ACCESS_ROLES: AccessRolePreset[] = [
       return patchRole(role, {
         name: "Керівник відділу продажів",
         sortOrder: 80,
-        description: "Керує воронкою продажів і командою. Фінальний кошторис Замовлення-наряду формує сервіс-менеджер.",
+        description: "Керує воронкою продажів і командою. Фінальний кошторис Комерційна пропозиціяу формує сервіс-менеджер.",
         remove: [PERMISSIONS.WORK_ORDERS_ESTIMATE],
       });
     }
