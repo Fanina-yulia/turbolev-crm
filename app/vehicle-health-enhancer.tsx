@@ -53,7 +53,7 @@ function statusLabel(status: string) {
 function workOrderActionLabel(status: string) {
   if (["QUOTED", "WAITING_CUSTOMER", "APPROVED"].includes(status)) return "Відкрити КП";
   if (["WAITING_PARTS", "READY_FOR_REPAIR", "IN_REPAIR"].includes(status)) return "Відкрити ремонт";
-  return "Відкрити наряд";
+  return "Відкрити комерційну пропозицію";
 }
 
 export function VehicleHealthEnhancer() {
