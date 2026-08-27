@@ -120,7 +120,7 @@ export function WorkOrderCommercialPanel({ workOrderId, view = "overview", onCha
       const responses = await Promise.all(urls.map((url) => fetch(url, { cache: "no-store" })));
       const payloads = await Promise.all(responses.map((response) => response.json()));
       const firstError = responses.findIndex((response, index) => !response.ok || !payloads[index]?.ok);
-      if (firstError >= 0) throw new Error(payloads[firstError]?.error || "Не вдалося завантажити дані наряду.");
+      if (firstError >= 0) throw new Error(payloads[firstError]?.error || "Не вдалося завантажити дані комерційної пропозиції.");
       setData(payloads[0].commercial);
       setQc(payloads[1].qualityControl);
       setFinance(payloads[2]);
@@ -346,7 +346,7 @@ export function WorkOrderCommercialPanel({ workOrderId, view = "overview", onCha
       </div>
 
       <div className={styles.block}>
-        <div className={styles.estimateTop}><div><strong>Заявка на запчастини</strong><small>{data.partsRequest ? `${data.partsRequest.status} · ${data.partsRequest.items.length} позицій` : `У наряді ${data.requiredPartsCount} обов'язкових позицій`}</small></div></div>
+        <div className={styles.estimateTop}><div><strong>Заявка на запчастини</strong><small>{data.partsRequest ? `${data.partsRequest.status} · ${data.partsRequest.items.length} позицій` : `У комерційній пропозиції ${data.requiredPartsCount} обов'язкових позицій`}</small></div></div>
         {!data.partsRequest && <div className={styles.toolbar}><button className={styles.button} disabled={Boolean(busy) || !partLines.length} onClick={() => void act("parts-open", `/api/work-orders/${encodeURIComponent(workOrderId)}/parts-request`, "POST", { actorName: "CRM / WorkOrder Center" })}>Створити заявку на закупівлю</button></div>}
         {data.partsRequest && <><div className={styles.toolbar}>{nextParts && <button className={styles.button} disabled={Boolean(busy)} onClick={() => void advanceParts(nextParts[0])}>{nextParts[1]}</button>}<label className={styles.check}><input type="checkbox" checked={data.partsRequest.paymentRequired} onChange={(event) => void act("payment-required", `/api/parts-requests/${encodeURIComponent(data.partsRequest!.id)}`, "PATCH", { paymentRequired: event.target.checked })}/>Передоплата деталей</label>{data.partsRequest.paymentRequired && !data.partsRequest.paymentConfirmedAt && <button className={styles.button} onClick={() => void act("payment-confirm", `/api/parts-requests/${encodeURIComponent(data.partsRequest!.id)}`, "PATCH", { paymentConfirmed: true })}>Оплату деталей підтверджено</button>}</div><div className={styles.partList}>{data.partsRequest.items.map((item) => {
           const received = Math.min(100, Math.round((num(item.receivedQuantity) / Math.max(.001, num(item.quantity))) * 100));
