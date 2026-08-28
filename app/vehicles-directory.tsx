@@ -259,16 +259,15 @@ export function VehiclesDirectory() {
         <h1>Авто</h1>
         <span>Автомобілі клієнтів, VIN, держномери та сервісна історія</span>
       </div>
-      <button className={styles.primary} onClick={openNewRequest}>+ Додати авто</button>
+      <div className={styles.headerActions}>
+        <button className={styles.primary} onClick={openNewRequest}>+ Додати авто</button>
+        <label className={styles.search}>
+          <span>⌕</span>
+          <input value={query} onChange={(event) => changeQuery(event.target.value)} placeholder="Пошук авто, VIN або власника..." />
+          {query && <button type="button" onClick={() => changeQuery("")} aria-label="Очистити пошук">×</button>}
+        </label>
+      </div>
     </header>
-
-    <div className={styles.toolbar}>
-      <label className={styles.search}>
-        <span>⌕</span>
-        <input value={query} onChange={(event) => changeQuery(event.target.value)} placeholder="Пошук за номером авто, VIN, маркою, моделлю або власником..." />
-        {query && <button type="button" onClick={() => changeQuery("")} aria-label="Очистити пошук">×</button>}
-      </label>
-    </div>
 
     <div className={styles.summary}>Знайдено автомобілів: <b>{total}</b>{total > 0 && <span> · сторінка {page} з {pages}</span>}</div>
     {error && <div className={styles.error}>{error}</div>}

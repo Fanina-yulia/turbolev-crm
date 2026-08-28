@@ -2,6 +2,8 @@
 .fullPageSurface{display:block;min-width:0;width:100%}
 .pageRecord> :not(.fullPageSurface){display:none}
 .header{display:flex;justify-content:space-between;align-items:flex-start;gap:24px;padding-bottom:22px;border-bottom:1px solid var(--line)}
+.headerActions{display:flex;align-items:center;justify-content:flex-end;gap:10px;min-width:0}
+.headerActions .search{width:min(360px,32vw);flex:0 1 360px}
 .header h1{margin:4px 0 6px;font-size:38px;line-height:1.05}
 .header>div>span{color:var(--muted);font-size:16px}
 .eyebrow{margin:0;color:#f05a0b;font-size:13px;font-weight:800;letter-spacing:.08em}
@@ -120,6 +122,8 @@
 }
 @media(max-width:760px){.page{padding:18px 14px 32px}
 .header{flex-direction:column}
+.headerActions{width:100%;display:grid;grid-template-columns:1fr}
+.headerActions .search{width:100%}
 .header h1{font-size:30px}
 .grid{grid-template-columns:1fr}
 .facts{grid-template-columns:1fr}
