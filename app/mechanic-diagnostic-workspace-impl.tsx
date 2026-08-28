@@ -104,7 +104,7 @@ export function MechanicDiagnosticWorkspace({ diagnosticId, onBack, onChanged, o
   }, [loadSettlement, onFinished, settlement?.walkIn]);
 
   if (settlement?.walkIn && settlement.submitted) {
-    return <MechanicWalkInSettlement diagnosticId={diagnosticId} data={settlement} onRefresh={loadSettlement} onBack={onBack} onFinished={onFinished} />;
+    return <MechanicWalkInSettlement diagnosticId={diagnosticId} data={settlement} onRefresh={async () => { await loadSettlement(); }} onBack={onBack} onFinished={onFinished} />;
   }
   if (mode === "MATRIX") return <MechanicDiagnosticMatrix diagnosticId={diagnosticId} onBack={onBack} onChanged={changed} onFinished={() => void finishDiagnostic()} />;
   if (mode === "LEGACY") return <LegacyMechanicDiagnosticWorkspace diagnosticId={diagnosticId} onBack={onBack} onChanged={changed} onFinished={() => void finishDiagnostic()} />;
