@@ -67,6 +67,7 @@ const RULES: Rule[] = [
   { match: exact("/api/customer-cabinet/context"), resolve: () => internal(PERMISSIONS.DIAGNOSTICS_READ, "LOCATION", "Authenticated customer-cabinet context is a diagnostic read model; the route additionally filters diagnostic assignments to the caller's allowed locations.") },
   { match: exact("/api/cabinet/mechanic/assigned-vehicles"), resolve: () => internal(PERMISSIONS.OVERVIEW_READ, "ASSIGNED", "Mechanic assignment feed returns only active service cases assigned to the caller's own mechanic resource.", true) },
   { match: exact("/api/cabinet/mechanic/snapshot"), resolve: () => internal(PERMISSIONS.OVERVIEW_READ, "ASSIGNED", "Consolidated mechanic cabinet snapshot is restricted to the caller's own mechanic resource and assigned operational cases.", true) },
+  { match: exact("/api/cabinet/mechanic/repair-cases"), resolve: () => internal(PERMISSIONS.PRODUCTION_READ, "ASSIGNED", "Mechanic repair cases are grouped by WorkOrder and restricted to the caller's assigned operational cases.", true) },
   { match: exact("/api/cabinet/mechanic/diagnostics/[id]/bootstrap"), resolve: () => internal(PERMISSIONS.DIAGNOSTICS_READ, "ASSIGNED", "Mechanic diagnostic bootstrap is a strict assigned-only read model for the selected diagnostic.", true) },
   { match: exact("/api/cabinet/mechanic/support"), resolve: (method) => method.toUpperCase() === "GET"
     ? internal(PERMISSIONS.OVERVIEW_READ, "ASSIGNED", "Mechanic support lookup returns only the service-advisor contact for the caller's own station.", true)

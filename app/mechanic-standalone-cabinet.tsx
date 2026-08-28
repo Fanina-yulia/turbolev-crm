@@ -21,8 +21,69 @@ type MechanicTask = {
   startedAt?: string | null;
   completedAt?: string | null;
   pausedAt?: string | null;
+  pauseReason?: string | null;
+  pauseNote?: string | null;
   findingCount?: number;
   openFindingCount?: number;
+};
+
+type RepairCaseLine = {
+  id: string;
+  type: string;
+  status: string;
+  description: string;
+  code: string | null;
+  article: string | null;
+  brand: string | null;
+  unit: string;
+  requiredForRepair: boolean;
+  plannedQuantity: string | null;
+  actualQuantity: string | null;
+  laborHours: string | null;
+  mechanicId: string | null;
+  assignedToCurrentMechanic: boolean;
+  startedAt: string | null;
+  completedAt: string | null;
+  mechanicWorkflow: { pausedAt: string | null; pauseReason: string | null; pauseNote: string | null; totalPausedSeconds: number };
+};
+
+type RepairCasePart = {
+  id: string;
+  description: string;
+  article: string | null;
+  brand: string | null;
+  status: string;
+  unit: string;
+  requiredForRepair: boolean;
+  plannedQuantity: string | null;
+  actualQuantity: string | null;
+};
+
+type RepairCase = {
+  id: string;
+  workOrderId: string;
+  status: string;
+  vehicle: { id: string; label: string; plateNumber: string | null; vin: string | null; mileageKm: number | null };
+  client: { id: string; name: string | null; phone: string };
+  appointment: { id: string; status: string; plannedStartAt: string; plannedEndAt: string; post: string | null; problem: string | null } | null;
+  diagnostic: { id: string; technicalConclusion: string | null; confirmedAt: string | null };
+  progress: { completed: number; total: number; percent: number };
+  lines: RepairCaseLine[];
+  parts: RepairCasePart[];
+  activeLineId: string | null;
+  hasAssignedWork: boolean;
+  qualityControl: { id: string; attempt: number; status: string; resultNote: string | null; completedAt: string | null } | null;
+  nextAction: string;
+  updatedAt: string;
+};
+
+type RepairCaseFeed = {
+  ok: boolean;
+  linked: boolean;
+  cases?: RepairCase[];
+  kpis?: { total: number; active: number; inRepair: number; waitingParts: number; waitingQc: number; completedToday: number };
+  message?: string;
+  error?: string;
 };
 
 type Appointment = {
@@ -109,7 +170,7 @@ type NotificationFeed = {
 
 type Payroll = { ok: boolean; projection?: { total?: number | string; month?: string } };
 type Screen = "HOME" | "WORKS" | "WORK_DETAIL" | "FINDING" | "DIAGNOSTICS" | "DIAGNOSTIC_DETAIL" | "NOTIFICATIONS" | "PROFILE" | "SCHEDULE" | "PAYROLL" | "SUPPORT";
-type WorkAction = "START" | "PAUSE" | "RESUME" | "COMPLETE";
+type WorkAction = "START" | "PAUSE" | "RESUME" | "COMPLETE" | "WAITING_PARTS";
 type ThemeChoice = "system" | "light" | "dark";
 type SupportKind = "QUESTION" | "PART_REQUEST";
 type FindingUrgency = "INFO" | "SOON" | "CRITICAL";
@@ -225,6 +286,12 @@ function matchesWorksFilter(item: Appointment | MechanicTask, filter: WorksFilte
     || (!("plannedStartAt" in item) && (item.status === "IN_PROGRESS" || item.status === "PAUSED"));
 }
 
+function matchesRepairCaseFilter(item: RepairCase, filter: WorksFilter) {
+  if (filter === "ALL") return true;
+  if (filter === "WAITING_PARTS") return item.status === "WAITING_PARTS";
+  return ["IN_REPAIR", "PAUSED", "REWORK"].includes(item.status);
+}
+
 function kyivDateKey(value: string | Date) {
   const parts = new Intl.DateTimeFormat("uk-UA", {
     timeZone: "Europe/Kyiv",
@@ -266,6 +333,8 @@ function TopBar({ title, onBack }: { title: string; onBack: () => void }) {
 export function MechanicStandaloneCabinet({ userName }: { userName?: string | null }) {
   const [home, setHome] = useState<HomePayload | null>(null);
   const [tasks, setTasks] = useState<MechanicTask[]>([]);
+  const [repairCases, setRepairCases] = useState<RepairCase[]>([]);
+  const [repairCaseKpis, setRepairCaseKpis] = useState<RepairCaseFeed["kpis"] | null>(null);
   const [taskKpis, setTaskKpis] = useState<TaskFeed["kpis"] | null>(null);
   const [diagnostics, setDiagnostics] = useState<DiagnosticItem[]>([]);
   const [clarifications, setClarifications] = useState<Clarification[]>([]);
@@ -309,6 +378,16 @@ export function MechanicStandaloneCabinet({ userName }: { userName?: string | nu
     }
   }, []);
 
+  const loadRepairCases = useCallback(async () => {
+    const response = await fetch("/api/cabinet/mechanic/repair-cases", { cache: "no-store", credentials: "include" });
+    const body = await response.json().catch(() => null) as RepairCaseFeed | null;
+    if (!response.ok || !body?.ok) throw new Error(body?.message || body?.error || "Не вдалося оновити ремонтні справи");
+    if (body.linked) {
+      setRepairCases(body.cases ?? []);
+      setRepairCaseKpis(body.kpis ?? null);
+    }
+  }, []);
+
   const loadDiagnostics = useCallback(async () => {
     const response = await fetch("/api/diagnostics/me", { cache: "no-store", credentials: "include" });
     const body = await response.json().catch(() => null);
@@ -334,8 +413,8 @@ export function MechanicStandaloneCabinet({ userName }: { userName?: string | nu
   useEffect(() => {
     const stored = window.localStorage.getItem("turbolev:mechanic-theme");
     if (stored === "light" || stored === "dark" || stored === "system") setThemeChoice(stored);
-    void Promise.all([loadHome(), loadTasks(), loadDiagnostics(), loadNotifications()]).catch((cause) => setError(cause instanceof Error ? cause.message : "Не вдалося завантажити кабінет"));
-  }, [loadDiagnostics, loadHome, loadNotifications, loadTasks]);
+    void Promise.all([loadHome(), loadTasks(), loadRepairCases(), loadDiagnostics(), loadNotifications()]).catch((cause) => setError(cause instanceof Error ? cause.message : "Не вдалося завантажити кабінет"));
+  }, [loadDiagnostics, loadHome, loadNotifications, loadRepairCases, loadTasks]);
 
   useEffect(() => {
     const timer = window.setInterval(() => void loadNotifications().catch(() => undefined), 15000);
@@ -358,7 +437,7 @@ export function MechanicStandaloneCabinet({ userName }: { userName?: string | nu
       if (task) openTask(task);
       else { setWorksFilter("ALL"); setScreen("WORKS"); }
     };
-    const onRefresh = () => { void Promise.all([loadHome(), loadTasks(), loadDiagnostics()]).catch(() => undefined); };
+    const onRefresh = () => { void Promise.all([loadHome(), loadTasks(), loadRepairCases(), loadDiagnostics()]).catch(() => undefined); };
     window.addEventListener("turbolev:mechanic-open-diagnostic", onOpenDiagnostic);
     window.addEventListener("turbolev:mechanic-open-task", onOpenTask);
     window.addEventListener("turbolev:mechanic-refresh", onRefresh);
@@ -367,11 +446,11 @@ export function MechanicStandaloneCabinet({ userName }: { userName?: string | nu
       window.removeEventListener("turbolev:mechanic-open-task", onOpenTask);
       window.removeEventListener("turbolev:mechanic-refresh", onRefresh);
     };
-  }, [loadDiagnostics, loadHome, loadTasks, tasks]);
+  }, [loadDiagnostics, loadHome, loadRepairCases, loadTasks, tasks]);
 
   const appointments = home?.appointments ?? [];
   const activeAppointments = appointments;
-  const representedWorkOrderIds = new Set(tasks.map((item) => item.workOrderId));
+  const representedWorkOrderIds = new Set(repairCases.map((item) => item.workOrderId));
   const mechanicActionableAppointmentStatuses = new Set(["BOOKED", "ARRIVED", "DIAGNOSTICS", "READY_FOR_REPAIR", "IN_REPAIR", "WAITING_QC", "PAUSED"]);
   const scheduledAppointments = activeAppointments.filter((item) => mechanicActionableAppointmentStatuses.has(item.status) && (!item.workOrderId || !representedWorkOrderIds.has(item.workOrderId)));
   const prioritizedScheduledAppointments = [...scheduledAppointments].sort(appointmentPriority);
@@ -380,18 +459,25 @@ export function MechanicStandaloneCabinet({ userName }: { userName?: string | nu
     ? diagnostics.find((item) => normalizedPlate(item.vehicle.plateNumber) === normalizedPlate(nextScheduledAppointment.plate)) ?? null
     : null;
   const selectedTask = tasks.find((item) => item.id === selectedTaskId) ?? null;
-  const selectedOrderTasks = selectedTask ? tasks.filter((item) => item.workOrderId === selectedTask.workOrderId) : [];
+  const selectedRepairCase = selectedTask ? repairCases.find((item) => item.workOrderId === selectedTask.workOrderId) ?? null : null;
+  const selectedOrderTasks = selectedRepairCase?.lines ?? (selectedTask ? tasks.filter((item) => item.workOrderId === selectedTask.workOrderId) : []);
   const selectedAppointment = selectedTask ? appointments.find((item) => item.plate === selectedTask.plate || item.vehicle === selectedTask.vehicle) ?? null : null;
   const activeTask = tasks.find((item) => item.status === "IN_PROGRESS" || item.status === "PAUSED") ?? tasks.find((item) => !isDone(item.status) && item.status !== "CANCELLED") ?? null;
   const currentPost = activeTask ? appointments.find((item) => item.plate === activeTask.plate)?.post : appointments.find((item) => item.post)?.post;
   const assignedCases = home?.kpis?.assigned ?? activeAppointments.length;
   const scheduledToday = home?.kpis?.scheduledToday ?? scheduledAppointments.length;
-  const inProgress = (taskKpis?.inProgress ?? tasks.filter((item) => item.status === "IN_PROGRESS").length) + (taskKpis?.paused ?? tasks.filter((item) => item.status === "PAUSED").length);
-  const completed = taskKpis?.completedToday ?? tasks.filter((item) => isDone(item.status)).length;
+  const inProgress = repairCaseKpis?.inRepair ?? ((taskKpis?.inProgress ?? tasks.filter((item) => item.status === "IN_PROGRESS").length) + (taskKpis?.paused ?? tasks.filter((item) => item.status === "PAUSED").length));
+  const completed = repairCaseKpis?.completedToday ?? taskKpis?.completedToday ?? tasks.filter((item) => isDone(item.status)).length;
   const notificationCount = notificationFeed?.unreadCount ?? 0;
   const mechanicName = userName || home?.mechanic?.name || "Автомеханік";
   const visibleWorkAppointments = scheduledAppointments.filter((item) => matchesWorksFilter(item, worksFilter)).sort(appointmentPriority);
-  const visibleWorkTasks = tasks.filter((item) => matchesWorksFilter(item, worksFilter));
+  const visibleRepairCases = repairCases.filter((item) => matchesRepairCaseFilter(item, worksFilter));
+  const visibleWorkTasks = visibleRepairCases.flatMap((item) => {
+    const line = item.lines.find((candidate) => candidate.assignedToCurrentMechanic && !isDone(candidate.status))
+      ?? item.lines.find((candidate) => candidate.assignedToCurrentMechanic);
+    const task = line ? tasks.find((candidate) => candidate.id === line.id) : null;
+    return task ? [{ ...task, status: item.status === "PAUSED" ? "PAUSED" : task.status, workOrderStatus: item.status, description: `${item.progress.completed} з ${item.progress.total} робіт · ${line?.description || "Ремонт автомобіля"}` }] : [];
+  });
   const todayKyivKey = kyivDateKey(new Date());
   const visibleScheduleAppointments = (scheduleFilter === "TODAY"
     ? appointments.filter((item) => kyivDateKey(item.plannedStartAt) === todayKyivKey)
@@ -465,6 +551,20 @@ export function MechanicStandaloneCabinet({ userName }: { userName?: string | nu
     }));
   }
 
+  function openRepairCase(item: RepairCase) {
+    const preferredLine = item.lines.find((line) => line.assignedToCurrentMechanic && line.status === "IN_PROGRESS")
+      ?? item.lines.find((line) => line.assignedToCurrentMechanic && line.status === "APPROVED")
+      ?? item.lines.find((line) => line.assignedToCurrentMechanic && line.status === "DRAFT")
+      ?? item.lines.find((line) => line.assignedToCurrentMechanic);
+    const task = preferredLine ? tasks.find((candidate) => candidate.id === preferredLine.id) : null;
+    if (task) openTask(task);
+    else {
+      setError("Для цього автомобіля ще не призначено окрему операцію механіку.");
+      setWorksFilter("ALL");
+      setScreen("WORKS");
+    }
+  }
+
   function openDiagnostic(diagnosticId: string) {
     setSelectedDiagnosticId(diagnosticId);
     setScreen("DIAGNOSTIC_DETAIL");
@@ -477,24 +577,30 @@ export function MechanicStandaloneCabinet({ userName }: { userName?: string | nu
     setScreen("HOME");
     setError("");
     setMessage("");
-    void Promise.all([loadDiagnostics(), loadHome(), loadTasks()]).catch(() => undefined);
+    void Promise.all([loadDiagnostics(), loadHome(), loadTasks(), loadRepairCases()]).catch(() => undefined);
   }
 
   async function runAction(action: WorkAction) {
     if (!selectedTask) return;
     if (action === "COMPLETE" && !window.confirm("Завершити цю роботу?")) return;
+    const reason = action === "PAUSE"
+      ? window.prompt("Чому ставите роботу на паузу?", selectedTask.pauseNote || "") ?? ""
+      : action === "WAITING_PARTS"
+        ? window.prompt("Яка запчастина потрібна?", "") ?? ""
+        : "";
+    if ((action === "PAUSE" || action === "WAITING_PARTS") && !reason.trim()) return;
     setBusy(action); setError("");
     try {
       const response = await fetch(`/api/cabinet/mechanic/tasks/${encodeURIComponent(selectedTask.id)}`, {
         method: "PATCH",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action }),
+        body: JSON.stringify({ action, ...(reason.trim() ? { reason: reason.trim() } : {}) }),
       });
       const body = await response.json().catch(() => null);
       if (!response.ok || !body?.ok) throw new Error(body?.message || body?.error || "Не вдалося оновити роботу");
-      await Promise.all([loadTasks(), loadHome()]);
-      setMessage(action === "START" ? "Роботу розпочато." : action === "PAUSE" ? "Роботу поставлено на паузу." : action === "RESUME" ? "Роботу продовжено." : "Роботу завершено.");
+      await Promise.all([loadTasks(), loadRepairCases(), loadHome()]);
+      setMessage(action === "START" ? "Роботу розпочато." : action === "PAUSE" ? "Роботу поставлено на паузу." : action === "RESUME" ? "Роботу продовжено." : action === "WAITING_PARTS" ? "Роботу призупинено: очікується запчастина." : "Роботу завершено.");
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Не вдалося оновити роботу"); }
     finally { setBusy(""); }
   }
@@ -530,7 +636,18 @@ export function MechanicStandaloneCabinet({ userName }: { userName?: string | nu
       });
       const body = await response.json().catch(() => null);
       if (!response.ok || !body?.ok) throw new Error(body?.message || body?.error || "Не вдалося передати запит");
-      setSupportText(""); setScreen("WORK_DETAIL"); setMessage(body.message || "Запит передано.");
+      if (supportKind === "PART_REQUEST" && selectedTask.status === "IN_PROGRESS") {
+        const statusResponse = await fetch(`/api/cabinet/mechanic/tasks/${encodeURIComponent(selectedTask.id)}`, {
+          method: "PATCH",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "WAITING_PARTS", reason: supportText.trim() }),
+        });
+        const statusBody = await statusResponse.json().catch(() => null);
+        if (!statusResponse.ok || !statusBody?.ok) throw new Error(statusBody?.message || statusBody?.error || "Запит передано, але статус не оновлено");
+        await Promise.all([loadTasks(), loadRepairCases(), loadHome()]);
+      }
+      setSupportText(""); setScreen("WORK_DETAIL"); setMessage(supportKind === "PART_REQUEST" ? "Запчастину запитано. Роботу переведено в очікування." : body.message || "Запит передано.");
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Не вдалося передати запит"); }
     finally { setBusy(""); }
   }
@@ -659,7 +776,7 @@ export function MechanicStandaloneCabinet({ userName }: { userName?: string | nu
 
       {screen === "WORKS" && <><TopBar title="Мої роботи" onBack={() => setScreen("HOME")} /><main className={styles.content}><div className={styles.pageTitle}><h1>{worksHeading.title}</h1><p>{worksHeading.description}</p></div><div className={styles.filterBar} role="group" aria-label="Фільтр робіт"><button type="button" className={worksFilter === "ALL" ? styles.filterActive : ""} aria-pressed={worksFilter === "ALL"} onClick={() => setWorksFilter("ALL")}>Усі</button><button type="button" className={worksFilter === "IN_PROGRESS" ? styles.filterActive : ""} aria-pressed={worksFilter === "IN_PROGRESS"} onClick={() => setWorksFilter("IN_PROGRESS")}>В роботі</button><button type="button" className={worksFilter === "WAITING_PARTS" ? styles.filterActive : ""} aria-pressed={worksFilter === "WAITING_PARTS"} onClick={() => setWorksFilter("WAITING_PARTS")}>Очікує деталей</button></div><div className={styles.stack}>{visibleWorkAppointments.map((item) => { const itemStatus = appointmentStatus(item); const overdue = isAppointmentOverdue(item); return <button type="button" className={styles.listCard} style={overdue ? overdueCardStyle : undefined} key={`appointment:${item.id}`} onClick={() => openScannedVehicle(item.plate)}><div><h3>{item.vehicle}</h3><b style={overdue ? { color: "var(--m-danger)" } : undefined}>{item.plate}</b></div><p>{item.problem || "Запис на СТО"}</p><div className={styles.meta}><span>Час <b style={overdue ? { color: "var(--m-danger)" } : undefined}>{notificationTime(item.plannedStartAt)}</b></span><span>Пост <b>{item.post || "—"}</b></span></div><small className={styles.subtle}>Натисніть, щоб підтвердити номер і відкрити діагностику</small><span className={`${styles.pill} ${overdue ? "" : statusTone(itemStatus)}`} style={overdue ? overduePillStyle : undefined}>{overdue ? "Протерміновано" : statusLabel[itemStatus] || itemStatus}</span></button>; })}{visibleWorkTasks.map((task) => { const itemStatus = worksFilter === "ALL" ? task.status : task.workOrderStatus || task.status; return <button type="button" className={styles.listCard} key={task.id} onClick={() => openScannedVehicle(task.plate)}><div><h3>{task.vehicle}</h3><b>{task.plate}</b></div><p>{task.description}</p><small className={styles.subtle}>Натисніть, щоб підтвердити номер і відкрити роботу</small><span className={`${styles.pill} ${statusTone(itemStatus)}`}>{statusLabel[itemStatus] || itemStatus}</span></button>; })}</div>{!visibleWorkTasks.length && !visibleWorkAppointments.length && <div className={styles.empty}>{worksHeading.empty}</div>}</main></>}
 
-      {screen === "WORK_DETAIL" && selectedTask && <><TopBar title="Робота" onBack={() => setScreen("WORKS")} /><main className={styles.content}><section className={styles.card}><div className={styles.taskTop}><div className={styles.carIcon}>🚗</div><div><h2>{selectedTask.vehicle}</h2><p>{selectedTask.plate}</p></div><span className={`${styles.pill} ${selectedTaskOverdue ? "" : statusTone(selectedTask.status)}`} style={selectedTaskOverdue ? overduePillStyle : undefined}>{selectedTaskOverdue ? "Прострочено" : statusLabel[selectedTask.status] || selectedTask.status}</span></div><div className={styles.metaGrid}><span>Пост<b>{selectedAppointment?.post || "—"}</b></span><span>Початок<b>{time(selectedTask.startedAt || selectedAppointment?.plannedStartAt)}</b></span><span>Тривалість<b>{duration(selectedAppointment?.plannedStartAt, selectedAppointment?.plannedEndAt)}</b></span></div>{selectedTaskOverdue && <p className={styles.subtle} style={{ color: "var(--m-danger)", fontWeight: 800 }}>Плановий час уже минув. Робота потребує рішення.</p>}</section><section className={styles.card}><div className={styles.sectionHead}><div><h2>Роботи за комерційною пропозицією</h2><p>{selectedOrderTasks.filter((item) => isDone(item.status)).length} з {selectedOrderTasks.length} виконано</p></div></div><div className={styles.orderLines}>{selectedOrderTasks.map((item) => <div key={item.id}><i className={statusTone(item.status)}>●</i><div><strong>{item.description}</strong><small>{item.laborHours ? `${item.laborHours} нормо-год` : item.type}</small></div><span>{statusLabel[item.status] || item.status}</span></div>)}</div></section><section className={styles.card}><div className={styles.sectionHead}><div><h2>Керування роботою</h2><p>Фіксується в історії замовлення</p></div></div>{selectedTask.status === "APPROVED" && <button className={styles.primary} disabled={Boolean(busy)} onClick={() => setShowPlateVerification(true)}>▶ Почати роботу</button>}{selectedTask.status === "IN_PROGRESS" && <div className={styles.twoButtons}><button className={styles.secondary} disabled={Boolean(busy)} onClick={() => void runAction("PAUSE")}>Ⅱ Пауза</button><button className={styles.successButton} disabled={Boolean(busy)} onClick={() => void runAction("COMPLETE")}>✓ Завершити</button></div>}{selectedTask.status === "PAUSED" && <div className={styles.twoButtons}><button className={styles.primary} disabled={Boolean(busy)} onClick={() => void runAction("RESUME")}>▶ Продовжити</button><button className={styles.successButton} disabled={Boolean(busy)} onClick={() => void runAction("COMPLETE")}>✓ Завершити</button></div>}{isDone(selectedTask.status) && <div className={styles.doneBox}>✓ Роботу завершено</div>}{selectedTaskOverdue && <button type="button" className={styles.secondary} style={{ width: "100%", marginTop: 12 }} onClick={() => setShowExecutionIssue(true)}>Не можу виконати роботу</button>}<div className={styles.actionList}><button type="button" onClick={() => setScreen("FINDING")}>📷 Додати фото / виявлений дефект <span>›</span></button><button type="button" onClick={() => { setSupportKind("PART_REQUEST"); setSupportText(""); setScreen("SUPPORT"); }}>⚙ Запросити запчастину <span>›</span></button><button type="button" onClick={() => { setSupportKind("QUESTION"); setSupportText(""); setScreen("SUPPORT"); }}>💬 Поставити питання менеджеру <span>›</span></button></div></section></main>{showExecutionIssue && <MechanicExecutionIssueForm task={selectedTask} onClose={() => setShowExecutionIssue(false)} onSubmitted={(notice) => { setShowExecutionIssue(false); setMessage(notice); void loadNotifications(); }} />}{showPlateVerification && <MechanicTaskPlateVerification task={selectedTask} onClose={() => setShowPlateVerification(false)} onVerified={async () => { setShowPlateVerification(false); await runAction("START"); }} />}</>}
+      {screen === "WORK_DETAIL" && selectedTask && <><TopBar title="Робота" onBack={() => setScreen("WORKS")} /><main className={styles.content}><section className={styles.card}><div className={styles.taskTop}><div className={styles.carIcon}>🚗</div><div><h2>{selectedTask.vehicle}</h2><p>{selectedTask.plate}</p></div><span className={`${styles.pill} ${selectedTaskOverdue ? "" : statusTone(selectedTask.status)}`} style={selectedTaskOverdue ? overduePillStyle : undefined}>{selectedTaskOverdue ? "Прострочено" : statusLabel[selectedTask.status] || selectedTask.status}</span></div><div className={styles.metaGrid}><span>Пост<b>{selectedAppointment?.post || "—"}</b></span><span>Початок<b>{time(selectedTask.startedAt || selectedAppointment?.plannedStartAt)}</b></span><span>Тривалість<b>{duration(selectedAppointment?.plannedStartAt, selectedAppointment?.plannedEndAt)}</b></span></div>{selectedTaskOverdue && <p className={styles.subtle} style={{ color: "var(--m-danger)", fontWeight: 800 }}>Плановий час уже минув. Робота потребує рішення.</p>}</section><section className={styles.card}><div className={styles.sectionHead}><div><h2>Роботи за комерційною пропозицією</h2><p>{selectedOrderTasks.filter((item) => isDone(item.status)).length} з {selectedOrderTasks.length} виконано</p></div></div><div className={styles.orderLines}>{selectedOrderTasks.map((item) => <div key={item.id}><i className={statusTone(item.status)}>●</i><div><strong>{item.description}</strong><small>{item.laborHours ? `${item.laborHours} нормо-год` : item.type}</small></div><span>{statusLabel[item.status] || item.status}</span></div>)}</div></section>{selectedRepairCase?.parts?.length ? <section className={styles.card}><div className={styles.sectionHead}><div><h2>Запчастини</h2><p>Деталі цієї ремонтної справи</p></div></div><div className={styles.orderLines}>{selectedRepairCase.parts.map((part) => <div key={part.id}><i className={statusTone(part.status)}>●</i><div><strong>{part.description}</strong><small>{[part.brand, part.article].filter(Boolean).join(" · ") || "Запчастина"}</small></div><span>{part.plannedQuantity || "1"} {part.unit} · {statusLabel[part.status] || part.status}</span></div>)}</div></section> : null}<section className={styles.card}><div className={styles.sectionHead}><div><h2>Керування роботою</h2><p>Фіксується в історії замовлення</p></div></div>{selectedTask.status === "APPROVED" && <button className={styles.primary} disabled={Boolean(busy)} onClick={() => setShowPlateVerification(true)}>▶ Почати роботу</button>}{selectedTask.status === "IN_PROGRESS" && <div className={styles.twoButtons}><button className={styles.secondary} disabled={Boolean(busy)} onClick={() => void runAction("PAUSE")}>Ⅱ Пауза</button><button className={styles.successButton} disabled={Boolean(busy)} onClick={() => void runAction("COMPLETE")}>✓ Завершити</button></div>}{selectedTask.status === "PAUSED" && <div className={styles.twoButtons}><button className={styles.primary} disabled={Boolean(busy)} onClick={() => void runAction("RESUME")}>▶ Продовжити</button><button className={styles.successButton} disabled={Boolean(busy)} onClick={() => void runAction("COMPLETE")}>✓ Завершити</button></div>}{isDone(selectedTask.status) && <div className={styles.doneBox}>✓ Роботу завершено</div>}{selectedTaskOverdue && <button type="button" className={styles.secondary} style={{ width: "100%", marginTop: 12 }} onClick={() => setShowExecutionIssue(true)}>Не можу виконати роботу</button>}<div className={styles.actionList}><button type="button" onClick={() => setScreen("FINDING")}>📷 Додати фото / виявлений дефект <span>›</span></button><button type="button" onClick={() => { setSupportKind("PART_REQUEST"); setSupportText(""); setScreen("SUPPORT"); }}>⚙ Запросити запчастину <span>›</span></button><button type="button" onClick={() => { setSupportKind("QUESTION"); setSupportText(""); setScreen("SUPPORT"); }}>💬 Поставити питання менеджеру <span>›</span></button></div></section></main>{showExecutionIssue && <MechanicExecutionIssueForm task={selectedTask} onClose={() => setShowExecutionIssue(false)} onSubmitted={(notice) => { setShowExecutionIssue(false); setMessage(notice); void loadNotifications(); }} />}{showPlateVerification && <MechanicTaskPlateVerification task={selectedTask} onClose={() => setShowPlateVerification(false)} onVerified={async () => { setShowPlateVerification(false); await runAction("START"); }} />}</>}
 
       {screen === "FINDING" && selectedTask && <><TopBar title="Виявлений дефект" onBack={() => setScreen("WORK_DETAIL")} /><main className={styles.content}><section className={styles.card}><h2>{selectedTask.vehicle} · {selectedTask.plate}</h2><p className={styles.subtle}>🔧 {selectedTask.description}</p></section><section className={styles.formCard}><label><span>Що виявлено *</span><textarea value={findingText} onChange={(event) => setFindingText(event.target.value)} rows={4} placeholder="Опишіть дефект або несправність" /></label><label><span>Рекомендація</span><textarea value={findingRecommendation} onChange={(event) => setFindingRecommendation(event.target.value)} rows={3} placeholder="Що рекомендуєте зробити" /></label><div><span className={styles.label}>Терміновість</span><div className={styles.segmented}>{(["INFO", "SOON", "CRITICAL"] as FindingUrgency[]).map((value) => <button type="button" key={value} className={findingUrgency === value ? styles.segmentActive : ""} onClick={() => setFindingUrgency(value)}>{value === "INFO" ? "Рекомендація" : value === "SOON" ? "Скоро" : "Критично"}</button>)}</div></div><label className={styles.photoButton}>📷 Додати фото (1–3)<input type="file" accept="image/jpeg,image/png,image/webp" multiple capture="environment" onChange={(event) => { const files = Array.from(event.currentTarget.files ?? []).filter((file) => ["image/jpeg", "image/png", "image/webp"].includes(file.type)); setFindingFiles((current) => [...current, ...files].slice(0, 3)); event.currentTarget.value = ""; }} /></label>{findingFiles.length > 0 && <div className={styles.fileList}>{findingFiles.map((file, index) => <div key={`${file.name}-${index}`}><span>{file.name || `Фото ${index + 1}`}</span><button type="button" onClick={() => setFindingFiles((current) => current.filter((_, i) => i !== index))}>×</button></div>)}</div>}<button type="button" className={styles.primary} disabled={busy === "finding"} onClick={() => void submitFinding()}>{busy === "finding" ? "Передаю…" : "Передати сервіс-менеджеру →"}</button></section></main></>}
 
