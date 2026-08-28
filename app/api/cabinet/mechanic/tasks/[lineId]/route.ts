@@ -11,10 +11,12 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
 
-type Action = "START" | "PAUSE" | "RESUME" | "COMPLETE";
+type Action = "START" | "PAUSE" | "RESUME" | "COMPLETE" | "WAITING_PARTS";
 
 type WorkflowMeta = {
   pausedAt: string | null;
+  pauseReason: string | null;
+  pauseNote: string | null;
   totalPausedSeconds: number;
   lastAction: Action | null;
   lastActionAt: string | null;
@@ -28,11 +30,15 @@ function workflowMeta(metadata: unknown): WorkflowMeta {
   const root = record(metadata);
   const workflow = record(root.mechanicWorkflow);
   const pausedAt = typeof workflow.pausedAt === "string" && workflow.pausedAt ? workflow.pausedAt : null;
+  const pauseReason = typeof workflow.pauseReason === "string" && workflow.pauseReason ? workflow.pauseReason : null;
+  const pauseNote = typeof workflow.pauseNote === "string" && workflow.pauseNote ? workflow.pauseNote : null;
   const totalPausedSeconds = Number(workflow.totalPausedSeconds ?? 0);
   return {
     pausedAt,
+    pauseReason,
+    pauseNote,
     totalPausedSeconds: Number.isFinite(totalPausedSeconds) && totalPausedSeconds > 0 ? Math.floor(totalPausedSeconds) : 0,
-    lastAction: ["START", "PAUSE", "RESUME", "COMPLETE"].includes(String(workflow.lastAction)) ? workflow.lastAction as Action : null,
+    lastAction: ["START", "PAUSE", "RESUME", "COMPLETE", "WAITING_PARTS"].includes(String(workflow.lastAction)) ? workflow.lastAction as Action : null,
     lastActionAt: typeof workflow.lastActionAt === "string" ? workflow.lastActionAt : null,
   };
 }
@@ -62,9 +68,10 @@ export async function PATCH(request: Request, context: { params: Promise<{ lineI
 
     const body = await request.json().catch(() => null) as Record<string, unknown> | null;
     const action = typeof body?.action === "string" ? body.action.trim().toUpperCase() as Action : "" as Action;
-    if (!(["START", "PAUSE", "RESUME", "COMPLETE"] as string[]).includes(action)) {
+    if (!(["START", "PAUSE", "RESUME", "COMPLETE", "WAITING_PARTS"] as string[]).includes(action)) {
       return error("Невідома дія з роботою.", "INVALID_ACTION", 400);
     }
+    const reason = typeof body?.reason === "string" ? body.reason.trim().slice(0, 240) : "";
 
     const prisma = getPrisma();
     const mechanic = await prisma.serviceMechanic.findFirst({
@@ -117,21 +124,24 @@ export async function PATCH(request: Request, context: { params: Promise<{ lineI
         if (expectedPlate && plateVerification(line.metadata) !== normalizeRegistrationPlate(expectedPlate)) throw new Error("PLATE_VERIFICATION_REQUIRED");
         nextStatus = "IN_PROGRESS";
         nextStartedAt = line.startedAt ?? now;
-        nextWorkflow = { ...nextWorkflow, pausedAt: null };
+        nextWorkflow = { ...nextWorkflow, pausedAt: null, pauseReason: null, pauseNote: null };
       } else if (action === "PAUSE") {
         if (line.status !== "IN_PROGRESS" || isPaused) throw new Error(isPaused ? "ALREADY_PAUSED" : "INVALID_PAUSE_STATE");
-        nextWorkflow = { ...nextWorkflow, pausedAt: nowIso };
+        nextWorkflow = { ...nextWorkflow, pausedAt: nowIso, pauseReason: "OTHER", pauseNote: reason || null };
       } else if (action === "RESUME") {
         if (line.status !== "IN_PROGRESS" || !isPaused || !current.pausedAt) throw new Error("INVALID_RESUME_STATE");
         const elapsed = Math.max(0, Math.round((now.getTime() - new Date(current.pausedAt).getTime()) / 1000));
-        nextWorkflow = { ...nextWorkflow, pausedAt: null, totalPausedSeconds: current.totalPausedSeconds + elapsed };
+        nextWorkflow = { ...nextWorkflow, pausedAt: null, pauseReason: null, pauseNote: null, totalPausedSeconds: current.totalPausedSeconds + elapsed };
+      } else if (action === "WAITING_PARTS") {
+        if (line.status !== "IN_PROGRESS" || isPaused) throw new Error(isPaused ? "ALREADY_PAUSED" : "INVALID_WAITING_PARTS_STATE");
+        nextWorkflow = { ...nextWorkflow, pausedAt: nowIso, pauseReason: "PARTS", pauseNote: reason || "Потрібна запчастина" };
       } else if (action === "COMPLETE") {
         if (line.status !== "IN_PROGRESS") throw new Error("INVALID_COMPLETE_STATE");
         if (isPaused && current.pausedAt) {
           const elapsed = Math.max(0, Math.round((now.getTime() - new Date(current.pausedAt).getTime()) / 1000));
-          nextWorkflow = { ...nextWorkflow, pausedAt: null, totalPausedSeconds: current.totalPausedSeconds + elapsed };
+          nextWorkflow = { ...nextWorkflow, pausedAt: null, pauseReason: null, pauseNote: null, totalPausedSeconds: current.totalPausedSeconds + elapsed };
         } else {
-          nextWorkflow = { ...nextWorkflow, pausedAt: null };
+          nextWorkflow = { ...nextWorkflow, pausedAt: null, pauseReason: null, pauseNote: null };
         }
         nextStatus = "COMPLETED";
         nextCompletedAt = now;
@@ -167,6 +177,7 @@ export async function PATCH(request: Request, context: { params: Promise<{ lineI
     const target = action === "START" ? "IN_REPAIR"
       : action === "PAUSE" ? "PAUSED"
         : action === "RESUME" ? "IN_REPAIR"
+          : action === "WAITING_PARTS" ? "WAITING_PARTS"
           : mutation.finishOrder ? "WAITING_QC" : null;
 
     let workOrder: unknown = null;
@@ -225,6 +236,7 @@ export async function PATCH(request: Request, context: { params: Promise<{ lineI
       INVALID_PAUSE_STATE: ["На паузу можна поставити лише активну роботу.", 409],
       ALREADY_PAUSED: ["Робота вже на паузі.", 409],
       INVALID_RESUME_STATE: ["Продовжити можна лише роботу, що перебуває на паузі.", 409],
+      INVALID_WAITING_PARTS_STATE: ["Очікувати запчастину можна лише для розпочатої роботи.", 409],
       INVALID_COMPLETE_STATE: ["Завершити можна лише розпочату роботу.", 409],
       PLATE_VERIFICATION_REQUIRED: ["Перед початком підтвердіть номер саме цього автомобіля.", 409],
     };

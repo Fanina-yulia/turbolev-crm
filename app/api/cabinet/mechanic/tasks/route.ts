@@ -14,8 +14,10 @@ function record(value: unknown): Record<string, unknown> {
 function workflow(value: unknown) {
   const data = record(record(value).mechanicWorkflow);
   const pausedAt = typeof data.pausedAt === "string" && data.pausedAt ? data.pausedAt : null;
+  const pauseReason = typeof data.pauseReason === "string" && data.pauseReason ? data.pauseReason : null;
+  const pauseNote = typeof data.pauseNote === "string" && data.pauseNote ? data.pauseNote : null;
   const total = Number(data.totalPausedSeconds ?? 0);
-  return { pausedAt, totalPausedSeconds: Number.isFinite(total) && total > 0 ? Math.floor(total) : 0 };
+  return { pausedAt, pauseReason, pauseNote, totalPausedSeconds: Number.isFinite(total) && total > 0 ? Math.floor(total) : 0 };
 }
 
 function vehicleLabel(vehicle: { brand: string | null; model: string | null; year: number | null }) {
@@ -91,6 +93,8 @@ export async function GET(request: Request) {
         startedAt: line.startedAt,
         completedAt: line.completedAt,
         pausedAt: state.pausedAt,
+        pauseReason: state.pauseReason,
+        pauseNote: state.pauseNote,
         totalPausedSeconds: state.totalPausedSeconds,
         findingCount: findingCounts.get(line.id) ?? 0,
         openFindingCount: openFindingCounts.get(line.id) ?? 0,
