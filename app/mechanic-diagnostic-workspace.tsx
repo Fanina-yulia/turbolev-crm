@@ -6,6 +6,7 @@ type MechanicDiagnosticWorkspaceProps = {
   diagnosticId: string;
   onBack: () => void;
   onChanged?: () => void;
+  onFinished?: () => void;
 };
 
 const LazyMechanicDiagnosticWorkspace = dynamic<MechanicDiagnosticWorkspaceProps>(

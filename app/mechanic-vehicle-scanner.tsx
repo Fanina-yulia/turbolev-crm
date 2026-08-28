@@ -93,6 +93,7 @@ export function MechanicVehicleScanner() {
   const [navTarget, setNavTarget] = useState<HTMLElement | null>(null);
   const [heroTarget, setHeroTarget] = useState<HTMLElement | null>(null);
   const [countdown, setCountdown] = useState<number | null>(null);
+  const [expectedPlate, setExpectedPlate] = useState("");
 
   const awaitingVehicleConfirmation = result?.assignedToMe
     && result.nextAction?.type === "WAITING"
@@ -191,6 +192,7 @@ export function MechanicVehicleScanner() {
     setBusy(false);
     setCameraError("");
     setCountdown(null);
+    setExpectedPlate("");
     autoAdvanceRef.current = "";
     autoTriedRef.current = false;
     if (galleryRef.current) galleryRef.current.value = "";
@@ -202,6 +204,20 @@ export function MechanicVehicleScanner() {
     reset();
     setOpen(true);
   }
+
+  useEffect(() => {
+    function openRequestedScanner(event: Event) {
+      const detail = (event as CustomEvent<{ expectedPlate?: string }>).detail;
+      scanAbortRef.current?.abort();
+      scanAbortRef.current = null;
+      reset();
+      setExpectedPlate(detail?.expectedPlate?.trim() || "");
+      setOpen(true);
+    }
+
+    window.addEventListener("turbolev:mechanic-open-scanner", openRequestedScanner);
+    return () => window.removeEventListener("turbolev:mechanic-open-scanner", openRequestedScanner);
+  }, []);
 
   function close() {
     scanAbortRef.current?.abort();
@@ -232,6 +248,7 @@ export function MechanicVehicleScanner() {
         const prepared = await preparePhoto(input);
         const form = new FormData();
         form.append("image", prepared);
+        if (expectedPlate) form.append("expectedPlate", expectedPlate);
         response = await fetch("/api/cabinet/mechanic/tasks/vehicle-scan", {
           method: "POST",
           credentials: "include",
@@ -244,7 +261,7 @@ export function MechanicVehicleScanner() {
           method: "POST",
           credentials: "include",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ plate, confirm, continueExisting, source: existing?.recognition?.source || "MANUAL" }),
+          body: JSON.stringify({ plate, confirm, continueExisting, source: existing?.recognition?.source || "MANUAL", expectedPlate: expectedPlate || undefined }),
           signal: controller.signal,
         });
       }
@@ -470,7 +487,9 @@ export function MechanicVehicleScanner() {
       </div>
 
       <div className={styles.scannerInstruction}>
-        Для розпізнавання наведіть камеру на<br />державний номер автомобіля
+        {expectedPlate
+          ? <>Підтвердіть автомобіль номером<br /><strong>{expectedPlate}</strong></>
+          : <>Для розпізнавання наведіть камеру на<br />державний номер автомобіля</>}
       </div>
 
       <div className={`${styles.scanWindow} ${busy ? styles.scanWindowBusy : ""}`} aria-hidden="true">

@@ -13,7 +13,7 @@ type DiagnosticModePayload = {
   templateNames?: string[];
 };
 
-export function MechanicDiagnosticWorkspace({ diagnosticId, onBack, onChanged }: { diagnosticId: string; onBack: () => void; onChanged?: () => void }) {
+export function MechanicDiagnosticWorkspace({ diagnosticId, onBack, onChanged, onFinished }: { diagnosticId: string; onBack: () => void; onChanged?: () => void; onFinished?: () => void }) {
   const [mode, setMode] = useState<Mode>(null);
   const [settlement, setSettlement] = useState<WalkInSettlementPayload | null>(null);
 
@@ -90,10 +90,10 @@ export function MechanicDiagnosticWorkspace({ diagnosticId, onBack, onChanged }:
   }
 
   if (settlement?.walkIn && settlement.submitted) {
-    return <MechanicWalkInSettlement diagnosticId={diagnosticId} data={settlement} onRefresh={loadSettlement} onBack={onBack} />;
+    return <MechanicWalkInSettlement diagnosticId={diagnosticId} data={settlement} onRefresh={loadSettlement} onBack={onBack} onFinished={onFinished} />;
   }
-  if (mode === "MATRIX") return <MechanicDiagnosticMatrix diagnosticId={diagnosticId} onBack={onBack} onChanged={changed} />;
-  if (mode === "LEGACY") return <LegacyMechanicDiagnosticWorkspace diagnosticId={diagnosticId} onBack={onBack} onChanged={changed} />;
+  if (mode === "MATRIX") return <MechanicDiagnosticMatrix diagnosticId={diagnosticId} onBack={onBack} onChanged={changed} onFinished={onFinished} />;
+  if (mode === "LEGACY") return <LegacyMechanicDiagnosticWorkspace diagnosticId={diagnosticId} onBack={onBack} onChanged={changed} onFinished={onFinished} />;
 
   return <div style={{ minHeight: "60vh", display: "grid", placeItems: "center", padding: 24, color: "#a8b4c0", background: "#090f16" }}>Відкриваю діагностику…</div>;
 }

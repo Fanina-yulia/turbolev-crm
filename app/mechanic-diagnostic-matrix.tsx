@@ -342,7 +342,7 @@ function remarkLabel(count: number) {
   return "зауважень";
 }
 
-export function MechanicDiagnosticMatrix({ diagnosticId, onBack, onChanged }: { diagnosticId: string; onBack: () => void; onChanged?: () => void }) {
+export function MechanicDiagnosticMatrix({ diagnosticId, onBack, onChanged, onFinished }: { diagnosticId: string; onBack: () => void; onChanged?: () => void; onFinished?: () => void }) {
   const [data, setData] = useState<DiagnosticPayload | null>(null);
   const [busy, setBusy] = useState("");
   const [savingChecks, setSavingChecks] = useState<Set<string>>(() => new Set());
@@ -637,6 +637,7 @@ export function MechanicDiagnosticMatrix({ diagnosticId, onBack, onChanged }: { 
       setData(body);
       setMessage("Діагностику завершено. Результат передано сервіс-менеджеру.");
       onChanged?.();
+      onFinished?.();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Не вдалося завершити діагностику");
     } finally { setBusy(""); }

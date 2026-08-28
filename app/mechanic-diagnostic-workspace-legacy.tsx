@@ -38,7 +38,7 @@ type DiagnosticPayload = {
 
 const stateLabel: Record<CheckState, string> = { NOT_CHECKED: "Не перевірено", OK: "Норма", ATTENTION: "Увага", DEFECT: "Дефект" };
 
-export function MechanicDiagnosticWorkspace({ diagnosticId, onBack, onChanged }: { diagnosticId: string; onBack: () => void; onChanged?: () => void }) {
+export function MechanicDiagnosticWorkspace({ diagnosticId, onBack, onChanged, onFinished }: { diagnosticId: string; onBack: () => void; onChanged?: () => void; onFinished?: () => void }) {
   const [data, setData] = useState<DiagnosticPayload | null>(null);
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
@@ -128,7 +128,10 @@ export function MechanicDiagnosticWorkspace({ diagnosticId, onBack, onChanged }:
   async function submit() {
     if (!window.confirm("Передати завершену діагностику сервіс-менеджеру? Після передачі редагування буде заблоковано до повернення на уточнення.")) return;
     const next = await patchStructured({ action: "SUBMIT", mechanicComment: comment.trim() || null }, "submit");
-    if (next) setMessage("Діагностику передано сервіс-менеджеру.");
+    if (next) {
+      setMessage("Діагностику передано сервіс-менеджеру.");
+      onFinished?.();
+    }
   }
 
   if (!data?.diagnostic) return <div className={styles.page}><header className={styles.top}><button type="button" onClick={onBack}>‹</button><strong>Діагностика</strong><span /></header><div className={styles.loading}>{error || "Завантажую діагностику…"}</div></div>;
