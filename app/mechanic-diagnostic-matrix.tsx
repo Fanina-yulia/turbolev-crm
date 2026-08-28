@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { VoiceNoteInput } from "./voice-note-input";
 import styles from "./mechanic-diagnostic-matrix.module.css";
 import photoStyles from "./mechanic-diagnostic-photo-controls.module.css";
 
@@ -350,6 +351,7 @@ export function MechanicDiagnosticMatrix({ diagnosticId, onBack, onChanged }: { 
   const [message, setMessage] = useState("");
   const [comment, setComment] = useState("");
   const [photoUploads, setPhotoUploads] = useState<Record<string, PhotoUpload>>({});
+  const [voiceBusy, setVoiceBusy] = useState(false);
   const photoInputRef = useRef<HTMLInputElement>(null);
   const photoTargetRef = useRef<{ checkId: string; itemName: string } | null>(null);
 
@@ -836,9 +838,16 @@ export function MechanicDiagnosticMatrix({ diagnosticId, onBack, onChanged }: { 
         {systemSections.map((section) => renderSystemSection(section))}
 
         {!locked && <section className={styles.submitCard}>
-          <label><span>Примітка механіка <small>(необов’язково)</small></span><textarea rows={2} value={comment} onChange={(event) => setComment(event.target.value)} placeholder="За потреби додайте коротке уточнення" /></label>
+          <label><span>Примітка механіка <small>(необов’язково)</small></span></label>
+          <VoiceNoteInput
+            value={comment}
+            onChange={setComment}
+            endpoint={`/api/diagnostics/${encodeURIComponent(diagnosticId)}/voice-transcription`}
+            disabled={Boolean(busy) || savingChecks.size > 0}
+            onBusyChange={setVoiceBusy}
+          />
           {!data.canSubmit && <div className={styles.incomplete}>Для передачі діагностики сервіс-менеджеру перевірте всі пункти. Залишилось: <b>{remaining}</b>.</div>}
-          <button type="button" disabled={Boolean(busy) || !data.canSubmit || savingChecks.size > 0} onClick={() => void submit()}>{busy === "submit" ? "Передаю…" : savingChecks.size > 0 ? "Зберігаю відмітки…" : "Завершити діагностику"}</button>
+          <button type="button" disabled={Boolean(busy) || voiceBusy || !data.canSubmit || savingChecks.size > 0} onClick={() => void submit()}>{busy === "submit" ? "Передаю…" : voiceBusy ? "Очікую завершення голосового запису…" : savingChecks.size > 0 ? "Зберігаю відмітки…" : "Завершити діагностику"}</button>
         </section>}
         {locked && <div className={styles.locked}>✓ Діагностика завершена. Результат передано сервіс-менеджеру.</div>}
       </>}

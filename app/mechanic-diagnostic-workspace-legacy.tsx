@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { VoiceNoteInput } from "./voice-note-input";
 import styles from "./mechanic-diagnostic-workspace.module.css";
 
 type CheckState = "NOT_CHECKED" | "OK" | "ATTENTION" | "DEFECT";
@@ -45,6 +46,7 @@ export function MechanicDiagnosticWorkspace({ diagnosticId, onBack, onChanged }:
   const [message, setMessage] = useState("");
   const [drafts, setDrafts] = useState<Record<string, { note: string; measurement: string; urgency: string }>>({});
   const [comment, setComment] = useState("");
+  const [voiceBusy, setVoiceBusy] = useState(false);
 
   const load = useCallback(async () => {
     const response = await fetch(`/api/diagnostics/${encodeURIComponent(diagnosticId)}/structured`, { cache: "no-store", credentials: "include" });
@@ -181,8 +183,15 @@ export function MechanicDiagnosticWorkspace({ diagnosticId, onBack, onChanged }:
       </section>)}
 
       {!locked && workflow !== "PENDING" && <section className={styles.submitCard}>
-        <label><span>Коментар механіка до діагностики</span><textarea rows={3} value={comment} onChange={(event) => setComment(event.target.value)} placeholder="Підсумок або уточнення для сервіс-менеджера" /></label>
-        <button type="button" disabled={Boolean(busy) || !data.canSubmit} onClick={() => void submit()}>{busy === "submit" ? "Передаю…" : "Передати діагностику сервіс-менеджеру →"}</button>
+        <label><span>Коментар механіка до діагностики</span></label>
+        <VoiceNoteInput
+          value={comment}
+          onChange={setComment}
+          endpoint={`/api/diagnostics/${encodeURIComponent(diagnosticId)}/voice-transcription`}
+          disabled={Boolean(busy)}
+          onBusyChange={setVoiceBusy}
+        />
+        <button type="button" disabled={Boolean(busy) || voiceBusy || !data.canSubmit} onClick={() => void submit()}>{busy === "submit" ? "Передаю…" : voiceBusy ? "Очікую завершення голосового запису…" : "Передати діагностику сервіс-менеджеру →"}</button>
         {!data.canSubmit && <small>Для передачі потрібно перевірити всі обов’язкові пункти.</small>}
       </section>}
       {locked && <div className={styles.locked}>{workflow === "SUBMITTED" ? "✓ Діагностику передано сервіс-менеджеру. Редагування заблоковано." : workflow === "CONFIRMED" ? "✓ Діагностику підтверджено. Наступний етап визначить CRM." : "Діагностика доступна лише для перегляду."}</div>}
