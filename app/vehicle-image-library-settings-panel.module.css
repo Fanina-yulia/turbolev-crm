@@ -20,7 +20,7 @@
 .testCopy p { margin:0; color:var(--muted, #667687); font-size:13px; line-height:1.5; }
 .testEyebrow { color:var(--accent, #ef6b24); font-size:11px; font-weight:900; text-transform:uppercase; letter-spacing:.075em; }
 .testVehicles { display:flex; flex-wrap:wrap; gap:7px; margin-top:13px; }
-.testVehicles span { border:1px solid color-mix(in srgb, var(--accent, #ef6b24) 22%, var(--line, #dfe4ea)); background:color-mix(in srgb, var(--surface, #fff) 92%, var(--accent, #ef6b24) 8%); border-radius:999px; padding:6px 9px; font-size:11px; font-weight:850; }
+.testVehicles > span { border:1px solid color-mix(in srgb, var(--accent, #ef6b24) 22%, var(--line, #dfe4ea)); background:color-mix(in srgb, var(--surface, #fff) 92%, var(--accent, #ef6b24) 8%); border-radius:999px; padding:6px 9px; font-size:11px; font-weight:850; }
 .testAction { display:flex; flex-direction:column; justify-content:center; gap:9px; }
 .testAction button { min-height:44px; border:1px solid color-mix(in srgb, var(--accent, #ef6b24) 75%, #b84f17); background:var(--accent, #ef6b24); color:#fff; border-radius:13px; padding:10px 14px; font-weight:900; cursor:pointer; }
 .testAction button:disabled { opacity:.52; cursor:default; }
