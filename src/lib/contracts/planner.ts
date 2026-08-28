@@ -53,6 +53,7 @@ export type PlannerAppointmentContract = {
   mechanicId: string | null;
   status: PlannerStatusContract;
   workOrderId: string | null;
+  vehicleId: string | null;
   customerName: string | null;
   phone: string | null;
   vehicleLabel: string | null;
