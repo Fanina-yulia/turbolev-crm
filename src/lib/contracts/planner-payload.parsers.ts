@@ -119,6 +119,7 @@ function parseAppointment(value: unknown): PlannerAppointmentContract | null {
   const postId = nullableString(value.postId);
   const mechanicId = nullableString(value.mechanicId);
   const workOrderId = nullableString(value.workOrderId);
+  const vehicleId = nullableString(value.vehicleId);
   const customerName = nullableString(value.customerName);
   const phone = nullableString(value.phone);
   const vehicleLabel = nullableString(value.vehicleLabel);
@@ -133,7 +134,7 @@ function parseAppointment(value: unknown): PlannerAppointmentContract | null {
   const partsEtaAt = nullableDateString(value.partsEtaAt);
 
   if (
-    postId === undefined || mechanicId === undefined || workOrderId === undefined ||
+    postId === undefined || mechanicId === undefined || workOrderId === undefined || vehicleId === undefined ||
     customerName === undefined || phone === undefined || vehicleLabel === undefined ||
     plateNumber === undefined || problem === undefined || comment === undefined || source === undefined ||
     estimatedAmount === undefined || actualArrivalAt === undefined || actualStartAt === undefined ||
@@ -152,6 +153,7 @@ function parseAppointment(value: unknown): PlannerAppointmentContract | null {
     mechanicId,
     status,
     workOrderId,
+    vehicleId,
     customerName,
     phone,
     vehicleLabel,
