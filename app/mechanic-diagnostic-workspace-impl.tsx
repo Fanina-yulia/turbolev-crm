@@ -17,20 +17,18 @@ export function MechanicDiagnosticWorkspace({ diagnosticId, onBack, onChanged, o
   const [mode, setMode] = useState<Mode>(null);
   const [settlement, setSettlement] = useState<WalkInSettlementPayload | null>(null);
 
-  const loadSettlement = useCallback(async () => {
+  const loadSettlement = useCallback(async (): Promise<WalkInSettlementPayload | null> => {
     try {
       const response = await fetch(`/api/diagnostics/${encodeURIComponent(diagnosticId)}/walk-in`, {
         credentials: "include",
         cache: "no-store",
       });
       const body = await response.json().catch(() => null) as WalkInSettlementPayload | null;
-      if (!response.ok || !body?.ok) {
-        setSettlement({ ok: true, walkIn: false });
-        return;
-      }
+      if (!response.ok || !body?.ok) return null;
       setSettlement(body);
+      return body;
     } catch {
-      setSettlement({ ok: true, walkIn: false });
+      return null;
     }
   }, [diagnosticId]);
 
@@ -89,11 +87,27 @@ export function MechanicDiagnosticWorkspace({ diagnosticId, onBack, onChanged, o
     void loadSettlement();
   }
 
+  const finishDiagnostic = useCallback(async () => {
+    // Walk-in diagnostics have a mandatory settlement step. Never let the outer
+    // mechanic cabinet close the workspace before we know whether payment is due.
+    const next = await loadSettlement();
+    if (next?.walkIn) return;
+    if (next?.walkIn === false) {
+      onFinished?.();
+      return;
+    }
+
+    // If the refresh temporarily failed, preserve the last known walk-in state rather
+    // than silently dropping the mechanic on the home screen with an unpaid visit.
+    if (settlement?.walkIn) return;
+    if (settlement?.walkIn === false) onFinished?.();
+  }, [loadSettlement, onFinished, settlement?.walkIn]);
+
   if (settlement?.walkIn && settlement.submitted) {
     return <MechanicWalkInSettlement diagnosticId={diagnosticId} data={settlement} onRefresh={loadSettlement} onBack={onBack} onFinished={onFinished} />;
   }
-  if (mode === "MATRIX") return <MechanicDiagnosticMatrix diagnosticId={diagnosticId} onBack={onBack} onChanged={changed} onFinished={onFinished} />;
-  if (mode === "LEGACY") return <LegacyMechanicDiagnosticWorkspace diagnosticId={diagnosticId} onBack={onBack} onChanged={changed} onFinished={onFinished} />;
+  if (mode === "MATRIX") return <MechanicDiagnosticMatrix diagnosticId={diagnosticId} onBack={onBack} onChanged={changed} onFinished={() => void finishDiagnostic()} />;
+  if (mode === "LEGACY") return <LegacyMechanicDiagnosticWorkspace diagnosticId={diagnosticId} onBack={onBack} onChanged={changed} onFinished={() => void finishDiagnostic()} />;
 
   return <div style={{ minHeight: "60vh", display: "grid", placeItems: "center", padding: 24, color: "#a8b4c0", background: "#090f16" }}>Відкриваю діагностику…</div>;
 }
