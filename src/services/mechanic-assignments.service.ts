@@ -5,6 +5,7 @@ export type ActiveMechanicAssignment = {
   caseKey: string;
   vehicleId: string | null;
   workOrderId: string | null;
+  diagnosticRequestId: string | null;
   appointmentStatus: string;
   workOrderStatus: string | null;
   vehicleLabel: string | null;
@@ -33,6 +34,7 @@ export async function listActiveMechanicAssignments(mechanicId: string) {
         COALESCE(NULLIF(a."workOrderId", ''), a.id) AS "caseKey",
         a."vehicleId",
         a."workOrderId",
+        dvl."diagnosticRequestId",
         a.status::text AS "appointmentStatus",
         wo.status AS "workOrderStatus",
         a."vehicleLabel",
@@ -49,6 +51,7 @@ export async function listActiveMechanicAssignments(mechanicId: string) {
       FROM "ServiceAppointment" a
       LEFT JOIN "WorkOrder" wo ON wo.id = a."workOrderId"
       LEFT JOIN "ServicePost" p ON p.id = a."postId"
+      LEFT JOIN "DiagnosticVisitLink" dvl ON dvl."appointmentId" = a.id
       WHERE a."mechanicId" = ${mechanicId}
         AND a.status::text NOT IN ('CANCELLED', 'RESERVE', 'NO_SHOW')
         AND (
@@ -77,6 +80,7 @@ export async function listActiveMechanicAssignments(mechanicId: string) {
       "caseKey",
       "vehicleId",
       "workOrderId",
+      "diagnosticRequestId",
       "appointmentStatus",
       "workOrderStatus",
       "vehicleLabel",
@@ -93,6 +97,7 @@ export async function listActiveMechanicAssignments(mechanicId: string) {
         WHEN "workOrderStatus" = 'IN_REPAIR' OR "appointmentStatus" = 'IN_REPAIR' THEN 10
         WHEN "workOrderStatus" = 'REWORK' THEN 20
         WHEN "workOrderStatus" IN ('WAITING_PARTS', 'WAITING_APPROVAL', 'WAITING_QC', 'WAITING_PAYMENT') THEN 30
+        WHEN "appointmentStatus" = 'WAITING_PAYMENT' THEN 30
         WHEN "appointmentStatus" = 'ARRIVED' THEN 40
         WHEN "workOrderStatus" = 'READY_FOR_PICKUP' OR "appointmentStatus" = 'READY_FOR_PICKUP' THEN 80
         ELSE 60
