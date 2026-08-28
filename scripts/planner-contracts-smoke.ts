@@ -34,6 +34,7 @@ const appointment = {
   mechanicId: mechanic.id,
   status: "IN_REPAIR",
   workOrderId: "work-order-1",
+  vehicleId: "vehicle-1",
   customerName: "Марія",
   phone: "+380670000000",
   vehicleLabel: "Volkswagen Passat 2018",
