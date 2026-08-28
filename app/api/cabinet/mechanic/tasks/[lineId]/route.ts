@@ -5,6 +5,7 @@ import { PERMISSIONS } from "@/src/security/permissions";
 import { getPrisma } from "@/src/lib/prisma";
 import { toPrismaJson } from "@/src/lib/prisma-json";
 import { transitionWorkOrder, WorkOrderNotFoundError, WorkOrderTransitionError } from "@/src/services/work-orders.service";
+import { normalizeRegistrationPlate } from "@/src/domain/registration-plate";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -34,6 +35,12 @@ function workflowMeta(metadata: unknown): WorkflowMeta {
     lastAction: ["START", "PAUSE", "RESUME", "COMPLETE"].includes(String(workflow.lastAction)) ? workflow.lastAction as Action : null,
     lastActionAt: typeof workflow.lastActionAt === "string" ? workflow.lastActionAt : null,
   };
+}
+
+function plateVerification(metadata: unknown) {
+  const root = record(metadata);
+  const verification = record(root.mechanicPlateVerification);
+  return typeof verification.plate === "string" ? verification.plate : null;
 }
 
 function mergedMetadata(metadata: unknown, workflow: WorkflowMeta) {
@@ -85,6 +92,7 @@ export async function PATCH(request: Request, context: { params: Promise<{ lineI
           completedAt: true,
           cancelledAt: true,
           mechanicId: true,
+          workOrder: { select: { vehicle: { select: { plateNumber: true } } } },
         },
       });
       if (!line) throw new Error("ASSIGNED_LINE_NOT_FOUND");
@@ -105,6 +113,8 @@ export async function PATCH(request: Request, context: { params: Promise<{ lineI
 
       if (action === "START") {
         if (line.status !== "APPROVED") throw new Error(line.status === "DRAFT" ? "LINE_NOT_APPROVED" : "INVALID_START_STATE");
+        const expectedPlate = line.workOrder.vehicle.plateNumber;
+        if (expectedPlate && plateVerification(line.metadata) !== normalizeRegistrationPlate(expectedPlate)) throw new Error("PLATE_VERIFICATION_REQUIRED");
         nextStatus = "IN_PROGRESS";
         nextStartedAt = line.startedAt ?? now;
         nextWorkflow = { ...nextWorkflow, pausedAt: null };
@@ -216,6 +226,7 @@ export async function PATCH(request: Request, context: { params: Promise<{ lineI
       ALREADY_PAUSED: ["Робота вже на паузі.", 409],
       INVALID_RESUME_STATE: ["Продовжити можна лише роботу, що перебуває на паузі.", 409],
       INVALID_COMPLETE_STATE: ["Завершити можна лише розпочату роботу.", 409],
+      PLATE_VERIFICATION_REQUIRED: ["Перед початком підтвердіть номер саме цього автомобіля.", 409],
     };
     if (known[code]) return error(known[code][0], code, known[code][1]);
     console.error("PATCH mechanic task lifecycle failed", cause);

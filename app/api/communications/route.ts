@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ingestCommunicationInquiry, listCommunicationInquiries, type CommunicationChannel } from "@/src/services/communications-server.service";
 import { withCommunicationLifecycleState } from "@/src/services/communication-lifecycle.service";
+import { authorize } from "@/src/security/authorize";
+import { PERMISSIONS } from "@/src/security/permissions";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -8,6 +10,8 @@ export const dynamic = "force-dynamic";
 const channels = new Set(["FACEBOOK","INSTAGRAM","TIKTOK","BINOTEL","OLX","WEBSITE"]);
 
 export async function GET(request: NextRequest) {
+  const access = await authorize(PERMISSIONS.COMMUNICATIONS_READ, { request, strict: true, minimumScope: "SELF" });
+  if (!access.allowed) return access.response!;
   try {
     const params = request.nextUrl.searchParams;
     const channel = params.get("channel") || undefined;
@@ -29,6 +33,8 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  const access = await authorize(PERMISSIONS.COMMUNICATIONS_WRITE, { request, strict: true, minimumScope: "TEAM" });
+  if (!access.allowed) return access.response!;
   try {
     const body = await request.json();
     if (!channels.has(String(body.channel))) return NextResponse.json({ ok: false, error: "Unsupported channel" }, { status: 400 });

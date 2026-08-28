@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { markCommunicationRead } from "@/src/services/communication-delivery.service";
 import { patchCommunicationInquiry } from "@/src/services/communications-server.service";
+import { authorize } from "@/src/security/authorize";
+import { PERMISSIONS } from "@/src/security/permissions";
 import {
   CommunicationLifecycleRuleError,
   getCommunicationLifecycleSnapshot,
@@ -14,6 +16,8 @@ export const runtime = "nodejs";
 const lifecycleStates = new Set<CommunicationLifecycleState>(["NEW", "IN_WORK", "WAITING_CLIENT", "CLOSED", "NOT_OUR_CLIENT", "SPAM"]);
 
 export async function PATCH(request: NextRequest, context: { params: Promise<{ id: string }> }) {
+  const access = await authorize(PERMISSIONS.COMMUNICATIONS_WRITE, { request, strict: true, minimumScope: "TEAM" });
+  if (!access.allowed) return access.response!;
   try {
     const { id } = await context.params;
     const body = await request.json();

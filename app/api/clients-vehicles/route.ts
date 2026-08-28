@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getPrisma } from "@/src/lib/prisma";
+import { authorize } from "@/src/security/authorize";
+import { PERMISSIONS } from "@/src/security/permissions";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -11,6 +13,8 @@ function clampInt(value: string | null, fallback: number, min: number, max: numb
 }
 
 export async function GET(request: NextRequest) {
+  const access = await authorize(PERMISSIONS.CLIENTS_READ, { request, strict: true, minimumScope: "SELF" });
+  if (!access.allowed) return access.response!;
   const prisma = getPrisma();
   const q = (request.nextUrl.searchParams.get("q") || "").trim();
   const take = clampInt(request.nextUrl.searchParams.get("limit"), 60, 1, 100);

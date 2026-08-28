@@ -1,6 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { getSqlPool } from "@/src/lib/sql";
+import { authorize } from "@/src/security/authorize";
+import { PERMISSIONS } from "@/src/security/permissions";
 
 export const dynamic = "force-dynamic";
 
@@ -26,6 +28,8 @@ async function resolveClientId(clientId:string, contextPhone:string){
 }
 
 export async function POST(request:NextRequest){
+  const access = await authorize(PERMISSIONS.CLIENTS_WRITE, { request, strict: true, minimumScope: "TEAM" });
+  if (!access.allowed) return access.response!;
   const body=await request.json().catch(()=>({}));
   const clientId=await resolveClientId(String(body.clientId||""),String(body.phone||""));
   const phoneNormalized=normalizePhone(String(body.newPhone||""));
@@ -60,6 +64,8 @@ export async function POST(request:NextRequest){
 }
 
 export async function DELETE(request:NextRequest){
+  const access = await authorize(PERMISSIONS.CLIENTS_WRITE, { request, strict: true, minimumScope: "TEAM" });
+  if (!access.allowed) return access.response!;
   const body=await request.json().catch(()=>({}));
   const id=String(body.id||"");
   const clientId=String(body.clientId||"");

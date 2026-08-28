@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createCommunicationImage } from "@/src/services/communication-attachments.service";
+import { authorize } from "@/src/security/authorize";
+import { PERMISSIONS } from "@/src/security/permissions";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -16,6 +18,8 @@ function statusForError(error: unknown) {
 }
 
 export async function POST(request: NextRequest, context: { params: Promise<{ id: string }> }) {
+  const access = await authorize(PERMISSIONS.COMMUNICATIONS_WRITE, { request, strict: true, minimumScope: "TEAM" });
+  if (!access.allowed) return access.response!;
   try {
     const { id } = await context.params;
     const form = await request.formData();

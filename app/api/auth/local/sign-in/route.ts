@@ -2,15 +2,20 @@ import { NextRequest, NextResponse } from "next/server";
 import { getPrisma } from "@/src/lib/prisma";
 import { createLocalSessionToken, LOCAL_AUTH_COOKIE, normalizeCrmLogin, verifyCrmPassword } from "@/src/security/local-credentials";
 import { writeAuditEvent } from "@/src/services/audit.service";
+import { enforceRequestRateLimit, requestRateLimitHeaders } from "@/src/security/request-rate-limit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST(request: NextRequest) {
   try {
+    const ipRate = await enforceRequestRateLimit(request, { bucketKey: "local-sign-in-ip", limit: 20, windowSeconds: 600 });
+    if (!ipRate.allowed) return NextResponse.json({ ok: false, error: "RATE_LIMITED", message: "Забагато спроб. Спробуйте пізніше." }, { status: 429, headers: requestRateLimitHeaders(ipRate) });
     const body = await request.json().catch(() => null);
     const login = normalizeCrmLogin(body?.login);
     const password = typeof body?.password === "string" ? body.password : "";
+    const accountRate = await enforceRequestRateLimit(request, { bucketKey: "local-sign-in-account", limit: 8, windowSeconds: 900, identity: login || "unknown" });
+    if (!accountRate.allowed) return NextResponse.json({ ok: false, error: "RATE_LIMITED", message: "Забагато спроб для цього облікового запису. Спробуйте пізніше." }, { status: 429, headers: requestRateLimitHeaders(accountRate) });
     const rememberMe = body?.rememberMe !== false;
     const invalid = () => NextResponse.json(
       { ok: false, error: "INVALID_CREDENTIALS", message: "Невірний логін або пароль." },

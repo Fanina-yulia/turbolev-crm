@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSqlPool } from "@/src/lib/sql";
+import { authorize } from "@/src/security/authorize";
+import { PERMISSIONS } from "@/src/security/permissions";
 
 export const dynamic = "force-dynamic";
 
@@ -11,6 +13,8 @@ function normalizePhone(value:string){
 }
 
 export async function PUT(request:NextRequest){
+  const access = await authorize(PERMISSIONS.CLIENTS_WRITE, { request, strict: true, minimumScope: "TEAM" });
+  if (!access.allowed) return access.response!;
   const body=await request.json().catch(()=>({}));
   const phoneNormalized=normalizePhone(String(body.phone||""));
   const name=String(body.name||"").trim();

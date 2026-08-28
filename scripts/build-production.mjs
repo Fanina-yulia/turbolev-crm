@@ -23,6 +23,12 @@ function run(args) {
   if (result.status !== 0) exitFrom(result);
 }
 
+function runNodeScript(path) {
+  const result = spawnSync(process.execPath, [path], { stdio: "inherit", env: process.env });
+  if (result.error) throw result.error;
+  if (result.status !== 0) exitFrom(result);
+}
+
 function sleep(ms) {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 }
@@ -62,6 +68,7 @@ function runMigrationWithRetry() {
 }
 
 console.log("[build] Verifying complete API security policy inventory before migrations and compilation.");
+runNodeScript("scripts/crm-hardening-smoke.mjs");
 run(["tsx", "scripts/api-security-policy-smoke.ts"]);
 
 if (process.env.VERCEL_ENV === "production") {

@@ -7,25 +7,26 @@ enum WorkExecutionIssueStatus {
 }
 
 model WorkExecutionIssue {
-  id                 String                   @id @default(cuid())
-  assignmentId       String                   @db.VarChar(64)
-  workOrderId        String                   @db.VarChar(64)
-  vehicleId           String?                  @db.VarChar(64)
-  clientId            String?                  @db.VarChar(64)
-  mechanicId          String                   @db.VarChar(64)
-  locationId          String                   @db.VarChar(64)
-  reasonCode          String                   @db.VarChar(48)
-  comment             String?                  @db.VarChar(500)
-  status              WorkExecutionIssueStatus @default(OPEN)
-  createdAt           DateTime                 @default(now())
-  viewedAt            DateTime?
-  resolvedAt          DateTime?
-  resolvedByUserId    String?                  @db.VarChar(64)
-  resolutionType      String?                  @db.VarChar(48)
-  resolutionComment   String?                  @db.VarChar(500)
-  updatedAt           DateTime                 @updatedAt
+  id                String                   @id @default(cuid())
+  assignmentId      String                   @db.VarChar(64)
+  workOrderId       String                   @db.VarChar(64)
+  vehicleId         String?                  @db.VarChar(64)
+  clientId          String?                  @db.VarChar(64)
+  mechanicId        String                   @db.VarChar(64)
+  locationId        String                   @db.VarChar(64)
+  reasonCode        String                   @db.VarChar(48)
+  comment           String?                  @db.VarChar(500)
+  status            WorkExecutionIssueStatus @default(OPEN)
+  createdAt         DateTime                 @default(now())
+  viewedAt          DateTime?
+  resolvedAt        DateTime?
+  resolvedByUserId  String?                  @db.VarChar(64)
+  resolutionType    String?                  @db.VarChar(48)
+  resolutionComment String?                  @db.VarChar(500)
+  updatedAt         DateTime                 @updatedAt
 
-  attachments         WorkExecutionIssueAttachment[]
+  attachments WorkExecutionIssueAttachment[]
+  comments    WorkExecutionIssueComment[]
 
   @@unique([assignmentId, status])
   @@index([locationId, status, createdAt])
@@ -34,17 +35,31 @@ model WorkExecutionIssue {
 }
 
 model WorkExecutionIssueAttachment {
-  id          String             @id @default(cuid())
-  issueId     String             @db.VarChar(64)
-  fileId      String             @db.VarChar(160)
-  fileType    String             @db.VarChar(80)
-  fileName    String             @db.VarChar(240)
-  fileSize    Int
-  fileData    Bytes
-  createdAt   DateTime           @default(now())
-  createdByUserId String          @db.VarChar(64)
+  id              String   @id @default(cuid())
+  issueId         String   @db.VarChar(64)
+  fileId          String   @db.VarChar(160)
+  fileType        String   @db.VarChar(80)
+  fileName        String   @db.VarChar(240)
+  fileSize        Int
+  fileData        Bytes
+  createdAt       DateTime @default(now())
+  createdByUserId String   @db.VarChar(64)
 
-  issue       WorkExecutionIssue @relation(fields: [issueId], references: [id], onDelete: Cascade)
+  issue WorkExecutionIssue @relation(fields: [issueId], references: [id], onDelete: Cascade)
 
   @@index([issueId, createdAt])
+}
+
+model WorkExecutionIssueComment {
+  id           String   @id @default(cuid())
+  issueId      String
+  authorUserId String   @db.VarChar(64)
+  authorName   String?  @db.VarChar(160)
+  body         String   @db.VarChar(1000)
+  createdAt    DateTime @default(now())
+
+  issue WorkExecutionIssue @relation(fields: [issueId], references: [id], onDelete: Cascade)
+
+  @@index([issueId, createdAt])
+  @@index([authorUserId, createdAt])
 }

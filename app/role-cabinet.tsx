@@ -11,6 +11,7 @@ import { MechanicMobileCabinet } from "./mechanic-mobile-cabinet";
 import { ServiceAdvisorCabinetHome } from "./service-advisor-cabinet-home";
 import { PartsRoleCabinetHome } from "./parts-role-cabinet-home";
 import { SalesRoleCabinetHome } from "./leads-sales-role-cabinet-home";
+import { ExecutionIssuesAdminPanel } from "./execution-issues-admin-panel";
 import type { CrmSectionLabel } from "./crm-navigation";
 import styles from "./role-cabinet.module.css";
 
@@ -168,6 +169,8 @@ function StationManagerLinkedCabinet({ data, userName }: { data: LinkedStationMa
         <em className={styles.attentionAction}>{item.action.label} →</em>
       </button>)}</div> : <div className={styles.empty}>За цим показником активних проблем немає.</div>}
     </section>
+
+    <ExecutionIssuesAdminPanel />
 
     <section className={styles.panel}>
       <div className={styles.panelHead}><div><p className="eyebrow">ВИРОБНИЧИЙ ПОТІК</p><h2>Де зараз автомобілі станції</h2></div><span className="muted">кожен етап відкривається окремо</span></div>
