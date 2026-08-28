@@ -4,3 +4,4 @@
 
 @media(max-width:460px){.turboLevVehiclePlate{height:29px;font-size:14.5px!important}.turboLevVehiclePlateNumber{padding:0 7px;font-size:14.5px!important}.turboLevMechanicVehicleHero>[data-vehicle-photo-host]{right:10px;top:84px;width:40%;height:105px}.turboLevMechanicVehicleHero>strong,.turboLevMechanicVehicleHero>p,.turboLevMechanicVehicleHero>div:not(:first-child):not([data-vehicle-photo-host]){max-width:58%}}
 @media(max-width:350px){.turboLevMechanicVehicleHero>[data-vehicle-photo-host]{opacity:.72;width:36%;height:90px}.turboLevMechanicVehicleHero>strong,.turboLevMechanicVehicleHero>p,.turboLevMechanicVehicleHero>div:not(:first-child):not([data-vehicle-photo-host]){max-width:62%}}
+.turboLevVehiclePlateNumber{color:#000!important}
