@@ -122,8 +122,8 @@ const SYSTEM_SECTION_CODES = new Set([
   "EXHAUST",
   "FLUIDS_EXTENDED",
 ]);
-const MAX_PHOTO_BYTES = 4 * 1024 * 1024;
-const MAX_PHOTO_EDGE = 1920;
+const MAX_PHOTO_BYTES = 1.5 * 1024 * 1024;
+const MAX_PHOTO_EDGE = 1600;
 const ACCEPTED_PHOTO_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 
 function cameraIcon() {
@@ -134,8 +134,6 @@ function cameraIcon() {
 }
 
 async function resizePhoto(file: File) {
-  if (file.size <= MAX_PHOTO_BYTES) return file;
-
   const objectUrl = URL.createObjectURL(file);
   try {
     const image = await new Promise<HTMLImageElement>((resolve, reject) => {
@@ -152,7 +150,15 @@ async function resizePhoto(file: File) {
     if (!context) throw new Error("Не вдалося підготувати фото. Спробуйте зробити знімок ще раз.");
     context.drawImage(image, 0, 0, canvas.width, canvas.height);
 
-    for (const quality of [0.84, 0.7, 0.56]) {
+    const outputType = "image/webp";
+    for (const quality of [0.84, 0.74, 0.62, 0.5]) {
+      const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, outputType, quality));
+      if (blob && blob.size <= MAX_PHOTO_BYTES) {
+        const baseName = file.name.replace(/\.[^.]+$/u, "") || "diagnostic-photo";
+        return new File([blob], `${baseName}.webp`, { type: outputType, lastModified: Date.now() });
+      }
+    }
+    for (const quality of [0.82, 0.68, 0.52]) {
       const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", quality));
       if (blob && blob.size <= MAX_PHOTO_BYTES) {
         const baseName = file.name.replace(/\.[^.]+$/u, "") || "diagnostic-photo";
@@ -163,6 +169,43 @@ async function resizePhoto(file: File) {
   } finally {
     URL.revokeObjectURL(objectUrl);
   }
+}
+
+type PhotoUpload = {
+  sourceFile: File;
+  previewUrl: string;
+  progress: number;
+  status: "uploading" | "error";
+  itemName: string;
+};
+
+function uploadPhotoRequest(url: string, file: File, onProgress: (value: number) => void) {
+  return new Promise<void>((resolve, reject) => {
+    const request = new XMLHttpRequest();
+    request.open("POST", url);
+    request.withCredentials = true;
+    request.upload.onprogress = (event) => {
+      if (event.lengthComputable) onProgress(Math.round((event.loaded / event.total) * 100));
+    };
+    request.onerror = () => reject(new Error("Не вдалося завантажити фото. Перевірте інтернет і повторіть спробу."));
+    request.onload = () => {
+      let body: { ok?: boolean; message?: string; error?: string } | null = null;
+      try {
+        body = JSON.parse(request.responseText || "null") as { ok?: boolean; message?: string; error?: string } | null;
+      } catch {
+        reject(new Error("Сервер повернув некоректну відповідь. Спробуйте ще раз."));
+        return;
+      }
+      if (request.status < 200 || request.status >= 300 || !body?.ok) {
+        reject(new Error(body?.message || body?.error || "Не вдалося зберегти фото"));
+        return;
+      }
+      resolve();
+    };
+    const formData = new FormData();
+    formData.append("file", file);
+    request.send(formData);
+  });
 }
 
 function lower(value?: string | null) {
@@ -306,7 +349,7 @@ export function MechanicDiagnosticMatrix({ diagnosticId, onBack, onChanged }: { 
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [comment, setComment] = useState("");
-  const [uploadingPhotoCheckId, setUploadingPhotoCheckId] = useState("");
+  const [photoUploads, setPhotoUploads] = useState<Record<string, PhotoUpload>>({});
   const photoInputRef = useRef<HTMLInputElement>(null);
   const photoTargetRef = useRef<{ checkId: string; itemName: string } | null>(null);
 
@@ -483,7 +526,7 @@ export function MechanicDiagnosticMatrix({ diagnosticId, onBack, onChanged }: { 
   }
 
   function openCamera(item: Check) {
-    if (!item.id || item.state !== "DEFECT" || locked || busy || savingChecks.has(item.id) || uploadingPhotoCheckId) return;
+    if (!item.id || item.state !== "DEFECT" || locked || busy || savingChecks.has(item.id) || photoUploads[item.id]?.status === "uploading") return;
     photoTargetRef.current = { checkId: item.id, itemName: item.name };
     setError("");
     setMessage("");
@@ -493,38 +536,45 @@ export function MechanicDiagnosticMatrix({ diagnosticId, onBack, onChanged }: { 
     }
   }
 
+  async function uploadPhotoFile(checkId: string, itemName: string, sourceFile: File, previewUrl = URL.createObjectURL(sourceFile)) {
+    setPhotoUploads((current) => ({ ...current, [checkId]: { sourceFile, previewUrl, progress: 0, status: "uploading", itemName } }));
+    setError("");
+    setMessage("");
+    try {
+      if (!ACCEPTED_PHOTO_TYPES.has(sourceFile.type)) throw new Error("Підтримуються фото у форматах JPEG, PNG або WEBP.");
+      const file = await resizePhoto(sourceFile);
+      await uploadPhotoRequest(`/api/diagnostics/${encodeURIComponent(diagnosticId)}/checks/${encodeURIComponent(checkId)}/media`, file, (progress) => {
+        setPhotoUploads((current) => current[checkId] ? { ...current, [checkId]: { ...current[checkId], progress } } : current);
+      });
+      await load();
+      URL.revokeObjectURL(previewUrl);
+      setPhotoUploads((current) => {
+        const next = { ...current };
+        delete next[checkId];
+        return next;
+      });
+      setMessage(`Фото деталі «${itemName}» додано.`);
+      onChanged?.();
+    } catch (cause) {
+      setPhotoUploads((current) => current[checkId] ? { ...current, [checkId]: { ...current[checkId], status: "error" } } : current);
+      setError(cause instanceof Error ? cause.message : "Не вдалося зберегти фото");
+    }
+  }
+
   async function uploadPhoto(event: React.ChangeEvent<HTMLInputElement>) {
     const sourceFile = event.target.files?.[0];
     const target = photoTargetRef.current;
     event.target.value = "";
     if (!sourceFile || !target) return;
 
-    setUploadingPhotoCheckId(target.checkId);
-    setError("");
-    setMessage("");
-    try {
-      if (!ACCEPTED_PHOTO_TYPES.has(sourceFile.type)) {
-        throw new Error("Підтримуються фото у форматах JPEG, PNG або WEBP.");
-      }
-      const file = await resizePhoto(sourceFile);
-      const formData = new FormData();
-      formData.append("file", file);
-      const response = await fetch(`/api/diagnostics/${encodeURIComponent(diagnosticId)}/checks/${encodeURIComponent(target.checkId)}/media`, {
-        method: "POST",
-        credentials: "include",
-        body: formData,
-      });
-      const body = await response.json().catch(() => null) as { ok?: boolean; message?: string; error?: string } | null;
-      if (!response.ok || !body?.ok) throw new Error(body?.message || body?.error || "Не вдалося зберегти фото");
-      await load();
-      setMessage(`Фото деталі «${target.itemName}» додано.`);
-      onChanged?.();
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Не вдалося зберегти фото");
-    } finally {
-      photoTargetRef.current = null;
-      setUploadingPhotoCheckId("");
-    }
+    photoTargetRef.current = null;
+    void uploadPhotoFile(target.checkId, target.itemName, sourceFile);
+  }
+
+  function retryPhoto(checkId: string) {
+    const upload = photoUploads[checkId];
+    if (!upload) return;
+    void uploadPhotoFile(checkId, upload.itemName, upload.sourceFile, upload.previewUrl);
   }
 
   async function completeChassis() {
@@ -604,7 +654,8 @@ export function MechanicDiagnosticMatrix({ diagnosticId, onBack, onChanged }: { 
     if (!row) return <span className={styles.emptySide} aria-hidden="true">—</span>;
     const checked = row.item.state === "DEFECT";
     const saving = Boolean(row.item.id && savingChecks.has(row.item.id));
-    const uploading = Boolean(row.item.id && uploadingPhotoCheckId === row.item.id);
+    const photoUpload = row.item.id ? photoUploads[row.item.id] : undefined;
+    const uploading = photoUpload?.status === "uploading";
     const disabled = locked || !row.item.id || Boolean(busy);
     const sideLabel = side === "LEFT" ? "Ліва сторона" : side === "RIGHT" ? "Права сторона" : "Загальна перевірка";
     const mediaCount = row.item.finding?.media?.length || 0;
@@ -623,9 +674,13 @@ export function MechanicDiagnosticMatrix({ diagnosticId, onBack, onChanged }: { 
         className={`${photoStyles.photoButton} ${uploading ? photoStyles.photoButtonUploading : ""}`}
         aria-label={`${mediaCount ? "Додати ще фото" : "Сфотографувати"}: ${sideLabel.toLocaleLowerCase("uk-UA")}, ${partName(row.item)}`}
         aria-busy={uploading}
-        disabled={disabled || saving || Boolean(uploadingPhotoCheckId)}
+        disabled={disabled || saving || uploading}
         onClick={() => openCamera(row.item)}
       >{uploading ? <span className={photoStyles.photoSpinner} /> : cameraIcon()}{mediaCount > 0 && <b>{mediaCount}</b>}</button>}
+      {photoUpload && <span className={photoStyles.photoUploadStatus}>
+        <img src={photoUpload.previewUrl} alt="Попередній перегляд фото" />
+        {uploading ? `${photoUpload.progress}%` : <button type="button" onClick={() => retryPhoto(row.item.id!)} aria-label="Повторити завантаження фото">↻</button>}
+      </span>}
     </div>;
   }
 
@@ -691,7 +746,8 @@ export function MechanicDiagnosticMatrix({ diagnosticId, onBack, onChanged }: { 
       <div className={styles.systemRows}>
         {section.items.map((item) => {
           const saving = Boolean(item.id && savingChecks.has(item.id));
-          const uploading = Boolean(item.id && uploadingPhotoCheckId === item.id);
+          const photoUpload = item.id ? photoUploads[item.id] : undefined;
+          const uploading = photoUpload?.status === "uploading";
           const mediaCount = item.finding?.media?.length || 0;
           const choices = systemChoices(section, item);
           return <div className={styles.systemRow} key={item.id || item.templateItemId}>
@@ -702,9 +758,13 @@ export function MechanicDiagnosticMatrix({ diagnosticId, onBack, onChanged }: { 
                 className={`${photoStyles.photoButton} ${uploading ? photoStyles.photoButtonUploading : ""}`}
                 aria-label={`${mediaCount ? "Додати ще фото" : "Сфотографувати"}: ${item.name}`}
                 aria-busy={uploading}
-                disabled={locked || !item.id || Boolean(busy) || saving || Boolean(uploadingPhotoCheckId)}
+                disabled={locked || !item.id || Boolean(busy) || saving || uploading}
                 onClick={() => openCamera(item)}
               >{uploading ? <span className={photoStyles.photoSpinner} /> : cameraIcon()}{mediaCount > 0 && <b>{mediaCount}</b>}</button>}
+              {photoUpload && <span className={photoStyles.photoUploadStatus}>
+                <img src={photoUpload.previewUrl} alt="Попередній перегляд фото" />
+                {uploading ? `${photoUpload.progress}%` : <button type="button" onClick={() => retryPhoto(item.id!)} aria-label="Повторити завантаження фото">↻</button>}
+              </span>}
             </div>
             <div className={styles.stateChoices}>
               {choices.map((choice) => {
