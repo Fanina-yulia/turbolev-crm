@@ -47,10 +47,17 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
 
     if (action === "PAY") {
       const method = String(body.paymentMethod || "").toUpperCase();
+      const paymentMethod = method === "CASH"
+        ? "CASH"
+        : method === "TERMINAL"
+          ? "TERMINAL"
+          : method === "ONLINE"
+            ? "ONLINE"
+            : method as "CASH" | "TERMINAL" | "ONLINE";
       const result = await payWalkInDiagnostic(
         access.context.user.id,
         id,
-        method === "CASH" ? "CASH" : method === "TERMINAL" || method === "ONLINE" ? "TERMINAL" : method as "CASH" | "TERMINAL",
+        paymentMethod,
         body.amount,
       );
       return NextResponse.json({ ok: true, ...result });
