@@ -40,11 +40,23 @@ function money(amount?: string | null, currency = "UAH") {
   return new Intl.NumberFormat("uk-UA", { style: "currency", currency, maximumFractionDigits: 0 }).format(value);
 }
 
-export function MechanicWalkInSettlement({ diagnosticId, data, onRefresh, onBack }: {
+function normalizeAmount(value: string) {
+  return value.trim().replace(/\s+/g, "").replace(",", ".");
+}
+
+function isValidAmount(value: string) {
+  const normalized = normalizeAmount(value);
+  if (!/^\d+(?:\.\d{1,2})?$/.test(normalized)) return false;
+  const numeric = Number(normalized);
+  return Number.isFinite(numeric) && numeric > 0 && numeric <= 1_000_000;
+}
+
+export function MechanicWalkInSettlement({ diagnosticId, data, onRefresh, onBack, onFinished }: {
   diagnosticId: string;
   data: WalkInSettlementPayload;
   onRefresh: () => Promise<void>;
   onBack: () => void;
+  onFinished?: () => void;
 }) {
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
@@ -76,10 +88,11 @@ export function MechanicWalkInSettlement({ diagnosticId, data, onRefresh, onBack
     try {
       await postAction({ action: "PAY", paymentMethod, amount: normalizedAmount.toFixed(2) });
       await postAction({ action: "COMPLETE_VISIT" });
+      await onRefresh();
       window.dispatchEvent(new CustomEvent("turbolev:mechanic-refresh"));
       window.dispatchEvent(new CustomEvent("turbolev:data-changed"));
       setSuccess({ method: paymentMethod, amount: normalizedAmount.toFixed(2) });
-      window.setTimeout(onBack, 1200);
+      window.setTimeout(() => (onFinished || onBack)(), 1200);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Не вдалося виконати дію");
       await onRefresh().catch(() => undefined);
@@ -96,7 +109,7 @@ export function MechanicWalkInSettlement({ diagnosticId, data, onRefresh, onBack
       await postAction({ action: "COMPLETE_VISIT" });
       window.dispatchEvent(new CustomEvent("turbolev:mechanic-refresh"));
       window.dispatchEvent(new CustomEvent("turbolev:data-changed"));
-      onBack();
+      (onFinished || onBack)();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Не вдалося завершити візит");
     } finally {

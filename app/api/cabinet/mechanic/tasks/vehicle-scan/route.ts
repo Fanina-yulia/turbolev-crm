@@ -307,11 +307,13 @@ export async function POST(request: NextRequest) {
     let confirm = false;
     let continueExisting = false;
     let source = "MANUAL";
+    let expectedPlate = "";
 
     if (contentType.includes("multipart/form-data")) {
       const form = await request.formData();
       const image = form.get("image");
       const manualPlate = clean(form.get("plate"), 32);
+      expectedPlate = clean(form.get("expectedPlate"), 32);
       confirm = clean(form.get("confirm"), 8).toLowerCase() === "true";
       continueExisting = clean(form.get("continueExisting"), 8).toLowerCase() === "true";
       if (manualPlate) {
@@ -325,6 +327,7 @@ export async function POST(request: NextRequest) {
     } else {
       const body = await request.json().catch(() => ({})) as Record<string, unknown>;
       rawPlate = clean(body.plate, 32);
+      expectedPlate = clean(body.expectedPlate, 32);
       confidence = typeof body.confidence === "number" ? Math.round(body.confidence) : null;
       confirm = body.confirm === true;
       continueExisting = body.continueExisting === true;
@@ -333,6 +336,14 @@ export async function POST(request: NextRequest) {
 
     const normalized = canonicalPlate(rawPlate);
     if (normalized.length < 5) return NextResponse.json({ ok: false, error: "PLATE_REQUIRED", message: "Не вдалося визначити номер. Спробуйте ще раз або введіть його вручну." }, { status: 400 });
+    const expectedNormalized = canonicalPlate(expectedPlate);
+    if (expectedNormalized && expectedNormalized !== normalized) {
+      return NextResponse.json({
+        ok: false,
+        error: "SCANNED_PLATE_MISMATCH",
+        message: `Номер не збігається з вибраним автомобілем. Очікується ${cyrillicPlate(expectedNormalized)}.`,
+      }, { status: 409 });
+    }
 
     const window = appointmentWindow(new Date(), mechanic.location.timezone || "Europe/Kyiv");
     const appointments = await prisma.serviceAppointment.findMany({
