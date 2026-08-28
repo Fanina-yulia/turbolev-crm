@@ -4,6 +4,7 @@ import {
   DiagnosticRequestStatus,
   DiagnosticReviewState,
 } from "@/src/generated/prisma/client";
+import type { Prisma } from "@/src/generated/prisma/client";
 import { getPrisma } from "@/src/lib/prisma";
 import { toPrismaJson } from "@/src/lib/prisma-json";
 import { ensureDiagnosticCardReviewRevision } from "@/src/services/diagnostic-card.service";
@@ -122,6 +123,41 @@ async function markAutoFillChecksOk(diagnosticRequestId: string) {
   return result.count;
 }
 
+async function advanceScheduledAppointmentAfterDiagnostic(
+  tx: Prisma.TransactionClient,
+  diagnosticRequestId: string,
+  mechanicId: string,
+  now: Date,
+) {
+  const diagnostic = await tx.diagnosticRequest.findUnique({
+    where: { id: diagnosticRequestId },
+    select: { vehicleId: true, leadId: true, clientId: true },
+  });
+  if (!diagnostic) return null;
+
+  const appointment = await tx.serviceAppointment.findFirst({
+    where: {
+      mechanicId,
+      OR: [{ source: null }, { source: { not: "WALK_IN" } }],
+      status: { in: ["ARRIVED", "DIAGNOSTICS"] },
+      AND: [{ OR: [
+        ...(diagnostic.leadId ? [{ leadId: diagnostic.leadId }] : []),
+        ...(diagnostic.vehicleId ? [{ vehicleId: diagnostic.vehicleId }] : []),
+        ...(diagnostic.clientId ? [{ clientId: diagnostic.clientId }] : []),
+      ] }],
+    },
+    orderBy: [{ updatedAt: "desc" }, { plannedStartAt: "desc" }],
+    select: { id: true, status: true },
+  });
+  if (!appointment) return null;
+
+  await tx.serviceAppointment.update({
+    where: { id: appointment.id },
+    data: { status: "WAITING_CALCULATION", updatedAt: now },
+  });
+  return { id: appointment.id, from: appointment.status, to: "WAITING_CALCULATION" };
+}
+
 export async function submitStructuredDiagnosticRespectingOptional(
   userId: string,
   diagnosticRequestId: string,
@@ -196,6 +232,19 @@ export async function submitStructuredDiagnosticRespectingOptional(
         }),
       },
     });
+
+    const appointmentTransition = await advanceScheduledAppointmentAfterDiagnostic(tx, diagnosticRequestId, mechanic.id, now);
+    if (appointmentTransition) {
+      await tx.auditEvent.create({
+        data: {
+          actorName: mechanic.name,
+          entityType: "ServiceAppointment",
+          entityId: appointmentTransition.id,
+          action: "DIAGNOSTIC_SUBMITTED_APPOINTMENT_ADVANCED",
+          metadata: toPrismaJson({ diagnosticRequestId, ...appointmentTransition, source: "MECHANIC_MOBILE" }),
+        },
+      });
+    }
   });
 
   await ensureDiagnosticCardReviewRevision(diagnosticRequestId, userId, mechanic.name);

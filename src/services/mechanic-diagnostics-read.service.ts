@@ -140,11 +140,8 @@ export async function listMechanicDiagnosticsReadOnly(userId: string) {
     const row = id ? byId.get(id) : undefined;
     if (!row) return [];
     const review = reviewById.get(row.id);
-    const workflowState = review?.state === DiagnosticReviewState.SUBMITTED
-      ? "SUBMITTED"
-      : review?.state === DiagnosticReviewState.RETURNED
-        ? "RETURNED"
-        : row.status;
+    if (review?.state === DiagnosticReviewState.SUBMITTED || review?.state === DiagnosticReviewState.CONFIRMED) return [];
+    const workflowState = review?.state === DiagnosticReviewState.RETURNED ? "RETURNED" : row.status;
     return [{
       id: row.id,
       status: row.status,

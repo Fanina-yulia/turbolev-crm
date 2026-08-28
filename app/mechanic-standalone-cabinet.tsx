@@ -370,7 +370,8 @@ export function MechanicStandaloneCabinet({ userName }: { userName?: string | nu
   const appointments = home?.appointments ?? [];
   const activeAppointments = appointments;
   const representedWorkOrderIds = new Set(tasks.map((item) => item.workOrderId));
-  const scheduledAppointments = activeAppointments.filter((item) => !item.workOrderId || !representedWorkOrderIds.has(item.workOrderId));
+  const mechanicActionableAppointmentStatuses = new Set(["BOOKED", "ARRIVED", "DIAGNOSTICS", "READY_FOR_REPAIR", "IN_REPAIR", "WAITING_QC", "PAUSED"]);
+  const scheduledAppointments = activeAppointments.filter((item) => mechanicActionableAppointmentStatuses.has(item.status) && (!item.workOrderId || !representedWorkOrderIds.has(item.workOrderId)));
   const prioritizedScheduledAppointments = [...scheduledAppointments].sort(appointmentPriority);
   const nextScheduledAppointment = prioritizedScheduledAppointments[0] ?? null;
   const nextScheduledDiagnostic = nextScheduledAppointment
