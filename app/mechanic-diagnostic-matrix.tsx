@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { VoiceNoteInput } from "./voice-note-input";
 import styles from "./mechanic-diagnostic-matrix.module.css";
 import photoStyles from "./mechanic-diagnostic-photo-controls.module.css";
+import responsiveStyles from "./mechanic-diagnostic-responsive.module.css";
 
 type CheckState = "NOT_CHECKED" | "OK" | "ATTENTION" | "DEFECT";
 type DiagnosticMedia = {
@@ -646,7 +647,7 @@ export function MechanicDiagnosticMatrix({ diagnosticId, onBack, onChanged, onFi
   }
 
   if (!data?.diagnostic) {
-    return <div className={styles.page}><header className={styles.top}><button type="button" onClick={onBack}>‹</button><strong>Діагностика</strong><span /></header><div className={styles.loading}>{error || "Завантажую діагностику…"}</div></div>;
+    return <div className={`${styles.page} ${responsiveStyles.page}`}><header className={styles.top}><button type="button" onClick={onBack}>‹</button><strong>Діагностика</strong><span /></header><div className={styles.loading}>{error || "Завантажую діагностику…"}</div></div>;
   }
 
   const vehicle = data.diagnostic.vehicle;
@@ -793,7 +794,7 @@ export function MechanicDiagnosticMatrix({ diagnosticId, onBack, onChanged, onFi
     </section>;
   }
 
-  return <div className={styles.page}>
+  return <div className={`${styles.page} ${responsiveStyles.page}`}>
     <input
       ref={photoInputRef}
       className={photoStyles.photoInput}

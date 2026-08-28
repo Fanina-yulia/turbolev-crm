@@ -258,3 +258,45 @@ button.listCard{appearance:none}
   .hero{padding-top:22px}
 }
 @media(prefers-reduced-motion:reduce){.app *{scroll-behavior:auto!important;transition:none!important}}
+
+/* Responsive safety net for compact phones and large text settings. */
+.app,.shell,.content,.profileCard,.profileLarge,.card,.taskHero,.noticeCard,.scheduleCard,.formCard{min-width:0}
+.profileCard>div:last-child,.profileLarge>div:last-child,.sectionHead>div,.taskTop>div:nth-child(2),.scheduleCard>div{min-width:0}
+.profileCard p,.profileCard span,.profileLarge p,.profileLarge span,.taskHero strong,.scheduleCard p,.scheduleCard small,.noticeCard p,.subtle{overflow-wrap:anywhere}
+.sectionHead h2,.sectionHead p,.notificationTitle h1,.notificationTitle p{overflow-wrap:anywhere}
+.bottomNav{padding-bottom:max(7px,env(safe-area-inset-bottom))}
+.bottomNav button b{max-width:100%;overflow-wrap:anywhere;text-align:center;white-space:normal;line-height:1.12}
+.toastGood>span,.toastBad>span{min-width:0;overflow-wrap:anywhere}
+.toastGood button,.toastBad button{flex:0 0 auto}
+
+@media(max-width:390px){
+  .hero{gap:10px}
+  .hero small{font-size:13px}
+  .sectionHead{gap:8px}
+  .sectionHead h2{font-size:17px}
+  .taskHero,.card,.formCard,.noticeCard{padding:14px}
+  .taskTop{gap:8px}
+  .taskTop .pill{max-width:96px;padding-inline:7px}
+  .meta{gap:10px}
+  .scheduleCard{grid-template-columns:minmax(84px,.38fr) minmax(0,1fr);gap:9px;padding:13px}
+  .bottomNav{padding-left:3px;padding-right:3px}
+  .bottomNav button{min-height:56px;padding-inline:1px}
+  .bottomNav button b{font-size:11px}
+}
+
+@media(max-width:340px){
+  .hero{padding-left:12px;padding-right:12px}
+  .brand{font-size:20px}
+  .brand b{font-size:24px}
+  .iconButton{width:44px;height:44px}
+  .topBar{grid-template-columns:42px minmax(0,1fr) 42px;padding-inline:9px}
+  .topBar button{width:40px;height:40px}
+  .content{padding-inline:10px}
+  .profileCard{gap:10px}
+  .avatar{width:46px;height:46px;font-size:19px}
+  .profileCard h1{font-size:17px}
+  .metrics{gap:6px}
+  .metrics>div,.metricButton{padding-inline:3px}
+  .metrics b{width:31px;height:31px;font-size:15px}
+  .bottomNav button span{font-size:16px}
+}

@@ -221,6 +221,62 @@
   .phoneShell * { scroll-behavior:auto!important; transition:none!important; animation:none!important; }
 }
 
+/* Responsive safety net for the role overview and its legacy mobile flow. */
+.app,.phoneShell,.content,.greetingCard,.dayCard,.nextCard,.todayWorks,.workOrderCard,.vehicleDetail,.taskCard,.diagnosticCard,.emptyCard,.lifecycleCard,.findingForm{min-width:0}
+.app{overflow-x:hidden;padding-bottom:env(safe-area-inset-bottom)}
+.greetingCard>div:last-child,.sectionHeading>div,.vehicleRow>div:nth-child(2),.workList>button>div,.taskCard>div,.diagnosticCard>div,.fileRow>div,.scheduleList article>div:last-child{min-width:0}
+.greetingCard p,.greetingCard span,.sectionHeading h2,.sectionHeading span,.vehicleRow p,.problemText,.taskCard p,.diagnosticCard p,.stateNotice span,.safeNote,.scheduleList p,.scheduleList small{overflow-wrap:anywhere}
+.vehicleRow h3,.vehicleRow h1{max-width:100%}
+.workList>button strong,.workList>button small{min-width:0;overflow-wrap:anywhere}
+.statusPill,.miniStatus{max-width:42%;overflow:hidden;text-overflow:ellipsis}
+.bottomNav{min-height:calc(76px + env(safe-area-inset-bottom));height:auto;padding-bottom:max(7px,env(safe-area-inset-bottom))}
+.bottomNav button{min-width:0;min-height:56px;padding-inline:2px}
+.bottomNav b{max-width:100%;overflow-wrap:anywhere;text-align:center;white-space:normal;line-height:1.12}
+.toast,.successToast{max-width:calc(100% - 24px)}
+.toast>span,.successToast>span{min-width:0;overflow-wrap:anywhere}
+
+@media (max-width: 390px) {
+  .heroHeader{padding-inline:18px}
+  .brandRow{gap:10px}
+  .brand{font-size:21px}
+  .brand b{font-size:25px}
+  .content{padding:13px 12px;gap:12px}
+  .greetingCard,.dayCard,.nextCard,.todayWorks,.workOrderCard,.vehicleDetail,.taskCard,.diagnosticCard,.emptyCard,.lifecycleCard,.findingForm{border-radius:16px}
+  .greetingCard{padding:14px;gap:10px}
+  .avatar{width:50px;height:50px;font-size:22px}
+  .greetingCard h1{font-size:18px}
+  .sectionHeading{gap:8px}
+  .sectionHeading h2{font-size:17px}
+  .metrics{gap:5px}
+  .metrics>div{padding-inline:2px}
+  .vehicleRow{gap:8px}
+  .vehicleRow h3,.vehicleRow h1{font-size:17px}
+  .statusPill,.miniStatus{max-width:37%;padding-inline:7px}
+  .jobMeta,.detailMeta{gap:5px}
+  .jobMeta b,.detailMeta b{font-size:12px;overflow-wrap:anywhere}
+  .workList>button{grid-template-columns:43px minmax(0,1fr) auto;gap:7px}
+  .actionGrid{grid-template-columns:1fr}
+  .urgencyPicker{grid-template-columns:1fr}
+  .findingSummary{align-items:flex-start;flex-direction:column}
+  .bottomNav{padding-inline:3px}
+  .bottomNav span{font-size:18px}
+  .bottomNav b{font-size:11px}
+}
+
+@media (max-width: 340px) {
+  .heroHeader{padding-inline:12px}
+  .brand{font-size:19px}
+  .brand b{font-size:22px}
+  .bell{width:42px;height:42px}
+  .content{padding-inline:10px}
+  .metrics{grid-template-columns:1fr 1fr}
+  .metrics b{width:32px;height:32px;font-size:16px}
+  .vehicleRow h3,.vehicleRow h1{font-size:16px}
+  .statusPill,.miniStatus{max-width:34%;font-size:11px}
+  .bottomNav button{padding-inline:1px}
+  .bottomNav span{font-size:17px}
+}
+
 /* Neutral surfaces in this legacy mobile cabinet now inherit the active CRM theme.
    Brand chrome and semantic status colors intentionally remain fixed. */
 .content{background:var(--bg);color:var(--text)}

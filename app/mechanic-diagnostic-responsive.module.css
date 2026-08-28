@@ -1,0 +1,157 @@
+.page {
+  min-width: 0;
+  overflow-x: hidden;
+}
+
+.page :global([class*="mechanic-diagnostic-matrix_"]) {
+  min-width: 0;
+}
+
+.page :global([class*="mechanic-diagnostic-matrix_vehicleBar"]),
+.page :global([class*="mechanic-diagnostic-matrix_axisSection"]),
+.page :global([class*="mechanic-diagnostic-matrix_systemSection"]),
+.page :global([class*="mechanic-diagnostic-matrix_finishCard"]),
+.page :global([class*="mechanic-diagnostic-matrix_submitCard"]),
+.page :global([class*="mechanic-diagnostic-matrix_managerNote"]),
+.page :global([class*="mechanic-diagnostic-matrix_message"]),
+.page :global([class*="mechanic-diagnostic-matrix_error"]),
+.page :global([class*="mechanic-diagnostic-matrix_locked"]) {
+  overflow-wrap: anywhere;
+}
+
+.page :global([class*="mechanic-diagnostic-matrix_vehicleBar"] > div),
+.page :global([class*="mechanic-diagnostic-matrix_axisHeader"] > div),
+.page :global([class*="mechanic-diagnostic-matrix_systemHeader"] > div),
+.page :global([class*="mechanic-diagnostic-matrix_systemItemHeader"] > strong),
+.page :global([class*="mechanic-diagnostic-matrix_partRow"] > strong) {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.page :global([class*="mechanic-diagnostic-matrix_systemItemHeader"]) {
+  flex-wrap: wrap;
+}
+
+.page :global([class*="mechanic-diagnostic-matrix_systemItemHeader"] > strong) {
+  flex: 1 1 150px;
+}
+
+.page :global([class*="mechanic-diagnostic-photo-controls_photoUploadStatus"]) {
+  flex: 0 1 auto;
+  max-width: 100%;
+  flex-wrap: wrap;
+}
+
+.page :global([class*="mechanic-diagnostic-matrix_stateChoice"]) {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 390px) {
+  .page :global([class*="mechanic-diagnostic-matrix_top"]) {
+    height: 72px;
+    grid-template-columns: 48px minmax(0, 1fr) 48px;
+    padding-inline: 10px;
+  }
+
+  .page :global([class*="mechanic-diagnostic-matrix_top"]) > button {
+    width: 44px;
+    height: 44px;
+    font-size: 31px;
+  }
+
+  .page :global([class*="mechanic-diagnostic-matrix_top"]) > strong {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 18px;
+  }
+
+  .page :global([class*="mechanic-diagnostic-matrix_content"]) {
+    padding-inline: 12px;
+  }
+
+  .page :global([class*="mechanic-diagnostic-matrix_vehicleBar"]) {
+    align-items: flex-start;
+    gap: 9px;
+    padding: 13px 14px;
+  }
+
+  .page :global([class*="mechanic-diagnostic-matrix_vehicleBar"]) > b {
+    max-width: 92px;
+    padding: 7px 8px;
+    text-align: center;
+    white-space: normal;
+  }
+
+  .page :global([class*="mechanic-diagnostic-matrix_axisHeader"]),
+  .page :global([class*="mechanic-diagnostic-matrix_systemHeader"]) {
+    padding: 15px 13px 12px;
+  }
+
+  .page :global([class*="mechanic-diagnostic-matrix_axisHeader"] h2),
+  .page :global([class*="mechanic-diagnostic-matrix_systemHeader"] h2) {
+    font-size: 20px;
+  }
+
+  .page :global([class*="mechanic-diagnostic-matrix_columnLabels"]),
+  .page :global([class*="mechanic-diagnostic-matrix_partRow"]) {
+    grid-template-columns: 52px minmax(0, 1fr) 52px;
+    padding-inline: 5px;
+  }
+
+  .page :global([class*="mechanic-diagnostic-matrix_partRow"]) > strong {
+    padding-inline: 5px;
+    font-size: 15px;
+  }
+
+  .page :global([class*="mechanic-diagnostic-matrix_systemRow"]) {
+    padding: 13px 12px;
+  }
+
+  .page :global([class*="mechanic-diagnostic-matrix_stateChoices"]) {
+    gap: 6px;
+  }
+
+  .page :global([class*="mechanic-diagnostic-matrix_stateChoice"]) {
+    min-height: 44px;
+    padding-inline: 4px;
+    font-size: 11px;
+  }
+
+  .page :global([class*="mechanic-diagnostic-photo-controls_partRowWithPhoto"]) {
+    grid-template-columns: 78px minmax(0, 1fr) 78px !important;
+  }
+}
+
+@media (max-width: 340px) {
+  .page :global([class*="mechanic-diagnostic-matrix_content"]) {
+    padding-inline: 10px;
+  }
+
+  .page :global([class*="mechanic-diagnostic-matrix_columnLabels"]),
+  .page :global([class*="mechanic-diagnostic-matrix_partRow"]) {
+    grid-template-columns: 48px minmax(0, 1fr) 48px;
+    padding-inline: 4px;
+  }
+
+  .page :global([class*="mechanic-diagnostic-matrix_partRow"]) > strong {
+    padding-inline: 4px;
+    font-size: 14px;
+  }
+
+  .page :global([class*="mechanic-diagnostic-photo-controls_partRowWithPhoto"]) {
+    grid-template-columns: 76px minmax(0, 1fr) 76px !important;
+  }
+
+  .page :global([class*="mechanic-diagnostic-photo-controls_partRowWithPhoto"]) :global([class*="mechanic-diagnostic-matrix_sideCheck"]) {
+    width: 40px;
+    height: 40px;
+  }
+
+  .page :global([class*="mechanic-diagnostic-photo-controls_partRowWithPhoto"]) :global([class*="mechanic-diagnostic-photo-controls_photoButton"]) {
+    width: 30px;
+    height: 30px;
+  }
+}
