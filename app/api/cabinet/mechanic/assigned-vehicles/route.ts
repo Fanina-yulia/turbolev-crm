@@ -50,6 +50,7 @@ export async function GET(request: Request) {
         caseKey: row.caseKey,
         vehicleId: row.vehicleId,
         workOrderId: row.workOrderId,
+        diagnosticId: row.diagnosticRequestId,
         appointmentStatus: row.appointmentStatus,
         workOrderStatus: row.workOrderStatus,
         vehicle: row.vehicleLabel || "Автомобіль",

@@ -17,6 +17,7 @@ type AssignedVehicle = {
   id: string;
   vehicleId: string | null;
   workOrderId: string | null;
+  diagnosticId: string | null;
   appointmentStatus: string;
   workOrderStatus: string | null;
   vehicle: string;
@@ -102,14 +103,17 @@ function readDismissedIds() {
 const AssignedVehicleRow = memo(function AssignedVehicleRow({
   item,
   onDismiss,
+  onOpenDiagnostic,
 }: {
   item: AssignedVehicle;
   onDismiss: (id: string) => void;
+  onOpenDiagnostic: (diagnosticId: string) => void;
 }) {
   const [swipe, setSwipe] = useState<RowSwipe | null>(null);
   const status = effectiveStatus(item);
   const swipeOffset = swipe?.offset ?? 0;
   const deleteVisible = swipeOffset < -12;
+  const paymentPending = status === "WAITING_PAYMENT" && Boolean(item.diagnosticId);
 
   function startSwipe(clientX: number) {
     setSwipe({ startX: clientX, offset: 0 });
@@ -125,7 +129,7 @@ const AssignedVehicleRow = memo(function AssignedVehicleRow({
   }
 
   function finishSwipe() {
-    if (swipe && swipe.offset <= SWIPE_DISMISS_THRESHOLD) {
+    if (swipe && swipe.offset <= SWIPE_DISMISS_THRESHOLD && !paymentPending) {
       onDismiss(item.id);
       return;
     }
@@ -133,7 +137,7 @@ const AssignedVehicleRow = memo(function AssignedVehicleRow({
   }
 
   return <div style={{ position: "relative", overflow: "hidden", background: "rgba(205,57,72,.20)" }}>
-    <div aria-hidden="true" style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "flex-end", paddingRight: 18, color: "#ff8d98", fontSize: 12, fontWeight: 800, opacity: deleteVisible ? 1 : 0, transition: "opacity .12s ease" }}>Видалити</div>
+    <div aria-hidden="true" style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "flex-end", paddingRight: 18, color: "#ff8d98", fontSize: 12, fontWeight: 800, opacity: deleteVisible && !paymentPending ? 1 : 0, transition: "opacity .12s ease" }}>Видалити</div>
     <article
       onPointerDown={(event) => startSwipe(event.clientX)}
       onPointerMove={(event) => moveSwipe(event.clientX)}
@@ -145,7 +149,7 @@ const AssignedVehicleRow = memo(function AssignedVehicleRow({
         display: "grid",
         gridTemplateColumns: "1fr auto",
         gap: 10,
-        background: "rgba(21,27,35,.99)",
+        background: paymentPending ? "linear-gradient(90deg,rgba(255,101,0,.17),rgba(21,27,35,.99) 58%)" : "rgba(21,27,35,.99)",
         transform: `translateX(${swipeOffset}px)`,
         transition: swipe ? "none" : "transform .18s ease",
         touchAction: "pan-y",
@@ -160,6 +164,16 @@ const AssignedVehicleRow = memo(function AssignedVehicleRow({
       <div style={{ textAlign: "right", minWidth: 112 }}>
         <span style={{ display: "inline-block", borderRadius: 999, padding: "4px 8px", background: status === "READY_FOR_PICKUP" ? "rgba(40,180,110,.18)" : status === "IN_REPAIR" ? "rgba(70,140,255,.20)" : "rgba(255,157,88,.16)", fontSize: 12, fontWeight: 800 }}>{statusLabels[status] || status}</span>
         <b style={{ display: "block", marginTop: 5, fontSize: 12 }}>{dateTime(item.plannedStartAt)}</b>
+        {paymentPending ? <button
+          type="button"
+          onPointerDown={(event) => event.stopPropagation()}
+          onPointerUp={(event) => event.stopPropagation()}
+          onClick={(event) => {
+            event.stopPropagation();
+            if (item.diagnosticId) onOpenDiagnostic(item.diagnosticId);
+          }}
+          style={{ marginTop: 8, minHeight: 38, border: 0, borderRadius: 11, padding: "8px 12px", background: "#ff6500", color: "#fff", fontSize: 12, fontWeight: 900, cursor: "pointer", touchAction: "manipulation" }}
+        >Оплатити</button> : null}
       </div>
     </article>
   </div>;
@@ -178,7 +192,7 @@ export function MechanicLiveCabinet({ userName }: { userName?: string | null }) 
     if (!response.ok || !payload?.ok) return;
     const nextItems = payload.items ?? [];
     const nextKey = nextItems
-      .map((item) => `${item.id}:${effectiveStatus(item)}`)
+      .map((item) => `${item.id}:${effectiveStatus(item)}:${item.diagnosticId || ""}`)
       .sort()
       .join("|");
     setItems((current) => current === nextItems ? current : nextItems);
@@ -230,7 +244,7 @@ export function MechanicLiveCabinet({ userName }: { userName?: string | null }) 
 
   const dismissedSet = useMemo(() => new Set(dismissedIds), [dismissedIds]);
   const visibleItems = useMemo(
-    () => sortedItems.filter((item) => !dismissedSet.has(item.id)),
+    () => sortedItems.filter((item) => effectiveStatus(item) === "WAITING_PAYMENT" || !dismissedSet.has(item.id)),
     [sortedItems, dismissedSet],
   );
 
@@ -256,9 +270,16 @@ export function MechanicLiveCabinet({ userName }: { userName?: string | null }) 
     });
   }, []);
 
+  const openPendingDiagnostic = useCallback((diagnosticId: string) => {
+    setExpanded(false);
+    window.dispatchEvent(new CustomEvent("turbolev:mechanic-open-diagnostic", { detail: { diagnosticId } }));
+  }, []);
+
   function dismissFeed() {
     if (!visibleItems.length) return;
-    persistDismissed([...dismissedIds, ...visibleItems.map((item) => item.id)]);
+    const dismissible = visibleItems.filter((item) => effectiveStatus(item) !== "WAITING_PAYMENT");
+    if (!dismissible.length) return;
+    persistDismissed([...dismissedIds, ...dismissible.map((item) => item.id)]);
   }
 
   const showFeed = Boolean(storageReady && lastKey && visibleItems.length);
@@ -278,9 +299,9 @@ export function MechanicLiveCabinet({ userName }: { userName?: string | null }) 
         </div>
 
         {expanded && <div style={{ maxHeight: "38dvh", overflowY: "auto", borderTop: "1px solid rgba(255,255,255,.08)", overscrollBehavior: "contain" }}>
-          {visibleItems.map((item) => <AssignedVehicleRow key={item.id} item={item} onDismiss={dismissItem} />)}
+          {visibleItems.map((item) => <AssignedVehicleRow key={item.id} item={item} onDismiss={dismissItem} onOpenDiagnostic={openPendingDiagnostic} />)}
         </div>}
-        <div style={{ padding: "8px 14px", fontSize: 12, opacity: .62, lineHeight: 1.35 }}>Проведіть по авто вліво, щоб прибрати сповіщення. Закриті сповіщення більше не з’являються.</div>
+        <div style={{ padding: "8px 14px", fontSize: 12, opacity: .62, lineHeight: 1.35 }}>Очікувана оплата залишається видимою до завершення. Інші сповіщення можна прибрати свайпом вліво.</div>
       </div>
     </section>}
     <MechanicStandaloneCabinet userName={userName} />
