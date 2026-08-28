@@ -83,7 +83,6 @@ export function MechanicWalkInSettlement({ diagnosticId, data, onRefresh, onBack
     setError("");
     try {
       await postAction({ action: "PAY", paymentMethod, amount: normalizedAmount.toFixed(2) });
-      await postAction({ action: "COMPLETE_VISIT" });
       await onRefresh();
       window.dispatchEvent(new CustomEvent("turbolev:mechanic-refresh"));
       window.dispatchEvent(new CustomEvent("turbolev:data-changed", {
