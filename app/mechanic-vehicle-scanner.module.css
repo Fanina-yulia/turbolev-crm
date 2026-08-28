@@ -1,11 +1,11 @@
-:global(nav[aria-label="Навігація механіка"]):has(.navScan){grid-template-columns:repeat(5,1fr)!important;overflow:visible}
+:global(nav[aria-label="Навігація механіка"]):has(.navScan){grid-template-columns:repeat(3,1fr)!important;overflow:visible}
 :global(nav[aria-label="Навігація механіка"]):has(.navScan)>:global(button:nth-child(1)){grid-column:1}
-:global(nav[aria-label="Навігація механіка"]):has(.navScan)>:global(button:nth-child(2)){grid-column:2}
-:global(nav[aria-label="Навігація механіка"]):has(.navScan)>:global(button:nth-child(3)){grid-column:4}
-:global(nav[aria-label="Навігація механіка"]):has(.navScan)>:global(button:nth-child(4)){grid-column:5}
+:global(nav[aria-label="Навігація механіка"]):has(.navScan)>:global(button:nth-child(2)){grid-column:3}
+:global(nav[aria-label="Навігація механіка"]):has(.navScan)>:global(button:nth-child(3)){display:none!important}
+:global(nav[aria-label="Навігація механіка"]):has(.navScan)>:global(button:nth-child(4)){display:none!important}
 :global(nav[aria-label="Навігація механіка"]):has(.navScan)>:global(button:nth-child(5)){display:none!important}
 :global([data-mechanic-cabinet="true"] header):has(.profileTop)>:global(button[aria-label="Сповіщення"]){display:none!important}
-.navScan{grid-column:3!important;grid-row:1!important;align-self:start!important;justify-self:center!important;width:66px!important;height:66px!important;min-height:66px!important;margin:0!important;padding:7px 4px!important;transform:translateY(-15px);border:2px solid color-mix(in srgb,#ff6500 82%,#fff)!important;border-radius:21px!important;background:#ff6500!important;color:#fff!important;box-shadow:0 10px 24px rgba(0,0,0,.34),0 5px 18px rgba(255,101,0,.28)!important;display:grid!important;place-items:center!important;align-content:center!important;gap:3px!important;cursor:pointer;touch-action:manipulation;z-index:3}
+.navScan{grid-column:2!important;grid-row:1!important;align-self:start!important;justify-self:center!important;width:66px!important;height:66px!important;min-height:66px!important;margin:0!important;padding:7px 4px!important;transform:translateY(-15px);border:2px solid color-mix(in srgb,#ff6500 82%,#fff)!important;border-radius:21px!important;background:#ff6500!important;color:#fff!important;box-shadow:0 10px 24px rgba(0,0,0,.34),0 5px 18px rgba(255,101,0,.28)!important;display:grid!important;place-items:center!important;align-content:center!important;gap:3px!important;cursor:pointer;touch-action:manipulation;z-index:3}
 .navScan:active{transform:translateY(-13px) scale(.97)}
 .navScan:focus-visible{outline:3px solid rgba(255,101,0,.34);outline-offset:3px}
 .navScan span{font-size:21px!important;line-height:1!important;color:#fff!important}.navScan b{font-size:12px!important;line-height:1.05!important;font-weight:850!important;color:#fff!important;white-space:nowrap!important}
