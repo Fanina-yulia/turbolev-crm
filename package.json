@@ -18,6 +18,7 @@
     "module:ci": "node scripts/module-ci.mjs",
     "contracts:smoke": "node --import tsx scripts/crm-core-contracts-smoke.ts && node --import tsx scripts/planner-contracts-smoke.ts && node --import tsx scripts/cabinet-home-contracts-smoke.ts && node --import tsx scripts/service-advisor-contracts-smoke.ts && node --import tsx scripts/clients-vehicles-contracts-smoke.ts && node --import tsx scripts/client-card-contracts-smoke.ts && node --import tsx scripts/new-request-wizard-contracts-smoke.ts && node --import tsx scripts/inquiries-contracts-smoke.ts && node --import tsx scripts/integration-api-v1-attribution-smoke.ts && node scripts/migration-database-url-smoke.mjs",
     "rbac:readiness": "tsx scripts/rbac-production-readiness.ts",
+    "crm:hardening:smoke": "node scripts/crm-hardening-smoke.mjs",
     "e2e:real:readiness": "tsx scripts/real-vehicle-e2e-readiness.ts",
     "db:generate": "prisma generate",
     "db:push": "prisma db push",

@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { formatWorkOrderNumber, parseWorkOrderNumber } from "@/src/domain/work-order-number";
 import { getWorkflowStatusLabel } from "@/src/domain/workflow";
 import { getPrisma } from "@/src/lib/prisma";
-import { getAccessContext, hasPermission, type AccessContext } from "@/src/security/access-context";
+import { hasPermission, type AccessContext } from "@/src/security/access-context";
+import { authorize } from "@/src/security/authorize";
 import { PERMISSIONS, type AccessScopeCode, type PermissionCode } from "@/src/security/permissions";
 
 export const runtime = "nodejs";
@@ -79,7 +80,6 @@ async function currentMechanicIds(context: AccessContext) {
 }
 
 async function plannerScopeWhere(context: AccessContext) {
-  if (context.enforcementMode !== "ENFORCED") return {};
   const scope = permissionScope(context, PERMISSIONS.PLANNER_READ);
   if (!scope) return { id: { in: [] as string[] } };
   if (scope === "ALL") return {};
@@ -93,7 +93,6 @@ async function plannerScopeWhere(context: AccessContext) {
 }
 
 async function diagnosticScopeWhere(context: AccessContext) {
-  if (context.enforcementMode !== "ENFORCED") return {};
   const scope = permissionScope(context, PERMISSIONS.DIAGNOSTICS_READ);
   if (!scope) return { id: { in: [] as string[] } };
   if (scope === "ALL") return {};
@@ -118,7 +117,6 @@ async function diagnosticScopeWhere(context: AccessContext) {
 }
 
 async function filterWorkOrdersByScope<T extends { id: string }>(rows: T[], context: AccessContext) {
-  if (context.enforcementMode !== "ENFORCED") return rows;
   const scope = workOrderScope(context);
   if (!scope || !rows.length) return [];
   if (scope === "ALL") return rows;
@@ -163,15 +161,14 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ ok: true, query: q, clients: [], vehicles: [], workOrders: [], diagnostics: [], appointments: [] }, { headers: { "Cache-Control": "no-store" } });
   }
 
-  const context = await getAccessContext(request);
-  const canClients = context.enforcementMode !== "ENFORCED" || hasPermission(context, PERMISSIONS.CLIENTS_READ);
-  const canWorkOrders = context.enforcementMode !== "ENFORCED" || hasPermission(context, PERMISSIONS.WORK_ORDERS_READ);
-  const canDiagnostics = context.enforcementMode !== "ENFORCED" || hasPermission(context, PERMISSIONS.DIAGNOSTICS_READ);
-  const canPlanner = context.enforcementMode !== "ENFORCED" || hasPermission(context, PERMISSIONS.PLANNER_READ);
+  const access = await authorize(PERMISSIONS.OVERVIEW_READ, { request, strict: true, minimumScope: "SELF" });
+  if (!access.allowed) return access.response!;
+  const context = access.context;
+  const canClients = hasPermission(context, PERMISSIONS.CLIENTS_READ);
+  const canWorkOrders = hasPermission(context, PERMISSIONS.WORK_ORDERS_READ);
+  const canDiagnostics = hasPermission(context, PERMISSIONS.DIAGNOSTICS_READ);
+  const canPlanner = hasPermission(context, PERMISSIONS.PLANNER_READ);
 
-  if (context.enforcementMode === "ENFORCED" && context.provisioningState !== "ACTIVE") {
-    return NextResponse.json({ ok: false, error: context.authenticated ? "Доступ до CRM не активований." : "Потрібна авторизація." }, { status: context.authenticated ? 403 : 401 });
-  }
   if (!canClients && !canWorkOrders && !canDiagnostics && !canPlanner) {
     return NextResponse.json({ ok: false, error: "Для глобального пошуку немає доступних типів даних." }, { status: 403 });
   }

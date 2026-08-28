@@ -4,8 +4,18 @@ import { getSqlPool } from "@/src/lib/sql";
 import { lookupVehicleByPlate, normalizeRegistrationPlate } from "@/src/services/vehicle-lookup.service";
 import { decodeVinIntelligence } from "@/src/services/vin-intelligence.service";
 import { validateVin } from "@/src/domain/vin";
+import { authorize } from "@/src/security/authorize";
+import { PERMISSIONS } from "@/src/security/permissions";
 
 export const dynamic = "force-dynamic";
+
+async function clientCardAccess(request: Request, write = false) {
+  return authorize(write ? PERMISSIONS.CLIENTS_WRITE : PERMISSIONS.CLIENTS_READ, {
+    request,
+    strict: true,
+    minimumScope: write ? "TEAM" : "SELF",
+  });
+}
 
 function normalizePhone(value: string) {
   let digits = value.replace(/\D/g, "");
@@ -73,12 +83,16 @@ async function findClientIdByPhone(db: { query: (text: string, params?: unknown[
 }
 
 export async function GET(request: NextRequest) {
+  const access = await clientCardAccess(request);
+  if (!access.allowed) return access.response!;
   const phoneNormalized = normalizePhone(request.nextUrl.searchParams.get("phone") || "");
   if (!phoneNormalized) return NextResponse.json({ client: null });
   return NextResponse.json({ client: await readClient(phoneNormalized) });
 }
 
 export async function PUT(request: NextRequest) {
+  const access = await clientCardAccess(request, true);
+  if (!access.allowed) return access.response!;
   const body = await request.json().catch(() => ({}));
   const clientIdInput = String(body.clientId || "").trim() || null;
   const primaryNormalized = normalizePhone(String(body.primaryPhone || body.phone || ""));
@@ -196,6 +210,8 @@ export async function PUT(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  const access = await clientCardAccess(request, true);
+  if (!access.allowed) return access.response!;
   const body = await request.json().catch(() => ({}));
   const name = cleanClientName(body.name);
   const phone = String(body.phone || body.primaryPhone || "").trim();

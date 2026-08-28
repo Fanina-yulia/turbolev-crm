@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { navigateCrm } from "./crm-route";
+import { MechanicTaskPlateVerification } from "./mechanic-task-plate-verification";
 import styles from "./mechanic-mobile-cabinet-v2.module.css";
 
 type MechanicTask = {
@@ -184,6 +185,7 @@ export function MechanicMobileCabinet({ data, userName }: { data: MechanicPayloa
   const [recommendation, setRecommendation] = useState("");
   const [findingUrgency, setFindingUrgency] = useState<FindingUrgency>("INFO");
   const [findingFiles, setFindingFiles] = useState<File[]>([]);
+  const [showPlateVerification, setShowPlateVerification] = useState(false);
 
   const appointments = useMemo(() => data.appointments ?? [], [data.appointments]);
   const tasks = liveTasks;
@@ -329,7 +331,7 @@ export function MechanicMobileCabinet({ data, userName }: { data: MechanicPayloa
       <section className={styles.workOrderCard}><div className={styles.sectionHeading}><div><h2>Роботи за комерційною пропозицією</h2></div><span>{selectedOrderTasks.filter((item) => ["COMPLETED", "DONE"].includes(item.status)).length} з {selectedOrderTasks.length}</span></div><div className={styles.progress}><i style={{ width: `${selectedOrderTasks.length ? Math.round(selectedOrderTasks.filter((item) => ["COMPLETED", "DONE"].includes(item.status)).length / selectedOrderTasks.length * 100) : 0}%` }} /></div><div className={styles.orderLines}>{selectedOrderTasks.map((item) => <div key={item.id}><span className={statusClass(item.status)}>●</span><div><strong>{item.description}</strong><small>{item.laborHours ? `${item.laborHours} нормо-год` : item.type}</small></div><em>{taskStatusLabel[item.status] || item.status}</em></div>)}</div></section>
       <section className={styles.lifecycleCard}><span className={styles.lifecycleEyebrow}>КЕРУВАННЯ РОБОТОЮ</span>
         {selectedTask.status === "DRAFT" && <div className={styles.stateNotice}><b>Очікує погодження</b><span>Роботу можна розпочати після погодження її в комерційній пропозиції.</span></div>}
-        {selectedTask.status === "APPROVED" && <button type="button" disabled={Boolean(busyAction)} className={styles.primaryButton} onClick={() => void runWorkAction("START")}>{busyAction === "START" ? "Зберігаю…" : "▶ Почати роботу"}</button>}
+        {selectedTask.status === "APPROVED" && <button type="button" disabled={Boolean(busyAction)} className={styles.primaryButton} onClick={() => setShowPlateVerification(true)}>{busyAction === "START" ? "Зберігаю…" : "▶ Почати роботу"}</button>}
         {selectedTask.status === "IN_PROGRESS" && <div className={styles.actionGrid}><button type="button" disabled={Boolean(busyAction)} className={styles.pauseButton} onClick={() => void runWorkAction("PAUSE")}>{busyAction === "PAUSE" ? "Зберігаю…" : "Ⅱ Пауза"}</button><button type="button" disabled={Boolean(busyAction)} className={styles.completeButton} onClick={() => void runWorkAction("COMPLETE")}>{busyAction === "COMPLETE" ? "Зберігаю…" : "✓ Завершити"}</button></div>}
         {selectedTask.status === "PAUSED" && <><div className={styles.stateNotice}><b>Робота на паузі</b><span>Пауза зафіксована в історії цієї роботи.</span></div><div className={styles.actionGrid}><button type="button" disabled={Boolean(busyAction)} className={styles.primaryButton} onClick={() => void runWorkAction("RESUME")}>{busyAction === "RESUME" ? "Зберігаю…" : "▶ Продовжити"}</button><button type="button" disabled={Boolean(busyAction)} className={styles.completeButton} onClick={() => void runWorkAction("COMPLETE")}>{busyAction === "COMPLETE" ? "Зберігаю…" : "✓ Завершити"}</button></div></>}
         {selectedTask.status === "COMPLETED" && <div className={`${styles.stateNotice} ${styles.stateDone}`}><b>✓ Роботу завершено</b><span>{selectedTask.completedAt ? `Завершено о ${time(selectedTask.completedAt)}` : "Статус зафіксовано."}</span></div>}
@@ -337,7 +339,7 @@ export function MechanicMobileCabinet({ data, userName }: { data: MechanicPayloa
         <button type="button" className={styles.secondaryButton} onClick={() => navigateCrm("Виробництво", { scope: "mechanics", workOrderId: selectedTask.workOrderId })}>Відкрити повне виробництво →</button>
       </section>
       <p className={styles.safeNote}>Початок, пауза, продовження та завершення записуються в єдині статуси виробництва. Якщо це остання незавершена робота, після завершення авто передається на контроль якості.</p>
-    </main></>}
+    </main>{showPlateVerification && selectedTask && <MechanicTaskPlateVerification task={selectedTask} onClose={() => setShowPlateVerification(false)} onVerified={async () => { setShowPlateVerification(false); await runWorkAction("START"); }} />}</>}
 
     {screen === "FINDING" && selectedTask && <><TopBar title="Виявлена несправність" onBack={() => setScreen("WORK_DETAIL")} /><main className={styles.content}>
       <section className={styles.vehicleDetail}><div className={styles.vehicleRow}><div className={styles.carBadge}>📷</div><div><h1>{selectedTask.vehicle}</h1><p>{selectedTask.plate || "Без номера"}</p></div></div><div className={styles.workText}>🔧 {selectedTask.description}</div></section>

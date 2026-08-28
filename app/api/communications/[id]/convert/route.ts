@@ -1,10 +1,14 @@
 import { NextResponse } from "next/server";
 import { convertInquiryToLead } from "@/src/services/communications-server.service";
 import { getCommunicationLifecycleSnapshot, normalizeInquiryAfterLeadConversion } from "@/src/services/communication-lifecycle.service";
+import { authorize } from "@/src/security/authorize";
+import { PERMISSIONS } from "@/src/security/permissions";
 
 export const runtime = "nodejs";
 
 export async function POST(_request: Request, context: { params: Promise<{ id: string }> }) {
+  const access = await authorize(PERMISSIONS.COMMUNICATIONS_WRITE, { request: _request, strict: true, minimumScope: "TEAM" });
+  if (!access.allowed) return access.response!;
   try {
     const { id } = await context.params;
     const before = await getCommunicationLifecycleSnapshot(id);

@@ -12,6 +12,7 @@ export const maxDuration = 30;
 const REASONS = new Set(["VEHICLE_NOT_PRESENT", "VEHICLE_NOT_HANDED_OVER", "BAY_OCCUPIED", "EQUIPMENT_UNAVAILABLE", "EQUIPMENT_BROKEN", "PARTS_UNAVAILABLE", "ASSISTANCE_REQUIRED", "ALREADY_IN_PROGRESS", "INCORRECT_ASSIGNMENT_DATA", "LICENSE_PLATE_MISMATCH", "TIME_UNAVAILABLE", "OTHER"]);
 const REQUIRED_COMMENT = new Set(["INCORRECT_ASSIGNMENT_DATA", "LICENSE_PLATE_MISMATCH", "TIME_UNAVAILABLE", "OTHER"]);
 const MAX_FILE_BYTES = 2_800_000;
+const MAX_TOTAL_FILE_BYTES = 10_000_000;
 
 const fail = (message: string, error: string, status = 400) => NextResponse.json({ ok: false, error, message }, { status });
 const text = (value: unknown, max: number) => typeof value === "string" ? value.trim().slice(0, max) : "";
@@ -27,7 +28,7 @@ export async function GET(request: Request) {
   if (!access.context.user) return fail("Потрібна авторизація.", "UNAUTHENTICATED", 401);
   const mechanic = await mechanicContext(access.context.user.id);
   if (!mechanic) return NextResponse.json({ ok: true, linked: false, items: [] });
-  const rows = await getPrisma().workExecutionIssue.findMany({ where: { mechanicId: { in: [mechanic.id, access.context.user.id] }, status: { in: ["OPEN", "VIEWED", "NEEDS_CLARIFICATION"] } }, orderBy: { createdAt: "desc" }, take: 50, include: { attachments: { select: { id: true, fileName: true, fileType: true, fileSize: true } } } });
+    const rows = await getPrisma().workExecutionIssue.findMany({ where: { mechanicId: { in: [mechanic.id, access.context.user.id] }, status: { in: ["OPEN", "VIEWED", "NEEDS_CLARIFICATION"] } }, orderBy: { createdAt: "desc" }, take: 50, include: { attachments: { select: { id: true, fileName: true, fileType: true, fileSize: true } }, comments: { orderBy: { createdAt: "asc" } } } });
   return NextResponse.json({ ok: true, linked: true, items: rows }, { headers: { "Cache-Control": "no-store" } });
 }
 
@@ -52,21 +53,29 @@ export async function POST(request: Request) {
     if (existing) return NextResponse.json({ ok: true, duplicate: true, issue: existing, message: "Це звернення вже передано адміністратору." });
     const files = form.getAll("photos").filter((item): item is File => item instanceof File).slice(0, 5);
     const attachments = [] as Array<{ id: string; fileId: string; fileType: string; fileName: string; fileSize: number; fileData: Uint8Array<ArrayBuffer>; createdByUserId: string }>;
+    let totalFileBytes = 0;
     for (const file of files) {
       if (!file.type.startsWith("image/") || file.size > MAX_FILE_BYTES) return fail("Фото має бути зображенням до 2,8 МБ.", "INVALID_ATTACHMENT");
+      totalFileBytes += file.size;
+      if (totalFileBytes > MAX_TOTAL_FILE_BYTES) return fail("Загальний обсяг фото не може перевищувати 10 МБ.", "ATTACHMENT_TOTAL_TOO_LARGE", 413);
       attachments.push({ id: randomUUID(), fileId: randomUUID(), fileType: file.type, fileName: text(file.name, 240) || "photo.jpg", fileSize: file.size, fileData: new Uint8Array(await file.arrayBuffer()) as unknown as Uint8Array<ArrayBuffer>, createdByUserId: access.context.user.id });
     }
     const now = new Date();
     const actorName = access.context.user.employeeName || access.context.user.name || mechanic.name;
     const issue = await prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`execution-issue:${line.id}`}))`;
+      const active = await tx.workExecutionIssue.findFirst({ where: { assignmentId: line.id, status: { in: ["OPEN", "VIEWED", "NEEDS_CLARIFICATION"] } } });
+      if (active) return { duplicate: true as const, issue: active };
       const created = await tx.workExecutionIssue.create({ data: { assignmentId: line.id, workOrderId: line.workOrderId, vehicleId: line.workOrder.vehicleId, clientId: line.workOrder.clientId, mechanicId: mechanic.id, locationId: mechanic.locationId, reasonCode, comment: comment || null, attachments: attachments.length ? { create: attachments } : undefined } });
+      const metadata = line.metadata !== null && typeof line.metadata === "object" && !Array.isArray(line.metadata) ? line.metadata as Record<string, unknown> : {};
+      await tx.workOrderLine.update({ where: { id: line.id }, data: { metadata: toPrismaJson({ ...metadata, executionIssue: { id: created.id, status: "OPEN", reasonCode, createdAt: now.toISOString() } }) } });
       const managers = await tx.userAccessRole.findMany({ where: { locationId: mechanic.locationId, isActive: true, role: { code: { in: ["STATION_MANAGER", "SERVICE_ADVISOR", "OWNER"] } } }, select: { userId: true } });
       const recipientIds = Array.from(new Set(managers.map((item) => item.userId).filter((id) => id !== access.context.user!.id)));
       if (recipientIds.length) await tx.mechanicNotification.createMany({ data: recipientIds.map((recipientUserId) => ({ id: randomUUID(), eventKey: `EXECUTION_ISSUE:${created.id}:${recipientUserId}`, mechanicId: recipientUserId, recipientUserId, workOrderId: line.workOrderId, type: "EXECUTION_ISSUE", title: "Механік не може виконати роботу", body: `${label(line.workOrder.vehicle)} · ${line.workOrder.vehicle.plateNumber || "Без номера"}\nПричина: ${reasonCode}\nМеханік: ${actorName}`, vehicleLabel: label(line.workOrder.vehicle), plateNumber: line.workOrder.vehicle.plateNumber, payload: toPrismaJson({ issueId: created.id, assignmentId: line.id, locationId: mechanic.locationId }) })) });
       await tx.auditEvent.create({ data: { actorId: access.context.user!.id, actorName, entityType: "WorkExecutionIssue", entityId: created.id, action: "MECHANIC_REPORTED_EXECUTION_ISSUE", metadata: toPrismaJson({ assignmentId: line.id, reasonCode, locationId: mechanic.locationId }) } });
-      return created;
+      return { duplicate: false as const, issue: created };
     });
-    return NextResponse.json({ ok: true, issue, message: "Адміністратора повідомлено. Робота залишається у вашому списку до прийняття рішення." }, { status: 201 });
+    return NextResponse.json({ ok: true, duplicate: issue.duplicate, issue: issue.issue, message: issue.duplicate ? "Це звернення вже передано адміністратору." : "Адміністратора повідомлено. Робота залишається у вашому списку до прийняття рішення." }, { status: issue.duplicate ? 200 : 201 });
   } catch (error) {
     console.error("POST mechanic execution issue failed", error);
     return fail("Не вдалося повідомити адміністратора.", "EXECUTION_ISSUE_CREATE_FAILED", 500);

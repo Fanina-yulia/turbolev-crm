@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { toVehicleDirectoryItem } from "@/src/lib/contracts/crm-core.server";
 import { getPrisma } from "@/src/lib/prisma";
+import { authorize } from "@/src/security/authorize";
+import { PERMISSIONS } from "@/src/security/permissions";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -42,6 +44,8 @@ const vehicleSelect = {
 } as const;
 
 export async function GET(request: NextRequest) {
+  const access = await authorize(PERMISSIONS.CLIENTS_READ, { request, strict: true, minimumScope: "SELF" });
+  if (!access.allowed) return access.response!;
   const prisma = getPrisma();
   const q = (request.nextUrl.searchParams.get("q") || "").trim();
   const limit = clampInt(request.nextUrl.searchParams.get("limit"), 24, 1, 100);

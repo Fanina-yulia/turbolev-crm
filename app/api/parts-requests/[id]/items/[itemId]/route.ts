@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { updatePartsRequestItem, WorkOrderCommercialError } from "@/src/services/work-order-commercial.service";
+import { authorize } from "@/src/security/authorize";
+import { PERMISSIONS } from "@/src/security/permissions";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -8,6 +10,8 @@ export const maxDuration = 30;
 type RouteContext = { params: Promise<{ id: string; itemId: string }> };
 
 export async function PATCH(request: Request, context: RouteContext) {
+  const access = await authorize(PERMISSIONS.PROCUREMENT_WRITE, { request, strict: true, minimumScope: "LOCATION" });
+  if (!access.allowed) return access.response!;
   const { id, itemId } = await context.params;
   try {
     const body = await request.json() as Record<string, unknown>;

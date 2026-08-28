@@ -1,12 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getPrisma } from "@/src/lib/prisma";
 import { resolveVehicleColorByPlate } from "@/src/services/vehicle-registry-color.service";
+import { authorize } from "@/src/security/authorize";
+import { PERMISSIONS } from "@/src/security/permissions";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
 
 export async function GET(request: NextRequest) {
+  const access = await authorize(PERMISSIONS.CLIENTS_READ, { request, strict: true, minimumScope: "SELF" });
+  if (!access.allowed) return access.response!;
   const id = (request.nextUrl.searchParams.get("id") || "").trim();
   if (!id) return NextResponse.json({ ok: false, error: "Не вказано автомобіль." }, { status: 400 });
 
