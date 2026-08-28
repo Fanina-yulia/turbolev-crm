@@ -23,8 +23,9 @@ export type WalkInSettlementPayload = {
   error?: string;
 };
 
+type PaymentMethod = "CASH" | "TERMINAL" | "ONLINE";
 type PaymentSuccess = {
-  method: "CASH" | "TERMINAL";
+  method: PaymentMethod;
   amount: string;
 };
 
@@ -40,15 +41,10 @@ function money(amount?: string | null, currency = "UAH") {
   return new Intl.NumberFormat("uk-UA", { style: "currency", currency, maximumFractionDigits: 0 }).format(value);
 }
 
-function normalizeAmount(value: string) {
-  return value.trim().replace(/\s+/g, "").replace(",", ".");
-}
-
-function isValidAmount(value: string) {
-  const normalized = normalizeAmount(value);
-  if (!/^\d+(?:\.\d{1,2})?$/.test(normalized)) return false;
-  const numeric = Number(normalized);
-  return Number.isFinite(numeric) && numeric > 0 && numeric <= 1_000_000;
+function paymentMethodLabel(method: PaymentMethod) {
+  if (method === "CASH") return "готівкою";
+  if (method === "TERMINAL") return "через POS-термінал";
+  return "онлайн";
 }
 
 export function MechanicWalkInSettlement({ diagnosticId, data, onRefresh, onBack, onFinished }: {
@@ -75,7 +71,7 @@ export function MechanicWalkInSettlement({ diagnosticId, data, onRefresh, onBack
     return next;
   }
 
-  async function pay(paymentMethod: "CASH" | "TERMINAL") {
+  async function pay(paymentMethod: PaymentMethod) {
     if (busy) return;
     const normalizedAmount = Number(amount.replace(",", "."));
     if (!Number.isFinite(normalizedAmount) || normalizedAmount <= 0) {
@@ -90,9 +86,11 @@ export function MechanicWalkInSettlement({ diagnosticId, data, onRefresh, onBack
       await postAction({ action: "COMPLETE_VISIT" });
       await onRefresh();
       window.dispatchEvent(new CustomEvent("turbolev:mechanic-refresh"));
-      window.dispatchEvent(new CustomEvent("turbolev:data-changed"));
+      window.dispatchEvent(new CustomEvent("turbolev:data-changed", {
+        detail: { entity: "diagnostic", diagnosticId, reason: "walk-in-paid" },
+      }));
       setSuccess({ method: paymentMethod, amount: normalizedAmount.toFixed(2) });
-      window.setTimeout(() => (onFinished || onBack)(), 1200);
+      window.setTimeout(() => (onFinished || onBack)(), 1800);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Не вдалося виконати дію");
       await onRefresh().catch(() => undefined);
@@ -108,7 +106,9 @@ export function MechanicWalkInSettlement({ diagnosticId, data, onRefresh, onBack
     try {
       await postAction({ action: "COMPLETE_VISIT" });
       window.dispatchEvent(new CustomEvent("turbolev:mechanic-refresh"));
-      window.dispatchEvent(new CustomEvent("turbolev:data-changed"));
+      window.dispatchEvent(new CustomEvent("turbolev:data-changed", {
+        detail: { entity: "diagnostic", diagnosticId, reason: "walk-in-completed" },
+      }));
       (onFinished || onBack)();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Не вдалося завершити візит");
@@ -121,9 +121,10 @@ export function MechanicWalkInSettlement({ diagnosticId, data, onRefresh, onBack
     return <div className={styles.page}>
       <main className={styles.center}>
         <div className={styles.successIcon}>✓</div>
-        <h1>Дякую!</h1>
-        <p>Оплату {success.method === "CASH" ? "готівкою" : "терміналом"} прийнято. Діагностику завершено.</p>
-        <div className={styles.paidLine}>Оплачено: <b>{money(success.amount, "UAH")}</b></div>
+        <h1>Діагностику виконано</h1>
+        <p>Оплату {paymentMethodLabel(success.method)} прийнято.</p>
+        <div className={styles.paidLine}>✓ Оплачено: <b>{money(success.amount, "UAH")}</b></div>
+        <small className={styles.redirectNote}>Повертаю на головний екран…</small>
       </main>
     </div>;
   }
@@ -184,7 +185,10 @@ export function MechanicWalkInSettlement({ diagnosticId, data, onRefresh, onBack
             <b>💵</b><strong>Готівка</strong><span>{busy === "PAYCASH" ? "Фіксую оплату…" : "Прийняти оплату"}</span>
           </button>
           <button type="button" disabled={!data.canPay || Boolean(busy)} onClick={() => void pay("TERMINAL")}>
-            <b>💳</b><strong>Термінал</strong><span>{busy === "PAYTERMINAL" ? "Фіксую оплату…" : "Прийняти оплату"}</span>
+            <b>💳</b><strong>POS-термінал</strong><span>{busy === "PAYTERMINAL" ? "Фіксую оплату…" : "Оплата карткою"}</span>
+          </button>
+          <button type="button" disabled={!data.canPay || Boolean(busy)} onClick={() => void pay("ONLINE")}>
+            <b>📲</b><strong>Онлайн</strong><span>{busy === "PAYONLINE" ? "Фіксую оплату…" : "Онлайн / переказ"}</span>
           </button>
         </div>
       </section> : <section className={styles.paymentCard}>
