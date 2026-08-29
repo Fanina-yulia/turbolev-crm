@@ -4,6 +4,7 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "rea
 import { ClientCardDrawer } from "./client-card-drawer";
 import { CommunicationsVehicleCardDrawer } from "./communications-vehicle-card-drawer";
 import { VehicleBrandLogo } from "./vehicle-brand-logo";
+import { VehiclePlate } from "./vehicle-plate";
 import { readCrmRoute } from "./crm-route";
 import styles from "./communications-contact-inbox.module.css";
 import {
@@ -588,7 +589,7 @@ export function CommunicationsHub() {
             {linkedClient?.vehicles?.length ? <div className={styles.vehicleSummaries} aria-label="Автомобілі клієнта">
               {linkedClient.vehicles.map((vehicle) => <button type="button" className={styles.vehicleSummary} key={vehicle.id} onClick={() => setVehicleCardId(vehicle.id)} title="Відкрити картку автомобіля">
                 <VehicleBrandLogo brand={vehicle.brand} size={38}/>
-                <span className={styles.vehicleText}><strong>{vehicleTitle(vehicle)}</strong><small><b>ДержЗнак:</b> {vehicle.plateNumber || "не вказано"}</small></span>
+                <span className={styles.vehicleText}><strong>{vehicleTitle(vehicle)}</strong><small><b>ДержЗнак:</b> <VehiclePlate value={vehicle.plateNumber} size="xs" /></small></span>
                 <i>›</i>
               </button>)}
             </div> : null}

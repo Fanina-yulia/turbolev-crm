@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import styles from "./customer-cabinet-card.module.css";
+import { VehiclePlate } from "./vehicle-plate";
 
 type ShareMeta = {
   id: string;
@@ -179,7 +180,7 @@ function CabinetCaseRow({ item }: { item: CabinetCase }) {
 
   return <div className={styles.cabinetVehicle}>
     <div className={styles.cabinetVehicleTop}>
-      <div><strong>{item.vehicle.label}</strong><small>{item.vehicle.plateNumber || "Без держномера"}</small></div>
+      <div><strong>{item.vehicle.label}</strong><VehiclePlate value={item.vehicle.plateNumber} size="xs" /></div>
       <span className={`${styles.cabinetStatus} ${item.shareable ? styles.cabinetReady : ""}`}>{item.shareable ? (share?.active ? "● Доступний" : "Готовий") : "Недоступний"}</span>
     </div>
     <div className={styles.cabinetState}>{stateText}</div>

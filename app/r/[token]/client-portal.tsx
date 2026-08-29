@@ -6,6 +6,7 @@ import type {
   ClientPortalSnapshot,
 } from "@/src/services/client-portal.service";
 import styles from "./client-portal.module.css";
+import { VehiclePlate } from "../../vehicle-plate";
 
 const STATE_META: Record<string, { label: string; mark: string; className: string }> = {
   OK: { label: "Норма", mark: "✓", className: styles.stateOk },
@@ -177,7 +178,7 @@ export function ClientPortal({ token, initialSnapshot }: { token: string; initia
             <p>ВАШ АВТОМОБІЛЬ</p>
             <h1>{portal.vehicle.label}{portal.vehicle.year ? ` ${portal.vehicle.year}` : ""}</h1>
             <div className={styles.vehicleMeta}>
-              <span className={styles.plate}>🇺🇦 {portal.vehicle.plateNumber || "БЕЗ НОМЕРА"}</span>
+              <VehiclePlate value={portal.vehicle.plateNumber} size="md" />
               {portal.vehicle.mileageKm != null && <span>{new Intl.NumberFormat("uk-UA").format(portal.vehicle.mileageKm)} км</span>}
             </div>
           </div>

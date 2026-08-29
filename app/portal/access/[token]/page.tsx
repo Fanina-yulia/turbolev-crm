@@ -4,6 +4,7 @@ import { ActivateClientPortal } from "./activate-client-portal";
 import styles from "./access.module.css";
 import { previewClientPortalAccess, ClientPortalSessionError } from "@/src/services/client-portal-session.service";
 import { DiagnosticReportError } from "@/src/services/diagnostic-report.service";
+import { VehiclePlate } from "../../../vehicle-plate";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -30,7 +31,7 @@ export default async function ClientPortalAccessPage({ params }: { params: Promi
         <div className={styles.vehicle}>
           <small>АВТОМОБІЛЬ</small>
           <strong>{preview.vehicleLabel}{preview.year ? ` ${preview.year}` : ""}</strong>
-          <span>{preview.plateNumber || "Держномер не вказано"}</span>
+          <VehiclePlate value={preview.plateNumber} size="sm" />
         </div>
         <div className={styles.identity}>
           <span>Власник <b>{preview.clientName || "Клієнт Turbo LEV"}</b></span>

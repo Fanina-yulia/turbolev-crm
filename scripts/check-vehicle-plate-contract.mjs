@@ -9,12 +9,14 @@ const files = {
 };
 
 const checks = [
-  ["canonical plate component", files.component.includes('data-vehicle-plate="true"') && files.component.includes("formatVehiclePlate")],
+  ["canonical plate component", files.component.includes('data-vehicle-plate="true"') && files.component.includes('data-plate-standard="turbo-lev-reference-v1"') && files.component.includes("formatVehiclePlate")],
   ["canonical sizes xs/sm/md", [".xs", ".sm", ".md"].every((token) => files.css.includes(token))],
-  ["high-contrast plate surface", files.css.includes("background:linear-gradient(180deg,#fff,#f3f5f7)")],
-  ["black plate number", files.css.includes(".number") && files.css.includes("color:#10151b")],
+  ["reference plate proportions", files.css.includes("4.98") && files.css.includes("--plate-height")],
+  ["white plate surface", files.css.includes("background:#fff")],
+  ["black plate number", files.css.includes(".number") && files.css.includes("color:#000")],
   ["shared vehicle identity", files.identity.includes("VehiclePlate as SharedVehiclePlate")],
-  ["compatibility bridge protection", files.bridge.includes(".turboLevVehiclePlateNumber{background:#f7f8fa!important;color:#10151b!important")],
+  ["compatibility bridge protection", files.bridge.includes(".turboLevVehiclePlateNumber{background:#fff!important;color:#000!important")],
+  ["legacy bridge reference marker", files.bridge.includes("4.98") && files.bridge.includes(".turboLevVehiclePlateBand:before")],
   ["scoped image-library badge selector", files.libraryCss.includes(".testVehicles > span") && !files.libraryCss.includes(".testVehicles span {")],
 ];
 

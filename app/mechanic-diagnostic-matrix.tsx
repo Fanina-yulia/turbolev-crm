@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { VoiceNoteInput } from "./voice-note-input";
+import { VehiclePlate } from "./vehicle-plate";
 import styles from "./mechanic-diagnostic-matrix.module.css";
 import photoStyles from "./mechanic-diagnostic-photo-controls.module.css";
 import responsiveStyles from "./mechanic-diagnostic-responsive.module.css";
@@ -813,7 +814,7 @@ export function MechanicDiagnosticMatrix({ diagnosticId, onBack, onChanged, onFi
 
     <main className={styles.content}>
       <section className={styles.vehicleBar}>
-        <div><strong>{vehicle.label}</strong><span>{vehicle.plateNumber || "Без номера"}</span></div>
+        <div><strong>{vehicle.label}</strong><VehiclePlate value={vehicle.plateNumber} size="sm" /></div>
         <b>{remarkCount} {remarkLabel(remarkCount)}</b>
       </section>
 

@@ -12,6 +12,7 @@ import { ServiceAdvisorCabinetHome } from "./service-advisor-cabinet-home";
 import { PartsRoleCabinetHome } from "./parts-role-cabinet-home";
 import { SalesRoleCabinetHome } from "./leads-sales-role-cabinet-home";
 import { ExecutionIssuesAdminPanel } from "./execution-issues-admin-panel";
+import { VehiclePlate } from "./vehicle-plate";
 import type { CrmSectionLabel } from "./crm-navigation";
 import styles from "./role-cabinet.module.css";
 
@@ -205,7 +206,7 @@ function StationManagerLinkedCabinet({ data, userName }: { data: LinkedStationMa
       <section className={styles.panel}>
         <div className={styles.panelHead}><div><p className="eyebrow">ПОСТИ</p><h2>Завантаження робочих місць</h2></div><button type="button" onClick={() => navigateCrm("Виробництво", { scope: "posts" })}>Всі пости →</button></div>
         <div className={styles.resourceList}>{data.posts.map((post) => <button type="button" key={post.id} className={styles.resourceRow} onClick={() => navigateCrm("Виробництво", { scope: "posts" })}>
-          <div><strong>{post.name}</strong><span>{post.occupied ? `${post.plate || "—"} · ${post.vehicle || "Автомобіль"}` : "Вільний"}</span></div>
+          <div><strong>{post.name}</strong>{post.occupied ? <span><VehiclePlate value={post.plate} size="xs" /> · {post.vehicle || "Автомобіль"}</span> : <span>Вільний</span>}</div>
           <small>{post.occupied ? `${post.mechanic || "Без механіка"}${timeLabel(post.plannedEndAt) ? ` · до ${timeLabel(post.plannedEndAt)}` : ""}` : "Можна ставити авто"}</small>
           <em className={post.occupied ? styles.resourceBusy : styles.resourceFree}>{post.occupied ? "Зайнятий" : "Вільний"}</em>
         </button>)}</div>

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { DiagnosticReportSharePanel } from "./diagnostic-report-share-panel";
 import { StructuredDiagnosticReviewPanel } from "./structured-diagnostic-review-panel";
+import { VehiclePlate } from "./vehicle-plate";
 import { navigateCrm, readCrmRoute } from "./crm-route";
 import styles from "./diagnostics.module.css";
 import registryStyles from "./diagnostics-registry.module.css";
@@ -201,7 +202,7 @@ export function Diagnostics() {
         const state = workflowState(row);
         return <button key={row.id} className={`${styles.row} ${selectedId === row.id ? styles.selected : ""}`} onClick={() => setSelectedId(row.id)}>
           <div className={styles.rowTop}><span className={`${styles.status} ${stateClass(row)}`}>{statusMeta[state].label}</span><time>{dateTime(row.updatedAt)}</time></div>
-          <strong>{vehicleName(row)}</strong><span className={styles.plate}>{row.vehicle.plateNumber || "Без номера"}</span>
+          <strong>{vehicleName(row)}</strong><VehiclePlate value={row.vehicle.plateNumber} size="sm" />
           <small>{row.client.name || row.client.phone}</small>
           {row.assignedMechanic?.name && <span className={registryStyles.mechanic}>Механік: {row.assignedMechanic.name}</span>}
           {row.lead?.need && <p>{row.lead.need}</p>}
@@ -212,7 +213,7 @@ export function Diagnostics() {
       }) : <div className={styles.empty}>За цими умовами діагностик немає.</div>}</section>
 
       <aside className={styles.detail}>{selected ? <>
-        <div className={styles.detailHead}><div><span className={`${styles.status} ${stateClass(selected)}`}>{statusMeta[workflowState(selected)].label}</span><h2>{vehicleName(selected)}</h2><p>{selected.vehicle.plateNumber || "Без держномера"} · {selected.vehicle.vin || "VIN не вказано"}</p></div></div>
+        <div className={styles.detailHead}><div><span className={`${styles.status} ${stateClass(selected)}`}>{statusMeta[workflowState(selected)].label}</span><h2>{vehicleName(selected)}</h2><p><VehiclePlate value={selected.vehicle.plateNumber} size="sm" /> · {selected.vehicle.vin || "VIN не вказано"}</p></div></div>
         <div className={styles.infoGrid}>
           <div><span>Клієнт</span><strong>{selected.client.name || "Без імені"}</strong><small>{selected.client.phone}</small></div>
           <div><span>Механік</span><strong>{selected.assignedMechanic?.name || "Не призначено"}</strong></div>
