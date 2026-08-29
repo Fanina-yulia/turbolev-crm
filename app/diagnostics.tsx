@@ -157,13 +157,6 @@ export function Diagnostics() {
   const selected = rows.find((item) => item.id === selectedId) ?? null;
   useEffect(() => { setConclusion(selected?.technicalConclusion ?? ""); setMessage(""); }, [selectedId, selected?.technicalConclusion]);
 
-  const counts = useMemo(() => ({
-    waiting: rows.filter((row) => row.status === "PENDING").length,
-    inWork: rows.filter((row) => workflowState(row) === "IN_PROGRESS" || workflowState(row) === "RETURNED").length,
-    submitted: rows.filter((row) => workflowState(row) === "SUBMITTED").length,
-    confirmed: rows.filter((row) => row.status === "CONFIRMED").length,
-  }), [rows]);
-
   async function transition(status: DiagnosticStatus) {
     if (!selected) return;
     setSaving(true); setError(""); setMessage("");
@@ -188,9 +181,7 @@ export function Diagnostics() {
   const filterCount = (value: Filter) => rows.filter((row) => matchesFilter(row, value)).length;
 
   return <div className={styles.page}>
-    <header className={styles.head}><div><p className={styles.eyebrow}>СЕРВІС · ДІАГНОСТИКА</p><h1>Всі діагностики</h1><p>Єдиний реєстр усіх діагностик СТО. Основний процес: Очікує → В роботі → На перевірці → Підтверджена. Повернення ДК механіку не створює окремого статусу — вона знову відображається «В роботі». Комерційна пропозиція відображається окремо й не змінює статус ДК.</p></div><button className={styles.refresh} onClick={() => void load()} disabled={loading}>{loading ? "Оновлюю…" : "Оновити"}</button></header>
-
-    <section className={styles.kpis}><div><span>Очікують</span><strong>{counts.waiting}</strong></div><div><span>В роботі</span><strong>{counts.inWork}</strong></div><div><span>На перевірці</span><strong>{counts.submitted}</strong></div><div><span>Підтверджені</span><strong>{counts.confirmed}</strong></div></section>
+    <header className={styles.head}><div><p className={styles.eyebrow}>СЕРВІС · ДІАГНОСТИКА</p><h1>Всі діагностики</h1></div><button className={styles.refresh} onClick={() => void load()} disabled={loading}>{loading ? "Оновлюю…" : "Оновити"}</button></header>
 
     <nav className={styles.filters}>{filters.map((item) => <button key={item.value} className={filter === item.value ? styles.activeFilter : ""} onClick={() => setFilter(item.value)}>{item.label}<span>{filterCount(item.value)}</span></button>)}</nav>
 
