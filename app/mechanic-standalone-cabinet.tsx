@@ -333,10 +333,12 @@ function TopBar({ title, onBack }: { title: string; onBack: () => void }) {
 function MechanicNotificationPopup({
   notification,
   onOpen,
+  onRead,
   onDelete,
 }: {
   notification: MechanicNotification;
   onOpen: (notification: MechanicNotification) => void;
+  onRead: (notificationId: string) => Promise<void>;
   onDelete: (notificationId: string) => Promise<void>;
 }) {
   const [startX, setStartX] = useState<number | null>(null);
@@ -385,7 +387,15 @@ function MechanicNotificationPopup({
     >
       <div className={styles.notificationPopupTop}>
         <strong>Нове сповіщення</strong>
-        <time>{notificationTime(notification.createdAt)}</time>
+        <div className={styles.notificationPopupTopActions}>
+          <time>{notificationTime(notification.createdAt)}</time>
+          <button
+            type="button"
+            aria-label="Закрити сповіщення"
+            onPointerDown={(event) => event.stopPropagation()}
+            onClick={() => void onRead(notification.id)}
+          >×</button>
+        </div>
       </div>
       <strong className={styles.notificationPopupTitle}>{notification.title}</strong>
       <p>{notification.body || "Оновлено дані призначення."}</p>
@@ -854,7 +864,7 @@ export function MechanicStandaloneCabinet({ userName }: { userName?: string | nu
   return <div className={styles.app} data-theme-choice={themeChoice} data-mechanic-cabinet="true">
     <div className={styles.shell}>
       {popupNotifications.length > 0 && <aside className={styles.notificationPopups} aria-label="Нові сповіщення">
-        {popupNotifications.map((notification) => <MechanicNotificationPopup key={notification.id} notification={notification} onOpen={(item) => void openNotification(item)} onDelete={deleteNotification} />)}
+        {popupNotifications.map((notification) => <MechanicNotificationPopup key={notification.id} notification={notification} onOpen={(item) => void openNotification(item)} onRead={markNotification} onDelete={deleteNotification} />)}
       </aside>}
       {screen === "HOME" && <>
         <header className={styles.hero}>
