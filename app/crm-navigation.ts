@@ -72,8 +72,8 @@ export const CRM_NAV_GROUPS: readonly CrmNavGroup[] = [
   { label: "Робочий стіл", items: navItems("overview", "tasks") },
   { label: "Робота з клієнтами", items: navItems("communications", "planner") },
   { label: "Клієнти та авто", items: navItems("clients", "vehicles") },
-  { label: "Сервіс", items: navItems("diagnostics", "work-orders") },
-  { label: "Запчастини", items: navItems("parts", "procurement") },
+  { label: "Сервіс", items: navItems("diagnostics", "parts", "work-orders") },
+  { label: "Запчастини", items: navItems("procurement") },
   { label: "Фінанси", items: navItems("finance", "payments") },
   { label: "Управління", items: navItems("analytics", "settings") },
 ];
