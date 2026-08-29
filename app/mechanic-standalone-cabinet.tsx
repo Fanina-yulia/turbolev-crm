@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type PointerEvent as ReactPointerEvent } from "react";
 import styles from "./mechanic-standalone-cabinet.module.css";
 import { MechanicDiagnosticWorkspace } from "./mechanic-diagnostic-workspace";
 import { MechanicExecutionIssueForm } from "./mechanic-execution-issue-form";
@@ -328,6 +328,79 @@ function TopBar({ title, onBack }: { title: string; onBack: () => void }) {
     <strong>{title}</strong>
     <span />
   </header>;
+}
+
+function MechanicNotificationPopup({
+  notification,
+  onOpen,
+  onDelete,
+}: {
+  notification: MechanicNotification;
+  onOpen: (notification: MechanicNotification) => void;
+  onDelete: (notificationId: string) => Promise<void>;
+}) {
+  const [startX, setStartX] = useState<number | null>(null);
+  const [offset, setOffset] = useState(0);
+  const [deleting, setDeleting] = useState(false);
+
+  function beginSwipe(event: ReactPointerEvent<HTMLElement>) {
+    if (deleting || (event.pointerType === "mouse" && event.button !== 0)) return;
+    setStartX(event.clientX);
+    setOffset(0);
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+  }
+
+  function moveSwipe(event: ReactPointerEvent<HTMLElement>) {
+    if (startX === null || deleting) return;
+    setOffset(Math.max(-132, Math.min(0, event.clientX - startX)));
+  }
+
+  function finishSwipe() {
+    if (startX === null || deleting) return;
+    const shouldDelete = offset <= -76;
+    setStartX(null);
+    if (!shouldDelete) {
+      setOffset(0);
+      return;
+    }
+    setDeleting(true);
+    setOffset(-520);
+    void onDelete(notification.id).catch(() => {
+      setDeleting(false);
+      setOffset(0);
+    });
+  }
+
+  return <div className={styles.notificationPopupWrap}>
+    <div className={styles.notificationPopupDelete} aria-hidden="true">Видалити</div>
+    <article
+      className={styles.notificationPopup}
+      style={{ transform: `translateX(${offset}px)` }}
+      role="status"
+      aria-label={`Нове сповіщення: ${notification.title}`}
+      onPointerDown={beginSwipe}
+      onPointerMove={moveSwipe}
+      onPointerUp={finishSwipe}
+      onPointerCancel={finishSwipe}
+    >
+      <div className={styles.notificationPopupTop}>
+        <strong>Нове сповіщення</strong>
+        <time>{notificationTime(notification.createdAt)}</time>
+      </div>
+      <strong className={styles.notificationPopupTitle}>{notification.title}</strong>
+      <p>{notification.body || "Оновлено дані призначення."}</p>
+      <div className={styles.notificationPopupBottom}>
+        <span>{notification.vehicle} · {notification.plate}</span>
+        <button
+          type="button"
+          disabled={deleting}
+          onPointerDown={(event) => event.stopPropagation()}
+          onClick={() => onOpen(notification)}
+        >Відкрити</button>
+      </div>
+      <small>Змахніть вліво, щоб видалити</small>
+    </article>
+  </div>;
 }
 
 export function MechanicStandaloneCabinet({ userName }: { userName?: string | null }) {
@@ -703,6 +776,31 @@ export function MechanicStandaloneCabinet({ userName }: { userName?: string | nu
     }
   }
 
+  async function deleteNotification(notificationId: string) {
+    const deleted = notificationFeed?.items.find((item) => item.id === notificationId);
+    if (!deleted) return;
+    setNotificationFeed((current) => current ? {
+      ...current,
+      unreadCount: deleted.readAt ? current.unreadCount : Math.max(0, current.unreadCount - 1),
+      items: current.items.filter((item) => item.id !== notificationId),
+    } : current);
+    try {
+      const response = await fetch(`/api/cabinet/mechanic/notifications?notificationId=${encodeURIComponent(notificationId)}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      const body = await response.json().catch(() => null) as { ok?: boolean; unreadCount?: number; message?: string; error?: string } | null;
+      if (!response.ok || !body?.ok) throw new Error(body?.message || body?.error || "Не вдалося видалити сповіщення");
+      if (typeof body.unreadCount === "number") {
+        setNotificationFeed((current) => current ? { ...current, unreadCount: body.unreadCount! } : current);
+      }
+    } catch (cause) {
+      await loadNotifications().catch(() => undefined);
+      setError(cause instanceof Error ? cause.message : "Не вдалося видалити сповіщення");
+      throw cause;
+    }
+  }
+
   async function openNotification(item: MechanicNotification) {
     if (!item.readAt) await markNotification(item.id).catch((cause) => setError(cause instanceof Error ? cause.message : "Не вдалося оновити сповіщення"));
     if (item.type !== "UNASSIGNED") {
@@ -751,8 +849,13 @@ export function MechanicStandaloneCabinet({ userName }: { userName?: string | nu
   if (!home) return <div className={styles.loading} data-theme-choice={themeChoice}><strong>ТУРБО <b>ЛЕВ</b></strong><span>Завантажую кабінет механіка…</span></div>;
   if (!home.linked || !home.mechanic) return <div className={styles.loading} data-theme-choice={themeChoice}><strong>Кабінет механіка не прив’язаний</strong><span>Призначте працівнику станцію та роль «Автомеханік».</span></div>;
 
+  const popupNotifications = (notificationFeed?.items ?? []).filter((item) => !item.readAt).slice(0, 3);
+
   return <div className={styles.app} data-theme-choice={themeChoice} data-mechanic-cabinet="true">
     <div className={styles.shell}>
+      {popupNotifications.length > 0 && <aside className={styles.notificationPopups} aria-label="Нові сповіщення">
+        {popupNotifications.map((notification) => <MechanicNotificationPopup key={notification.id} notification={notification} onOpen={(item) => void openNotification(item)} onDelete={deleteNotification} />)}
+      </aside>}
       {screen === "HOME" && <>
         <header className={styles.hero}>
           <div><div className={styles.brand}><span>ТУРБО</span> <b>ЛЕВ</b></div><small>Кабінет механіка</small></div>
