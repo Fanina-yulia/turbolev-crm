@@ -80,7 +80,7 @@ export function ProcurementSupplierPanel({ target, locationId, onClose, onChange
   const [offers, setOffers] = useState<Offer[]>([]);
   const [selectedKey, setSelectedKey] = useState("");
   const [warehouseId, setWarehouseId] = useState("");
-  const [markupPercent, setMarkupPercent] = useState("23");
+  const [markupPercent, setMarkupPercent] = useState("40");
   const [deliveryDate, setDeliveryDate] = useState(localDate());
   const [points, setPoints] = useState<Point[]>([]);
   const [deliveryPointId, setDeliveryPointId] = useState("");
@@ -162,7 +162,7 @@ export function ProcurementSupplierPanel({ target, locationId, onClose, onChange
     if (offer.supplierId !== "unique-trade" || !offer.externalProductId || !offer.available) return;
     setSelectedKey(`${offer.supplierId}:${offer.externalProductId}`);
     setWarehouseId(offer.stock.find((row) => row.warehouseId)?.warehouseId || "");
-    setMarkupPercent(String(offer.markupPercent ?? 23));
+    setMarkupPercent(String(offer.markupPercent ?? 40));
     setMessage("");
     setDeliveryPointId("");
     setTransporterId("");

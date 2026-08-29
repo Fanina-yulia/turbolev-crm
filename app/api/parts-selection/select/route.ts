@@ -20,6 +20,7 @@ export async function POST(request: Request) {
       supplierId?: string;
       externalProductId?: string | null;
       article?: string | null;
+      quantity?: number | null;
     } | null;
     const diagnosticId = body?.diagnosticId?.trim() || "";
     if (!diagnosticId) return NextResponse.json({ ok: false, error: "DIAGNOSTIC_REQUIRED", message: "Не передано Діагностичну карту." }, { status: 400 });
@@ -38,6 +39,7 @@ export async function POST(request: Request) {
       supplierId: body?.supplierId || "",
       externalProductId: body?.externalProductId || null,
       article: body?.article || null,
+      quantity: body?.quantity ?? 1,
       actorId: access.context.user.id,
       actorName: access.context.user.employeeName || access.context.user.name || "CRM / Підбір запчастин",
     });

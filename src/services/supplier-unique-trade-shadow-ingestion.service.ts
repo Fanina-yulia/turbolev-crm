@@ -13,12 +13,12 @@ import {
 } from "@/src/services/supplier-ingestion-persistence.service";
 import { getPrisma } from "@/src/lib/prisma";
 import { uniqueTradeAdapter } from "@/src/services/suppliers/unique-trade.adapter";
+import { DEFAULT_MARKUP_PERCENT } from "@/src/services/suppliers/pricing";
 import type { SupplierOffer, SupplierStock } from "@/src/services/suppliers/types";
 
 const INTEGRATION_SCOPE = "UNIQUE_TRADE_SEARCH_SHADOW_V1";
 const ADAPTER_VERSION = "unique-trade-search-shadow/1";
 const SCHEMA_VERSION = "supplier-ingestion/v1";
-const DEFAULT_MARKUP_PERCENT = 23;
 const SHADOW_ENV_NAME = "UNIQUE_TRADE_SHADOW_INGESTION_ENABLED";
 const SHADOW_ENV_VALUE = "SHADOW_UNIQUE_TRADE_V1";
 const SHADOW_CONFIRMATION = "ALLOW_UNIQUE_TRADE_SHADOW_INGESTION";
