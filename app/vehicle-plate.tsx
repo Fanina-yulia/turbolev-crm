@@ -28,7 +28,7 @@ export function VehiclePlate({ value, size = "sm", className = "", title }: Vehi
   return <span
     className={`${styles.plate} ${styles[size]} ${className}`}
     data-vehicle-plate="true"
-    data-plate-standard="turbo-lev-reference-v1"
+    data-plate-standard="turbo-lev-reference-v2"
     data-plate-aspect="4.98"
     data-plate={normalized}
     title={title || `Державний номер ${display}`}

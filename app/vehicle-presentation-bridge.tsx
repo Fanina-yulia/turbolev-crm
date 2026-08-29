@@ -49,7 +49,7 @@ function plateMarkup(value: string) {
   const plate = document.createElement("span");
   plate.className = "turboLevVehiclePlate";
   plate.dataset.vehiclePlate = "true";
-  plate.dataset.plateStandard = "turbo-lev-reference-v1";
+  plate.dataset.plateStandard = "turbo-lev-reference-v2";
   plate.dataset.plateAspect = "4.98";
   plate.dataset.plate = normalized;
   plate.setAttribute("role", "img");
