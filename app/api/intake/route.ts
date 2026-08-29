@@ -4,7 +4,7 @@ import { PERMISSIONS } from "@/src/security/permissions";
 import { getPrisma } from "@/src/lib/prisma";
 import { createIntake, IntakeConflictError, IntakeValidationError, type IntakeInput } from "@/src/services/intake.service";
 import { resolveVehicleColorByPlate } from "@/src/services/vehicle-registry-color.service";
-import { enqueueVehicleImageGeneration } from "@/src/services/vehicle-images/openai-library.service";
+import { autoGenerateVehicleImage } from "@/src/services/vehicle-images/vehicle-image-auto.service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -107,7 +107,7 @@ export async function POST(request: Request) {
     if (vehicle.brand && vehicle.model) {
       after(async () => {
         try {
-          await enqueueVehicleImageGeneration(vehicle.id);
+          await autoGenerateVehicleImage(vehicle.id);
         } catch (error) {
           console.error("background vehicle image generation after intake failed", {
             vehicleId: vehicle.id,
