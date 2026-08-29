@@ -9,3 +9,9 @@
 .turboLevVehiclePlate{background:linear-gradient(180deg,#fff,#f3f5f7)!important;padding:0!important;margin:0!important}
 .turboLevVehiclePlateBand{background:#1456a0!important;padding:1px 2px 2px!important;margin:0!important}
 .turboLevVehiclePlateNumber{background:#f7f8fa!important;color:#10151b!important;padding:0 10px!important;margin:0!important}
+
+/* Match the canonical type scale in legacy-rendered plates. */
+.turboLevVehiclePlate{height:34px;font-size:18px!important}
+.turboLevVehiclePlateBand{width:18px;flex-basis:18px}
+.turboLevVehiclePlateNumber{min-width:108px;padding:0 12px!important;font-size:18px!important}
+@media(max-width:460px){.turboLevVehiclePlate{height:33px;font-size:17px!important}.turboLevVehiclePlateBand{width:17px;flex-basis:17px}.turboLevVehiclePlateNumber{padding:0 10px!important;font-size:17px!important}}
