@@ -181,13 +181,9 @@ export function Diagnostics() {
   const filterCount = (value: Filter) => rows.filter((row) => matchesFilter(row, value)).length;
 
   return <div className={styles.page}>
-    <header className={styles.head}><div><p className={styles.eyebrow}>СЕРВІС · ДІАГНОСТИКА</p><h1>Всі діагностики</h1></div><div className={styles.headActions}><label className={`${registryStyles.search} ${registryStyles.headerSearch}`}><span>⌕</span><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Номер авто, VIN, клієнт, телефон, № ДК або механік..." />{search && <button type="button" onClick={() => setSearch("")} aria-label="Очистити пошук">×</button>}</label><button className={styles.refresh} onClick={() => void load()} disabled={loading}>{loading ? "Оновлюю…" : "Оновити"}</button></div></header>
+    <header className={styles.head}><div><p className={styles.eyebrow}>СЕРВІС · ДІАГНОСТИКА</p><h1>Всі діагностики</h1></div><div className={styles.headActions}><label className={`${registryStyles.search} ${registryStyles.headerSearch}`}><span>⌕</span><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Номер авто, VIN, клієнт, телефон, № ДК або механік..." />{search && <button type="button" onClick={() => setSearch("")} aria-label="Очистити пошук">×</button>}</label><select className={`${registryStyles.select} ${registryStyles.headerMechanic}`} value={mechanic} onChange={(event) => setMechanic(event.target.value)} aria-label="Фільтр за механіком"><option value="ALL">Усі механіки</option>{mechanics.map((name) => <option key={name} value={name}>{name}</option>)}</select><button className={styles.refresh} onClick={() => void load()} disabled={loading}>{loading ? "Оновлюю…" : "Оновити"}</button></div></header>
 
     <nav className={styles.filters}>{filters.map((item) => <button key={item.value} className={filter === item.value ? styles.activeFilter : ""} onClick={() => setFilter(item.value)}>{item.label}<span>{filterCount(item.value)}</span></button>)}</nav>
-
-    <div className={registryStyles.toolbar}>
-      <select className={registryStyles.select} value={mechanic} onChange={(event) => setMechanic(event.target.value)} aria-label="Фільтр за механіком"><option value="ALL">Усі механіки</option>{mechanics.map((name) => <option key={name} value={name}>{name}</option>)}</select>
-    </div>
 
     {(readCrmRoute().diagnosticId || readCrmRoute().vehicleId) && <div className={registryStyles.routeHint}>
       {readCrmRoute().diagnosticId
