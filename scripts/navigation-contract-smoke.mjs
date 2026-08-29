@@ -198,9 +198,12 @@ assertIncludes("app/active-terminology-bridge.tsx", [
 ]);
 
 assertIncludes("app/diagnostics.tsx", [
+  'PENDING: { label: "Очікує"',
+  'IN_PROGRESS: { label: "В роботі"',
+  'SUBMITTED: { label: "На перевірці"',
   'RETURNED: { label: "В роботі"',
+  'CONFIRMED: { label: "Підтверджена"',
   'if (filter === "IN_PROGRESS") return workflowState(row) === "IN_PROGRESS" || workflowState(row) === "RETURNED";',
-  "Основний процес: Очікує → В роботі → На перевірці → Підтверджена.",
 ]);
 assertNotIncludes("app/diagnostics.tsx", [
   '{ value: "RETURNED", label: "На уточненні" }',
