@@ -1,10 +1,4 @@
-:global(nav[aria-label="Навігація механіка"][data-mechanic-five-item-nav="true"]){grid-template-columns:repeat(5,minmax(0,1fr))!important;overflow:visible!important}
-:global(nav[aria-label="Навігація механіка"][data-mechanic-five-item-nav="true"])>:global(button:nth-child(1)){grid-column:1!important}
-:global(nav[aria-label="Навігація механіка"][data-mechanic-five-item-nav="true"])>:global(button:nth-child(2)){grid-column:2!important}
-:global(nav[aria-label="Навігація механіка"][data-mechanic-five-item-nav="true"])>:global([data-mechanic-scan-slot]){grid-column:3!important;grid-row:1!important}
-:global(nav[aria-label="Навігація механіка"][data-mechanic-five-item-nav="true"])>.navButton{display:grid!important;min-width:0;min-height:54px;padding:5px 1px;border:0;border-radius:11px;background:transparent;color:var(--m-muted,#a2adb8);place-items:center;align-content:center;gap:3px;cursor:pointer;touch-action:manipulation}
-:global(nav[aria-label="Навігація механіка"][data-mechanic-five-item-nav="true"])>.navButton[data-mechanic-bottom-nav-extra="diagnostics"]{grid-column:4!important;grid-row:1!important}
-:global(nav[aria-label="Навігація механіка"][data-mechanic-five-item-nav="true"])>.navButton[data-mechanic-bottom-nav-extra="notifications"]{grid-column:5!important;grid-row:1!important}
+.navButton{display:grid!important;min-width:0;min-height:54px;padding:5px 1px;border:0;border-radius:11px;background:transparent;color:var(--m-muted,#a2adb8);place-items:center;align-content:center;gap:3px;cursor:pointer;touch-action:manipulation}
 .navButton>span{position:relative;font-size:18px;line-height:1}.navButton>b{max-width:100%;font-size:11px;font-weight:750;color:inherit;text-align:center;white-space:normal;line-height:1.12;overflow-wrap:anywhere}.navActive{background:var(--m-orange-soft,#332015)!important;color:var(--m-orange,#ff6500)!important}
 .notificationIcon em{position:absolute;left:12px;top:-8px;min-width:18px;height:18px;padding:0 4px;display:grid;place-items:center;border:2px solid var(--m-surface,#151a20);border-radius:999px;background:var(--m-orange,#ff6500);color:#fff;font-size:11px;font-style:normal;font-weight:900}
 .diagnosticsPanel{position:fixed;inset:0;z-index:90;overflow:auto;background:var(--m-bg,#0d1116);color:var(--m-text,#f6f8fa);padding-bottom:calc(82px + env(safe-area-inset-bottom))}
