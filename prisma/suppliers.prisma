@@ -31,7 +31,7 @@ model Supplier {
   apiBaseUrl           String?  @db.Text
   isActive             Boolean  @default(true)
   priority             Int      @default(100)
-  defaultMarkupPercent Decimal  @default(23.00) @db.Decimal(5, 2)
+  defaultMarkupPercent Decimal  @default(40.00) @db.Decimal(5, 2)
   defaultCurrency      String   @default("UAH") @db.VarChar(3)
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt

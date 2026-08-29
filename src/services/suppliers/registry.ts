@@ -90,7 +90,9 @@ export async function testSupplier(id: SupplierId) {
 }
 
 export async function searchConfiguredSuppliers(query: string, limitPerSupplier = 20) {
-  const readiness = await Promise.all(supplierAdapters.map(async (adapter) => ({ adapter, configured: await adapter.isConfigured() })));
+  const statuses = await listSupplierStatuses();
+  const configuredIds = new Set(statuses.filter((supplier) => supplier.configured).map((supplier) => supplier.id));
+  const readiness = supplierAdapters.map((adapter) => ({ adapter, configured: configuredIds.has(adapter.id) }));
   const searchable = readiness
     .filter((item) => item.adapter.id !== "autonova-d" && item.adapter.id !== "atl" && item.configured)
     .map((item) => item.adapter);
@@ -116,5 +118,10 @@ export async function searchConfiguredSuppliers(query: string, limitPerSupplier 
     return a.purchasePrice - b.purchasePrice;
   });
 
-  return { offers, providers, configuredSuppliers: searchable.map((adapter) => adapter.id) };
+  return {
+    offers,
+    providers,
+    configuredSuppliers: [...configuredIds],
+    supplierStatuses: statuses,
+  };
 }

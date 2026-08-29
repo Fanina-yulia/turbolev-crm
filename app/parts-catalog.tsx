@@ -53,6 +53,7 @@ type SupplierOffer = {
 };
 
 type SupplierProvider = { id: string; ok: boolean; message?: string };
+type SupplierStatus = { id: string; name: string; configured: boolean; state: string; setupHint?: string };
 type DiagnosticRecommendation = { findingId: string; name: string };
 type DiagnosticPartsPayload = {
   ok?: boolean;
@@ -63,7 +64,7 @@ type SelectionResult = {
   workOrderId: string;
   partsRequestId: string;
   findingId: string;
-  selected: { supplierName: string; article: string; brand: string | null; purchasePrice: number; markupPercent: number; sellPrice: number; currency: string };
+  selected: { supplierName: string; article: string; brand: string | null; purchasePrice: number; markupPercent: number; sellPrice: number; currency: string; quantity?: number };
 };
 
 function normalizeVin(value: string) {
@@ -102,8 +103,10 @@ export function PartsCatalog() {
   const [offers, setOffers] = useState<SupplierOffer[]>([]);
   const [supplierProviders, setSupplierProviders] = useState<SupplierProvider[]>([]);
   const [configuredSuppliers, setConfiguredSuppliers] = useState<string[]>([]);
+  const [supplierStatuses, setSupplierStatuses] = useState<SupplierStatus[]>([]);
   const [recommendedParts, setRecommendedParts] = useState<DiagnosticRecommendation[]>([]);
   const [activeFindingId, setActiveFindingId] = useState("");
+  const [partQuantity, setPartQuantity] = useState("1");
   const [diagnosticCardContext, setDiagnosticCardContext] = useState(false);
   const [busy, setBusy] = useState(false);
   const [selectingOffer, setSelectingOffer] = useState("");
@@ -219,10 +222,12 @@ export function PartsCatalog() {
         setOffers(Array.isArray(supplierData.offers) ? supplierData.offers : []);
         setSupplierProviders(Array.isArray(supplierData.providers) ? supplierData.providers : []);
         setConfiguredSuppliers(Array.isArray(supplierData.configuredSuppliers) ? supplierData.configuredSuppliers : []);
+        setSupplierStatuses(Array.isArray(supplierData.supplierStatuses) ? supplierData.supplierStatuses : []);
       } else {
         setOffers([]);
         setSupplierProviders([]);
         setConfiguredSuppliers([]);
+        setSupplierStatuses([]);
       }
     } catch (error) {
       setParts([]);
@@ -230,6 +235,7 @@ export function PartsCatalog() {
       setOffers([]);
       setSupplierProviders([]);
       setConfiguredSuppliers([]);
+      setSupplierStatuses([]);
       setMessage(error instanceof Error ? error.message : "Каталог тимчасово недоступний.");
     } finally {
       setBusy(false);
@@ -257,6 +263,7 @@ export function PartsCatalog() {
           supplierId: offer.supplierId,
           externalProductId: offer.externalProductId,
           article: offer.article,
+          quantity: Math.max(1, Math.min(100, Number(partQuantity) || 1)),
         }),
       });
       const body = await response.json().catch(() => null) as ({ ok?: boolean; error?: string; message?: string } & Partial<SelectionResult>) | null;
@@ -290,6 +297,7 @@ export function PartsCatalog() {
     {diagnosticCardContext && recommendedParts.length > 0 && <section className={styles.panel}>
       <div className={styles.head}><div><p>З ДІАГНОСТИЧНОЇ КАРТИ</p><h2>Потрібно по цьому авто</h2></div><span className={styles.badge}>{recommendedParts.length}</span></div>
       <div className={styles.grid}>{recommendedParts.map((item) => <button type="button" className={styles.card} key={`${item.findingId}:${item.name}`} onClick={() => { setActiveFindingId(item.findingId); setQ(item.name); setOffers([]); setSelectionResult(null); }}><div className={styles.cardTop}><b>{item.name}</b><span>{item.findingId === activeFindingId ? "ОБРАНО" : "ПІДІБРАТИ"}</span></div><small>Рекомендація з підтвердженої діагностики</small></button>)}</div>
+      {activeRecommendation && <div className={styles.vehicleMeta}><label className={styles.field}><span>Кількість</span><input type="number" min="1" max="100" step="1" value={partQuantity} onChange={(event) => setPartQuantity(event.target.value.replace(/[^0-9]/g, "").slice(0, 3))} /></label><span>Після вибору позиція потрапить у чернетку КП із націнкою 40%.</span></div>}
     </section>}
 
     {selectionResult && <section className={styles.panel}>
@@ -320,11 +328,12 @@ export function PartsCatalog() {
           <span className={supplierStyles.providerCount}>{configuredSuppliers.length} API налаштовано</span>
         </div>
 
-        {!configuredSuppliers.length ? <div className={supplierStyles.supplierEmpty}>API-доступи ще не додані на сервер CRM. Відкрийте <b>Налаштування → Постачальники</b>: там видно, який доступ потрібен для BM Parts, Юнік Трейд та Автонова-Д.</div> : null}
+        {!configuredSuppliers.length ? <div className={supplierStyles.supplierEmpty}>Жодного live API не налаштовано. Перевірте доступи BM Parts та Юнік Трейд у <b>Налаштування → Інтеграції → Постачальники</b>. Додавання постачальника в довідник саме по собі не вмикає API.</div> : null}
+        {configuredSuppliers.length > 0 ? <div className={supplierStyles.supplierStatusList}>{supplierStatuses.filter((supplier) => supplier.configured).map((supplier) => <span key={supplier.id}><b>{supplier.name}</b><small>{supplier.state === "CONNECTED" ? "з'єднання перевірено" : "доступ збережено, перевірте з'єднання"}</small></span>)}</div> : null}
         {configuredSuppliers.length > 0 && !offers.length && !busy ? <div className={supplierStyles.supplierEmpty}>У підключених постачальників за цим запитом пропозицій не знайдено.</div> : null}
 
         {offers.length ? <div className={supplierStyles.tableWrap}><table className={supplierStyles.offerTable}>
-          <thead><tr><th>Постачальник</th><th>Деталь</th><th>Закупівля</th><th>Націнка</th><th>Продаж</th><th>Залишок</th>{diagnosticCardContext ? <th>Дія</th> : null}</tr></thead>
+          <thead><tr><th>Постачальник</th><th>Деталь</th><th>Закупівля</th><th>Націнка</th><th>Продаж</th><th>Прибуток</th><th>Залишок</th>{diagnosticCardContext ? <th>Дія</th> : null}</tr></thead>
           <tbody>{offers.map((offer, index) => {
             const key = `${offer.supplierId}:${offer.externalProductId || offer.article}`;
             return <tr key={`${offer.supplierId}-${offer.externalProductId ?? offer.article}-${index}`}>
@@ -333,6 +342,7 @@ export function PartsCatalog() {
               <td className={supplierStyles.offerPrice}>{formatMoney(offer.purchasePrice, offer.currency)}</td>
               <td>{offer.markupPercent != null ? `${offer.markupPercent}%` : "—"}</td>
               <td className={supplierStyles.offerPrice}>{formatMoney(offer.sellPrice, offer.currency)}</td>
+              <td className={supplierStyles.offerPrice}>{offer.purchasePrice != null && offer.sellPrice != null ? formatMoney(offer.sellPrice - offer.purchasePrice, offer.currency) : "—"}</td>
               <td>{offer.stock.length ? <div className={supplierStyles.stockList}>{offer.stock.slice(0, 3).map((stock, stockIndex) => <span key={`${stock.warehouse}-${stockIndex}`}>{stock.warehouse}: <b>{stock.quantity}</b></span>)}</div> : <span className={supplierStyles.stockEmpty}>немає даних</span>}</td>
               {diagnosticCardContext ? <td><button type="button" className={styles.primary} disabled={!offer.available || offer.purchasePrice == null || selectingOffer === key || !activeRecommendation} onClick={() => void selectOffer(offer)}>{selectingOffer === key ? "Зберігаю…" : "Обрати"}</button></td> : null}
             </tr>;

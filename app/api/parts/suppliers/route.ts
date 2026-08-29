@@ -3,6 +3,7 @@ import { PERMISSIONS } from "@/src/security/permissions";
 import { authorizeScopedLocation } from "@/src/security/scoped-location-access";
 import { enrichOffersWithSellPrice } from "@/src/services/suppliers/order.service";
 import { listSupplierStatuses, searchConfiguredSuppliers } from "@/src/services/suppliers/registry";
+import { DEFAULT_MARKUP_PERCENT } from "@/src/services/suppliers/pricing";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -32,8 +33,8 @@ export async function GET(request: Request) {
     suppliers,
     pricing: {
       basis: "SUPPLIER_DEFAULT_MARKUP",
-      defaultMarkupPercent: 23,
-      message: "Ціна продажу розраховується від закупівельної ціни за правилом постачальника; базове правило Turbo LEV — 23%. Ручний override фіксується в аудиті під час створення supplier order draft.",
+      defaultMarkupPercent: DEFAULT_MARKUP_PERCENT,
+      message: `Ціна продажу розраховується від закупівельної ціни; базове правило Turbo LEV — ${DEFAULT_MARKUP_PERCENT}%. Ручний override фіксується в аудиті під час створення supplier order draft.`,
     },
     policy: {
       priceType: "PURCHASE_PRICE",

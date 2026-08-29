@@ -4,8 +4,8 @@ import { writeAuditEvent } from "@/src/services/audit.service";
 import { transitionPartsRequest } from "@/src/services/work-order-commercial.service";
 import { getSupplierAdapter } from "./registry";
 import type { SupplierId, SupplierOffer, SupplierOrderSubmitInput } from "./types";
+import { calculateSellPrice, DEFAULT_MARKUP_PERCENT } from "./pricing";
 
-const DEFAULT_MARKUP_PERCENT = 23;
 const ORDER_CONFIRMATION = "SUBMIT_SUPPLIER_ORDER";
 
 type DraftItemInput = {
@@ -29,10 +29,6 @@ type CreateDraftInput = {
 function numberValue(value: unknown) {
   const parsed = Number(value ?? 0);
   return Number.isFinite(parsed) ? parsed : 0;
-}
-
-function roundMoney(value: number) {
-  return Math.round(value * 100) / 100;
 }
 
 function normalizeMarkup(value: unknown, fallback: number) {
@@ -85,7 +81,7 @@ export async function enrichOffersWithSellPrice(offers: SupplierOffer[]) {
   await Promise.all(ids.map(async (id) => markups.set(id, await getSupplierMarkupPercent(id))));
   return offers.map((offer) => {
     const markupPercent = markups.get(offer.supplierId) ?? DEFAULT_MARKUP_PERCENT;
-    const sellPrice = offer.purchasePrice == null ? null : roundMoney(offer.purchasePrice * (1 + markupPercent / 100));
+    const sellPrice = offer.purchasePrice == null ? null : calculateSellPrice(offer.purchasePrice, markupPercent);
     return { ...offer, markupPercent, sellPrice };
   });
 }
@@ -149,11 +145,11 @@ export async function createSupplierOrderDraft(input: CreateDraftInput) {
     const row = itemMap.get(item.partsRequestItemId)!;
     const live = await verifyLiveOffer({ supplierId: input.supplierId, item, article: row.article, description: row.description });
     const markupPercent = normalizeMarkup(item.markupPercent, supplierMarkup);
-    const sellPrice = roundMoney(live.offer.purchasePrice! * (1 + markupPercent / 100));
+    const sellPrice = calculateSellPrice(live.offer.purchasePrice!, markupPercent);
     return { input: item, row, ...live, markupPercent, sellPrice };
   }));
 
-  const totalPurchase = roundMoney(verified.reduce((sum, item) => sum + item.offer.purchasePrice! * item.quantity, 0));
+  const totalPurchase = Math.round(verified.reduce((sum, item) => sum + item.offer.purchasePrice! * item.quantity, 0) * 100) / 100;
   const orderItems = verified.map((item) => ({
     partsRequestItemId: item.row.id,
     externalProductId: item.offer.externalProductId,

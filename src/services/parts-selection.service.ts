@@ -37,12 +37,17 @@ export async function selectDiagnosticPartOffer(input: {
   supplierId: string;
   externalProductId?: string | null;
   article?: string | null;
+  quantity?: number | null;
   actorId?: string | null;
   actorName?: string | null;
 }) {
   const diagnosticRequestId = clean(input.diagnosticRequestId, 160);
   const findingId = clean(input.findingId, 160);
   const supplierId = normalizeSupplier(input.supplierId);
+  const quantity = Number(input.quantity ?? 1);
+  if (!Number.isFinite(quantity) || quantity <= 0 || quantity > 100) {
+    throw new PartsSelectionError("QUANTITY_INVALID", "Кількість деталі має бути від 1 до 100.");
+  }
   if (!diagnosticRequestId || !findingId) throw new PartsSelectionError("CONTEXT_REQUIRED", "Не передано діагностику або виявлену проблему.");
 
   const actorName = clean(input.actorName, 160) || "CRM / Підбір запчастин";
@@ -92,6 +97,7 @@ export async function selectDiagnosticPartOffer(input: {
     currency: priced.currency || supplier.defaultCurrency || "UAH",
     plannedUnitCost: priced.purchasePrice,
     plannedUnitPrice: priced.sellPrice,
+    plannedQuantity: quantity,
     supplierId: supplier.id,
     supplierQuoteId: quote.id,
   }, actorName);
@@ -112,6 +118,7 @@ export async function selectDiagnosticPartOffer(input: {
           purchasePrice: priced.purchasePrice,
           sellPrice: priced.sellPrice,
           currency: priced.currency || supplier.defaultCurrency || "UAH",
+          quantity,
         },
       });
     }
@@ -157,6 +164,7 @@ export async function selectDiagnosticPartOffer(input: {
       markupPercent: priced.markupPercent,
       sellPrice: priced.sellPrice,
       currency: priced.currency || "UAH",
+      quantity,
       quoteId: quote.id,
     },
     line: updated.line,
