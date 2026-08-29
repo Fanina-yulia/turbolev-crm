@@ -276,12 +276,17 @@ export async function getVehicleImageDeliveryState(vehicleId: string, themePaint
   if (state.state !== "READY" || !state.assetId) return { ...state, needsOptimization: false };
 
   const asset = await loadAsset(state.assetId);
-  if (assetIsDeliveryReady(asset)) return { ...state, needsOptimization: false };
+  // A READY asset may still be the original PNG or be larger than the compact
+  // delivery target. It is already usable by the browser, so do not hide it
+  // behind a GENERATING placeholder while the background optimizer runs.
+  if (asset?.status === "READY" && asset.imageData?.length) {
+    return { ...state, needsOptimization: !assetIsDeliveryReady(asset) };
+  }
 
   return {
     ...state,
-    state: "GENERATING" as const,
-    needsOptimization: Boolean(asset?.imageData?.length),
+    state: "MISSING" as const,
+    needsOptimization: false,
     error: null,
   };
 }
@@ -372,7 +377,7 @@ export async function optimizeVehicleImageAsset(assetId: string) {
 }
 
 export async function generateVehicleImageInBackground(vehicleId: string, options?: BackgroundOptions) {
-  const initialState = await getVehicleImageLibraryState(vehicleId, options?.themePaint);
+  const initialState = await getVehicleImageDeliveryState(vehicleId, options?.themePaint);
   if (!initialState.libraryKey) {
     return {
       state: initialState.state,
@@ -404,13 +409,19 @@ export async function generateVehicleImageInBackground(vehicleId: string, option
       };
     }
 
-    const rechecked = await getVehicleImageLibraryState(vehicleId, options?.themePaint);
+    const rechecked = await getVehicleImageDeliveryState(vehicleId, options?.themePaint);
     if (rechecked.state === "READY" && rechecked.assetId && !options?.force) {
       const optimization = await optimizeVehicleImageAsset(rechecked.assetId);
       return { state: "READY" as const, assetId: rechecked.assetId, libraryKey: rechecked.libraryKey, optimization, reused: true };
     }
 
-    const generation = await generateVehicleImageWithCompatibilityFallback(vehicleId, options);
+    const generation = await generateVehicleImageWithCompatibilityFallback(vehicleId, {
+      ...options,
+      // A library row without delivery bytes is not reusable, even if its
+      // status column still says READY. Rebuild that asset instead of leaving
+      // the vehicle permanently without an image.
+      force: options?.force === true || (rechecked.state === "MISSING" && Boolean(rechecked.assetId)),
+    });
 
     if (generation.state !== "READY" || !generation.assetId) return generation;
 

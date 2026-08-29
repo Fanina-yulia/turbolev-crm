@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
   enqueueMissingVehicleImages,
-  processNextQueuedVehicleImage,
+  processQueuedVehicleImages,
 } from "@/src/services/vehicle-images/vehicle-image-queue.service";
 
 export const runtime = "nodejs";
@@ -29,7 +29,7 @@ async function run(request: NextRequest) {
   if (!authorized(request)) return hidden();
   const requested = Number(request.nextUrl.searchParams.get("limit") || "8");
   const enqueued = await enqueueMissingVehicleImages(requested);
-  const processed = await processNextQueuedVehicleImage();
+  const processed = await processQueuedVehicleImages(Math.min(requested, 4));
   return NextResponse.json({ ok: true, enqueued, processed }, { headers: { "Cache-Control": "no-store" } });
 }
 
