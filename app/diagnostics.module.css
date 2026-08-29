@@ -26,14 +26,6 @@
   line-height: 1.1;
 }
 
-.head p {
-  max-width: 760px;
-  margin: 8px 0 0;
-  color: var(--muted);
-  font-size: 13px;
-  line-height: 1.5;
-}
-
 .refresh,
 .filters button,
 .primary,
@@ -61,34 +53,6 @@
 .secondary:disabled {
   opacity: .55;
   cursor: default;
-}
-
-.kpis {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 10px;
-  margin-bottom: 12px;
-}
-
-.kpis > div {
-  padding: 12px 14px;
-  border: 1px solid var(--line);
-  border-radius: 11px;
-  background: var(--panel);
-}
-
-.kpis span {
-  display: block;
-  color: var(--muted);
-  font-size: 12px;
-  letter-spacing: .05em;
-  text-transform: uppercase;
-}
-
-.kpis strong {
-  display: block;
-  margin-top: 5px;
-  font-size: 23px;
 }
 
 .filters {
