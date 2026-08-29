@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { useCallback, useEffect, useState, type PointerEvent as ReactPointerEvent } from "react";
 import styles from "./mechanic-standalone-cabinet.module.css";
 import { MechanicDiagnosticWorkspace } from "./mechanic-diagnostic-workspace";
 import { MechanicExecutionIssueForm } from "./mechanic-execution-issue-form";
@@ -174,7 +174,7 @@ type WorkAction = "START" | "PAUSE" | "RESUME" | "COMPLETE" | "WAITING_PARTS";
 type ThemeChoice = "system" | "light" | "dark";
 type SupportKind = "QUESTION" | "PART_REQUEST";
 type FindingUrgency = "INFO" | "SOON" | "CRITICAL";
-type WorksFilter = "ALL" | "IN_PROGRESS" | "WAITING_PARTS";
+type WorksFilter = "ALL" | "OVERDUE" | "TODAY" | "FUTURE";
 type ScheduleFilter = "ALL" | "TODAY";
 
 const statusLabel: Record<string, string> = {
@@ -230,13 +230,6 @@ function firstName(value?: string | null) {
   return value?.trim().split(/\s+/)[0] || "майстре";
 }
 
-function greeting() {
-  const hour = Number(new Intl.DateTimeFormat("uk-UA", { timeZone: "Europe/Kyiv", hour: "2-digit", hour12: false }).format(new Date()));
-  if (hour < 12) return "Доброго ранку";
-  if (hour < 18) return "Добрий день";
-  return "Добрий вечір";
-}
-
 function money(value: unknown) {
   const number = Number(value);
   return Number.isFinite(number) ? new Intl.NumberFormat("uk-UA", { style: "currency", currency: "UAH", maximumFractionDigits: 0 }).format(number) : "—";
@@ -276,20 +269,29 @@ function appointmentPriority(a: Appointment, b: Appointment) {
 
 function matchesWorksFilter(item: Appointment | MechanicTask, filter: WorksFilter) {
   if (filter === "ALL") return true;
-  const effectiveStatus = "plannedStartAt" in item ? appointmentStatus(item) : item.workOrderStatus || item.status;
-  if (filter === "WAITING_PARTS") {
-    return effectiveStatus === "WAITING_PARTS" || effectiveStatus === "WAITING_PARTS_SELECTION";
-  }
-  return effectiveStatus === "IN_REPAIR"
-    || effectiveStatus === "REWORK"
-    || effectiveStatus === "PAUSED"
-    || (!("plannedStartAt" in item) && (item.status === "IN_PROGRESS" || item.status === "PAUSED"));
+  if (!("plannedStartAt" in item)) return false;
+  if (filter === "OVERDUE") return isAppointmentOverdue(item);
+  const start = new Date(item.plannedStartAt).getTime();
+  if (filter === "TODAY") return kyivDateKey(item.plannedStartAt) === kyivDateKey(new Date());
+  return Number.isFinite(start) && start > Date.now();
 }
 
 function matchesRepairCaseFilter(item: RepairCase, filter: WorksFilter) {
   if (filter === "ALL") return true;
-  if (filter === "WAITING_PARTS") return item.status === "WAITING_PARTS";
-  return ["IN_REPAIR", "PAUSED", "REWORK"].includes(item.status);
+  if (filter === "OVERDUE") return Boolean(item.appointment && isAppointmentOverdue({
+    id: item.appointment.id,
+    workOrderId: item.workOrderId,
+    status: item.appointment.status,
+    workOrderStatus: item.status,
+    plannedStartAt: item.appointment.plannedStartAt,
+    plannedEndAt: item.appointment.plannedEndAt,
+    plate: item.vehicle.plateNumber || "—",
+    vehicle: item.vehicle.label,
+    problem: item.appointment.problem,
+    post: item.appointment.post,
+  }));
+  if (filter === "TODAY") return Boolean(item.appointment && kyivDateKey(item.appointment.plannedStartAt) === kyivDateKey(new Date()));
+  return Boolean(item.appointment && new Date(item.appointment.plannedStartAt).getTime() > Date.now());
 }
 
 function kyivDateKey(value: string | Date) {
@@ -303,22 +305,18 @@ function kyivDateKey(value: string | Date) {
   return `${part("year")}-${part("month")}-${part("day")}`;
 }
 
-function normalizedPlate(value?: string | null) {
-  const chars: Record<string, string> = { А: "A", В: "B", Е: "E", І: "I", К: "K", М: "M", Н: "H", О: "O", Р: "P", С: "C", Т: "T", Х: "X", У: "Y" };
-  const source = (value || "").normalize("NFKC").toUpperCase().replace(/[^A-ZА-ЯІЇЄ0-9]/g, "");
-  return [...source].map((char) => chars[char] || char).join("");
+function appointmentForTask(task: MechanicTask, appointments: Appointment[]) {
+  return appointments.find((item) => item.workOrderId && item.workOrderId === task.workOrderId)
+    ?? appointments.find((item) => item.plate === task.plate || item.vehicle === task.vehicle)
+    ?? null;
 }
 
-function BottomNav({ screen, notificationCount, onChange }: { screen: Screen; notificationCount: number; onChange: (screen: Screen) => void }) {
+function BottomNav({ screen, onChange }: { screen: Screen; onChange: (screen: Screen) => void }) {
   const workActive = ["WORKS", "WORK_DETAIL", "FINDING", "SUPPORT"].includes(screen);
-  const diagnosticActive = ["DIAGNOSTICS", "DIAGNOSTIC_DETAIL"].includes(screen);
-  const profileActive = ["PROFILE", "SCHEDULE", "PAYROLL"].includes(screen);
   return <nav className={styles.bottomNav} aria-label="Навігація механіка">
     <button type="button" className={screen === "HOME" ? styles.navActive : ""} onClick={() => onChange("HOME")}><span>⌂</span><b>Головна</b></button>
     <button type="button" className={workActive ? styles.navActive : ""} onClick={() => onChange("WORKS")}><span>▤</span><b>Роботи</b></button>
-    <button type="button" className={diagnosticActive ? styles.navActive : ""} onClick={() => onChange("DIAGNOSTICS")}><span>◇</span><b>Діагностика</b></button>
-    <button type="button" className={screen === "NOTIFICATIONS" ? styles.navActive : ""} onClick={() => onChange("NOTIFICATIONS")}><span>◉{notificationCount > 0 && <em className={styles.navBadge}>{notificationCount}</em>}</span><b>Сповіщення</b></button>
-    <button type="button" className={profileActive ? styles.navActive : ""} onClick={() => onChange("PROFILE")}><span>●</span><b>Профіль</b></button>
+    <span className={styles.scanSlot} data-mechanic-scan-slot />
   </nav>;
 }
 
@@ -532,23 +530,33 @@ export function MechanicStandaloneCabinet({ userName }: { userName?: string | nu
   }, [loadDiagnostics, loadHome, loadRepairCases, loadTasks, tasks]);
 
   const appointments = home?.appointments ?? [];
-  const activeAppointments = appointments;
-  const representedWorkOrderIds = new Set(repairCases.map((item) => item.workOrderId));
-  const mechanicActionableAppointmentStatuses = new Set(["BOOKED", "ARRIVED", "DIAGNOSTICS", "READY_FOR_REPAIR", "IN_REPAIR", "WAITING_QC", "PAUSED"]);
-  const scheduledAppointments = activeAppointments.filter((item) => mechanicActionableAppointmentStatuses.has(item.status) && (!item.workOrderId || !representedWorkOrderIds.has(item.workOrderId)));
+  const mechanicActionableAppointmentStatuses = new Set(["BOOKED", "ARRIVED", "DIAGNOSTICS", "WAITING_PARTS_SELECTION", "WAITING_CALCULATION", "WAITING_APPROVAL", "WAITING_PARTS", "READY_FOR_REPAIR", "IN_REPAIR", "WAITING_QC", "PAUSED"]);
+  const scheduledAppointments = appointments.filter((item) => mechanicActionableAppointmentStatuses.has(item.status));
   const prioritizedScheduledAppointments = [...scheduledAppointments].sort(appointmentPriority);
   const nextScheduledAppointment = prioritizedScheduledAppointments[0] ?? null;
-  const nextScheduledDiagnostic = nextScheduledAppointment
-    ? diagnostics.find((item) => normalizedPlate(item.vehicle.plateNumber) === normalizedPlate(nextScheduledAppointment.plate)) ?? null
-    : null;
   const selectedTask = tasks.find((item) => item.id === selectedTaskId) ?? null;
   const selectedRepairCase = selectedTask ? repairCases.find((item) => item.workOrderId === selectedTask.workOrderId) ?? null : null;
   const selectedOrderTasks = selectedRepairCase?.lines ?? (selectedTask ? tasks.filter((item) => item.workOrderId === selectedTask.workOrderId) : []);
-  const selectedAppointment = selectedTask ? appointments.find((item) => item.plate === selectedTask.plate || item.vehicle === selectedTask.vehicle) ?? null : null;
-  const activeTask = tasks.find((item) => item.status === "IN_PROGRESS" || item.status === "PAUSED") ?? tasks.find((item) => !isDone(item.status) && item.status !== "CANCELLED") ?? null;
-  const currentPost = activeTask ? appointments.find((item) => item.plate === activeTask.plate)?.post : appointments.find((item) => item.post)?.post;
-  const assignedCases = home?.kpis?.assigned ?? activeAppointments.length;
-  const scheduledToday = home?.kpis?.scheduledToday ?? scheduledAppointments.length;
+  const selectedAppointment = selectedTask ? appointmentForTask(selectedTask, appointments) : null;
+  const nextRepairTask = [...repairCases]
+    .filter((item) => item.appointment)
+    .sort((a, b) => {
+      const aAppointment = a.appointment!;
+      const bAppointment = b.appointment!;
+      const aOverdue = isAppointmentOverdue({ id: aAppointment.id, workOrderId: a.workOrderId, status: aAppointment.status, workOrderStatus: a.status, plannedStartAt: aAppointment.plannedStartAt, plannedEndAt: aAppointment.plannedEndAt, plate: a.vehicle.plateNumber || "—", vehicle: a.vehicle.label, problem: aAppointment.problem, post: aAppointment.post });
+      const bOverdue = isAppointmentOverdue({ id: bAppointment.id, workOrderId: b.workOrderId, status: bAppointment.status, workOrderStatus: b.status, plannedStartAt: bAppointment.plannedStartAt, plannedEndAt: bAppointment.plannedEndAt, plate: b.vehicle.plateNumber || "—", vehicle: b.vehicle.label, problem: bAppointment.problem, post: bAppointment.post });
+      if (aOverdue !== bOverdue) return aOverdue ? -1 : 1;
+      return new Date(aAppointment.plannedStartAt).getTime() - new Date(bAppointment.plannedStartAt).getTime();
+    })
+    .map((item) => {
+      const line = item.lines.find((candidate) => candidate.assignedToCurrentMechanic && !isDone(candidate.status));
+      return line ? tasks.find((candidate) => candidate.id === line.id) ?? null : null;
+    })
+    .find((item): item is MechanicTask => Boolean(item)) ?? null;
+  const activeTask = tasks.find((item) => item.status === "IN_PROGRESS" || item.status === "PAUSED") ?? nextRepairTask;
+  const activeTaskAppointment = activeTask ? appointmentForTask(activeTask, appointments) : null;
+  const currentPost = activeTaskAppointment?.post || nextScheduledAppointment?.post || null;
+  const assignedCases = home?.kpis?.assigned ?? appointments.length;
   const inProgress = repairCaseKpis?.inRepair ?? ((taskKpis?.inProgress ?? tasks.filter((item) => item.status === "IN_PROGRESS").length) + (taskKpis?.paused ?? tasks.filter((item) => item.status === "PAUSED").length));
   const completed = repairCaseKpis?.completedToday ?? taskKpis?.completedToday ?? tasks.filter((item) => isDone(item.status)).length;
   const notificationCount = notificationFeed?.unreadCount ?? 0;
@@ -556,6 +564,7 @@ export function MechanicStandaloneCabinet({ userName }: { userName?: string | nu
   const visibleWorkAppointments = scheduledAppointments.filter((item) => matchesWorksFilter(item, worksFilter)).sort(appointmentPriority);
   const visibleRepairCases = repairCases.filter((item) => matchesRepairCaseFilter(item, worksFilter));
   const visibleWorkTasks = visibleRepairCases.flatMap((item) => {
+    if (item.appointment && appointments.some((candidate) => candidate.id === item.appointment?.id)) return [];
     const line = item.lines.find((candidate) => candidate.assignedToCurrentMechanic && !isDone(candidate.status))
       ?? item.lines.find((candidate) => candidate.assignedToCurrentMechanic);
     const task = line ? tasks.find((candidate) => candidate.id === line.id) : null;
@@ -565,7 +574,9 @@ export function MechanicStandaloneCabinet({ userName }: { userName?: string | nu
   const visibleScheduleAppointments = (scheduleFilter === "TODAY"
     ? appointments.filter((item) => kyivDateKey(item.plannedStartAt) === todayKyivKey)
     : [...appointments]).sort(appointmentPriority);
-  const nextAppointmentOverdue = nextScheduledAppointment ? isAppointmentOverdue(nextScheduledAppointment) : false;
+  const nextAppointmentOverdue = activeTaskAppointment
+    ? isAppointmentOverdue(activeTaskAppointment)
+    : nextScheduledAppointment ? isAppointmentOverdue(nextScheduledAppointment) : false;
   const selectedTaskOverdue = Boolean(selectedAppointment && isAppointmentOverdue(selectedAppointment));
 
   const overdueCardStyle = {
@@ -584,16 +595,16 @@ export function MechanicStandaloneCabinet({ userName }: { userName?: string | nu
     border: "1px solid color-mix(in srgb,var(--m-danger) 45%,var(--m-border))",
   };
 
-  const worksHeading = worksFilter === "IN_PROGRESS"
-    ? { title: "В роботі", description: "Активні та призупинені операції й автомобілі в ремонті.", empty: "Робіт у процесі немає." }
-    : worksFilter === "WAITING_PARTS"
-      ? { title: "Очікують деталей", description: "Роботи й автомобілі, для яких очікуються деталі.", empty: "Робіт, що очікують деталей, немає." }
-      : { title: "Призначені роботи", description: "Усі активні записи, комерційні пропозиції та операції.", empty: "Призначених робіт немає." };
+  const worksHeading = worksFilter === "OVERDUE"
+    ? { title: "Протерміновані", description: "Записи, які мали бути виконані, але ще не завершені.", empty: "Протермінованих робіт немає." }
+    : worksFilter === "TODAY"
+      ? { title: "Сьогодні", description: "Усі ваші записи на поточний день.", empty: "На сьогодні робіт немає." }
+      : worksFilter === "FUTURE"
+        ? { title: "Майбутні", description: "Майбутні записи на діагностику та ремонт.", empty: "Майбутніх записів немає." }
+        : { title: "Мої роботи", description: "Актуальні, протерміновані та майбутні записи.", empty: "Активних робіт немає." };
   const scheduleHeading = scheduleFilter === "TODAY"
     ? { title: "Заплановано на сьогодні", description: "Ваші закріплення на поточний день за київським часом.", empty: "На сьогодні закріплень немає." }
     : { title: "Активні закріплення", description: "Авто залишаються тут до завершення сервісного випадку.", empty: "Активних закріплень немає." };
-
-  const todayLabel = useMemo(() => new Intl.DateTimeFormat("uk-UA", { timeZone: "Europe/Kyiv", day: "numeric", month: "long" }).format(new Date()), []);
 
   function changeTheme(next: ThemeChoice) {
     setThemeChoice(next);
@@ -621,6 +632,14 @@ export function MechanicStandaloneCabinet({ userName }: { userName?: string | nu
     setError("");
     setMessage("");
     setShowExecutionIssue(false);
+  }
+
+  function openAppointment(appointment: Appointment) {
+    const task = appointment.workOrderId
+      ? tasks.find((candidate) => candidate.workOrderId === appointment.workOrderId && !isDone(candidate.status))
+      : null;
+    if (task) openTask(task);
+    else openScannedVehicle(appointment.plate);
   }
 
   function openScannedVehicle(plate: string | null | undefined) {
@@ -868,28 +887,18 @@ export function MechanicStandaloneCabinet({ userName }: { userName?: string | nu
       </aside>}
       {screen === "HOME" && <>
         <header className={styles.hero}>
-          <div><div className={styles.brand}><span>ТУРБО</span> <b>ЛЕВ</b></div><small>Кабінет механіка</small></div>
+          <div><div className={styles.brand}><span>ТУРБО</span> <b>ЛЕВ</b></div><small>Кабінет механіка · {firstName(mechanicName)}</small></div>
           <button type="button" className={styles.iconButton} onClick={() => setScreen("NOTIFICATIONS")} aria-label="Сповіщення">◉{notificationCount > 0 && <em>{notificationCount}</em>}</button>
         </header>
         <main className={styles.content}>
-          <section className={styles.profileCard}><div className={styles.avatar}>{firstName(mechanicName).slice(0, 1).toUpperCase()}</div><div><h1>{greeting()}, {firstName(mechanicName)}!</h1><p>{currentPost || "Пост не призначено"}</p><span>{home.mechanic.station.name}</span></div></section>
-          <section className={styles.card}>
-            <div className={styles.sectionHead}><div><h2>Сьогодні, {todayLabel}</h2><p>Закріплено — до фактичної видачі; на сьогодні — план поточного дня.</p></div></div>
-            <div className={styles.metrics}>
-              <button type="button" className={styles.metricButton} onClick={() => openSchedule("ALL", "HOME")} aria-label={`Закріплено ${assignedCases}. Відкрити всі активні закріплення`}><b>{assignedCases}</b><span>Закріплено</span></button>
-              <button type="button" className={styles.metricButton} onClick={() => openSchedule("TODAY", "HOME")} aria-label={`На сьогодні ${scheduledToday}. Відкрити закріплення на сьогодні`}><b>{scheduledToday}</b><span>На сьогодні</span></button>
-              <button type="button" className={styles.metricButton} onClick={() => openWorks("IN_PROGRESS")} aria-label={`В роботі ${inProgress}. Відкрити роботи в процесі`}><b>{inProgress}</b><span>В роботі</span></button>
-              <button type="button" className={styles.metricButton} onClick={() => openWorks("WAITING_PARTS")} aria-label={`Очікує деталей ${home.kpis?.waitingParts ?? 0}. Відкрити роботи, що очікують деталей`}><b>{home.kpis?.waitingParts ?? 0}</b><span>Очікує деталей</span></button>
-            </div>
-          </section>
-          <section><div className={styles.sectionHead}><div><h2>{activeTask?.status === "IN_PROGRESS" ? "Поточна робота" : activeTask?.status === "PAUSED" ? "Робота на паузі" : "Наступна робота"}</h2><p>Найближче завдання</p></div></div>{activeTask ? <article className={styles.taskHero}><div className={styles.taskTop}><div className={styles.carIcon}>🚗</div><div><h3>{activeTask.vehicle}</h3><p>{activeTask.plate}</p></div><span className={`${styles.pill} ${statusTone(activeTask.status)}`}>{statusLabel[activeTask.status] || activeTask.status}</span></div><strong>🔧 {activeTask.description}</strong><div className={styles.meta}><span>Пост <b>{appointments.find((item) => item.plate === activeTask.plate)?.post || "—"}</b></span><span>Час <b>{time(appointments.find((item) => item.plate === activeTask.plate)?.plannedStartAt)}</b></span></div><button type="button" className={styles.primary} onClick={() => openScannedVehicle(activeTask.plate)}>Сканувати та відкрити →</button></article> : nextScheduledAppointment ? <article className={styles.taskHero} style={nextAppointmentOverdue ? overdueCardStyle : undefined}><div className={styles.taskTop}><div className={styles.carIcon}>🚗</div><div><h3>{nextScheduledAppointment.vehicle}</h3><p>{nextScheduledAppointment.plate}</p></div><span className={`${styles.pill} ${nextAppointmentOverdue ? "" : styles.accentPill}`} style={nextAppointmentOverdue ? overduePillStyle : undefined}>{nextAppointmentOverdue ? "Протерміновано" : "Заплановано"}</span></div><strong>🔧 {nextScheduledAppointment.problem || "Запис на СТО"}</strong><div className={styles.meta}><span>Пост <b>{nextScheduledAppointment.post || "—"}</b></span><span>Час <b style={nextAppointmentOverdue ? { color: "var(--m-danger)" } : undefined}>{time(nextScheduledAppointment.plannedStartAt)}</b></span></div><p className={styles.subtle}>{nextAppointmentOverdue ? "Плановий час уже минув. Авто потребує уваги — відкрийте діагностику або наступний доступний етап." : nextScheduledDiagnostic ? (["SUBMITTED", "CONFIRMED"].includes(nextScheduledDiagnostic.workflowState) ? "Діагностика завершена або передана. CRM очікує наступний етап." : "Діагностика доступна — можна переходити безпосередньо до автомобіля.") : "Діагностика ще не оформлена. Перевірте розділ діагностики."}</p><button type="button" className={styles.primary} onClick={() => openScannedVehicle(nextScheduledAppointment.plate)}>{nextScheduledDiagnostic ? (nextScheduledDiagnostic.workflowState === "PENDING" ? "Почати діагностику →" : nextScheduledDiagnostic.workflowState === "IN_PROGRESS" || nextScheduledDiagnostic.workflowState === "RETURNED" ? "Продовжити діагностику →" : "Переглянути діагностику →") : "До діагностики →"}</button></article> : <div className={styles.empty}>Активних робіт немає.</div>}</section>
-          <section className={styles.card}><div className={styles.sectionHead}><div><h2>Мої роботи</h2><p>Сьогодні та активні</p></div><button type="button" className={styles.textButton} onClick={() => openWorks("ALL")}>Всі ›</button></div><div className={styles.compactList}>{prioritizedScheduledAppointments.slice(0, Math.max(0, 4 - tasks.length)).map((item) => { const overdue = isAppointmentOverdue(item); return <button type="button" key={`appointment:${item.id}`} style={overdue ? overdueRowStyle : undefined} onClick={() => openScannedVehicle(item.plate)}><div><strong>{item.vehicle}</strong><small style={overdue ? { color: "var(--m-danger)" } : undefined}>{notificationTime(item.plannedStartAt)} · {item.problem || "Запис на СТО"}</small></div><span className={`${styles.pill} ${overdue ? "" : styles.accentPill}`} style={overdue ? overduePillStyle : undefined}>{overdue ? "Протерміновано" : "Заплановано"}</span></button>; })}{tasks.slice(0, 4).map((task) => <button type="button" key={task.id} onClick={() => openScannedVehicle(task.plate)}><div><strong>{task.vehicle}</strong><small>{task.description}</small></div><span className={`${styles.pill} ${statusTone(task.status)}`}>{statusLabel[task.status] || task.status}</span></button>)}</div>{!tasks.length && !scheduledAppointments.length && <div className={styles.emptyInline}>Робіт немає.</div>}</section>
+          <section><div className={styles.sectionHead}><div><h2>{activeTask?.status === "IN_PROGRESS" ? "Поточна робота" : activeTask?.status === "PAUSED" ? "Робота на паузі" : nextAppointmentOverdue ? "Протермінована робота" : "Наступна робота"}</h2><p>За даними планувальника</p></div></div>{activeTask ? <article className={styles.taskHero}><div className={styles.taskTop}><div><h3>{activeTask.vehicle}</h3><p>{activeTask.plate}</p></div><span className={`${styles.pill} ${statusTone(activeTask.status)}`}>{statusLabel[activeTask.status] || activeTask.status}</span></div><strong>🔧 {activeTask.description}</strong><div className={styles.meta}><span>Пост <b>{activeTaskAppointment?.post || "—"}</b></span><span>Час <b>{time(activeTaskAppointment?.plannedStartAt)}</b></span></div><button type="button" className={styles.primary} onClick={() => openTask(activeTask)}>Відкрити роботу →</button></article> : nextScheduledAppointment ? <article className={styles.taskHero} style={nextAppointmentOverdue ? overdueCardStyle : undefined}><div className={styles.taskTop}><div><h3>{nextScheduledAppointment.vehicle}</h3><p>{nextScheduledAppointment.plate}</p></div><span className={`${styles.pill} ${nextAppointmentOverdue ? "" : styles.accentPill}`} style={nextAppointmentOverdue ? overduePillStyle : undefined}>{nextAppointmentOverdue ? "Протерміновано" : "Заплановано"}</span></div><strong>🔧 {nextScheduledAppointment.problem || "Запис на СТО"}</strong><div className={styles.meta}><span>Пост <b>{nextScheduledAppointment.post || "—"}</b></span><span>Час <b style={nextAppointmentOverdue ? { color: "var(--m-danger)" } : undefined}>{time(nextScheduledAppointment.plannedStartAt)}</b></span></div><button type="button" className={styles.primary} onClick={() => openAppointment(nextScheduledAppointment)}>{nextAppointmentOverdue ? "Відкрити роботу →" : "Почати роботу →"}</button></article> : <div className={styles.empty}>Активних робіт немає.</div>}</section>
+          <section className={styles.card}><div className={styles.sectionHead}><div><h2>Мої роботи</h2><p>Сьогодні та активні</p></div><button type="button" className={styles.textButton} onClick={() => openWorks("ALL")}>Всі ›</button></div><div className={styles.compactList}>{prioritizedScheduledAppointments.slice(0, Math.max(0, 4 - tasks.length)).map((item) => { const overdue = isAppointmentOverdue(item); return <button type="button" key={`appointment:${item.id}`} style={overdue ? overdueRowStyle : undefined} onClick={() => openAppointment(item)}><div><strong>{item.vehicle}</strong><small style={overdue ? { color: "var(--m-danger)" } : undefined}>{notificationTime(item.plannedStartAt)} · {item.problem || "Запис на СТО"}</small></div><span className={`${styles.pill} ${overdue ? "" : styles.accentPill}`} style={overdue ? overduePillStyle : undefined}>{overdue ? "Протерміновано" : "Заплановано"}</span></button>; })}{tasks.slice(0, 4).map((task) => <button type="button" key={task.id} onClick={() => openTask(task)}><div><strong>{task.vehicle}</strong><small>{task.description}</small></div><span className={`${styles.pill} ${statusTone(task.status)}`}>{statusLabel[task.status] || task.status}</span></button>)}</div>{!tasks.length && !scheduledAppointments.length && <div className={styles.emptyInline}>Робіт немає.</div>}</section>
         </main>
       </>}
 
-      {screen === "WORKS" && <><TopBar title="Мої роботи" onBack={() => setScreen("HOME")} /><main className={styles.content}><div className={styles.pageTitle}><h1>{worksHeading.title}</h1><p>{worksHeading.description}</p></div><div className={styles.filterBar} role="group" aria-label="Фільтр робіт"><button type="button" className={worksFilter === "ALL" ? styles.filterActive : ""} aria-pressed={worksFilter === "ALL"} onClick={() => setWorksFilter("ALL")}>Усі</button><button type="button" className={worksFilter === "IN_PROGRESS" ? styles.filterActive : ""} aria-pressed={worksFilter === "IN_PROGRESS"} onClick={() => setWorksFilter("IN_PROGRESS")}>В роботі</button><button type="button" className={worksFilter === "WAITING_PARTS" ? styles.filterActive : ""} aria-pressed={worksFilter === "WAITING_PARTS"} onClick={() => setWorksFilter("WAITING_PARTS")}>Очікує деталей</button></div><div className={styles.stack}>{visibleWorkAppointments.map((item) => { const itemStatus = appointmentStatus(item); const overdue = isAppointmentOverdue(item); return <button type="button" className={styles.listCard} style={overdue ? overdueCardStyle : undefined} key={`appointment:${item.id}`} onClick={() => openScannedVehicle(item.plate)}><div><h3>{item.vehicle}</h3><b style={overdue ? { color: "var(--m-danger)" } : undefined}>{item.plate}</b></div><p>{item.problem || "Запис на СТО"}</p><div className={styles.meta}><span>Час <b style={overdue ? { color: "var(--m-danger)" } : undefined}>{notificationTime(item.plannedStartAt)}</b></span><span>Пост <b>{item.post || "—"}</b></span></div><small className={styles.subtle}>Натисніть, щоб підтвердити номер і відкрити діагностику</small><span className={`${styles.pill} ${overdue ? "" : statusTone(itemStatus)}`} style={overdue ? overduePillStyle : undefined}>{overdue ? "Протерміновано" : statusLabel[itemStatus] || itemStatus}</span></button>; })}{visibleWorkTasks.map((task) => { const itemStatus = worksFilter === "ALL" ? task.status : task.workOrderStatus || task.status; return <button type="button" className={styles.listCard} key={task.id} onClick={() => openScannedVehicle(task.plate)}><div><h3>{task.vehicle}</h3><b>{task.plate}</b></div><p>{task.description}</p><small className={styles.subtle}>Натисніть, щоб підтвердити номер і відкрити роботу</small><span className={`${styles.pill} ${statusTone(itemStatus)}`}>{statusLabel[itemStatus] || itemStatus}</span></button>; })}</div>{!visibleWorkTasks.length && !visibleWorkAppointments.length && <div className={styles.empty}>{worksHeading.empty}</div>}</main></>}
+      {screen === "WORKS" && <><TopBar title="Мої роботи" onBack={() => setScreen("HOME")} /><main className={styles.content}><div className={styles.pageTitle}><h1>{worksHeading.title}</h1><p>{worksHeading.description}</p></div><div className={styles.filterBar} role="group" aria-label="Фільтр робіт"><button type="button" className={worksFilter === "ALL" ? styles.filterActive : ""} aria-pressed={worksFilter === "ALL"} onClick={() => setWorksFilter("ALL")}>Усі</button><button type="button" className={worksFilter === "OVERDUE" ? styles.filterActive : ""} aria-pressed={worksFilter === "OVERDUE"} onClick={() => setWorksFilter("OVERDUE")}>Протерміновані</button><button type="button" className={worksFilter === "TODAY" ? styles.filterActive : ""} aria-pressed={worksFilter === "TODAY"} onClick={() => setWorksFilter("TODAY")}>Сьогодні</button><button type="button" className={worksFilter === "FUTURE" ? styles.filterActive : ""} aria-pressed={worksFilter === "FUTURE"} onClick={() => setWorksFilter("FUTURE")}>Майбутні</button></div><div className={styles.stack}>{visibleWorkAppointments.map((item) => { const itemStatus = appointmentStatus(item); const overdue = isAppointmentOverdue(item); return <button type="button" className={styles.listCard} style={overdue ? overdueCardStyle : undefined} key={`appointment:${item.id}`} onClick={() => openAppointment(item)}><div><h3>{item.vehicle}</h3><b style={overdue ? { color: "var(--m-danger)" } : undefined}>{item.plate}</b></div><p>{item.problem || "Запис на СТО"}</p><div className={styles.meta}><span>Час <b style={overdue ? { color: "var(--m-danger)" } : undefined}>{notificationTime(item.plannedStartAt)}</b></span><span>Пост <b>{item.post || "—"}</b></span></div><span className={`${styles.pill} ${overdue ? "" : statusTone(itemStatus)}`} style={overdue ? overduePillStyle : undefined}>{overdue ? "Протерміновано" : statusLabel[itemStatus] || itemStatus}</span></button>; })}{visibleWorkTasks.map((task) => { const itemStatus = task.workOrderStatus || task.status; const taskAppointment = appointmentForTask(task, appointments); const overdue = Boolean(taskAppointment && isAppointmentOverdue(taskAppointment)); return <button type="button" className={styles.listCard} style={overdue ? overdueCardStyle : undefined} key={task.id} onClick={() => openTask(task)}><div><h3>{task.vehicle}</h3><b style={overdue ? { color: "var(--m-danger)" } : undefined}>{task.plate}</b></div><p>{task.description}</p><div className={styles.meta}><span>Час <b style={overdue ? { color: "var(--m-danger)" } : undefined}>{taskAppointment ? notificationTime(taskAppointment.plannedStartAt) : "—"}</b></span><span>Пост <b>{taskAppointment?.post || "—"}</b></span></div><span className={`${styles.pill} ${overdue ? "" : statusTone(itemStatus)}`} style={overdue ? overduePillStyle : undefined}>{overdue ? "Протерміновано" : statusLabel[itemStatus] || itemStatus}</span></button>; })}</div>{!visibleWorkTasks.length && !visibleWorkAppointments.length && <div className={styles.empty}>{worksHeading.empty}</div>}</main></>}
 
-      {screen === "WORK_DETAIL" && selectedTask && <><TopBar title="Робота" onBack={() => setScreen("WORKS")} /><main className={styles.content}><section className={styles.card}><div className={styles.taskTop}><div className={styles.carIcon}>🚗</div><div><h2>{selectedTask.vehicle}</h2><p>{selectedTask.plate}</p></div><span className={`${styles.pill} ${selectedTaskOverdue ? "" : statusTone(selectedTask.status)}`} style={selectedTaskOverdue ? overduePillStyle : undefined}>{selectedTaskOverdue ? "Прострочено" : statusLabel[selectedTask.status] || selectedTask.status}</span></div><div className={styles.metaGrid}><span>Пост<b>{selectedAppointment?.post || "—"}</b></span><span>Початок<b>{time(selectedTask.startedAt || selectedAppointment?.plannedStartAt)}</b></span><span>Тривалість<b>{duration(selectedAppointment?.plannedStartAt, selectedAppointment?.plannedEndAt)}</b></span></div>{selectedTaskOverdue && <p className={styles.subtle} style={{ color: "var(--m-danger)", fontWeight: 800 }}>Плановий час уже минув. Робота потребує рішення.</p>}</section><section className={styles.card}><div className={styles.sectionHead}><div><h2>Роботи за комерційною пропозицією</h2><p>{selectedOrderTasks.filter((item) => isDone(item.status)).length} з {selectedOrderTasks.length} виконано</p></div></div><div className={styles.orderLines}>{selectedOrderTasks.map((item) => <div key={item.id}><i className={statusTone(item.status)}>●</i><div><strong>{item.description}</strong><small>{item.laborHours ? `${item.laborHours} нормо-год` : item.type}</small></div><span>{statusLabel[item.status] || item.status}</span></div>)}</div></section>{selectedRepairCase?.parts?.length ? <section className={styles.card}><div className={styles.sectionHead}><div><h2>Запчастини</h2><p>Деталі цієї ремонтної справи</p></div></div><div className={styles.orderLines}>{selectedRepairCase.parts.map((part) => <div key={part.id}><i className={statusTone(part.status)}>●</i><div><strong>{part.description}</strong><small>{[part.brand, part.article].filter(Boolean).join(" · ") || "Запчастина"}</small></div><span>{part.plannedQuantity || "1"} {part.unit} · {statusLabel[part.status] || part.status}</span></div>)}</div></section> : null}<section className={styles.card}><div className={styles.sectionHead}><div><h2>Керування роботою</h2><p>Фіксується в історії замовлення</p></div></div>{selectedTask.status === "APPROVED" && <button className={styles.primary} disabled={Boolean(busy)} onClick={() => setShowPlateVerification(true)}>▶ Почати роботу</button>}{selectedTask.status === "IN_PROGRESS" && <div className={styles.twoButtons}><button className={styles.secondary} disabled={Boolean(busy)} onClick={() => void runAction("PAUSE")}>Ⅱ Пауза</button><button className={styles.successButton} disabled={Boolean(busy)} onClick={() => void runAction("COMPLETE")}>✓ Завершити</button></div>}{selectedTask.status === "PAUSED" && <div className={styles.twoButtons}><button className={styles.primary} disabled={Boolean(busy)} onClick={() => void runAction("RESUME")}>▶ Продовжити</button><button className={styles.successButton} disabled={Boolean(busy)} onClick={() => void runAction("COMPLETE")}>✓ Завершити</button></div>}{isDone(selectedTask.status) && <div className={styles.doneBox}>✓ Роботу завершено</div>}{selectedTaskOverdue && <button type="button" className={styles.secondary} style={{ width: "100%", marginTop: 12 }} onClick={() => setShowExecutionIssue(true)}>Не можу виконати роботу</button>}<div className={styles.actionList}><button type="button" onClick={() => setScreen("FINDING")}>📷 Додати фото / виявлений дефект <span>›</span></button><button type="button" onClick={() => { setSupportKind("PART_REQUEST"); setSupportText(""); setScreen("SUPPORT"); }}>⚙ Запросити запчастину <span>›</span></button><button type="button" onClick={() => { setSupportKind("QUESTION"); setSupportText(""); setScreen("SUPPORT"); }}>💬 Поставити питання менеджеру <span>›</span></button></div></section></main>{showExecutionIssue && <MechanicExecutionIssueForm task={selectedTask} onClose={() => setShowExecutionIssue(false)} onSubmitted={(notice) => { setShowExecutionIssue(false); setMessage(notice); void loadNotifications(); }} />}{showPlateVerification && <MechanicTaskPlateVerification task={selectedTask} onClose={() => setShowPlateVerification(false)} onVerified={async () => { setShowPlateVerification(false); await runAction("START"); }} />}</>}
+      {screen === "WORK_DETAIL" && selectedTask && <><TopBar title="Робота" onBack={() => setScreen("WORKS")} /><main className={styles.content}><section className={styles.card}><div className={styles.taskTop}><div><h2>{selectedTask.vehicle}</h2><p>{selectedTask.plate}</p></div><span className={`${styles.pill} ${selectedTaskOverdue ? "" : statusTone(selectedTask.status)}`} style={selectedTaskOverdue ? overduePillStyle : undefined}>{selectedTaskOverdue ? "Прострочено" : statusLabel[selectedTask.status] || selectedTask.status}</span></div><div className={styles.metaGrid}><span>Пост<b>{selectedAppointment?.post || "—"}</b></span><span>Початок<b>{time(selectedTask.startedAt || selectedAppointment?.plannedStartAt)}</b></span><span>Тривалість<b>{duration(selectedAppointment?.plannedStartAt, selectedAppointment?.plannedEndAt)}</b></span></div>{selectedTaskOverdue && <p className={styles.subtle} style={{ color: "var(--m-danger)", fontWeight: 800 }}>Плановий час уже минув. Робота потребує рішення.</p>}</section><section className={styles.card}><div className={styles.sectionHead}><div><h2>Роботи за комерційною пропозицією</h2><p>{selectedOrderTasks.filter((item) => isDone(item.status)).length} з {selectedOrderTasks.length} виконано</p></div></div><div className={styles.orderLines}>{selectedOrderTasks.map((item) => <div key={item.id}><i className={statusTone(item.status)}>●</i><div><strong>{item.description}</strong><small>{item.laborHours ? `${item.laborHours} нормо-год` : item.type}</small></div><span>{statusLabel[item.status] || item.status}</span></div>)}</div></section>{selectedRepairCase?.parts?.length ? <section className={styles.card}><div className={styles.sectionHead}><div><h2>Запчастини</h2><p>Деталі цієї ремонтної справи</p></div></div><div className={styles.orderLines}>{selectedRepairCase.parts.map((part) => <div key={part.id}><i className={statusTone(part.status)}>●</i><div><strong>{part.description}</strong><small>{[part.brand, part.article].filter(Boolean).join(" · ") || "Запчастина"}</small></div><span>{part.plannedQuantity || "1"} {part.unit} · {statusLabel[part.status] || part.status}</span></div>)}</div></section> : null}<section className={styles.card}><div className={styles.sectionHead}><div><h2>Керування роботою</h2><p>Фіксується в історії замовлення</p></div></div>{selectedTask.status === "APPROVED" && <button className={styles.primary} disabled={Boolean(busy)} onClick={() => setShowPlateVerification(true)}>▶ Почати роботу</button>}{selectedTask.status === "IN_PROGRESS" && <div className={styles.twoButtons}><button className={styles.secondary} disabled={Boolean(busy)} onClick={() => void runAction("PAUSE")}>Ⅱ Пауза</button><button className={styles.successButton} disabled={Boolean(busy)} onClick={() => void runAction("COMPLETE")}>✓ Завершити</button></div>}{selectedTask.status === "PAUSED" && <div className={styles.twoButtons}><button className={styles.primary} disabled={Boolean(busy)} onClick={() => void runAction("RESUME")}>▶ Продовжити</button><button className={styles.successButton} disabled={Boolean(busy)} onClick={() => void runAction("COMPLETE")}>✓ Завершити</button></div>}{isDone(selectedTask.status) && <div className={styles.doneBox}>✓ Роботу завершено</div>}{selectedTaskOverdue && <button type="button" className={styles.secondary} style={{ width: "100%", marginTop: 12 }} onClick={() => setShowExecutionIssue(true)}>Не можу виконати роботу</button>}<div className={styles.actionList}><button type="button" onClick={() => setScreen("FINDING")}>📷 Додати фото / виявлений дефект <span>›</span></button><button type="button" onClick={() => { setSupportKind("PART_REQUEST"); setSupportText(""); setScreen("SUPPORT"); }}>⚙ Запросити запчастину <span>›</span></button><button type="button" onClick={() => { setSupportKind("QUESTION"); setSupportText(""); setScreen("SUPPORT"); }}>💬 Поставити питання менеджеру <span>›</span></button></div></section></main>{showExecutionIssue && <MechanicExecutionIssueForm task={selectedTask} onClose={() => setShowExecutionIssue(false)} onSubmitted={(notice) => { setShowExecutionIssue(false); setMessage(notice); void loadNotifications(); }} />}{showPlateVerification && <MechanicTaskPlateVerification task={selectedTask} onClose={() => setShowPlateVerification(false)} onVerified={async () => { setShowPlateVerification(false); await runAction("START"); }} />}</>}
 
       {screen === "FINDING" && selectedTask && <><TopBar title="Виявлений дефект" onBack={() => setScreen("WORK_DETAIL")} /><main className={styles.content}><section className={styles.card}><h2>{selectedTask.vehicle} · {selectedTask.plate}</h2><p className={styles.subtle}>🔧 {selectedTask.description}</p></section><section className={styles.formCard}><label><span>Що виявлено *</span><textarea value={findingText} onChange={(event) => setFindingText(event.target.value)} rows={4} placeholder="Опишіть дефект або несправність" /></label><label><span>Рекомендація</span><textarea value={findingRecommendation} onChange={(event) => setFindingRecommendation(event.target.value)} rows={3} placeholder="Що рекомендуєте зробити" /></label><div><span className={styles.label}>Терміновість</span><div className={styles.segmented}>{(["INFO", "SOON", "CRITICAL"] as FindingUrgency[]).map((value) => <button type="button" key={value} className={findingUrgency === value ? styles.segmentActive : ""} onClick={() => setFindingUrgency(value)}>{value === "INFO" ? "Рекомендація" : value === "SOON" ? "Скоро" : "Критично"}</button>)}</div></div><label className={styles.photoButton}>📷 Додати фото (1–3)<input type="file" accept="image/jpeg,image/png,image/webp" multiple capture="environment" onChange={(event) => { const files = Array.from(event.currentTarget.files ?? []).filter((file) => ["image/jpeg", "image/png", "image/webp"].includes(file.type)); setFindingFiles((current) => [...current, ...files].slice(0, 3)); event.currentTarget.value = ""; }} /></label>{findingFiles.length > 0 && <div className={styles.fileList}>{findingFiles.map((file, index) => <div key={`${file.name}-${index}`}><span>{file.name || `Фото ${index + 1}`}</span><button type="button" onClick={() => setFindingFiles((current) => current.filter((_, i) => i !== index))}>×</button></div>)}</div>}<button type="button" className={styles.primary} disabled={busy === "finding"} onClick={() => void submitFinding()}>{busy === "finding" ? "Передаю…" : "Передати сервіс-менеджеру →"}</button></section></main></>}
 
@@ -939,7 +948,7 @@ export function MechanicStandaloneCabinet({ userName }: { userName?: string | nu
 
       {message && <div className={styles.toastGood}><span>{message}</span><button type="button" onClick={() => setMessage("")}>×</button></div>}
       {error && <div className={styles.toastBad}><span>{error}</span><button type="button" onClick={() => setError("")}>×</button></div>}
-      <BottomNav screen={screen} notificationCount={notificationCount} onChange={(next) => { if (next === "WORKS") setWorksFilter("ALL"); setScreen(next); setError(""); setMessage(""); }} />
+      <BottomNav screen={screen} onChange={(next) => { if (next === "WORKS") setWorksFilter("ALL"); setScreen(next); setError(""); setMessage(""); }} />
     </div>
   </div>;
 }

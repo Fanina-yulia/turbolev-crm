@@ -66,6 +66,10 @@ function mechanicNav() {
   return document.querySelector<HTMLElement>('nav[aria-label="Навігація механіка"]');
 }
 
+function mechanicScanSlot() {
+  return document.querySelector<HTMLElement>('[data-mechanic-scan-slot]') || mechanicNav();
+}
+
 function mechanicHero() {
   const notificationButton = document.querySelector<HTMLElement>('[data-mechanic-cabinet="true"] button[aria-label="Сповіщення"]');
   return notificationButton?.closest("header") as HTMLElement | null;
@@ -116,7 +120,7 @@ export function MechanicVehicleScanner() {
     let boundNav: HTMLElement | null = null;
 
     const syncTargets = () => {
-      const nextNav = mechanicNav();
+      const nextNav = mechanicScanSlot();
       const nextHero = mechanicHero();
       setNavTarget((current) => current === nextNav ? current : nextNav);
       setHeroTarget((current) => current === nextHero ? current : nextHero);

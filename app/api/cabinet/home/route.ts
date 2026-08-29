@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getPrisma } from "@/src/lib/prisma";
 import { getAccessContext, hasPermission } from "@/src/security/access-context";
 import { PERMISSIONS } from "@/src/security/permissions";
-import { effectiveAssignmentStatus, listActiveMechanicAssignments } from "@/src/services/mechanic-assignments.service";
+import { effectiveAssignmentStatus, listAllActiveMechanicAppointments } from "@/src/services/mechanic-assignments.service";
 import { buildStationManagerControlCenter } from "@/src/services/station-manager-control-center.service";
 
 export const runtime = "nodejs";
@@ -204,7 +204,7 @@ export async function GET(request: Request) {
           orderBy: [{ status: "asc" }, { updatedAt: "desc" }],
           take: 40,
         }),
-        listActiveMechanicAssignments(mechanic.id),
+        listAllActiveMechanicAppointments(mechanic.id),
       ]);
 
       const activeLines = lines.filter((line) => line.status !== "COMPLETED");
