@@ -144,7 +144,7 @@ export function VehicleRender(props: VehicleRenderProps) {
         const state = data.library?.state || "MISSING";
         setLibraryState(state);
         setLibraryError(data.library?.error || null);
-        if (state === "GENERATING") {
+        if (state === "GENERATING" || state === "MISSING") {
           pollTimer = setTimeout(() => void inspect(), 3000);
         } else {
           setResolving(false);
@@ -228,7 +228,10 @@ export function VehicleRender(props: VehicleRenderProps) {
         setLibraryError(null);
         setResolving(false);
       }}
-      onError={() => setFailed(true)}
+      onError={() => {
+        setFailed(true);
+        setManualResolveEpoch((value) => value || 1);
+      }}
     /> : <span
       className={`${styles.localFallback} ${interactiveFallback ? styles.localFallbackInteractive : ""}`}
       role={interactiveFallback ? "button" : undefined}
