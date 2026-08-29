@@ -2,6 +2,7 @@
 
 import dynamic from "next/dynamic";
 import { MechanicStandaloneCabinet } from "./mechanic-standalone-cabinet";
+import { MechanicBottomNavRestore } from "./mechanic-bottom-nav-restore";
 
 const MechanicVehicleScanner = dynamic(
   () => import("./mechanic-vehicle-scanner").then((module) => module.MechanicVehicleScanner),
@@ -13,14 +14,15 @@ const MechanicDiagnosticsArrivalBridge = dynamic(
 );
 
 /**
- * The mechanic cabinet has one canonical notification surface:
- * MechanicStandaloneCabinet. Keep this wrapper limited to the legacy scanner
- * bridges so assignment notifications cannot be rendered a second time.
+ * MechanicStandaloneCabinet remains the canonical mechanic workspace.
+ * The scanner and navigation bridges only restore cross-screen mobile controls
+ * and must not duplicate mechanic business data or notification rendering.
  */
 export function MechanicLiveCabinet({ userName }: { userName?: string | null }) {
   return <div style={{ minHeight: "100dvh", background: "#0f141a" }}>
     <MechanicStandaloneCabinet userName={userName} />
     <MechanicVehicleScanner />
+    <MechanicBottomNavRestore />
     <MechanicDiagnosticsArrivalBridge />
   </div>;
 }
