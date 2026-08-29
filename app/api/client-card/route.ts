@@ -1,8 +1,9 @@
 import { randomUUID } from "node:crypto";
-import { NextRequest, NextResponse } from "next/server";
+import { after, NextRequest, NextResponse } from "next/server";
 import { getSqlPool } from "@/src/lib/sql";
 import { lookupVehicleByPlate, normalizeRegistrationPlate } from "@/src/services/vehicle-lookup.service";
 import { decodeVinIntelligence } from "@/src/services/vin-intelligence.service";
+import { autoGenerateVehicleImage } from "@/src/services/vehicle-images/vehicle-image-auto.service";
 import { validateVin } from "@/src/domain/vin";
 import { authorize } from "@/src/security/authorize";
 import { PERMISSIONS } from "@/src/security/permissions";
@@ -258,6 +259,11 @@ export async function POST(request: NextRequest) {
     if (conflict.rows[0]) await db.query(`UPDATE "Vehicle" SET "clientId"=$2,"plateNumber"=COALESCE($3,"plateNumber"),"plateNormalized"=COALESCE($4,"plateNormalized"),"vin"=COALESCE($5,"vin"),"brand"=COALESCE($6,"brand"),"model"=COALESCE($7,"model"),"year"=COALESCE($8,"year"),"engineName"=COALESCE($9,"engineName"),"engineVolumeCm3"=COALESCE($10,"engineVolumeCm3"),"fuelType"=COALESCE($11,"fuelType"),"bodyType"=COALESCE($12,"bodyType"),"driveType"=COALESCE($13,"driveType"),"vehicleType"=COALESCE($14,"vehicleType"),"turboLevClass"=COALESCE($15,"turboLevClass"),"priceCoefficient"=$16,"vehicleDataSource"=$17,"vehicleDataConfidence"=$18,"lastVehicleLookupAt"=NOW(),"updatedAt"=NOW() WHERE "id"=$1`, values);
     else await db.query(`INSERT INTO "Vehicle" ("id","clientId","plateNumber","plateNormalized","vin","brand","model","year","engineName","engineVolumeCm3","fuelType","bodyType","driveType","vehicleType","turboLevClass","priceCoefficient","vehicleDataSource","vehicleDataConfidence","lastVehicleLookupAt","createdAt","updatedAt") VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,NOW(),NOW(),NOW())`, values);
     await db.query("COMMIT");
+    after(async () => {
+      await autoGenerateVehicleImage(vehicleId).catch((error) => {
+        console.error("background vehicle image generation after client-card save failed", { vehicleId, message: error instanceof Error ? error.message : "unknown error" });
+      });
+    });
     const client = await readClient(phoneNormalized);
     const vehicle = client?.vehicles?.find((v: { id: string }) => v.id === vehicleId) || null;
     return NextResponse.json({ ok:true, client, vehicle });
