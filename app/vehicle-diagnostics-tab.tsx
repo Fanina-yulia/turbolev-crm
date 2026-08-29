@@ -47,12 +47,19 @@ type DiagnosticView = {
 type Props = { vehicle: VehicleCardContract; diagnosticId?: string | null };
 
 const workflowLabels: Record<WorkflowState, string> = { PENDING: "Очікує", IN_PROGRESS: "В роботі", SUBMITTED: "На перевірці", RETURNED: "В роботі", CONFIRMED: "Підтверджена", CANCELLED: "Скасована" };
-const urgencyLabels: Record<string, string> = { CRITICAL: "Критично", SOON: "Найближчим часом", INFO: "Рекомендовано" };
-const actionLabels: Record<string, string> = { REPLACE: "Заміна", REPAIR: "Ремонт", ADJUST: "Регулювання", CLEAN: "Обслуговування", ADDITIONAL_DIAGNOSTICS: "Додаткова діагностика", NONE: "Потребує оцінки" };
-
 function stateOf(row: DiagnosticRow): WorkflowState { if (row.reviewState === "RETURNED") return "RETURNED"; return row.workflowState || row.status; }
 function dateText(value: string | null | undefined) { if (!value) return "—"; const date = new Date(value); return Number.isNaN(date.getTime()) ? "—" : new Intl.DateTimeFormat("uk-UA", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }).format(date); }
 function vehicleTitle(vehicle: VehicleCardContract) { return [vehicle.brand, vehicle.model, vehicle.year].filter(Boolean).join(" ") || "Автомобіль"; }
+
+type CardStatus = { label: string; tone: "good" | "review" | "danger" | "muted" };
+function cardStatus(row: DiagnosticRow, findings: Array<{ item: DiagnosticItem }>): CardStatus {
+  const state = stateOf(row);
+  if (state === "CONFIRMED") return { label: "Готово", tone: "good" };
+  if (state === "CANCELLED") return { label: "Скасована", tone: "danger" };
+  if (findings.some(({ item }) => item.state === "DEFECT" || item.finding?.urgency === "CRITICAL")) return { label: "Критично", tone: "danger" };
+  if (state === "SUBMITTED") return { label: "На перевірці", tone: "review" };
+  return { label: "В роботі", tone: "review" };
+}
 
 export function VehicleDiagnosticsTab({ vehicle, diagnosticId }: Props) {
   const [rows, setRows] = useState<DiagnosticRow[]>([]);
@@ -97,8 +104,10 @@ export function VehicleDiagnosticsTab({ vehicle, diagnosticId }: Props) {
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Не вдалося створити Комерційну пропозицію."); }
     finally { setBusyId(""); }
   }
+  function openCommercial(row: DiagnosticRow) {
+    if (row.commercialProposal?.workOrderId) navigateCrm("Авто", { vehicleId: vehicle.id, vehiclePage: "commercial-offer", workOrderId: row.commercialProposal.workOrderId, workOrderTab: "estimate" });
+  }
   function openDiagnostic(row: DiagnosticRow) { navigateCrm("Діагностика", { diagnosticId: row.id, vehicleId: vehicle.id }); }
-  function openCommercial(row: DiagnosticRow) { if (row.commercialProposal?.workOrderId) navigateCrm("Авто", { vehicleId: vehicle.id, vehiclePage: "commercial-offer", workOrderId: row.commercialProposal.workOrderId, workOrderTab: "estimate" }); }
 
   if (loading) return <div className={styles.state}>Завантажую Діагностичну карту…</div>;
   if (error && !rows.length) return <div className={styles.error}>{error}<button type="button" onClick={() => setRefreshTick((value) => value + 1)}>Повторити</button></div>;
@@ -106,12 +115,12 @@ export function VehicleDiagnosticsTab({ vehicle, diagnosticId }: Props) {
 
   return <div className={styles.wrap}>
     {error ? <div className={styles.error}>{error}</div> : null}
-    {selected ? <DiagnosticCardDetail vehicle={vehicle} row={selected} busy={busyId === selected.id} onOpenDiagnostic={() => openDiagnostic(selected)} onCreateProposal={() => void createCommercialProposal(selected)} onOpenCommercial={() => openCommercial(selected)} /> : null}
+    {selected ? <DiagnosticCardDetail row={selected} busy={busyId === selected.id} onOpenDiagnostic={() => openDiagnostic(selected)} onOpenPartsSelection={() => navigateCrm("Підбір запчастин", { diagnosticId: selected.id, vehicleId: vehicle.id, plate: vehicle.plateNumber || "", vin: vehicle.vin || "" })} onCreateProposal={() => void createCommercialProposal(selected)} onOpenCommercial={() => openCommercial(selected)} /> : null}
     <div className={styles.historyBar}><div><span className={styles.eyebrow}>ІСТОРІЯ ДІАГНОСТИК</span><strong>{vehicleTitle(vehicle)}</strong></div><div className={styles.historyItems}>{rows.map((row) => { const state = stateOf(row); return <button type="button" key={row.id} className={selectedId === row.id ? styles.historyActive : ""} onClick={() => setSelectedId(row.id)}><b>{row.diagnosticCard?.number || "Діагностика"}</b><span>{workflowLabels[state]}</span><small>{dateText(row.confirmedAt || row.updatedAt || row.createdAt)}</small></button>; })}</div></div>
   </div>;
 }
 
-function DiagnosticCardDetail({ vehicle, row, busy, onOpenDiagnostic, onCreateProposal, onOpenCommercial }: { vehicle: VehicleCardContract; row: DiagnosticRow; busy: boolean; onOpenDiagnostic: () => void; onCreateProposal: () => void; onOpenCommercial: () => void }) {
+function DiagnosticCardDetail({ row, busy, onOpenDiagnostic, onOpenPartsSelection, onCreateProposal, onOpenCommercial }: { row: DiagnosticRow; busy: boolean; onOpenDiagnostic: () => void; onOpenPartsSelection: () => void; onCreateProposal: () => void; onOpenCommercial: () => void }) {
   const [view, setView] = useState<DiagnosticView | null>(null);
   const [cardNumber, setCardNumber] = useState(row.diagnosticCard?.number || "");
   const [loading, setLoading] = useState(true);
@@ -119,6 +128,9 @@ function DiagnosticCardDetail({ vehicle, row, busy, onOpenDiagnostic, onCreatePr
   const [selectedFindingId, setSelectedFindingId] = useState<string | null>(null);
   const [activePhotoId, setActivePhotoId] = useState<string | null>(null);
   const [lightboxPhoto, setLightboxPhoto] = useState<DiagnosticMedia | null>(null);
+  const [editingComment, setEditingComment] = useState(false);
+  const [mechanicComment, setMechanicComment] = useState("");
+  const [savingComment, setSavingComment] = useState(false);
 
   useEffect(() => {
     const controller = new AbortController(); setLoading(true); setError("");
@@ -130,7 +142,10 @@ function DiagnosticCardDetail({ vehicle, row, busy, onOpenDiagnostic, onCreatePr
       if (!structuredResponse.ok || !structuredBody?.ok || !structuredBody.diagnostic || !Array.isArray(structuredBody.inspections) || !structuredBody.counts) throw new Error(structuredBody?.message || structuredBody?.error || "Не вдалося завантажити діагностичну карту.");
       const cardBody = await cardResponse.json().catch(() => null) as { ok?: boolean; card?: { number?: string } | null } | null;
       if (cardBody?.card?.number) setCardNumber(cardBody.card.number);
-      if (!controller.signal.aborted) setView({ diagnostic: structuredBody.diagnostic, inspections: structuredBody.inspections, counts: structuredBody.counts });
+      if (!controller.signal.aborted) {
+        setView({ diagnostic: structuredBody.diagnostic, inspections: structuredBody.inspections, counts: structuredBody.counts });
+        setMechanicComment(structuredBody.diagnostic.review.mechanicComment || "");
+      }
     }).catch((cause) => { if (!controller.signal.aborted && cause instanceof Error && cause.name !== "AbortError") setError(cause.message); })
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
@@ -142,23 +157,37 @@ function DiagnosticCardDetail({ vehicle, row, busy, onOpenDiagnostic, onCreatePr
   const activePhoto = photos.find((photo) => photo.id === activePhotoId) || photos[0] || null;
   const parts = findings.filter(({ item }) => Boolean(item.finding?.suggestedPartName || item.finding?.action === "REPLACE"));
   const state = stateOf(row);
-  const confirmed = state === "CONFIRMED";
+  const status = cardStatus(row, findings);
 
   useEffect(() => { if (!selectedFindingId || !findings.some(({ item }) => item.id === selectedFindingId)) setSelectedFindingId(findings[0]?.item.id || null); }, [findings, selectedFindingId]);
   const firstPhotoId = photos[0]?.id || null;
   useEffect(() => { setActivePhotoId(firstPhotoId); }, [selectedFinding?.item.id, firstPhotoId]);
 
+  async function saveMechanicComment() {
+    setSavingComment(true); setError("");
+    try {
+      const response = await fetch(`/api/diagnostics/${encodeURIComponent(row.id)}/structured`, { method: "PATCH", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "UPDATE_MECHANIC_COMMENT", mechanicComment }) });
+      const body = await response.json().catch(() => null) as { ok?: boolean; error?: string; message?: string } | null;
+      if (!response.ok || !body?.ok) throw new Error(body?.message || body?.error || "Не вдалося зберегти примітку механіка.");
+      setView((current) => current ? { ...current, diagnostic: { ...current.diagnostic, review: { ...current.diagnostic.review, mechanicComment: mechanicComment.trim() || null } } } : current);
+      setEditingComment(false);
+      window.dispatchEvent(new CustomEvent("turbolev:data-changed"));
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "Не вдалося зберегти примітку механіка."); }
+    finally { setSavingComment(false); }
+  }
+
   if (loading) return <div className={styles.state}>Завантажую результати діагностики…</div>;
   if (error || !view) return <div className={styles.error}>{error || "Діагностичну карту не знайдено."}<button type="button" onClick={onOpenDiagnostic}>Відкрити діагностику</button></div>;
 
   return <article className={styles.card}>
-    <header className={styles.cardHeader}><div><span className={styles.eyebrow}>ДІАГНОСТИЧНА КАРТА</span><h3>{cardNumber || "Результати діагностики"}</h3><p>{dateText(row.confirmedAt || row.updatedAt || row.createdAt)} · {row.assignedMechanic?.name ? `Механік: ${row.assignedMechanic.name}` : "Механік не вказаний"}</p></div><span className={`${styles.status} ${confirmed ? styles.statusGood : state === "CANCELLED" ? styles.statusMuted : styles.statusWork}`}>{workflowLabels[state]}</span></header>
+    <header className={styles.cardHeader}><div><span className={styles.eyebrow}>ДІАГНОСТИЧНА КАРТА</span><h3>{cardNumber || "Результати діагностики"}</h3><p>{dateText(row.confirmedAt || row.updatedAt || row.createdAt)} · {row.assignedMechanic?.name ? `Механік: ${row.assignedMechanic.name}` : "Механік не вказаний"}</p></div><div className={styles.cardHeaderActions}><span className={`${styles.status} ${status.tone === "good" ? styles.statusGood : status.tone === "danger" ? styles.statusDanger : status.tone === "muted" ? styles.statusMuted : styles.statusReview}`}><i className={styles.statusDot} />{status.label}</span><button type="button" className={styles.iconButton} aria-label="Редагувати примітки механіка" onClick={() => setEditingComment(true)}>✎</button><button type="button" className={styles.secondaryAction} onClick={editingComment ? () => void saveMechanicComment() : onOpenDiagnostic} disabled={savingComment}>{savingComment ? "Зберігаю…" : "Зберегти"}</button><button type="button" className={styles.primaryAction} onClick={onOpenPartsSelection}>Підбір деталей →</button></div></header>
     <div className={styles.workspaceGrid}>
       <section className={styles.diagramPanel} aria-label="Схема автомобіля"><div className={styles.panelHeading}><div><span className={styles.eyebrow}>СХЕМА АВТОМОБІЛЯ</span><h4>Проблемні зони</h4></div><span className={styles.legend}><i className={styles.legendDanger}/>Критично <i className={styles.legendAttention}/>Увага</span></div><VehicleSchematic findings={findings} selectedId={selectedFinding?.item.id || null} onSelect={setSelectedFindingId}/>{!findings.length && <div className={styles.healthy}><b>Автомобіль перевірено</b><span>Критичних несправностей не зафіксовано.</span></div>}</section>
-      <section className={styles.partsPanel} aria-label="Деталі до заміни"><div className={styles.panelHeading}><div><span className={styles.eyebrow}>РЕКОМЕНДАЦІЇ</span><h4>Деталі до заміни</h4></div><b className={styles.countBadge}>{parts.length}</b><button type="button" className={styles.addFinding} aria-label="Додати деталь, рідину або розхідник">+</button></div>{!parts.length && <div className={styles.panelEmpty}>Деталі до заміни за результатами цієї діагностики не визначені.</div>}<div className={styles.findingList}>{parts.map(({ section, item }, index) => <button type="button" className={`${styles.findingRow} ${selectedFinding?.item.id === item.id ? styles.findingSelected : ""}`} key={item.id} onClick={() => setSelectedFindingId(item.id)}><span className={`${styles.findingNumber} ${item.state === "DEFECT" ? styles.findingNumberDanger : styles.findingNumberAttention}`}>{index + 1}</span><span className={styles.findingCopy}><strong>{item.finding?.suggestedPartName || item.name}</strong><small>{section} · {item.finding?.findingText || item.note || "Виявлено несправність"}</small></span><span className={styles.findingAction}>{actionLabels[item.finding?.action || "REPLACE"] || "Заміна"}</span></button>)}</div></section>
+      <section className={styles.partsPanel} aria-label="Деталі до заміни"><div className={styles.panelHeading}><div><span className={styles.eyebrow}>РЕКОМЕНДАЦІЇ</span><h4>Деталі до заміни <b className={styles.inlineCount}>{parts.length}</b> <button type="button" className={styles.addFinding} aria-label="Додати деталь, рідину або розхідник">+</button></h4></div></div>{!parts.length && <div className={styles.panelEmpty}>Деталі до заміни за результатами цієї діагностики не визначені.</div>}<div className={styles.findingList}>{parts.map(({ section, item }, index) => <button type="button" className={`${styles.findingRow} ${selectedFinding?.item.id === item.id ? styles.findingSelected : ""}`} key={item.id} onClick={() => setSelectedFindingId(item.id)}><span className={`${styles.findingNumber} ${item.state === "DEFECT" ? styles.findingNumberDanger : styles.findingNumberAttention}`}>{index + 1}</span><span className={styles.findingCopy}><strong>{item.finding?.suggestedPartName || item.name}</strong><small>{section} · {item.finding?.findingText || item.note || "Виявлено несправність"}</small></span><span className={styles.findingSeverity} aria-label={item.state === "DEFECT" ? "Критично" : "Увага"}><i className={item.state === "DEFECT" ? styles.severityDanger : styles.severityAttention} /></span></button>)}</div></section>
       <section className={styles.evidencePanel} aria-label="Фото проблемного місця"><div className={styles.panelHeading}><div><span className={styles.eyebrow}>ДОКАЗИ ДЕФЕКТУ</span><h4>Фото проблемного місця</h4></div>{photos.length ? <span className={styles.photoCounter}>{Math.max(1, photos.findIndex((photo) => photo.id === activePhoto?.id) + 1)}/{photos.length}</span> : null}</div>{activePhoto ? <><button type="button" className={styles.photoMain} onClick={() => setLightboxPhoto(activePhoto)}><img src={`/api/diagnostics/${encodeURIComponent(row.id)}/media/${encodeURIComponent(activePhoto.id)}`} alt={activePhoto.fileName}/><span>Збільшити фото</span></button><div className={styles.thumbnails}>{photos.map((photo) => <button type="button" key={photo.id} className={activePhoto.id === photo.id ? styles.thumbnailActive : ""} onClick={() => setActivePhotoId(photo.id)}><img src={`/api/diagnostics/${encodeURIComponent(row.id)}/media/${encodeURIComponent(photo.id)}`} alt={photo.fileName}/></button>)}</div><div className={styles.evidenceSummary}><strong>{selectedFinding?.item.finding?.suggestedPartName || selectedFinding?.item.name || "Проблемна зона"}</strong><span>{selectedFinding?.section || "—"}</span><p>{selectedFinding?.item.finding?.findingText || selectedFinding?.item.note || "Додатковий опис відсутній."}</p></div></> : <div className={styles.noPhoto}><span aria-hidden="true">▧</span><b>Фото не прикріплені</b><small>Механік може додати фото проблемного місця у своєму кабінеті.</small></div>}</section>
     </div>
-    <section className={styles.conclusion}><div><span className={styles.eyebrow}>ВИСНОВОК</span><h4>Коментар механіка</h4><p>{view.diagnostic.review.mechanicComment || view.diagnostic.technicalConclusion || "Коментар до діагностики ще не доданий."}</p></div><div className={styles.actionArea}>{confirmed ? row.commercialProposal ? <button type="button" className={styles.primaryAction} onClick={onOpenCommercial}>Відкрити Комерційну пропозицію →</button> : <button type="button" className={styles.primaryAction} disabled={busy} onClick={onCreateProposal}>{busy ? "Створюю…" : "Сформувати Комерційну пропозицію →"}</button> : <button type="button" className={styles.secondaryAction} onClick={onOpenDiagnostic}>Відкрити робочу діагностику →</button>}</div></section>
+    <div className={styles.metaGrid}><section className={styles.notesPanel}><div className={styles.panelHeading}><div><span className={styles.eyebrow}>КОМЕНТАР МЕХАНІКА</span><h4>Примітки механіка</h4></div><button type="button" className={styles.editLink} onClick={() => setEditingComment((value) => !value)}>{editingComment ? "Скасувати" : "✎ Редагувати"}</button></div>{editingComment ? <textarea className={styles.notesEditor} value={mechanicComment} onChange={(event) => setMechanicComment(event.target.value)} maxLength={4000} placeholder="Додайте примітку механіка…" aria-label="Примітки механіка" /> : <p className={styles.notesText}>{view.diagnostic.review.mechanicComment || "Примітка механіка ще не додана."}</p>}{editingComment ? <div className={styles.notesActions}><span>{mechanicComment.length}/4000</span><button type="button" className={styles.primaryAction} onClick={() => void saveMechanicComment()} disabled={savingComment}>{savingComment ? "Зберігаю…" : "Зберегти примітку"}</button></div> : null}</section><section className={styles.statusPanel}><div className={styles.panelHeading}><div><span className={styles.eyebrow}>СТАН ДОКУМЕНТА</span><h4>Статус діагностичної карти</h4></div></div><div className={styles.statusLegend}><span className={status.tone === "danger" ? styles.statusLegendActiveDanger : ""}><i className={styles.statusDotDanger} />Критично</span><span className={status.tone === "review" ? styles.statusLegendActiveReview : ""}><i className={styles.statusDotReview} />На перевірці</span><span className={status.tone === "good" ? styles.statusLegendActiveGood : ""}><i className={styles.statusDotGood} />Готово</span></div>{state === "CONFIRMED" ? <button type="button" className={styles.primaryAction} onClick={row.commercialProposal ? onOpenCommercial : onCreateProposal} disabled={busy}>{busy ? "Створюю…" : row.commercialProposal ? "Відкрити Комерційну пропозицію →" : "Сформувати Комерційну пропозицію →"}</button> : null}</section></div>
+    {error ? <div className={styles.inlineError}>{error}</div> : null}
     {lightboxPhoto ? <div className={styles.lightbox} role="dialog" aria-modal="true" aria-label="Збільшене фото" onMouseDown={(event) => { if (event.target === event.currentTarget) setLightboxPhoto(null); }}><button type="button" className={styles.lightboxClose} onClick={() => setLightboxPhoto(null)} aria-label="Закрити">×</button><img src={`/api/diagnostics/${encodeURIComponent(row.id)}/media/${encodeURIComponent(lightboxPhoto.id)}`} alt={lightboxPhoto.fileName}/></div> : null}
   </article>;
 }

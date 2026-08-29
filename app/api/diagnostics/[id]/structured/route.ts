@@ -17,6 +17,7 @@ import {
   setDiagnosticSectionAllOk,
   startStructuredDiagnostic,
   StructuredDiagnosticError,
+  updateMechanicDiagnosticComment,
 } from "@/src/services/structured-diagnostics.service";
 import { markWalkInDiagnosticCompleted } from "@/src/services/walk-in-diagnostic-settlement.service";
 
@@ -73,6 +74,19 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
   const body = await request.json().catch(() => ({})) as Record<string, unknown>;
   const action = String(body.action || "").trim().toUpperCase();
   try {
+    if (action === "UPDATE_MECHANIC_COMMENT") {
+      const access = await authorize(PERMISSIONS.DIAGNOSTICS_WRITE, { request, minimumScope: "SELF" });
+      if (!access.allowed) return access.response!;
+      if (!access.context.user) return NextResponse.json({ ok: false, error: "UNAUTHENTICATED" }, { status: 401 });
+      if (isMechanic(access)) {
+        await getStructuredDiagnosticForMechanicReadOnly(access.context.user.id, id);
+      } else if (!(await managerLocationAllowed(access, id))) {
+        return NextResponse.json({ ok: false, error: "LOCATION_FORBIDDEN" }, { status: 403 });
+      }
+      const data = await updateMechanicDiagnosticComment(id, typeof body.mechanicComment === "string" ? body.mechanicComment : null, access.context.user.name || "CRM");
+      return NextResponse.json({ ok: true, ...(await withCompletion(id, data)) });
+    }
+
     if (action === "RETURN") {
       const access = await authorize(PERMISSIONS.DIAGNOSTICS_CONFIRM, { request, minimumScope: "LOCATION" });
       if (!access.allowed) return access.response!;

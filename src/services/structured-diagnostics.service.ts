@@ -198,6 +198,20 @@ export async function submitStructuredDiagnostic(userId: string, diagnosticReque
   await prisma.$transaction(async (tx) => { await tx.diagnosticInspection.updateMany({ where: { diagnosticRequestId }, data: { status: DiagnosticInspectionStatus.COMPLETED, completedAt: now } }); await tx.diagnosticReview.upsert({ where: { diagnosticRequestId }, create: { diagnosticRequestId, state: DiagnosticReviewState.SUBMITTED, submittedAt: now, mechanicComment: mechanicComment?.trim().slice(0,4000) || null }, update: { state: DiagnosticReviewState.SUBMITTED, submittedAt: now, returnedAt: null, mechanicComment: mechanicComment?.trim().slice(0,4000) || null } }); await tx.auditEvent.create({ data: { actorName: mechanic.name, entityType: "DiagnosticRequest", entityId: diagnosticRequestId, action: "DIAGNOSTIC_SUBMITTED", metadata: toPrismaJson({ source:"MECHANIC_MOBILE", counts:view.counts }) } }); }); return getStructuredDiagnostic(diagnosticRequestId);
 }
 
+export async function updateMechanicDiagnosticComment(diagnosticRequestId: string, mechanicComment: string | null, actorName = "CRM") {
+  const prisma = getPrisma();
+  const diagnostic = await prisma.diagnosticRequest.findUnique({ where: { id: diagnosticRequestId }, select: { id: true, status: true } });
+  if (!diagnostic) throw new StructuredDiagnosticError("DIAGNOSTIC_NOT_FOUND", "Діагностичну карту не знайдено.", 404);
+  if (diagnostic.status === DiagnosticRequestStatus.CANCELLED) throw new StructuredDiagnosticError("DIAGNOSTIC_LOCKED", "Скасовану діагностичну карту не можна редагувати.", 409);
+  const normalized = typeof mechanicComment === "string" ? mechanicComment.trim().slice(0, 4000) || null : null;
+  await prisma.$transaction(async (tx) => {
+    const before = await tx.diagnosticReview.findUnique({ where: { diagnosticRequestId } });
+    const after = await tx.diagnosticReview.upsert({ where: { diagnosticRequestId }, create: { diagnosticRequestId, mechanicComment: normalized }, update: { mechanicComment: normalized } });
+    await tx.auditEvent.create({ data: { actorName: actorName.trim().slice(0, 160) || "CRM", entityType: "DiagnosticRequest", entityId: diagnosticRequestId, action: "UPDATE_MECHANIC_COMMENT", before: toPrismaJson(before), after: toPrismaJson(after) } });
+  });
+  return getStructuredDiagnostic(diagnosticRequestId);
+}
+
 export async function returnStructuredDiagnostic(diagnosticRequestId: string, reviewerUserId: string, managerComment?: string | null) {
   const prisma = getPrisma(); const review = await ensureReview(diagnosticRequestId); if (review.state !== DiagnosticReviewState.SUBMITTED) throw new StructuredDiagnosticError("DIAGNOSTIC_NOT_SUBMITTED", "Повернути можна лише діагностику, передану на перевірку.", 409); const now = new Date(); await prisma.$transaction(async (tx) => { await tx.diagnosticReview.update({ where: { diagnosticRequestId }, data: { state: DiagnosticReviewState.RETURNED, returnedAt: now, reviewerUserId, managerComment: managerComment?.trim().slice(0,4000) || null } }); await tx.diagnosticInspection.updateMany({ where: { diagnosticRequestId }, data: { status: DiagnosticInspectionStatus.IN_PROGRESS, completedAt: null } }); await tx.auditEvent.create({ data: { actorName:"CRM / Сервіс-менеджер", entityType:"DiagnosticRequest", entityId:diagnosticRequestId, action:"DIAGNOSTIC_RETURNED_TO_MECHANIC", metadata:toPrismaJson({reviewerUserId,managerComment:managerComment||null}) } }); }); return getStructuredDiagnostic(diagnosticRequestId);
 }
