@@ -69,6 +69,7 @@ function runMigrationWithRetry() {
 
 console.log("[build] Verifying complete API security policy inventory before migrations and compilation.");
 runNodeScript("scripts/crm-hardening-smoke.mjs");
+runNodeScript("scripts/navigation-contract-smoke.mjs");
 run(["tsx", "scripts/api-security-policy-smoke.ts"]);
 
 if (process.env.VERCEL_ENV === "production") {
