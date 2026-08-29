@@ -260,12 +260,12 @@ export function VehiclesDirectory() {
         <span>Автомобілі клієнтів, VIN, держномери та сервісна історія</span>
       </div>
       <div className={styles.headerActions}>
-        <button className={styles.primary} onClick={openNewRequest}>+ Додати авто</button>
         <label className={styles.search}>
           <span>⌕</span>
           <input value={query} onChange={(event) => changeQuery(event.target.value)} placeholder="Пошук авто, VIN або власника..." />
           {query && <button type="button" onClick={() => changeQuery("")} aria-label="Очистити пошук">×</button>}
         </label>
+        <button className={styles.primary} onClick={openNewRequest}>+ Додати авто</button>
       </div>
     </header>
 
