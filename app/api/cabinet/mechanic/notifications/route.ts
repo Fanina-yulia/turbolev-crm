@@ -115,3 +115,27 @@ export async function PATCH(request: Request) {
     return fail("Не вдалося оновити сповіщення.", "MECHANIC_NOTIFICATION_UPDATE_FAILED", 500);
   }
 }
+
+export async function DELETE(request: Request) {
+  try {
+    const auth = await authorizeMechanic(request);
+    if ("response" in auth) return auth.response;
+
+    const notificationId = new URL(request.url).searchParams.get("notificationId")?.trim().slice(0, 128) || "";
+    if (!notificationId) return fail("Не визначено сповіщення.", "NOTIFICATION_ID_REQUIRED");
+
+    const prisma = getPrisma();
+    const result = await prisma.mechanicNotification.deleteMany({
+      where: { id: notificationId, mechanicId: auth.mechanic.id },
+    });
+    if (result.count === 0) return fail("Сповіщення не знайдено.", "NOTIFICATION_NOT_FOUND", 404);
+
+    const unreadCount = await prisma.mechanicNotification.count({
+      where: { mechanicId: auth.mechanic.id, readAt: null },
+    });
+    return NextResponse.json({ ok: true, deleted: result.count, unreadCount });
+  } catch (error) {
+    console.error("DELETE mechanic notification failed", error);
+    return fail("Не вдалося видалити сповіщення.", "MECHANIC_NOTIFICATION_DELETE_FAILED", 500);
+  }
+}
