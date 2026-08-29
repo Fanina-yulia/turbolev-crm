@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { navigateCrm } from "./crm-route";
 import { MechanicTaskPlateVerification } from "./mechanic-task-plate-verification";
+import { MechanicCabinet } from "./mechanic-cabinet";
 import styles from "./mechanic-mobile-cabinet-v2.module.css";
 
 type MechanicTask = {
@@ -170,7 +171,7 @@ function TopBar({ title, onBack }: { title: string; onBack: () => void }) {
   return <header className={styles.topBar}><button type="button" className={styles.backButton} onClick={onBack} aria-label="Назад">‹</button><strong>{title}</strong><span className={styles.topBarSpacer} /></header>;
 }
 
-export function MechanicMobileCabinet({ data, userName }: { data: MechanicPayload; userName?: string | null }) {
+function LegacyMechanicMobileCabinet({ data, userName }: { data: MechanicPayload; userName?: string | null }) {
   const [screen, setScreen] = useState<Screen>("HOME");
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [liveTasks, setLiveTasks] = useState<MechanicTask[]>(data.tasks ?? []);
@@ -361,4 +362,12 @@ export function MechanicMobileCabinet({ data, userName }: { data: MechanicPayloa
     {error && <div className={styles.toast}><span>{error}</span><button type="button" onClick={() => setError("")}>×</button></div>}
     <BottomNav screen={screen} onChange={(next) => { setError(""); setMessage(""); setScreen(next); }} onPayroll={() => void openPayroll()} />
   </div></div>;
+}
+
+/**
+ * Backward-compatible export for older imports. All mechanic cabinet entry
+ * points now render the canonical cabinet so functionality cannot diverge.
+ */
+export function MechanicMobileCabinet({ userName }: { data?: MechanicPayload; userName?: string | null }) {
+  return <MechanicCabinet userName={userName} />;
 }

@@ -7,7 +7,7 @@ import { navigateCrm, type CrmRouteParams } from "./crm-route";
 import type { CrmAccessSnapshot } from "./use-crm-access";
 import { StationOverview } from "./station-overview";
 import { OwnerControlCenter } from "./owner-dashboard";
-import { MechanicMobileCabinet } from "./mechanic-mobile-cabinet";
+import { MechanicCabinet } from "./mechanic-cabinet";
 import { ServiceAdvisorCabinetHome } from "./service-advisor-cabinet-home";
 import { PartsRoleCabinetHome } from "./parts-role-cabinet-home";
 import { SalesRoleCabinetHome } from "./leads-sales-role-cabinet-home";
@@ -270,6 +270,6 @@ export function RoleAwareOverview({ access }: { access: CrmAccessSnapshot | null
   if (loading && !data) return <Loading />;
   if (error && !data) return <div className={styles.state}><strong>Не вдалося відкрити кабінет</strong><span>{error}</span><button type="button" onClick={() => void load()}>Повторити</button></div>;
   if (!data) return <Loading />;
-  if (data.cabinet === "MECHANIC") return <MechanicMobileCabinet data={data} userName={access?.user?.name} />;
+  if (data.cabinet === "MECHANIC") return <MechanicCabinet userName={access?.user?.name} />;
   return <StationManagerCabinet data={data} userName={access?.user?.name} />;
 }

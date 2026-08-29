@@ -3,8 +3,7 @@ import { getAccessContext } from "@/src/security/access-context";
 import { CrmShell } from "./crm-shell";
 import { CrmAccessProvider } from "./crm-access-provider";
 import type { CrmAccessSnapshot } from "./use-crm-access";
-import { MechanicLiveCabinet } from "./mechanic-live-cabinet";
-import { MechanicRequestCoordinator } from "./mechanic-request-coordinator";
+import { MechanicCabinet } from "./mechanic-cabinet";
 import { OwnerViewAsControl } from "./personnel-owner-view-as-control";
 import { SidebarRail } from "./auth/sidebar-rail";
 import { SidebarRailIcons } from "./auth/sidebar-rail-icons";
@@ -45,7 +44,7 @@ export default async function HomePage({ searchParams }: HomePageProps) {
   if (access.provisioningState === "ACTIVE" && primaryRole?.code === "MECHANIC") {
     return <>
       <OwnerViewAsControl/>
-      <MechanicRequestCoordinator><MechanicLiveCabinet userName={access.user?.employeeName || access.user?.name} /></MechanicRequestCoordinator>
+      <MechanicCabinet userName={access.user?.employeeName || access.user?.name} />
     </>;
   }
 
