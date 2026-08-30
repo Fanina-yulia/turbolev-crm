@@ -492,6 +492,158 @@
   color: var(--text);
 }
 
+
+.technicalConclusion {
+  display: grid;
+  min-width: 0;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid color-mix(in srgb, var(--orange) 28%, var(--line));
+  border-radius: 13px;
+  background:
+    linear-gradient(145deg, color-mix(in srgb, var(--orange) 7%, transparent), transparent 42%),
+    var(--panel);
+}
+
+.technicalConclusionHead {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  min-width: 0;
+  gap: 12px;
+}
+
+.technicalConclusionHead > div {
+  min-width: 0;
+}
+
+.technicalConclusionEyebrow {
+  color: var(--orange);
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.technicalConclusionHead h4 {
+  margin: 4px 0 0;
+  font-size: 16px;
+}
+
+.technicalConclusionCount {
+  flex: 0 0 auto;
+  padding: 5px 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-2);
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.technicalConclusionSummary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.technicalConclusionSummary > span,
+.technicalConclusionBadge,
+.technicalConclusionUrgency {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  min-height: 24px;
+  box-sizing: border-box;
+  padding: 4px 8px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--panel-2);
+  font-size: 12px;
+  line-height: 1.2;
+}
+
+.technicalConclusionSummary strong {
+  margin-right: 4px;
+  color: inherit;
+  font-size: 13px;
+}
+
+.conclusionReplace {
+  border-color: color-mix(in srgb, #ff6b6b 40%, var(--line));
+  background: color-mix(in srgb, #dc2626 12%, var(--panel-2));
+  color: #ff8585;
+}
+
+.conclusionRepair {
+  border-color: color-mix(in srgb, var(--orange) 42%, var(--line));
+  background: color-mix(in srgb, var(--orange) 10%, var(--panel-2));
+  color: var(--orange-2);
+}
+
+.conclusionAttention {
+  border-color: color-mix(in srgb, var(--yellow) 42%, var(--line));
+  background: color-mix(in srgb, var(--yellow) 10%, var(--panel-2));
+  color: var(--yellow);
+}
+
+.conclusionNeutral {
+  color: var(--soft-text);
+}
+
+.technicalConclusionGroups {
+  display: grid;
+  min-width: 0;
+  gap: 0;
+}
+
+.technicalConclusionGroup {
+  min-width: 0;
+  padding: 10px 0 2px;
+  border-top: 1px solid var(--line);
+}
+
+.technicalConclusionGroupHead {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  min-width: 0;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.technicalConclusionGroupHead > strong {
+  overflow-wrap: anywhere;
+}
+
+.technicalConclusionUrgency {
+  color: var(--muted);
+}
+
+.technicalConclusionItems {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+  margin: 0;
+  padding: 0 0 0 20px;
+  color: var(--soft-text);
+  font-size: 13px;
+  line-height: 1.42;
+}
+
+.technicalConclusionItems li {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.technicalConclusionItems li::marker {
+  color: var(--orange);
+}
+
+.technicalConclusionItems strong {
+  color: var(--text);
+}
+
 @container diagnostic-detail (max-width: 760px) {
   .head {
     display: grid;
