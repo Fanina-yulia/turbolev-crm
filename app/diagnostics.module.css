@@ -196,6 +196,40 @@
   gap: 12px;
 }
 
+.registryOnly {
+  display: block;
+}
+
+.registryOnly .list {
+  display: grid;
+  max-height: none;
+  overflow: visible;
+}
+
+.registryOnly .row {
+  display: grid;
+  grid-template-columns: 130px minmax(210px, 1.35fr) minmax(150px, 1fr) minmax(150px, 1fr) minmax(190px, 1.25fr) 160px;
+  align-items: center;
+  gap: 12px;
+  padding: 13px 16px;
+}
+
+.detailOnly {
+  display: block;
+}
+
+.detailOnly .detail {
+  width: 100%;
+  box-sizing: border-box;
+  max-height: none;
+  overflow: visible;
+}
+
+.detailBack {
+  display: flex;
+  margin-bottom: 12px;
+}
+
 .list,
 .detail {
   min-width: 0;
@@ -364,6 +398,41 @@
 
 .rowBottom {
   margin-top: 8px;
+}
+
+.registryOnly .rowBottom {
+  grid-column: 1 / -1;
+  margin-top: 0;
+}
+
+.rowStatus,
+.rowVehicle,
+.rowCell,
+.rowDate {
+  min-width: 0;
+}
+
+.rowCell,
+.rowDate {
+  display: grid;
+  gap: 3px;
+}
+
+.rowCell > span,
+.rowDate > span {
+  color: var(--muted);
+  font-size: 11px;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+
+.rowCell small,
+.rowDate time {
+  overflow: hidden;
+  color: var(--text);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .openLink {
@@ -592,6 +661,23 @@
     max-height: 420px;
   }
 
+  .registryOnly .list {
+    max-height: none;
+  }
+
+  .registryOnly .row {
+    grid-template-columns: minmax(150px, 1.15fr) minmax(170px, 1.35fr) minmax(145px, 1fr);
+  }
+
+  .registryOnly .rowStatus,
+  .registryOnly .rowVehicle,
+  .registryOnly .rowCell:nth-child(3),
+  .registryOnly .rowCell:nth-child(4),
+  .registryOnly .rowCell:nth-child(5),
+  .registryOnly .rowDate {
+    grid-column: auto;
+  }
+
   .detail {
     position: static;
     max-height: none;
@@ -638,6 +724,26 @@
   .actions button,
   .woCard button {
     width: 100%;
+  }
+
+  .registryOnly .row {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 9px 12px;
+    padding: 12px;
+  }
+
+  .registryOnly .rowStatus,
+  .registryOnly .rowVehicle,
+  .registryOnly .rowCell,
+  .registryOnly .rowDate,
+  .registryOnly .rowBottom {
+    grid-column: auto;
+  }
+
+  .registryOnly .rowVehicle,
+  .registryOnly .rowCell:nth-child(5),
+  .registryOnly .rowBottom {
+    grid-column: 1 / -1;
   }
 }
 

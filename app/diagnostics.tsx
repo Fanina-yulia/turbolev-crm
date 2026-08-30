@@ -132,6 +132,7 @@ export function Diagnostics() {
   const [mechanic, setMechanic] = useState("ALL");
   const [vehicleIdFilter, setVehicleIdFilter] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [routeDiagnosticId, setRouteDiagnosticId] = useState<string | null>(() => readCrmRoute().diagnosticId || null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -142,12 +143,13 @@ export function Diagnostics() {
     const route = readCrmRoute();
     const diagnosticId = route.diagnosticId || null;
     const vehicleId = route.vehicleId || null;
+    setRouteDiagnosticId(diagnosticId);
     setVehicleIdFilter(vehicleId);
     const matchingRows = nextRows.filter((row) => !vehicleId || row.vehicle.id === vehicleId);
     setSelectedId((current) => {
       if (diagnosticId && matchingRows.some((row) => row.id === diagnosticId)) return diagnosticId;
-      if (current && matchingRows.some((row) => row.id === current)) return current;
-      return matchingRows[0]?.id ?? null;
+      if (!diagnosticId) return null;
+      return current && matchingRows.some((row) => row.id === current) ? current : null;
     });
   }, []);
 
@@ -213,21 +215,21 @@ export function Diagnostics() {
   };
 
   return <div className={styles.page}>
-    <header className={styles.head}><div><p className={styles.eyebrow}>СЕРВІС · ДІАГНОСТИКА</p><h1>Всі діагностики</h1></div><div className={styles.headActions}><label className={`${registryStyles.search} ${registryStyles.headerSearch}`}><span>⌕</span><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Номер авто, VIN, клієнт, телефон, № ДК або механік..." />{search && <button type="button" onClick={() => setSearch("")} aria-label="Очистити пошук">×</button>}</label><select className={`${registryStyles.select} ${registryStyles.headerMechanic}`} value={mechanic} onChange={(event) => setMechanic(event.target.value)} aria-label="Фільтр за механіком"><option value="ALL">Усі механіки</option>{mechanics.map((name) => <option key={name} value={name}>{name}</option>)}</select><button className={styles.refresh} onClick={() => void load()} disabled={loading}>{loading ? "Оновлюю…" : "Оновити"}</button></div></header>
+    <header className={styles.head}><div><p className={styles.eyebrow}>СЕРВІС · ДІАГНОСТИКА</p><h1>{routeDiagnosticId ? "Діагностична карта" : "Всі діагностики"}</h1></div><div className={styles.headActions}><label className={`${registryStyles.search} ${registryStyles.headerSearch}`}><span>⌕</span><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Номер авто, VIN, клієнт, телефон, № ДК або механік..." />{search && <button type="button" onClick={() => setSearch("")} aria-label="Очистити пошук">×</button>}</label><select className={`${registryStyles.select} ${registryStyles.headerMechanic}`} value={mechanic} onChange={(event) => setMechanic(event.target.value)} aria-label="Фільтр за механіком"><option value="ALL">Усі механіки</option>{mechanics.map((name) => <option key={name} value={name}>{name}</option>)}</select><button className={styles.refresh} onClick={() => void load()} disabled={loading}>{loading ? "Оновлюю…" : "Оновити"}</button></div></header>
 
-    <section className={styles.summary} aria-label="Підсумок діагностик">
+    {!routeDiagnosticId && <section className={styles.summary} aria-label="Підсумок діагностик">
       <button type="button" className={styles.summaryCard} onClick={() => { setScope("CURRENT"); setFilter("ALL"); }}><span>Поточні</span><strong>{rows.filter((row) => !isHistory(row)).length}</strong><small>записів у роботі</small></button>
       <button type="button" className={`${styles.summaryCard} ${styles.summaryAttention}`} onClick={() => { setScope("CURRENT"); setFilter("PENDING"); }}><span>Очікують</span><strong>{rows.filter((row) => workflowState(row) === "PENDING").length}</strong><small>ще не розпочаті</small></button>
       <button type="button" className={`${styles.summaryCard} ${styles.summaryProgress}`} onClick={() => { setScope("CURRENT"); setFilter("IN_PROGRESS"); }}><span>В роботі</span><strong>{rows.filter((row) => matchesFilter(row, "IN_PROGRESS")).length}</strong><small>механік перевіряє</small></button>
       <button type="button" className={`${styles.summaryCard} ${styles.summaryDone}`} onClick={() => { setScope("HISTORY"); setFilter("CONFIRMED"); }}><span>Завершені</span><strong>{rows.filter((row) => workflowState(row) === "CONFIRMED").length}</strong><small>карта сформована</small></button>
-    </section>
-    <nav className={styles.scopeTabs} aria-label="Група діагностик">
+    </section>}
+    {!routeDiagnosticId && <nav className={styles.scopeTabs} aria-label="Група діагностик">
       <button type="button" className={scope === "CURRENT" ? styles.scopeActive : ""} onClick={() => setScope("CURRENT")}>Поточні<span>{rows.filter((row) => !isHistory(row)).length}</span></button>
       <button type="button" className={scope === "HISTORY" ? styles.scopeActive : ""} onClick={() => setScope("HISTORY")}>Історія<span>{rows.filter(isHistory).length}</span></button>
-    </nav>
-    <nav className={styles.filters} aria-label="Фільтр за етапом">{filters.map((item) => <button type="button" key={item.value} className={filter === item.value ? styles.activeFilter : ""} onClick={() => setFilter(item.value)}>{item.label}<span>{filterCount(item.value)}</span></button>)}</nav>
+    </nav>}
+    {!routeDiagnosticId && <nav className={styles.filters} aria-label="Фільтр за етапом">{filters.map((item) => <button type="button" key={item.value} className={filter === item.value ? styles.activeFilter : ""} onClick={() => setFilter(item.value)}>{item.label}<span>{filterCount(item.value)}</span></button>)}</nav>}
 
-    {(readCrmRoute().diagnosticId || readCrmRoute().vehicleId) && <div className={registryStyles.routeHint}>
+    {!routeDiagnosticId && (readCrmRoute().diagnosticId || readCrmRoute().vehicleId) && <div className={registryStyles.routeHint}>
       {readCrmRoute().diagnosticId
         ? "Відкрито Діагностичну карту з історії автомобіля."
         : readCrmRoute().workflowFocus === "proposal"
@@ -238,21 +240,22 @@ export function Diagnostics() {
     </div>}
     {error && <div className={styles.error}>{error}</div>}{message && <div className={styles.success}>{message}</div>}
 
-    <div className={styles.layout}>
-      <section className={styles.list}>{loading && !rows.length ? <div className={styles.empty}>Завантажую діагностики…</div> : visible.length ? visible.map((row) => {
+    <div className={`${styles.layout} ${routeDiagnosticId ? styles.detailOnly : styles.registryOnly}`}>
+      {!routeDiagnosticId && <section className={styles.list}>{loading && !rows.length ? <div className={styles.empty}>Завантажую діагностики…</div> : visible.length ? visible.map((row) => {
         const state = workflowState(row);
         return <button type="button" key={row.id} className={`${styles.row} ${styles[`row${state}`] || ""} ${selectedId === row.id ? styles.selected : ""}`} onClick={() => openDiagnostic(row)} aria-label={`Відкрити діагностичну карту: ${vehicleName(row)}`}>
-          <div className={styles.rowTop}><span className={`${styles.status} ${stateClass(row)}`}><i aria-hidden="true" />{statusMeta[state].label}</span><time>{timeRange(row)}</time></div>
-          <div className={styles.vehicleLine}><strong>{vehicleName(row)}</strong><VehiclePlate value={row.vehicle.plateNumber} size="sm" /></div>
-          <small>{row.client.name || row.client.phone}</small>
-          <div className={styles.rowMeta}><span>{row.visit?.postName || "Пост не визначено"}</span>{row.assignedMechanic?.name && <span>Механік: {row.assignedMechanic.name}</span>}</div>
-          {row.lead?.need && <p>{row.lead.need}</p>}
-          {row.structured && row.structured.inspections > 0 && <small>Чекліст: {row.structured.checked} перевірено · {row.structured.defects} деф. · {row.structured.attention} увага</small>}
+          <div className={styles.rowStatus}><span className={`${styles.status} ${stateClass(row)}`}><i aria-hidden="true" />{statusMeta[state].label}</span></div>
+          <div className={styles.rowVehicle}><strong>{vehicleName(row)}</strong><VehiclePlate value={row.vehicle.plateNumber} size="sm" /></div>
+          <div className={styles.rowCell}><span>Клієнт</span><small>{row.client.name || row.client.phone}</small></div>
+          <div className={styles.rowCell}><span>Механік</span><small>{row.assignedMechanic?.name || "Не призначено"}</small></div>
+          <div className={styles.rowCell}><span>Прогрес</span><small>{row.structured && row.structured.inspections > 0 ? `${row.structured.checked} перевірено · ${row.structured.defects} деф. · ${row.structured.attention} увага` : row.lead?.need || "Структурованих даних ще немає"}</small></div>
+          <div className={styles.rowDate}><span>Візит</span><time>{timeRange(row)}</time></div>
           <div className={styles.rowBottom}>{row.diagnosticCard?.number ? <span className={styles.workOrderBadge}>{row.diagnosticCard.number}{row.diagnosticCard.finalizedAt ? " · фінальна" : " · REVIEW"}</span> : row.status === "CONFIRMED" ? <span className={styles.workOrderBadge}>Історична діагностика</span> : <span />}{row.commercialProposal && <span className={registryStyles.commercialBadge}>{commercialLabels[row.commercialProposal.stage]}</span>}<span className={styles.openLink}>Відкрити ДК →</span></div>
         </button>;
-      }) : <div className={styles.empty}>За цими умовами діагностик немає.</div>}</section>
+      }) : <div className={styles.empty}>За цими умовами діагностик немає.</div>}</section>}
 
       <aside className={styles.detail}>{selected ? <>
+        <div className={styles.detailBack}><button className={styles.secondary} type="button" onClick={() => navigateCrm("Діагностика")}>← До всіх діагностик</button></div>
         <div className={styles.detailHead}><div><span className={`${styles.status} ${stateClass(selected)}`}>{statusMeta[workflowState(selected)].label}</span><h2>{vehicleName(selected)}</h2><p><VehiclePlate value={selected.vehicle.plateNumber} size="sm" /> · {selected.vehicle.vin || "VIN не вказано"}</p></div></div>
         <div className={styles.infoGrid}>
           <div><span>Клієнт</span><strong>{selected.client.name || "Без імені"}</strong><small>{selected.client.phone}</small></div>
