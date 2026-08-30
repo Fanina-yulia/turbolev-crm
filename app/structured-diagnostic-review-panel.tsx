@@ -44,64 +44,19 @@ type DiagnosticCardState = {
 };
 
 const actionLabels: Record<string, string> = { NONE: "Без дії", REPLACE: "Замінити", REPAIR: "Ремонтувати", ADJUST: "Відрегулювати", CLEAN: "Очистити / обслужити", ADDITIONAL_DIAGNOSTICS: "Додаткова діагностика" };
-const urgencyLabels: Record<string, string> = { INFO: "Рекомендація", SOON: "Найближчим часом", CRITICAL: "Критично" };
+const urgencyLabels: Record<string, string> = { INFO: "Рекомендація", CRITICAL: "Критично" };
 const reviewLabels: Record<string, string> = { DRAFT: "Чернетка", SUBMITTED: "На перевірці", RETURNED: "В роботі", CONFIRMED: "Підтверджена ДК" };
 
-type ConclusionGroup = { key: string; section: string; action: string; urgency: string; items: Item[] };
-
-const conclusionActionLabels: Record<string, string> = {
-  NONE: "Потребує оцінки",
-  REPLACE: "До заміни",
-  REPAIR: "До ремонту",
-  ADJUST: "До регулювання",
-  CLEAN: "До обслуговування",
-  ADDITIONAL_DIAGNOSTICS: "Додаткова діагностика",
-};
-
-function conclusionActionClass(action: string) {
-  if (action === "REPLACE") return styles.conclusionReplace;
-  if (action === "REPAIR" || action === "ADJUST" || action === "CLEAN") return styles.conclusionRepair;
-  if (action === "ADDITIONAL_DIAGNOSTICS") return styles.conclusionAttention;
-  return styles.conclusionNeutral;
+function countLabel(count: number, one: string, few: string, many: string) {
+  const lastTwo = count % 100;
+  const last = count % 10;
+  return `${count} ${lastTwo >= 11 && lastTwo <= 14 ? many : last === 1 ? one : last >= 2 && last <= 4 ? few : many}`;
 }
 
-function conciseFindingText(item: Item) {
-  const source = (item.finding?.findingText || item.note || (item.state === "DEFECT" ? "Виявлено дефект" : "Потребує уваги")).trim();
-  if (!source) return "";
-  const name = item.name.trim();
-  const lowerSource = source.toLocaleLowerCase("uk-UA");
-  const lowerName = name.toLocaleLowerCase("uk-UA");
-  let text = source;
-  for (const separator of [" — ", " – ", " - ", ": "]) {
-    if (lowerSource.startsWith(lowerName + separator)) {
-      text = source.slice(name.length + separator.length).trim();
-      break;
-    }
-  }
-  if (text.toLocaleLowerCase("uk-UA") === lowerName) return "";
-  text = text.replace(/[.;]+$/, "").trim();
-  const action = item.finding?.action || "NONE";
-  if ((action === "REPLACE" && /^(потребує заміни|необхідно замінити)$/i.test(text))
-    || (action === "REPAIR" && /^(потребує ремонту|необхідно ремонтувати)$/i.test(text))
-    || (action === "ADDITIONAL_DIAGNOSTICS" && /^(потребує додаткової діагностики|необхідна додаткова діагностика)$/i.test(text))) {
-    return "";
-  }
-  return text;
+function priorityLabel(urgency: string | null | undefined) {
+  if (!urgency || urgency === "SOON") return null;
+  return urgencyLabels[urgency] || urgency;
 }
-
-function buildConclusionGroups(findings: Array<{ section: string; item: Item }>) {
-  const groups = new Map<string, ConclusionGroup>();
-  for (const { section, item } of findings) {
-    const action = item.finding?.action || "NONE";
-    const urgency = item.finding?.urgency || "INFO";
-    const key = [section, action, urgency].join("\u0000");
-    const current = groups.get(key);
-    if (current) current.items.push(item);
-    else groups.set(key, { key, section, action, urgency, items: [item] });
-  }
-  return [...groups.values()];
-}
-
 
 export function StructuredDiagnosticReviewPanel({ diagnosticId, onChanged }: { diagnosticId: string; onChanged: () => void | Promise<void> }) {
   const [view, setView] = useState<View | null>(null);
@@ -125,7 +80,7 @@ export function StructuredDiagnosticReviewPanel({ diagnosticId, onChanged }: { d
       if (!response.ok || !body?.ok) throw new Error(body?.message || body?.error || "Не вдалося завантажити структуровану діагностику");
       setView(body as View & { ok: true });
       setManagerComment(body.diagnostic?.review?.managerComment || "");
-      setTechnicalConclusion(body.diagnostic?.technicalConclusion || body.suggestedTechnicalConclusion || "");
+      setTechnicalConclusion(body.diagnostic?.technicalConclusion || "");
       if (cardResponse.ok && cardBody?.ok) setCardState({ card: cardBody.card || null, latest: cardBody.latest || null, final: cardBody.final || null });
       else setCardState({ card: null });
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Помилка завантаження"); }
@@ -136,12 +91,6 @@ export function StructuredDiagnosticReviewPanel({ diagnosticId, onChanged }: { d
 
   const findings = useMemo(() => view?.inspections.flatMap((inspection) => inspection.sections.flatMap((section) => section.items.filter((item) => item.state === "ATTENTION" || item.state === "DEFECT").map((item) => ({ inspection: inspection.templateName, section: section.name, item })))) || [], [view]);
   const criticalCount = useMemo(() => findings.filter(({ item }) => item.finding?.urgency === "CRITICAL").length, [findings]);
-  const conclusionGroups = useMemo(() => buildConclusionGroups(findings), [findings]);
-  const conclusionActionCounts = useMemo(() => findings.reduce<Record<string, number>>((result, { item }) => {
-    const action = item.finding?.action || "NONE";
-    result[action] = (result[action] || 0) + 1;
-    return result;
-  }, {}), [findings]);
 
   async function returnToMechanic() {
     if (!view) return;
@@ -215,6 +164,7 @@ export function StructuredDiagnosticReviewPanel({ diagnosticId, onChanged }: { d
 
   const confirmed = view.diagnostic.review.state === "CONFIRMED" && view.diagnostic.status === "CONFIRMED";
   const cardNumber = cardState.card?.number || null;
+  const automaticConclusion = view.suggestedTechnicalConclusion?.trim() || "";
 
   return <section className={styles.panel}>
     <div className={styles.head}><div><span>ДІАГНОСТИЧНА КАРТА</span><h3>{cardNumber ? cardNumber : "Результати діагностики"}</h3><p>{view.diagnostic.review.state === "SUBMITTED" ? "Автомеханік завершив діагностику. CRM сформувала чернетку ДК — перевірте факти та технічний висновок." : view.diagnostic.review.state === "RETURNED" ? "ДК повернена механіку в роботу. Після доопрацювання механік повторно передасть її на перевірку." : confirmed ? "ДК підтверджена. Це готовий технічний документ. Комерційна пропозиція формується окремо." : "Автомеханік працює над діагностикою; чернетка ДК оновлюється з фактичних результатів."}</p></div><b className={styles.reviewState}>{reviewLabels[view.diagnostic.review.state] || view.diagnostic.review.state}</b></div>
@@ -224,45 +174,13 @@ export function StructuredDiagnosticReviewPanel({ diagnosticId, onChanged }: { d
     <div className={styles.metrics}><div><span>Перевірено</span><strong>{view.counts.checked}/{view.counts.total}</strong></div><div className={styles.ok}><span>Норма</span><strong>{view.counts.ok}</strong></div><div className={styles.attention}><span>Увага</span><strong>{view.counts.attention}</strong></div><div className={styles.defect}><span>Дефекти</span><strong>{view.counts.defect}</strong></div></div>
     {criticalCount > 0 && <div className={styles.error}>Критичних зауважень: <strong>{criticalCount}</strong>. Перевірте їх перед підтвердженням ДК.</div>}
 
-    <div className={styles.inspections}>{view.inspections.map((inspection) => <details key={inspection.id} open={inspection.counts.defect > 0 || inspection.counts.attention > 0}><summary><div><strong>{inspection.templateName}</strong><span>{inspection.counts.checked}/{inspection.counts.total} перевірено</span></div><div><em>{inspection.counts.defect ? `${inspection.counts.defect} деф.` : inspection.counts.attention ? `${inspection.counts.attention} увага` : "Норма"}</em><b>⌄</b></div></summary><div className={styles.sectionList}>{inspection.sections.map((section) => <div className={styles.section} key={section.id}><div className={styles.sectionHead}><strong>{section.name}</strong><span>{section.counts.defect ? `${section.counts.defect} дефект(и)` : section.counts.attention ? `${section.counts.attention} зауваження` : `${section.counts.checked}/${section.counts.total}`}</span></div>{section.items.filter((item) => item.state !== "OK" && item.state !== "NOT_CHECKED").map((item) => <FindingRow key={item.id || item.templateItemId} diagnosticId={diagnosticId} item={item} />)}{!section.items.some((item) => item.state === "ATTENTION" || item.state === "DEFECT") && <small className={styles.sectionOk}>✓ Перевірені пункти без зауважень</small>}</div>)}</div></details>)}</div>
-
-    {findings.length > 0 && <section className={styles.technicalConclusion} aria-labelledby="technical-conclusion-heading">
-      <div className={styles.technicalConclusionHead}>
-        <div>
-          <span className={styles.technicalConclusionEyebrow}>Технічний висновок спеціаліста</span>
-          <h4 id="technical-conclusion-heading">Виявлені зауваження</h4>
-        </div>
-        <span className={styles.technicalConclusionCount}>{findings.length} позицій</span>
-      </div>
-      <div className={styles.technicalConclusionSummary}>
-        {([
-          ["REPLACE", "заміни"],
-          ["REPAIR", "ремонту"],
-          ["ADDITIONAL_DIAGNOSTICS", "додаткової діагностики"],
-        ] as const).filter(([action]) => conclusionActionCounts[action]).map(([action, label]) =>
-          <span key={action} className={conclusionActionClass(action)}><strong>{conclusionActionCounts[action]}</strong> {label}</span>
-        )}
-      </div>
-      <div className={styles.technicalConclusionGroups}>
-        {conclusionGroups.map((group) => <div className={styles.technicalConclusionGroup} key={group.key}>
-          <div className={styles.technicalConclusionGroupHead}>
-            <strong>{group.section}</strong>
-            <span className={`${styles.technicalConclusionBadge} ${conclusionActionClass(group.action)}`}>{conclusionActionLabels[group.action] || group.action}</span>
-            <span className={styles.technicalConclusionUrgency}>{urgencyLabels[group.urgency] || group.urgency}</span>
-          </div>
-          <ul className={styles.technicalConclusionItems}>
-            {group.items.map((item) => {
-              const text = conciseFindingText(item);
-              return <li key={item.id || item.templateItemId}><strong>{item.name}</strong>{text && <span> — {text}</span>}</li>;
-            })}
-          </ul>
-        </div>)}
-      </div>
-    </section>}
+    <div className={styles.inspections}>{view.inspections.map((inspection) => <details key={inspection.id} open={inspection.counts.defect > 0 || inspection.counts.attention > 0}><summary><div><strong>{inspection.templateName}</strong><span>{inspection.counts.checked}/{inspection.counts.total} перевірено</span></div><div className={styles.summaryBadges}>{inspection.counts.defect > 0 && <em className={styles.defectBadge}>{countLabel(inspection.counts.defect, "дефект", "дефекти", "дефектів")}</em>}{inspection.counts.attention > 0 && <em className={styles.attentionBadge}>{countLabel(inspection.counts.attention, "увага", "уваги", "уваг")}</em>}{inspection.counts.defect === 0 && inspection.counts.attention === 0 && <em className={styles.okBadge}>Норма</em>}<b aria-hidden="true">⌄</b></div></summary><div className={styles.sectionList}>{inspection.sections.map((section) => <div className={styles.section} key={section.id}><div className={styles.sectionHead}><strong>{section.name}</strong><div className={styles.sectionCounts}>{section.counts.defect > 0 && <span className={styles.defectText}>{countLabel(section.counts.defect, "дефект", "дефекти", "дефектів")}</span>}{section.counts.attention > 0 && <span className={styles.attentionText}>{countLabel(section.counts.attention, "увага", "уваги", "уваг")}</span>}{section.counts.defect === 0 && section.counts.attention === 0 && <span>{section.counts.checked}/{section.counts.total}</span>}</div></div>{section.items.filter((item) => item.state !== "OK" && item.state !== "NOT_CHECKED").map((item) => <FindingRow key={item.id || item.templateItemId} diagnosticId={diagnosticId} item={item} />)}{!section.items.some((item) => item.state === "ATTENTION" || item.state === "DEFECT") && <small className={styles.sectionOk}>✓ Перевірені пункти без зауважень</small>}</div>)}</div></details>)}</div>
 
     {view.diagnostic.review.mechanicComment && <div className={styles.comment}><span>Коментар механіка</span><p>{view.diagnostic.review.mechanicComment}</p></div>}
 
-    {(view.diagnostic.review.state === "SUBMITTED" || confirmed) && <label className={styles.comment}><span>Технічний висновок сервіс-менеджера</span><textarea rows={5} value={technicalConclusion} disabled={confirmed} onChange={(event) => setTechnicalConclusion(event.target.value)} placeholder="CRM сформує базовий висновок автоматично. Перевірте та за потреби скоригуйте його." /></label>}
+    {!confirmed && automaticConclusion && <div className={styles.automaticConclusion}><span>Автоматичний технічний висновок CRM</span><p>{automaticConclusion}</p><small>Сформовано з результатів матриці. Перевірте факти та внесіть фінальний висновок сервіс-менеджера нижче.</small></div>}
+
+    {(view.diagnostic.review.state === "SUBMITTED" || confirmed) && <label className={styles.comment}><span>Висновок сервіс-менеджера</span><textarea rows={5} value={technicalConclusion} disabled={confirmed} onChange={(event) => setTechnicalConclusion(event.target.value)} placeholder="Внесіть фінальний технічний висновок після перевірки результатів діагностики." /></label>}
 
     {view.diagnostic.review.state === "SUBMITTED" && view.diagnostic.status === "IN_PROGRESS" && <div className={styles.decision}><label><span>Перевірка сервіс-менеджером</span><small>Повернення переводить діагностику назад «В роботу» та потребує пояснення. Підтвердження створює фінальну незмінну ревізію ДК.</small><textarea rows={3} value={managerComment} onChange={(event) => setManagerComment(event.target.value)} placeholder="Що потрібно доопрацювати механіку…" /></label><div><button className={styles.returnButton} type="button" disabled={busy} onClick={() => void returnToMechanic()}>← Повернути в роботу</button><button className={styles.confirmButton} type="button" disabled={busy || !technicalConclusion.trim()} onClick={() => void confirmDiagnosticCard()}>{busy ? "Обробляю…" : "Підтвердити ДК"}</button></div></div>}
 
@@ -284,5 +202,6 @@ export function StructuredDiagnosticReviewPanel({ diagnosticId, onChanged }: { d
 
 function FindingRow({ diagnosticId, item }: { diagnosticId: string; item: Item }) {
   const finding = item.finding;
-  return <div className={styles.finding}><div className={item.state === "DEFECT" ? styles.red : styles.orange}>{item.state === "DEFECT" ? "×" : "!"}</div><div className={styles.findingMain}><strong>{item.name}</strong><span>{finding?.findingText || item.note || (item.state === "DEFECT" ? "Виявлено дефект" : "Потребує уваги")}</span>{item.measurementValue && <small>Замір: {item.measurementValue}{item.measurementUnit ? ` ${item.measurementUnit}` : ""}</small>}{item.measurementText && <small>Замір: {item.measurementText}</small>}<div className={styles.findingMeta}>{finding && <><b>{actionLabels[finding.action] || finding.action}</b><b>{urgencyLabels[finding.urgency] || finding.urgency}</b></>}</div>{finding?.suggestedWorkName && <em>Робота: {finding.suggestedWorkName}</em>}{finding?.suggestedPartName && <em>Деталь: {finding.suggestedPartName}</em>}</div>{finding?.media.length ? <div className={styles.media}>{finding.media.map((media) => <a href={`/api/diagnostics/${diagnosticId}/media/${media.id}`} target="_blank" rel="noreferrer" key={media.id}><img src={`/api/diagnostics/${diagnosticId}/media/${media.id}`} alt={media.fileName} /></a>)}</div> : null}</div>;
+  const priority = priorityLabel(finding?.urgency);
+  return <div className={styles.finding}><div className={item.state === "DEFECT" ? styles.red : styles.orange} aria-label={item.state === "DEFECT" ? "Дефект" : "Увага"}>!</div><div className={styles.findingMain}><strong>{item.name}</strong><span>{finding?.findingText || item.note || (item.state === "DEFECT" ? "Виявлено дефект" : "Потребує уваги")}</span>{item.measurementValue && <small>Замір: {item.measurementValue}{item.measurementUnit ? ` ${item.measurementUnit}` : ""}</small>}{item.measurementText && <small>Замір: {item.measurementText}</small>}<div className={styles.findingMeta}><b className={item.state === "DEFECT" ? styles.defectTag : styles.attentionTag}>{item.state === "DEFECT" ? "Дефект" : "Увага"}</b>{finding && <b>{actionLabels[finding.action] || finding.action}</b>}{priority && <b>{priority}</b>}</div>{finding?.suggestedWorkName && <em>Робота: {finding.suggestedWorkName}</em>}{finding?.suggestedPartName && <em>Деталь: {finding.suggestedPartName}</em>}</div>{finding?.media.length ? <div className={styles.media}>{finding.media.map((media) => <a href={`/api/diagnostics/${diagnosticId}/media/${media.id}`} target="_blank" rel="noreferrer" key={media.id}><img src={`/api/diagnostics/${diagnosticId}/media/${media.id}`} alt={media.fileName} /></a>)}</div> : null}</div>;
 }

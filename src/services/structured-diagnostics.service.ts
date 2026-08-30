@@ -220,86 +220,14 @@ export async function markStructuredDiagnosticConfirmed(diagnosticRequestId: str
 
 export async function buildStructuredTechnicalConclusion(diagnosticRequestId: string) {
   const view = await getStructuredDiagnostic(diagnosticRequestId);
-  const findings = view.inspections.flatMap((inspection) =>
-    inspection.sections.flatMap((section) =>
-      section.items
-        .filter((item) => item.state === DiagnosticCheckState.ATTENTION || item.state === DiagnosticCheckState.DEFECT)
-        .map((item) => ({ section: section.name, item }))
-    )
-  );
-  if (!findings.length) {
-    return view.counts.total ? "За результатами структурованої діагностики критичних зауважень не виявлено." : null;
-  }
-
-  const actionLabels: Record<string, string> = {
-    NONE: "Потребує оцінки",
-    REPLACE: "До заміни",
-    REPAIR: "До ремонту",
-    ADJUST: "До регулювання",
-    CLEAN: "До обслуговування",
-    ADDITIONAL_DIAGNOSTICS: "Додаткова діагностика",
-  };
-  const urgencyLabels: Record<string, string> = {
-    INFO: "Рекомендація",
-    SOON: "Найближчим часом",
-    CRITICAL: "Критично",
-  };
-  const groups = new Map<string, { section: string; action: string; urgency: string; items: typeof findings[number]["item"][] }>();
-  for (const { section, item } of findings) {
-    const action = item.finding?.action || "NONE";
-    const urgency = item.finding?.urgency || "INFO";
-    const key = [section, action, urgency].join("\u0000");
-    const group = groups.get(key);
-    if (group) group.items.push(item);
-    else groups.set(key, { section, action, urgency, items: [item] });
-  }
-
-  const compactText = (item: typeof findings[number]["item"]) => {
-    const source = (item.finding?.findingText || item.note || (item.state === DiagnosticCheckState.DEFECT ? "Виявлено дефект" : "Потребує уваги")).trim();
-    if (!source) return "";
-    const name = item.name.trim();
-    const lowerSource = source.toLocaleLowerCase("uk-UA");
-    const lowerName = name.toLocaleLowerCase("uk-UA");
-    let text = source;
-    for (const separator of [" — ", " – ", " - ", ": "]) {
-      if (lowerSource.startsWith(lowerName + separator)) {
-        text = source.slice(name.length + separator.length).trim();
-        break;
-      }
-    }
-    if (text.toLocaleLowerCase("uk-UA") === lowerName) return "";
-    text = text.replace(/[.;]+$/, "").trim();
-    const action = item.finding?.action || "NONE";
-    if ((action === "REPLACE" && /^(потребує заміни|необхідно замінити)$/i.test(text))
-      || (action === "REPAIR" && /^(потребує ремонту|необхідно ремонтувати)$/i.test(text))
-      || (action === "ADDITIONAL_DIAGNOSTICS" && /^(потребує додаткової діагностики|необхідна додаткова діагностика)$/i.test(text))) {
-      return "";
-    }
-    return text;
-  };
-
-  const summary = [
-    ["REPLACE", "заміни"],
-    ["REPAIR", "ремонту"],
-    ["ADDITIONAL_DIAGNOSTICS", "додаткової діагностики"],
-  ].flatMap(([action, label]) => {
-    const count = findings.filter(({ item }) => (item.finding?.action || "NONE") === action).length;
-    return count ? [`${count} ${label}`] : [];
-  });
-  const lines = [
-    "Технічний висновок спеціаліста",
-    `Виявлено ${findings.length} зауважень${summary.length ? `: ${summary.join(", ")}` : ""}.`,
-    "",
-  ];
-  for (const { section, action, urgency, items } of groups.values()) {
-    lines.push(`${section} · ${actionLabels[action] || action} · ${urgencyLabels[urgency] || urgency}`);
-    for (const item of items) {
-      const detail = compactText(item);
-      lines.push(`• ${item.name}${detail ? ` — ${detail}` : ""}`);
-    }
-    lines.push("");
-  }
-  return lines.join("\n").trim();
+  const findings = view.inspections.flatMap((inspection) => inspection.sections.flatMap((section) => section.items.flatMap((item) => item.finding ? [{ section: section.name, item }] : [])));
+  if (!findings.length) return view.counts.total ? "За результатами структурованої діагностики критичних дефектів не виявлено." : null;
+  const action: Record<string, string> = { NONE: "потребує оцінки", REPLACE: "замінити", REPAIR: "ремонтувати", ADJUST: "відрегулювати", CLEAN: "очистити / обслужити", ADDITIONAL_DIAGNOSTICS: "провести додаткову діагностику" };
+  const priority: Record<string, string> = { INFO: "рекомендація", CRITICAL: "критично" };
+  return findings.map(({ section, item }) => {
+    const priorityText = priority[item.finding?.urgency || ""];
+    return `${section} — ${item.name}: ${item.finding?.findingText || item.note || (item.state === DiagnosticCheckState.DEFECT ? "виявлено дефект" : "потребує уваги")}. Дія: ${action[item.finding?.action || "NONE"]}.${priorityText ? ` Пріоритет: ${priorityText}.` : ""}`;
+  }).join("\n");
 }
 
 export async function getDiagnosticMedia(mediaId: string) { return getPrisma().diagnosticMedia.findUnique({ where:{id:mediaId} }); }

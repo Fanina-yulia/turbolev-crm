@@ -302,7 +302,7 @@ function systemChoices(section: SystemSection, item: Check): StateChoice[] {
     return [
       { state: "OK", label: "Норма" },
       { state: "ATTENTION", label: "Запотівання", findingSuffix: "запотівання", action: "ADDITIONAL_DIAGNOSTICS", urgency: "INFO" },
-      { state: "DEFECT", label: "Підтікання", findingSuffix: "підтікання", action: "REPAIR", urgency: "SOON" },
+      { state: "DEFECT", label: "Підтікання", findingSuffix: "підтікання", action: "REPAIR", urgency: "INFO" },
     ];
   }
 
@@ -310,7 +310,7 @@ function systemChoices(section: SystemSection, item: Check): StateChoice[] {
     return [
       { state: "OK", label: "Норма" },
       { state: "ATTENTION", label: "Увага", findingSuffix: "потребує уваги", action: "ADDITIONAL_DIAGNOSTICS", urgency: "INFO" },
-      { state: "DEFECT", label: "Дефект", findingSuffix: "виявлено дефект", action: "REPAIR", urgency: "SOON" },
+      { state: "DEFECT", label: "Дефект", findingSuffix: "виявлено дефект", action: "REPAIR", urgency: "INFO" },
     ];
   }
 
@@ -318,22 +318,22 @@ function systemChoices(section: SystemSection, item: Check): StateChoice[] {
   if (/рівень моторної оливи/u.test(name)) {
     return [
       { state: "OK", label: "Норма" },
-      { state: "ATTENTION", label: "Низький", findingSuffix: "низький рівень", action: "ADDITIONAL_DIAGNOSTICS", urgency: "SOON" },
-      { state: "DEFECT", label: "Високий", findingSuffix: "високий рівень", action: "ADDITIONAL_DIAGNOSTICS", urgency: "SOON" },
+      { state: "ATTENTION", label: "Низький", findingSuffix: "низький рівень", action: "ADDITIONAL_DIAGNOSTICS", urgency: "INFO" },
+      { state: "DEFECT", label: "Високий", findingSuffix: "високий рівень", action: "ADDITIONAL_DIAGNOSTICS", urgency: "INFO" },
     ];
   }
   if (/рівень/u.test(name)) {
     return [
       { state: "OK", label: "Норма" },
-      { state: "ATTENTION", label: "Низький", findingSuffix: "низький рівень", action: "ADDITIONAL_DIAGNOSTICS", urgency: "SOON" },
-      { state: "DEFECT", label: "Критично", findingSuffix: "критично низький рівень", action: "ADDITIONAL_DIAGNOSTICS", urgency: "SOON" },
+      { state: "ATTENTION", label: "Низький", findingSuffix: "низький рівень", action: "ADDITIONAL_DIAGNOSTICS", urgency: "INFO" },
+      { state: "DEFECT", label: "Критично", findingSuffix: "критично низький рівень", action: "ADDITIONAL_DIAGNOSTICS", urgency: "CRITICAL" },
     ];
   }
 
   return [
     { state: "OK", label: "Норма" },
     { state: "ATTENTION", label: "Увага", findingSuffix: "потребує уваги", action: "ADDITIONAL_DIAGNOSTICS", urgency: "INFO" },
-    { state: "DEFECT", label: "Заміна", findingSuffix: "потребує заміни", action: "REPLACE", urgency: "SOON" },
+    { state: "DEFECT", label: "Заміна", findingSuffix: "потребує заміни", action: "REPLACE", urgency: "INFO" },
   ];
 }
 
@@ -482,7 +482,7 @@ export function MechanicDiagnosticMatrix({ diagnosticId, onBack, onChanged, onFi
         measurementText: null,
         note: null,
         findingText: problem ? (options?.findingText ?? `${item.name} — потребує уваги`) : null,
-        urgency: problem ? (options?.urgency ?? (state === "DEFECT" ? "SOON" : "INFO")) : "INFO",
+        urgency: problem ? (options?.urgency ?? "INFO") : "INFO",
         action: problem ? (options?.action ?? (state === "DEFECT" ? "REPLACE" : "ADDITIONAL_DIAGNOSTICS")) : "NONE",
       }),
     });
@@ -524,7 +524,7 @@ export function MechanicDiagnosticMatrix({ diagnosticId, onBack, onChanged, onFi
     const nextState: CheckState = item.state === "DEFECT" ? "OK" : "DEFECT";
     await setCheckState(item, nextState, {
       findingText: nextState === "DEFECT" ? `${item.name} — потребує заміни` : null,
-      urgency: "SOON",
+      urgency: "INFO",
       action: "REPLACE",
     });
   }
