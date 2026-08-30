@@ -47,9 +47,9 @@
 
 Локальне середовище не містить `DATABASE_URL` / `DATABASE_URL_UNPOOLED`, тому database/runtime smoke не можна чесно позначити як пройдені. Заблоковані саме відсутністю підключення: diagnostic flow, mechanic walk-in, vehicle resolution runtime, communication attachments, integration API request guards, RBAC, supplier reconciliation та persistence smoke.
 
-`communication-message-view-smoke` також потребує виправлення harness: прямий запуск через `tsx` підтягує серверний модуль `server-only`; це не є доказом помилки production route, але тест не приймається як PASS.
+`communication-message-view-smoke` локально також не запускається без БД. У GitHub Actions для нього вже передано `NODE_OPTIONS=--conditions=react-server`, тому окреме виправлення production-коду не потрібне.
 
-Ці пункти є P2 verification follow-up для CI/production environment із реальною БД; жоден із них не був замаскований під успішний результат.
+Ці пункти є P2 verification follow-up для CI environment із тестовою PostgreSQL; жоден із них не був замаскований під успішний результат.
 
 ## Приймання
 
