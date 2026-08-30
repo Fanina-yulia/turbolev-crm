@@ -2,8 +2,8 @@
 
 **Стандарт:** `CRM-AUDIT-001`  
 **Дата:** 2026-08-30  
-**Базовий реліз:** `origin/main` / commit `04f4aa057c5efb4d941e5e273253920b826c899c`  
-**Рішення:** `PASS WITH P2`
+**Базовий реліз:** `origin/main` / commit `ff805d0d726344d4d26963080ab823508c9de485`  
+**Рішення:** `PASS WITH P2` — browser-перевірка шести viewport потребує авторизованого браузерного сеансу
 
 ## Scope
 
@@ -35,6 +35,7 @@
 | Communications/integration/lead smoke | PASS — activation diagnostics, inbox, phone copy, public lead attribution |
 | Supplier/parts smoke без БД | PASS — 126 golden assertions, unique-trade preview/ingestion |
 | `npm run build` | PASS — Prisma Client, TypeScript, Next production build, static generation |
+| GitHub Actions Full CI `33329595781` | PASS — clean PostgreSQL 18, повний migration replay, DB-backed smoke-тести, security gates та production build; jobs `scope` і `build` успішні |
 | Vercel runtime errors за останні 24 години | PASS — помилок не знайдено |
 
 ## Виявлені та закриті дефекти
@@ -45,14 +46,14 @@
 
 ## Обмеження перевірки
 
-Локальне середовище не містить `DATABASE_URL` / `DATABASE_URL_UNPOOLED`, тому database/runtime smoke не можна чесно позначити як пройдені. Заблоковані саме відсутністю підключення: diagnostic flow, mechanic walk-in, vehicle resolution runtime, communication attachments, integration API request guards, RBAC, supplier reconciliation та persistence smoke.
+Локальне середовище не містить `DATABASE_URL` / `DATABASE_URL_UNPOOLED`, тому database/runtime smoke локально не запускаються. Їхній приймальний результат отримано в GitHub Actions Full CI на чистій PostgreSQL 18: diagnostic flow, mechanic walk-in, vehicle resolution runtime, communication attachments, integration API request guards, RBAC, supplier reconciliation та persistence smoke виконані в job `build` зі статусом `success`.
 
 `communication-message-view-smoke` локально також не запускається без БД. У GitHub Actions для нього вже передано `NODE_OPTIONS=--conditions=react-server`, тому окреме виправлення production-коду не потрібне.
 
-Ці пункти є P2 verification follow-up для CI environment із тестовою PostgreSQL; жоден із них не був замаскований під успішний результат.
+Локальна відсутність БД не є дефектом production. `communication-message-view-smoke` у CI також проходить із `NODE_OPTIONS=--conditions=react-server`; окреме виправлення production-коду не потрібне.
 
 ## Приймання
 
-Статична частина `CRM-AUDIT-001`, build, security, contract/smoke та UI-цілісність пройдені. Перед остаточним закриттям аудиту в production потрібно виконати database-dependent smoke і перевірити шість viewport із матриці стандарту: 1920, 1440, 1280, 1024, 768 та 390 px.
+Статична частина `CRM-AUDIT-001`, clean-database replay, DB-backed smoke, build, security, contract/smoke та UI-цілісність пройдені. Для повного закриття P2 залишилася лише авторизована візуальна перевірка шести viewport із матриці стандарту: 1920, 1440, 1280, 1024, 768 та 390 px; у поточному середовищі browser automation недоступна, а прямий HTTP-доступ до production захищений SSO.
 
-**Commit / deployment:** `8e85a3aa5a7e2b8a20045e553d18e793c36af8db` / [production deployment](https://turbolev-e7lm8x6pv-turbo-lev.vercel.app) — `READY`.
+**Commit / deployment:** `ff805d0d726344d4d26963080ab823508c9de485` / [production deployment](https://turbolev-qltlfpkqy-turbo-lev.vercel.app) — `READY`; alias [turbolev-crm.vercel.app](https://turbolev-crm.vercel.app).
