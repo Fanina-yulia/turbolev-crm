@@ -46,7 +46,7 @@ export function VehicleRecordWorkspace({ vehicle, loading, page, diagnosticId, o
     return () => controller.abort();
   }, [page, vehicle]);
 
-  if (loading || !vehicle) return <div className={styles.page}><div className={styles.loading}>Завантажую автомобіль…</div></div>;
+  if (!vehicle) return <div className={styles.page}><div className={styles.loading}>Завантажую автомобіль…</div></div>;
 
   const links: Array<[VehicleRecordPage, string]> = [["diagnostic-card", "Діагностична карта"], ["commercial-offer", "Комерційна пропозиція"], ["service-history", "Сервісна історія"]];
 

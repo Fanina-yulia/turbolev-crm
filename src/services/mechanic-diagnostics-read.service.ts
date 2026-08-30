@@ -299,6 +299,8 @@ export async function getStructuredDiagnosticForMechanicReadOnly(userId: string,
     diagnostic: {
       id: diagnostic.id,
       status: diagnostic.status,
+      createdAt: diagnostic.createdAt,
+      updatedAt: diagnostic.updatedAt,
       workflowState: review?.state === DiagnosticReviewState.SUBMITTED
         ? "SUBMITTED"
         : review?.state === DiagnosticReviewState.RETURNED

@@ -63,6 +63,7 @@ function cardStatus(row: DiagnosticRow, findings: Array<{ item: DiagnosticItem }
 
 export function VehicleDiagnosticsTab({ vehicle, diagnosticId }: Props) {
   const [rows, setRows] = useState<DiagnosticRow[]>([]);
+  const [prefetched, setPrefetched] = useState<{ id: string; view: DiagnosticView; cardNumber: string } | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(diagnosticId || null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -72,6 +73,33 @@ export function VehicleDiagnosticsTab({ vehicle, diagnosticId }: Props) {
   useEffect(() => {
     const controller = new AbortController();
     setLoading(true); setError("");
+    setPrefetched(null);
+    if (diagnosticId) {
+      void fetch(`/api/diagnostics/${encodeURIComponent(diagnosticId)}/fast?vehicleId=${encodeURIComponent(vehicle.id)}`, { cache: "default", credentials: "include", signal: controller.signal })
+        .then(async (response) => {
+          const body = await response.json().catch(() => null) as { ok?: boolean; row?: DiagnosticRow; view?: DiagnosticView; cardNumber?: string | null; error?: string } | null;
+          if (!response.ok || !body?.ok || !body.row || !body.view) throw new Error(body?.error || "Не вдалося завантажити діагностичну карту.");
+          if (controller.signal.aborted) return;
+          setRows([body.row]);
+          setPrefetched({ id: body.row.id, view: body.view, cardNumber: body.cardNumber || body.row.diagnosticCard?.number || "" });
+          setLoading(false);
+
+          void fetch(`/api/diagnostics?vehicleId=${encodeURIComponent(vehicle.id)}&limit=20`, { cache: "no-store", credentials: "include", signal: controller.signal })
+            .then(async (historyResponse) => {
+              const historyBody = await historyResponse.json().catch(() => null) as { diagnostics?: DiagnosticRow[] } | null;
+              if (!historyResponse.ok || !Array.isArray(historyBody?.diagnostics) || controller.signal.aborted) return;
+              setRows((current) => {
+                const byId = new Map(current.map((row) => [row.id, row]));
+                for (const row of historyBody.diagnostics || []) byId.set(row.id, row);
+                return Array.from(byId.values());
+              });
+            })
+            .catch(() => undefined);
+        })
+        .catch((cause) => { if (!controller.signal.aborted && cause instanceof Error && cause.name !== "AbortError") setError(cause.message); })
+        .finally(() => { if (!controller.signal.aborted) setLoading(false); });
+      return () => controller.abort();
+    }
     void fetch(`/api/diagnostics?vehicleId=${encodeURIComponent(vehicle.id)}&limit=100`, { cache: "no-store", credentials: "include", signal: controller.signal })
       .then(async (response) => {
         const body = await response.json().catch(() => null) as { ok?: boolean; diagnostics?: DiagnosticRow[]; error?: string } | null;
@@ -81,7 +109,7 @@ export function VehicleDiagnosticsTab({ vehicle, diagnosticId }: Props) {
       .catch((cause) => { if (!controller.signal.aborted && cause instanceof Error && cause.name !== "AbortError") setError(cause.message); })
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
-  }, [vehicle.id, refreshTick]);
+  }, [vehicle.id, diagnosticId, refreshTick]);
 
   useEffect(() => {
     if (!rows.length) { setSelectedId(null); return; }
@@ -115,15 +143,15 @@ export function VehicleDiagnosticsTab({ vehicle, diagnosticId }: Props) {
 
   return <div className={styles.wrap}>
     {error ? <div className={styles.error}>{error}</div> : null}
-    {selected ? <DiagnosticCardDetail row={selected} busy={busyId === selected.id} onOpenDiagnostic={() => openDiagnostic(selected)} onOpenPartsSelection={() => navigateCrm("Підбір запчастин", { diagnosticId: selected.id, vehicleId: vehicle.id, plate: vehicle.plateNumber || "", vin: vehicle.vin || "" })} onCreateProposal={() => void createCommercialProposal(selected)} onOpenCommercial={() => openCommercial(selected)} /> : null}
+    {selected ? <DiagnosticCardDetail key={selected.id} row={selected} initialView={prefetched?.id === selected.id ? prefetched.view : null} initialCardNumber={prefetched?.id === selected.id ? prefetched.cardNumber : ""} busy={busyId === selected.id} onOpenDiagnostic={() => openDiagnostic(selected)} onOpenPartsSelection={() => navigateCrm("Підбір запчастин", { diagnosticId: selected.id, vehicleId: vehicle.id, plate: vehicle.plateNumber || "", vin: vehicle.vin || "" })} onCreateProposal={() => void createCommercialProposal(selected)} onOpenCommercial={() => openCommercial(selected)} /> : null}
     <div className={styles.historyBar}><div><span className={styles.eyebrow}>ІСТОРІЯ ДІАГНОСТИК</span><strong>{vehicleTitle(vehicle)}</strong></div><div className={styles.historyItems}>{rows.map((row) => { const state = stateOf(row); return <button type="button" key={row.id} className={selectedId === row.id ? styles.historyActive : ""} onClick={() => setSelectedId(row.id)}><b>{row.diagnosticCard?.number || "Діагностика"}</b><span>{workflowLabels[state]}</span><small>{dateText(row.confirmedAt || row.updatedAt || row.createdAt)}</small></button>; })}</div></div>
   </div>;
 }
 
-function DiagnosticCardDetail({ row, busy, onOpenDiagnostic, onOpenPartsSelection, onCreateProposal, onOpenCommercial }: { row: DiagnosticRow; busy: boolean; onOpenDiagnostic: () => void; onOpenPartsSelection: () => void; onCreateProposal: () => void; onOpenCommercial: () => void }) {
-  const [view, setView] = useState<DiagnosticView | null>(null);
-  const [cardNumber, setCardNumber] = useState(row.diagnosticCard?.number || "");
-  const [loading, setLoading] = useState(true);
+function DiagnosticCardDetail({ row, initialView, initialCardNumber, busy, onOpenDiagnostic, onOpenPartsSelection, onCreateProposal, onOpenCommercial }: { row: DiagnosticRow; initialView: DiagnosticView | null; initialCardNumber: string; busy: boolean; onOpenDiagnostic: () => void; onOpenPartsSelection: () => void; onCreateProposal: () => void; onOpenCommercial: () => void }) {
+  const [view, setView] = useState<DiagnosticView | null>(initialView);
+  const [cardNumber, setCardNumber] = useState(initialCardNumber || row.diagnosticCard?.number || "");
+  const [loading, setLoading] = useState(!initialView);
   const [error, setError] = useState("");
   const [selectedFindingId, setSelectedFindingId] = useState<string | null>(null);
   const [activePhotoId, setActivePhotoId] = useState<string | null>(null);
@@ -133,16 +161,20 @@ function DiagnosticCardDetail({ row, busy, onOpenDiagnostic, onOpenPartsSelectio
   const [savingComment, setSavingComment] = useState(false);
 
   useEffect(() => {
+    if (initialView) {
+      setView(initialView);
+      setCardNumber(initialCardNumber || row.diagnosticCard?.number || "");
+      setLoading(false);
+      return;
+    }
     const controller = new AbortController(); setLoading(true); setError("");
     void Promise.all([
       fetch(`/api/diagnostics/${encodeURIComponent(row.id)}/structured`, { cache: "no-store", credentials: "include", signal: controller.signal }),
-      fetch(`/api/diagnostics/${encodeURIComponent(row.id)}/card`, { cache: "no-store", credentials: "include", signal: controller.signal }),
-    ]).then(async ([structuredResponse, cardResponse]) => {
+    ]).then(async ([structuredResponse]) => {
       const structuredBody = await structuredResponse.json().catch(() => null) as { ok?: boolean; diagnostic?: DiagnosticView["diagnostic"]; inspections?: DiagnosticInspection[]; counts?: DiagnosticView["counts"]; message?: string; error?: string } | null;
       if (!structuredResponse.ok || !structuredBody?.ok || !structuredBody.diagnostic || !Array.isArray(structuredBody.inspections) || !structuredBody.counts) throw new Error(structuredBody?.message || structuredBody?.error || "Не вдалося завантажити діагностичну карту.");
-      const cardBody = await cardResponse.json().catch(() => null) as { ok?: boolean; card?: { number?: string } | null } | null;
-      if (cardBody?.card?.number) setCardNumber(cardBody.card.number);
       if (!controller.signal.aborted) {
+        setCardNumber(row.diagnosticCard?.number || "");
         setView({ diagnostic: structuredBody.diagnostic, inspections: structuredBody.inspections, counts: structuredBody.counts });
         setMechanicComment(structuredBody.diagnostic.review.mechanicComment || "");
       }

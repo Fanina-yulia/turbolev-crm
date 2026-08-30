@@ -157,11 +157,28 @@ export function VehiclesDirectory() {
       setVehicleCard(null);
       return;
     }
+    const initial = vehicles.find((vehicle) => vehicle.id === vehicleId);
+    if (initial) {
+      setVehicleCard((current) => current?.id === initial.id ? current : {
+        ...initial,
+        classificationSource: null,
+        classificationConfidence: null,
+        lastVehicleLookupAt: null,
+        diagnosticRequests: [],
+        workOrders: [],
+      });
+    }
+  }, [vehicleId, vehicles]);
+
+  useEffect(() => {
+    if (!vehicleId) return;
     const controller = new AbortController();
     setVehicleLoading(true);
     void (async () => {
       try {
-        const response = await fetch(`/api/vehicles/card?id=${encodeURIComponent(vehicleId)}`, { cache: "no-store", signal: controller.signal });
+        const params = new URLSearchParams({ id: vehicleId });
+        if (vehiclePage === "diagnostic-card") params.set("view", "diagnostic");
+        const response = await fetch(`/api/vehicles/card?${params.toString()}`, { cache: vehiclePage === "diagnostic-card" ? "force-cache" : "no-store", signal: controller.signal });
         const payload: unknown = await response.json().catch(() => null);
         const vehicle = parseVehicleCardPayload(payload);
         if (!response.ok || !vehicle) throw new Error(payloadMessage(payload, "Не вдалося відкрити автомобіль"));
@@ -173,7 +190,7 @@ export function VehiclesDirectory() {
       }
     })();
     return () => controller.abort();
-  }, [vehicleId]);
+  }, [vehicleId, vehiclePage]);
 
   function changeQuery(value: string) {
     setQuery(value);
@@ -228,6 +245,14 @@ export function VehiclesDirectory() {
       vehicleId: vehicle.id,
       vehiclePage: key === "diagnostics" ? "diagnostic-card" : "commercial-offer",
     });
+  }
+
+  function prefetchDiagnostic(vehicle: Vehicle, diagnosticId: string | null) {
+    if (!diagnosticId) return;
+    void fetch(`/api/diagnostics/${encodeURIComponent(diagnosticId)}/fast?vehicleId=${encodeURIComponent(vehicle.id)}`, {
+      credentials: "include",
+      cache: "force-cache",
+    }).catch(() => undefined);
   }
 
   function openVehicle(id: string) {
@@ -317,6 +342,8 @@ export function VehiclesDirectory() {
                 event.stopPropagation();
                 openWorkflow(vehicle, key, status.targetId);
               }}
+              onPointerEnter={() => { if (key === "diagnostics") prefetchDiagnostic(vehicle, status.targetId); }}
+              onFocus={() => { if (key === "diagnostics") prefetchDiagnostic(vehicle, status.targetId); }}
             >
               <i className={`${workflowStyles.workflowIcon} ${workflowStyles[`workflow_${status.tone}`]}`}><WorkflowIcon kind={icon} /></i>
               <small>{label}</small>

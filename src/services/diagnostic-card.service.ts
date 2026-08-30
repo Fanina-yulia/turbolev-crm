@@ -351,6 +351,13 @@ export async function getDiagnosticCard(diagnosticRequestId: string) {
   return { card, latest, final, revisions };
 }
 
+export async function getDiagnosticCardMeta(diagnosticRequestId: string) {
+  return getPrisma().diagnosticCard.findUnique({
+    where: { diagnosticRequestId },
+    select: { id: true, number: true, currentRevision: true, finalizedAt: true },
+  });
+}
+
 export async function getFinalDiagnosticCardSnapshot(diagnosticRequestId: string) {
   const state = await getDiagnosticCard(diagnosticRequestId);
   return (state?.final?.snapshot as DiagnosticCardSnapshot | undefined) ?? null;

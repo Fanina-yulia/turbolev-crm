@@ -12,6 +12,7 @@ export async function GET(request: NextRequest) {
   const access = await authorize(PERMISSIONS.CLIENTS_READ, { request, strict: true, minimumScope: "SELF" });
   if (!access.allowed) return access.response!;
   const id = (request.nextUrl.searchParams.get("id") || "").trim();
+  const compact = request.nextUrl.searchParams.get("view") === "diagnostic";
   if (!id) return NextResponse.json({ ok: false, error: "Не вказано автомобіль." }, { status: 400 });
 
   try {
@@ -47,25 +48,32 @@ export async function GET(request: NextRequest) {
         createdAt: true,
         updatedAt: true,
         client: { select: { id: true, name: true, phone: true } },
-        diagnosticRequests: {
-          orderBy: { createdAt: "desc" },
-          take: 10,
-          select: { id: true, status: true, technicalConclusion: true, confirmedAt: true, createdAt: true, updatedAt: true },
-        },
-        workOrders: {
-          orderBy: { createdAt: "desc" },
-          take: 10,
-          select: { id: true, status: true, createdAt: true, updatedAt: true, closedAt: true },
-        },
+        ...(compact ? {} : {
+          diagnosticRequests: {
+            orderBy: { createdAt: "desc" },
+            take: 10,
+            select: { id: true, status: true, technicalConclusion: true, confirmedAt: true, createdAt: true, updatedAt: true },
+          },
+          workOrders: {
+            orderBy: { createdAt: "desc" },
+            take: 10,
+            select: { id: true, status: true, createdAt: true, updatedAt: true, closedAt: true },
+          },
+        }),
         _count: { select: { workOrders: true, diagnosticRequests: true } },
       },
     });
 
     if (!vehicle) return NextResponse.json({ ok: false, error: "Автомобіль не знайдено." }, { status: 404 });
-    const color = vehicle.exteriorColorConfirmed
+    const color = compact || vehicle.exteriorColorConfirmed
       ? null
       : await resolveVehicleColorByPlate(vehicle.plateNumber, vehicle.id, vehicle.vin).catch(() => null);
-    return NextResponse.json({ ok: true, vehicle: color ? { ...vehicle, ...color } : vehicle }, { headers: { "Cache-Control": "no-store" } });
+    const responseVehicle = {
+      ...vehicle,
+      diagnosticRequests: "diagnosticRequests" in vehicle ? vehicle.diagnosticRequests : [],
+      workOrders: "workOrders" in vehicle ? vehicle.workOrders : [],
+    };
+    return NextResponse.json({ ok: true, vehicle: color ? { ...responseVehicle, ...color } : responseVehicle }, { headers: { "Cache-Control": compact ? "private, max-age=10" : "no-store" } });
   } catch (error) {
     console.error("vehicle card GET failed", error);
     return NextResponse.json({ ok: false, error: "Не вдалося відкрити картку автомобіля." }, { status: 500 });
