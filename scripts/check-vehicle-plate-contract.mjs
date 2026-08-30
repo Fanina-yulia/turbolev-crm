@@ -14,7 +14,7 @@ const checks = [
   ["canonical sizes xs/sm/md", [".xs", ".sm", ".md"].every((token) => files.css.includes(token))],
   ["reference plate proportions", files.css.includes("4.9756097561") && files.css.includes("--plate-height") && files.art.includes("PLATE_VIEWBOX")],
   ["canonical SVG artwork", files.component.includes("plateSvgMarkup") && files.bridge.includes(">svg") && files.art.includes('data-plate-art=\"${PLATE_ART_VERSION}\"')],
-  ["reference text geometry", files.art.includes('textLength=\"129\"') && files.art.includes('textLength=\"202\"') && files.art.includes('textLength=\"130\"') && files.art.includes('font-size=\"106\"')],
+  ["reference text geometry", files.art.includes('textLength=\"129\"') && files.art.includes('textLength=\"202\"') && files.art.includes('textLength=\"130\"') && files.art.includes('font-size=\"106\"') && files.art.includes('font-size:106px!important')],
   ["white plate surface", files.art.includes('fill=\"#fff\"')],
   ["black plate number", files.art.includes('fill=\"#050505\"') && files.art.includes('stroke=\"#050505\"')],
   ["no legacy gradient or undersized override", !files.css.includes("height:34px") && !files.css.includes("linear-gradient") && !files.bridge.includes("linear-gradient")],
