@@ -482,3 +482,14 @@
     width: 100%;
   }
 }
+
+/* CRM content is one continuous document; only global overlays may scroll independently. */
+.list,
+.detail {
+  max-height: none;
+  overflow: visible;
+}
+
+.detail {
+  position: static;
+}

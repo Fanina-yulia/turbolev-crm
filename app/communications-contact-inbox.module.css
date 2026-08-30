@@ -157,3 +157,19 @@
   .composer button{width:100%}
   .event{max-width:96%}
 }
+
+/* The inbox is part of the CRM document: conversations and contacts grow with the page. */
+.shell{height:auto;min-height:0;max-height:none;overflow:visible}
+.list,.timeline{overflow:visible}
+.timeline{flex:none}
+.left,.right{min-height:0}
+
+@media(max-width:900px){
+  .left{height:auto;min-height:0}
+  .right{min-height:0}
+}
+
+@media(max-width:760px){
+  .left{height:auto;min-height:0}
+  .right{min-height:0}
+}
