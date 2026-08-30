@@ -1,5 +1,6 @@
 import styles from "./vehicle-plate.module.css";
 import { formatRegistrationPlate, normalizeRegistrationPlate } from "../src/domain/registration-plate";
+import { plateSvgMarkup } from "./vehicle-plate-art";
 
 type VehiclePlateSize = "xs" | "sm" | "md";
 
@@ -33,8 +34,6 @@ export function VehiclePlate({ value, size = "sm", className = "", title }: Vehi
     data-plate={normalized}
     title={title || `Державний номер ${display}`}
     aria-label={`Державний номер ${display}`}
-  >
-    <span className={styles.uaBand} aria-hidden="true"><i /><b>UA</b></span>
-    <span className={styles.number}>{display}</span>
-  </span>;
+    dangerouslySetInnerHTML={{ __html: plateSvgMarkup(display) }}
+  />;
 }

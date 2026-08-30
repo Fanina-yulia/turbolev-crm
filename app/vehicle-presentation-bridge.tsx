@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import { VehicleBrandLogo } from "./vehicle-brand-logo";
 import { VehicleRender } from "./vehicle-render";
 import { formatVehiclePlate, normalizeVehiclePlate } from "./vehicle-plate";
+import { plateSvgMarkup } from "./vehicle-plate-art";
 
 const PLATE_RE = /[A-ZАВЕІКМНОРСТХУ]{2}[\s\-–—]?\d{4}[\s\-–—]?[A-ZАВЕІКМНОРСТХУ]{2}/giu;
 const ALNUM_RE = /[A-ZА-ЯІЇЄ0-9]/iu;
@@ -56,18 +57,7 @@ function plateMarkup(value: string) {
   plate.setAttribute("aria-label", `Державний номер ${display}`);
   plate.title = `Державний номер ${display}`;
 
-  const band = document.createElement("span");
-  band.className = "turboLevVehiclePlateBand";
-  band.setAttribute("aria-hidden", "true");
-  const flag = document.createElement("i");
-  const ua = document.createElement("b");
-  ua.textContent = "UA";
-  band.append(flag, ua);
-
-  const number = document.createElement("span");
-  number.className = "turboLevVehiclePlateNumber";
-  number.textContent = display;
-  plate.append(band, number);
+  plate.innerHTML = plateSvgMarkup(display);
   return plate;
 }
 
