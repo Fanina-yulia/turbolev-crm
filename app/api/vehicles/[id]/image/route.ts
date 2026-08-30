@@ -68,7 +68,7 @@ export async function GET(request: NextRequest, context: { params: Promise<{ id:
       getVehicleImageDeliveryState(id, themePaint),
     ]);
 
-    if (library.needsOptimization) {
+    if (library.state === "GENERATING" && library.needsOptimization) {
       scheduleBackground(id, themePaint);
     }
     if (library.state === "MISSING" && library.autoGenerate && library.canGenerate) {

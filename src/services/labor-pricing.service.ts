@@ -91,6 +91,19 @@ export async function getVehicleTypeCoefficients() {
   ) as Record<PricingVehicleType, number>;
 }
 
+export async function getCustomerPartsLaborPercent() {
+  const prisma = getPrisma();
+  try {
+    const rows = await prisma.$queryRawUnsafe<SettingRow[]>(`SELECT "value" FROM "CrmSetting" WHERE "key"='markup' LIMIT 1`);
+    const markup = asObject(rows[0]?.value);
+    const parsed = Number(markup.customerPartsLaborPercent);
+    return Number.isFinite(parsed) && parsed >= 0 && parsed <= 1000 ? parsed : 20;
+  } catch (error) {
+    console.warn("Customer-part labor settings unavailable; using default", error);
+    return 20;
+  }
+}
+
 export async function resolveLaborPricing(input: VehicleTechnicalInput) {
   const classification = classifyVehicle(input);
   const pricingVehicleType = detectPricingVehicleType(input);
@@ -119,5 +132,45 @@ export async function calculateLaborPrice(basePrice: number, input: VehicleTechn
     subtotal: Math.round(subtotal),
     manualAdjustmentPercent: safeAdjustment,
     total: Math.round(adjusted),
+  };
+}
+
+function normalized(value: unknown) {
+  return String(value ?? "").toLocaleLowerCase("uk-UA").replace(/[‐‑‒–—-]/g, " ").replace(/[^a-zа-яіїє0-9]+/giu, " ").replace(/\s+/g, " ").trim();
+}
+
+export function isReplacementLabor(input: { nameOperation?: string | null; calculatorOperation?: string | null; displayName?: string | null; internalName?: string | null }) {
+  const explicit = normalized(`${input.nameOperation ?? ""} ${input.calculatorOperation ?? ""}`);
+  if (explicit.includes("replace") || explicit.includes("замін")) return true;
+  return normalized(`${input.displayName ?? ""} ${input.internalName ?? ""}`).includes("замін");
+}
+
+export async function calculateCatalogLaborPrice(input: {
+  basePrice: number;
+  vehicle: VehicleTechnicalInput;
+  quantity?: number;
+  vehicleCoefficientEnabled: boolean;
+  customerProvidedPart?: boolean;
+  replacementOperation: boolean;
+}) {
+  const quantity = Number.isFinite(input.quantity) && (input.quantity ?? 0) > 0 ? input.quantity ?? 1 : 1;
+  const pricing = await resolveLaborPricing(input.vehicle);
+  const coefficient = input.vehicleCoefficientEnabled ? pricing.coefficient : 1;
+  const baseSubtotal = Math.round(Math.max(0, input.basePrice) * quantity * coefficient * 100) / 100;
+  const customerPartsLaborPercent = input.customerProvidedPart && input.replacementOperation
+    ? await getCustomerPartsLaborPercent()
+    : 0;
+  const total = Math.round(baseSubtotal * (1 + customerPartsLaborPercent / 100) * 100) / 100;
+  return {
+    ...pricing,
+    basePrice: Math.max(0, input.basePrice),
+    quantity,
+    coefficientApplied: input.vehicleCoefficientEnabled,
+    coefficient,
+    baseSubtotal,
+    customerProvidedPart: Boolean(input.customerProvidedPart),
+    replacementOperation: input.replacementOperation,
+    customerPartsLaborPercent,
+    total,
   };
 }

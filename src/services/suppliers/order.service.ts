@@ -4,7 +4,7 @@ import { writeAuditEvent } from "@/src/services/audit.service";
 import { transitionPartsRequest } from "@/src/services/work-order-commercial.service";
 import { getSupplierAdapter } from "./registry";
 import type { SupplierId, SupplierOffer, SupplierOrderSubmitInput } from "./types";
-import { calculateSellPrice, DEFAULT_MARKUP_PERCENT } from "./pricing";
+import { calculateSellPrice, DEFAULT_MARKUP_PERCENT, getConfiguredPartsMarkupPercent } from "./pricing";
 
 const ORDER_CONFIRMATION = "SUBMIT_SUPPLIER_ORDER";
 
@@ -49,6 +49,7 @@ export async function ensureSupplierRecord(id: SupplierId) {
   if (!adapter) throw new Error("Невідомий постачальник.");
   const prisma = getPrisma();
   const code = supplierCode(id);
+  const markupPercent = await getConfiguredPartsMarkupPercent();
   return prisma.supplier.upsert({
     where: { code },
     update: {
@@ -63,16 +64,15 @@ export async function ensureSupplierRecord(id: SupplierId) {
       websiteUrl: adapter.website,
       apiBaseUrl: adapter.apiBaseUrl,
       isActive: true,
-      defaultMarkupPercent: DEFAULT_MARKUP_PERCENT,
+      defaultMarkupPercent: markupPercent,
       defaultCurrency: "UAH",
     },
   });
 }
 
 export async function getSupplierMarkupPercent(id: SupplierId) {
-  const prisma = getPrisma();
-  const row = await prisma.supplier.findUnique({ where: { code: supplierCode(id) }, select: { defaultMarkupPercent: true } });
-  return row ? numberValue(row.defaultMarkupPercent) : DEFAULT_MARKUP_PERCENT;
+  void id;
+  return getConfiguredPartsMarkupPercent();
 }
 
 export async function enrichOffersWithSellPrice(offers: SupplierOffer[]) {

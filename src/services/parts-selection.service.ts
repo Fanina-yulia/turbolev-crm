@@ -2,10 +2,11 @@ import { getPrisma } from "@/src/lib/prisma";
 import { toPrismaJson } from "@/src/lib/prisma-json";
 import { createCommercialProposalFromDiagnostic } from "@/src/services/diagnostic-commercial-proposal.service";
 import { getDiagnosticCommercialHandoff } from "@/src/services/diagnostic-commercial-handoff.service";
-import { updateWorkOrderLine } from "@/src/services/work-order-lines.service";
+import { createWorkOrderLine, updateWorkOrderLine } from "@/src/services/work-order-lines.service";
 import { ensurePartsRequestTx } from "@/src/services/work-order-commercial.service";
 import { enrichOffersWithSellPrice, ensureSupplierRecord } from "@/src/services/suppliers/order.service";
 import { searchConfiguredSuppliers } from "@/src/services/suppliers/registry";
+import { calculateCatalogLaborPrice, isReplacementLabor } from "@/src/services/labor-pricing.service";
 import type { SupplierId } from "@/src/services/suppliers/types";
 
 const SUPPLIER_IDS = new Set<SupplierId>(["bm-parts", "unique-trade", "autonova-d", "atl"]);
@@ -31,6 +32,124 @@ function normalizeSupplier(value: unknown): SupplierId {
   return id;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function normalized(value: unknown) {
+  return String(value ?? "").toLocaleLowerCase("uk-UA").replace(/[‐‑‒–—-]/g, " ").replace(/[^a-zа-яіїє0-9]+/giu, " ").replace(/\s+/g, " ").trim();
+}
+
+async function findLaborCatalogItem(name: string, catalogItemId?: string | null) {
+  const prisma = getPrisma();
+  if (catalogItemId) {
+    const exact = await prisma.serviceCatalogItem.findFirst({
+      where: { id: catalogItemId, isActive: true, showToOperator: true, reviewStatus: "READY", itemType: "LABOR", basePrice: { not: null } },
+    });
+    if (exact) return exact;
+  }
+  const query = clean(name, 180);
+  if (!query) return null;
+  const candidates = await prisma.serviceCatalogItem.findMany({
+    where: {
+      isActive: true,
+      showToOperator: true,
+      reviewStatus: "READY",
+      itemType: "LABOR",
+      basePrice: { not: null },
+      OR: [
+        { displayName: { contains: query, mode: "insensitive" } },
+        { internalName: { contains: query, mode: "insensitive" } },
+        { nameOperation: { contains: query, mode: "insensitive" } },
+        { searchAliases: { has: query } },
+      ],
+    },
+    take: 20,
+  });
+  const target = normalized(query);
+  return candidates.sort((a, b) => {
+    const aExact = normalized(a.displayName) === target || normalized(a.internalName) === target;
+    const bExact = normalized(b.displayName) === target || normalized(b.internalName) === target;
+    return Number(bExact) - Number(aExact) || a.displayName.localeCompare(b.displayName, "uk");
+  })[0] || null;
+}
+
+async function ensureReplacementLabor(input: {
+  workOrderId: string;
+  findingId: string;
+  laborSuggestion: { description: string; lineId: string | null } | undefined;
+  vehicle: { brand: string | null; model: string | null; year: number | null; engineName: string | null; engineVolumeCm3: number | null; fuelType: string | null; bodyType: string | null; grossWeightKg: number | null; driveType: string | null; vehicleType: string | null };
+  customerProvidedPart: boolean;
+  actorName: string;
+}) {
+  if (!input.laborSuggestion) {
+    return { status: "NOT_MAPPED" as const, message: "Для цієї деталі в Діагностичній карті не вказана робота заміни." };
+  }
+  const prisma = getPrisma();
+  const current = input.laborSuggestion.lineId
+    ? await prisma.workOrderLine.findFirst({ where: { id: input.laborSuggestion.lineId, workOrderId: input.workOrderId } })
+    : null;
+  const catalogItem = await findLaborCatalogItem(input.laborSuggestion.description, current?.catalogItemId);
+  if (!catalogItem || catalogItem.basePrice == null) {
+    if (current && Number(current.plannedUnitPrice) > 0) return { status: "EXISTING_PRICE" as const, lineId: current.id, message: "Роботу залишено з уже встановленою ціною." };
+    return { status: "MANUAL_REQUIRED" as const, message: `У прайс-листі не знайдено роботу «${input.laborSuggestion.description}».` };
+  }
+  const vehicle = {
+    make: input.vehicle.brand || undefined,
+    model: input.vehicle.model || undefined,
+    year: input.vehicle.year == null ? undefined : String(input.vehicle.year),
+    engine: input.vehicle.engineName || undefined,
+    engineVolume: input.vehicle.engineVolumeCm3 == null ? undefined : String(input.vehicle.engineVolumeCm3),
+    fuelType: input.vehicle.fuelType || undefined,
+    bodyType: input.vehicle.bodyType || undefined,
+    grossWeight: input.vehicle.grossWeightKg == null ? undefined : String(input.vehicle.grossWeightKg),
+    driveType: input.vehicle.driveType || undefined,
+    vehicleType: input.vehicle.vehicleType || undefined,
+  };
+  const pricing = await calculateCatalogLaborPrice({
+    basePrice: Number(catalogItem.basePrice),
+    vehicle,
+    vehicleCoefficientEnabled: catalogItem.vehicleCoefficientEnabled,
+    customerProvidedPart: input.customerProvidedPart,
+    replacementOperation: isReplacementLabor(catalogItem),
+  });
+  const metadata = {
+    ...(current && isRecord(current.metadata) ? current.metadata : {}),
+    source: "PART_SELECTION_AUTO_LABOR",
+    findingId: input.findingId,
+    catalogItemId: catalogItem.id,
+    laborPricingSnapshot: {
+      basePrice: pricing.basePrice,
+      coefficientApplied: pricing.coefficientApplied,
+      coefficient: pricing.coefficient,
+      vehicleType: pricing.pricingVehicleType,
+      vehicleTypeLabel: pricing.pricingVehicleTypeLabel,
+      customerProvidedPart: pricing.customerProvidedPart,
+      replacementOperation: pricing.replacementOperation,
+      customerPartsLaborPercent: pricing.customerPartsLaborPercent,
+      total: pricing.total,
+      capturedAt: new Date().toISOString(),
+    },
+  };
+  const lineBody = {
+    type: "LABOR",
+    description: catalogItem.displayName,
+    code: catalogItem.code,
+    catalogItemId: catalogItem.id,
+    plannedQuantity: 1,
+    plannedUnitPrice: pricing.total,
+    plannedUnitCost: 0,
+    laborHours: catalogItem.normMinutes == null ? null : catalogItem.normMinutes / 60,
+    sourceEntity: "DIAGNOSTIC_FINDING",
+    sourceEntityId: `${input.findingId}:LABOR`,
+    metadata,
+  };
+  const result = current
+    ? await updateWorkOrderLine(input.workOrderId, current.id, lineBody, input.actorName)
+    : await createWorkOrderLine(input.workOrderId, lineBody, input.actorName);
+  return { status: "ADDED" as const, lineId: result.line.id, service: catalogItem.displayName, pricing };
+}
+
 export async function selectDiagnosticPartOffer(input: {
   diagnosticRequestId: string;
   findingId: string;
@@ -40,6 +159,10 @@ export async function selectDiagnosticPartOffer(input: {
   quantity?: number | null;
   actorId?: string | null;
   actorName?: string | null;
+  searchMode?: "VIN" | "PART_NUMBER" | "TEXT";
+  vehicleVin?: string | null;
+  manualConfirmation?: boolean;
+  customerProvidedPart?: boolean;
 }) {
   const diagnosticRequestId = clean(input.diagnosticRequestId, 160);
   const findingId = clean(input.findingId, 160);
@@ -49,6 +172,12 @@ export async function selectDiagnosticPartOffer(input: {
     throw new PartsSelectionError("QUANTITY_INVALID", "Кількість деталі має бути від 1 до 100.");
   }
   if (!diagnosticRequestId || !findingId) throw new PartsSelectionError("CONTEXT_REQUIRED", "Не передано діагностику або виявлену проблему.");
+  const searchMode = input.searchMode === "VIN" && clean(input.vehicleVin, 24).length === 17
+    ? "VIN"
+    : input.searchMode === "PART_NUMBER" ? "PART_NUMBER" : "TEXT";
+  if (searchMode !== "VIN" && input.manualConfirmation !== true) {
+    throw new PartsSelectionError("MANUAL_CONFIRMATION_REQUIRED", "Без підтвердженого VIN потрібно вручну підтвердити, що деталь відповідає цьому автомобілю.", 409);
+  }
 
   const actorName = clean(input.actorName, 160) || "CRM / Підбір запчастин";
   const commercial = await createCommercialProposalFromDiagnostic(diagnosticRequestId, actorName, input.actorId || null);
@@ -72,6 +201,22 @@ export async function selectDiagnosticPartOffer(input: {
   if (!priced || priced.sellPrice == null) throw new PartsSelectionError("PRICE_UNAVAILABLE", "Постачальник не повернув коректну ціну.", 409);
   const supplier = await ensureSupplierRecord(supplierId);
   const prisma = getPrisma();
+  const workOrderVehicle = await prisma.workOrder.findUnique({
+    where: { id: commercial.workOrder.id },
+    select: { vehicle: { select: { brand: true, model: true, year: true, engineName: true, engineVolumeCm3: true, fuelType: true, bodyType: true, grossWeightKg: true, driveType: true, vehicleType: true } } },
+  });
+  if (!workOrderVehicle?.vehicle) throw new PartsSelectionError("VEHICLE_NOT_FOUND", "Для WorkOrder не знайдено автомобіль.", 409);
+
+  const laborSuggestion = handoff.suggestions.find((item) => item.kind === "LABOR" && item.findingId === findingId);
+  const labor = await ensureReplacementLabor({
+    workOrderId: commercial.workOrder.id,
+    findingId,
+    laborSuggestion,
+    vehicle: workOrderVehicle.vehicle,
+    customerProvidedPart: input.customerProvidedPart === true,
+    actorName,
+  });
+
   const quote = await prisma.supplierProductQuote.create({
     data: {
       supplierId: supplier.id,
@@ -90,6 +235,7 @@ export async function selectDiagnosticPartOffer(input: {
     },
   });
 
+  const currentPartLine = await prisma.workOrderLine.findFirst({ where: { id: suggestion.lineId, workOrderId: commercial.workOrder.id }, select: { metadata: true } });
   const updated = await updateWorkOrderLine(commercial.workOrder.id, suggestion.lineId, {
     description: suggestion.description,
     article: priced.article,
@@ -100,6 +246,22 @@ export async function selectDiagnosticPartOffer(input: {
     plannedQuantity: quantity,
     supplierId: supplier.id,
     supplierQuoteId: quote.id,
+    metadata: {
+      ...(isRecord(currentPartLine?.metadata) ? currentPartLine.metadata : {}),
+      source: "PART_SELECTION",
+      findingId,
+      supplierId: supplier.id,
+      supplierName: priced.supplierName,
+      searchMode,
+      manualConfirmation: searchMode !== "VIN",
+      partsPricingSnapshot: {
+        purchasePrice: priced.purchasePrice,
+        markupPercent: priced.markupPercent,
+        sellPrice: priced.sellPrice,
+        currency: priced.currency || supplier.defaultCurrency || "UAH",
+        capturedAt: new Date().toISOString(),
+      },
+    },
   }, actorName);
 
   const partsRequest = await prisma.$transaction(async (tx) => {
@@ -119,6 +281,7 @@ export async function selectDiagnosticPartOffer(input: {
           sellPrice: priced.sellPrice,
           currency: priced.currency || supplier.defaultCurrency || "UAH",
           quantity,
+          note: searchMode === "VIN" ? "Підібрано за VIN" : "Підібрано за номером/назвою після ручного підтвердження",
         },
       });
     }
@@ -143,6 +306,9 @@ export async function selectDiagnosticPartOffer(input: {
           markupPercent: priced.markupPercent,
           sellPrice: priced.sellPrice,
           currency: priced.currency || "UAH",
+          searchMode,
+          manualConfirmation: searchMode !== "VIN",
+          labor,
         }),
       },
     });
@@ -168,5 +334,8 @@ export async function selectDiagnosticPartOffer(input: {
       quoteId: quote.id,
     },
     line: updated.line,
+    labor,
+    searchMode,
+    manualConfirmationRequired: searchMode !== "VIN",
   };
 }

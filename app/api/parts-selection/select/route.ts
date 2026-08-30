@@ -21,6 +21,10 @@ export async function POST(request: Request) {
       externalProductId?: string | null;
       article?: string | null;
       quantity?: number | null;
+      searchMode?: "VIN" | "PART_NUMBER" | "TEXT";
+      vehicleVin?: string | null;
+      manualConfirmation?: boolean;
+      customerProvidedPart?: boolean;
     } | null;
     const diagnosticId = body?.diagnosticId?.trim() || "";
     if (!diagnosticId) return NextResponse.json({ ok: false, error: "DIAGNOSTIC_REQUIRED", message: "Не передано Діагностичну карту." }, { status: 400 });
@@ -42,6 +46,10 @@ export async function POST(request: Request) {
       quantity: body?.quantity ?? 1,
       actorId: access.context.user.id,
       actorName: access.context.user.employeeName || access.context.user.name || "CRM / Підбір запчастин",
+      searchMode: body?.searchMode,
+      vehicleVin: body?.vehicleVin || null,
+      manualConfirmation: body?.manualConfirmation === true,
+      customerProvidedPart: body?.customerProvidedPart === true,
     });
     return NextResponse.json({ ok: true, ...result });
   } catch (error) {

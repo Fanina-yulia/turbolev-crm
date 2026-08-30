@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { FREE_PARTS_SOURCE, searchReferenceParts } from "@/src/services/free-parts-catalog.service";
 import { decodeVinIntelligence } from "@/src/services/vin-intelligence.service";
 import { validateVin } from "@/src/domain/vin";
+import { resolveLaborPricing } from "@/src/services/labor-pricing.service";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -26,6 +27,17 @@ export async function GET(request: Request) {
   }
 
   const vehicle = vehicleContext?.vehicle ?? null;
+  const pricing = vehicle ? await resolveLaborPricing({
+    make: vehicle.make || undefined,
+    model: vehicle.model || undefined,
+    year: vehicle.year == null ? undefined : String(vehicle.year),
+    engine: vehicle.engine || undefined,
+    engineVolume: vehicle.engineVolumeL == null ? undefined : String(vehicle.engineVolumeL),
+    fuelType: vehicle.fuelType || undefined,
+    bodyType: vehicle.bodyType || undefined,
+    driveType: vehicle.driveType || undefined,
+    vehicleType: vehicle.vehicleType || undefined,
+  }) : null;
   const reference = await searchReferenceParts(q, 50);
   const fitmentConfidence = vehicle ? 30 : 10;
   const parts = reference.parts.map((part) => ({
@@ -53,6 +65,12 @@ export async function GET(request: Request) {
       fuelType: vehicle.fuelType,
       confidence: vehicleContext?.confidence ?? 0,
       source: vehicleContext?.sourceDetail ?? vehicleContext?.source ?? null,
+    } : null,
+    pricing: pricing ? {
+      vehicleType: pricing.pricingVehicleType,
+      vehicleTypeLabel: pricing.pricingVehicleTypeLabel,
+      coefficient: pricing.coefficient,
+      source: pricing.source,
     } : null,
     parts,
     fitmentPolicy: {

@@ -59,7 +59,6 @@ type LibraryAssetRow = {
   imageMimeType: string | null;
   imageData?: Buffer | null;
   imageSizeBytes: number | null;
-  hasImageData: boolean;
   lastError: string | null;
   updatedAt: Date;
 };
@@ -306,7 +305,7 @@ function isMissingTableError(error: unknown) {
   return error instanceof Error && /VehicleImageLibraryAsset|VehicleImageGenerationJob|templateKey|variantKey|normalizedColor|generationFrom|generationTo|sourceAssetId|generationMode|does not exist|42P01|42703/i.test(error.message);
 }
 
-const ASSET_COLUMNS = `"id","libraryKey","status","imageMimeType","imageSizeBytes","lastError","updatedAt",("imageData" IS NOT NULL) AS "hasImageData"`;
+const ASSET_COLUMNS = `"id","libraryKey","status","imageMimeType","imageSizeBytes","lastError","updatedAt"`;
 
 async function findAssetByKey(libraryKey: string): Promise<LibraryAssetRow | null> {
   try {
@@ -413,7 +412,7 @@ export async function enqueueVehicleImageGeneration(vehicleId: string, options?:
     generationLabel: identity.generationLabel,
   };
 
-  if (existing?.status === "READY" && existing.hasImageData) {
+  if (existing?.status === "READY" || existing?.status === "GENERATING" || existing?.status === "QUEUED") {
     return { state: existing.status === "READY" ? "READY" as const : "GENERATING" as const, ...base, queued: false, error: null };
   }
 
@@ -429,16 +428,6 @@ export async function enqueueVehicleImageGeneration(vehicleId: string, options?:
   try {
     await client.query("BEGIN");
     await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [`vehicle-image-queue:${identity.libraryKey}`]);
-    const activeJob = await client.query(
-      `SELECT "id" FROM public."VehicleImageGenerationJob"
-        WHERE "libraryKey"=$1 AND "vehicleId"=$2 AND "assetId"=$3 AND "status" IN ('QUEUED','PROCESSING')
-        ORDER BY "createdAt" DESC LIMIT 1`,
-      [identity.libraryKey, vehicleId, assetId],
-    );
-    if (activeJob.rowCount) {
-      await client.query("COMMIT");
-      return { state: "GENERATING" as const, ...base, assetId, queued: false, error: null };
-    }
     await client.query(
       `INSERT INTO public."VehicleImageLibraryAsset"
          ("id","libraryKey","make","model","year","bodyType","theme","provider","providerModel","promptVersion","promptText","status","lastError","templateKey","variantKey","normalizedColor","generationFrom","generationTo","sourceAssetId","generationMode","createdAt","updatedAt")
@@ -468,12 +457,20 @@ export async function enqueueVehicleImageGeneration(vehicleId: string, options?:
       ],
     );
 
-    await client.query(
-      `INSERT INTO public."VehicleImageGenerationJob"
-        ("id","libraryKey","vehicleId","assetId","status","attempts","requestedAt","createdAt","updatedAt")
-       VALUES ($1,$2,$3,$4,'QUEUED',0,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)`,
-      [`vimgjob_${randomUUID().replace(/-/g, "")}`, identity.libraryKey, vehicleId, assetId],
+    const activeJob = await client.query(
+      `SELECT "id" FROM public."VehicleImageGenerationJob"
+        WHERE "libraryKey"=$1 AND "vehicleId"=$2 AND "assetId"=$3 AND "status" IN ('QUEUED','PROCESSING')
+        ORDER BY "createdAt" DESC LIMIT 1`,
+      [identity.libraryKey, vehicleId, assetId],
     );
+    if (!activeJob.rowCount) {
+      await client.query(
+        `INSERT INTO public."VehicleImageGenerationJob"
+          ("id","libraryKey","vehicleId","assetId","status","attempts","requestedAt","createdAt","updatedAt")
+         VALUES ($1,$2,$3,$4,'QUEUED',0,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)`,
+        [`vimgjob_${randomUUID().replace(/-/g, "")}`, identity.libraryKey, vehicleId, assetId],
+      );
+    }
     await client.query("COMMIT");
   } catch (error) {
     await client.query("ROLLBACK").catch(() => undefined);

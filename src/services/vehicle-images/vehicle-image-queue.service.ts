@@ -71,24 +71,16 @@ export async function enqueueMissingVehicleImages(limit?: number) {
 
 async function recoverStaleQueueJobs() {
   await getSqlPool().query(
-    `WITH stale_jobs AS (
-      SELECT job."id",job."assetId"
-        FROM public."VehicleImageGenerationJob" job
-        JOIN public."VehicleImageLibraryAsset" asset ON asset."id"=job."assetId"
-       WHERE job."status"='PROCESSING'
-         AND job."assetId" IS NOT NULL
-         AND job."startedAt" < CURRENT_TIMESTAMP - ($1::text || ' minutes')::interval
-         AND asset."status" IN ('QUEUED','GENERATING')
-    ), requeued_jobs AS (
-      UPDATE public."VehicleImageGenerationJob" job
-         SET "status"='QUEUED',"startedAt"=NULL,"completedAt"=NULL,"errorMessage"=NULL,"updatedAt"=CURRENT_TIMESTAMP
-       WHERE job."id" IN (SELECT "id" FROM stale_jobs)
-       RETURNING job."assetId"
-    )
-    UPDATE public."VehicleImageLibraryAsset" asset
-       SET "status"='QUEUED',"lastError"=NULL,"updatedAt"=CURRENT_TIMESTAMP
-     WHERE asset."id" IN (SELECT "assetId" FROM requeued_jobs)
-       AND asset."status" IN ('QUEUED','GENERATING')`,
+    `UPDATE public."VehicleImageGenerationJob"
+        SET "status"='QUEUED',"startedAt"=NULL,"updatedAt"=CURRENT_TIMESTAMP
+      WHERE "status"='PROCESSING'
+        AND "assetId" IS NOT NULL
+        AND "startedAt" < CURRENT_TIMESTAMP - ($1::text || ' minutes')::interval
+        AND EXISTS (
+          SELECT 1 FROM public."VehicleImageLibraryAsset" asset
+           WHERE asset."id"="VehicleImageGenerationJob"."assetId"
+             AND asset."status" IN ('QUEUED','GENERATING')
+        )`,
     [STALE_PROCESSING_MINUTES],
   );
 }
@@ -141,21 +133,6 @@ async function completeQueueJob(jobId: string, status: "DONE" | "FAILED", errorM
   ).catch(() => undefined);
 }
 
-async function requeueQueueJob(jobId: string, assetId: string, errorMessage?: string | null) {
-  await getSqlPool().query(
-    `UPDATE public."VehicleImageGenerationJob"
-        SET "status"='QUEUED',"startedAt"=NULL,"completedAt"=NULL,"errorMessage"=$2,"updatedAt"=CURRENT_TIMESTAMP
-      WHERE "id"=$1`,
-    [jobId, errorMessage?.slice(0, 4000) || null],
-  );
-  await getSqlPool().query(
-    `UPDATE public."VehicleImageLibraryAsset"
-        SET "status"='QUEUED',"lastError"=NULL,"updatedAt"=CURRENT_TIMESTAMP
-      WHERE "id"=$1 AND "status" IN ('QUEUED','GENERATING')`,
-    [assetId],
-  );
-}
-
 /**
  * Processes one queued library item. A database lock guarantees that multiple
  * cron invocations cannot send the same library key to OpenAI simultaneously.
@@ -167,10 +144,6 @@ export async function processNextQueuedVehicleImage() {
 
   try {
     const result = await generateVehicleImageInBackground(job.vehicleId, { themePaint: job.theme });
-    if (result.state === "GENERATING") {
-      await requeueQueueJob(job.id, job.assetId, "Генерація буде повторена наступним запуском черги.");
-      return { processed: true as const, jobId: job.id, vehicleId: job.vehicleId, assetId: job.assetId, result, requeued: true as const };
-    }
     await completeQueueJob(job.id, "DONE");
     return { processed: true as const, jobId: job.id, vehicleId: job.vehicleId, assetId: job.assetId, result };
   } catch (error) {
@@ -178,15 +151,4 @@ export async function processNextQueuedVehicleImage() {
     await completeQueueJob(job.id, "FAILED", message);
     return { processed: true as const, jobId: job.id, vehicleId: job.vehicleId, assetId: job.assetId, error: message };
   }
-}
-
-export async function processQueuedVehicleImages(limit = 4) {
-  const safeLimit = Math.max(1, Math.min(8, Math.trunc(limit || 4)));
-  const results: Array<Awaited<ReturnType<typeof processNextQueuedVehicleImage>>> = [];
-  for (let index = 0; index < safeLimit; index += 1) {
-    const result = await processNextQueuedVehicleImage();
-    results.push(result);
-    if (!result.processed) break;
-  }
-  return results;
 }
