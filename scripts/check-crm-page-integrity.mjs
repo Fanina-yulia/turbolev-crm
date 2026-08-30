@@ -11,6 +11,7 @@ const protectedPages = [
   ["app/new-inquiries.module.css", [".queuePane", ".queueList", ".detailPane", "overflow:visible"]],
   ["app/parts-supplier-reconciliation.module.css", [".workspace", ".queue", ".detail", "overflow:visible"]],
   ["app/communications-contact-inbox.module.css", [".shell", ".list", ".timeline", "overflow:visible"]],
+  ["app/communications.css", [".commsLayout", ".commsListScroll", ".threadMessages", ".commsContext", "height:auto", "min-height:0", "overflow:visible", "max-height:none"]],
   ["app/workflow-settings-panel.module.css", [".entities", "overflow:visible"]],
   ["app/diagnostic-templates-settings-panel.module.css", [".list", "position:static"]],
   ["app/personnel-v2.module.css", [".list", ".editor", "overflow:visible"]],
