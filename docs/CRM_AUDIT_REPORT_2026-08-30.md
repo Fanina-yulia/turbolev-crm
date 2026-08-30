@@ -2,7 +2,7 @@
 
 **Стандарт:** `CRM-AUDIT-001`  
 **Дата:** 2026-08-30  
-**Базовий реліз:** `origin/main` / commit `cfb52d26b666f8d43cb8d6819d6ca4dff4de2dea`  
+**Базовий реліз:** `origin/main` / commit `04f4aa057c5efb4d941e5e273253920b826c899c`  
 **Рішення:** `PASS WITH P2`
 
 ## Scope
@@ -55,4 +55,4 @@
 
 Статична частина `CRM-AUDIT-001`, build, security, contract/smoke та UI-цілісність пройдені. Перед остаточним закриттям аудиту в production потрібно виконати database-dependent smoke і перевірити шість viewport із матриці стандарту: 1920, 1440, 1280, 1024, 768 та 390 px.
 
-**Commit / deployment:** буде додано після публікації цього релізу.
+**Commit / deployment:** `8e85a3aa5a7e2b8a20045e553d18e793c36af8db` / [production deployment](https://turbolev-e7lm8x6pv-turbo-lev.vercel.app) — `READY`.
