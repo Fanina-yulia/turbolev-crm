@@ -8,4 +8,8 @@
 /* Keep the compatibility renderer readable when a parent has broad span rules. */
 .turboLevVehiclePlate{background:#fff!important;padding:0!important;margin:0!important}
 .turboLevVehiclePlateBand{background:#1456a0!important;padding:4% 0 6%!important;margin:0!important}
-.turboLevVehiclePlateNumber{background:#fff!important;color:#000!important;padding:0 4px!important;margin:0!important}
+.turboLevVehiclePlateNumber{background:#fff!important;color:#000!important;-webkit-text-fill-color:#000!important;opacity:1!important;text-shadow:none!important;padding:0 4px!important;margin:0!important;mix-blend-mode:normal}
+
+/* The canonical React renderer uses CSS Modules; this attribute guard keeps the
+   same black glyph contract even when a screen adds broad span/button styles. */
+[data-vehicle-plate="true"] > span:last-child{background:#fff!important;color:#000!important;-webkit-text-fill-color:#000!important;opacity:1!important;text-shadow:none!important;mix-blend-mode:normal}

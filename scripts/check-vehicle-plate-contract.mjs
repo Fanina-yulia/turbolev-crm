@@ -14,10 +14,10 @@ const checks = [
   ["reference plate proportions", files.css.includes("4.98") && files.css.includes("--plate-height")],
   ["reference text scale", files.css.includes("scaleX(1.07)") && files.css.includes(".sm .number{font-size:21px}") && files.css.includes(".md .number{font-size:26px}")],
   ["white plate surface", files.css.includes("background:#fff")],
-  ["black plate number", files.css.includes(".number") && files.css.includes("color:#000")],
+  ["black plate number", files.css.includes(".number") && files.css.includes("color:#000!important") && files.css.includes("-webkit-text-fill-color:#000!important")],
   ["no legacy gradient or undersized override", !files.css.includes("height:34px") && !files.css.includes("linear-gradient") && !files.bridge.includes("linear-gradient")],
   ["shared vehicle identity", files.identity.includes("VehiclePlate as SharedVehiclePlate")],
-  ["compatibility bridge protection", files.bridge.includes(".turboLevVehiclePlateNumber{background:#fff!important;color:#000!important")],
+  ["compatibility bridge protection", files.bridge.includes(".turboLevVehiclePlateNumber{background:#fff!important;color:#000!important") && files.bridge.includes('[data-vehicle-plate="true"] > span:last-child') && files.bridge.includes("-webkit-text-fill-color:#000!important")],
   ["legacy bridge reference marker", files.bridge.includes("4.98") && files.bridge.includes(".turboLevVehiclePlateBand:before")],
   ["scoped image-library badge selector", files.libraryCss.includes(".testVehicles > span") && !files.libraryCss.includes(".testVehicles span {")],
 ];
