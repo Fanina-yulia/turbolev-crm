@@ -7,18 +7,17 @@ export type CrmRouteParams = {
   filterLabel?: string;
   status?: string;
   scope?: string;
-  assignedUserId?: string;
 
   inquiryId?: string;
   clientId?: string;
   vehicleId?: string;
-  vehiclePage?: "diagnostic-card" | "commercial-offer" | "service-history";
   appointmentId?: string;
   diagnosticId?: string;
   findingId?: string;
   vehicleIssueId?: string;
 
   workOrderId?: string;
+  workOrderNumber?: string;
   workOrderTab?: string;
   partsRequestId?: string;
   supplierOrderId?: string;
@@ -37,7 +36,6 @@ export type CrmRouteParams = {
   supplierId?: string;
   provider?: string;
   newRequest?: string;
-  workflowFocus?: string;
 };
 
 export const CRM_ROUTE_KEYS: Array<keyof CrmRouteParams> = [
@@ -45,16 +43,15 @@ export const CRM_ROUTE_KEYS: Array<keyof CrmRouteParams> = [
   "filterLabel",
   "status",
   "scope",
-  "assignedUserId",
   "inquiryId",
   "clientId",
   "vehicleId",
-  "vehiclePage",
   "appointmentId",
   "diagnosticId",
   "findingId",
   "vehicleIssueId",
   "workOrderId",
+  "workOrderNumber",
   "workOrderTab",
   "partsRequestId",
   "supplierOrderId",
@@ -70,7 +67,6 @@ export const CRM_ROUTE_KEYS: Array<keyof CrmRouteParams> = [
   "supplierId",
   "provider",
   "newRequest",
-  "workflowFocus",
 ];
 
 export function readCrmRoute(): CrmRouteParams {
@@ -79,10 +75,6 @@ export function readCrmRoute(): CrmRouteParams {
   const result: CrmRouteParams = {};
   for (const key of CRM_ROUTE_KEYS) {
     const value = params.get(key);
-    if (key === "vehiclePage") {
-      if (value === "diagnostic-card" || value === "commercial-offer" || value === "service-history") result.vehiclePage = value;
-      continue;
-    }
     if (value) result[key] = value;
   }
   return result;
@@ -105,7 +97,7 @@ function canonicalNavigation(section: CrmSectionLabel, params: CrmRouteParams): 
     const next = { ...params };
     if (next.status === "WAITING_QC" && !next.workOrderTab) next.workOrderTab = "qc";
     if (next.status === "WAITING_PARTS" && !next.workOrderTab) next.workOrderTab = "parts";
-    return { section: "Комерційна пропозиція", params: next };
+    return { section: "Замовлення-наряди", params: next };
   }
 
   if (section === "Контроль якості") {
@@ -118,11 +110,11 @@ function canonicalNavigation(section: CrmSectionLabel, params: CrmRouteParams): 
       else context.status = "WAITING_QC";
     }
     context.workOrderTab = context.workOrderTab || "qc";
-    return { section: "Комерційна пропозиція", params: context };
+    return { section: "Замовлення-наряди", params: context };
   }
 
   if (section === "Гарантії") {
-    return { section: "Комерційна пропозиція", params: { ...params, workOrderTab: params.workOrderTab || "history" } };
+    return { section: "Замовлення-наряди", params: { ...params, workOrderTab: params.workOrderTab || "history" } };
   }
 
   return { section, params };

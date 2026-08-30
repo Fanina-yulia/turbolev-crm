@@ -4,8 +4,8 @@ import { writeAuditEvent } from "@/src/services/audit.service";
 import { transitionPartsRequest } from "@/src/services/work-order-commercial.service";
 import { getSupplierAdapter } from "./registry";
 import type { SupplierId, SupplierOffer, SupplierOrderSubmitInput } from "./types";
-import { calculateSellPrice, DEFAULT_MARKUP_PERCENT, getConfiguredPartsMarkupPercent } from "./pricing";
 
+const DEFAULT_MARKUP_PERCENT = 40;
 const ORDER_CONFIRMATION = "SUBMIT_SUPPLIER_ORDER";
 
 type DraftItemInput = {
@@ -31,6 +31,10 @@ function numberValue(value: unknown) {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+function roundMoney(value: number) {
+  return Math.round(value * 100) / 100;
+}
+
 function normalizeMarkup(value: unknown, fallback: number) {
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) return fallback;
@@ -49,7 +53,6 @@ export async function ensureSupplierRecord(id: SupplierId) {
   if (!adapter) throw new Error("Невідомий постачальник.");
   const prisma = getPrisma();
   const code = supplierCode(id);
-  const markupPercent = await getConfiguredPartsMarkupPercent();
   return prisma.supplier.upsert({
     where: { code },
     update: {
@@ -64,15 +67,16 @@ export async function ensureSupplierRecord(id: SupplierId) {
       websiteUrl: adapter.website,
       apiBaseUrl: adapter.apiBaseUrl,
       isActive: true,
-      defaultMarkupPercent: markupPercent,
+      defaultMarkupPercent: DEFAULT_MARKUP_PERCENT,
       defaultCurrency: "UAH",
     },
   });
 }
 
 export async function getSupplierMarkupPercent(id: SupplierId) {
-  void id;
-  return getConfiguredPartsMarkupPercent();
+  const prisma = getPrisma();
+  const row = await prisma.supplier.findUnique({ where: { code: supplierCode(id) }, select: { defaultMarkupPercent: true } });
+  return row ? numberValue(row.defaultMarkupPercent) : DEFAULT_MARKUP_PERCENT;
 }
 
 export async function enrichOffersWithSellPrice(offers: SupplierOffer[]) {
@@ -81,7 +85,7 @@ export async function enrichOffersWithSellPrice(offers: SupplierOffer[]) {
   await Promise.all(ids.map(async (id) => markups.set(id, await getSupplierMarkupPercent(id))));
   return offers.map((offer) => {
     const markupPercent = markups.get(offer.supplierId) ?? DEFAULT_MARKUP_PERCENT;
-    const sellPrice = offer.purchasePrice == null ? null : calculateSellPrice(offer.purchasePrice, markupPercent);
+    const sellPrice = offer.purchasePrice == null ? null : roundMoney(offer.purchasePrice * (1 + markupPercent / 100));
     return { ...offer, markupPercent, sellPrice };
   });
 }
@@ -145,11 +149,11 @@ export async function createSupplierOrderDraft(input: CreateDraftInput) {
     const row = itemMap.get(item.partsRequestItemId)!;
     const live = await verifyLiveOffer({ supplierId: input.supplierId, item, article: row.article, description: row.description });
     const markupPercent = normalizeMarkup(item.markupPercent, supplierMarkup);
-    const sellPrice = calculateSellPrice(live.offer.purchasePrice!, markupPercent);
+    const sellPrice = roundMoney(live.offer.purchasePrice! * (1 + markupPercent / 100));
     return { input: item, row, ...live, markupPercent, sellPrice };
   }));
 
-  const totalPurchase = Math.round(verified.reduce((sum, item) => sum + item.offer.purchasePrice! * item.quantity, 0) * 100) / 100;
+  const totalPurchase = roundMoney(verified.reduce((sum, item) => sum + item.offer.purchasePrice! * item.quantity, 0));
   const orderItems = verified.map((item) => ({
     partsRequestItemId: item.row.id,
     externalProductId: item.offer.externalProductId,
@@ -272,7 +276,7 @@ export async function submitSupplierOrder(input: { orderId: string; confirmation
   if (!order) throw new Error("Замовлення постачальнику не знайдено.");
   if (order.status !== "DRAFT") throw new Error("Відправити можна лише draft замовлення.");
   if (order.supplier.code !== "UNIQUE_TRADE") throw new Error("Live submit зараз увімкнений лише для Юнік Трейд.");
-  if (!order.workOrderId) throw new Error("Supplier order не прив'язаний до комерційної пропозиції.");
+  if (!order.workOrderId) throw new Error("Supplier order не прив'язаний до замовлення-наряду.");
 
   const request = await prisma.partsRequest.findFirst({
     where: { workOrderId: order.workOrderId, items: { some: { supplierOrderId: order.id } } },
