@@ -7,10 +7,12 @@ export type CrmRouteParams = {
   filterLabel?: string;
   status?: string;
   scope?: string;
+  assignedUserId?: string;
 
   inquiryId?: string;
   clientId?: string;
   vehicleId?: string;
+  vehiclePage?: "diagnostic-card" | "commercial-offer" | "service-history";
   appointmentId?: string;
   diagnosticId?: string;
   findingId?: string;
@@ -44,9 +46,11 @@ export const CRM_ROUTE_KEYS: Array<keyof CrmRouteParams> = [
   "filterLabel",
   "status",
   "scope",
+  "assignedUserId",
   "inquiryId",
   "clientId",
   "vehicleId",
+  "vehiclePage",
   "appointmentId",
   "diagnosticId",
   "findingId",
@@ -77,6 +81,10 @@ export function readCrmRoute(): CrmRouteParams {
   const result: CrmRouteParams = {};
   for (const key of CRM_ROUTE_KEYS) {
     const value = params.get(key);
+    if (key === "vehiclePage") {
+      if (value === "diagnostic-card" || value === "commercial-offer" || value === "service-history") result.vehiclePage = value;
+      continue;
+    }
     if (value) result[key] = value;
   }
   return result;
@@ -99,7 +107,7 @@ function canonicalNavigation(section: CrmSectionLabel, params: CrmRouteParams): 
     const next = { ...params };
     if (next.status === "WAITING_QC" && !next.workOrderTab) next.workOrderTab = "qc";
     if (next.status === "WAITING_PARTS" && !next.workOrderTab) next.workOrderTab = "parts";
-    return { section: "Замовлення-наряди", params: next };
+    return { section: "Комерційна пропозиція", params: next };
   }
 
   if (section === "Контроль якості") {
@@ -112,11 +120,11 @@ function canonicalNavigation(section: CrmSectionLabel, params: CrmRouteParams): 
       else context.status = "WAITING_QC";
     }
     context.workOrderTab = context.workOrderTab || "qc";
-    return { section: "Замовлення-наряди", params: context };
+    return { section: "Комерційна пропозиція", params: context };
   }
 
   if (section === "Гарантії") {
-    return { section: "Замовлення-наряди", params: { ...params, workOrderTab: params.workOrderTab || "history" } };
+    return { section: "Комерційна пропозиція", params: { ...params, workOrderTab: params.workOrderTab || "history" } };
   }
 
   return { section, params };
