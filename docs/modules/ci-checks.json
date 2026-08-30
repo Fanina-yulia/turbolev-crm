@@ -8,6 +8,7 @@
     "vehicle-images"
   ],
   "checks": {
+    "crm-page-integrity": "npm run ui:pages:check",
     "crm-contracts": "npm run contracts:smoke",
     "vehicle-classifier": "npx --no-install tsx scripts/vehicle-classifier-smoke.ts",
     "vehicle-image-resolver": "npx --no-install tsx scripts/vehicle-image-resolver-smoke.ts"

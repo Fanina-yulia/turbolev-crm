@@ -1,7 +1,24 @@
 {
   "version": 1,
-  "updated": "2026-08-27",
+  "updated": "2026-08-30",
   "rule": "Every production change must be assigned to at least one module. Start analysis from the module passport, then inspect declared dependencies only when the change can affect them.",
+  "globalRules": [
+    {
+      "id": "CRM-AUDIT-001",
+      "status": "ACTIVE",
+      "title": "Повний аудит CRM",
+      "source": "docs/CRM_STANDARDS_TABLE.md",
+      "trigger": "Запит перевірити всю CRM або зміна, що перетинає глобальні межі системи.",
+      "requiredScope": "Усі модулі реєстру, їхні залежності, API, permissions, workflow, UI, інтеграції та production runtime."
+    },
+    {
+      "id": "CRM-UI-001",
+      "status": "ACTIVE",
+      "title": "Цілісна сторінка CRM без фіксованих робочих секцій",
+      "source": "docs/CRM_STANDARDS_TABLE.md",
+      "enforcedBy": "scripts/check-crm-page-integrity.mjs"
+    }
+  ],
   "modules": [
     {
       "id": "core-platform",
