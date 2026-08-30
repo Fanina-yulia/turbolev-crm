@@ -47,6 +47,62 @@ const actionLabels: Record<string, string> = { NONE: "Без дії", REPLACE: "
 const urgencyLabels: Record<string, string> = { INFO: "Рекомендація", SOON: "Найближчим часом", CRITICAL: "Критично" };
 const reviewLabels: Record<string, string> = { DRAFT: "Чернетка", SUBMITTED: "На перевірці", RETURNED: "В роботі", CONFIRMED: "Підтверджена ДК" };
 
+type ConclusionGroup = { key: string; section: string; action: string; urgency: string; items: Item[] };
+
+const conclusionActionLabels: Record<string, string> = {
+  NONE: "Потребує оцінки",
+  REPLACE: "До заміни",
+  REPAIR: "До ремонту",
+  ADJUST: "До регулювання",
+  CLEAN: "До обслуговування",
+  ADDITIONAL_DIAGNOSTICS: "Додаткова діагностика",
+};
+
+function conclusionActionClass(action: string) {
+  if (action === "REPLACE") return styles.conclusionReplace;
+  if (action === "REPAIR" || action === "ADJUST" || action === "CLEAN") return styles.conclusionRepair;
+  if (action === "ADDITIONAL_DIAGNOSTICS") return styles.conclusionAttention;
+  return styles.conclusionNeutral;
+}
+
+function conciseFindingText(item: Item) {
+  const source = (item.finding?.findingText || item.note || (item.state === "DEFECT" ? "Виявлено дефект" : "Потребує уваги")).trim();
+  if (!source) return "";
+  const name = item.name.trim();
+  const lowerSource = source.toLocaleLowerCase("uk-UA");
+  const lowerName = name.toLocaleLowerCase("uk-UA");
+  let text = source;
+  for (const separator of [" — ", " – ", " - ", ": "]) {
+    if (lowerSource.startsWith(lowerName + separator)) {
+      text = source.slice(name.length + separator.length).trim();
+      break;
+    }
+  }
+  if (text.toLocaleLowerCase("uk-UA") === lowerName) return "";
+  text = text.replace(/[.;]+$/, "").trim();
+  const action = item.finding?.action || "NONE";
+  if ((action === "REPLACE" && /^(потребує заміни|необхідно замінити)$/i.test(text))
+    || (action === "REPAIR" && /^(потребує ремонту|необхідно ремонтувати)$/i.test(text))
+    || (action === "ADDITIONAL_DIAGNOSTICS" && /^(потребує додаткової діагностики|необхідна додаткова діагностика)$/i.test(text))) {
+    return "";
+  }
+  return text;
+}
+
+function buildConclusionGroups(findings: Array<{ section: string; item: Item }>) {
+  const groups = new Map<string, ConclusionGroup>();
+  for (const { section, item } of findings) {
+    const action = item.finding?.action || "NONE";
+    const urgency = item.finding?.urgency || "INFO";
+    const key = [section, action, urgency].join("\u0000");
+    const current = groups.get(key);
+    if (current) current.items.push(item);
+    else groups.set(key, { key, section, action, urgency, items: [item] });
+  }
+  return [...groups.values()];
+}
+
+
 export function StructuredDiagnosticReviewPanel({ diagnosticId, onChanged }: { diagnosticId: string; onChanged: () => void | Promise<void> }) {
   const [view, setView] = useState<View | null>(null);
   const [cardState, setCardState] = useState<DiagnosticCardState>({ card: null });
@@ -80,6 +136,12 @@ export function StructuredDiagnosticReviewPanel({ diagnosticId, onChanged }: { d
 
   const findings = useMemo(() => view?.inspections.flatMap((inspection) => inspection.sections.flatMap((section) => section.items.filter((item) => item.state === "ATTENTION" || item.state === "DEFECT").map((item) => ({ inspection: inspection.templateName, section: section.name, item })))) || [], [view]);
   const criticalCount = useMemo(() => findings.filter(({ item }) => item.finding?.urgency === "CRITICAL").length, [findings]);
+  const conclusionGroups = useMemo(() => buildConclusionGroups(findings), [findings]);
+  const conclusionActionCounts = useMemo(() => findings.reduce<Record<string, number>>((result, { item }) => {
+    const action = item.finding?.action || "NONE";
+    result[action] = (result[action] || 0) + 1;
+    return result;
+  }, {}), [findings]);
 
   async function returnToMechanic() {
     if (!view) return;
@@ -164,7 +226,39 @@ export function StructuredDiagnosticReviewPanel({ diagnosticId, onChanged }: { d
 
     <div className={styles.inspections}>{view.inspections.map((inspection) => <details key={inspection.id} open={inspection.counts.defect > 0 || inspection.counts.attention > 0}><summary><div><strong>{inspection.templateName}</strong><span>{inspection.counts.checked}/{inspection.counts.total} перевірено</span></div><div><em>{inspection.counts.defect ? `${inspection.counts.defect} деф.` : inspection.counts.attention ? `${inspection.counts.attention} увага` : "Норма"}</em><b>⌄</b></div></summary><div className={styles.sectionList}>{inspection.sections.map((section) => <div className={styles.section} key={section.id}><div className={styles.sectionHead}><strong>{section.name}</strong><span>{section.counts.defect ? `${section.counts.defect} дефект(и)` : section.counts.attention ? `${section.counts.attention} зауваження` : `${section.counts.checked}/${section.counts.total}`}</span></div>{section.items.filter((item) => item.state !== "OK" && item.state !== "NOT_CHECKED").map((item) => <FindingRow key={item.id || item.templateItemId} diagnosticId={diagnosticId} item={item} />)}{!section.items.some((item) => item.state === "ATTENTION" || item.state === "DEFECT") && <small className={styles.sectionOk}>✓ Перевірені пункти без зауважень</small>}</div>)}</div></details>)}</div>
 
-    {findings.length > 0 && <div className={styles.findingIndex}><h4>Рекомендації для майбутньої Комерційної пропозиції</h4>{findings.map(({ section, item }) => <div key={`index-${item.id || item.templateItemId}`}><span className={item.state === "DEFECT" ? styles.red : styles.orange}>{item.state === "DEFECT" ? "×" : "!"}</span><div><strong>{item.name}</strong><small>{section} · {item.finding?.findingText || item.note || "Без опису"}</small></div><div>{item.finding?.suggestedWorkName && <em>🔧 {item.finding.suggestedWorkName}</em>}{item.finding?.suggestedPartName && <em>▣ {item.finding.suggestedPartName}</em>}</div></div>)}</div>}
+    {findings.length > 0 && <section className={styles.technicalConclusion} aria-labelledby="technical-conclusion-heading">
+      <div className={styles.technicalConclusionHead}>
+        <div>
+          <span className={styles.technicalConclusionEyebrow}>Технічний висновок спеціаліста</span>
+          <h4 id="technical-conclusion-heading">Виявлені зауваження</h4>
+        </div>
+        <span className={styles.technicalConclusionCount}>{findings.length} позицій</span>
+      </div>
+      <div className={styles.technicalConclusionSummary}>
+        {([
+          ["REPLACE", "заміни"],
+          ["REPAIR", "ремонту"],
+          ["ADDITIONAL_DIAGNOSTICS", "додаткової діагностики"],
+        ] as const).filter(([action]) => conclusionActionCounts[action]).map(([action, label]) =>
+          <span key={action} className={conclusionActionClass(action)}><strong>{conclusionActionCounts[action]}</strong> {label}</span>
+        )}
+      </div>
+      <div className={styles.technicalConclusionGroups}>
+        {conclusionGroups.map((group) => <div className={styles.technicalConclusionGroup} key={group.key}>
+          <div className={styles.technicalConclusionGroupHead}>
+            <strong>{group.section}</strong>
+            <span className={`${styles.technicalConclusionBadge} ${conclusionActionClass(group.action)}`}>{conclusionActionLabels[group.action] || group.action}</span>
+            <span className={styles.technicalConclusionUrgency}>{urgencyLabels[group.urgency] || group.urgency}</span>
+          </div>
+          <ul className={styles.technicalConclusionItems}>
+            {group.items.map((item) => {
+              const text = conciseFindingText(item);
+              return <li key={item.id || item.templateItemId}><strong>{item.name}</strong>{text && <span> — {text}</span>}</li>;
+            })}
+          </ul>
+        </div>)}
+      </div>
+    </section>}
 
     {view.diagnostic.review.mechanicComment && <div className={styles.comment}><span>Коментар механіка</span><p>{view.diagnostic.review.mechanicComment}</p></div>}
 
