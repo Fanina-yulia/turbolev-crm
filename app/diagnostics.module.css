@@ -35,6 +35,83 @@
   margin-left: auto;
 }
 
+.summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 9px;
+  margin-bottom: 12px;
+}
+
+.summaryCard {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  padding: 11px 13px;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  background: var(--panel);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.summaryCard:hover {
+  border-color: color-mix(in srgb, var(--orange) 52%, var(--line));
+  background: var(--panel-2);
+}
+
+.summaryCard span,
+.summaryCard small {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.summaryCard strong {
+  font-size: 24px;
+  line-height: 1;
+}
+
+.summaryAttention strong { color: var(--red, #ef4444); }
+.summaryProgress strong { color: var(--yellow, #f59e0b); }
+.summaryDone strong { color: var(--green, #22c55e); }
+
+.scopeTabs {
+  display: flex;
+  gap: 7px;
+  margin-bottom: 8px;
+}
+
+.scopeTabs button {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 13px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.scopeTabs button:hover,
+.scopeActive {
+  border-color: var(--orange) !important;
+  background: color-mix(in srgb, var(--orange) 8%, var(--panel)) !important;
+  color: var(--text) !important;
+}
+
+.scopeTabs button span {
+  display: inline-grid;
+  min-width: 22px;
+  height: 22px;
+  place-items: center;
+  border-radius: 999px;
+  background: var(--panel-2);
+  color: var(--muted);
+  font-size: 12px;
+}
+
 .refresh,
 .filters button,
 .primary,
@@ -160,6 +237,23 @@
   box-shadow: inset 3px 0 0 var(--orange);
 }
 
+.rowPENDING:not(.selected) {
+  box-shadow: inset 3px 0 0 #ef4444;
+  background: color-mix(in srgb, #ef4444 4%, var(--panel));
+}
+
+.rowIN_PROGRESS:not(.selected),
+.rowSUBMITTED:not(.selected),
+.rowRETURNED:not(.selected) {
+  box-shadow: inset 3px 0 0 #f59e0b;
+  background: color-mix(in srgb, #f59e0b 4%, var(--panel));
+}
+
+.rowCONFIRMED:not(.selected) {
+  box-shadow: inset 3px 0 0 #22c55e;
+  background: color-mix(in srgb, #22c55e 4%, var(--panel));
+}
+
 .rowTop {
   display: flex;
   align-items: center;
@@ -184,13 +278,13 @@
 }
 
 .PENDING {
-  border-color: color-mix(in srgb, var(--yellow) 48%, var(--line));
-  color: var(--yellow);
+  border-color: color-mix(in srgb, #ef4444 48%, var(--line));
+  color: #ef4444;
 }
 
 .IN_PROGRESS {
-  border-color: color-mix(in srgb, var(--orange) 55%, var(--line));
-  color: var(--orange);
+  border-color: color-mix(in srgb, #f59e0b 55%, var(--line));
+  color: #f59e0b;
 }
 
 .CONFIRMED {
@@ -202,7 +296,23 @@
   color: var(--muted);
 }
 
-.row > strong {
+.status i {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.vehicleLine {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.row > strong,
+.vehicleLine > strong {
   font-size: 14px;
 }
 
@@ -230,6 +340,38 @@
   line-height: 1.4;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
+}
+
+.rowMeta,
+.rowBottom {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.rowMeta {
+  margin-top: 7px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.rowMeta span + span::before {
+  content: "·";
+  margin-right: 7px;
+  color: var(--soft-text-2, var(--muted));
+}
+
+.rowBottom {
+  margin-top: 8px;
+}
+
+.openLink {
+  margin-left: auto;
+  color: var(--orange);
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
 }
 
 .workOrderBadge {
@@ -415,6 +557,10 @@
 }
 
 @media (max-width: 1180px) {
+  .summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .layout {
     grid-template-columns: minmax(300px, 34%) minmax(0, 1fr);
   }
@@ -469,6 +615,18 @@
 
   .headActions .refresh {
     width: 100%;
+  }
+
+  .summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .summaryCard {
+    padding: 10px;
+  }
+
+  .summaryCard strong {
+    font-size: 21px;
   }
 
   .actions,

@@ -138,6 +138,56 @@ async function assignmentMeta(ids: string[]) {
   return result;
 }
 
+async function visitMeta(ids: string[]) {
+  const prisma = getPrisma();
+  const result = new Map<string, {
+    appointmentId: string | null;
+    plannedStartAt: Date | null;
+    plannedEndAt: Date | null;
+    actualArrivalAt: Date | null;
+    actualStartAt: Date | null;
+    actualEndAt: Date | null;
+    postName: string | null;
+    locationName: string | null;
+  }>();
+  if (!ids.length) return result;
+
+  const links = await prisma.diagnosticVisitLink.findMany({
+    where: { diagnosticRequestId: { in: ids } },
+    select: { diagnosticRequestId: true, appointmentId: true },
+  });
+  const appointments = links.length ? await prisma.serviceAppointment.findMany({
+    where: { id: { in: links.map((link) => link.appointmentId) } },
+    select: {
+      id: true,
+      plannedStartAt: true,
+      plannedEndAt: true,
+      actualArrivalAt: true,
+      actualStartAt: true,
+      actualEndAt: true,
+      post: { select: { name: true } },
+      location: { select: { name: true } },
+    },
+  }) : [];
+  const appointmentById = new Map(appointments.map((appointment) => [appointment.id, appointment]));
+
+  for (const id of ids) {
+    const link = links.find((item) => item.diagnosticRequestId === id);
+    const appointment = link ? appointmentById.get(link.appointmentId) : null;
+    result.set(id, {
+      appointmentId: link?.appointmentId || null,
+      plannedStartAt: appointment?.plannedStartAt || null,
+      plannedEndAt: appointment?.plannedEndAt || null,
+      actualArrivalAt: appointment?.actualArrivalAt || null,
+      actualStartAt: appointment?.actualStartAt || null,
+      actualEndAt: appointment?.actualEndAt || null,
+      postName: appointment?.post?.name || null,
+      locationName: appointment?.location?.name || null,
+    });
+  }
+  return result;
+}
+
 async function commercialMeta(rows: Array<{ id: string; workOrder: { id: string } | null }>) {
   const prisma = getPrisma();
   const result = new Map<string, {
@@ -207,12 +257,13 @@ export async function listDiagnostics(input?: DiagnosticListInput) {
     take: limit,
   });
   const ids = rows.map((row) => row.id);
-  const [meta, reports, cards, assignments, commercial] = await Promise.all([
+  const [meta, reports, cards, assignments, commercial, visits] = await Promise.all([
     structuredMeta(ids),
     reportShareMeta(ids),
     diagnosticCardMeta(ids),
     assignmentMeta(ids),
     commercialMeta(rows),
+    visitMeta(ids),
   ]);
   return rows.map((row) => {
     const structured = meta.get(row.id);
@@ -220,6 +271,7 @@ export async function listDiagnostics(input?: DiagnosticListInput) {
     const diagnosticCard = cards.get(row.id) || null;
     const assignment = assignments.get(row.id) || null;
     const commercialProposal = commercial.get(row.id) || null;
+    const visit = visits.get(row.id) || null;
     return {
       ...row,
       reviewState: structured?.reviewState || DiagnosticReviewState.DRAFT,
@@ -227,6 +279,7 @@ export async function listDiagnostics(input?: DiagnosticListInput) {
       reportShare,
       diagnosticCard,
       assignment,
+      visit,
       assignedMechanic: assignment?.mechanicId ? { id: assignment.mechanicId, name: assignment.mechanicName } : null,
       commercialProposal,
       structured: {

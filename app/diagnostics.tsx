@@ -33,10 +33,21 @@ type Diagnostic = {
     estimate: { id: string; revision: number; status: string } | null;
     partsRequest: { id: string; status: string } | null;
   } | null;
+  visit?: {
+    appointmentId: string | null;
+    plannedStartAt: string | null;
+    plannedEndAt: string | null;
+    actualArrivalAt: string | null;
+    actualStartAt: string | null;
+    actualEndAt: string | null;
+    postName: string | null;
+    locationName: string | null;
+  } | null;
   structured?: { inspections: number; checked: number; defects: number; attention: number };
 };
 type ApiResponse = { ok: boolean; diagnostics?: Diagnostic[]; diagnostic?: Diagnostic; workOrder?: Diagnostic["workOrder"]; error?: string; message?: string };
 type Filter = "ALL" | "PENDING" | "IN_PROGRESS" | "SUBMITTED" | "CONFIRMED" | "COMMERCIAL" | "CANCELLED";
+type Scope = "CURRENT" | "HISTORY";
 
 const statusMeta: Record<WorkflowState, { label: string; note: string }> = {
   PENDING: { label: "Очікує", note: "Діагностика підготовлена до старту" },
@@ -71,6 +82,15 @@ function dateTime(value: string | null) {
   if (!value) return "—";
   return new Intl.DateTimeFormat("uk-UA", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }).format(new Date(value));
 }
+function timeRange(row: Diagnostic) {
+  const start = row.visit?.plannedStartAt;
+  const end = row.visit?.plannedEndAt;
+  if (!start) return `Створено ${dateTime(row.createdAt)}`;
+  if (!end) return dateTime(start);
+  const startText = new Intl.DateTimeFormat("uk-UA", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }).format(new Date(start));
+  const endText = new Intl.DateTimeFormat("uk-UA", { hour: "2-digit", minute: "2-digit" }).format(new Date(end));
+  return `${startText}–${endText}`;
+}
 function workflowState(row: Diagnostic): WorkflowState {
   if (row.reviewState === "RETURNED") return "RETURNED";
   return row.workflowState || row.status;
@@ -100,9 +120,13 @@ function matchesSearch(row: Diagnostic, query: string) {
     row.assignedMechanic?.name,
   ].filter(Boolean).join(" ").toLocaleLowerCase("uk-UA").includes(q);
 }
+function isHistory(row: Diagnostic) {
+  return workflowState(row) === "CONFIRMED" || workflowState(row) === "CANCELLED";
+}
 
 export function Diagnostics() {
   const [rows, setRows] = useState<Diagnostic[]>([]);
+  const [scope, setScope] = useState<Scope>("CURRENT");
   const [filter, setFilter] = useState<Filter>("ALL");
   const [search, setSearch] = useState("");
   const [mechanic, setMechanic] = useState("ALL");
@@ -154,7 +178,10 @@ export function Diagnostics() {
   }, [applyRoute, rows]);
 
   const mechanics = useMemo(() => Array.from(new Set(rows.map((row) => row.assignedMechanic?.name).filter((value): value is string => Boolean(value)))).sort((a, b) => a.localeCompare(b, "uk")), [rows]);
-  const visible = useMemo(() => rows.filter((row) => (!vehicleIdFilter || row.vehicle.id === vehicleIdFilter) && matchesFilter(row, filter) && matchesSearch(row, search) && (mechanic === "ALL" || row.assignedMechanic?.name === mechanic)), [rows, vehicleIdFilter, filter, search, mechanic]);
+  const scopedRows = useMemo(() => rows.filter((row) => isHistory(row) === (scope === "HISTORY")), [rows, scope]);
+  const visible = useMemo(() => scopedRows
+    .filter((row) => (!vehicleIdFilter || row.vehicle.id === vehicleIdFilter) && matchesFilter(row, filter) && matchesSearch(row, search) && (mechanic === "ALL" || row.assignedMechanic?.name === mechanic))
+    .sort((a, b) => new Date(a.visit?.plannedStartAt || a.updatedAt).getTime() - new Date(b.visit?.plannedStartAt || b.updatedAt).getTime()), [scopedRows, vehicleIdFilter, filter, search, mechanic]);
   const selected = rows.find((item) => item.id === selectedId) ?? null;
   useEffect(() => { setConclusion(selected?.technicalConclusion ?? ""); setMessage(""); }, [selectedId, selected?.technicalConclusion]);
 
@@ -179,12 +206,26 @@ export function Diagnostics() {
     }
   }
 
-  const filterCount = (value: Filter) => rows.filter((row) => matchesFilter(row, value)).length;
+  const filterCount = (value: Filter) => scopedRows.filter((row) => matchesFilter(row, value)).length;
+  const openDiagnostic = (row: Diagnostic) => {
+    setSelectedId(row.id);
+    navigateCrm("Авто", { vehicleId: row.vehicle.id, vehiclePage: "diagnostic-card", diagnosticId: row.id });
+  };
 
   return <div className={styles.page}>
     <header className={styles.head}><div><p className={styles.eyebrow}>СЕРВІС · ДІАГНОСТИКА</p><h1>Всі діагностики</h1></div><div className={styles.headActions}><label className={`${registryStyles.search} ${registryStyles.headerSearch}`}><span>⌕</span><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Номер авто, VIN, клієнт, телефон, № ДК або механік..." />{search && <button type="button" onClick={() => setSearch("")} aria-label="Очистити пошук">×</button>}</label><select className={`${registryStyles.select} ${registryStyles.headerMechanic}`} value={mechanic} onChange={(event) => setMechanic(event.target.value)} aria-label="Фільтр за механіком"><option value="ALL">Усі механіки</option>{mechanics.map((name) => <option key={name} value={name}>{name}</option>)}</select><button className={styles.refresh} onClick={() => void load()} disabled={loading}>{loading ? "Оновлюю…" : "Оновити"}</button></div></header>
 
-    <nav className={styles.filters}>{filters.map((item) => <button key={item.value} className={filter === item.value ? styles.activeFilter : ""} onClick={() => setFilter(item.value)}>{item.label}<span>{filterCount(item.value)}</span></button>)}</nav>
+    <section className={styles.summary} aria-label="Підсумок діагностик">
+      <button type="button" className={styles.summaryCard} onClick={() => { setScope("CURRENT"); setFilter("ALL"); }}><span>Поточні</span><strong>{rows.filter((row) => !isHistory(row)).length}</strong><small>записів у роботі</small></button>
+      <button type="button" className={`${styles.summaryCard} ${styles.summaryAttention}`} onClick={() => { setScope("CURRENT"); setFilter("PENDING"); }}><span>Очікують</span><strong>{rows.filter((row) => workflowState(row) === "PENDING").length}</strong><small>ще не розпочаті</small></button>
+      <button type="button" className={`${styles.summaryCard} ${styles.summaryProgress}`} onClick={() => { setScope("CURRENT"); setFilter("IN_PROGRESS"); }}><span>В роботі</span><strong>{rows.filter((row) => matchesFilter(row, "IN_PROGRESS")).length}</strong><small>механік перевіряє</small></button>
+      <button type="button" className={`${styles.summaryCard} ${styles.summaryDone}`} onClick={() => { setScope("HISTORY"); setFilter("CONFIRMED"); }}><span>Завершені</span><strong>{rows.filter((row) => workflowState(row) === "CONFIRMED").length}</strong><small>карта сформована</small></button>
+    </section>
+    <nav className={styles.scopeTabs} aria-label="Група діагностик">
+      <button type="button" className={scope === "CURRENT" ? styles.scopeActive : ""} onClick={() => setScope("CURRENT")}>Поточні<span>{rows.filter((row) => !isHistory(row)).length}</span></button>
+      <button type="button" className={scope === "HISTORY" ? styles.scopeActive : ""} onClick={() => setScope("HISTORY")}>Історія<span>{rows.filter(isHistory).length}</span></button>
+    </nav>
+    <nav className={styles.filters} aria-label="Фільтр за етапом">{filters.map((item) => <button type="button" key={item.value} className={filter === item.value ? styles.activeFilter : ""} onClick={() => setFilter(item.value)}>{item.label}<span>{filterCount(item.value)}</span></button>)}</nav>
 
     {(readCrmRoute().diagnosticId || readCrmRoute().vehicleId) && <div className={registryStyles.routeHint}>
       {readCrmRoute().diagnosticId
@@ -200,15 +241,14 @@ export function Diagnostics() {
     <div className={styles.layout}>
       <section className={styles.list}>{loading && !rows.length ? <div className={styles.empty}>Завантажую діагностики…</div> : visible.length ? visible.map((row) => {
         const state = workflowState(row);
-        return <button key={row.id} className={`${styles.row} ${selectedId === row.id ? styles.selected : ""}`} onClick={() => setSelectedId(row.id)}>
-          <div className={styles.rowTop}><span className={`${styles.status} ${stateClass(row)}`}>{statusMeta[state].label}</span><time>{dateTime(row.updatedAt)}</time></div>
-          <strong>{vehicleName(row)}</strong><VehiclePlate value={row.vehicle.plateNumber} size="sm" />
+        return <button type="button" key={row.id} className={`${styles.row} ${styles[`row${state}`] || ""} ${selectedId === row.id ? styles.selected : ""}`} onClick={() => openDiagnostic(row)} aria-label={`Відкрити діагностичну карту: ${vehicleName(row)}`}>
+          <div className={styles.rowTop}><span className={`${styles.status} ${stateClass(row)}`}><i aria-hidden="true" />{statusMeta[state].label}</span><time>{timeRange(row)}</time></div>
+          <div className={styles.vehicleLine}><strong>{vehicleName(row)}</strong><VehiclePlate value={row.vehicle.plateNumber} size="sm" /></div>
           <small>{row.client.name || row.client.phone}</small>
-          {row.assignedMechanic?.name && <span className={registryStyles.mechanic}>Механік: {row.assignedMechanic.name}</span>}
+          <div className={styles.rowMeta}><span>{row.visit?.postName || "Пост не визначено"}</span>{row.assignedMechanic?.name && <span>Механік: {row.assignedMechanic.name}</span>}</div>
           {row.lead?.need && <p>{row.lead.need}</p>}
           {row.structured && row.structured.inspections > 0 && <small>Чекліст: {row.structured.checked} перевірено · {row.structured.defects} деф. · {row.structured.attention} увага</small>}
-          {row.diagnosticCard?.number ? <span className={styles.workOrderBadge}>{row.diagnosticCard.number}{row.diagnosticCard.finalizedAt ? " · фінальна" : " · REVIEW"}</span> : row.status === "CONFIRMED" ? <span className={styles.workOrderBadge}>Історична діагностика</span> : null}
-          {row.commercialProposal && <span className={registryStyles.commercialBadge}>{commercialLabels[row.commercialProposal.stage]}</span>}
+          <div className={styles.rowBottom}>{row.diagnosticCard?.number ? <span className={styles.workOrderBadge}>{row.diagnosticCard.number}{row.diagnosticCard.finalizedAt ? " · фінальна" : " · REVIEW"}</span> : row.status === "CONFIRMED" ? <span className={styles.workOrderBadge}>Історична діагностика</span> : <span />}{row.commercialProposal && <span className={registryStyles.commercialBadge}>{commercialLabels[row.commercialProposal.stage]}</span>}<span className={styles.openLink}>Відкрити ДК →</span></div>
         </button>;
       }) : <div className={styles.empty}>За цими умовами діагностик немає.</div>}</section>
 
