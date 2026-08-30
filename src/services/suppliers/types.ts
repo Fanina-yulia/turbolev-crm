@@ -51,6 +51,8 @@ export type SupplierOffer = {
   stock: SupplierStock[];
   available: boolean;
   sourceUrl: string | null;
+  /** Classification is optional because a supplier response may not prove OEM status. */
+  offerClass?: "OEM" | "ANALOG" | "UNKNOWN";
 };
 
 export type SupplierDeliveryPoint = {

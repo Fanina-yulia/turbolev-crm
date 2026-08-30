@@ -23,6 +23,9 @@ export async function GET(request: Request) {
     listSupplierStatuses(),
   ]);
   const offers = await enrichOffersWithSellPrice(result.offers);
+  const supplierStatuses = result.supplierStatuses;
+  const configuredCount = supplierStatuses.filter((supplier) => supplier.configured).length;
+  const respondedCount = result.providers.filter((provider) => provider.ok).length;
 
   return NextResponse.json({
     status: "OK",
@@ -30,9 +33,18 @@ export async function GET(request: Request) {
     ...result,
     offers,
     suppliers,
+    supplierStatuses,
+    supplierSummary: {
+      added: supplierStatuses.length,
+      configured: configuredCount,
+      responded: respondedCount,
+      message: configuredCount
+        ? `${configuredCount} постачальник(и) мають збережені доступи; результат відповіді видно після пошуку.`
+        : "Постачальники додані, але доступи до API ще не налаштовані.",
+    },
     pricing: {
       basis: "SUPPLIER_DEFAULT_MARKUP",
-      defaultMarkupPercent: 23,
+      defaultMarkupPercent: 40,
       message: "Ціна продажу розраховується від закупівельної ціни за правилом постачальника; базове правило Turbo LEV — 40%. Ручний override фіксується в аудиті під час створення supplier order draft.",
     },
     policy: {

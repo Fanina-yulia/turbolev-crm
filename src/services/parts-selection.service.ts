@@ -186,9 +186,13 @@ export async function selectDiagnosticPartOffer(input: {
   if (!suggestion) throw new PartsSelectionError("PART_RECOMMENDATION_NOT_FOUND", "Для цієї несправності немає рекомендованої деталі.", 404);
   if (!suggestion.lineId) throw new PartsSelectionError("PART_LINE_NOT_IMPORTED", "Рекомендовану деталь ще не перенесено в Комерційну пропозицію.", 409);
 
-  const search = await searchConfiguredSuppliers(suggestion.description, 50);
   const wantedExternalId = clean(input.externalProductId, 200);
   const wantedArticle = clean(input.article, 120).toUpperCase();
+  // Re-query by the selected article when possible. A finding description is
+  // often a human label, while the supplier adapter indexes the catalogue by
+  // its article; using the article prevents a valid selected offer from being
+  // rejected as stale during the second server-side verification.
+  const search = await searchConfiguredSuppliers(wantedArticle || suggestion.description, 50);
   const liveOffer = search.offers.find((offer) => {
     if (offer.supplierId !== supplierId) return false;
     if (wantedExternalId && offer.externalProductId === wantedExternalId) return true;
