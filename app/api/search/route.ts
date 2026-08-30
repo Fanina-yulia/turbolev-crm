@@ -5,6 +5,7 @@ import { getPrisma } from "@/src/lib/prisma";
 import { hasPermission, type AccessContext } from "@/src/security/access-context";
 import { authorize } from "@/src/security/authorize";
 import { PERMISSIONS, type AccessScopeCode, type PermissionCode } from "@/src/security/permissions";
+import { identitySearchValues } from "@/src/lib/search-identity";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -13,14 +14,6 @@ export const maxDuration = 30;
 const RESULT_LIMIT = 6;
 const CANDIDATE_LIMIT = 24;
 const ENTITY_ID = /^[A-Za-z0-9_-]{12,}$/;
-
-function compact(value: string) {
-  return value.toUpperCase().replace(/[\s._-]+/g, "");
-}
-
-function digits(value: string) {
-  return value.replace(/\D+/g, "");
-}
 
 function diagnosticStatusLabel(status: string) {
   if (status === "PENDING") return "Очікує";
@@ -174,8 +167,9 @@ export async function GET(request: NextRequest) {
   }
 
   const prisma = getPrisma();
-  const normalized = compact(q);
-  const phoneNeedle = digits(q);
+  const identity = identitySearchValues(q);
+  const phoneNeedles = identity.phoneValues;
+  const plateNeedles = identity.plateValues;
   const exactEntityId = ENTITY_ID.test(q) ? q : null;
 
   try {
@@ -190,9 +184,14 @@ export async function GET(request: NextRequest) {
             OR: [
               ...(exactEntityId ? [{ id: exactEntityId }] : []),
               { name: { contains: q, mode: "insensitive" } },
-              ...(phoneNeedle.length >= 3 ? [{ phone: { contains: phoneNeedle } }] : []),
-              { vehicles: { some: { plateNumber: { contains: normalized, mode: "insensitive" } } } },
-              { vehicles: { some: { vin: { contains: normalized, mode: "insensitive" } } } },
+              ...(phoneNeedles.length ? phoneNeedles.flatMap((value) => [
+                { phone: { contains: value } },
+                { phoneNormalized: { contains: value } },
+                { phones: { some: { phoneNormalized: { contains: value } } } },
+              ]) : []),
+              ...(plateNeedles.length ? plateNeedles.map((value) => ({ vehicles: { some: { plateNumber: { contains: value, mode: "insensitive" as const } } } })) : []),
+              ...(identity.plateNormalized ? [{ vehicles: { some: { plateNormalized: { contains: identity.plateNormalized, mode: "insensitive" as const } } } }] : []),
+              ...(identity.vin ? [{ vehicles: { some: { vin: { contains: identity.vin, mode: "insensitive" as const } } } }] : []),
             ],
           },
           orderBy: { updatedAt: "desc" },
@@ -215,10 +214,15 @@ export async function GET(request: NextRequest) {
           where: {
             OR: [
               ...(exactEntityId ? [{ id: exactEntityId }] : []),
-              { plateNumber: { contains: normalized, mode: "insensitive" } },
-              { vin: { contains: normalized, mode: "insensitive" } },
+              ...(plateNeedles.length ? plateNeedles.map((value) => ({ plateNumber: { contains: value, mode: "insensitive" as const } })) : []),
+              ...(identity.plateNormalized ? [{ plateNormalized: { contains: identity.plateNormalized, mode: "insensitive" as const } }] : []),
+              ...(identity.vin ? [{ vin: { contains: identity.vin, mode: "insensitive" as const } }] : []),
               { client: { is: { name: { contains: q, mode: "insensitive" } } } },
-              ...(phoneNeedle.length >= 3 ? [{ client: { is: { phone: { contains: phoneNeedle } } } }] : []),
+              ...(phoneNeedles.length ? phoneNeedles.flatMap((value) => [
+                { client: { is: { phone: { contains: value } } } },
+                { client: { is: { phoneNormalized: { contains: value } } } },
+                { client: { is: { phones: { some: { phoneNormalized: { contains: value } } } } } },
+              ]) : []),
             ],
           },
           orderBy: { updatedAt: "desc" },
@@ -243,9 +247,14 @@ export async function GET(request: NextRequest) {
               ...(exactEntityId ? [{ id: exactEntityId }] : []),
               { technicalConclusion: { contains: q, mode: "insensitive" } },
               { client: { is: { name: { contains: q, mode: "insensitive" } } } },
-              ...(phoneNeedle.length >= 3 ? [{ client: { is: { phone: { contains: phoneNeedle } } } }] : []),
-              { vehicle: { is: { plateNumber: { contains: normalized, mode: "insensitive" } } } },
-              { vehicle: { is: { vin: { contains: normalized, mode: "insensitive" } } } },
+              ...(phoneNeedles.length ? phoneNeedles.flatMap((value) => [
+                { client: { is: { phone: { contains: value } } } },
+                { client: { is: { phoneNormalized: { contains: value } } } },
+                { client: { is: { phones: { some: { phoneNormalized: { contains: value } } } } } },
+              ]) : []),
+              ...(plateNeedles.length ? plateNeedles.map((value) => ({ vehicle: { is: { plateNumber: { contains: value, mode: "insensitive" as const } } } })) : []),
+              ...(identity.plateNormalized ? [{ vehicle: { is: { plateNormalized: { contains: identity.plateNormalized, mode: "insensitive" as const } } } }] : []),
+              ...(identity.vin ? [{ vehicle: { is: { vin: { contains: identity.vin, mode: "insensitive" as const } } } }] : []),
             ],
           },
           orderBy: { updatedAt: "desc" },
@@ -268,9 +277,9 @@ export async function GET(request: NextRequest) {
             OR: [
               ...(exactEntityId ? [{ id: exactEntityId }] : []),
               { customerName: { contains: q, mode: "insensitive" } },
-              ...(phoneNeedle.length >= 3 ? [{ phone: { contains: phoneNeedle } }] : []),
+              ...(phoneNeedles.length ? phoneNeedles.map((value) => ({ phone: { contains: value } })) : []),
               { vehicleLabel: { contains: q, mode: "insensitive" } },
-              { plateNumber: { contains: normalized, mode: "insensitive" } },
+              ...(plateNeedles.length ? plateNeedles.map((value) => ({ plateNumber: { contains: value, mode: "insensitive" as const } })) : []),
               { problem: { contains: q, mode: "insensitive" } },
             ],
           },
@@ -319,9 +328,14 @@ export async function GET(request: NextRequest) {
             ...(exactEntityId ? [{ id: exactEntityId }] : []),
             ...(exactNumber?.workOrderId ? [{ id: exactNumber.workOrderId }] : []),
             { client: { is: { name: { contains: q, mode: "insensitive" } } } },
-            ...(phoneNeedle.length >= 3 ? [{ client: { is: { phone: { contains: phoneNeedle } } } }] : []),
-            { vehicle: { is: { plateNumber: { contains: normalized, mode: "insensitive" } } } },
-            { vehicle: { is: { vin: { contains: normalized, mode: "insensitive" } } } },
+            ...(phoneNeedles.length ? phoneNeedles.flatMap((value) => [
+              { client: { is: { phone: { contains: value } } } },
+              { client: { is: { phoneNormalized: { contains: value } } } },
+              { client: { is: { phones: { some: { phoneNormalized: { contains: value } } } } } },
+            ]) : []),
+            ...(plateNeedles.length ? plateNeedles.map((value) => ({ vehicle: { is: { plateNumber: { contains: value, mode: "insensitive" as const } } } })) : []),
+            ...(identity.plateNormalized ? [{ vehicle: { is: { plateNormalized: { contains: identity.plateNormalized, mode: "insensitive" as const } } } }] : []),
+            ...(identity.vin ? [{ vehicle: { is: { vin: { contains: identity.vin, mode: "insensitive" as const } } } }] : []),
           ],
         },
         orderBy: { updatedAt: "desc" },

@@ -3,6 +3,7 @@ import { toVehicleDirectoryItem } from "@/src/lib/contracts/crm-core.server";
 import { getPrisma } from "@/src/lib/prisma";
 import { authorize } from "@/src/security/authorize";
 import { PERMISSIONS } from "@/src/security/permissions";
+import { identitySearchValues } from "@/src/lib/search-identity";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -48,18 +49,24 @@ export async function GET(request: NextRequest) {
   if (!access.allowed) return access.response!;
   const prisma = getPrisma();
   const q = (request.nextUrl.searchParams.get("q") || "").trim();
+  const identity = identitySearchValues(q);
   const limit = clampInt(request.nextUrl.searchParams.get("limit"), 24, 1, 100);
   const page = clampInt(request.nextUrl.searchParams.get("page"), 1, 1, 100_000);
 
   try {
     const where = q ? {
       OR: [
-        { plateNumber: { contains: q, mode: "insensitive" as const } },
-        { vin: { contains: q, mode: "insensitive" as const } },
+        ...(identity.plateValues.length ? identity.plateValues.map((value) => ({ plateNumber: { contains: value, mode: "insensitive" as const } })) : []),
+        ...(identity.plateNormalized ? [{ plateNormalized: { contains: identity.plateNormalized, mode: "insensitive" as const } }] : []),
+        ...(identity.vin ? [{ vin: { contains: identity.vin, mode: "insensitive" as const } }] : []),
         { brand: { contains: q, mode: "insensitive" as const } },
         { model: { contains: q, mode: "insensitive" as const } },
         { client: { is: { name: { contains: q, mode: "insensitive" as const } } } },
-        { client: { is: { phone: { contains: q } } } },
+        ...(identity.phoneValues.length ? identity.phoneValues.flatMap((value) => [
+          { client: { is: { phone: { contains: value } } } },
+          { client: { is: { phoneNormalized: { contains: value } } } },
+          { client: { is: { phones: { some: { phoneNormalized: { contains: value } } } } } },
+        ]) : []),
       ],
     } : {};
 

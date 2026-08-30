@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getPrisma } from "@/src/lib/prisma";
 import { authorize } from "@/src/security/authorize";
 import { PERMISSIONS } from "@/src/security/permissions";
+import { identitySearchValues } from "@/src/lib/search-identity";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -17,15 +18,21 @@ export async function GET(request: NextRequest) {
   if (!access.allowed) return access.response!;
   const prisma = getPrisma();
   const q = (request.nextUrl.searchParams.get("q") || "").trim();
+  const identity = identitySearchValues(q);
   const take = clampInt(request.nextUrl.searchParams.get("limit"), 60, 1, 100);
   const skip = clampInt(request.nextUrl.searchParams.get("offset"), 0, 0, 100_000);
 
   const where = q ? {
     OR: [
       { name: { contains: q, mode: "insensitive" as const } },
-      { phone: { contains: q } },
-      { vehicles: { some: { plateNumber: { contains: q, mode: "insensitive" as const } } } },
-      { vehicles: { some: { vin: { contains: q, mode: "insensitive" as const } } } },
+      ...(identity.phoneValues.length ? identity.phoneValues.flatMap((value) => [
+        { phone: { contains: value } },
+        { phoneNormalized: { contains: value } },
+        { phones: { some: { phoneNormalized: { contains: value } } } },
+      ]) : []),
+      ...(identity.plateValues.length ? identity.plateValues.map((value) => ({ vehicles: { some: { plateNumber: { contains: value, mode: "insensitive" as const } } } })) : []),
+      ...(identity.plateNormalized ? [{ vehicles: { some: { plateNormalized: { contains: identity.plateNormalized, mode: "insensitive" as const } } } }] : []),
+      ...(identity.vin ? [{ vehicles: { some: { vin: { contains: identity.vin, mode: "insensitive" as const } } } }] : []),
       { vehicles: { some: { brand: { contains: q, mode: "insensitive" as const } } } },
       { vehicles: { some: { model: { contains: q, mode: "insensitive" as const } } } },
     ],

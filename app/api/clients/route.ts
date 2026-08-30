@@ -3,6 +3,7 @@ import { toClientDirectoryItem } from "@/src/lib/contracts/crm-core.server";
 import { getPrisma } from "@/src/lib/prisma";
 import { authorize } from "@/src/security/authorize";
 import { PERMISSIONS } from "@/src/security/permissions";
+import { identitySearchValues } from "@/src/lib/search-identity";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -131,7 +132,7 @@ export async function GET(request: NextRequest) {
 
   const prisma = getPrisma();
   const q = (request.nextUrl.searchParams.get("q") || "").trim();
-  const phoneDigits = q.replace(/\D/g, "");
+  const identity = identitySearchValues(q);
   const id = (request.nextUrl.searchParams.get("id") || "").trim();
   const limit = clampInt(request.nextUrl.searchParams.get("limit"), 24, 1, 100);
   const page = clampInt(request.nextUrl.searchParams.get("page"), 1, 1, 100_000);
@@ -158,10 +159,14 @@ export async function GET(request: NextRequest) {
     const queryWhere = q ? {
       OR: [
         { name: { contains: q, mode: "insensitive" as const } },
-        { phone: { contains: q } },
-        ...(phoneDigits ? [{ phoneNormalized: { contains: phoneDigits } }] : []),
-        { vehicles: { some: { plateNumber: { contains: q, mode: "insensitive" as const } } } },
-        { vehicles: { some: { vin: { contains: q, mode: "insensitive" as const } } } },
+        ...(identity.phoneValues.length ? [
+          ...identity.phoneValues.map((value) => ({ phone: { contains: value } })),
+          ...identity.phoneValues.map((value) => ({ phoneNormalized: { contains: value } })),
+          ...identity.phoneValues.map((value) => ({ phones: { some: { phoneNormalized: { contains: value } } } })),
+        ] : []),
+        ...(identity.plateValues.length ? identity.plateValues.map((value) => ({ vehicles: { some: { plateNumber: { contains: value, mode: "insensitive" as const } } } })) : []),
+        ...(identity.plateNormalized ? [{ vehicles: { some: { plateNormalized: { contains: identity.plateNormalized, mode: "insensitive" as const } } } }] : []),
+        ...(identity.vin ? [{ vehicles: { some: { vin: { contains: identity.vin, mode: "insensitive" as const } } } }] : []),
         { vehicles: { some: { brand: { contains: q, mode: "insensitive" as const } } } },
         { vehicles: { some: { model: { contains: q, mode: "insensitive" as const } } } },
       ],

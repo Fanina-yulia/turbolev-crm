@@ -4,6 +4,9 @@ import { useEffect, useMemo, useState } from "react";
 import type { WorkOrderListItemContract } from "@/src/lib/contracts/crm-core";
 import { parseWorkOrderListPayload, parseWorkOrderNumbersPayload } from "@/src/lib/contracts/work-order-payload.parsers";
 import { formatWorkOrderNumber } from "@/src/domain/work-order-number";
+import { normalizeRegistrationPlate } from "@/src/domain/registration-plate";
+import { normalizePhone } from "@/src/lib/phone";
+import { normalizeVin } from "@/src/domain/vin";
 import { navigateCrm, readCrmRoute, type CrmRouteParams } from "./crm-route";
 import { VehicleRender } from "./vehicle-render";
 import styles from "./parts-catalog.module.css";
@@ -23,8 +26,7 @@ type DiagnosticPartsPayload = {
   inspections?: Array<{ sections?: Array<{ name?: string; items?: Array<{ name?: string; position?: string | null; finding?: { id?: string; action?: string; urgency?: string; findingText?: string | null; suggestedPartName?: string | null; media?: unknown[] } | null }> }> }>;
 };
 
-function normalizeVin(value: string) { return value.toUpperCase().replace(/[^A-HJ-NPR-Z0-9]/g, "").slice(0, 17); }
-function normalizePlate(value: string) { return value.toUpperCase().replace(/[^A-ZА-ЯІЇЄҐ0-9]/g, ""); }
+function normalizePlate(value: string) { return normalizeRegistrationPlate(value); }
 function looksLikeVin(value: string) { const compact = value.toUpperCase().replace(/[^A-Z0-9]/g, ""); return compact.length === 17 && normalizeVin(value).length === 17; }
 function normalizeText(value: string) { return value.trim().toLocaleLowerCase("uk-UA").replace(/\s+/g, " "); }
 function formatMoney(value: number | null | undefined, currency: string | null | undefined) { if (value == null || !Number.isFinite(value)) return "—"; const normalizedCurrency = currency === "ГРН" ? "UAH" : currency || "UAH"; try { return new Intl.NumberFormat("uk-UA", { style: "currency", currency: normalizedCurrency, maximumFractionDigits: 2 }).format(value); } catch { return `${value.toFixed(2)} ${currency ?? ""}`.trim(); } }
@@ -138,7 +140,26 @@ export function PartsCatalog() {
   }, [route.diagnosticId, route.findingId, route.plate, route.vehicleId, route.vin, route.workOrderId]);
 
   const activeRecommendation = useMemo(() => recommendedParts.find((item) => item.findingId === activeFindingId) || recommendedParts.find((item) => normalizeText(item.name) === normalizeText(q)) || null, [recommendedParts, activeFindingId, q]);
-  const filteredOrders = useMemo(() => { const query = normalizeText(orderSearch); if (!query) return workOrderOptions; return workOrderOptions.filter((row) => [orderLabel(row), row.id, row.client.name, row.client.phone, vehicleLabel(row), row.vehicle.plateNumber, row.vehicle.vin].filter(Boolean).join(" ").toLocaleLowerCase("uk-UA").includes(query)); }, [orderSearch, workOrderOptions]);
+  const filteredOrders = useMemo(() => {
+    const query = normalizeText(orderSearch);
+    if (!query) return workOrderOptions;
+    const digitsQuery = orderSearch.replace(/\D/g, "");
+    const phoneQuery = normalizePhone(orderSearch);
+    const plateQuery = normalizeRegistrationPlate(orderSearch);
+    const vinQuery = normalizeVin(orderSearch);
+    return workOrderOptions.filter((row) => {
+      const text = [orderLabel(row), row.id, row.client.name, vehicleLabel(row)].filter(Boolean).join(" ").toLocaleLowerCase("uk-UA");
+      const phone = normalizePhone(row.client.phone);
+      const phoneDigits = row.client.phone.replace(/\D/g, "");
+      const plate = normalizeRegistrationPlate(row.vehicle.plateNumber || "");
+      const vin = normalizeVin(row.vehicle.vin || "");
+      return text.includes(query)
+        || (digitsQuery.length >= 3 && phoneDigits.includes(digitsQuery))
+        || (phoneQuery.length >= 3 && phone.includes(phoneQuery))
+        || (plateQuery.length >= 3 && plate.includes(plateQuery))
+        || (vinQuery.length >= 3 && vin.includes(vinQuery));
+    });
+  }, [orderSearch, workOrderOptions]);
   const selectedPurchaseTotal = selectedLines.reduce((sum, line) => sum + line.purchasePrice * line.quantity, 0);
   const selectedSellTotal = selectedLines.reduce((sum, line) => sum + line.sellPrice * line.quantity, 0);
   const providerErrors = supplierProviders.filter((provider) => !provider.ok);
