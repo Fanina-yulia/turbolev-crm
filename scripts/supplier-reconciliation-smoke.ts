@@ -21,7 +21,7 @@ const supplier = await prisma.supplier.upsert({
     name: "Supplier reconciliation QA",
     isActive: true,
     priority: 999,
-    defaultMarkupPercent: 23,
+    defaultMarkupPercent: 40,
     defaultCurrency: "UAH",
   },
   update: { name: "Supplier reconciliation QA", isActive: true },

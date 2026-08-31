@@ -44,7 +44,7 @@ const supplier = await prisma.supplier.upsert({
     name: "Supplier ingestion smoke",
     isActive: true,
     priority: 999,
-    defaultMarkupPercent: 23,
+    defaultMarkupPercent: 40,
     defaultCurrency: "UAH",
   },
   update: { name: "Supplier ingestion smoke", isActive: true },
