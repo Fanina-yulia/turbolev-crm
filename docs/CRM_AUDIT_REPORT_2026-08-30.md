@@ -1,9 +1,9 @@
 # Звіт повного аудиту Turbo LEV CRM
 
 **Стандарт:** `CRM-AUDIT-001`  
-**Дата:** 2026-08-30  
-**Базовий реліз:** `origin/main` / commit `ff805d0d726344d4d26963080ab823508c9de485`  
-**Рішення:** `PASS WITH P2` — browser-перевірка шести viewport потребує авторизованого браузерного сеансу
+**Дата оновлення:** 2026-08-31  
+**Базовий реліз:** commit `0731aee4e0b9b8e523156bfc5af93f26a926f4e0`  
+**Рішення:** `PASS WITH P2` — функціональна перевірка пройдена; повна матриця шести viewport не може бути виконана в поточному browser-сеансі через фіксовану ширину емулятора
 
 ## Scope
 
@@ -13,16 +13,18 @@
 
 ## Виконані зміни
 
-- Для сторінки «Комунікації» прибрано фіксовану висоту `100vh`, внутрішній scroll списку/діалогу/контексту та mobile max-height. Контент тепер росте як єдина документна сторінка за `CRM-UI-001`.
-- Сторінку «Комунікації» додано до автоматичного `ui:pages:check`, щоб повернення viewport-lock було помилкою CI.
-- Збережено дозволені винятки `CRM-UI-002`: модальні вікна, drawer-панелі, медіа-перегляд, таблиці та календарний workspace.
+- Для сторінки «Комунікації» прибрано фіксовану висоту `100vh`, внутрішній scroll списку/діалогу/контексту та mobile max-height. Контент росте як єдина документна сторінка за `CRM-UI-001`.
+- Сторінку «Комунікації» додано до автоматичного `ui:pages:check`.
+- Виправлено production-авторизацію cron-воркера зображень: коли Vercel не передає `CRON_SECRET`, GET-запуск приймається лише від User-Agent `vercel-cron/*`; ручні та сторонні запити залишаються закритими.
+- Черга зображень тепер перед генерацією запускає автоматичне збагачення даних за держномером, а потім за VIN. Це усуває постійний `MISSING_DATA` для авто, у яких модель можна знайти через VIN.
+- Чергу примусово прогнано після деплою. Усі авто з повною ідентичністю мають готове зображення. Запис VOLKSWAGEN 2006 залишено без вигаданого зображення, оскільки VIN-декодер не повернув модель; потрібне уточнення моделі або доступ до джерела VIN-даних.
 
 ## Evidence
 
 | Перевірка | Результат |
 |---|---|
 | `npm run ui:pages:check` | PASS — 11 захищених CRM-поверхонь |
-| `npm run contracts:smoke` | PASS — core, planner, cabinets, service advisor, clients/vehicles, client card, new request, inquiries, integration attribution, migration URL |
+| `npm run contracts:smoke` | PASS |
 | `node scripts/navigation-contract-smoke.mjs` | PASS |
 | `node scripts/new-request-page-layout-smoke.mjs` | PASS |
 | `npm run ui:plates:check` | PASS — 13 перевірок |
@@ -30,30 +32,30 @@
 | `node scripts/check-critical-api-security.mjs` | PASS — 20 критичних API-маршрутів |
 | `node scripts/check-mechanic-performance.mjs` | PASS |
 | `node scripts/crm-hardening-smoke.mjs` | PASS — 13 контрактів |
-| API security policy smoke | PASS — 225 маршрутів: 196 internal RBAC, 4 auth-public, 1 session, 11 external provider, 4 service token, 9 public token |
-| Vehicle identity/image/plate smoke | PASS — resolver, catalog, image resolver, unified identity, integration identity, classifier, plate |
-| Communications/integration/lead smoke | PASS — activation diagnostics, inbox, phone copy, public lead attribution |
-| Supplier/parts smoke без БД | PASS — 126 golden assertions, unique-trade preview/ingestion |
-| `npm run build` | PASS — Prisma Client, TypeScript, Next production build, static generation |
-| GitHub Actions Full CI `33329595781` | PASS — clean PostgreSQL 18, повний migration replay, DB-backed smoke-тести, security gates та production build; jobs `scope` і `build` успішні |
+| API security policy smoke | PASS — 225 маршрутів |
+| Vehicle identity/image/plate smoke | PASS |
+| Communications/integration/lead smoke | PASS |
+| Supplier/parts smoke без БД | PASS — 126 assertions |
+| `npm run build` | PASS |
+| GitHub Actions Full CI `33329815382` | PASS — clean PostgreSQL 18, migrations, DB-backed smoke, security gates та production build |
+| Production browser, `1363x936` | PASS — vehicles, communications, planner, diagnostics; горизонтального overflow не виявлено |
+| Production vehicle-image check | PASS для всіх авто з повною ідентичністю; 1 авто очікує уточнення моделі за VIN |
 | Vercel runtime errors за останні 24 години | PASS — помилок не знайдено |
 
 ## Виявлені та закриті дефекти
 
 | ID | Модуль | Severity | Стан |
 |---|---|---:|---|
-| `CRM-UI-001-COMMS-001` | Комунікації | P1 | Виправлено: фіксований page-shell та внутрішній scroll замінено цілісним document flow; додано CI-запобіжник |
+| `CRM-UI-001-COMMS-001` | Комунікації | P1 | Виправлено |
+| `VEHICLE-IMAGE-CRON-001` | Vehicle images | P1 | Виправлено: Vercel cron більше не отримує 404 через відсутню авторизацію |
+| `VEHICLE-IMAGE-VIN-001` | Vehicle images | P2 | Частково закрито: fallback plate → VIN працює; один VIN не повернув модель у доступному декодері |
 
-## Обмеження перевірки
+## Обмеження
 
-Локальне середовище не містить `DATABASE_URL` / `DATABASE_URL_UNPOOLED`, тому database/runtime smoke локально не запускаються. Їхній приймальний результат отримано в GitHub Actions Full CI на чистій PostgreSQL 18: diagnostic flow, mechanic walk-in, vehicle resolution runtime, communication attachments, integration API request guards, RBAC, supplier reconciliation та persistence smoke виконані в job `build` зі статусом `success`.
+Локальне середовище не містить `DATABASE_URL` / `DATABASE_URL_UNPOOLED`; database/runtime smoke прийнято в GitHub Actions на чистій PostgreSQL 18.
 
-`communication-message-view-smoke` локально також не запускається без БД. У GitHub Actions для нього вже передано `NODE_OPTIONS=--conditions=react-server`, тому окреме виправлення production-коду не потрібне.
-
-Локальна відсутність БД не є дефектом production. `communication-message-view-smoke` у CI також проходить із `NODE_OPTIONS=--conditions=react-server`; окреме виправлення production-коду не потрібне.
+Browser-сеанс у поточному середовищі має ширину `1363px` і не надає API зміни viewport, тому ширини 1920, 1440, 1280, 1024, 768 та 390 px не можна чесно видати за перевірені.
 
 ## Приймання
 
-Статична частина `CRM-AUDIT-001`, clean-database replay, DB-backed smoke, build, security, contract/smoke та UI-цілісність пройдені. Для повного закриття P2 залишилася лише авторизована візуальна перевірка шести viewport із матриці стандарту: 1920, 1440, 1280, 1024, 768 та 390 px; у поточному середовищі browser automation недоступна, а прямий HTTP-доступ до production захищений SSO.
-
-**Commit / deployment:** `ff805d0d726344d4d26963080ab823508c9de485` / [production deployment](https://turbolev-qltlfpkqy-turbo-lev.vercel.app) — `READY`; alias [turbolev-crm.vercel.app](https://turbolev-crm.vercel.app).
+Production deployment успішний, alias активний: [turbolev-crm.vercel.app](https://turbolev-crm.vercel.app). Черга генерації зображень працює, а правило пошуку ідентичності авто — держномер → VIN — зафіксоване в коді та приймальному аудиті.
