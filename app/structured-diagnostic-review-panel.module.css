@@ -549,6 +549,8 @@
 .checkRow strong { overflow-wrap: anywhere; font-size: 12px; font-weight: 700; }
 .checkRow small { color: var(--muted); font-size: 11px; }
 .checkRow > b { color: var(--green); font-size: 11px; }
+.uncheckedIcon { color: var(--muted) !important; }
+.uncheckedLabel { color: var(--muted) !important; }
 
 .automaticConclusion > span {
   color: var(--orange-2);
