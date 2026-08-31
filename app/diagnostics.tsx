@@ -223,10 +223,6 @@ export function Diagnostics() {
       <button type="button" className={`${styles.summaryCard} ${styles.summaryProgress}`} onClick={() => { setScope("CURRENT"); setFilter("IN_PROGRESS"); }}><span>В роботі</span><strong>{rows.filter((row) => matchesFilter(row, "IN_PROGRESS")).length}</strong><small>механік перевіряє</small></button>
       <button type="button" className={`${styles.summaryCard} ${styles.summaryDone}`} onClick={() => { setScope("HISTORY"); setFilter("CONFIRMED"); }}><span>Завершені</span><strong>{rows.filter((row) => workflowState(row) === "CONFIRMED").length}</strong><small>карта сформована</small></button>
     </section>}
-    {!routeDiagnosticId && <nav className={styles.scopeTabs} aria-label="Група діагностик">
-      <button type="button" className={scope === "CURRENT" ? styles.scopeActive : ""} onClick={() => setScope("CURRENT")}>Поточні<span>{rows.filter((row) => !isHistory(row)).length}</span></button>
-      <button type="button" className={scope === "HISTORY" ? styles.scopeActive : ""} onClick={() => setScope("HISTORY")}>Історія<span>{rows.filter(isHistory).length}</span></button>
-    </nav>}
     {!routeDiagnosticId && <nav className={styles.filters} aria-label="Фільтр за етапом">{filters.map((item) => <button type="button" key={item.value} className={filter === item.value ? styles.activeFilter : ""} onClick={() => setFilter(item.value)}>{item.label}<span>{filterCount(item.value)}</span></button>)}</nav>}
 
     {!routeDiagnosticId && (readCrmRoute().diagnosticId || readCrmRoute().vehicleId) && <div className={registryStyles.routeHint}>

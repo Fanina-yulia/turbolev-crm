@@ -75,43 +75,6 @@
 .summaryProgress strong { color: var(--yellow, #f59e0b); }
 .summaryDone strong { color: var(--green, #22c55e); }
 
-.scopeTabs {
-  display: flex;
-  gap: 7px;
-  margin-bottom: 8px;
-}
-
-.scopeTabs button {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  padding: 8px 13px;
-  border: 1px solid var(--line);
-  border-radius: 9px;
-  background: transparent;
-  color: var(--muted);
-  font-size: 13px;
-  cursor: pointer;
-}
-
-.scopeTabs button:hover,
-.scopeActive {
-  border-color: var(--orange) !important;
-  background: color-mix(in srgb, var(--orange) 8%, var(--panel)) !important;
-  color: var(--text) !important;
-}
-
-.scopeTabs button span {
-  display: inline-grid;
-  min-width: 22px;
-  height: 22px;
-  place-items: center;
-  border-radius: 999px;
-  background: var(--panel-2);
-  color: var(--muted);
-  font-size: 12px;
-}
-
 .refresh,
 .filters button,
 .primary,
@@ -246,6 +209,7 @@
 }
 
 .row {
+  position: relative;
   display: block;
   width: 100%;
   padding: 12px 13px;
@@ -256,10 +220,40 @@
   color: var(--text);
   text-align: left;
   cursor: pointer;
+  transition: transform .18s ease, background-color .18s ease, box-shadow .18s ease;
+}
+
+.row::before {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  background: var(--orange);
+  content: "";
+  opacity: 0;
+  transform: scaleY(.35);
+  transition: opacity .18s ease, transform .18s ease;
 }
 
 .row:hover {
   background: var(--panel-2);
+  box-shadow: 0 8px 22px rgba(0, 0, 0, .16);
+  transform: translateX(4px);
+  z-index: 1;
+}
+
+.row:hover::before {
+  opacity: 1;
+  transform: scaleY(1);
+}
+
+.row:hover .openLink {
+  color: var(--orange);
+  transform: translateX(3px);
+}
+
+.openLink {
+  transition: color .18s ease, transform .18s ease;
 }
 
 .row:focus-visible {
@@ -744,6 +738,20 @@
   .registryOnly .rowCell:nth-child(5),
   .registryOnly .rowBottom {
     grid-column: 1 / -1;
+  }
+}
+
+
+@media (prefers-reduced-motion: reduce) {
+  .row,
+  .row::before,
+  .openLink {
+    transition: none;
+  }
+
+  .row:hover,
+  .row:hover .openLink {
+    transform: none;
   }
 }
 
