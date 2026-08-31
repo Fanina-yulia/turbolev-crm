@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "@/next/server";
 import {
   enqueueMissingVehicleImages,
   processQueuedVehicleImages,
@@ -15,9 +15,12 @@ function authorized(request: NextRequest) {
   const authorization = request.headers.get("authorization") || "";
   const supplied = request.headers.get("x-backfill-token") || request.nextUrl.searchParams.get("token") || "";
   const bearer = authorization.replace(/^Bearer\s+/i, "").trim();
+  const isVercelCron = request.method === "GET"
+    && (request.headers.get("user-agent") || "").toLowerCase().startsWith("vercel-cron/");
   return Boolean(
     (BACKFILL_TOKEN && (supplied === BACKFILL_TOKEN || bearer === BACKFILL_TOKEN))
-    || (CRON_SECRET && bearer === CRON_SECRET),
+    || (CRON_SECRET && bearer === CRON_SECRET)
+    || (!BACKFILL_TOKEN && !CRON_SECRET && isVercelCron),
   );
 }
 
