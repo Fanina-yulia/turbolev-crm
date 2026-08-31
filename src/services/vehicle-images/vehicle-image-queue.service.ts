@@ -1,5 +1,6 @@
 import { getPrisma } from "@/src/lib/prisma";
 import { getSqlPool } from "@/src/lib/sql";
+import { autoGenerateVehicleImage } from "./vehicle-image-auto.service";
 import {
   enqueueVehicleImageGeneration,
   getOpenAIVehicleImageConfig,
@@ -24,8 +25,9 @@ function safeLimit(value: number | undefined) {
 }
 
 /**
- * Finds current CRM vehicles and registers only missing images in the shared
- * library queue. It does not call OpenAI and is safe to run repeatedly.
+ * Finds current CRM vehicles and registers missing images. Vehicles with
+ * incomplete identity are first enriched by plate and then VIN, so they do
+ * not get permanently stuck in MISSING_DATA.
  */
 export async function enqueueMissingVehicleImages(limit?: number) {
   const config = await getOpenAIVehicleImageConfig();
@@ -35,12 +37,16 @@ export async function enqueueMissingVehicleImages(limit?: number) {
   const rows = await getPrisma().vehicle.findMany({
     where: {
       NOT: { id: { startsWith: "demo_" } },
-      brand: { not: null },
-      model: { not: null },
+      OR: [
+        { brand: { not: null } },
+        { model: { not: null } },
+        { vin: { not: null } },
+        { plateNumber: { not: null } },
+      ],
     },
     orderBy: { updatedAt: "desc" },
     take: MAX_SCAN,
-    select: { id: true },
+    select: { id: true, brand: true, model: true },
   });
 
   const target = safeLimit(limit);
@@ -50,9 +56,16 @@ export async function enqueueMissingVehicleImages(limit?: number) {
   let scanned = 0;
 
   for (const row of rows) {
-    if (queued >= target) break;
+    if (scanned >= target) break;
     scanned += 1;
     try {
+      if (!row.brand?.trim() || !row.model?.trim()) {
+        const result = await autoGenerateVehicleImage(row.id);
+        if (result.state === "GENERATING") alreadyQueued += 1;
+        else if (result.state !== "READY") skipped += 1;
+        continue;
+      }
+
       const result = await enqueueVehicleImageGeneration(row.id);
       if (result.queued) queued += 1;
       else if (result.state === "GENERATING") alreadyQueued += 1;
