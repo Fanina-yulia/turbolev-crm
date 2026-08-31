@@ -47,6 +47,12 @@ const actionLabels: Record<string, string> = { NONE: "Без дії", REPLACE: "
 const urgencyLabels: Record<string, string> = { INFO: "Рекомендація", CRITICAL: "Критично" };
 const reviewLabels: Record<string, string> = { DRAFT: "Чернетка", SUBMITTED: "На перевірці", RETURNED: "В роботі", CONFIRMED: "Підтверджена ДК" };
 
+function dateTime(value: string | null) {
+  if (!value) return "—";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "—" : new Intl.DateTimeFormat("uk-UA", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }).format(date);
+}
+
 function countLabel(count: number, one: string, few: string, many: string) {
   const lastTwo = count % 100;
   const last = count % 10;
@@ -180,6 +186,15 @@ export function StructuredDiagnosticReviewPanel({ diagnosticId, onChanged }: { d
     {error && <div className={styles.error}>{error}</div>}
     {message && <div className={styles.state}>{message}</div>}
 
+    {confirmed ? <ApprovedDiagnosticLayout
+      view={view}
+      findings={findings}
+      technicalConclusion={technicalConclusion}
+      busy={busy}
+      onOpenPartsSelection={openPartsSelection}
+      onOpenCommercial={view.diagnostic.workOrder ? openCommercialProposal : undefined}
+      onCreateProposal={() => void createCommercialProposal()}
+    /> : <>
     <div className={styles.caseSummary}>
       <div className={styles.caseSummaryHead}><div><span className={styles.eyebrow}>РІШЕННЯ СЕРВІС-МЕНЕДЖЕРА</span><h4>Що потрібно зробити з автомобілем</h4></div><button type="button" className={styles.modeButton} onClick={() => setShowFullInspection((value) => !value)}>{showFullInspection ? "Повернутися до рішення" : "Відкрити повну перевірку"}</button></div>
       <div className={styles.caseComplaint}><span>Скарга / завдання клієнта</span><strong>{view.diagnostic.problem || "Скаргу не вказано"}</strong></div>
@@ -209,9 +224,70 @@ export function StructuredDiagnosticReviewPanel({ diagnosticId, onChanged }: { d
           : <button className={styles.confirmButton} type="button" disabled={busy} onClick={() => void createCommercialProposal()}>{busy ? "Створюю…" : "Створити Комерційну пропозицію"}</button>}
       </div>
     </div>}
+    </>}
 
     <DiagnosticReportSharePanel diagnosticId={diagnosticId} reviewState={view.diagnostic.review.state} workOrder={view.diagnostic.workOrder} />
   </section>;
+}
+
+
+type ApprovedFinding = { inspection: string; section: string; item: Item };
+
+function ApprovedDiagnosticLayout({ view, findings, technicalConclusion, busy, onOpenPartsSelection, onOpenCommercial, onCreateProposal }: {
+  view: View;
+  findings: ApprovedFinding[];
+  technicalConclusion: string;
+  busy: boolean;
+  onOpenPartsSelection: () => void;
+  onOpenCommercial?: () => void;
+  onCreateProposal: () => void;
+}) {
+  const groups = findings.reduce<Array<{ name: string; items: ApprovedFinding[] }>>((result, finding) => {
+    const group = result.find((candidate) => candidate.name === finding.section);
+    if (group) group.items.push(finding);
+    else result.push({ name: finding.section, items: [finding] });
+    return result;
+  }, []);
+  const linkedWorks = findings.filter(({ item }) => Boolean(item.finding?.suggestedWorkName)).length;
+  const linkedParts = findings.filter(({ item }) => Boolean(item.finding?.suggestedPartName || item.finding?.action === "REPLACE")).length;
+  const confirmedAt = view.diagnostic.review.confirmedAt;
+
+  return <>
+    <div className={styles.approvedIdentity}>
+      <div><span>Автомобіль</span><strong>{view.diagnostic.vehicle.label}</strong><small>{view.diagnostic.vehicle.plateNumber || "Номер не вказаний"} · {view.diagnostic.vehicle.vin || "VIN не вказаний"}</small></div>
+      <div><span>Клієнт</span><strong>{view.diagnostic.client.name || "Без імені"}</strong><small>{view.diagnostic.client.phone}</small></div>
+      <div><span>Погоджено</span><strong>{confirmedAt ? dateTime(confirmedAt) : "Підтверджено"}</strong><small>Фінальна ревізія ДК</small></div>
+    </div>
+
+    <div className={styles.approvedLayout}>
+      <section className={styles.approvedSection}>
+        <div className={styles.approvedSectionHeading}><span>СТАН КАРТИ</span><h4>Результат діагностики</h4></div>
+        <div className={styles.approvedComplete}><span aria-hidden="true">✓</span><div><strong>Діагностика завершена</strong><small>Карту перевірено та зафіксовано.</small></div></div>
+        <div className={styles.approvedMetricList}>
+          <div><span>Перевірено</span><strong>{view.counts.checked}/{view.counts.total}</strong></div>
+          <div><span>Норма</span><strong className={styles.approvedGreen}>{view.counts.ok}</strong></div>
+          <div><span>Увага</span><strong className={styles.approvedYellow}>{view.counts.attention}</strong></div>
+          <div><span>Дефекти</span><strong className={styles.approvedRed}>{view.counts.defect}</strong></div>
+        </div>
+        <div className={styles.approvedStatus}><span>Статус</span><strong>● Погоджено клієнтом</strong><small>Це незмінна фінальна ревізія.</small></div>
+        {technicalConclusion.trim() && <div className={styles.approvedConclusion}><span>Висновок сервіс-менеджера</span><p>{technicalConclusion}</p></div>}
+      </section>
+
+      <section className={styles.approvedSection}>
+        <div className={styles.approvedSectionHeading}><span>ЗАУВАЖЕННЯ</span><h4>Виявлені дефекти <b>{findings.length}</b></h4></div>
+        {groups.length ? <div className={styles.approvedGroups}>{groups.map((group) => <div className={styles.approvedGroup} key={group.name}><div className={styles.approvedGroupHeading}><strong>{group.name}</strong><span>{countLabel(group.items.length, "позиція", "позиції", "позицій")}</span></div>{group.items.map(({ item }) => { const finding = item.finding; const danger = item.state === "DEFECT"; return <div className={styles.approvedFinding} key={item.id || item.templateItemId}><span className={styles.approvedFindingMarker + " " + (danger ? styles.approvedRedBg : styles.approvedYellowBg)}>{danger ? "!" : "·"}</span><div><strong>{item.name}</strong><span>{finding?.findingText || item.note || (danger ? "Виявлено дефект" : "Потребує уваги")}</span><small>{actionLabels[finding?.action || "NONE"] || finding?.action || "Рекомендація"}{finding?.media.length ? " · Фото: " + finding.media.length : ""}</small></div></div>; })}</div>)}</div> : <div className={styles.approvedEmpty}>Зауважень не зафіксовано.</div>}
+      </section>
+
+      <section className={styles.approvedSection + " " + styles.approvedPlanSection}>
+        <div className={styles.approvedSectionHeading}><span>НАСТУПНИЙ ЕТАП</span><h4>Рекомендовані роботи та деталі</h4></div>
+        <div className={styles.approvedPlanState}><span aria-hidden="true">↗</span><div><strong>Готово до підбору</strong><small>Кожна позиція збережена окремим рядком.</small></div></div>
+        <div className={styles.approvedPlanCounts}><div><span>Роботи</span><strong>{linkedWorks}</strong></div><div><span>Деталі</span><strong>{linkedParts}</strong></div></div>
+        <div className={styles.approvedPlanList}>{findings.length ? findings.map(({ item, section }) => { const finding = item.finding; return <div className={styles.approvedPlanRow} key={item.id || item.templateItemId}><div><strong>{finding?.suggestedWorkName || "Роботу потрібно визначити"}</strong><small>{section}</small></div><div><span>{finding?.suggestedPartName || (finding?.action === "REPLACE" ? "Потребує підбору" : "Деталь не визначена")}</span></div></div>; }) : <div className={styles.approvedEmpty}>Позицій для плану немає.</div>}</div>
+      </section>
+    </div>
+
+    <div className={styles.approvedNextStep}><div><span>НАСТУПНИЙ КРОК</span><strong>Підготуйте ремонт автомобіля</strong><small>ДК погоджена. Перейдіть до підбору постачальника та формування Комерційної пропозиції.</small></div><div className={styles.approvedNextActions}><button className={styles.returnButton} type="button" disabled={busy} onClick={onOpenPartsSelection}>Перейти до підбору запчастин</button>{onOpenCommercial ? <button className={styles.confirmButton} type="button" disabled={busy} onClick={onOpenCommercial}>Відкрити КП →</button> : <button className={styles.confirmButton} type="button" disabled={busy} onClick={onCreateProposal}>{busy ? "Створюю…" : "Створити КП →"}</button>}</div></div>
+  </>;
 }
 
 function FindingRow({ diagnosticId, item }: { diagnosticId: string; item: Item }) {
