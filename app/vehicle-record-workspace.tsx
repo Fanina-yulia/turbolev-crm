@@ -10,6 +10,7 @@ import { VehicleBrandLogo } from "./vehicle-brand-logo";
 import { getVehicleTabStatus, vehicleTabToneClass, type VehicleTabKey } from "./vehicle-process-status";
 import { VehicleRender } from "./vehicle-render";
 import { WorkOrderCommercialPanel } from "./work-order-commercial-panel";
+import { CopyableValue } from "./copyable-value";
 import styles from "./vehicle-record-workspace.module.css";
 
 export type VehicleRecordPage = "diagnostic-card" | "commercial-offer" | "service-history";
@@ -57,11 +58,11 @@ export function VehicleRecordWorkspace({ vehicle, loading, page, diagnosticId, o
 
   return <div className={styles.page}>
     <header className={styles.header}>
-      <div className={styles.vehicleIdentity}><VehicleBrandLogo brand={vehicle.brand} size={48} /><div><span className={styles.eyebrow}>АВТОМОБІЛЬ · ПЕРСОНАЛЬНИЙ РОЗДІЛ</span><h1>{title(vehicle)}</h1><span className={styles.plate}>{vehicle.plateNumber || "Без держномера"}{vehicle.vin ? ` · VIN ${vehicle.vin}` : ""}</span></div></div>
+      <div className={styles.vehicleIdentity}><VehicleBrandLogo brand={vehicle.brand} size={48} /><div><span className={styles.eyebrow}>АВТОМОБІЛЬ · ПЕРСОНАЛЬНИЙ РОЗДІЛ</span><h1>{title(vehicle)}</h1><span className={styles.plate}>{vehicle.plateNumber ? <CopyableValue value={vehicle.plateNumber} label="держномер" /> : "Без держномера"}{vehicle.vin ? <> · VIN <CopyableValue value={vehicle.vin} label="VIN" /></> : ""}</span></div></div>
       <div className={styles.headerActions}><button type="button" className={styles.back} onClick={onClose}>← До списку автомобілів</button><VehicleRender id={vehicle.id} brand={vehicle.brand} model={vehicle.model} year={vehicle.year} updatedAt={vehicle.updatedAt} exteriorColorName={vehicle.exteriorColorName} exteriorColorHex={vehicle.exteriorColorHex} exteriorColorConfirmed={vehicle.exteriorColorConfirmed} size="hero" eager /></div>
     </header>
 
-    <div className={styles.ownerLine}><span>Власник: <b>{vehicle.client.name || "Клієнт без імені"}</b></span><span>{vehicle.client.phone}</span><span>VIN: {vehicle.vin || "—"}</span></div>
+    <div className={styles.ownerLine}><span>Власник: <b>{vehicle.client.name || "Клієнт без імені"}</b></span><span>{vehicle.client.phone}</span><span>VIN: {vehicle.vin ? <CopyableValue value={vehicle.vin} label="VIN" /> : "—"}</span></div>
 
     <nav className={styles.tabs} aria-label="Розділи автомобіля">{links.map(([target, label, tab]) => {
       const status = getVehicleTabStatus(vehicle, tab);
