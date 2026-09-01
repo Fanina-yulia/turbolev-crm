@@ -207,13 +207,13 @@ export async function getMechanicDiagnosticMode(userId: string, diagnosticReques
 
 export async function getStructuredDiagnosticForMechanicReadOnly(userId: string, diagnosticRequestId: string) {
   const prisma = getPrisma();
-  await assertMechanicReadAccess(userId, diagnosticRequestId);
+  const { mechanic } = await assertMechanicReadAccess(userId, diagnosticRequestId);
 
   const diagnostic = await prisma.diagnosticRequest.findUnique({
     where: { id: diagnosticRequestId },
     include: {
       client: { select: { id: true, name: true, phone: true } },
-      vehicle: { select: { id: true, brand: true, model: true, year: true, plateNumber: true, vin: true, mileageKm: true } },
+      vehicle: { select: { id: true, brand: true, model: true, year: true, plateNumber: true, vin: true, mileageKm: true, engineName: true, engineVolumeCm3: true, fuelType: true, driveType: true, bodyType: true, updatedAt: true } },
       lead: { select: { id: true, need: true, comment: true } },
       workOrder: { select: { id: true, status: true } },
     },
@@ -313,6 +313,7 @@ export async function getStructuredDiagnosticForMechanicReadOnly(userId: string,
       problem: diagnostic.lead?.need || diagnostic.lead?.comment || null,
       workOrder: diagnostic.workOrder,
       assignment,
+      mechanic: { id: mechanic.id, name: mechanic.name },
       review: review || {
         state: DiagnosticReviewState.DRAFT,
         submittedAt: null,
