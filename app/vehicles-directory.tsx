@@ -68,6 +68,7 @@ function VehicleImage({ vehicle, size = "card", eager = false }: { vehicle: Vehi
 
 export function VehiclesDirectory() {
   const [query, setQuery] = useState("");
+  const [searchRequest, setSearchRequest] = useState(0);
   const [page, setPage] = useState(1);
   const [pages, setPages] = useState(1);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
@@ -115,7 +116,7 @@ export function VehiclesDirectory() {
       controller.abort();
       window.clearTimeout(timer);
     };
-  }, [query, page]);
+  }, [query, page, searchRequest]);
 
   useEffect(() => {
     if (!vehicleIds) return;
@@ -287,7 +288,12 @@ export function VehiclesDirectory() {
       <div className={styles.headerActions}>
         <label className={styles.search}>
           <span>⌕</span>
-          <input value={query} onChange={(event) => changeQuery(event.target.value)} placeholder="Пошук авто, VIN або власника..." />
+          <input value={query} onChange={(event) => changeQuery(event.target.value)} onKeyDown={(event) => {
+            if (event.key !== "Enter") return;
+            event.preventDefault();
+            setPage(1);
+            setSearchRequest((value) => value + 1);
+          }} placeholder="Пошук авто, VIN або власника..." aria-keyshortcuts="Enter" />
           {query && <button type="button" onClick={() => changeQuery("")} aria-label="Очистити пошук">×</button>}
         </label>
         <button className={styles.primary} onClick={openNewRequest}>+ Додати авто</button>
