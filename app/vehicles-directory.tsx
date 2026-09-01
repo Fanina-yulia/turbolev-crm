@@ -382,7 +382,7 @@ export function VehiclesDirectory() {
             <div className={styles.drawerVehicleHeader}>
               <div className={styles.vehicleIdentity}>
                 <VehicleBrandLogo brand={vehicleCard.brand} size={48} />
-                <span className={styles.identityText}><small>КАРТКА АВТОМОБІЛЯ</small><strong>{vehicleTitle(vehicleCard)}</strong><VehiclePlate value={vehicleCard.plateNumber} size="sm" /></span>
+                <span className={styles.identityText}><small>КАРТКА АВТОМОБІЛЯ</small><strong>{vehicleTitle(vehicleCard)}</strong><VehiclePlate value={vehicleCard.plateNumber} size="sm" /><span className={styles.identityVin}>VIN: {vehicleCard.vin || "не вказаний"}</span></span>
               </div>
               <VehicleImage vehicle={vehicleCard} size="drawer" eager />
             </div>

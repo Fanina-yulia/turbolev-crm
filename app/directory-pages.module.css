@@ -27,6 +27,7 @@
 .identityText{display:flex;flex-direction:column;gap:2px;min-width:0;flex:1}
 .identityText strong{font-size:16px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .identityText small,.identityText span{color:var(--muted);font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.identityText .identityVin{color:var(--soft-text);font-size:11px;letter-spacing:.025em;max-width:100%;}
 .chevron{margin-left:auto;color:var(--muted);font-size:25px}
 .ownerLine{display:flex;justify-content:space-between;gap:12px;padding:12px 16px;border-top:1px solid var(--line);background:var(--panel-2)}
 .ownerLine>span:first-child{display:flex;flex-direction:column}
