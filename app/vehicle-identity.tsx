@@ -3,6 +3,7 @@
 import { VehicleBrandLogo } from "./vehicle-brand-logo";
 import { VehicleRender } from "./vehicle-render";
 import { VehiclePlate as SharedVehiclePlate } from "./vehicle-plate";
+import { CopyableValue } from "./copyable-value";
 import styles from "./vehicle-identity.module.css";
 
 export type VehicleIdentityData = {
@@ -63,7 +64,7 @@ export function VehicleIdentity({ vehicle, variant = "summary", showVin = false 
       <strong className={styles.title}>{vehicleIdentityTitle(vehicle)}</strong>
       <VehiclePlate plateNumber={vehicle.plateNumber} compact={variant !== "hero"}/>
       {meta ? <span className={styles.meta}>{meta}</span> : null}
-      {showVin && vehicle.vin ? <span className={styles.vin}>VIN {vehicle.vin}</span> : null}
+      {showVin && vehicle.vin ? <span className={styles.vin}>VIN <CopyableValue value={vehicle.vin} label="VIN" /></span> : null}
     </span>
   </span>;
 }
