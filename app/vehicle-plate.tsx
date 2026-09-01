@@ -1,3 +1,6 @@
+"use client";
+
+import { useState } from "react";
 import styles from "./vehicle-plate.module.css";
 import { formatRegistrationPlate, normalizeRegistrationPlate } from "../src/domain/registration-plate";
 import { plateSvgMarkup } from "./vehicle-plate-art";
@@ -23,6 +26,17 @@ export function VehiclePlate({ value, size = "sm", className = "", title }: Vehi
   const normalized = normalizeVehiclePlate(value);
   const display = formatVehiclePlate(value);
   const empty = !normalized || normalized === "—";
+  const [copied, setCopied] = useState(false);
+
+  async function copyPlate() {
+    try {
+      await navigator.clipboard.writeText(display);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1400);
+    } catch {
+      setCopied(false);
+    }
+  }
 
   if (empty) return <span className={`${styles.empty} ${className}`}>Без держномера</span>;
 
@@ -32,8 +46,12 @@ export function VehiclePlate({ value, size = "sm", className = "", title }: Vehi
     data-plate-standard="turbo-lev-reference-v2"
     data-plate-aspect="4.98"
     data-plate={normalized}
-    title={title || `Державний номер ${display}`}
-    aria-label={`Державний номер ${display}`}
+    title={copied ? "Держномер скопійовано" : title || `Скопіювати державний номер ${display}`}
+    aria-label={copied ? "Держномер скопійовано" : `Скопіювати державний номер ${display}`}
+    role="button"
+    tabIndex={0}
+    onClick={() => void copyPlate()}
+    onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); void copyPlate(); } }}
     dangerouslySetInnerHTML={{ __html: plateSvgMarkup(display) }}
   />;
 }
