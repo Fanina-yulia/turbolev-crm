@@ -60,7 +60,7 @@ export function VehicleRecordWorkspace({ vehicle, loading, page, diagnosticId, o
     <header className={styles.header}>
       <div className={styles.vehicleIdentity}><VehicleBrandLogo brand={vehicle.brand} size={48} /><div><span className={styles.eyebrow}>АВТОМОБІЛЬ · ПЕРСОНАЛЬНИЙ РОЗДІЛ</span><h1>{title(vehicle)}</h1><span className={styles.plate}>{vehicle.plateNumber ? <CopyableValue value={vehicle.plateNumber} label="держномер" /> : "Без держномера"}{vehicle.vin ? <> · VIN <CopyableValue value={vehicle.vin} label="VIN" /></> : ""}</span></div></div>
       <div className={styles.headerActions}><button type="button" className={styles.back} onClick={onClose}>← До списку автомобілів</button><VehicleRender id={vehicle.id} brand={vehicle.brand} model={vehicle.model} year={vehicle.year} updatedAt={vehicle.updatedAt} exteriorColorName={vehicle.exteriorColorName} exteriorColorHex={vehicle.exteriorColorHex} exteriorColorConfirmed={vehicle.exteriorColorConfirmed} size="hero" eager /></div>
-    </header>
+
 
     <div className={styles.ownerLine}><span>Власник: <b>{vehicle.client.name || "Клієнт без імені"}</b></span><span>{vehicle.client.phone}</span><span>VIN: {vehicle.vin ? <CopyableValue value={vehicle.vin} label="VIN" /> : "—"}</span></div>
 
@@ -68,6 +68,9 @@ export function VehicleRecordWorkspace({ vehicle, loading, page, diagnosticId, o
       const status = getVehicleTabStatus(vehicle, tab);
       return <button type="button" key={target} className={`${styles.tab} ${vehicleTabToneClass(status.tone, styles)} ${page === target ? styles.activeTab : ""}`} title={`${label}: ${status.label}`} onClick={() => navigateCrm("Авто", { vehicleId: vehicle.id, vehiclePage: target })}><i className={styles.statusDot} aria-hidden="true" />{label}</button>;
     })}</nav>
+    </header>
+
+
 
     <section className={styles.content}>
       <div className={styles.contentHeading}><div><span className={styles.eyebrow}>КАРТКА АВТОМОБІЛЯ</span><h2>{pageTitle(page)}</h2><p>{pageDescription(page)}</p></div><button type="button" className={styles.cardLink} onClick={() => navigateCrm("Авто", { vehicleId: vehicle.id })}>← Картка автомобіля</button></div>
