@@ -15,6 +15,7 @@ import { navigateCrm, readCrmRoute } from "./crm-route";
 import { VehicleBrandLogo } from "./vehicle-brand-logo";
 import { VehicleRender } from "./vehicle-render";
 import { VehiclePlate } from "./vehicle-plate";
+import { CopyableValue } from "./copyable-value";
 import { VehicleRecordWorkspace, type VehicleRecordPage } from "./vehicle-record-workspace";
 import styles from "./directory-pages.module.css";
 import tabStyles from "./vehicle-card-tabs.module.css";
@@ -326,7 +327,7 @@ export function VehiclesDirectory() {
                 <VehiclePlate value={vehicle.plateNumber} size="xs" />
               </span>
             </div>
-            <small className={styles.vehicleVin}>{vehicle.vin ? `VIN: ${vehicle.vin}` : "VIN не вказаний"}</small>
+            <small className={styles.vehicleVin}>{vehicle.vin ? <>VIN: <CopyableValue value={vehicle.vin} label="VIN" /></> : "VIN не вказаний"}</small>
           </div>
           <VehicleImage vehicle={vehicle} size="card" eager={index < 6} />
           <span className={styles.chevron}>›</span>
@@ -382,7 +383,7 @@ export function VehiclesDirectory() {
             <div className={styles.drawerVehicleHeader}>
               <div className={styles.vehicleIdentity}>
                 <VehicleBrandLogo brand={vehicleCard.brand} size={48} />
-                <span className={styles.identityText}><small>КАРТКА АВТОМОБІЛЯ</small><strong>{vehicleTitle(vehicleCard)}</strong><VehiclePlate value={vehicleCard.plateNumber} size="sm" /><span className={styles.identityVin}>VIN: {vehicleCard.vin || "не вказаний"}</span></span>
+                <span className={styles.identityText}><small>КАРТКА АВТОМОБІЛЯ</small><strong>{vehicleTitle(vehicleCard)}</strong><VehiclePlate value={vehicleCard.plateNumber} size="sm" /><span className={styles.identityVin}>VIN: {vehicleCard.vin ? <CopyableValue value={vehicleCard.vin} label="VIN" /> : "не вказаний"}</span></span>
               </div>
               <VehicleImage vehicle={vehicleCard} size="drawer" eager />
             </div>
@@ -411,7 +412,7 @@ export function VehiclesDirectory() {
                 <span><small>Марка</small><b>{vehicleCard.brand || "—"}</b></span>
                 <span><small>Модель</small><b>{vehicleCard.model || "—"}</b></span>
                 <span><small>Рік</small><b>{vehicleCard.year || "—"}</b></span>
-                <span><small>VIN</small><b>{vehicleCard.vin || "—"}</b></span>
+                <span><small>VIN</small><b>{vehicleCard.vin ? <CopyableValue value={vehicleCard.vin} label="VIN" /> : "—"}</b></span>
                 <span><small>Пробіг</small><b>{vehicleCard.mileageKm ? `${vehicleCard.mileageKm.toLocaleString("uk-UA")} км` : "—"}</b></span>
                 <span><small>Двигун</small><b>{engineText(vehicleCard)}</b></span>
                 <span><small>Паливо</small><b>{vehicleCard.fuelType || "—"}</b></span>
