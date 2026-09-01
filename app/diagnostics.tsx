@@ -214,8 +214,8 @@ export function Diagnostics() {
     navigateCrm("Авто", { vehicleId: row.vehicle.id, vehiclePage: "diagnostic-card", diagnosticId: row.id });
   };
 
-  return <div className={styles.page}>
-    <header className={styles.head}><div><p className={styles.eyebrow}>СЕРВІС · ДІАГНОСТИКА</p><h1>{routeDiagnosticId ? "Діагностична карта" : "Всі діагностики"}</h1></div><div className={styles.headActions}><label className={`${registryStyles.search} ${registryStyles.headerSearch}`}><span>⌕</span><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Номер авто, VIN, клієнт, телефон, № ДК або механік..." />{search && <button type="button" onClick={() => setSearch("")} aria-label="Очистити пошук">×</button>}</label><select className={`${registryStyles.select} ${registryStyles.headerMechanic}`} value={mechanic} onChange={(event) => setMechanic(event.target.value)} aria-label="Фільтр за механіком"><option value="ALL">Усі механіки</option>{mechanics.map((name) => <option key={name} value={name}>{name}</option>)}</select><button className={styles.refresh} onClick={() => void load()} disabled={loading}>{loading ? "Оновлюю…" : "Оновити"}</button></div></header>
+  return <div className={`${styles.page} ${routeDiagnosticId ? styles.focusPage : ""}`}>
+    {!routeDiagnosticId && <header className={styles.head}><div><p className={styles.eyebrow}>СЕРВІС · ДІАГНОСТИКА</p><h1>Всі діагностики</h1></div><div className={styles.headActions}><label className={`${registryStyles.search} ${registryStyles.headerSearch}`}><span>⌕</span><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Номер авто, VIN, клієнт, телефон, № ДК або механік..." />{search && <button type="button" onClick={() => setSearch("")} aria-label="Очистити пошук">×</button>}</label><select className={`${registryStyles.select} ${registryStyles.headerMechanic}`} value={mechanic} onChange={(event) => setMechanic(event.target.value)} aria-label="Фільтр за механіком"><option value="ALL">Усі механіки</option>{mechanics.map((name) => <option key={name} value={name}>{name}</option>)}</select><button className={styles.refresh} onClick={() => void load()} disabled={loading}>{loading ? "Оновлюю…" : "Оновити"}</button></div></header>}
 
     {!routeDiagnosticId && <section className={styles.summary} aria-label="Підсумок діагностик">
       <button type="button" className={styles.summaryCard} onClick={() => { setScope("CURRENT"); setFilter("ALL"); }}><span>Поточні</span><strong>{rows.filter((row) => !isHistory(row)).length}</strong><small>записів у роботі</small></button>
@@ -234,7 +234,7 @@ export function Diagnostics() {
             ? "Ремонт відкриється після погодження Комерційної пропозиції та створення замовлення-наряду."
             : "Відкрито процес Діагностичної карти для цього автомобіля."}
     </div>}
-    {error && <div className={styles.error}>{error}</div>}{message && <div className={styles.success}>{message}</div>}
+    {!routeDiagnosticId && error && <div className={styles.error}>{error}</div>}{!routeDiagnosticId && message && <div className={styles.success}>{message}</div>}
 
     <div className={`${styles.layout} ${routeDiagnosticId ? styles.detailOnly : styles.registryOnly}`}>
       {!routeDiagnosticId && <section className={styles.list}>{loading && !rows.length ? <div className={styles.empty}>Завантажую діагностики…</div> : visible.length ? visible.map((row) => {
@@ -251,7 +251,7 @@ export function Diagnostics() {
       }) : <div className={styles.empty}>За цими умовами діагностик немає.</div>}</section>}
 
       <aside className={styles.detail}>{selected ? <>
-        <div className={styles.detailBack}><button className={styles.secondary} type="button" onClick={() => navigateCrm("Діагностика")}>← До всіх діагностик</button></div>
+        {!routeDiagnosticId && <div className={styles.detailBack}><button className={styles.secondary} type="button" onClick={() => navigateCrm("Діагностика")}>← До всіх діагностик</button></div>}
         {selected.structured?.inspections ? <StructuredDiagnosticReviewPanel diagnosticId={selected.id} onChanged={load} /> : <>
           <div className={styles.detailHead}><div><span className={`${styles.status} ${stateClass(selected)}`}>{statusMeta[workflowState(selected)].label}</span><h2>{vehicleName(selected)}</h2><p><VehiclePlate value={selected.vehicle.plateNumber} size="sm" /> · {selected.vehicle.vin || "VIN не вказано"}</p></div></div>
           <div className={styles.infoGrid}>

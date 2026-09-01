@@ -2,7 +2,7 @@
   display: grid;
   min-width: 0;
   gap: 14px;
-  margin-top: 18px;
+  margin-top: 0;
   padding: 0 0 26px;
   color: var(--text);
 }
@@ -28,14 +28,15 @@
 
 .pageHeading h3 {
   margin: 4px 0 5px;
-  font-size: clamp(23px, 2.3vw, 31px);
+  font-size: clamp(28px, 2.4vw, 39px);
   line-height: 1.1;
+  letter-spacing: .02em;
 }
 
 .pageHeading p {
   margin: 0;
   color: var(--muted);
-  font-size: 12px;
+  font-size: 14px;
   line-height: 1.45;
 }
 
@@ -53,20 +54,29 @@
 .statusPill,
 .revisionPill,
 .inspectionToggle {
-  min-height: 34px;
+  min-height: 38px;
   box-sizing: border-box;
   padding: 0 11px;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--panel);
   color: var(--text);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 900;
   letter-spacing: .04em;
 }
 
 .statusPill,
 .revisionPill { display: inline-flex; align-items: center; }
+.statusPill,
+.revisionPill {
+  min-height: 54px;
+  padding-inline: 18px;
+  font-size: 14px;
+  justify-content: center;
+}
+.statusPill { min-width: 280px; }
+.revisionPill { min-width: 220px; }
 .statusGood { border-color: color-mix(in srgb, var(--green) 62%, var(--line)); color: var(--green); }
 .statusReview { border-color: color-mix(in srgb, var(--orange) 52%, var(--line)); color: var(--orange-2); }
 .revisionGood { border-color: color-mix(in srgb, var(--green) 42%, var(--line)); color: var(--green); }
@@ -111,7 +121,7 @@
 .vehicleMain { min-width: 0; }
 .vehicleMain h2 {
   margin: 0 0 15px;
-  font-size: clamp(22px, 2vw, 29px);
+  font-size: clamp(24px, 2vw, 31px);
   line-height: 1.1;
   overflow-wrap: anywhere;
 }
@@ -132,17 +142,17 @@
 .lineItem small,
 .recommendationGroup > div span {
   color: var(--muted);
-  font-size: 11px;
+  font-size: 13px;
 }
 
 .vehicleSpecs strong {
   min-width: 0;
   overflow-wrap: anywhere;
-  font-size: 12px;
+  font-size: 15px;
 }
 
-.vehicleSpecs .vin { font-family: var(--font-mono, ui-monospace, monospace); font-size: 11px; letter-spacing: .02em; }
-.vehicleSpecs :global([data-vehicle-plate]) { font-size: 13px; }
+.vehicleSpecs .vin { font-family: var(--font-mono, ui-monospace, monospace); font-size: 13px; letter-spacing: .02em; }
+.vehicleSpecs :global([data-vehicle-plate]) { font-size: 15px; }
 
 .clientCard {
   display: flex;
@@ -154,8 +164,8 @@
 }
 
 .clientCard > div { display: grid; min-width: 0; gap: 4px; }
-.clientCard strong { font-size: 14px; overflow-wrap: anywhere; }
-.clientCard small { color: var(--soft-text); font-size: 12px; }
+.clientCard strong { font-size: 17px; overflow-wrap: anywhere; }
+.clientCard small { color: var(--soft-text); font-size: 14px; }
 
 .clientIcon {
   display: grid;
@@ -171,6 +181,16 @@
   line-height: 1;
 }
 
+.clientIcon svg {
+  width: 28px;
+  height: 28px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.8;
+}
+
 .dashboardGrid {
   display: grid;
   grid-template-columns: minmax(0, .9fr) minmax(0, 1.32fr) minmax(0, 1.12fr);
@@ -181,6 +201,7 @@
 
 .dashboardCard {
   display: grid;
+  align-content: start;
   min-width: 0;
   gap: 10px;
   min-height: 100%;
@@ -198,7 +219,7 @@
   min-width: 0;
 }
 
-.cardHeading h4 { margin: 0; font-size: 17px; line-height: 1.2; }
+.cardHeading h4 { margin: 0; font-size: 20px; line-height: 1.2; }
 .cardHeading > span { flex: 0 0 auto; font-size: 11px; font-weight: 800; }
 .headingGood { color: var(--green); }
 .headingReview { color: var(--orange-2); }
@@ -264,6 +285,18 @@
 .emptyCard p { margin: 0; color: var(--soft-text); font-size: 12px; }
 
 .lineGroup { display: grid; gap: 7px; }
+.lineTableHead {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 42px 92px;
+  gap: 8px;
+  padding: 9px 10px;
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--muted);
+  font-size: 11px;
+}
+.lineTableHead span:nth-child(2),
+.lineTableHead span:nth-child(3) { text-align: right; }
 .lineGroupHead { display: flex; align-items: center; justify-content: space-between; gap: 9px; padding-bottom: 5px; border-bottom: 1px solid var(--line); }
 .lineGroupHead > strong { display: flex; align-items: center; gap: 7px; font-size: 13px; }
 .lineGroupHead > b { color: var(--green); font-size: 13px; }
@@ -425,6 +458,7 @@
   .panel { gap: 11px; }
   .headerStatuses { display: grid; grid-template-columns: 1fr 1fr; width: 100%; }
   .statusPill, .revisionPill, .inspectionToggle { width: 100%; justify-content: center; }
+  .statusPill, .revisionPill { min-width: 0; }
   .inspectionToggle { grid-column: 1 / -1; }
   .cardHeading { align-items: flex-start; flex-direction: column; }
   .lineItem { grid-template-columns: minmax(0, 1fr) auto; }
