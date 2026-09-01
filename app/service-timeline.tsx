@@ -31,6 +31,8 @@ type Props = {
 };
 
 type Filter = "ALL" | "SERVICE" | "COMMERCIAL" | "PARTS" | "QC" | "PAYMENT";
+type DayGroup = { day: string; events: TimelineEvent[] };
+type VisitGroup = { key: string; workOrderId: string | null; events: TimelineEvent[]; days: DayGroup[]; latestAt: string };
 
 const FILTERS: Array<[Filter, string]> = [
   ["ALL", "Усі"],
@@ -51,6 +53,9 @@ const KIND_LABEL: Record<TimelineKind, string> = {
   STATUS: "Статус", APPOINTMENT: "Запис", DIAGNOSTIC: "Діагностика", ESTIMATE: "Кошторис", PARTS: "Запчастини",
   WORK: "Робота", QC: "QC", PAYMENT: "Оплата", FINANCE: "Фінанси", SYSTEM: "Система",
 };
+const KIND_ICON: Record<TimelineKind, string> = {
+  STATUS: "↻", APPOINTMENT: "▣", DIAGNOSTIC: "⌕", ESTIMATE: "▤", PARTS: "⚙", WORK: "⚒", QC: "✓", PAYMENT: "₴", FINANCE: "◈", SYSTEM: "⋯",
+};
 
 function endpoint({ workOrderId, clientId, vehicleId }: Props) {
   if (workOrderId) return `/api/work-orders/${encodeURIComponent(workOrderId)}/timeline`;
@@ -61,7 +66,7 @@ function endpoint({ workOrderId, clientId, vehicleId }: Props) {
 function fullDate(value: string) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "—";
-  return new Intl.DateTimeFormat("uk-UA", { day: "2-digit", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" }).format(date);
+  return new Intl.DateTimeFormat("uk-UA", { timeZone: "Europe/Kyiv", day: "2-digit", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" }).format(date);
 }
 function dayKey(value: string) {
   const date = new Date(value);
@@ -71,7 +76,16 @@ function dayKey(value: string) {
 function dayLabel(value: string) {
   const date = new Date(`${value}T12:00:00Z`);
   if (Number.isNaN(date.getTime())) return value;
-  return new Intl.DateTimeFormat("uk-UA", { day: "2-digit", month: "long", year: "numeric" }).format(date);
+  const today = dayKey(new Date().toISOString());
+  const yesterday = dayKey(new Date(Date.now() - 86_400_000).toISOString());
+  if (value === today) return "Сьогодні";
+  if (value === yesterday) return "Вчора";
+  return new Intl.DateTimeFormat("uk-UA", { timeZone: "Europe/Kyiv", day: "2-digit", month: "long", year: "numeric" }).format(date);
+}
+function timeLabel(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "—";
+  return new Intl.DateTimeFormat("uk-UA", { timeZone: "Europe/Kyiv", hour: "2-digit", minute: "2-digit" }).format(date);
 }
 function money(value: number, currency = "UAH") {
   return new Intl.NumberFormat("uk-UA", { style: "currency", currency, maximumFractionDigits: 0 }).format(value);
@@ -80,6 +94,7 @@ function money(value: number, currency = "UAH") {
 export function ServiceTimeline(props: Props) {
   const [events, setEvents] = useState<TimelineEvent[]>([]);
   const [filter, setFilter] = useState<Filter>("ALL");
+  const [showTechnical, setShowTechnical] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const url = endpoint(props);
@@ -106,18 +121,28 @@ export function ServiceTimeline(props: Props) {
 
   const visible = useMemo(() => {
     const filtered = filter === "ALL" ? events : events.filter((event) => FILTER_KINDS[filter].includes(event.kind));
-    return filtered.slice(0, Math.max(1, props.limit || 120));
-  }, [events, filter, props.limit]);
+    const withoutTechnical = showTechnical ? filtered : filtered.filter((event) => event.kind !== "SYSTEM");
+    return withoutTechnical.slice(0, Math.max(1, props.limit || 120));
+  }, [events, filter, props.limit, showTechnical]);
 
   const groups = useMemo(() => {
-    const result: Array<{ day: string; events: TimelineEvent[] }> = [];
+    const byVisit = new Map<string, { workOrderId: string | null; events: TimelineEvent[] }>();
     for (const event of visible) {
-      const key = dayKey(event.occurredAt);
-      const current = result[result.length - 1];
-      if (!current || current.day !== key) result.push({ day: key, events: [event] });
-      else current.events.push(event);
+      const key = event.workOrderId ? `work-order:${event.workOrderId}` : `unlinked:${dayKey(event.occurredAt)}`;
+      const current = byVisit.get(key);
+      if (current) current.events.push(event);
+      else byVisit.set(key, { workOrderId: event.workOrderId || null, events: [event] });
     }
-    return result;
+    return [...byVisit.entries()].map(([key, group]) => {
+      const days: DayGroup[] = [];
+      for (const event of group.events) {
+        const day = dayKey(event.occurredAt);
+        const current = days[days.length - 1];
+        if (!current || current.day !== day) days.push({ day, events: [event] });
+        else current.events.push(event);
+      }
+      return { key, ...group, days, latestAt: group.events[0]?.occurredAt || "" };
+    });
   }, [visible]);
 
   const canOpenContext = !props.workOrderId;
@@ -126,38 +151,52 @@ export function ServiceTimeline(props: Props) {
     navigateCrm("Комерційна пропозиція", { workOrderId: event.workOrderId, workOrderTab: "history" });
   }
 
+  function visitLabel(group: VisitGroup) {
+    return group.workOrderId ? `Сервісне звернення ${formatWorkOrderNumber(group.events.find((event) => event.workOrderId === group.workOrderId)?.workOrderNumber)}` : "Окремі події автомобіля";
+  }
+
   return <section className={`${styles.timeline} ${props.compact ? styles.compact : ""}`}>
     <div className={styles.toolbar}>
-      <div><strong>Хронологія</strong><span>{events.length} подій</span></div>
+      <div className={styles.toolbarTitle}><strong>Хронологія сервісу</strong><span>{events.length} подій · {groups.length} звернень</span></div>
       <div className={styles.filters}>{FILTERS.map(([code, label]) => {
         const count = code === "ALL" ? events.length : events.filter((event) => FILTER_KINDS[code].includes(event.kind)).length;
         if (code !== "ALL" && count === 0) return null;
         return <button type="button" key={code} className={filter === code ? styles.active : ""} onClick={() => setFilter(code)}>{label}<b>{count}</b></button>;
       })}</div>
     </div>
+    <div className={styles.timelineTools}>
+      <div className={styles.legend} aria-label="Типи подій"><span><i className={styles.legendService} />Сервіс</span><span><i className={styles.legendDiagnostic} />Діагностика</span><span><i className={styles.legendCommercial} />КП</span><span><i className={styles.legendWork} />Роботи</span><span><i className={styles.legendPayment} />Оплата</span></div>
+      <button type="button" className={styles.technicalToggle} onClick={() => setShowTechnical((value) => !value)}>{showTechnical ? "Приховати технічні події" : "Показати технічні події"}</button>
+    </div>
 
     {loading && <div className={styles.state}>Завантажую історію…</div>}
     {error && <div className={styles.error}>{error}</div>}
     {!loading && !error && visible.length === 0 && <div className={styles.state}>Подій за цим фільтром поки немає.</div>}
 
-    {!loading && !error && groups.map((group) => <div className={styles.day} key={group.day || "unknown"}>
-      <div className={styles.dayLabel}>{dayLabel(group.day)}</div>
-      <div className={styles.events}>{group.events.map((event) => <article className={styles.event} key={event.id}>
-        <span className={`${styles.dot} ${styles[`kind${event.kind}`] || ""}`} aria-hidden="true" />
-        <div className={styles.eventBody}>
-          <div className={styles.eventHead}>
-            <span className={styles.kind}>{KIND_LABEL[event.kind]}</span>
-            <time title={fullDate(event.occurredAt)}>{new Intl.DateTimeFormat("uk-UA", { hour: "2-digit", minute: "2-digit" }).format(new Date(event.occurredAt))}</time>
+    {!loading && !error && groups.map((group, groupIndex) => <section className={`${styles.visit} ${groupIndex === 0 ? styles.currentVisit : ""}`} key={group.key}>
+      <header className={styles.visitHead}>
+        <div><span className={styles.visitKicker}>{groupIndex === 0 ? "ПОТОЧНИЙ ВІЗИТ" : "СЕРВІСНИЙ ВІЗИТ"}</span><strong>{visitLabel(group)}</strong><span>{group.events.length} подій · остання {timeLabel(group.latestAt)}</span></div>
+        {group.workOrderId && canOpenContext ? <button type="button" className={styles.visitLink} onClick={() => openWorkOrder(group.events[0])}>Відкрити звернення →</button> : null}
+      </header>
+      {group.days.map((day) => <div className={styles.day} key={`${group.key}:${day.day || "unknown"}`}>
+        <div className={styles.dayLabel}>{dayLabel(day.day)}</div>
+        <div className={styles.events}>{day.events.map((event) => <article className={`${styles.event} ${styles[`event${event.kind}`] || ""}`} key={event.id}>
+          <span className={`${styles.dot} ${styles[`kind${event.kind}`] || ""}`} aria-hidden="true" />
+          <div className={styles.eventBody}>
+            <div className={styles.eventHead}>
+              <span className={styles.eventType}><span className={`${styles.eventIcon} ${styles[`kind${event.kind}`] || ""}`} aria-hidden="true">{KIND_ICON[event.kind]}</span><span className={styles.kind}>{KIND_LABEL[event.kind]}</span></span>
+              <time title={fullDate(event.occurredAt)}>{timeLabel(event.occurredAt)}</time>
+            </div>
+            <strong>{event.title}</strong>
+            {event.detail && <p>{event.detail}</p>}
+            {event.amount != null && <b className={styles.amount}>{money(event.amount, event.currency || "UAH")}</b>}
+            <div className={styles.meta}>
+              {event.workOrderId && (canOpenContext ? <button type="button" onClick={() => openWorkOrder(event)}>{formatWorkOrderNumber(event.workOrderNumber)}{event.plateNumber ? ` · ${event.plateNumber}` : ""} →</button> : <span>{formatWorkOrderNumber(event.workOrderNumber)}</span>)}
+              {event.actor && <span>Виконав: {event.actor}</span>}
+            </div>
           </div>
-          <strong>{event.title}</strong>
-          {event.detail && <p>{event.detail}</p>}
-          {event.amount != null && <b className={styles.amount}>{money(event.amount, event.currency || "UAH")}</b>}
-          <div className={styles.meta}>
-            {event.workOrderId && <button type="button" disabled={!canOpenContext} onClick={() => openWorkOrder(event)}>{formatWorkOrderNumber(event.workOrderNumber)}{event.plateNumber ? ` · ${event.plateNumber}` : ""}{canOpenContext ? " →" : ""}</button>}
-            {event.actor && <span>Виконав: {event.actor}</span>}
-          </div>
-        </div>
-      </article>)}</div>
-    </div>)}
+        </article>)}</div>
+      </div>)}
+    </section>)}
   </section>;
 }
