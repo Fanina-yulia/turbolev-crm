@@ -15,6 +15,12 @@ export type TimelineEvent = {
   vehicleId?: string | null;
   clientId?: string | null;
   plateNumber?: string | null;
+  diagnosticId?: string | null;
+  diagnosticCardNumber?: string | null;
+  partsRequestId?: string | null;
+  estimateId?: string | null;
+  appointmentId?: string | null;
+  paymentId?: string | null;
   amount?: number | null;
   currency?: string | null;
 };
@@ -91,6 +97,7 @@ export async function getServiceTimeline(scope: TimelineScope, options: Timeline
       vehicleId: row?.vehicleId ?? null,
       clientId: row?.clientId ?? null,
       plateNumber: row ? plateByVehicle.get(row.vehicleId) ?? null : null,
+      diagnosticId: row?.diagnosticRequestId ?? null,
     };
   };
   const events: TimelineEvent[] = [];
@@ -115,14 +122,15 @@ export async function getServiceTimeline(scope: TimelineScope, options: Timeline
     where: diagnosticWhere,
     orderBy: { createdAt: "desc" },
     take: 100,
-    select: { id: true, clientId: true, vehicleId: true, status: true, technicalConclusion: true, confirmedAt: true, createdAt: true },
+    select: { id: true, clientId: true, vehicleId: true, status: true, technicalConclusion: true, confirmedAt: true, createdAt: true, diagnosticCard: { select: { number: true } } },
   });
   const woByDiagnostic = new Map(workOrders.map((row) => [row.diagnosticRequestId, row.id]));
   for (const diagnostic of diagnostics) {
     const linkedWorkOrderId = woByDiagnostic.get(diagnostic.id) || null;
-    const ctx = linkedWorkOrderId ? contextFor(linkedWorkOrderId) : { workOrderId: null, workOrderNumber: null, vehicleId: diagnostic.vehicleId, clientId: diagnostic.clientId, plateNumber: null };
-    push({ id: `diag-created-${diagnostic.id}`, occurredAt: diagnostic.createdAt, kind: "DIAGNOSTIC", title: "Діагностику створено", detail: null, ...ctx });
-    if (diagnostic.confirmedAt) push({ id: `diag-confirmed-${diagnostic.id}`, occurredAt: diagnostic.confirmedAt, kind: "DIAGNOSTIC", title: "Діагностику підтверджено", detail: diagnostic.technicalConclusion ? diagnostic.technicalConclusion.slice(0, 220) : null, ...ctx });
+    const ctx = linkedWorkOrderId ? contextFor(linkedWorkOrderId) : { workOrderId: null, workOrderNumber: null, vehicleId: diagnostic.vehicleId, clientId: diagnostic.clientId, plateNumber: null, diagnosticId: diagnostic.id };
+    const diagnosticContext = { ...ctx, diagnosticId: diagnostic.id, diagnosticCardNumber: diagnostic.diagnosticCard?.number ?? null };
+    push({ id: `diag-created-${diagnostic.id}`, occurredAt: diagnostic.createdAt, kind: "DIAGNOSTIC", title: "Діагностику створено", detail: null, ...diagnosticContext });
+    if (diagnostic.confirmedAt) push({ id: `diag-confirmed-${diagnostic.id}`, occurredAt: diagnostic.confirmedAt, kind: "DIAGNOSTIC", title: "Діагностику підтверджено", detail: diagnostic.technicalConclusion ? diagnostic.technicalConclusion.slice(0, 220) : null, ...diagnosticContext });
   }
 
   const appointmentWhere = scope.workOrderId
@@ -141,38 +149,41 @@ export async function getServiceTimeline(scope: TimelineScope, options: Timeline
   for (const appointment of appointments) {
     const ctx = appointment.workOrderId && workOrderById.has(appointment.workOrderId)
       ? contextFor(appointment.workOrderId)
-      : { workOrderId: appointment.workOrderId, workOrderNumber: appointment.workOrderId ? numberByWorkOrder.get(appointment.workOrderId) ?? null : null, vehicleId: appointment.vehicleId, clientId: appointment.clientId, plateNumber: appointment.vehicleId ? plateByVehicle.get(appointment.vehicleId) ?? null : null };
-    push({ id: `appointment-created-${appointment.id}`, occurredAt: appointment.createdAt, kind: "APPOINTMENT", title: "Запис на СТО створено", detail: `Заплановано: ${appointment.plannedStartAt.toISOString()}`, ...ctx });
-    if (appointment.actualArrivalAt) push({ id: `appointment-arrival-${appointment.id}`, occurredAt: appointment.actualArrivalAt, kind: "APPOINTMENT", title: "Автомобіль прибув на СТО", ...ctx });
-    if (appointment.actualStartAt) push({ id: `appointment-start-${appointment.id}`, occurredAt: appointment.actualStartAt, kind: "WORK", title: "Роботу з автомобілем розпочато", ...ctx });
-    if (appointment.actualEndAt) push({ id: `appointment-end-${appointment.id}`, occurredAt: appointment.actualEndAt, kind: "WORK", title: "Роботу з автомобілем завершено", ...ctx });
-    if (appointment.noShowAt) push({ id: `appointment-noshow-${appointment.id}`, occurredAt: appointment.noShowAt, kind: "APPOINTMENT", title: "Клієнт не приїхав на запис", ...ctx });
+      : { workOrderId: appointment.workOrderId, workOrderNumber: appointment.workOrderId ? numberByWorkOrder.get(appointment.workOrderId) ?? null : null, vehicleId: appointment.vehicleId, clientId: appointment.clientId, plateNumber: appointment.vehicleId ? plateByVehicle.get(appointment.vehicleId) ?? null : null, diagnosticId: appointment.workOrderId ? workOrderById.get(appointment.workOrderId)?.diagnosticRequestId ?? null : null };
+    const appointmentContext = { ...ctx, appointmentId: appointment.id };
+    push({ id: `appointment-created-${appointment.id}`, occurredAt: appointment.createdAt, kind: "APPOINTMENT", title: "Запис на СТО створено", detail: `Заплановано: ${appointment.plannedStartAt.toISOString()}`, ...appointmentContext });
+    if (appointment.actualArrivalAt) push({ id: `appointment-arrival-${appointment.id}`, occurredAt: appointment.actualArrivalAt, kind: "APPOINTMENT", title: "Автомобіль прибув на СТО", ...appointmentContext });
+    if (appointment.actualStartAt) push({ id: `appointment-start-${appointment.id}`, occurredAt: appointment.actualStartAt, kind: "WORK", title: "Роботу з автомобілем розпочато", ...appointmentContext });
+    if (appointment.actualEndAt) push({ id: `appointment-end-${appointment.id}`, occurredAt: appointment.actualEndAt, kind: "WORK", title: "Роботу з автомобілем завершено", ...appointmentContext });
+    if (appointment.noShowAt) push({ id: `appointment-noshow-${appointment.id}`, occurredAt: appointment.noShowAt, kind: "APPOINTMENT", title: "Клієнт не приїхав на запис", ...appointmentContext });
   }
 
   if (workOrderIds.length && options.includeCommercial !== false) {
     const [estimates, partsRequests, lines, qcRows] = await Promise.all([
       prisma.workOrderEstimate.findMany({ where: { workOrderId: { in: workOrderIds } }, orderBy: [{ workOrderId: "asc" }, { revision: "asc" }], select: { id: true, workOrderId: true, revision: true, status: true, totalAmount: true, sentAt: true, approvedAt: true, rejectedAt: true, approvedByName: true, approvalNote: true, supersededAt: true, createdAt: true } }),
-      prisma.partsRequest.findMany({ where: { workOrderId: { in: workOrderIds } }, select: { id: true, workOrderId: true, status: true, paymentConfirmedAt: true, selectedAt: true, approvedAt: true, orderedAt: true, receivedAt: true, installedAt: true, createdAt: true } }),
+      prisma.partsRequest.findMany({ where: { workOrderId: { in: workOrderIds } }, select: { id: true, workOrderId: true, estimateId: true, status: true, paymentConfirmedAt: true, selectedAt: true, approvedAt: true, orderedAt: true, receivedAt: true, installedAt: true, createdAt: true } }),
       prisma.workOrderLine.findMany({ where: { workOrderId: { in: workOrderIds } }, select: { id: true, workOrderId: true, type: true, description: true, mechanicId: true, approvedAt: true, startedAt: true, completedAt: true, cancelledAt: true, createdAt: true } }),
       prisma.workOrderQualityControl.findMany({ where: { workOrderId: { in: workOrderIds } }, select: { id: true, workOrderId: true, attempt: true, status: true, resultNote: true, performedByName: true, startedAt: true, completedAt: true, createdAt: true } }),
     ]);
     for (const estimate of estimates) {
       const ctx = contextFor(estimate.workOrderId);
-      push({ id: `estimate-created-${estimate.id}`, occurredAt: estimate.createdAt, kind: "ESTIMATE", title: `Кошторис №${estimate.revision} створено`, detail: `${numberOf(estimate.totalAmount).toLocaleString("uk-UA")} ₴ · ${estimateStatusLabel(estimate.status)}`, ...ctx });
-      if (estimate.sentAt) push({ id: `estimate-sent-${estimate.id}`, occurredAt: estimate.sentAt, kind: "ESTIMATE", title: `Кошторис №${estimate.revision} відправлено клієнту`, detail: `${numberOf(estimate.totalAmount).toLocaleString("uk-UA")} ₴`, ...ctx });
-      if (estimate.approvedAt) push({ id: `estimate-approved-${estimate.id}`, occurredAt: estimate.approvedAt, kind: "ESTIMATE", title: `Кошторис №${estimate.revision} погоджено`, detail: [estimate.approvedByName, estimate.approvalNote].filter(Boolean).join(" · ") || null, actor: estimate.approvedByName, ...ctx });
-      if (estimate.rejectedAt) push({ id: `estimate-rejected-${estimate.id}`, occurredAt: estimate.rejectedAt, kind: "ESTIMATE", title: `Кошторис №${estimate.revision} відхилено`, detail: estimate.approvalNote || null, ...ctx });
-      if (estimate.supersededAt) push({ id: `estimate-superseded-${estimate.id}`, occurredAt: estimate.supersededAt, kind: "ESTIMATE", title: `Кошторис №${estimate.revision} замінено новою ревізією`, ...ctx });
+      const estimateContext = { ...ctx, estimateId: estimate.id };
+      push({ id: `estimate-created-${estimate.id}`, occurredAt: estimate.createdAt, kind: "ESTIMATE", title: `Кошторис №${estimate.revision} створено`, detail: `${numberOf(estimate.totalAmount).toLocaleString("uk-UA")} ₴ · ${estimateStatusLabel(estimate.status)}`, ...estimateContext });
+      if (estimate.sentAt) push({ id: `estimate-sent-${estimate.id}`, occurredAt: estimate.sentAt, kind: "ESTIMATE", title: `Кошторис №${estimate.revision} відправлено клієнту`, detail: `${numberOf(estimate.totalAmount).toLocaleString("uk-UA")} ₴`, ...estimateContext });
+      if (estimate.approvedAt) push({ id: `estimate-approved-${estimate.id}`, occurredAt: estimate.approvedAt, kind: "ESTIMATE", title: `Кошторис №${estimate.revision} погоджено`, detail: [estimate.approvedByName, estimate.approvalNote].filter(Boolean).join(" · ") || null, actor: estimate.approvedByName, ...estimateContext });
+      if (estimate.rejectedAt) push({ id: `estimate-rejected-${estimate.id}`, occurredAt: estimate.rejectedAt, kind: "ESTIMATE", title: `Кошторис №${estimate.revision} відхилено`, detail: estimate.approvalNote || null, ...estimateContext });
+      if (estimate.supersededAt) push({ id: `estimate-superseded-${estimate.id}`, occurredAt: estimate.supersededAt, kind: "ESTIMATE", title: `Кошторис №${estimate.revision} замінено новою ревізією`, ...estimateContext });
     }
     for (const request of partsRequests) {
       const ctx = contextFor(request.workOrderId);
-      push({ id: `parts-created-${request.id}`, occurredAt: request.createdAt, kind: "PARTS", title: "Заявку на запчастини створено", detail: partStatusLabel(request.status), ...ctx });
-      if (request.selectedAt) push({ id: `parts-selected-${request.id}`, occurredAt: request.selectedAt, kind: "PARTS", title: "Запчастини підібрано", ...ctx });
-      if (request.paymentConfirmedAt) push({ id: `parts-payment-${request.id}`, occurredAt: request.paymentConfirmedAt, kind: "PARTS", title: "Передоплату за запчастини підтверджено", ...ctx });
-      if (request.approvedAt) push({ id: `parts-approved-${request.id}`, occurredAt: request.approvedAt, kind: "PARTS", title: "Запчастини погоджено", ...ctx });
-      if (request.orderedAt) push({ id: `parts-ordered-${request.id}`, occurredAt: request.orderedAt, kind: "PARTS", title: "Запчастини замовлено", ...ctx });
-      if (request.receivedAt) push({ id: `parts-received-${request.id}`, occurredAt: request.receivedAt, kind: "PARTS", title: "Запчастини отримано", ...ctx });
-      if (request.installedAt) push({ id: `parts-installed-${request.id}`, occurredAt: request.installedAt, kind: "PARTS", title: "Запчастини видано / встановлено", ...ctx });
+      const partsContext = { ...ctx, partsRequestId: request.id, estimateId: request.estimateId };
+      push({ id: `parts-created-${request.id}`, occurredAt: request.createdAt, kind: "PARTS", title: "Заявку на запчастини створено", detail: partStatusLabel(request.status), ...partsContext });
+      if (request.selectedAt) push({ id: `parts-selected-${request.id}`, occurredAt: request.selectedAt, kind: "PARTS", title: "Запчастини підібрано", ...partsContext });
+      if (request.paymentConfirmedAt) push({ id: `parts-payment-${request.id}`, occurredAt: request.paymentConfirmedAt, kind: "PARTS", title: "Передоплату за запчастини підтверджено", ...partsContext });
+      if (request.approvedAt) push({ id: `parts-approved-${request.id}`, occurredAt: request.approvedAt, kind: "PARTS", title: "Запчастини погоджено", ...partsContext });
+      if (request.orderedAt) push({ id: `parts-ordered-${request.id}`, occurredAt: request.orderedAt, kind: "PARTS", title: "Запчастини замовлено", ...partsContext });
+      if (request.receivedAt) push({ id: `parts-received-${request.id}`, occurredAt: request.receivedAt, kind: "PARTS", title: "Запчастини отримано", ...partsContext });
+      if (request.installedAt) push({ id: `parts-installed-${request.id}`, occurredAt: request.installedAt, kind: "PARTS", title: "Запчастини видано / встановлено", ...partsContext });
     }
     for (const line of lines) {
       const ctx = contextFor(line.workOrderId);
@@ -198,7 +209,7 @@ export async function getServiceTimeline(scope: TimelineScope, options: Timeline
     });
     for (const payment of payments) {
       if (!payment.workOrderId) continue;
-      push({ id: `payment-${payment.id}`, occurredAt: payment.occurredAt, kind: "PAYMENT", title: "Оплату клієнта зафіксовано", detail: payment.description || null, amount: numberOf(payment.amount), currency: payment.currency, ...contextFor(payment.workOrderId) });
+      push({ id: `payment-${payment.id}`, occurredAt: payment.occurredAt, kind: "PAYMENT", title: "Оплату клієнта зафіксовано", detail: payment.description || null, amount: numberOf(payment.amount), currency: payment.currency, paymentId: payment.id, ...contextFor(payment.workOrderId) });
     }
   }
 

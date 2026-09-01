@@ -18,6 +18,12 @@ type TimelineEvent = {
   vehicleId?: string | null;
   clientId?: string | null;
   plateNumber?: string | null;
+  diagnosticId?: string | null;
+  diagnosticCardNumber?: string | null;
+  partsRequestId?: string | null;
+  estimateId?: string | null;
+  appointmentId?: string | null;
+  paymentId?: string | null;
   amount?: number | null;
   currency?: string | null;
 };
@@ -151,6 +157,45 @@ export function ServiceTimeline(props: Props) {
     navigateCrm("Комерційна пропозиція", { workOrderId: event.workOrderId, workOrderTab: "history" });
   }
 
+  function openEvent(event: TimelineEvent) {
+    if (event.kind === "DIAGNOSTIC" && event.diagnosticId) {
+      navigateCrm("Діагностика", { diagnosticId: event.diagnosticId, vehicleId: event.vehicleId || undefined });
+      return;
+    }
+    if (event.kind === "PARTS" && (event.diagnosticId || event.partsRequestId)) {
+      navigateCrm("Підбір запчастин", {
+        diagnosticId: event.diagnosticId || undefined,
+        partsRequestId: event.partsRequestId || undefined,
+        workOrderId: event.workOrderId || undefined,
+        vehicleId: event.vehicleId || undefined,
+        plate: event.plateNumber || undefined,
+      });
+      return;
+    }
+    if (event.kind === "ESTIMATE" && event.workOrderId) {
+      navigateCrm("Комерційна пропозиція", { workOrderId: event.workOrderId, workOrderTab: "estimate" });
+      return;
+    }
+    if (event.kind === "APPOINTMENT" && event.appointmentId) {
+      navigateCrm("Планувальник", { appointmentId: event.appointmentId });
+      return;
+    }
+    if ((event.kind === "PAYMENT" || event.kind === "FINANCE") && event.workOrderId) {
+      navigateCrm("Оплати", { workOrderId: event.workOrderId });
+      return;
+    }
+    if (event.workOrderId) openWorkOrder(event);
+  }
+
+  function eventActionLabel(event: TimelineEvent) {
+    if (event.kind === "DIAGNOSTIC" && event.diagnosticId) return "Відкрити діагностику →";
+    if (event.kind === "PARTS" && (event.diagnosticId || event.partsRequestId)) return "Відкрити підбір →";
+    if (event.kind === "ESTIMATE" && event.workOrderId) return "Відкрити пропозицію →";
+    if (event.kind === "APPOINTMENT" && event.appointmentId) return "Відкрити запис →";
+    if ((event.kind === "PAYMENT" || event.kind === "FINANCE") && event.workOrderId) return "Відкрити оплату →";
+    return event.workOrderId ? "Відкрити звернення →" : "";
+  }
+
   function visitLabel(group: VisitGroup) {
     return group.workOrderId ? `Сервісне звернення ${formatWorkOrderNumber(group.events.find((event) => event.workOrderId === group.workOrderId)?.workOrderNumber)}` : "Окремі події автомобіля";
   }
@@ -191,8 +236,11 @@ export function ServiceTimeline(props: Props) {
             {event.detail && <p>{event.detail}</p>}
             {event.amount != null && <b className={styles.amount}>{money(event.amount, event.currency || "UAH")}</b>}
             <div className={styles.meta}>
-              {event.workOrderId && (canOpenContext ? <button type="button" onClick={() => openWorkOrder(event)}>{formatWorkOrderNumber(event.workOrderNumber)}{event.plateNumber ? ` · ${event.plateNumber}` : ""} →</button> : <span>{formatWorkOrderNumber(event.workOrderNumber)}</span>)}
+              {event.workOrderId && <span>ЗН: {formatWorkOrderNumber(event.workOrderNumber)}{event.plateNumber ? ` · ${event.plateNumber}` : ""}</span>}
+              {event.diagnosticCardNumber && <span>ДК: {event.diagnosticCardNumber}</span>}
+              {event.partsRequestId && <span>Підбір деталей</span>}
               {event.actor && <span>Виконав: {event.actor}</span>}
+              {eventActionLabel(event) && <button type="button" className={styles.eventOpen} onClick={() => openEvent(event)}>{eventActionLabel(event)}</button>}
             </div>
           </div>
         </article>)}</div>
