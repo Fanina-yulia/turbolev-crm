@@ -1,1 +1,10 @@
-.tabs{display:flex;gap:8px;padding:0 16px 12px;border-bottom:1px solid var(--line);background:var(--panel);overflow:auto}.tabs button{border:1px solid var(--line);border-radius:999px;background:var(--surface);color:var(--muted);padding:7px 11px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap}.tabs button:hover{border-color:color-mix(in srgb,var(--orange) 40%,var(--line));color:var(--text)}.tabs .active{border-color:var(--orange);background:color-mix(in srgb,var(--orange) 9%,var(--surface));color:var(--orange)}
+.tabs{display:flex;gap:8px;padding:0 16px 12px;border-bottom:1px solid var(--line);background:var(--panel);overflow:auto}
+.tabs button{display:inline-flex;align-items:center;gap:7px;border:1px solid var(--line);border-radius:999px;background:var(--surface);color:var(--muted);padding:7px 11px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;transition:background .18s ease,border-color .18s ease,box-shadow .18s ease,transform .18s ease}
+.tabs button:hover{transform:translateY(-1px);color:var(--text)}
+.tabs .statusDot{width:7px;height:7px;flex:0 0 auto;border-radius:50%;background:currentColor;box-shadow:0 0 0 3px color-mix(in srgb,currentColor 12%,transparent)}
+.tabs .statusSuccess{border-color:color-mix(in srgb,#22c55e 45%,var(--line));background:color-mix(in srgb,#22c55e 10%,var(--surface));color:#22c55e}
+.tabs .statusWarning{border-color:color-mix(in srgb,#f59e0b 48%,var(--line));background:color-mix(in srgb,#f59e0b 11%,var(--surface));color:#f59e0b}
+.tabs .statusDanger{border-color:color-mix(in srgb,#ef4444 46%,var(--line));background:color-mix(in srgb,#ef4444 10%,var(--surface));color:#ef4444}
+.tabs .statusNeutral{border-color:color-mix(in srgb,#94a3b8 42%,var(--line));background:color-mix(in srgb,#94a3b8 9%,var(--surface));color:#94a3b8}
+.tabs .statusSuccess:hover,.tabs .statusWarning:hover,.tabs .statusDanger:hover,.tabs .statusNeutral:hover{box-shadow:0 4px 14px color-mix(in srgb,currentColor 18%,transparent)}
+.tabs .active{outline:2px solid var(--orange);outline-offset:1px}

@@ -7,6 +7,7 @@ import { navigateCrm, readCrmRoute } from "./crm-route";
 import { ServiceTimeline } from "./service-timeline";
 import { VehicleDiagnosticsTab } from "./vehicle-diagnostics-tab";
 import { VehicleBrandLogo } from "./vehicle-brand-logo";
+import { getVehicleTabStatus, vehicleTabToneClass, type VehicleTabKey } from "./vehicle-process-status";
 import { VehicleRender } from "./vehicle-render";
 import { WorkOrderCommercialPanel } from "./work-order-commercial-panel";
 import styles from "./vehicle-record-workspace.module.css";
@@ -48,7 +49,11 @@ export function VehicleRecordWorkspace({ vehicle, loading, page, diagnosticId, o
 
   if (!vehicle) return <div className={styles.page}><div className={styles.loading}>Завантажую автомобіль…</div></div>;
 
-  const links: Array<[VehicleRecordPage, string]> = [["diagnostic-card", "Діагностична карта"], ["commercial-offer", "Комерційна пропозиція"], ["service-history", "Сервісна історія"]];
+  const links: Array<[VehicleRecordPage, string, VehicleTabKey]> = [
+    ["diagnostic-card", "Діагностична карта", "diagnostics"],
+    ["commercial-offer", "Комерційна пропозиція", "proposal"],
+    ["service-history", "Сервісна історія", "history"],
+  ];
 
   return <div className={styles.page}>
     <header className={styles.header}>
@@ -58,7 +63,10 @@ export function VehicleRecordWorkspace({ vehicle, loading, page, diagnosticId, o
 
     <div className={styles.ownerLine}><span>Власник: <b>{vehicle.client.name || "Клієнт без імені"}</b></span><span>{vehicle.client.phone}</span><span>VIN: {vehicle.vin || "—"}</span></div>
 
-    <nav className={styles.tabs} aria-label="Розділи автомобіля">{links.map(([target, label]) => <button type="button" key={target} className={page === target ? styles.activeTab : ""} onClick={() => navigateCrm("Авто", { vehicleId: vehicle.id, vehiclePage: target })}>{label}</button>)}</nav>
+    <nav className={styles.tabs} aria-label="Розділи автомобіля">{links.map(([target, label, tab]) => {
+      const status = getVehicleTabStatus(vehicle, tab);
+      return <button type="button" key={target} className={`${styles.tab} ${vehicleTabToneClass(status.tone, styles)} ${page === target ? styles.activeTab : ""}`} title={`${label}: ${status.label}`} onClick={() => navigateCrm("Авто", { vehicleId: vehicle.id, vehiclePage: target })}><i className={styles.statusDot} aria-hidden="true" />{label}</button>;
+    })}</nav>
 
     <section className={styles.content}>
       <div className={styles.contentHeading}><div><span className={styles.eyebrow}>КАРТКА АВТОМОБІЛЯ</span><h2>{pageTitle(page)}</h2><p>{pageDescription(page)}</p></div><button type="button" className={styles.cardLink} onClick={() => navigateCrm("Авто", { vehicleId: vehicle.id })}>← Картка автомобіля</button></div>

@@ -7,8 +7,14 @@
 .back,.cardLink{border:1px solid var(--line);border-radius:9px;background:transparent;color:var(--text);padding:9px 12px;cursor:pointer}
 .ownerLine{display:flex;gap:18px;flex-wrap:wrap;color:var(--muted);font-size:13px;padding:0 4px}.ownerLine b{color:var(--text)}
 .tabs{display:flex;gap:6px;flex-wrap:wrap;border-bottom:1px solid var(--line);padding:0 4px}
-.tabs button{border:0;border-bottom:2px solid transparent;background:transparent;color:var(--muted);padding:12px 14px;font-weight:700;cursor:pointer}
-.tabs button:hover,.tabs .activeTab{color:var(--text);border-bottom-color:var(--accent,#ff5a00)}
+.tabs button{display:inline-flex;align-items:center;gap:7px;border:0;border-bottom:2px solid transparent;background:transparent;color:var(--muted);padding:12px 14px;font-weight:700;cursor:pointer;transition:color .18s ease,border-color .18s ease,background .18s ease}
+.tabs button:hover{color:var(--text)}
+.tabs .statusDot{width:7px;height:7px;flex:0 0 auto;border-radius:50%;background:currentColor}
+.tabs .statusSuccess{color:#22c55e;border-bottom-color:#22c55e}
+.tabs .statusWarning{color:#f59e0b;border-bottom-color:#f59e0b}
+.tabs .statusDanger{color:#ef4444;border-bottom-color:#ef4444}
+.tabs .statusNeutral{color:#94a3b8;border-bottom-color:#94a3b8}
+.tabs .activeTab{background:color-mix(in srgb,var(--orange) 8%,transparent);border-radius:8px 8px 0 0;outline:1px solid color-mix(in srgb,var(--orange) 45%,transparent);outline-offset:-1px}
 .content{display:grid;gap:16px}.contentHeading{display:flex;justify-content:space-between;align-items:flex-start;gap:16px}.contentHeading h2{margin:4px 0;font-size:22px}.contentHeading p{margin:0;color:var(--muted)}
 .proposalSection{min-width:0}.proposalLayout{display:grid;grid-template-columns:minmax(210px,260px) minmax(0,1fr);gap:14px;align-items:start}
 .proposalList{display:grid;gap:8px;padding:12px;border:1px solid var(--line);border-radius:12px;background:var(--panel)}.proposalList h3{margin:0 0 4px;font-size:14px}

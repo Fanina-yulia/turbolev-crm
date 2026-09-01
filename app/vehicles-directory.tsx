@@ -17,6 +17,7 @@ import { VehicleRender } from "./vehicle-render";
 import { VehiclePlate } from "./vehicle-plate";
 import { CopyableValue } from "./copyable-value";
 import { VehicleRecordWorkspace, type VehicleRecordPage } from "./vehicle-record-workspace";
+import { getVehicleTabStatus, vehicleTabToneClass, type VehicleTabKey } from "./vehicle-process-status";
 import styles from "./directory-pages.module.css";
 import tabStyles from "./vehicle-card-tabs.module.css";
 import workflowStyles from "./vehicle-workflow.module.css";
@@ -180,11 +181,16 @@ export function VehiclesDirectory() {
       try {
         const params = new URLSearchParams({ id: vehicleId });
         if (vehiclePage === "diagnostic-card") params.set("view", "diagnostic");
+        const statusPromise = fetch(`/api/vehicles/status-summary?ids=${encodeURIComponent(vehicleId)}`, { cache: "no-store", signal: controller.signal }).catch(() => null);
         const response = await fetch(`/api/vehicles/card?${params.toString()}`, { cache: vehiclePage === "diagnostic-card" ? "force-cache" : "no-store", signal: controller.signal });
         const payload: unknown = await response.json().catch(() => null);
         const vehicle = parseVehicleCardPayload(payload);
         if (!response.ok || !vehicle) throw new Error(payloadMessage(payload, "Не вдалося відкрити автомобіль"));
-        setVehicleCard(vehicle);
+        const statusResponse = await statusPromise;
+        const statusPayload: unknown = statusResponse ? await statusResponse.json().catch(() => null) : null;
+        const statuses = statusResponse?.ok ? parseVehicleStatusSummaryPayload(statusPayload) : null;
+        const statusSummary = statuses?.vehicles.find((item) => item.vehicleId === vehicle.id)?.statusSummary;
+        setVehicleCard(statusSummary ? { ...vehicle, statusSummary } : vehicle);
       } catch (cause) {
         if ((cause as Error).name !== "AbortError") setError(cause instanceof Error ? cause.message : "Помилка картки авто");
       } finally {
@@ -391,9 +397,23 @@ export function VehiclesDirectory() {
           </header>
 
           <nav className={tabStyles.tabs} aria-label="Розділи картки автомобіля">
-            <button type="button" onClick={() => openVehiclePage("diagnostics")}>Діагностична карта</button>
-            <button type="button" onClick={() => openVehiclePage("proposal")}>Комерційна пропозиція</button>
-            <button type="button" onClick={() => openVehiclePage("history")}>Сервісна історія</button>
+            {([
+              ["diagnostics", "Діагностична карта"],
+              ["proposal", "Комерційна пропозиція"],
+              ["history", "Сервісна історія"],
+            ] as Array<[VehicleTabKey, string]>).map(([tab, label]) => {
+              const status = getVehicleTabStatus(vehicleCard, tab);
+              return <button
+                type="button"
+                key={tab}
+                className={`${tabStyles.tab} ${vehicleTabToneClass(status.tone, tabStyles)}`}
+                title={`${label}: ${status.label}`}
+                onClick={() => openVehiclePage(tab === "diagnostics" ? "diagnostics" : tab === "proposal" ? "proposal" : "history")}
+              >
+                <i className={tabStyles.statusDot} aria-hidden="true" />
+                {label}
+              </button>;
+            })}
           </nav>
 
           <div className={styles.drawerBody}>
