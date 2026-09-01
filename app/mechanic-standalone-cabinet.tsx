@@ -23,6 +23,11 @@ type MechanicTask = {
   pausedAt?: string | null;
   pauseReason?: string | null;
   pauseNote?: string | null;
+  stopAt?: string | null;
+  stopReason?: string | null;
+  stopNote?: string | null;
+  stopIssueId?: string | null;
+  isAdditionalWork?: boolean;
   findingCount?: number;
   openFindingCount?: number;
 };
@@ -44,7 +49,18 @@ type RepairCaseLine = {
   assignedToCurrentMechanic: boolean;
   startedAt: string | null;
   completedAt: string | null;
-  mechanicWorkflow: { pausedAt: string | null; pauseReason: string | null; pauseNote: string | null; totalPausedSeconds: number };
+  mechanicWorkflow: {
+    pausedAt: string | null;
+    pauseReason: string | null;
+    pauseNote: string | null;
+    stopAt: string | null;
+    stopReason: string | null;
+    stopNote: string | null;
+    stopIssueId: string | null;
+    isAdditionalWork: boolean;
+    totalPausedSeconds: number;
+  };
+  isAdditionalWork?: boolean;
 };
 
 type RepairCasePart = {
@@ -169,11 +185,12 @@ type NotificationFeed = {
 };
 
 type Payroll = { ok: boolean; projection?: { total?: number | string; month?: string } };
-type Screen = "HOME" | "WORKS" | "WORK_DETAIL" | "FINDING" | "DIAGNOSTICS" | "DIAGNOSTIC_DETAIL" | "NOTIFICATIONS" | "PROFILE" | "SCHEDULE" | "PAYROLL" | "SUPPORT";
-type WorkAction = "START" | "PAUSE" | "RESUME" | "COMPLETE" | "WAITING_PARTS";
+type Screen = "HOME" | "WORKS" | "WORK_DETAIL" | "STOP" | "ADDITIONAL_WORK" | "FINDING" | "DIAGNOSTICS" | "DIAGNOSTIC_DETAIL" | "NOTIFICATIONS" | "PROFILE" | "SCHEDULE" | "PAYROLL" | "SUPPORT";
+type WorkAction = "START" | "PAUSE" | "STOP" | "RESUME" | "COMPLETE" | "WAITING_PARTS";
 type ThemeChoice = "system" | "light" | "dark";
 type SupportKind = "QUESTION" | "PART_REQUEST";
 type FindingUrgency = "INFO" | "SOON" | "CRITICAL";
+type StopReason = "PARTS_UNAVAILABLE" | "TECHNICAL_PROBLEM" | "SAFETY_RISK" | "CUSTOMER_APPROVAL_REQUIRED" | "OTHER";
 type WorksFilter = "ALL" | "OVERDUE" | "TODAY" | "FUTURE";
 type ScheduleFilter = "ALL" | "TODAY";
 
@@ -199,6 +216,15 @@ const statusLabel: Record<string, string> = {
   RETURNED: "Повернено на уточнення",
   CONFIRMED: "Підтверджено",
   NO_SHOW: "Не приїхав",
+  STOPPED: "СТОП — потребує уваги",
+};
+
+const stopReasonLabel: Record<StopReason, string> = {
+  PARTS_UNAVAILABLE: "Немає потрібної запчастини",
+  TECHNICAL_PROBLEM: "Технічна проблема",
+  SAFETY_RISK: "Ризик для безпеки",
+  CUSTOMER_APPROVAL_REQUIRED: "Потрібне погодження клієнта",
+  OTHER: "Інша причина",
 };
 
 function time(value?: string | null) {
@@ -242,7 +268,7 @@ function isDone(status: string) {
 function statusTone(status: string) {
   if (isDone(status) || status === "CONFIRMED") return styles.good;
   if (status === "IN_PROGRESS" || status === "IN_REPAIR") return styles.info;
-  if (["PAUSED", "REWORK", "WAITING_PARTS", "WAITING_PARTS_SELECTION", "WAITING_APPROVAL", "RETURNED"].includes(status)) return styles.warn;
+  if (["PAUSED", "STOPPED", "REWORK", "WAITING_PARTS", "WAITING_PARTS_SELECTION", "WAITING_APPROVAL", "RETURNED"].includes(status)) return styles.warn;
   if (status === "CANCELLED") return styles.mutedPill;
   return styles.accentPill;
 }
@@ -312,7 +338,7 @@ function appointmentForTask(task: MechanicTask, appointments: Appointment[]) {
 }
 
 function BottomNav({ screen, onChange }: { screen: Screen; onChange: (screen: Screen) => void }) {
-  const workActive = ["WORKS", "WORK_DETAIL", "FINDING", "SUPPORT"].includes(screen);
+  const workActive = ["WORKS", "WORK_DETAIL", "STOP", "ADDITIONAL_WORK", "FINDING", "SUPPORT"].includes(screen);
   return <nav className={styles.bottomNav} aria-label="Навігація механіка">
     <button type="button" className={screen === "HOME" ? styles.navActive : ""} onClick={() => onChange("HOME")}><span>⌂</span><b>Головна</b></button>
     <button type="button" className={workActive ? styles.navActive : ""} onClick={() => onChange("WORKS")}><span>▤</span><b>Роботи</b></button>
@@ -440,6 +466,11 @@ export function MechanicStandaloneCabinet({ userName }: { userName?: string | nu
   const [payroll, setPayroll] = useState<Payroll | null>(null);
   const [showExecutionIssue, setShowExecutionIssue] = useState(false);
   const [showPlateVerification, setShowPlateVerification] = useState(false);
+  const [stopReason, setStopReason] = useState<StopReason>("PARTS_UNAVAILABLE");
+  const [stopNote, setStopNote] = useState("");
+  const [additionalWorkDescription, setAdditionalWorkDescription] = useState("");
+  const [additionalWorkHours, setAdditionalWorkHours] = useState("");
+  const [additionalWorkNote, setAdditionalWorkNote] = useState("");
 
   const loadHome = useCallback(async () => {
     const response = await fetch("/api/cabinet/home", { cache: "no-store", credentials: "include" });
@@ -518,13 +549,27 @@ export function MechanicStandaloneCabinet({ userName }: { userName?: string | nu
       if (task) openTask(task);
       else { setWorksFilter("ALL"); setScreen("WORKS"); }
     };
+    const onResumeTask = (event: Event) => {
+      const detail = (event as CustomEvent<{ taskId?: string; recognizedPlate?: string }>).detail;
+      const task = detail?.taskId ? tasks.find((item) => item.id === detail.taskId) : null;
+      if (!task) {
+        setWorksFilter("ALL");
+        setScreen("WORKS");
+        setError("Роботу для продовження не знайдено. Оновіть список робіт.");
+        return;
+      }
+      openTask(task);
+      void resumeTaskAfterScan(task, detail?.recognizedPlate || task.plate);
+    };
     const onRefresh = () => { void Promise.all([loadHome(), loadTasks(), loadRepairCases(), loadDiagnostics()]).catch(() => undefined); };
     window.addEventListener("turbolev:mechanic-open-diagnostic", onOpenDiagnostic);
     window.addEventListener("turbolev:mechanic-open-task", onOpenTask);
+    window.addEventListener("turbolev:mechanic-resume-task", onResumeTask);
     window.addEventListener("turbolev:mechanic-refresh", onRefresh);
     return () => {
       window.removeEventListener("turbolev:mechanic-open-diagnostic", onOpenDiagnostic);
       window.removeEventListener("turbolev:mechanic-open-task", onOpenTask);
+      window.removeEventListener("turbolev:mechanic-resume-task", onResumeTask);
       window.removeEventListener("turbolev:mechanic-refresh", onRefresh);
     };
   }, [loadDiagnostics, loadHome, loadRepairCases, loadTasks, tasks]);
@@ -553,7 +598,7 @@ export function MechanicStandaloneCabinet({ userName }: { userName?: string | nu
       return line ? tasks.find((candidate) => candidate.id === line.id) ?? null : null;
     })
     .find((item): item is MechanicTask => Boolean(item)) ?? null;
-  const activeTask = tasks.find((item) => item.status === "IN_PROGRESS" || item.status === "PAUSED") ?? nextRepairTask;
+  const activeTask = tasks.find((item) => item.status === "IN_PROGRESS" || item.status === "PAUSED" || item.status === "STOPPED") ?? nextRepairTask;
   const activeTaskAppointment = activeTask ? appointmentForTask(activeTask, appointments) : null;
   const currentPost = activeTaskAppointment?.post || nextScheduledAppointment?.post || null;
   const assignedCases = home?.kpis?.assigned ?? appointments.length;
@@ -568,7 +613,7 @@ export function MechanicStandaloneCabinet({ userName }: { userName?: string | nu
     const line = item.lines.find((candidate) => candidate.assignedToCurrentMechanic && !isDone(candidate.status))
       ?? item.lines.find((candidate) => candidate.assignedToCurrentMechanic);
     const task = line ? tasks.find((candidate) => candidate.id === line.id) : null;
-    return task ? [{ ...task, status: item.status === "PAUSED" ? "PAUSED" : task.status, workOrderStatus: item.status, description: `${item.progress.completed} з ${item.progress.total} робіт · ${line?.description || "Ремонт автомобіля"}` }] : [];
+    return task ? [{ ...task, status: line?.status === "STOPPED" ? "STOPPED" : item.status === "PAUSED" ? "PAUSED" : task.status, workOrderStatus: item.status, description: `${item.progress.completed} з ${item.progress.total} робіт · ${line?.description || "Ремонт автомобіля"}` }] : [];
   });
   const todayKyivKey = kyivDateKey(new Date());
   const visibleScheduleAppointments = (scheduleFilter === "TODAY"
@@ -632,6 +677,8 @@ export function MechanicStandaloneCabinet({ userName }: { userName?: string | nu
     setError("");
     setMessage("");
     setShowExecutionIssue(false);
+    if (task.stopReason && task.stopReason in stopReasonLabel) setStopReason(task.stopReason as StopReason);
+    setStopNote(task.stopNote || "");
   }
 
   function openAppointment(appointment: Appointment) {
@@ -642,14 +689,14 @@ export function MechanicStandaloneCabinet({ userName }: { userName?: string | nu
     else openScannedVehicle(appointment.plate);
   }
 
-  function openScannedVehicle(plate: string | null | undefined) {
+  function openScannedVehicle(plate: string | null | undefined, resumeTaskId?: string) {
     const expectedPlate = plate?.trim();
     if (!expectedPlate || expectedPlate === "—") {
       setError("Для цього автомобіля немає державного номера для сканування.");
       return;
     }
     window.dispatchEvent(new CustomEvent("turbolev:mechanic-open-scanner", {
-      detail: { expectedPlate },
+      detail: { expectedPlate, resumeTaskId: resumeTaskId || undefined },
     }));
   }
 
@@ -682,14 +729,20 @@ export function MechanicStandaloneCabinet({ userName }: { userName?: string | nu
     void Promise.all([loadDiagnostics(), loadHome(), loadTasks(), loadRepairCases()]).catch(() => undefined);
   }
 
-  async function runAction(action: WorkAction) {
+  async function runAction(action: WorkAction, options: {
+    reason?: string;
+    reasonCode?: StopReason;
+    note?: string;
+    verifiedPlate?: string;
+    verifiedByScan?: boolean;
+  } = {}) {
     if (!selectedTask) return;
     if (action === "COMPLETE" && !window.confirm("Завершити цю роботу?")) return;
-    const reason = action === "PAUSE"
+    const reason = options.reason || (action === "PAUSE"
       ? window.prompt("Чому ставите роботу на паузу?", selectedTask.pauseNote || "") ?? ""
       : action === "WAITING_PARTS"
         ? window.prompt("Яка запчастина потрібна?", "") ?? ""
-        : "";
+        : "");
     if ((action === "PAUSE" || action === "WAITING_PARTS") && !reason.trim()) return;
     setBusy(action); setError("");
     try {
@@ -697,14 +750,96 @@ export function MechanicStandaloneCabinet({ userName }: { userName?: string | nu
         method: "PATCH",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action, ...(reason.trim() ? { reason: reason.trim() } : {}) }),
+        body: JSON.stringify({
+          action,
+          ...(reason.trim() ? { reason: reason.trim() } : {}),
+          ...(options.reasonCode ? { reasonCode: options.reasonCode } : {}),
+          ...(options.note ? { note: options.note.trim() } : {}),
+          ...(options.verifiedPlate ? { verifiedPlate: options.verifiedPlate } : {}),
+          ...(options.verifiedByScan ? { verifiedByScan: true } : {}),
+        }),
       });
       const body = await response.json().catch(() => null);
       if (!response.ok || !body?.ok) throw new Error(body?.message || body?.error || "Не вдалося оновити роботу");
       await Promise.all([loadTasks(), loadRepairCases(), loadHome()]);
-      setMessage(action === "START" ? "Роботу розпочато." : action === "PAUSE" ? "Роботу поставлено на паузу." : action === "RESUME" ? "Роботу продовжено." : action === "WAITING_PARTS" ? "Роботу призупинено: очікується запчастина." : "Роботу завершено.");
+      setMessage(action === "START"
+        ? "Роботу розпочато."
+        : action === "PAUSE"
+          ? "Роботу поставлено на паузу."
+          : action === "STOP"
+            ? "Роботу зупинено. Сервіс-менеджера повідомлено."
+            : action === "RESUME"
+              ? "Роботу продовжено."
+              : action === "WAITING_PARTS" ? "Роботу призупинено: очікується запчастина." : "Роботу завершено.");
+      if (action === "STOP" || action === "RESUME") setScreen("WORK_DETAIL");
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Не вдалося оновити роботу"); }
     finally { setBusy(""); }
+  }
+
+  async function resumeTaskAfterScan(task: MechanicTask, recognizedPlate: string) {
+    setSelectedTaskId(task.id);
+    setScreen("WORK_DETAIL");
+    setBusy("resume-scan");
+    setError("");
+    try {
+      const verificationResponse = await fetch(`/api/cabinet/mechanic/tasks/${encodeURIComponent(task.id)}/verify-plate`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ recognizedPlate, verificationMethod: "CAMERA" }),
+      });
+      const verification = await verificationResponse.json().catch(() => null);
+      if (!verificationResponse.ok || !verification?.ok) throw new Error(verification?.message || verification?.error || "Номер автомобіля не підтверджено.");
+
+      const response = await fetch(`/api/cabinet/mechanic/tasks/${encodeURIComponent(task.id)}`, {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "RESUME", verifiedPlate: recognizedPlate, verifiedByScan: true }),
+      });
+      const body = await response.json().catch(() => null);
+      if (!response.ok || !body?.ok) throw new Error(body?.message || body?.error || "Не вдалося продовжити роботу.");
+      await Promise.all([loadTasks(), loadRepairCases(), loadHome(), loadNotifications()]);
+      setMessage("Автомобіль підтверджено. Роботу продовжено.");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Не вдалося продовжити роботу.");
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function submitAdditionalWork() {
+    if (!selectedTask) return;
+    if (additionalWorkDescription.trim().length < 3) {
+      setError("Опишіть, яку додаткову роботу потрібно виконати.");
+      return;
+    }
+    setBusy("additional-work");
+    setError("");
+    try {
+      const response = await fetch(`/api/cabinet/mechanic/tasks/${encodeURIComponent(selectedTask.id)}/additional-work`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          description: additionalWorkDescription.trim(),
+          laborHours: additionalWorkHours.trim() || undefined,
+          note: additionalWorkNote.trim() || undefined,
+        }),
+      });
+      const body = await response.json().catch(() => null);
+      if (!response.ok || !body?.ok) throw new Error(body?.message || body?.error || "Не вдалося передати додаткову роботу.");
+      setAdditionalWorkDescription("");
+      setAdditionalWorkHours("");
+      setAdditionalWorkNote("");
+      await Promise.all([loadTasks(), loadRepairCases(), loadHome(), loadNotifications()]);
+      setScreen("WORK_DETAIL");
+      setMessage(body.message || "Додаткову роботу передано на погодження.");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Не вдалося передати додаткову роботу.");
+    } finally {
+      setBusy("");
+    }
   }
 
   async function submitFinding() {
@@ -832,6 +967,12 @@ export function MechanicStandaloneCabinet({ userName }: { userName?: string | nu
 
   async function openNotification(item: MechanicNotification) {
     if (!item.readAt) await markNotification(item.id).catch((cause) => setError(cause instanceof Error ? cause.message : "Не вдалося оновити сповіщення"));
+    const assignmentId = typeof item.payload?.assignmentId === "string" ? item.payload.assignmentId : null;
+    const task = assignmentId ? tasks.find((candidate) => candidate.id === assignmentId) : null;
+    if (task) {
+      openTask(task);
+      return;
+    }
     if (item.type !== "UNASSIGNED") {
       if (item.appointmentId) openSchedule("ALL", "NOTIFICATIONS");
       else openWorks("ALL");
@@ -948,6 +1089,57 @@ export function MechanicStandaloneCabinet({ userName }: { userName?: string | nu
 
       {message && <div className={styles.toastGood}><span>{message}</span><button type="button" onClick={() => setMessage("")}>×</button></div>}
       {error && <div className={styles.toastBad}><span>{error}</span><button type="button" onClick={() => setError("")}>×</button></div>}
+
+      {screen === "WORK_DETAIL" && selectedTask && (selectedTask.status === "IN_PROGRESS" || selectedTask.status === "STOPPED" || selectedTask.status === "PAUSED") && <section className={`${styles.card} ${selectedTask.status === "STOPPED" ? styles.stopCard : ""}`}>
+        {selectedTask.status === "STOPPED" ? <>
+          <div className={styles.sectionHead}><div><h2>СТОП — потребує уваги</h2><p>{selectedTask.stopReason && selectedTask.stopReason in stopReasonLabel ? stopReasonLabel[selectedTask.stopReason as StopReason] : "Роботу зупинено"}</p></div><span className={`${styles.pill} ${styles.warn}`}>ЗУПИНЕНО</span></div>
+          {selectedTask.stopNote && <p className={styles.subtle}>{selectedTask.stopNote}</p>}
+          <p className={styles.formHint}>Для безпечного продовження повторно відскануйте автомобіль і підтвердіть номер.</p>
+          <button type="button" className={styles.primary} disabled={Boolean(busy)} onClick={() => openScannedVehicle(selectedTask.plate, selectedTask.id)}>▣ Відновити через сканування →</button>
+        </> : <>
+          <div className={styles.sectionHead}><div><h2>Дії під час роботи</h2><p>Важливі зміни фіксуються в замовленні та історії авто.</p></div></div>
+          <div className={styles.quickActions}>
+            {selectedTask.status === "IN_PROGRESS" && <button type="button" className={styles.stopButton} disabled={Boolean(busy)} onClick={() => { setStopReason("PARTS_UNAVAILABLE"); setStopNote(""); setScreen("STOP"); }}>СТОП — призупинити роботу</button>}
+            <button type="button" className={styles.secondary} disabled={Boolean(busy)} onClick={() => { setAdditionalWorkDescription(""); setAdditionalWorkHours(""); setAdditionalWorkNote(""); setScreen("ADDITIONAL_WORK"); }}>＋ Додаткові роботи</button>
+          </div>
+        </>}
+      </section>}
+
+      {screen === "STOP" && selectedTask && <>
+        <TopBar title="Зупинити роботу" onBack={() => setScreen("WORK_DETAIL")} />
+        <main className={styles.content}>
+          <section className={styles.card}>
+            <div className={styles.taskTop}><div><h2>{selectedTask.vehicle}</h2><p>{selectedTask.plate}</p></div><span className={`${styles.pill} ${styles.warn}`}>СТОП</span></div>
+            <p className={styles.subtle}>Робота буде припинена, автомобіль залишиться у списку робіт, а сервіс-менеджер отримає сповіщення.</p>
+          </section>
+          <section className={styles.formCard}>
+            <label><span>Причина зупинки *</span><select value={stopReason} onChange={(event) => setStopReason(event.target.value as StopReason)}>
+              {(Object.keys(stopReasonLabel) as StopReason[]).map((value) => <option key={value} value={value}>{stopReasonLabel[value]}</option>)}
+            </select></label>
+            <label><span>Коментар {stopReason === "PARTS_UNAVAILABLE" ? "(необов’язково)" : "*"}</span><textarea rows={4} value={stopNote} onChange={(event) => setStopNote(event.target.value)} placeholder="Що саме зупинило роботу?" /></label>
+            <p className={styles.formHint}>Після СТОП продовження можливе тільки після повторного сканування цього автомобіля.</p>
+            <button type="button" className={styles.stopButton} disabled={busy === "STOP" || (stopReason !== "PARTS_UNAVAILABLE" && stopNote.trim().length < 3)} onClick={() => void runAction("STOP", { reasonCode: stopReason, note: stopNote })}>{busy === "STOP" ? "Зупиняю…" : "СТОП — передати на контроль"}</button>
+          </section>
+        </main>
+      </>}
+
+      {screen === "ADDITIONAL_WORK" && selectedTask && <>
+        <TopBar title="Додаткова робота" onBack={() => setScreen("WORK_DETAIL")} />
+        <main className={styles.content}>
+          <section className={styles.card}>
+            <div className={styles.taskTop}><div><h2>{selectedTask.vehicle}</h2><p>{selectedTask.plate}</p></div><span className={`${styles.pill} ${styles.warn}`}>ПОГОДЖЕННЯ</span></div>
+            <p className={styles.subtle}>Зафіксуйте технічну потребу. Менеджер погодить її з клієнтом, після чого робота з’явиться в цьому ж замовленні та фінальній накладній.</p>
+          </section>
+          <section className={styles.formCard}>
+            <label><span>Що потрібно додатково виконати? *</span><textarea rows={4} value={additionalWorkDescription} onChange={(event) => setAdditionalWorkDescription(event.target.value)} placeholder="Наприклад: заміна передньої опори амортизатора" /></label>
+            <label><span>Орієнтовний час</span><input type="number" min="0.1" max="1000" step="0.1" value={additionalWorkHours} onChange={(event) => setAdditionalWorkHours(event.target.value)} placeholder="Нормо-години" /></label>
+            <label><span>Коментар для менеджера</span><textarea rows={3} value={additionalWorkNote} onChange={(event) => setAdditionalWorkNote(event.target.value)} placeholder="Причина, ризики, рекомендації…" /></label>
+            <p className={styles.formHint}>Механік не змінює ціну та не запускає роботу без погодження клієнта.</p>
+            <button type="button" className={styles.primary} disabled={busy === "additional-work" || additionalWorkDescription.trim().length < 3} onClick={() => void submitAdditionalWork()}>{busy === "additional-work" ? "Передаю…" : "Передати на погодження →"}</button>
+          </section>
+        </main>
+      </>}
+
       <BottomNav screen={screen} onChange={(next) => { if (next === "WORKS") setWorksFilter("ALL"); setScreen(next); setError(""); setMessage(""); }} />
     </div>
   </div>;

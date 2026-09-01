@@ -19,15 +19,25 @@ function record(value: unknown): Record<string, unknown> {
 }
 
 function mechanicWorkflow(metadata: unknown) {
-  const workflow = record(record(metadata).mechanicWorkflow);
+  const root = record(metadata);
+  const workflow = record(root.mechanicWorkflow);
   const pausedAt = typeof workflow.pausedAt === "string" && workflow.pausedAt ? workflow.pausedAt : null;
   const pauseReason = typeof workflow.pauseReason === "string" ? workflow.pauseReason : null;
   const pauseNote = typeof workflow.pauseNote === "string" ? workflow.pauseNote : null;
+  const stopAt = typeof workflow.stopAt === "string" && workflow.stopAt ? workflow.stopAt : null;
+  const stopReason = typeof workflow.stopReason === "string" && workflow.stopReason ? workflow.stopReason : null;
+  const stopNote = typeof workflow.stopNote === "string" && workflow.stopNote ? workflow.stopNote : null;
+  const stopIssueId = typeof workflow.stopIssueId === "string" && workflow.stopIssueId ? workflow.stopIssueId : null;
   const totalPausedSeconds = Number(workflow.totalPausedSeconds ?? 0);
   return {
     pausedAt,
     pauseReason,
     pauseNote,
+    stopAt,
+    stopReason,
+    stopNote,
+    stopIssueId,
+    isAdditionalWork: root.source === "MECHANIC_ADDITIONAL_WORK" || record(root.mechanicAdditionalWork).requested === true,
     totalPausedSeconds: Number.isFinite(totalPausedSeconds) && totalPausedSeconds > 0 ? Math.floor(totalPausedSeconds) : 0,
   };
 }
@@ -119,7 +129,9 @@ export async function GET(request: Request) {
         return {
           id: line.id,
           type: line.type,
-          status: line.status === "IN_PROGRESS" && lineWorkflow.pausedAt ? "PAUSED" : line.status,
+          status: line.status === "IN_PROGRESS" && lineWorkflow.stopAt
+            ? "STOPPED"
+            : line.status === "IN_PROGRESS" && lineWorkflow.pausedAt ? "PAUSED" : line.status,
           description: line.description,
           code: line.code,
           article: line.article,
@@ -134,6 +146,7 @@ export async function GET(request: Request) {
           startedAt: line.startedAt,
           completedAt: line.completedAt,
           mechanicWorkflow: lineWorkflow,
+          isAdditionalWork: lineWorkflow.isAdditionalWork,
         };
       });
       const partLines = parts.map((line) => ({
@@ -217,7 +230,7 @@ export async function GET(request: Request) {
       kpis: {
         total: cases.length,
         active: active.length,
-        inRepair: active.filter((item) => ["IN_REPAIR", "REWORK"].includes(item.status)).length,
+        inRepair: active.filter((item) => ["IN_REPAIR", "REWORK", "PAUSED"].includes(item.status)).length,
         waitingParts: active.filter((item) => item.status === "WAITING_PARTS").length,
         waitingQc: active.filter((item) => item.status === "WAITING_QC").length,
         completedToday,

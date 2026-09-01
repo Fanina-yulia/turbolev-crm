@@ -189,6 +189,11 @@ button.listCard{appearance:none}
 .orderLines>div{display:grid;grid-template-columns:20px minmax(0,1fr) auto;gap:8px;align-items:center;padding:12px 0;border-top:1px solid var(--m-border)}
 .orderLines>div:first-child{border-top:0}.orderLines i{font-style:normal}.orderLines strong,.orderLines small{display:block}.orderLines small{margin-top:2px;color:var(--m-muted);font-size:11px}.orderLines>div>span{max-width:130px;color:var(--m-muted);font-size:11px;text-align:right}
 .twoButtons{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+.quickActions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
+.stopButton{width:100%;min-height:50px;padding:11px 14px;border:1px solid color-mix(in srgb,var(--m-danger) 58%,var(--m-border));border-radius:13px;background:var(--m-danger-soft);color:var(--m-danger);font-weight:900;cursor:pointer;touch-action:manipulation}
+.stopButton:disabled{opacity:.55;cursor:not-allowed}
+.stopCard{border-color:color-mix(in srgb,var(--m-danger) 52%,var(--m-border));box-shadow:inset 4px 0 0 var(--m-danger),0 8px 24px color-mix(in srgb,var(--m-danger) 10%,transparent)}
+.formHint{margin:0;padding:11px 12px;border-radius:11px;background:var(--m-warn-soft);color:var(--m-muted);font-size:12px;line-height:1.45}
 .doneBox{padding:13px;border:1px solid color-mix(in srgb,var(--m-green) 42%,var(--m-border));border-radius:13px;background:var(--m-green-soft);color:var(--m-green);font-weight:850}
 .actionList{display:grid;margin-top:12px;border-top:1px solid var(--m-border)}
 .actionList button{min-height:54px;padding:11px 2px;display:flex;align-items:center;justify-content:space-between;gap:12px;border:0;border-bottom:1px solid var(--m-border);background:transparent;color:var(--m-text);font-weight:750;text-align:left;cursor:pointer;touch-action:manipulation}
@@ -196,6 +201,8 @@ button.listCard{appearance:none}
 .formCard{padding:16px;display:grid;gap:15px}
 .formCard label{display:grid;gap:7px}.formCard label>span,.label{font-size:12px;font-weight:850;color:var(--m-text)}
 .formCard textarea,.noticeCard textarea{width:100%;resize:vertical;min-height:82px;padding:12px;border:1px solid var(--m-border);border-radius:12px;background:var(--m-surface-2);color:var(--m-text);outline:none}
+.formCard input,.formCard select{width:100%;box-sizing:border-box;min-height:46px;padding:11px 12px;border:1px solid var(--m-border);border-radius:12px;background:var(--m-surface-2);color:var(--m-text);outline:none;font:inherit}
+.formCard input:focus,.formCard select:focus{border-color:var(--m-orange);box-shadow:0 0 0 3px color-mix(in srgb,var(--m-orange) 13%,transparent)}
 .formCard textarea:focus,.noticeCard textarea:focus{border-color:var(--m-orange);box-shadow:0 0 0 3px color-mix(in srgb,var(--m-orange) 13%,transparent)}
 .subtle{color:var(--m-muted);line-height:1.45}
 .segmented{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin-top:7px}
@@ -250,6 +257,7 @@ button.listCard{appearance:none}
   .metaGrid{grid-template-columns:1fr 1fr}.metaGrid span:last-child{grid-column:1/-1}
   .orderLines>div{grid-template-columns:18px minmax(0,1fr)}.orderLines>div>span{grid-column:2;text-align:left}
   .twoButtons{grid-template-columns:1fr}
+  .quickActions{grid-template-columns:1fr}
   .segmented{grid-template-columns:1fr}.themePicker{grid-template-columns:1fr}
   .notificationTitle{display:grid}.notificationTitle button{justify-self:start}.noticeActions{display:grid;grid-template-columns:1fr}.noticeActions button{width:100%}
   .notificationPopups{top:max(8px,env(safe-area-inset-top));left:8px;right:8px;width:auto}.notificationPopup{padding:12px}.notificationPopup>small{font-size:11px}

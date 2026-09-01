@@ -12,12 +12,27 @@ function record(value: unknown): Record<string, unknown> {
 }
 
 function workflow(value: unknown) {
-  const data = record(record(value).mechanicWorkflow);
+  const root = record(value);
+  const data = record(root.mechanicWorkflow);
   const pausedAt = typeof data.pausedAt === "string" && data.pausedAt ? data.pausedAt : null;
   const pauseReason = typeof data.pauseReason === "string" && data.pauseReason ? data.pauseReason : null;
   const pauseNote = typeof data.pauseNote === "string" && data.pauseNote ? data.pauseNote : null;
+  const stopAt = typeof data.stopAt === "string" && data.stopAt ? data.stopAt : null;
+  const stopReason = typeof data.stopReason === "string" && data.stopReason ? data.stopReason : null;
+  const stopNote = typeof data.stopNote === "string" && data.stopNote ? data.stopNote : null;
+  const stopIssueId = typeof data.stopIssueId === "string" && data.stopIssueId ? data.stopIssueId : null;
   const total = Number(data.totalPausedSeconds ?? 0);
-  return { pausedAt, pauseReason, pauseNote, totalPausedSeconds: Number.isFinite(total) && total > 0 ? Math.floor(total) : 0 };
+  return {
+    pausedAt,
+    pauseReason,
+    pauseNote,
+    stopAt,
+    stopReason,
+    stopNote,
+    stopIssueId,
+    isAdditionalWork: root.source === "MECHANIC_ADDITIONAL_WORK" || record(root.mechanicAdditionalWork).requested === true,
+    totalPausedSeconds: Number.isFinite(total) && total > 0 ? Math.floor(total) : 0,
+  };
 }
 
 function vehicleLabel(vehicle: { brand: string | null; model: string | null; year: number | null }) {
@@ -78,7 +93,9 @@ export async function GET(request: Request) {
 
     const items = lines.map((line) => {
       const state = workflow(line.metadata);
-      const effectiveStatus = line.status === "IN_PROGRESS" && state.pausedAt ? "PAUSED" : line.status;
+      const effectiveStatus = line.status === "IN_PROGRESS" && state.stopAt
+        ? "STOPPED"
+        : line.status === "IN_PROGRESS" && state.pausedAt ? "PAUSED" : line.status;
       return {
         id: line.id,
         workOrderId: line.workOrderId,
@@ -95,6 +112,11 @@ export async function GET(request: Request) {
         pausedAt: state.pausedAt,
         pauseReason: state.pauseReason,
         pauseNote: state.pauseNote,
+        stopAt: state.stopAt,
+        stopReason: state.stopReason,
+        stopNote: state.stopNote,
+        stopIssueId: state.stopIssueId,
+        isAdditionalWork: state.isAdditionalWork,
         totalPausedSeconds: state.totalPausedSeconds,
         findingCount: findingCounts.get(line.id) ?? 0,
         openFindingCount: openFindingCounts.get(line.id) ?? 0,
