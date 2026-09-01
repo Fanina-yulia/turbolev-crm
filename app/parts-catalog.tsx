@@ -75,8 +75,25 @@ export function PartsCatalog() {
         if (numberResponse.ok && numberPayload) numberMap = new Map(numberPayload.rows.map((item) => [item.workOrderId, item.number]));
       }
       const active = payload.workOrders.filter((row) => Boolean(row.diagnosticRequest?.id)).map((row) => ({ ...row, number: numberMap.get(row.id) ?? row.number })).sort((left, right) => new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime());
-      setWorkOrderOptions(active);
-      setMessage(active.length ? "Оберіть запис із Діагностичною картою. Статус кожного запису відображається окремо." : "Замовлень-нарядів із Діагностичною картою не знайдено.");
+      if (active.length) {
+        setWorkOrderOptions(active);
+        setMessage("Оберіть запис із Діагностичною картою. Статус кожного запису відображається окремо.");
+      } else {
+        const diagnosticResponse = await fetch("/api/diagnostics?limit=200", { cache: "no-store", credentials: "include" });
+        const diagnosticPayload = await diagnosticResponse.json().catch(() => null) as { diagnostics?: Array<{ id: string; status: string; workflowState?: string; reviewState?: string; updatedAt?: string; client?: { name?: string | null; phone?: string | null }; vehicle?: { id?: string; brand?: string | null; model?: string | null; year?: number | null; plateNumber?: string | null; vin?: string | null; mileageKm?: number | null }; diagnosticCard?: { number?: string | null } | null }> } | null;
+        const diagnosticRows = Array.isArray(diagnosticPayload?.diagnostics) ? diagnosticPayload.diagnostics.map((row) => ({
+          id: "",
+          number: row.diagnosticCard?.number ? Number(row.diagnosticCard.number.replace(/\D/g, "")) || null : null,
+          status: row.status,
+          statusLabel: row.reviewState === "SUBMITTED" ? "На перевірці" : row.reviewState === "CONFIRMED" ? "Погоджено" : row.workflowState || row.status,
+          updatedAt: row.updatedAt || new Date(0).toISOString(),
+          client: { name: row.client?.name || null, phone: row.client?.phone || "" },
+          vehicle: { id: row.vehicle?.id || "", brand: row.vehicle?.brand || null, model: row.vehicle?.model || null, year: row.vehicle?.year || null, plateNumber: row.vehicle?.plateNumber || null, vin: row.vehicle?.vin || null, mileageKm: row.vehicle?.mileageKm || null, turboLevClass: null },
+          diagnosticRequest: { id: row.id, status: row.status },
+        })) as unknown as WorkOrderRow[] : [];
+        setWorkOrderOptions(diagnosticRows);
+        setMessage(diagnosticRows.length ? "Знайдено Діагностичні карти без замовлення-наряду. Статус кожної карти відображається окремо." : "Діагностичних карт і замовлень-нарядів не знайдено.");
+      }
     } catch (error) { setWorkOrderOptions([]); setMessage(error instanceof Error ? error.message : "Не вдалося завантажити ремонтні замовлення."); } finally { setOrdersLoading(false); }
   }
 
