@@ -415,6 +415,7 @@ export function NewRequestWizardV5({showButton=true,onOpenChange}:NewRequestWiza
   },[]);
   useEffect(()=>{if(open)void loadMakes()},[open]);
   useEffect(()=>{if(open&&step===4&&locations.length===0)void loadPlannerResources()},[open,step,locations.length]);
+  useEffect(()=>{if(open&&plannerEntry&&step===3&&locations.length===0)void loadPlannerResources()},[open,plannerEntry,step,locations.length]);
   useEffect(()=>{
     if(open&&step===4&&locations.length>0&&form.appointmentDate)void loadPlannerResources();
   },[open,step,form.appointmentDate,plannerLoading]);
@@ -613,7 +614,7 @@ export function NewRequestWizardV5({showButton=true,onOpenChange}:NewRequestWiza
     if(!canLeaveVehicle)return setError("Поверніться до кроку «Автомобіль» і вкажіть марку та модель.");
     if(!form.appointmentDate||!form.appointmentTime)return setError("Вкажіть дату та час заїзду.");
     if(!form.postId)return setError("Оберіть пост СТО.");
-    if(!plannerEntry&&!form.mechanicId)return setError("Закріпіть майстра.");
+    if(!form.mechanicId)return setError("Оберіть майстра, який виконуватиме цю роботу.");
     if(!canLeaveClient)return setError("Вкажіть ім’я, прізвище та коректний номер телефону.");
     if(vehicleConflict&&!allowReassign)return setError("Потрібно підтвердити переприв’язування автомобіля.");
     setSaving(true);
@@ -890,6 +891,20 @@ export function NewRequestWizardV5({showButton=true,onOpenChange}:NewRequestWiza
               <div className="requestTags fastCategoryTags">
                 {requestCategories.map(item=><button type="button" key={item} className={form.category===item?"selected":""} onClick={()=>update("category",form.category===item?"":item)}>{item}</button>)}
               </div>
+              {plannerEntry&&<div className="requestPlannerSelection">
+                <div>
+                  <small>Обраний слот у планувальнику</small>
+                  <strong>{form.appointmentDate||"Дата не вибрана"}{form.appointmentTime?` · ${form.appointmentTime}`:""}</strong>
+                  <span>{activeLocation?.posts.find(post=>post.id===form.postId)?.name||"Пост не вибрано"}</span>
+                </div>
+                <label>
+                  <span>Майстер *</span>
+                  <select value={form.mechanicId} onChange={event=>update("mechanicId",event.target.value)} disabled={plannerLoading||!activeLocation}>
+                    <option value="">Оберіть майстра</option>
+                    {activeLocation?.mechanics.map(mechanic=><option key={mechanic.id} value={mechanic.id}>{mechanic.name}</option>)}
+                  </select>
+                </label>
+              </div>}
             </section>}
 
             {step===4&&!plannerEntry&&<section className="requestStep requestFastStep requestPlannerStep">
