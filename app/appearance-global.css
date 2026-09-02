@@ -1,0 +1,97 @@
+/* The appearance profile is applied to the document root, so existing screens
+   consume the same semantic tokens without page-specific theme branches. */
+:root[data-crm-appearance="configured"] {
+  --surface: var(--panel);
+  --surface-raised: var(--panel);
+  --surface-muted: var(--panel-2);
+  --surface-hover: color-mix(in srgb, var(--panel-2) 88%, var(--text) 12%);
+  --border: var(--line);
+  --border-subtle: color-mix(in srgb, var(--line) 78%, transparent);
+  --foreground: var(--text);
+  --text-primary: var(--text);
+  --text-secondary: var(--soft-text);
+  --text-muted: var(--muted);
+  --accent: var(--orange);
+  --accent-strong: var(--orange-2);
+  --success: var(--green);
+  --warning: var(--yellow);
+  --danger: var(--red);
+  --info: var(--blue);
+  --input-bg: var(--panel-2);
+  --input-text: var(--text);
+  --input-placeholder: var(--muted);
+  --crm-font-copy: var(--crm-body-size);
+  --crm-font-control: var(--crm-control-size);
+  --crm-font-helper: var(--crm-meta-size);
+}
+
+:root[data-crm-appearance="configured"] body,
+:root[data-crm-appearance="configured"] button,
+:root[data-crm-appearance="configured"] input,
+:root[data-crm-appearance="configured"] textarea,
+:root[data-crm-appearance="configured"] select {
+  font-family: var(--ui-font) !important;
+}
+
+:root[data-crm-appearance="configured"] body {
+  background: var(--bg) !important;
+  color: var(--text) !important;
+  font-size: var(--crm-body-size) !important;
+}
+
+:root[data-crm-appearance="configured"] .workspace {
+  color: var(--text);
+  font-size: var(--crm-body-size);
+}
+
+:root[data-crm-appearance="configured"] :where(button, input, textarea, select):focus-visible {
+  outline-color: var(--orange);
+}
+
+:root[data-crm-appearance="configured"] :where(input, textarea, select) {
+  color: var(--text);
+  border-color: var(--line);
+}
+
+:root[data-crm-appearance="configured"] :where(.panel, .sectionBlock, .card, .kpis article, .tableShell, .dataTable, .modal, .drawer, .settingsCard) {
+  border-color: var(--line);
+  background-color: var(--panel);
+}
+
+:root[data-crm-appearance="configured"] :where(.sidebar, .topbar, .workspace) {
+  border-color: var(--line);
+}
+
+:root[data-crm-appearance="configured"] .sidebar {
+  background: var(--sidebar);
+}
+
+:root[data-crm-appearance="configured"] :where(.primary, .primaryAction, .submitButton, .createButton, .globalNewRequest button) {
+  background: var(--orange);
+  border-color: var(--orange);
+}
+
+:root[data-crm-appearance="configured"] :where(.navActive, .navItemActive, .active, .selected) {
+  border-color: color-mix(in srgb, var(--orange) 55%, var(--line));
+}
+
+:root[data-crm-density="compact"] {
+  --crm-density-gap: 8px;
+}
+
+:root[data-crm-density="standard"] {
+  --crm-density-gap: 12px;
+}
+
+:root[data-crm-density="comfortable"] {
+  --crm-density-gap: 16px;
+}
+
+:root[data-crm-radius="sharp"] :where(.panel, .sectionBlock, .card, .modal, .drawer, input, textarea, select, button) {
+  border-radius: 6px;
+}
+
+:root[data-crm-radius="soft"] :where(.panel, .sectionBlock, .card, .modal, .drawer) {
+  border-radius: 16px;
+}
+

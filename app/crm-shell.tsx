@@ -244,7 +244,7 @@ export function CrmShell({ initialSection, initialSettingsTab }: { initialSectio
   return <main className="shell">
     <SettingsPersonnelBridge/>
     <aside className="sidebar">
-      <div className="brand"><div className="brandLogoWrap" aria-label="Turbo LEV"><img className="brandLogo brandLogoDark" src={turboLevLogoDark} alt="Turbo LEV"/><img className="brandLogo brandLogoLight" src={turboLevLogoLight} alt="Turbo LEV"/></div></div>
+      <div className="brand"><div className="brandLogoWrap" aria-label="Turbo LEV"><img data-crm-logo-slot="dark" data-crm-default-src={turboLevLogoDark} className="brandLogo brandLogoDark" src={turboLevLogoDark} alt="Turbo LEV"/><img data-crm-logo-slot="light" data-crm-default-src={turboLevLogoLight} className="brandLogo brandLogoLight" src={turboLevLogoLight} alt="Turbo LEV"/></div></div>
       <button
         type="button"
         className={shellStyles.mobileNavToggle}

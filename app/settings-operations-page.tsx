@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { BinotelCallbacksSettings } from "./binotel-callbacks-settings";
+import { AppearanceSettingsPanel } from "./appearance-settings-panel";
 import type { SettingsTab } from "./settings-tabs";
 import styles from "./settings-operations-page.module.css";
 
@@ -17,7 +18,6 @@ type IntegrationField = { key: string; label: string; secret: boolean; required?
 type IntegrationItem = { provider: string; category: string; title: string; description: string; fields: IntegrationField[]; configured: boolean; configuredVia: string | null; status: string; masked: Record<string, string>; visible: Record<string, string> };
 type PricePreview = { ok?: boolean; fileName: string; stats: { total: number; create: number; update: number }; rows: Array<{ code: string; category: string; name: string; unit: string; price: number; normHours: number | null }>; error?: string; message?: string };
 type Draft = Record<string, string | boolean>;
-type ThemeMode = "light" | "dark" | "auto";
 
 const DAYS = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Нд"];
 const DEFAULT_SCHEDULE: ScheduleDay[] = DAYS.map((label, index) => ({ day: index + 1, label, enabled: true, open: "09:00", close: "21:00" }));
@@ -31,9 +31,6 @@ function obj(value: unknown) { return value && typeof value === "object" && !Arr
 function text(item: DirectoryItem, key: string) { const value = item.data?.[key]; return value == null ? "" : String(value); }
 function parsePost(post: Post) { return { type: post.capabilities.find((value) => value.startsWith("TYPE:"))?.slice(5) || "LIFT", color: post.capabilities.find((value) => value.startsWith("COLOR:"))?.slice(6) || "#FF6600" }; }
 function isSupplierIntegration(item: IntegrationItem) { return item.category.toUpperCase().includes("SUPPLIER") || /BM.?PARTS|UNIQUE|AUTONOVA|ATL|постач/i.test(`${item.provider} ${item.title}`); }
-function resolveTheme(mode: ThemeMode) { return mode === "auto" ? (window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark") : mode; }
-function applyTheme(mode: ThemeMode) { document.documentElement.dataset.theme = resolveTheme(mode); document.documentElement.dataset.themeMode = mode; }
-
 export function SettingsOperationsPage({ tab }: { tab: OperationalTab }) {
   const [ops, setOps] = useState<OperationsResponse | null>(null);
   const [integrations, setIntegrations] = useState<IntegrationItem[]>([]);
@@ -46,9 +43,9 @@ export function SettingsOperationsPage({ tab }: { tab: OperationalTab }) {
   const [integrationValues, setIntegrationValues] = useState<Record<string, string>>({});
   const [priceFile, setPriceFile] = useState<File | null>(null);
   const [pricePreview, setPricePreview] = useState<PricePreview | null>(null);
-  const [themeMode, setThemeMode] = useState<ThemeMode>("auto");
 
   const load = useCallback(async () => {
+    if (tab === "appearance") { setLoading(false); return; }
     setLoading(true); setMessage("");
     try {
       const needsIntegrations = tab === "suppliers" || tab === "integrations";
@@ -70,7 +67,6 @@ export function SettingsOperationsPage({ tab }: { tab: OperationalTab }) {
   }, [tab]);
 
   useEffect(() => { void load(); setDraft({}); setEditingProvider(null); setIntegrationValues({}); setPricePreview(null); }, [load]);
-  useEffect(() => { if (tab !== "appearance") return; const saved = (window.localStorage.getItem("turbolev-theme-mode") as ThemeMode | null) || "auto"; setThemeMode(saved); applyTheme(saved); }, [tab]);
 
   const directory = (category: DirectoryCategory) => (ops?.directory || []).filter((item) => item.category === category);
   const markup = obj(ops?.settings?.markup);
@@ -121,6 +117,7 @@ export function SettingsOperationsPage({ tab }: { tab: OperationalTab }) {
     finally { setSaving(false); }
   }
 
+  if (tab === "appearance") return <AppearanceSettingsPanel/>;
   if (loading && !ops) return <SettingsFrame title="Налаштування" description="Завантажуємо дані…"><div className={styles.empty}>Завантаження…</div></SettingsFrame>;
 
   const integrationCards = (items: IntegrationItem[]) => <div className={styles.cards}>{items.map((item) => {
@@ -161,8 +158,6 @@ export function SettingsOperationsPage({ tab }: { tab: OperationalTab }) {
   if (tab === "cash") { const items = directory("CASH"); return <SettingsFrame title="Каса" description="Довідник кас/рахунків операційних налаштувань. Фактичні оплати ведуться в модулі «Оплати»." message={message}><AddToggle label="+ Додати касу" open={draft.form === "cash"} onClick={() => setDraft(draft.form === "cash" ? {} : { form: "cash" })}/>{draft.form === "cash" && <FormBox><div className={styles.formGrid}><Field label="Назва" value={draft.name} onChange={(value) => setDraft({ ...draft, name: value })}/><Field label="Локація" value={draft.location} onChange={(value) => setDraft({ ...draft, location: value })}/></div><div className={styles.actions}><button disabled={saving} onClick={() => void action({ action: "ADD_DIRECTORY", category: "CASH", name: draft.name, data: { location: draft.location } }, "Касу додано.")}>Зберегти</button></div></FormBox>}<DirectoryCards items={items} onToggle={(item) => void action({ action: "TOGGLE_DIRECTORY", id: item.id, isActive: !item.isActive }, "Статус каси змінено.")} facts={(item) => text(item, "location")}/></SettingsFrame>; }
 
   if (tab === "integrations") { const general = integrations.filter((item) => !isSupplierIntegration(item)); return <SettingsFrame title="Інтеграції" description="Телефонія, месенджери та канали комунікацій." message={message}>{general.length ? integrationCards(general) : <div className={styles.empty}>Інтеграції ще не налаштовані.</div>}<SectionTitle>Binotel</SectionTitle><BinotelCallbacksSettings/></SettingsFrame>; }
-
-  if (tab === "appearance") return <SettingsFrame title="Оформлення" description="Тема CRM: системна, світла або темна."><div className={styles.themeGrid}>{(["light", "dark", "auto"] as ThemeMode[]).map((mode) => <button key={mode} className={`${styles.theme} ${themeMode === mode ? styles.themeActive : ""}`} onClick={() => { setThemeMode(mode); window.localStorage.setItem("turbolev-theme-mode", mode); window.localStorage.removeItem("turbolev-theme"); applyTheme(mode); }}><span className={`${styles.themePreview} ${styles[`preview_${mode}`]}`}/><strong>{mode === "light" ? "Світла" : mode === "dark" ? "Темна" : "Автоматична"}</strong><small>{mode === "auto" ? "Як у системі" : "Фіксований режим"}</small></button>)}</div></SettingsFrame>;
 
   return <SettingsFrame title="Налаштування" description="Розділ недоступний."><div className={styles.empty}>Невідомий розділ.</div></SettingsFrame>;
 }
