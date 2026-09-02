@@ -135,7 +135,7 @@ export function VehicleDiagnosticsTab({ vehicle, diagnosticId }: Props) {
   function openCommercial(row: DiagnosticRow) {
     if (row.commercialProposal?.workOrderId) navigateCrm("Авто", { vehicleId: vehicle.id, vehiclePage: "commercial-offer", workOrderId: row.commercialProposal.workOrderId, workOrderTab: "estimate" });
   }
-  function openDiagnostic(row: DiagnosticRow) { navigateCrm("Діагностика", { diagnosticId: row.id, vehicleId: vehicle.id }); }
+  function openDiagnostic(row: DiagnosticRow) { navigateCrm("Авто", { vehicleId: vehicle.id, vehiclePage: "diagnostic-card", diagnosticId: row.id }); }
 
   if (loading) return <div className={styles.state}>Завантажую Діагностичну карту…</div>;
   if (error && !rows.length) return <div className={styles.error}>{error}<button type="button" onClick={() => setRefreshTick((value) => value + 1)}>Повторити</button></div>;
