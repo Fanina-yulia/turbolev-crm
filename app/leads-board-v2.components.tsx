@@ -128,8 +128,11 @@ export function LeadBookingModal({ booking, bookingLocation, locations, saving, 
   onSave: () => Promise<void>;
 }) {
   function resetSelection(next: Partial<BookingState>) {
-    onChange({ ...booking, ...next, time: "", postId: "", mechanicId: "" });
+    onChange({ ...booking, ...next, time: "", postId: "", mechanicId: "", mechanicParallelCount: 0, parallelConfirmed: false, parallelConfirmationRequired: false });
   }
+
+  const selectedMechanic = bookingLocation?.mechanics.find((mechanic) => mechanic.id === booking.mechanicId);
+  const parallelLoad = booking.parallelConfirmationRequired || booking.mechanicParallelCount === 1;
 
   return <div className="leadModalBackdrop" onMouseDown={onClose}>
     <section className="leadModal" onMouseDown={(event) => event.stopPropagation()}>
@@ -164,8 +167,13 @@ export function LeadBookingModal({ booking, bookingLocation, locations, saving, 
         selectedTime={booking.time}
         selectedPostId={booking.postId}
         selectedMechanicId={booking.mechanicId}
-        onChange={(selection) => onChange({ ...booking, time: selection.time, postId: selection.postId, mechanicId: selection.mechanicId })}
+        onChange={(selection) => onChange({ ...booking, time: selection.time, postId: selection.postId, mechanicId: selection.mechanicId, mechanicParallelCount: selection.parallelCount ?? 0, parallelConfirmed: false, parallelConfirmationRequired: false })}
       />
+
+      {parallelLoad && booking.mechanicId && <label className="leadParallelConfirmation">
+        <input type="checkbox" checked={booking.parallelConfirmed} onChange={(event) => onChange({ ...booking, parallelConfirmed: event.target.checked })} />
+        <span><b>Підтверджую паралельне завантаження</b><small>{selectedMechanic?.name || "Обраний механік"} уже має інший запис у цьому інтервалі. Максимум — 2 одночасні автомобілі.</small></span>
+      </label>}
 
       <footer>
         <button type="button" className="secondary" onClick={onClose}>Скасувати</button>

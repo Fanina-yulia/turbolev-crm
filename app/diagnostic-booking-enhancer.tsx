@@ -362,7 +362,7 @@ function Scheduler({ step, host, plannerContext }: { step: HTMLElement; host: HT
 
     return <div className={styles.scheduler}>
       <div className={styles.headingRow}>
-        <div><small>КРОК 4 · ПІДТВЕРДЖЕННЯ</small><h3>Запис на СТО</h3><p>Дата, час і пост уже вибрані у Планувальнику. Залишилось призначити майстра та підтвердити запис.</p></div>
+        <div><small>КРОК 4 · ПІДТВЕРДЖЕННЯ</small><h3>Запис на СТО</h3><p>Дата, час і пост уже вибрані у Планувальнику. Залишилось призначити механіка та підтвердити запис.</p></div>
         <button className={styles.editSlot} type="button" onClick={editSlot}>Змінити час / пост</button>
       </div>
 
@@ -374,7 +374,7 @@ function Scheduler({ step, host, plannerContext }: { step: HTMLElement; host: HT
 
       <div className={styles.assignment}>
         {needsPost && <label><span>Пост *</span><select value={state.postId} onChange={(event) => changePost(event.target.value)}><option value="">Оберіть пост</option>{state.posts.map((post) => <option key={post.id} value={post.id}>{post.name}</option>)}</select></label>}
-        <label><span>Майстер *</span><select value={state.mechanicId} onChange={(event) => changeMechanic(event.target.value)}><option value="">Оберіть майстра</option>{state.mechanics.map((mechanic) => <option key={mechanic.id} value={mechanic.id}>{mechanic.name}</option>)}</select></label>
+        <label><span>Механік *</span><select value={state.mechanicId} onChange={(event) => changeMechanic(event.target.value)}><option value="">Оберіть механіка</option>{state.mechanics.map((mechanic) => <option key={mechanic.id} value={mechanic.id}>{mechanic.name}</option>)}</select></label>
         <div className={styles.lockNotice}><b>✓ Час зарезервовано</b><span>При збереженні CRM ще раз перевірить конфлікти по посту та майстру.</span></div>
       </div>
 
@@ -385,7 +385,7 @@ function Scheduler({ step, host, plannerContext }: { step: HTMLElement; host: HT
   return <div className={styles.scheduler}>
     <div className={styles.headingRow}>
       <div><small>КРОК 4 · ЗАПИС</small><h3>Оберіть вільний пост і час</h3><p>CRM показує реальну зайнятість. Інтервал — 30 хвилин, базова тривалість нового запису — 60 хв.</p></div>
-      <div className={styles.rules}><b>Правила запису</b><span>тільки робочі години</span><span>без накладення по посту</span><span>до 2 авто на майстра</span></div>
+      <div className={styles.rules}><b>Правила запису</b><span>тільки робочі години</span><span>без накладення по посту</span><span>до 2 авто на механіка</span></div>
     </div>
 
     <div className={styles.controls}>

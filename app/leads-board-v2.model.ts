@@ -180,13 +180,14 @@ function parsePlannerLocation(value: unknown): PlannerLocation | null {
   const id = stringValue(value.id).trim();
   const name = stringValue(value.name).trim();
   if (!id || !name) return null;
+  const timezone = stringValue(value.timezone, "Europe/Kyiv").trim() || "Europe/Kyiv";
   const posts = Array.isArray(value.posts)
     ? value.posts.map(parsePlannerResource).filter((item): item is PlannerResource => item !== null)
     : [];
   const mechanics = Array.isArray(value.mechanics)
     ? value.mechanics.map(parsePlannerResource).filter((item): item is PlannerResource => item !== null)
     : [];
-  return { id, name, posts, mechanics };
+  return { id, name, timezone, posts, mechanics };
 }
 
 export function parsePlannerLocations(value: unknown): PlannerLocation[] {

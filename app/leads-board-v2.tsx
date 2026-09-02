@@ -26,6 +26,7 @@ import type {
   UserOption,
 } from "./leads-board-v2.types";
 import { navigateCrm, readCrmRoute } from "./crm-route";
+import { zonedDateTimeToDate } from "@/src/lib/zoned-time";
 
 const CANCELLATION_REASONS: Array<{ code: RejectReasonCode; label: string }> = [
   { code: "TOO_EXPENSIVE", label: "Дорого" },
@@ -202,6 +203,9 @@ export function LeadsBoardV2() {
         locationId: typeof activeLocationId === "string" ? activeLocationId : nextLocations[0]?.id || "",
         postId: "",
         mechanicId: "",
+        mechanicParallelCount: 0,
+        parallelConfirmed: false,
+        parallelConfirmationRequired: false,
         date: `${start.getFullYear()}-${pad(start.getMonth() + 1)}-${pad(start.getDate())}`,
         time: `${pad(start.getHours())}:00`,
         duration: "60",
@@ -216,7 +220,7 @@ export function LeadsBoardV2() {
     setSavingBooking(true);
     setError("");
     try {
-      const start = new Date(`${booking.date}T${booking.time}:00`);
+      const start = zonedDateTimeToDate(booking.date, booking.time, bookingLocation?.timezone || "Europe/Kyiv");
       const end = new Date(start.getTime() + Number(booking.duration) * 60_000);
       const response = await fetch(`/api/leads/${booking.lead.id}/book`, {
         method: "POST",
@@ -225,12 +229,19 @@ export function LeadsBoardV2() {
           locationId: booking.locationId,
           postId: booking.postId || null,
           mechanicId: booking.mechanicId || null,
+          confirmMechanicParallel: booking.parallelConfirmed,
           plannedStartAt: start.toISOString(),
           plannedEndAt: end.toISOString(),
         }),
       });
       const payload: unknown = await response.json();
-      if (!response.ok) throw new Error(payloadMessage(payload, "Не вдалося записати клієнта"));
+      if (!response.ok) {
+        const code = readPayloadField(payload, "code");
+        if (code === "MECHANIC_PARALLEL_LOAD") {
+          setBooking((current) => current ? { ...current, parallelConfirmationRequired: true, parallelConfirmed: false } : current);
+        }
+        throw new Error(payloadMessage(payload, "Не вдалося записати клієнта"));
+      }
       setBooking(null);
       notify("Звернення записано — запис створено у Планувальнику.");
       await load();

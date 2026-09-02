@@ -37,10 +37,20 @@ export async function POST(request: Request, context: RouteContext) {
       source: "LEAD",
     });
 
-    const created = await createPlannerAppointment(appointmentInput);
+    const created = await createPlannerAppointment(appointmentInput, {
+      requireMechanicConfirmation: true,
+      confirmMechanicParallel: body.confirmMechanicParallel === true,
+    });
     if (!created.ok) {
       return NextResponse.json(
-        { ok: false, error: `Конфлікт: ${created.conflict.resource} уже зайнятий у цей час.`, conflict: created.conflict },
+        {
+          ok: false,
+          error: created.parallelConfirmationRequired
+            ? `${created.conflict.resource} уже має інший запис у цей час. Підтвердіть паралельне завантаження.`
+            : `Конфлікт: ${created.conflict.resource} уже зайнятий у цей час.`,
+          code: created.parallelConfirmationRequired ? "MECHANIC_PARALLEL_LOAD" : "RESOURCE_CONFLICT",
+          conflict: created.conflict,
+        },
         { status: 409 },
       );
     }
@@ -82,6 +92,15 @@ export async function POST(request: Request, context: RouteContext) {
     }
     if (code === "LOCATION_REQUIRED") {
       return NextResponse.json({ ok: false, error: "Оберіть локацію СТО." }, { status: 422 });
+    }
+    if (code === "MECHANIC_REQUIRED") {
+      return NextResponse.json({ ok: false, error: "Оберіть механіка, якого потрібно закріпити за записом.", code }, { status: 422 });
+    }
+    if (code === "MECHANIC_UNAVAILABLE") {
+      return NextResponse.json({ ok: false, error: "Обраний механік неактивний або не належить до цієї локації.", code }, { status: 422 });
+    }
+    if (code === "POST_UNAVAILABLE") {
+      return NextResponse.json({ ok: false, error: "Обраний пост неактивний або не належить до цієї локації.", code }, { status: 422 });
     }
 
     console.error("POST /api/leads/[id]/book failed", {

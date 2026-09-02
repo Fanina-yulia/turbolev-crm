@@ -7,6 +7,7 @@ import { linkDiagnosticVisitInTransaction } from "@/src/services/diagnostic-visi
 import {
   normalizeAppointmentPayload,
   parsePlannerStatus,
+  assertPlannerMechanicAssigned,
   type AppointmentWrite,
   validatePlannerResources,
 } from "@/src/services/planner.service";
@@ -86,6 +87,7 @@ export async function arrivePlannerAppointment(id: string, body: Record<string, 
 
   const current = toAppointmentWrite(existing);
   const input = normalizeAppointmentPayload({ ...body, status: "ARRIVED" }, current);
+  assertPlannerMechanicAssigned(input);
   if (!input.actualArrivalAt) input.actualArrivalAt = new Date();
 
   const validation = await validatePlannerResources(input, id);

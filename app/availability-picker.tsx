@@ -7,6 +7,7 @@ export type AvailabilitySelection = {
   time: string;
   postId: string;
   mechanicId: string;
+  parallelCount?: number;
   startAt: string;
   endAt: string;
 };
@@ -85,12 +86,12 @@ export function AvailabilityPicker({
     const mechanic = currentMechanic || [...slot.mechanics]
       .filter((item) => item.available)
       .sort((a, b) => (a.parallelCount ?? 0) - (b.parallelCount ?? 0))[0];
-    onChange({ time: slot.time, postId: post.id, mechanicId: mechanic?.id || "", startAt: slot.startAt, endAt: slot.endAt });
+    onChange({ time: slot.time, postId: post.id, mechanicId: mechanic?.id || "", parallelCount: mechanic?.parallelCount ?? 0, startAt: slot.startAt, endAt: slot.endAt });
   }
 
   function chooseMechanic(mechanic: ResourceState) {
     if (!selectedSlot || !selectedPostId || !mechanic.available) return;
-    onChange({ time: selectedSlot.time, postId: selectedPostId, mechanicId: mechanic.id, startAt: selectedSlot.startAt, endAt: selectedSlot.endAt });
+    onChange({ time: selectedSlot.time, postId: selectedPostId, mechanicId: mechanic.id, parallelCount: mechanic.parallelCount ?? 0, startAt: selectedSlot.startAt, endAt: selectedSlot.endAt });
   }
 
   if (!date) return <div className={styles.picker}><div className={styles.state}>Оберіть дату — покажу вільні пости по 30 хвилин.</div></div>;
@@ -123,7 +124,7 @@ export function AvailabilityPicker({
           </div>)}
         </div>
         {selectedSlot && selectedPostId && <div className={styles.mechanics}>
-          <span>Майстер на {selectedSlot.time}</span>
+          <span>Механік на {selectedSlot.time}</span>
           <div className={styles.mechanicList}>
             {selectedSlot.mechanics.map((mechanic) => <button
               type="button"
@@ -136,7 +137,7 @@ export function AvailabilityPicker({
               <small>{!mechanic.available ? "завантажений: 2 авто" : (mechanic.parallelCount ?? 0) === 1 ? "паралельно 1 авто" : "вільний"}</small>
             </button>)}
           </div>
-          {!selectedSlot.mechanics.length && <div className={styles.warning}>На локації немає активних механіків. Пост можна вибрати, але майстра потрібно налаштувати в CRM.</div>}
+          {!selectedSlot.mechanics.length && <div className={styles.warning}>На локації немає активних механіків. Пост можна вибрати, але спочатку додайте механіків у CRM.</div>}
         </div>}
       </>}
   </div>;

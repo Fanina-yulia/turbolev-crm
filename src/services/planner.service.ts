@@ -75,7 +75,47 @@ export type PlannerResourceWarning = {
   mechanic: string;
   parallelCount: number;
   message: string;
+  conflict?: {
+    id: string;
+    resource: string;
+    resourceType: "MECHANIC";
+    start: Date;
+    end: Date;
+    vehicle: string;
+  };
 };
+
+export type PlannerCreateOptions = {
+  requireMechanicConfirmation?: boolean;
+  confirmMechanicParallel?: boolean;
+};
+
+const STATUSES_ALLOWED_WITHOUT_MECHANIC = new Set<PlannerStatus>(["CANCELLED", "NO_SHOW", "COMPLETED", "RESERVE"]);
+const NON_RESOURCE_APPOINTMENT_STATUSES = new Set<PlannerStatus>(["CANCELLED", "NO_SHOW", "COMPLETED"]);
+
+export function assertPlannerMechanicAssigned(input: Pick<AppointmentWrite, "status" | "mechanicId">) {
+  const status = input.status || "BOOKED";
+  if (!STATUSES_ALLOWED_WITHOUT_MECHANIC.has(status) && !input.mechanicId) throw new Error("MECHANIC_REQUIRED");
+}
+
+async function assertPlannerResourceAssignments(input: AppointmentWrite) {
+  if (NON_RESOURCE_APPOINTMENT_STATUSES.has(input.status || "BOOKED")) return;
+  const prisma = getPrisma();
+  if (input.postId) {
+    const post = await prisma.servicePost.findFirst({
+      where: { id: input.postId, locationId: input.locationId, isActive: true },
+      select: { id: true },
+    });
+    if (!post) throw new Error("POST_UNAVAILABLE");
+  }
+  if (input.mechanicId) {
+    const mechanic = await prisma.serviceMechanic.findFirst({
+      where: { id: input.mechanicId, locationId: input.locationId, isActive: true },
+      select: { id: true },
+    });
+    if (!mechanic) throw new Error("MECHANIC_UNAVAILABLE");
+  }
+}
 
 function clean(value: unknown, max = 500) {
   if (typeof value !== "string") return null;
@@ -240,6 +280,14 @@ export async function validatePlannerResources(input: AppointmentWrite, excludeI
         mechanic: mechanicName,
         parallelCount: 2,
         message: `${mechanicName} буде вести 2 автомобілі одночасно. CRM дозволяє це, але попереджає про паралельне завантаження.`,
+        conflict: {
+          id: parallel.id,
+          resource: mechanicName,
+          resourceType: "MECHANIC",
+          start: parallel.plannedStartAt,
+          end: parallel.plannedEndAt,
+          vehicle: parallel.vehicleLabel ?? parallel.plateNumber ?? "інший запис",
+        },
       };
       return { conflict: null, warning };
     }
@@ -248,9 +296,14 @@ export async function validatePlannerResources(input: AppointmentWrite, excludeI
   return { conflict: null, warning: null };
 }
 
-export async function createPlannerAppointment(input: AppointmentWrite) {
+export async function createPlannerAppointment(input: AppointmentWrite, options: PlannerCreateOptions = {}) {
+  assertPlannerMechanicAssigned(input);
+  await assertPlannerResourceAssignments(input);
   const validation = await validatePlannerResources(input);
-  if (validation.conflict) return { ok: false as const, conflict: validation.conflict };
+  if (validation.conflict) return { ok: false as const, conflict: validation.conflict, parallelConfirmationRequired: false as const };
+  if (options.requireMechanicConfirmation && validation.warning?.conflict && options.confirmMechanicParallel !== true) {
+    return { ok: false as const, conflict: validation.warning.conflict, parallelConfirmationRequired: true as const };
+  }
   const prisma = getPrisma();
   const appointment = await prisma.serviceAppointment.create({ data: input, include: { post: true, mechanic: true } });
   return { ok: true as const, appointment, warning: validation.warning };
@@ -290,6 +343,8 @@ export async function updatePlannerAppointment(id: string, body: Record<string, 
   };
 
   const input = normalizeAppointmentPayload(body, current);
+  assertPlannerMechanicAssigned(input);
+  await assertPlannerResourceAssignments(input);
   if (input.status === "ARRIVED" && !input.actualArrivalAt) input.actualArrivalAt = new Date();
   if (input.status === "IN_REPAIR" && !input.actualStartAt) input.actualStartAt = new Date();
   if (input.status === "COMPLETED" && !input.actualEndAt) input.actualEndAt = new Date();

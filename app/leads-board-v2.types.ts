@@ -60,6 +60,7 @@ export type PlannerResource = { id: string; name: string };
 export type PlannerLocation = {
   id: string;
   name: string;
+  timezone: string;
   posts: PlannerResource[];
   mechanics: PlannerResource[];
 };
@@ -69,6 +70,9 @@ export type BookingState = {
   locationId: string;
   postId: string;
   mechanicId: string;
+  mechanicParallelCount: number;
+  parallelConfirmed: boolean;
+  parallelConfirmationRequired: boolean;
   date: string;
   time: string;
   duration: string;

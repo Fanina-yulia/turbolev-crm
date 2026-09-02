@@ -2,23 +2,10 @@
 
 import { useEffect } from "react";
 
-const UNASSIGNED = "__UNASSIGNED__";
-
-function setNativeSelectValue(select: HTMLSelectElement, value: string) {
-  const setter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value")?.set;
-  setter?.call(select, value);
-  select.dispatchEvent(new Event("change", { bubbles: true }));
-}
-
-function ensureUnassignedOption(select: HTMLSelectElement) {
-  let option = [...select.options].find(item => item.value === UNASSIGNED);
-  if (!option) {
-    option = document.createElement("option");
-    option.value = UNASSIGNED;
-    option.textContent = "Призначити пізніше";
-    select.insertBefore(option, select.options[1] || null);
-  }
-  if (!select.value) setNativeSelectValue(select, UNASSIGNED);
+function enforceMechanicRequired(select: HTMLSelectElement) {
+  select.querySelector('option[value="__UNASSIGNED__"]')?.remove();
+  const first = select.options[0];
+  if (first?.value === "") first.textContent = "Оберіть механіка";
 }
 
 function enhanceStepFour() {
@@ -28,27 +15,19 @@ function enhanceStepFour() {
 
   const bookingGrid = step.querySelector<HTMLElement>(".bookingGrid");
   const hiddenMechanic = bookingGrid?.querySelectorAll<HTMLSelectElement>("select")[1];
-  if (hiddenMechanic) {
-    ensureUnassignedOption(hiddenMechanic);
-    if (hiddenMechanic.dataset.optionalMechanicBound !== "true") {
-      hiddenMechanic.dataset.optionalMechanicBound = "true";
-      hiddenMechanic.addEventListener("change", () => {
-        if (!hiddenMechanic.value) queueMicrotask(() => ensureUnassignedOption(hiddenMechanic));
-      });
-    }
-  }
+  if (hiddenMechanic) enforceMechanicRequired(hiddenMechanic);
 
   for (const small of [...step.querySelectorAll<HTMLElement>("small")]) {
-    if (small.textContent?.trim() === "Майстер *") small.textContent = "Майстер · необов’язково";
+    if (small.textContent?.trim() === "Майстер · необов’язково") small.textContent = "Механік *";
   }
 
   for (const select of [...step.querySelectorAll<HTMLSelectElement>("select")]) {
     const first = select.options[0];
-    if (first?.textContent?.trim() === "Оберіть майстра") first.textContent = "Призначити пізніше";
+    if (first?.textContent?.trim() === "Призначити пізніше") first.textContent = "Оберіть механіка";
   }
 }
 
-export function OptionalMechanicBookingBridge() {
+export function MechanicBookingRequiredBridge() {
   useEffect(() => {
     enhanceStepFour();
     const observer = new MutationObserver(enhanceStepFour);

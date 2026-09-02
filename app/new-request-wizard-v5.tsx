@@ -3,6 +3,7 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import type { PlannerAppointmentContract, PlannerLocationContract } from "@/src/lib/contracts/planner";
 import { parsePlannerBoardPayload, plannerPayloadMessage } from "@/src/lib/contracts/planner-payload.parsers";
+import { addDateKey, zonedDateTimeToDate } from "@/src/lib/zoned-time";
 import { PlannerDayView, type PlannerTimeSelection } from "./planner-day-view";
 import { navigateCrm } from "./crm-route";
 import { VehiclePlate } from "./vehicle-plate";
@@ -12,7 +13,6 @@ import {
   formatPhone,
   inferEngineVolume,
   initialRequestForm,
-  MANAGER_KEY,
   normalizePhone,
   normalizePlate,
   normalizeVin,
@@ -20,7 +20,6 @@ import {
   parseMakeOptions,
   parseModelOptions,
   parsePlateLookupCandidate,
-  parseUserOptions,
   parseVinResponse,
   payloadMessage,
   readPayloadField,
@@ -42,7 +41,6 @@ import type {
   OpenRequestDetail,
   PreliminaryWork,
   RequestForm,
-  UserOption,
   VehicleCandidate,
 } from "./new-request-wizard-v5.types";
 
@@ -63,16 +61,41 @@ function plannerDateLabel(value: string) {
   return day && month && year ? `${day}.${month}.${year}` : value;
 }
 
-function plannerContextFor(detail: OpenRequestDetail) {
-  if (!detail.appointmentDate || !detail.appointmentTime || typeof document === "undefined") return "";
+type PlannerBookingContext = {
+  date?: string;
+  time?: string;
+  endTime?: string;
+  durationMinutes?: number;
+  postId?: string;
+  locationId?: string;
+};
+
+function plannerContextFor(detail: OpenRequestDetail): PlannerBookingContext | null {
+  if (!detail.appointmentDate || !detail.appointmentTime || typeof document === "undefined") return null;
   const raw = document.cookie.split(";").map((part) => part.trim()).find((part) => part.startsWith("turbolev_booking_context="))?.split("=").slice(1).join("=") || "";
-  if (!raw) return "";
+  if (!raw) return null;
   try {
-    const context = JSON.parse(decodeURIComponent(raw)) as { date?: string; time?: string; postId?: string; locationId?: string };
-    return context.date === detail.appointmentDate && context.time === detail.appointmentTime ? `${context.locationId || ""}\u0000${context.postId || ""}` : "";
+    const context = JSON.parse(decodeURIComponent(raw)) as PlannerBookingContext;
+    return context.date === detail.appointmentDate && context.time === detail.appointmentTime ? context : null;
   } catch {
-    return "";
+    return null;
   }
+}
+
+const NON_BLOCKING_APPOINTMENT_STATUSES = new Set(["COMPLETED", "NO_SHOW", "CANCELLED"]);
+
+function appointmentOverlaps(item: PlannerAppointmentContract, start: Date, end: Date) {
+  if (NON_BLOCKING_APPOINTMENT_STATUSES.has(item.status)) return false;
+  return new Date(item.plannedStartAt).getTime() < end.getTime() && new Date(item.plannedEndAt).getTime() > start.getTime();
+}
+
+function timeLabel(value: string, timeZone: string) {
+  return new Intl.DateTimeFormat("uk-UA", {
+    timeZone,
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).format(new Date(value));
 }
 
 export function NewRequestWizardV5({showButton=true,onOpenChange}:NewRequestWizardProps){
@@ -94,10 +117,12 @@ export function NewRequestWizardV5({showButton=true,onOpenChange}:NewRequestWiza
   const [makes,setMakes]=useState<MakeOption[]>([]);
   const [models,setModels]=useState<ModelOption[]>([]);
   const [catalogLoading,setCatalogLoading]=useState(false);
-  const [users,setUsers]=useState<UserOption[]>([]);
   const [locations,setLocations]=useState<PlannerLocationContract[]>([]);
   const [plannerAppointments,setPlannerAppointments]=useState<PlannerAppointmentContract[]>([]);
   const [plannerSelection,setPlannerSelection]=useState<PlannerTimeSelection|null>(null);
+  const [plannerContextDuration,setPlannerContextDuration]=useState<number|null>(null);
+  const [parallelMechanicConfirmed,setParallelMechanicConfirmed]=useState(false);
+  const [parallelConfirmationRequired,setParallelConfirmationRequired]=useState(false);
   const [plannerLoading,setPlannerLoading]=useState(false);
   const [preliminaryWorks,setPreliminaryWorks]=useState<PreliminaryWork[]>([]);
   const [preliminaryTotal,setPreliminaryTotal]=useState(0);
@@ -105,7 +130,7 @@ export function NewRequestWizardV5({showButton=true,onOpenChange}:NewRequestWiza
   const plateLookupRequestRef=useRef(0);
   const routeOpenedRef=useRef(false);
   const plannerDateInputRef=useRef<HTMLInputElement|null>(null);
-  const plannerLoadedDateRef=useRef("");
+  const plannerLoadedKeyRef=useRef("");
 
   const canLeaveClient=normalizePhone(form.phone).length===12&&form.customerName.trim().length>0;
   const hasVehicleIdentifier=normalizePlate(form.plate).length>=6||normalizeVin(form.vin).length===17;
@@ -120,11 +145,25 @@ export function NewRequestWizardV5({showButton=true,onOpenChange}:NewRequestWiza
     [locations,form.locationId],
   );
   const plannerEntry=form.source==="PLANNER";
-  const responsibleOptions=useMemo(()=>{
-    const names=users.map(item=>item.name);
-    if(form.responsible&&!names.includes(form.responsible))names.unshift(form.responsible);
-    return names.length?names:["Продавник","РОП","Завідуючий"];
-  },[users,form.responsible]);
+  const selectedDurationMinutes=plannerSelection?.durationMinutes||plannerContextDuration||60;
+  const mechanicLoads=useMemo(()=>{
+    if(!activeLocation||!form.appointmentDate||!form.appointmentTime)return [] as Array<{id:string;count:number;items:PlannerAppointmentContract[]}>;
+    const start=zonedDateTimeToDate(form.appointmentDate,form.appointmentTime,activeLocation.timezone||"Europe/Kyiv");
+    const end=new Date(start.getTime()+selectedDurationMinutes*60_000);
+    return activeLocation.mechanics.map(mechanic=>({
+      id:mechanic.id,
+      count:plannerAppointments.filter(item=>item.mechanicId===mechanic.id&&item.locationId===activeLocation.id&&appointmentOverlaps(item,start,end)).length,
+      items:plannerAppointments.filter(item=>item.mechanicId===mechanic.id&&item.locationId===activeLocation.id&&appointmentOverlaps(item,start,end)),
+    }));
+  },[activeLocation,form.appointmentDate,form.appointmentTime,plannerAppointments,selectedDurationMinutes]);
+  const selectedMechanicLoad=mechanicLoads.find(item=>item.id===form.mechanicId)||null;
+  const parallelMechanicName=activeLocation?.mechanics.find(item=>item.id===form.mechanicId)?.name||"Обраний механік";
+  const requiresParallelConfirmation=Boolean(parallelConfirmationRequired||selectedMechanicLoad?.count===1);
+
+  useEffect(()=>{
+    setParallelMechanicConfirmed(false);
+    setParallelConfirmationRequired(false);
+  },[form.appointmentDate,form.appointmentTime,form.locationId,form.postId,form.mechanicId]);
 
   function update<K extends keyof RequestForm>(field:K,value:RequestForm[K]){
     setForm(current=>({...current,[field]:value}));
@@ -230,24 +269,6 @@ export function NewRequestWizardV5({showButton=true,onOpenChange}:NewRequestWiza
     return null;
   }
 
-  async function loadUsers(){
-    try{
-      const response=await fetch("/api/users/active",{cache:"no-store"});
-      const payload:unknown=await response.json();
-      if(!response.ok)throw new Error(payloadMessage(payload,"Не вдалося завантажити користувачів"));
-      const items=parseUserOptions(readPayloadField(payload,"items"));
-      setUsers(items);
-      setForm(current=>{
-        if(current.responsible)return current;
-        const stored=window.localStorage.getItem(MANAGER_KEY)||"";
-        const resolved=items.some(item=>item.name===stored)?stored:items[0]?.name||"Продавник";
-        return {...current,responsible:resolved};
-      });
-    }catch{
-      setUsers([]);
-      setForm(current=>current.responsible?current:{...current,responsible:"Продавник"});
-    }
-  }
   async function loadMakes(){
     if(makes.length)return;
     setCatalogLoading(true);
@@ -280,13 +301,19 @@ export function NewRequestWizardV5({showButton=true,onOpenChange}:NewRequestWiza
   }
   async function loadPlannerResources(){
     const targetDate=form.appointmentDate||todayKey();
-    if(plannerLoading||plannerLoadedDateRef.current===targetDate&&locations.length>0)return;
-    plannerLoadedDateRef.current=targetDate;
+    const targetLocationId=form.locationId||"";
+    const targetLocation=locations.find(location=>location.id===targetLocationId)||activeLocation;
+    const timeZone=targetLocation?.timezone||"Europe/Kyiv";
+    const loadKey=`${targetDate}:${targetLocationId}`;
+    if(plannerLoading||plannerLoadedKeyRef.current===loadKey&&locations.length>0)return;
+    plannerLoadedKeyRef.current=loadKey;
     setPlannerLoading(true);
     try{
-      const from=new Date(`${targetDate}T00:00:00`);
-      const to=new Date(from.getTime()+14*24*60*60*1000);
-      const response=await fetch(`/api/planner?from=${encodeURIComponent(from.toISOString())}&to=${encodeURIComponent(to.toISOString())}`,{cache:"no-store"});
+      const from=zonedDateTimeToDate(targetDate,"00:00",timeZone);
+      const to=zonedDateTimeToDate(addDateKey(targetDate,14),"00:00",timeZone);
+      const params=new URLSearchParams({from:from.toISOString(),to:to.toISOString()});
+      if(targetLocationId)params.set("locationId",targetLocationId);
+      const response=await fetch(`/api/planner?${params.toString()}`,{cache:"no-store"});
       const payload:unknown=await response.json();
       const board=parsePlannerBoardPayload(payload);
       if(!response.ok||!board)throw new Error(plannerPayloadMessage(payload,"Не вдалося завантажити Планувальник."));
@@ -305,7 +332,7 @@ export function NewRequestWizardV5({showButton=true,onOpenChange}:NewRequestWiza
         return {...current,locationId:location.id,postId,mechanicId};
       });
     }catch(reason){
-      plannerLoadedDateRef.current="";
+      plannerLoadedKeyRef.current="";
       setError(reason instanceof Error?reason.message:"Не вдалося завантажити Планувальник.");
     }finally{
       setPlannerLoading(false);
@@ -316,20 +343,19 @@ export function NewRequestWizardV5({showButton=true,onOpenChange}:NewRequestWiza
     plateLookupControllerRef.current?.abort();
     plateLookupControllerRef.current=null;
     plateLookupRequestRef.current+=1;
-    const stored=typeof window!=="undefined"?window.localStorage.getItem(MANAGER_KEY)||"":"";
-    const plannerContext=plannerContextFor(detail).split("\u0000");
+    const plannerContext=plannerContextFor(detail);
     setForm({
       ...initialRequestForm,
       customerName:detail.name?.trim()||"",
       phone:detail.phone?formatPhone(detail.phone):"",
       source:detail.source?.trim()||"Інше",
-      responsible:detail.responsible?.trim()||stored,
+      responsible:detail.responsible?.trim()||"",
       plate:detail.plate?normalizePlate(detail.plate):"",
       vin:detail.vin?normalizeVin(detail.vin):"",
       appointmentDate:detail.appointmentDate||"",
       appointmentTime:detail.appointmentTime||"",
-      postId:detail.postId||plannerContext[1]||"",
-      locationId:detail.locationId||plannerContext[0]||"",
+      postId:detail.postId||plannerContext?.postId||"",
+      locationId:detail.locationId||plannerContext?.locationId||"",
     });
     setStep(1);
     setError("");
@@ -348,7 +374,14 @@ export function NewRequestWizardV5({showButton=true,onOpenChange}:NewRequestWiza
     setLocations([]);
     setPlannerAppointments([]);
     setPlannerSelection(null);
-    plannerLoadedDateRef.current="";
+    setPlannerContextDuration(
+      plannerContext?.durationMinutes && Number.isFinite(plannerContext.durationMinutes) && plannerContext.durationMinutes >= 30
+        ? Math.round(plannerContext.durationMinutes)
+        : null,
+    );
+    setParallelMechanicConfirmed(false);
+    setParallelConfirmationRequired(false);
+    plannerLoadedKeyRef.current="";
     setOpen(true);
     onOpenChange?.(true);
     if(pushRoute&&typeof window!=="undefined"){
@@ -388,7 +421,6 @@ export function NewRequestWizardV5({showButton=true,onOpenChange}:NewRequestWiza
     closeState();
   }
 
-  useEffect(()=>{void loadUsers()},[]);
   useEffect(()=>()=>plateLookupControllerRef.current?.abort(),[]);
   useEffect(()=>{
     const handler=(event:Event)=>openWith((event as CustomEvent<OpenRequestDetail>).detail||{});
@@ -418,7 +450,7 @@ export function NewRequestWizardV5({showButton=true,onOpenChange}:NewRequestWiza
   useEffect(()=>{if(open&&plannerEntry&&step===3&&locations.length===0)void loadPlannerResources()},[open,plannerEntry,step,locations.length]);
   useEffect(()=>{
     if(open&&step===4&&locations.length>0&&form.appointmentDate)void loadPlannerResources();
-  },[open,step,form.appointmentDate,plannerLoading]);
+  },[open,step,form.appointmentDate,form.locationId,plannerLoading]);
   useEffect(()=>{
     const handler=(event:Event)=>{
       const detail=(event as CustomEvent<{works?:PreliminaryWork[];total?:number}>).detail||{};
@@ -614,7 +646,9 @@ export function NewRequestWizardV5({showButton=true,onOpenChange}:NewRequestWiza
     if(!canLeaveVehicle)return setError("Поверніться до кроку «Автомобіль» і вкажіть марку та модель.");
     if(!form.appointmentDate||!form.appointmentTime)return setError("Вкажіть дату та час заїзду.");
     if(!form.postId)return setError("Оберіть пост СТО.");
-    if(!form.mechanicId)return setError("Оберіть майстра, який виконуватиме цю роботу.");
+    if(!form.mechanicId)return setError("Оберіть механіка, якого потрібно закріпити за цим записом.");
+    if(selectedMechanicLoad&&selectedMechanicLoad.count>=2)return setError("Цей механік уже веде 2 автомобілі у вибраному інтервалі. Оберіть іншого механіка або час.");
+    if(requiresParallelConfirmation&&!parallelMechanicConfirmed)return setError(`Механік «${parallelMechanicName}» уже має інший запис у цей час. Підтвердіть паралельне завантаження або оберіть іншого механіка.`);
     if(!canLeaveClient)return setError("Вкажіть ім’я, прізвище та коректний номер телефону.");
     if(vehicleConflict&&!allowReassign)return setError("Потрібно підтвердити переприв’язування автомобіля.");
     setSaving(true);
@@ -629,6 +663,7 @@ export function NewRequestWizardV5({showButton=true,onOpenChange}:NewRequestWiza
         preliminaryAmount:preliminaryTotal>0?String(preliminaryTotal):form.preliminaryAmount,
         preliminaryWorks,
         forceReassignVehicle:allowReassign,
+        confirmMechanicParallel:parallelMechanicConfirmed,
       };
       const response=await fetch("/api/intake",{
         method:"POST",
@@ -636,7 +671,10 @@ export function NewRequestWizardV5({showButton=true,onOpenChange}:NewRequestWiza
         body:JSON.stringify(payload),
       });
       const serverPayload:unknown=await response.json();
-      if(!response.ok)throw new Error(payloadMessage(serverPayload,"Не вдалося створити запис"));
+      if(!response.ok){
+        if(readPayloadField(serverPayload,"code")==="MECHANIC_PARALLEL_LOAD")setParallelConfirmationRequired(true);
+        throw new Error(payloadMessage(serverPayload,"Не вдалося створити запис"));
+      }
       const clientId=readPayloadField(readPayloadField(serverPayload,"client"),"id");
       const vehicleId=readPayloadField(readPayloadField(serverPayload,"vehicle"),"id");
       const leadId=readPayloadField(readPayloadField(serverPayload,"lead"),"id");
@@ -680,6 +718,33 @@ export function NewRequestWizardV5({showButton=true,onOpenChange}:NewRequestWiza
       setSaving(false);
     }
   }
+
+  const mechanicOptions=activeLocation?.mechanics.map(mechanic=>{
+    const load=mechanicLoads.find(item=>item.id===mechanic.id);
+    const suffix=plannerLoading
+      ? " · перевіряю зайнятість…"
+      : !load
+        ? " · доступність не перевірена"
+        : load.count===0
+        ? " · вільний"
+        : load.count===1
+          ? " · паралельно 1 авто"
+          : " · зайнятий: 2 авто";
+    return <option key={mechanic.id} value={mechanic.id} disabled={!plannerLoading&&load?.count===2}>{`${mechanic.name}${suffix}`}</option>;
+  })||[];
+  const parallelItem=selectedMechanicLoad?.items[0]||null;
+  const parallelItemLabel=parallelItem
+    ? `${parallelItem.vehicleLabel||parallelItem.plateNumber||"інший автомобіль"} · ${timeLabel(parallelItem.plannedStartAt,activeLocation?.timezone||"Europe/Kyiv")}–${timeLabel(parallelItem.plannedEndAt,activeLocation?.timezone||"Europe/Kyiv")}`
+    : "у вибраному інтервалі вже є інший запис";
+  const mechanicCapacityNotice=!activeLocation||!activeLocation.mechanics.length
+    ? activeLocation?<div className="requestMechanicCapacityNote error">На цій локації немає активних механіків. Запис без закріпленого механіка не створюється.</div>:null
+    : selectedMechanicLoad?.count&&selectedMechanicLoad.count>=2
+      ? <div className="requestMechanicCapacityNote error"><b>Механік перевантажений</b><span>Вже 2 автомобілі у вибраному інтервалі. Оберіть іншого механіка або змініть час.</span></div>
+      : requiresParallelConfirmation&&form.mechanicId
+        ? <label className="requestParallelConfirmation"><input type="checkbox" checked={parallelMechanicConfirmed} onChange={event=>{setParallelMechanicConfirmed(event.target.checked);setError("")}}/><span><b>Підтверджую паралельне завантаження</b><small>{parallelMechanicName}: {parallelItemLabel}. CRM дозволяє максимум 2 одночасні записи.</small></span></label>
+        : plannerLoading
+          ? <div className="requestMechanicCapacityNote info">Перевіряю зайнятість механіків для цього часу…</div>
+          : null;
 
   const phoneButton=phoneLookupState==="searching"?"Шукаю…":phoneLookupState==="found"?"✓ Знайдено":phoneLookupState==="not-found"?"Не знайдено":phoneLookupState==="unavailable"?"Недоступно":"Знайти";
   const plateButton=plateLookupState==="searching"?"Шукаю…":plateLookupState==="found"?"✓ Знайдено":plateLookupState==="not-found"?"Не знайдено":plateLookupState==="unavailable"?"Недоступно":"Знайти";
@@ -845,15 +910,6 @@ export function NewRequestWizardV5({showButton=true,onOpenChange}:NewRequestWiza
                     {requestSources.map(item=><option key={item}>{item}</option>)}
                   </select>
                 </label>
-                <label>
-                  <span>Відповідальний</span>
-                  <select value={form.responsible} onChange={event=>{
-                    update("responsible",event.target.value);
-                    window.localStorage.setItem(MANAGER_KEY,event.target.value);
-                  }}>
-                    {responsibleOptions.map(item=><option key={item}>{item}</option>)}
-                  </select>
-                </label>
               </div>
 
               <p className="phoneLookupHint">Кнопка «{phoneButton}» перевіряє клієнта за номером і підставляє його картку, якщо клієнт уже є в CRM.</p>
@@ -898,12 +954,13 @@ export function NewRequestWizardV5({showButton=true,onOpenChange}:NewRequestWiza
                   <span>{activeLocation?.posts.find(post=>post.id===form.postId)?.name||"Пост не вибрано"}</span>
                 </div>
                 <label>
-                  <span>Майстер *</span>
+                  <span>Механік *</span>
                   <select value={form.mechanicId} onChange={event=>update("mechanicId",event.target.value)} disabled={plannerLoading||!activeLocation}>
-                    <option value="">Оберіть майстра</option>
-                    {activeLocation?.mechanics.map(mechanic=><option key={mechanic.id} value={mechanic.id}>{mechanic.name}</option>)}
+                    <option value="">Оберіть механіка</option>
+                    {mechanicOptions}
                   </select>
                 </label>
+                {mechanicCapacityNotice}
               </div>}
             </section>}
 
@@ -977,10 +1034,11 @@ export function NewRequestWizardV5({showButton=true,onOpenChange}:NewRequestWiza
 
               {form.appointmentTime&&<div className="requestPlannerSelection">
                 <div><small>Обраний слот</small><strong>{form.appointmentDate} · {form.appointmentTime}{plannerSelection?.endTime?`–${plannerSelection.endTime}`:""}</strong><span>{activeLocation?.posts.find(post=>post.id===form.postId)?.name||"Зона приймання"}{plannerSelection?.durationMinutes?` · ${plannerSelection.durationMinutes} хв`:""}</span></div>
-                <label><span>Майстер *</span><select value={form.mechanicId} onChange={event=>update("mechanicId",event.target.value)} disabled={plannerLoading||!activeLocation}>
-                  <option value="">Оберіть майстра</option>
-                  {activeLocation?.mechanics.map(mechanic=><option key={mechanic.id} value={mechanic.id}>{mechanic.name}</option>)}
+                <label><span>Механік *</span><select value={form.mechanicId} onChange={event=>update("mechanicId",event.target.value)} disabled={plannerLoading||!activeLocation}>
+                  <option value="">Оберіть механіка</option>
+                  {mechanicOptions}
                 </select></label>
+                {mechanicCapacityNotice}
               </div>}
 
               <label className="requestHiddenPricingField" aria-hidden="true">

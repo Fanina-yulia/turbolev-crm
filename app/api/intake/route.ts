@@ -2,7 +2,7 @@ import { after, NextResponse } from "next/server";
 import { authorize } from "@/src/security/authorize";
 import { PERMISSIONS } from "@/src/security/permissions";
 import { getPrisma } from "@/src/lib/prisma";
-import { createIntake, IntakeConflictError, IntakeValidationError, type IntakeInput } from "@/src/services/intake.service";
+import { createIntake, IntakeConflictError, IntakeParallelLoadError, IntakeValidationError, type IntakeInput } from "@/src/services/intake.service";
 import { resolveVehicleColorByPlate } from "@/src/services/vehicle-registry-color.service";
 import { autoGenerateVehicleImage } from "@/src/services/vehicle-images/vehicle-image-auto.service";
 
@@ -60,6 +60,10 @@ export async function POST(request: Request) {
 
     const input = { ...(body as IntakeInput) };
     if (input.mechanicId === UNASSIGNED_MECHANIC) input.mechanicId = undefined;
+
+    // Lead ownership is an audit/follow-up fact. The resource assignment that
+    // controls the planner and the mechanic cabinet is always the selected mechanic.
+    input.responsible = access.context.user?.name || "CRM";
 
     const context = plannerContext(request);
     const contextMatchesSlot = Boolean(
@@ -123,10 +127,13 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: false, error: "Некоректний JSON у запиті." }, { status: 400 });
     }
     if (error instanceof IntakeValidationError) {
-      return NextResponse.json({ ok: false, error: error.message }, { status: 422 });
+      return NextResponse.json({ ok: false, error: error.message, code: error.code }, { status: 422 });
+    }
+    if (error instanceof IntakeParallelLoadError) {
+      return NextResponse.json({ ok: false, error: error.message, code: error.code, conflict: error.conflict }, { status: 409 });
     }
     if (error instanceof IntakeConflictError) {
-      return NextResponse.json({ ok: false, error: error.message }, { status: 409 });
+      return NextResponse.json({ ok: false, error: error.message, code: error.code }, { status: 409 });
     }
     console.error("POST /api/intake failed", { message: error instanceof Error ? error.message : "unknown" });
     return NextResponse.json({ ok: false, error: "Не вдалося створити заявку в CRM." }, { status: 500 });

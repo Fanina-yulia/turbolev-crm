@@ -150,7 +150,13 @@ export async function POST(request: Request) {
     return NextResponse.json({ status: "CREATED", appointment: result.appointment, warning: result.warning ?? null }, { status: 201 });
   } catch (error) {
     const code = error instanceof Error ? error.message : "UNKNOWN";
-    const message = code === "INVALID_TIME_RANGE"
+    const message = code === "MECHANIC_REQUIRED"
+      ? "Оберіть механіка, якого потрібно закріпити за активним записом."
+      : code === "MECHANIC_UNAVAILABLE"
+        ? "Обраний механік неактивний або не належить до цієї локації."
+        : code === "POST_UNAVAILABLE"
+          ? "Обраний пост неактивний або не належить до цієї локації."
+      : code === "INVALID_TIME_RANGE"
       ? "Час завершення має бути пізніше часу початку."
       : code === "APPOINTMENT_TOO_LONG"
         ? "Один запис не може тривати більше 24 годин."
@@ -159,6 +165,6 @@ export async function POST(request: Request) {
           : code === "INVALID_AMOUNT"
             ? "Некоректна попередня сума."
             : "Не вдалося створити запис.";
-    return NextResponse.json({ status: "INVALID_DATA", message }, { status: 400 });
+    return NextResponse.json({ status: "INVALID_DATA", code, message }, { status: ["MECHANIC_REQUIRED", "MECHANIC_UNAVAILABLE", "POST_UNAVAILABLE"].includes(code) ? 422 : 400 });
   }
 }

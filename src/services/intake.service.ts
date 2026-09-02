@@ -1,11 +1,54 @@
 import { LeadStatus, PlannerAppointmentStatus, Prisma } from "@/src/generated/prisma/client";
 import { mapUiSourceToLeadSource } from "@/src/domain/workflow/lead";
 import { getPrisma } from "@/src/lib/prisma";
+import { zonedDateTimeToDate } from "@/src/lib/zoned-time";
 import { lookupVehicleByPlate } from "@/src/services/vehicle-lookup.service";
 import { decodeVinIntelligence } from "@/src/services/vin-intelligence.service";
 
-export class IntakeValidationError extends Error {}
-export class IntakeConflictError extends Error {}
+export class IntakeValidationError extends Error {
+  readonly code: string | null;
+
+  constructor(message: string, code: string | null = null) {
+    super(message);
+    this.name = "IntakeValidationError";
+    this.code = code;
+  }
+}
+
+export class IntakeConflictError extends Error {
+  readonly code: string | null;
+
+  constructor(message: string, code: string | null = null) {
+    super(message);
+    this.name = "IntakeConflictError";
+    this.code = code;
+  }
+}
+
+export type IntakeParallelLoadConflict = {
+  resourceType: "MECHANIC";
+  mechanicId: string;
+  mechanic: string;
+  parallelCount: number;
+  appointmentId: string;
+  vehicle: string;
+  start: Date;
+  end: Date;
+  post: string | null;
+};
+
+export class IntakeParallelLoadError extends IntakeConflictError {
+  readonly conflict: IntakeParallelLoadConflict;
+
+  constructor(mechanicName: string, conflict: IntakeParallelLoadConflict) {
+    super(
+      `${mechanicName} уже веде 1 автомобіль у цей час. Підтвердіть паралельне завантаження або оберіть іншого механіка/час.`,
+      "MECHANIC_PARALLEL_LOAD",
+    );
+    this.name = "IntakeParallelLoadError";
+    this.conflict = conflict;
+  }
+}
 
 export type IntakePreliminaryWork = {
   id?: string;
@@ -51,6 +94,7 @@ export type IntakeInput = {
   locationId?: string;
   postId?: string;
   mechanicId?: string;
+  confirmMechanicParallel?: boolean;
   forceReassignVehicle?: boolean;
 };
 
@@ -81,6 +125,36 @@ function timeToMinute(value: string | null) {
   const minute = Number(match[2]);
   if (!Number.isInteger(hour) || !Number.isInteger(minute) || hour < 0 || hour > 23 || minute < 0 || minute > 59) return null;
   return hour * 60 + minute;
+}
+
+function zonedAppointmentStart(dateValue: string | null, timeValue: string | null, timeZone: string) {
+  if (!dateValue || !timeValue) return null;
+  const timeMatch = /^(\d{1,2}):(\d{2})$/.exec(timeValue);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateValue) || !timeMatch) {
+    throw new IntakeValidationError("Некоректна дата або час запису.", "INVALID_APPOINTMENT_DATETIME");
+  }
+
+  try {
+    const start = zonedDateTimeToDate(dateValue, timeValue, timeZone);
+    const parts = new Intl.DateTimeFormat("en-CA", {
+      timeZone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      hourCycle: "h23",
+    }).formatToParts(start);
+    const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+    const normalizedTime = `${String(Number(timeMatch[1])).padStart(2, "0")}:${timeMatch[2]}`;
+    const normalizedDate = `${values.year}-${values.month}-${values.day}`;
+    if (normalizedDate !== dateValue || `${values.hour}:${values.minute}` !== normalizedTime) {
+      throw new Error("INVALID_ZONED_DATETIME");
+    }
+    return start;
+  } catch {
+    throw new IntakeValidationError("Некоректна дата або час запису.", "INVALID_APPOINTMENT_DATETIME");
+  }
 }
 
 function normalizePreliminaryWorks(value: unknown) {
@@ -185,14 +259,10 @@ export async function createIntake(input: IntakeInput) {
   const appointmentDate = clean(input.appointmentDate, 10);
   const appointmentTime = clean(input.appointmentTime, 8);
   const hasAppointment = Boolean(appointmentDate && appointmentTime);
-  const appointmentStart = hasAppointment ? new Date(`${appointmentDate}T${appointmentTime}:00`) : null;
-  if (appointmentStart && Number.isNaN(appointmentStart.getTime())) throw new IntakeValidationError("Некоректна дата або час запису.");
   const appointmentDurationMinutes = toInt(input.appointmentDurationMinutes) ?? 60;
   if (appointmentDurationMinutes < 30 || appointmentDurationMinutes > 24 * 60 || appointmentDurationMinutes % 30 !== 0) {
     throw new IntakeValidationError("Тривалість запису має бути кратною 30 хвилинам і не перевищувати 24 години.");
   }
-  const appointmentEnd = appointmentStart ? new Date(appointmentStart.getTime() + appointmentDurationMinutes * 60_000) : null;
-
   const preliminaryWorks = normalizePreliminaryWorks(input.preliminaryWorks);
   const preliminaryWorksText = worksSummary(preliminaryWorks);
   const userComment = clean(input.comment, 5000);
@@ -288,12 +358,17 @@ export async function createIntake(input: IntakeInput) {
     let location = null;
     let post = null;
     let mechanic = null;
+    let appointmentStart: Date | null = null;
+    let appointmentEnd: Date | null = null;
     if (hasAppointment) {
       const requestedLocationId = clean(input.locationId, 80);
       location = requestedLocationId
         ? await tx.serviceLocation.findFirst({ where: { id: requestedLocationId, isActive: true } })
         : await tx.serviceLocation.findFirst({ where: { isActive: true }, orderBy: [{ sortOrder: "asc" }, { name: "asc" }] });
-      if (!location) throw new IntakeValidationError("У CRM немає активної локації СТО для запису.");
+      if (!location) throw new IntakeValidationError("У CRM немає активної локації СТО для запису.", "LOCATION_UNAVAILABLE");
+
+      appointmentStart = zonedAppointmentStart(appointmentDate, appointmentTime, location.timezone || "Europe/Kyiv");
+      appointmentEnd = appointmentStart ? new Date(appointmentStart.getTime() + appointmentDurationMinutes * 60_000) : null;
 
       const startMinute = timeToMinute(appointmentTime);
       const locationOpenMinute = Number.isFinite(location.openMinute) ? location.openMinute : FALLBACK_OPEN_MINUTE;
@@ -307,14 +382,13 @@ export async function createIntake(input: IntakeInput) {
 
       const postId = clean(input.postId, 80);
       const mechanicId = clean(input.mechanicId, 80);
-      if (!postId) throw new IntakeValidationError("Оберіть пост СТО.");
+      if (!postId) throw new IntakeValidationError("Оберіть пост СТО.", "POST_REQUIRED");
+      if (!mechanicId) throw new IntakeValidationError("Оберіть механіка, якого потрібно закріпити за записом.", "MECHANIC_REQUIRED");
 
       post = await tx.servicePost.findFirst({ where: { id: postId, locationId: location.id, isActive: true } });
-      mechanic = mechanicId
-        ? await tx.serviceMechanic.findFirst({ where: { id: mechanicId, locationId: location.id, isActive: true } })
-        : null;
-      if (!post) throw new IntakeValidationError("Обраний пост недоступний.");
-      if (mechanicId && !mechanic) throw new IntakeValidationError("Обраний майстер недоступний.");
+      mechanic = await tx.serviceMechanic.findFirst({ where: { id: mechanicId, locationId: location.id, isActive: true } });
+      if (!post) throw new IntakeValidationError("Обраний пост недоступний.", "POST_UNAVAILABLE");
+      if (!mechanic) throw new IntakeValidationError("Обраний механік недоступний.", "MECHANIC_UNAVAILABLE");
 
       if (appointmentStart && appointmentEnd) {
         const nonBlocking = [PlannerAppointmentStatus.COMPLETED, PlannerAppointmentStatus.NO_SHOW, PlannerAppointmentStatus.CANCELLED];
@@ -325,10 +399,38 @@ export async function createIntake(input: IntakeInput) {
           plannedEndAt: { gt: appointmentStart },
         };
         const postConflict = await tx.serviceAppointment.findFirst({ where: { ...overlap, postId: post.id }, select: { id: true } });
-        if (postConflict) throw new IntakeConflictError(`Пост «${post.name}» уже зайнятий у цей час. Оберіть інший пост або час.`);
+        if (postConflict) throw new IntakeConflictError(`Пост «${post.name}» уже зайнятий у цей час. Оберіть інший пост або час.`, "POST_CONFLICT");
         if (mechanic) {
-          const mechanicParallel = await tx.serviceAppointment.count({ where: { ...overlap, mechanicId: mechanic.id } });
-          if (mechanicParallel >= 2) throw new IntakeConflictError(`${mechanic.name} уже веде 2 автомобілі одночасно. Оберіть іншого майстра або час.`);
+          const mechanicOverlaps = await tx.serviceAppointment.findMany({
+            where: { ...overlap, mechanicId: mechanic.id },
+            select: {
+              id: true,
+              vehicleLabel: true,
+              plateNumber: true,
+              plannedStartAt: true,
+              plannedEndAt: true,
+              post: { select: { name: true } },
+            },
+            orderBy: { plannedStartAt: "asc" },
+            take: 3,
+          });
+          if (mechanicOverlaps.length >= 2) {
+            throw new IntakeConflictError(`${mechanic.name} уже веде 2 автомобілі одночасно. Оберіть іншого механіка або час.`, "MECHANIC_OVERLOADED");
+          }
+          if (mechanicOverlaps.length === 1 && input.confirmMechanicParallel !== true) {
+            const existing = mechanicOverlaps[0];
+            throw new IntakeParallelLoadError(mechanic.name, {
+              resourceType: "MECHANIC",
+              mechanicId: mechanic.id,
+              mechanic: mechanic.name,
+              parallelCount: 2,
+              appointmentId: existing.id,
+              vehicle: existing.vehicleLabel || existing.plateNumber || "інший автомобіль",
+              start: existing.plannedStartAt,
+              end: existing.plannedEndAt,
+              post: existing.post?.name || null,
+            });
+          }
         }
       }
     }
@@ -386,7 +488,7 @@ export async function createIntake(input: IntakeInput) {
         entityId: lead.id,
         action: "CREATE_FROM_INTAKE",
         after: json(lead),
-        metadata: json({ clientId: client.id, vehicleId: vehicle.id, appointmentId: appointment?.id || null, vehicleReassigned: needsReassign, previousClientId, contactPhone: displayPhone(phoneNormalized), preliminaryWorksCount: preliminaryWorks.length, postId: post?.id || null, mechanicId: mechanic?.id || null, appointmentDurationMinutes }),
+        metadata: json({ clientId: client.id, vehicleId: vehicle.id, appointmentId: appointment?.id || null, vehicleReassigned: needsReassign, previousClientId, contactPhone: displayPhone(phoneNormalized), preliminaryWorksCount: preliminaryWorks.length, postId: post?.id || null, mechanicId: mechanic?.id || null, parallelMechanicLoadConfirmed: Boolean(mechanic && input.confirmMechanicParallel === true), appointmentDurationMinutes }),
       },
     });
     if (needsReassign) {
@@ -408,7 +510,7 @@ export async function createIntake(input: IntakeInput) {
           entityId: appointment.id,
           action: "CREATE_FROM_INTAKE",
           after: json(appointment),
-          metadata: json({ leadId: lead.id, clientId: client.id, vehicleId: vehicle.id, postId: post?.id || null, mechanicId: mechanic?.id || null, appointmentDurationMinutes }),
+          metadata: json({ leadId: lead.id, clientId: client.id, vehicleId: vehicle.id, postId: post?.id || null, mechanicId: mechanic?.id || null, parallelMechanicLoadConfirmed: Boolean(mechanic && input.confirmMechanicParallel === true), appointmentDurationMinutes }),
         },
       });
     }

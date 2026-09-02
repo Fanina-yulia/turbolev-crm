@@ -123,12 +123,23 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       return NextResponse.json({ ok: false, error: error.code, message: error.message }, { status: error.status });
     }
     const code = error instanceof Error ? error.message : "UNKNOWN";
+    const resourceValidationCodes = new Set([
+      "MECHANIC_REQUIRED",
+      "MECHANIC_UNAVAILABLE",
+      "POST_UNAVAILABLE",
+    ]);
     const message = code === "INVALID_TIME_RANGE"
       ? "Некоректний час запису."
       : code === "LOCATION_REQUIRED"
         ? "Оберіть локацію СТО."
-        : "Не вдалося запустити наступний маршрут.";
+        : code === "MECHANIC_REQUIRED"
+          ? "Оберіть механіка для запису."
+          : code === "MECHANIC_UNAVAILABLE"
+            ? "Обраний механік недоступний для цієї локації."
+            : code === "POST_UNAVAILABLE"
+              ? "Обраний пост недоступний для цієї локації."
+              : "Не вдалося запустити наступний маршрут.";
     console.error("POST diagnostic next-step failed", error);
-    return NextResponse.json({ ok: false, error: "NEXT_STEP_FAILED", message }, { status: 500 });
+    return NextResponse.json({ ok: false, error: code, message }, { status: resourceValidationCodes.has(code) || code === "INVALID_TIME_RANGE" || code === "LOCATION_REQUIRED" ? 422 : 500 });
   }
 }
