@@ -316,8 +316,8 @@ export function StructuredDiagnosticReviewPanel({ diagnosticId, onChanged }: { d
       <div className={styles.vehicleImage}><VehicleRender id={vehicle.id} brand={vehicle.brand} model={vehicle.model} year={vehicle.year} updatedAt={vehicle.updatedAt} size="hero" eager /></div>
       <div className={styles.vehicleMain}><h2>{title}{vehicle.year ? ` ${vehicle.year}` : ""}</h2><div className={styles.vehicleSpecs}><div><span>Двигун</span><strong>{engineLabel(vehicle)}</strong></div><div><span>Пробіг</span><strong>{vehicle.mileageKm != null ? `${vehicle.mileageKm.toLocaleString("uk-UA")} км` : "—"}</strong></div><div><span>Держ. номер</span><strong><VehiclePlate value={vehicle.plateNumber} size="sm" /></strong></div><div><span>VIN</span><strong className={styles.vin}>{vehicle.vin || "—"}</strong></div></div></div>
       <div className={styles.clientCard}><span className={styles.clientIcon} aria-hidden="true"><svg viewBox="0 0 32 32"><circle cx="16" cy="10" r="5" /><path d="M6 27c.9-5.6 4.2-8.5 10-8.5S25.1 21.4 26 27" /></svg></span><div><span>Клієнт</span><strong>{view.diagnostic.client.name || "Без імені"}</strong><small>{view.diagnostic.client.phone}</small></div></div>
-    </section
-    </section>>
+    </section>
+    </section>
 
     <section className={styles.dashboardGrid}>
       <article className={`${styles.dashboardCard} ${styles.resultCard}`}>
