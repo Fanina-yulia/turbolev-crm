@@ -1,7 +1,7 @@
 .page{display:grid;gap:16px;min-width:0;color:var(--text);padding:0 0 24px;overflow-x:hidden}
 .header{display:grid;grid-template-columns:minmax(0,43fr) minmax(0,57fr);grid-template-rows:minmax(250px,1fr) auto;justify-content:stretch;gap:24px;min-height:360px;box-sizing:border-box;padding:0;overflow:hidden}
 .vehicleVisual{grid-column:1;grid-row:1 / span 2;display:grid;grid-template-rows:minmax(164px,1fr) auto;min-width:0;align-content:stretch}
-.vehiclePhoto{display:flex;align-items:center;justify-content:center;min-width:0;padding:12px 0 0}.vehiclePhoto :global([data-vehicle-render]){width:min(100%,500px);height:258px;max-width:100%}
+.vehiclePhoto{display:flex;align-items:center;justify-content:center;min-width:0;padding:12px 0 0}.vehiclePhoto :global([data-vehicle-render]){width:min(100%,400px);height:210px;max-width:100%}
 .ownerBar{display:flex;align-items:center;justify-content:space-between;gap:14px;min-width:0;margin:0;padding:14px 0 12px;border-top:1px solid var(--line);background:transparent}
 .ownerIdentity{display:grid;min-width:0;gap:3px;padding:0;border:0;background:transparent;color:var(--text);text-align:left;cursor:pointer}.ownerIdentity strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:16px}.ownerIdentity span{color:var(--muted);font-size:13px}
 .ownerBar :global([class*="_actions"]){flex:0 0 auto}
