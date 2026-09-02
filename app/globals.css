@@ -172,3 +172,50 @@ button{letter-spacing:0}
   .themeOptions{grid-template-columns:1fr}
   .settingsModal{padding:18px}
 }
+
+/* Turbo Lev CRM — єдиний глобальний стандарт компонування */
+:root{
+  --crm-page-gutter:24px;
+  --crm-section-gap:24px;
+  --crm-control-gap:12px;
+  --crm-card-padding:20px;
+  --crm-radius-card:16px;
+  --crm-radius-control:10px;
+  --crm-radius-small:8px;
+  --crm-radius-pill:999px;
+  --crm-focus:rgba(255,102,0,.42);
+}
+@media(max-width:1100px){
+  :root{
+    --crm-page-gutter:20px;
+    --crm-section-gap:20px;
+    --crm-card-padding:16px;
+  }
+}
+@media(max-width:760px){
+  :root{
+    --crm-page-gutter:14px;
+    --crm-section-gap:16px;
+    --crm-control-gap:10px;
+    --crm-card-padding:14px;
+  }
+}
+button,input,textarea,select{
+  border-radius:var(--crm-radius-control);
+}
+button{
+  transition:background-color .14s ease,border-color .14s ease,color .14s ease,box-shadow .14s ease,transform .14s ease;
+}
+button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-visible,a:focus-visible{
+  outline:2px solid var(--crm-focus);
+  outline-offset:2px;
+}
+.workspace{
+  min-width:0;
+  padding:var(--crm-page-gutter) var(--crm-page-gutter) 28px;
+}
+@media(max-width:760px){
+  .workspace{
+    padding:var(--crm-page-gutter) var(--crm-page-gutter) 20px;
+  }
+}
