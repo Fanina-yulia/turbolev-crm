@@ -30,9 +30,9 @@ export default async function ClientVehiclePage({ params }: { params: Promise<{ 
     return <VehicleDetailClient initialDetail={detail} />;
   } catch (error) {
     const message = error instanceof ClientPortalSessionError ? error.message : "Не вдалося відкрити автомобіль.";
-    return <main className={styles.page}>
+    return <main className={styles.page} data-crm-surface="public">
       <section className={styles.errorCard}>
-        <div className={styles.logo}>TL</div>
+        <img className={styles.logo} data-crm-logo-slot="public" data-crm-default-src="/brand/turbolev-logo.png" src="/brand/turbolev-logo.png" alt="Turbo LEV" />
         <h1>Автомобіль недоступний</h1>
         <p>{message}</p>
         <a href="/my">Повернутися в «Мій гараж»</a>

@@ -162,11 +162,11 @@ export function ClientPortal({ token, initialSnapshot }: { token: string; initia
     }
   }
 
-  return <main className={styles.page}>
+  return <main className={styles.page} data-crm-surface="public">
     <div className={styles.shell}>
       <header className={styles.header}>
         <div className={styles.brandBlock}>
-          <div className={styles.logo}>TL</div>
+          <img className={styles.logo} data-crm-logo-slot="public" data-crm-default-src="/brand/turbolev-logo.png" src="/brand/turbolev-logo.png" alt="Turbo LEV" />
           <div><strong>ТУРБО <b>ЛЕВ</b></strong><span>Особистий кабінет власника авто</span></div>
         </div>
         <span className={styles.secure}>● Захищене посилання</span>

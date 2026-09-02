@@ -1028,7 +1028,7 @@ export function MechanicStandaloneCabinet({ userName }: { userName?: string | nu
       </aside>}
       {screen === "HOME" && <>
         <header className={styles.hero}>
-          <div><div className={styles.brand}><span>ТУРБО</span> <b>ЛЕВ</b></div><small>Кабінет механіка · {firstName(mechanicName)}</small></div>
+          <div><div style={{ display: "flex", alignItems: "center", gap: 10 }}><img data-crm-logo-slot="mechanic" data-crm-default-src="/brand/turbolev-logo.png" src="/brand/turbolev-logo.png" alt="Turbo LEV" style={{ width: 44, height: 34, objectFit: "contain" }} /><div className={styles.brand}><span>ТУРБО</span> <b>ЛЕВ</b></div></div><small>Кабінет механіка · {firstName(mechanicName)}</small></div>
           <button type="button" className={styles.iconButton} onClick={() => setScreen("NOTIFICATIONS")} aria-label="Сповіщення">◉{notificationCount > 0 && <em>{notificationCount}</em>}</button>
         </header>
         <main className={styles.content}>

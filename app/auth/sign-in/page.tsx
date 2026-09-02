@@ -23,10 +23,10 @@ export default async function SignInPage({ searchParams }: SignInPageProps) {
   if (access.provisioningState === "ACTIVE") redirect(nextPath);
 
   return (
-    <main className={styles.page}>
+    <main className={styles.page} data-crm-surface="public">
       <section className={styles.card}>
         <header className={styles.header}>
-          <div className={styles.brandMark} aria-hidden="true">TL</div>
+          <img className={styles.brandMark} data-crm-logo-slot="public" data-crm-default-src="/brand/turbolev-logo.png" src="/brand/turbolev-logo.png" alt="Turbo LEV" />
           <div>
             <div className={styles.brand}>TURBO LEV</div>
             <p className={styles.eyebrow}>СИСТЕМА УПРАВЛІННЯ СТО</p>

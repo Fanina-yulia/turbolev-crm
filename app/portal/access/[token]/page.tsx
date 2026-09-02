@@ -19,10 +19,10 @@ export default async function ClientPortalAccessPage({ params }: { params: Promi
   const { token } = await params;
   try {
     const preview = await previewClientPortalAccess(token);
-    return <main className={styles.page}>
+    return <main className={styles.page} data-crm-surface="public">
       <section className={styles.card}>
         <header className={styles.brand}>
-          <div className={styles.logo}>TL</div>
+          <img className={styles.logo} data-crm-logo-slot="public" data-crm-default-src="/brand/turbolev-logo.png" src="/brand/turbolev-logo.png" alt="Turbo LEV" />
           <div><strong>ТУРБО <b>ЛЕВ</b></strong><span>Особистий кабінет власника авто</span></div>
         </header>
         <div className={styles.secure}>● ЗАХИЩЕНЕ MAGIC-ПОСИЛАННЯ</div>
@@ -46,8 +46,8 @@ export default async function ClientPortalAccessPage({ params }: { params: Promi
     const message = error instanceof ClientPortalSessionError || error instanceof DiagnosticReportError
       ? error.message
       : "Посилання недоступне.";
-    return <main className={styles.page}><section className={styles.card}>
-      <header className={styles.brand}><div className={styles.logo}>TL</div><div><strong>ТУРБО <b>ЛЕВ</b></strong><span>Особистий кабінет</span></div></header>
+    return <main className={styles.page} data-crm-surface="public"><section className={styles.card}>
+      <header className={styles.brand}><img className={styles.logo} data-crm-logo-slot="public" data-crm-default-src="/brand/turbolev-logo.png" src="/brand/turbolev-logo.png" alt="Turbo LEV" /><div><strong>ТУРБО <b>ЛЕВ</b></strong><span>Особистий кабінет</span></div></header>
       <h1>Посилання недоступне</h1>
       <p className={styles.intro}>{message}</p>
       <p className={styles.note}>Зверніться до сервіс-менеджера Turbo LEV, щоб отримати нове захищене посилання.</p>

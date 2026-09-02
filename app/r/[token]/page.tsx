@@ -55,10 +55,10 @@ export default async function ClientPortalPage({ params }: { params: Promise<{ t
     const message = error instanceof ClientPortalError || error instanceof DiagnosticReportError
       ? error.message
       : "Не вдалося відкрити особистий кабінет.";
-    return <main className={styles.page}>
+    return <main className={styles.page} data-crm-surface="public">
       <div className={styles.shell}>
         <div style={{ maxWidth: 520, margin: "18dvh auto 0", padding: 28, border: "1px solid #283440", borderRadius: 22, background: "#121820", textAlign: "center" }}>
-          <div className={styles.logo} style={{ margin: "0 auto 16px" }}>TL</div>
+          <img className={styles.logo} data-crm-logo-slot="public" data-crm-default-src="/brand/turbolev-logo.png" src="/brand/turbolev-logo.png" alt="Turbo LEV" style={{ margin: "0 auto 16px" }} />
           <h1 style={{ margin: 0, fontSize: 25 }}>Кабінет недоступний</h1>
           <p style={{ color: "#9ca8b5", lineHeight: 1.5 }}>{message}</p>
           <small style={{ color: "#73808e" }}>Зверніться до сервіс-менеджера Turbo LEV, щоб отримати актуальне посилання.</small>

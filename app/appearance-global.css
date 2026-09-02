@@ -95,3 +95,160 @@
   border-radius: 16px;
 }
 
+/* The settings panel controls these dimensions at the root; the shell and
+   common CRM surfaces consume them without page-specific theme branches. */
+:root[data-crm-appearance="configured"] .shell {
+  grid-template-columns: var(--crm-sidebar-width) minmax(0, 1fr);
+}
+
+:root[data-crm-appearance="configured"] .brandLogoWrap {
+  width: var(--crm-sidebar-logo-width);
+  min-width: var(--crm-sidebar-logo-width);
+}
+
+:root[data-crm-appearance="configured"] .brandLogo {
+  width: var(--crm-sidebar-logo-width);
+}
+
+:root[data-crm-appearance="configured"] .workspace {
+  gap: var(--crm-density-gap);
+}
+
+:root[data-crm-appearance="configured"] :where(.workspace .panel, .workspace .sectionBlock, .workspace .card, .workspace .settingsCard) {
+  padding: var(--crm-density-padding);
+  border-radius: var(--crm-card-radius);
+}
+
+:root[data-crm-appearance="configured"] :where(.workspace input, .workspace textarea, .workspace select) {
+  min-height: var(--crm-density-control);
+  border-radius: var(--crm-control-radius);
+}
+
+:root[data-crm-appearance="configured"] :where(.workspace table th, .workspace table td) {
+  padding-block: calc(var(--crm-density-row) / 4);
+}
+
+:root[data-crm-appearance="configured"] :where(.workspace a, .workspace button) {
+  transition-duration: .14s;
+}
+
+/* The standalone mechanic application historically had its own theme. Map
+   its complete semantic palette to the CRM profile so role cabinets follow
+   the same saved style while keeping their mobile layout intact. */
+:root[data-crm-appearance="configured"] .app {
+  --m-bg: var(--bg) !important;
+  --m-surface: var(--panel) !important;
+  --m-surface-2: var(--panel-raised) !important;
+  --m-border: var(--line) !important;
+  --m-text: var(--text) !important;
+  --m-muted: var(--muted) !important;
+  --m-soft: var(--soft-text-2) !important;
+  --m-header: var(--sidebar) !important;
+  --m-header-2: var(--panel-raised) !important;
+  --m-orange: var(--orange) !important;
+  --m-orange-soft: color-mix(in srgb, var(--orange) 13%, var(--panel)) !important;
+  --m-green: var(--green) !important;
+  --m-green-soft: color-mix(in srgb, var(--green) 13%, var(--panel)) !important;
+  --m-blue: var(--blue) !important;
+  --m-blue-soft: color-mix(in srgb, var(--blue) 13%, var(--panel)) !important;
+  --m-warn: var(--yellow) !important;
+  --m-warn-soft: color-mix(in srgb, var(--yellow) 13%, var(--panel)) !important;
+  --m-danger: var(--red) !important;
+  --m-danger-soft: color-mix(in srgb, var(--red) 13%, var(--panel)) !important;
+  background: var(--bg) !important;
+  color: var(--text) !important;
+  font-family: var(--ui-font) !important;
+}
+
+:root[data-crm-appearance="configured"] .app .shell {
+  grid-template-columns: none;
+}
+
+/* Public client-facing and document pages are part of the same branded
+   product surface. Their local CSS variables are intentionally overridden at
+   this boundary, allowing legacy layouts to remain independent. */
+:root[data-crm-appearance="configured"] [data-crm-surface="public"] {
+  --bg: var(--crm-bg) !important;
+  --surface: var(--crm-panel) !important;
+  --surface2: var(--crm-panel-raised) !important;
+  --border: var(--crm-line) !important;
+  --text: var(--crm-text) !important;
+  --muted: var(--crm-muted) !important;
+  --soft: var(--soft-text-2) !important;
+  --orange2: var(--crm-accent-strong) !important;
+  --green: var(--crm-success) !important;
+  --greenBg: color-mix(in srgb, var(--crm-success) 13%, var(--crm-panel)) !important;
+  --blue: var(--crm-info) !important;
+  --blueBg: color-mix(in srgb, var(--crm-info) 13%, var(--crm-panel)) !important;
+  --red: var(--crm-danger) !important;
+  --redBg: color-mix(in srgb, var(--crm-danger) 13%, var(--crm-panel)) !important;
+  --amber: var(--crm-warning) !important;
+  --amberBg: color-mix(in srgb, var(--crm-warning) 13%, var(--crm-panel)) !important;
+  background: var(--crm-bg) !important;
+  color: var(--crm-text) !important;
+  font-family: var(--ui-font) !important;
+}
+
+:root[data-crm-appearance="configured"] [data-crm-surface="public"] :where(
+  section, article, .card, .hero, .section, .vehicle, .vehicleCard, .document,
+  .summary > div, .metrics > div, .identity > span, .currentGrid > div
+) {
+  border-color: var(--line) !important;
+  background-color: var(--panel) !important;
+  color: var(--text);
+}
+
+:root[data-crm-appearance="configured"] [data-crm-surface="public"] :where(
+  input, textarea, select
+) {
+  background: var(--panel-raised) !important;
+  border-color: var(--line) !important;
+  color: #fff !important;
+  font-family: var(--ui-font) !important;
+}
+
+:root[data-crm-appearance="configured"] [data-crm-surface="public"] :where(
+  .actions button, .submitDecision, .primaryButton, button[type="submit"]
+) {
+  background: var(--orange) !important;
+  border-color: var(--orange) !important;
+  color: #fff !important;
+  font-family: var(--ui-font) !important;
+}
+
+:root[data-crm-appearance="configured"] [data-crm-surface="public"] :where(
+  .logo, .brandMark
+) {
+  background: var(--orange) !important;
+}
+
+:root[data-crm-appearance="configured"] [data-crm-surface="public"] :where(
+  .eyebrow, .secure, .vehicle small, .welcome p, .sectionHead p, .vehicleHero p,
+  .priority p, .priorityCalm p, .brand strong b, .historyBody span
+) {
+  color: var(--orange) !important;
+}
+
+:root[data-crm-appearance="configured"] [data-crm-surface="public"] :where(
+  .statusSuccess, .statusOk, .metricGood b, .approvedBox, .stateOk
+) { color: var(--green) !important; }
+
+:root[data-crm-appearance="configured"] [data-crm-surface="public"] :where(
+  .statusWarning, .metricWarn b, .stateAttention
+) { color: var(--yellow) !important; }
+
+:root[data-crm-appearance="configured"] [data-crm-surface="public"] :where(
+  .statusDanger, .metricBad b, .stateDefect, .error, .toastBad
+) { color: var(--red) !important; }
+
+/* When a page still renders its text fallback, an uploaded logo is applied
+   to the shared image slots without requiring a route reload. */
+:root[data-crm-appearance="configured"] [data-crm-logo-slot] {
+  object-fit: contain;
+}
+
+@media (max-width: 1100px) {
+  :root[data-crm-appearance="configured"] .shell {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

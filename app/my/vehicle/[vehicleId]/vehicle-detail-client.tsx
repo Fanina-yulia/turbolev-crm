@@ -179,10 +179,10 @@ export function VehicleDetailClient({ initialDetail }: { initialDetail: ClientVe
     }
   }
 
-  return <main className={styles.page}>
+  return <main className={styles.page} data-crm-surface="public">
     <div className={styles.shell}>
       <header className={styles.header}>
-        <div className={styles.brand}><div className={styles.logo}>TL</div><div><strong>ТУРБО <b>ЛЕВ</b></strong><span>Моє авто</span></div></div>
+        <div className={styles.brand}><img className={styles.logo} data-crm-logo-slot="public" data-crm-default-src="/brand/turbolev-logo.png" src="/brand/turbolev-logo.png" alt="Turbo LEV" /><div><strong>ТУРБО <b>ЛЕВ</b></strong><span>Моє авто</span></div></div>
         <a className={styles.back} href="/my">← До списку автомобілів</a>
       </header>
 

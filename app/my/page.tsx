@@ -67,9 +67,9 @@ export default async function MyGaragePage({ searchParams }: { searchParams: Pro
   const session = await resolveClientPortalSession(rawSession);
 
   if (!session) {
-    return <main className={styles.page}>
+    return <main className={styles.page} data-crm-surface="public">
       <section className={styles.guestCard}>
-        <div className={styles.logo}>TL</div>
+        <img className={styles.logo} data-crm-logo-slot="public" data-crm-default-src="/brand/turbolev-logo.png" src="/brand/turbolev-logo.png" alt="Turbo LEV" />
         <p className={styles.eyebrow}>ТУРБО ЛЕВ · ОСОБИСТИЙ КАБІНЕТ</p>
         <h1>Мій гараж</h1>
         <p>На цьому пристрої ще немає активного доступу. Відкрийте захищене magic-посилання, яке надіслав сервіс-менеджер Turbo LEV, і один раз активуйте постійний кабінет.</p>
@@ -83,11 +83,11 @@ export default async function MyGaragePage({ searchParams }: { searchParams: Pro
   const requested = params.vehicle || "";
   const selected = garage.vehicles.find((item) => item.id === requested) || garage.vehicles[0] || null;
 
-  return <main className={styles.page}>
+  return <main className={styles.page} data-crm-surface="public">
     <div className={styles.shell}>
       <header className={styles.header}>
         <div className={styles.brand}>
-          <div className={styles.logo}>TL</div>
+          <img className={styles.logo} data-crm-logo-slot="public" data-crm-default-src="/brand/turbolev-logo.png" src="/brand/turbolev-logo.png" alt="Turbo LEV" />
           <div><strong>ТУРБО <b>ЛЕВ</b></strong><span>Мій гараж</span></div>
         </div>
         <LogoutButton />

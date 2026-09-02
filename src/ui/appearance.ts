@@ -30,6 +30,8 @@ export type CrmAppearance = {
   logoName: string;
 };
 
+export type AppearanceLoadResult = CrmAppearance | null;
+
 type PresetDefinition = Omit<CrmAppearance, "preset" | "logoDataUrl" | "logoName"> & {
   id: AppearancePresetId;
   label: string;
@@ -150,6 +152,8 @@ const DENSITIES = new Set<AppearanceDensity>(["compact", "standard", "comfortabl
 const RADII = new Set<AppearanceRadius>(["sharp", "standard", "soft"]);
 const SIDEBARS = new Set<AppearanceSidebar>(["expanded", "compact"]);
 
+let appearanceRequest: Promise<AppearanceLoadResult> | null = null;
+
 function pickString(value: unknown, fallback: string, max = 120) {
   return typeof value === "string" && value.trim() ? value.trim().slice(0, max) : fallback;
 }
@@ -221,6 +225,37 @@ function radiusValue(radius: AppearanceRadius) {
   return { base: "10px", control: "9px", card: "12px" };
 }
 
+function densityValues(density: AppearanceDensity) {
+  if (density === "compact") return { gap: "8px", padding: "12px", row: "38px", control: "36px" };
+  if (density === "comfortable") return { gap: "18px", padding: "22px", row: "50px", control: "44px" };
+  return { gap: "12px", padding: "18px", row: "44px", control: "40px" };
+}
+
+function sidebarValues(sidebar: AppearanceSidebar) {
+  return sidebar === "compact"
+    ? { width: "214px", logo: "170px" }
+    : { width: "265px", logo: "196px" };
+}
+
+/** Share the initial profile request between the root bridge and settings page. */
+export function loadCrmAppearance(): Promise<AppearanceLoadResult> {
+  if (typeof window === "undefined") return Promise.resolve(null);
+  if (!appearanceRequest) {
+    appearanceRequest = fetch("/api/settings/appearance", { cache: "no-store" })
+      .then(async (response) => {
+        if (!response.ok) return null;
+        const data = await response.json() as { ok?: boolean; appearance?: unknown };
+        return data.ok && data.appearance ? normalizeCrmAppearance(data.appearance) : null;
+      })
+      .catch(() => null);
+  }
+  return appearanceRequest;
+}
+
+export function clearCrmAppearanceRequestCache() {
+  appearanceRequest = null;
+}
+
 /** Apply the server-controlled CRM profile to the document root. */
 export function applyCrmAppearance(input: CrmAppearance) {
   if (typeof document === "undefined") return;
@@ -229,7 +264,21 @@ export function applyCrmAppearance(input: CrmAppearance) {
   const theme = resolvedTheme(appearance.themeMode);
   const scale = scaleValues(appearance.scale);
   const radius = radiusValue(appearance.radius);
+  const density = densityValues(appearance.density);
+  const sidebar = sidebarValues(appearance.sidebar);
   const vars: Record<string, string> = {
+    "--crm-bg": appearance.background,
+    "--crm-panel": appearance.panel,
+    "--crm-panel-raised": appearance.panelRaised,
+    "--crm-line": appearance.line,
+    "--crm-text": appearance.text,
+    "--crm-muted": appearance.muted,
+    "--crm-accent": appearance.accent,
+    "--crm-accent-strong": appearance.accentStrong,
+    "--crm-success": appearance.success,
+    "--crm-warning": appearance.warning,
+    "--crm-danger": appearance.danger,
+    "--crm-info": appearance.info,
     "--bg": appearance.background,
     "--panel": appearance.panel,
     "--panel-2": appearance.panelRaised,
@@ -259,6 +308,12 @@ export function applyCrmAppearance(input: CrmAppearance) {
     "--crm-radius": radius.base,
     "--crm-control-radius": radius.control,
     "--crm-card-radius": radius.card,
+    "--crm-density-gap": density.gap,
+    "--crm-density-padding": density.padding,
+    "--crm-density-row": density.row,
+    "--crm-density-control": density.control,
+    "--crm-sidebar-width": sidebar.width,
+    "--crm-sidebar-logo-width": sidebar.logo,
   };
   Object.entries(vars).forEach(([key, value]) => root.style.setProperty(key, value));
   root.dataset.crmAppearance = "configured";

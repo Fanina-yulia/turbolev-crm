@@ -5,6 +5,7 @@ import {
   APPEARANCE_CACHE_KEY,
   DEFAULT_CRM_APPEARANCE,
   applyCrmAppearance,
+  loadCrmAppearance,
   normalizeCrmAppearance,
   type CrmAppearance,
 } from "@/src/ui/appearance";
@@ -24,14 +25,8 @@ export function AppearanceThemeBridge() {
     if (cached) applyCrmAppearance(cached);
     else applyCrmAppearance(DEFAULT_CRM_APPEARANCE);
 
-    const controller = new AbortController();
     let active = true;
-    void fetch("/api/settings/appearance", { cache: "no-store", signal: controller.signal })
-      .then(async (response) => {
-        if (!response.ok) return null;
-        const data = await response.json() as { ok?: boolean; appearance?: unknown };
-        return data.ok && data.appearance ? normalizeCrmAppearance(data.appearance) : null;
-      })
+    void loadCrmAppearance()
       .then((appearance) => {
         if (!active || !appearance) return;
         window.localStorage.setItem(APPEARANCE_CACHE_KEY, JSON.stringify(appearance));
@@ -47,11 +42,9 @@ export function AppearanceThemeBridge() {
     media.addEventListener("change", syncSystemTheme);
     return () => {
       active = false;
-      controller.abort();
       media.removeEventListener("change", syncSystemTheme);
     };
   }, []);
 
   return null;
 }
-
