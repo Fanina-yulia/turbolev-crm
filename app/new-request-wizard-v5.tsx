@@ -663,11 +663,12 @@ export function NewRequestWizardV5({showButton=true,onOpenChange}:NewRequestWiza
       window.dispatchEvent(new CustomEvent("turbolev:new-request",{detail:request}));
       window.dispatchEvent(new CustomEvent("turbolev:data-changed",{detail:{entity:"intake",...safePayload}}));
       if(typeof appointmentId==="string"&&appointmentId){
-        navigateCrm("Планувальник",{
-          appointmentId,
-          date:payload.appointmentDate,
-          scope:"day",
-        });
+        const plannerParams = {
+          date: payload.appointmentDate,
+          scope: "day",
+          ...(form.source === "PLANNER" ? {} : { appointmentId }),
+        };
+        navigateCrm("Планувальник", plannerParams);
       }else{
         setSuccess("Запис на СТО створено.");
         window.setTimeout(()=>close(),1100);
