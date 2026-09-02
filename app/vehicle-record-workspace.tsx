@@ -78,7 +78,7 @@ export function VehicleRecordWorkspace({ vehicle, loading, page, diagnosticId, o
       </div>
       <nav className={styles.tabs} aria-label="Розділи автомобіля">{links.map(([target, label, tab]) => {
         const status = getVehicleTabStatus(vehicle, tab);
-        return <button type="button" key={target} className={`${styles.tab} ${vehicleTabToneClass(status.tone, styles)} ${page === target ? styles.activeTab : ""`} title={`${label}: ${status.label}`} onClick={() => navigateCrm("Авто", { vehicleId: vehicle.id, vehiclePage: target })}><i className={styles.statusDot} aria-hidden="true" />{label}</button>;
+        return <button type="button" key={target} className={[styles.tab, vehicleTabToneClass(status.tone, styles), page === target ? styles.activeTab : ""].filter(Boolean).join(" ")} title={label + ": " + status.label} onClick={() => navigateCrm("Авто", { vehicleId: vehicle.id, vehiclePage: target })}><i className={styles.statusDot} aria-hidden="true" />{label}</button>;
       })}</nav>
     </header>
 
