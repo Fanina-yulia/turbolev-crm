@@ -57,19 +57,7 @@ export function PlannerV2(){
  function chooseStatus(value:string){navigateCrm("Планувальник",{...(isPlannerStatus(value)?{status:value}:{}),date:anchorDay,scope:view});}
  function goDay(day:string){setAnchorDay(day);navigateCrm("Планувальник",{...(statusFilter?{status:statusFilter}:{}),date:day,scope:view});}
  function openDay(day:string){setAnchorDay(day);setView("day");navigateCrm("Планувальник",{...(statusFilter?{status:statusFilter}:{}),date:day,scope:"day"});}
- async function openAppointment(item:Appointment){
-  if(item.vehicleId){navigateCrm("Авто",{vehicleId:item.vehicleId});return;}
-  const plate=item.plateNumber?.trim();
-  if(plate){
-   setMessage("Визначаю картку автомобіля…");
-   try{
-    const response=await fetch(`/api/vehicles/lookup?plate=${encodeURIComponent(plate)}`,{cache:"no-store",credentials:"include"});
-    const body=await response.json().catch(()=>null) as {status?:string;vehicle?:{id?:string|null}}|null;
-    if(response.ok&&body?.status==="FOUND"&&body.vehicle?.id){navigateCrm("Авто",{vehicleId:body.vehicle.id});return;}
-   }catch(error){console.warn("Planner vehicle card lookup failed",error);}
-  }
-  setMessage("У цього запису ще не прив’язана картка автомобіля.");
- }
+ function openAppointment(item:Appointment){navigateCrm("Планувальник",routeParams({appointmentId:item.id}));}
  function closeEdit(){navigateCrm("Планувальник",routeParams());}
  async function patch(id:string,payload:Record<string,unknown>,success:string):Promise<boolean>{try{const response=await fetch(`/api/planner/${id}`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});const data=await response.json() as {appointment?:Appointment;warning?:{message?:string}|null;message?:string};if(!response.ok)throw new Error(data.message||"Не вдалося змінити запис.");const updatedAppointment=data.appointment;if(updatedAppointment){setAppointments(current=>current.map(item=>item.id===updatedAppointment.id?{...item,...updatedAppointment}:item));}setMessage(data.warning?.message?`${success} ⚠ ${data.warning.message}`:success);return true;}catch(error){setMessage(error instanceof Error?error.message:"Не вдалося змінити запис.");return false;}}
  async function resizeAppointment(item:Appointment,day:string,startTime:string,endTime:string){const start=zonedDateTimeToDate(day,startTime,timeZone);const end=zonedDateTimeToDate(day,endTime,timeZone);return patch(item.id,{plannedStartAt:start.toISOString(),plannedEndAt:end.toISOString()},`Запис змінено: ${startTime}–${endTime}.`);}
