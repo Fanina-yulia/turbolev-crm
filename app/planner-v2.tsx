@@ -40,7 +40,7 @@ function editState(item:Appointment,timeZone:string):EditState{return{id:item.id
 
 export function PlannerV2(){
  const [anchorDay,setAnchorDay]=useState(()=>dateKey());const [view,setView]=useState<ViewMode>("day");const [locations,setLocations]=useState<Location[]>([]);const [locationId,setLocationId]=useState("");const [appointments,setAppointments]=useState<Appointment[]>([]);const [statusFilter,setStatusFilter]=useState("");const [mechanicFilter,setMechanicFilter]=useState("");const [postFilter,setPostFilter]=useState("");const [searchDraft,setSearchDraft]=useState("");const [search,setSearch]=useState("");const [message,setMessage]=useState("План робіт готовий.");const [busy,setBusy]=useState(false);const [edit,setEdit]=useState<EditState|null>(null);const [saving,setSaving]=useState(false);const [dayMetrics,setDayMetrics]=useState<PlannerDayMetrics|null>(null);
- const suppressClickRef=useRef(false);
+ const suppressClickRef=useRef(false);const moveMutationRef=useRef(0);
  const days=useMemo(()=>Array.from({length:7},(_,i)=>addDays(anchorDay,i)),[anchorDay]);
  const location=useMemo(()=>locations.find(x=>x.id===locationId)??locations[0]??null,[locations,locationId]);
  const timeZone=location?.timezone||KYIV_TZ;
@@ -71,10 +71,18 @@ export function PlannerV2(){
   setMessage("У цього запису ще не прив’язана картка автомобіля.");
  }
  function closeEdit(){navigateCrm("Планувальник",routeParams());}
- async function patch(id:string,payload:Record<string,unknown>,success:string):Promise<boolean>{try{const response=await fetch(`/api/planner/${id}`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});const data=await response.json() as {appointment?:Appointment;warning?:{message?:string}|null;message?:string};if(!response.ok)throw new Error(data.message||"Не вдалося змінити запис.");const updatedAppointment=data.appointment;if(updatedAppointment){setAppointments(current=>current.map(item=>item.id===updatedAppointment.id?{...item,...updatedAppointment}:item));}setMessage(data.warning?.message?`${success} ⚠ ${data.warning.message}`:success);void load();return true;}catch(error){setMessage(error instanceof Error?error.message:"Не вдалося змінити запис.");return false;}}
+ async function patch(id:string,payload:Record<string,unknown>,success:string):Promise<boolean>{try{const response=await fetch(`/api/planner/${id}`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});const data=await response.json() as {appointment?:Appointment;warning?:{message?:string}|null;message?:string};if(!response.ok)throw new Error(data.message||"Не вдалося змінити запис.");const updatedAppointment=data.appointment;if(updatedAppointment){setAppointments(current=>current.map(item=>item.id===updatedAppointment.id?{...item,...updatedAppointment}:item));}setMessage(data.warning?.message?`${success} ⚠ ${data.warning.message}`:success);return true;}catch(error){setMessage(error instanceof Error?error.message:"Не вдалося змінити запис.");return false;}}
  async function resizeAppointment(item:Appointment,day:string,startTime:string,endTime:string){const start=zonedDateTimeToDate(day,startTime,timeZone);const end=zonedDateTimeToDate(day,endTime,timeZone);return patch(item.id,{plannedStartAt:start.toISOString(),plannedEndAt:end.toISOString()},`Запис змінено: ${startTime}–${endTime}.`);}
  async function moveAppointment(item:Appointment,targetDay:string,targetTime:string,postId:string|null,durationMinutes=duration(item)){
-  const start=zonedDateTimeToDate(targetDay,targetTime,timeZone);const end=new Date(start.getTime()+durationMinutes*60000);setMessage("Переміщую запис…");await patch(item.id,{plannedStartAt:start.toISOString(),plannedEndAt:end.toISOString(),postId},"Запис переміщено та збережено.");
+  const start=zonedDateTimeToDate(targetDay,targetTime,timeZone);const end=new Date(start.getTime()+durationMinutes*60000);
+  const previous=appointments.find(candidate=>candidate.id===item.id)||item;
+  const nextPost=postId?location?.posts.find(candidate=>candidate.id===postId)||previous.post||null:null;
+  const nextAppointment={...previous,plannedStartAt:start.toISOString(),plannedEndAt:end.toISOString(),postId,post:nextPost};
+  const mutation=moveMutationRef.current+1;moveMutationRef.current=mutation;
+  setAppointments(current=>current.map(candidate=>candidate.id===item.id?nextAppointment:candidate));
+  setMessage("Зберігаю переміщення…");
+  const saved=await patch(item.id,{plannedStartAt:start.toISOString(),plannedEndAt:end.toISOString(),postId},"Запис переміщено та збережено.");
+  if(!saved&&moveMutationRef.current===mutation)setAppointments(current=>current.map(candidate=>candidate.id===previous.id?previous:candidate));
  }
  async function drop(event:DragEvent,targetDay:string){event.preventDefault();const id=event.dataTransfer.getData("text/planner-appointment");const item=appointments.find(x=>x.id===id);if(!item)return;await moveAppointment(item,targetDay,clock(item.plannedStartAt,timeZone),item.postId||null);}
  async function saveEdit(){if(!edit)return;const requiresSlot=!["NO_SHOW","CANCELLED","COMPLETED"].includes(edit.status);if(requiresSlot&&(!edit.start||!edit.postId||!edit.mechanicId)){setMessage("Оберіть доступний час, пост і майстра.");return;}setSaving(true);const start=zonedDateTimeToDate(edit.date,edit.start||"09:00",timeZone);const end=new Date(start.getTime()+Number(edit.duration||60)*60000);await patch(edit.id,{status:edit.status,postId:edit.postId||null,mechanicId:edit.mechanicId||null,plannedStartAt:start.toISOString(),plannedEndAt:end.toISOString()},"Запис оновлено.");setSaving(false);closeEdit();}
