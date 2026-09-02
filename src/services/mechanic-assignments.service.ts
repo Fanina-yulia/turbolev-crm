@@ -44,6 +44,15 @@ export async function listActiveMechanicAssignments(mechanicId: string) {
         a."plannedEndAt",
         p.name AS "postName",
         a."updatedAt",
+        CASE
+          WHEN wo.status = 'IN_REPAIR' OR a.status::text = 'IN_REPAIR' THEN 10
+          WHEN wo.status = 'REWORK' THEN 20
+          WHEN wo.status IN ('WAITING_PARTS', 'WAITING_APPROVAL', 'WAITING_QC', 'WAITING_PAYMENT') THEN 30
+          WHEN a.status::text = 'WAITING_PAYMENT' THEN 30
+          WHEN a.status::text = 'ARRIVED' THEN 40
+          WHEN wo.status = 'READY_FOR_PICKUP' OR a.status::text = 'READY_FOR_PICKUP' THEN 80
+          ELSE 60
+        END AS "sortRank",
         ROW_NUMBER() OVER (
           PARTITION BY COALESCE(NULLIF(a."workOrderId", ''), a.id)
           ORDER BY a."updatedAt" DESC, a."plannedStartAt" DESC, a.id DESC
@@ -93,15 +102,7 @@ export async function listActiveMechanicAssignments(mechanicId: string) {
     FROM ranked
     WHERE rn = 1
     ORDER BY
-      CASE
-        WHEN "workOrderStatus" = 'IN_REPAIR' OR "appointmentStatus" = 'IN_REPAIR' THEN 10
-        WHEN "workOrderStatus" = 'REWORK' THEN 20
-        WHEN "workOrderStatus" IN ('WAITING_PARTS', 'WAITING_APPROVAL', 'WAITING_QC', 'WAITING_PAYMENT') THEN 30
-        WHEN "appointmentStatus" = 'WAITING_PAYMENT' THEN 30
-        WHEN "appointmentStatus" = 'ARRIVED' THEN 40
-        WHEN "workOrderStatus" = 'READY_FOR_PICKUP' OR "appointmentStatus" = 'READY_FOR_PICKUP' THEN 80
-        ELSE 60
-      END,
+      "sortRank" ASC,
       "plannedStartAt" ASC,
       id ASC
   `;
@@ -159,11 +160,11 @@ export async function listAllActiveMechanicAppointments(mechanicId: string) {
       )
     ORDER BY
       CASE
-        WHEN "workOrderStatus" = 'IN_REPAIR' OR "appointmentStatus" = 'IN_REPAIR' THEN 10
-        WHEN "workOrderStatus" = 'REWORK' THEN 20
-        WHEN "workOrderStatus" IN ('WAITING_PARTS', 'WAITING_APPROVAL', 'WAITING_QC', 'WAITING_PAYMENT') THEN 30
-        WHEN "appointmentStatus" = 'WAITING_PAYMENT' THEN 30
-        WHEN "appointmentStatus" = 'ARRIVED' THEN 40
+        WHEN wo.status = 'IN_REPAIR' OR a.status::text = 'IN_REPAIR' THEN 10
+        WHEN wo.status = 'REWORK' THEN 20
+        WHEN wo.status IN ('WAITING_PARTS', 'WAITING_APPROVAL', 'WAITING_QC', 'WAITING_PAYMENT') THEN 30
+        WHEN a.status::text = 'WAITING_PAYMENT' THEN 30
+        WHEN a.status::text = 'ARRIVED' THEN 40
         ELSE 60
       END,
       "plannedStartAt" ASC,
