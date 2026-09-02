@@ -7,12 +7,16 @@
   color: var(--text);
 }
 
+.identityCard{display:grid;gap:0;min-width:0;border:1px solid var(--line);border-radius:14px;background:var(--panel);overflow:hidden;box-shadow:0 4px 18px rgba(15,23,42,.06)}
 .pageHeader {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: 18px;
   min-width: 0;
+  padding: 16px 18px;
+  border-bottom: 1px solid var(--line);
+  background:color-mix(in srgb,var(--panel-2) 55%,var(--panel));
 }
 
 .pageHeading { min-width: 0; }
@@ -100,10 +104,8 @@
   align-items: center;
   min-width: 0;
   gap: 18px;
-  padding: 14px 18px;
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  background: color-mix(in srgb, var(--panel-2) 76%, var(--panel));
+  padding: 16px 18px;
+  background:color-mix(in srgb,var(--panel-2) 76%,var(--panel));
 }
 
 .vehicleImage {
@@ -440,7 +442,7 @@
 }
 
 @container diagnostic-detail (max-width: 760px) {
-  .pageHeader { display: grid; }
+  .pageHeader { display: grid; padding: 13px; }
   .headerStatuses { justify-content: flex-start; }
   .vehicleHero { grid-template-columns: 1fr; gap: 10px; padding: 13px; }
   .vehicleImage { min-height: 80px; }
