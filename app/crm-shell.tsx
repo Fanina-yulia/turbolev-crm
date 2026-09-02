@@ -15,6 +15,7 @@ import requestShellStyles from "./new-request-shell.module.css";
 
 type NavigateDetail = string | { section: CrmSectionLabel; filter?: string; filterLabel?: string };
 type LegacyRoute = { section: CrmSectionLabel; params: CrmRouteParams };
+const PLANNER_RECOVERY_KEY = "turbolev:planner-error-recovery";
 
 function SectionLoading() {
   return <div className={shellStyles.sectionLoading} role="status" aria-live="polite" aria-label="Завантаження розділу">
@@ -154,6 +155,12 @@ export function CrmShell({ initialSection, initialSettingsTab }: { initialSectio
   const [mobileNavOpen,setMobileNavOpen]=useState(false);
   const [newRequestOpen,setNewRequestOpen]=useState(false);
   const access=useCrmAccess();
+
+  useEffect(() => {
+    if (new URL(window.location.href).searchParams.get("section") === "planner") {
+      window.sessionStorage.removeItem(PLANNER_RECOVERY_KEY);
+    }
+  }, []);
 
   const navigateTo = useCallback((next: CrmSectionLabel, historyMode: "push" | "replace" = "push", filter = "", filterLabel = "") => {
     const resolved=resolveCrmSection(next);
