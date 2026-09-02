@@ -2,6 +2,9 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ClientVehiclePortalDetail } from "@/src/services/client-portal-vehicle.service";
+import { CopyableValue } from "@/app/copyable-value";
+import { VehiclePlate } from "@/app/vehicle-plate";
+import { VehicleRender } from "@/app/vehicle-render";
 import styles from "./vehicle-detail.module.css";
 
 type Decision = "APPROVE" | "REJECT";
@@ -55,6 +58,13 @@ function statusClass(tone: ClientVehiclePortalDetail["vehicle"]["status"]["tone"
   if (tone === "danger") return styles.statusDanger;
   if (tone === "info") return styles.statusInfo;
   return styles.statusNeutral;
+}
+
+function statusDotClass(tone: ClientVehiclePortalDetail["vehicle"]["status"]["tone"]) {
+  if (tone === "success") return styles.dotSuccess;
+  if (tone === "warning") return styles.dotWarning;
+  if (tone === "danger") return styles.dotDanger;
+  return styles.dotNeutral;
 }
 
 export function VehicleDetailClient({ initialDetail }: { initialDetail: ClientVehiclePortalDetail }) {
@@ -172,26 +182,70 @@ export function VehicleDetailClient({ initialDetail }: { initialDetail: ClientVe
   return <main className={styles.page}>
     <div className={styles.shell}>
       <header className={styles.header}>
-        <a className={styles.back} href="/my">← Мій гараж</a>
         <div className={styles.brand}><div className={styles.logo}>TL</div><div><strong>ТУРБО <b>ЛЕВ</b></strong><span>Моє авто</span></div></div>
+        <a className={styles.back} href="/my">← До списку автомобілів</a>
       </header>
 
-      <section className={styles.hero}>
-        <div className={styles.heroMain}>
-          <p>ВАШ АВТОМОБІЛЬ</p>
-          <h1>{detail.vehicle.label}{detail.vehicle.year ? ` ${detail.vehicle.year}` : ""}</h1>
-          <span>{detail.vehicle.plateNumber || "Без держномера"}{detail.vehicle.vin ? ` · VIN ${detail.vehicle.vin}` : ""}</span>
+      <section className={styles.vehicleCard}>
+        <div className={styles.vehiclePhoto}>
+          <VehicleRender
+            id={detail.vehicle.id}
+            brand={detail.vehicle.brand}
+            model={detail.vehicle.model}
+            year={detail.vehicle.year}
+            updatedAt={detail.vehicle.updatedAt}
+            size="hero"
+            eager
+            interactiveMissing
+          />
         </div>
-        <span className={`${styles.status} ${statusClass(detail.vehicle.status.tone)}`}>{detail.vehicle.status.label}</span>
-        <div className={styles.heroFacts}>
-          <div><span>Пробіг</span><b>{detail.vehicle.mileageKm != null ? `${new Intl.NumberFormat("uk-UA").format(detail.vehicle.mileageKm)} км` : "—"}</b></div>
-          <div><span>Готовність</span><b>{dateTime(detail.vehicle.eta)}</b></div>
-          <div><span>СТО</span><b>{detail.service.stationName || "Turbo LEV"}</b></div>
-          <div><span>Механік</span><b>{detail.service.mechanicName || "уточнюється"}</b></div>
+        <div className={styles.vehicleSummary}>
+          <p className={styles.vehicleEyebrow}>КАРТКА АВТОМОБІЛЯ</p>
+          <h1>{detail.vehicle.label}{detail.vehicle.year ? ` ${detail.vehicle.year}` : ""}</h1>
+          <div className={styles.vehicleIdentifiers}>
+            <VehiclePlate value={detail.vehicle.plateNumber} size="md" />
+            {detail.vehicle.vin ? <span className={styles.vinValue}>VIN <CopyableValue value={detail.vehicle.vin} label="VIN" /></span> : null}
+          </div>
+          <span className={`${styles.status} ${statusClass(detail.vehicle.status.tone)}`}>{detail.vehicle.status.label}</span>
+        </div>
+        <nav className={styles.vehicleTabs} aria-label="Розділи картки автомобіля">
+          <a className={styles.tabActive} href="#diagnostics"><span className={`${styles.tabDot} ${statusDotClass(detail.vehicle.status.tone)}`} />Діагностична карта</a>
+          <a className={styles.tabCommercial} href="#estimate"><span className={styles.tabDot} />Комерційна пропозиція</a>
+          <a className={styles.tabHistory} href="#history"><span className={styles.tabDot} />Сервісна історія</a>
+        </nav>
+      </section>
+
+      <section className={styles.ownerSection}>
+        <div className={styles.sectionTitle}><p>ВЛАСНИК</p><h2>Контактна інформація</h2></div>
+        <div className={styles.ownerCard}>
+          <div className={styles.ownerCopy}>
+            <strong>{detail.client.name || "Власник не вказаний"}</strong>
+            <span>{detail.client.phoneMasked || "Телефон не вказаний"}</span>
+          </div>
+          <span className={styles.ownerArrow} aria-hidden="true">›</span>
+          <div className={styles.ownerActions}>
+            <a href="#chat" aria-label="Написати менеджеру" title="Написати менеджеру">💬</a>
+            <a href="#documents" aria-label="Відкрити документи" title="Документи">▤</a>
+            <a href="#history" aria-label="Відкрити сервісну історію" title="Сервісна історія">◷</a>
+          </div>
         </div>
       </section>
 
-      {detail.vehicle.status.code !== "OUTSIDE_SERVICE" ? <section className={styles.timelineSection}>
+      <section className={styles.technicalSection}>
+        <div className={styles.sectionTitle}><p>ДАНІ АВТОМОБІЛЯ</p><h2>Технічні дані</h2></div>
+        <div className={styles.technicalGrid}>
+          <div><span>Марка</span><b>{detail.vehicle.brand || "—"}</b></div>
+          <div><span>Модель</span><b>{detail.vehicle.model || "—"}</b></div>
+          <div><span>Рік</span><b>{detail.vehicle.year || "—"}</b></div>
+          <div><span>VIN</span><b>{detail.vehicle.vin ? <CopyableValue value={detail.vehicle.vin} label="VIN" /> : "—"}</b></div>
+          <div><span>Пробіг</span><b>{detail.vehicle.mileageKm != null ? `${new Intl.NumberFormat("uk-UA").format(detail.vehicle.mileageKm)} км` : "—"}</b></div>
+          <div><span>Статус</span><b className={styles.technicalStatus}>{detail.vehicle.status.label}</b></div>
+        </div>
+      </section>
+
+      <a className={styles.newRequest} href="#chat">+ Нова заявка</a>
+
+      {detail.vehicle.status.code !== "OUTSIDE_SERVICE" ? <section className={styles.timelineSection} id="diagnostics">
         <div className={styles.sectionTitle}><p>ПОТОЧНИЙ РЕМОНТ</p><h2>Етап автомобіля</h2></div>
         <div className={styles.timeline}>
           {detail.service.stages.map((stage, index) => <div className={`${styles.stage} ${stage.state === "DONE" ? styles.stageDone : stage.state === "CURRENT" ? styles.stageCurrent : ""}`} key={stage.key}>
@@ -205,7 +259,7 @@ export function VehicleDetailClient({ initialDetail }: { initialDetail: ClientVe
         </div>
       </section> : <section className={styles.calmCard}><b>Автомобіль зараз не перебуває в активному сервісному випадку.</b><span>Історія попередніх робіт і документи залишаються доступними нижче.</span></section>}
 
-      {estimate ? <section className={styles.approvalSection}>
+      {estimate ? <section className={styles.approvalSection} id="estimate">
         <div className={styles.approvalHeader}>
           <div><p>ПОТРІБНА ВАША ДІЯ</p><h2>Кошторис · ревізія {estimate.revision}</h2><span>{estimate.lines.length} позицій · {money(estimate.totalAmount, estimate.currency)}</span></div>
           <div className={styles.approvalTotal}><small>Ваш вибір</small><b>{money(approvedSum, estimate.currency)}</b></div>
@@ -261,7 +315,7 @@ export function VehicleDetailClient({ initialDetail }: { initialDetail: ClientVe
         {detail.documents.length ? <div className={styles.documents}>{detail.documents.map((document) => <article key={document.key}><div><strong>{document.title}</strong><span>{document.subtitle}</span></div><div><b>{document.status}</b><small>{date(document.date)}</small></div></article>)}</div> : <div className={styles.empty}>Документів ще немає.</div>}
       </section>
 
-      <section className={styles.section}>
+      <section className={styles.section} id="history">
         <div className={styles.sectionTitle}><p>ІСТОРІЯ</p><h2>Сервісна історія</h2></div>
         {detail.history.length ? <div className={styles.history}>{detail.history.map((item) => <article key={`${item.kind}:${item.id}`}><div><small>{date(item.date)}</small><strong>{item.title}</strong><span>{item.subtitle}</span></div><div><b>{item.status}</b>{item.amount != null ? <strong>{money(item.amount, item.currency || "UAH")}</strong> : null}</div></article>)}</div> : <div className={styles.empty}>Історія цього автомобіля ще порожня.</div>}
       </section>
