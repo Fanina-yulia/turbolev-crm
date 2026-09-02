@@ -6,7 +6,7 @@ import { parseWorkOrderListPayload } from "@/src/lib/contracts/work-order-payloa
 import { navigateCrm, readCrmRoute } from "./crm-route";
 import { ServiceTimeline } from "./service-timeline";
 import { VehicleDiagnosticsTab } from "./vehicle-diagnostics-tab";
-import { VehicleBrandLogo } from "./vehicle-brand-logo";
+import { VehicleBrandLogo } from "./vehicle-brand-logo";import { ClientCommunicationActions } from "./client-communication-actions";
 import { getVehicleTabStatus, vehicleTabToneClass, type VehicleTabKey } from "./vehicle-process-status";
 import { VehicleRender } from "./vehicle-render";
 import { WorkOrderCommercialPanel } from "./work-order-commercial-panel";
