@@ -17,6 +17,13 @@
       "title": "Цілісна сторінка CRM без фіксованих робочих секцій",
       "source": "docs/CRM_STANDARDS_TABLE.md",
       "enforcedBy": "scripts/check-crm-page-integrity.mjs"
+    },
+    {
+      "id": "CRM-UI-003",
+      "status": "ACTIVE",
+      "title": "Адаптивність усіх сторінок CRM",
+      "source": "docs/CRM_RESPONSIVE_STANDARDS.md",
+      "enforcedBy": "scripts/check-responsive-contract.mjs"
     }
   ],
   "modules": [

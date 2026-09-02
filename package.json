@@ -14,6 +14,7 @@
     "lint": "next lint",
     "ui:fonts:check": "node scripts/check-ui-font-floor.mjs",
     "ui:pages:check": "node scripts/check-crm-page-integrity.mjs",
+    "ui:responsive:check": "node scripts/check-responsive-contract.mjs",
     "ui:plates:check": "node scripts/check-vehicle-plate-contract.mjs",
     "ui:new-request:layout:smoke": "node scripts/new-request-page-layout-smoke.mjs",
     "module:scope": "node scripts/module-scope.mjs",

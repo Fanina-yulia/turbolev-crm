@@ -1,0 +1,226 @@
+/* CRM-UI-003 — global responsive contract. Loaded last so legacy module rules
+   cannot widen the workspace or hide the operational flow on laptops. */
+:root {
+  --crm-layout-gutter: clamp(14px, 2vw, 34px);
+  --crm-layout-gap: clamp(10px, 1.2vw, 18px);
+  --crm-sidebar-fluid: clamp(215px, 14vw, 265px);
+  --crm-touch-target: 44px;
+}
+
+html,
+body {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: clip;
+}
+
+body {
+  overflow-wrap: break-word;
+}
+
+.shell {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  grid-template-columns: var(--crm-sidebar-fluid) minmax(0, 1fr) !important;
+}
+
+.shell > .sidebar,
+.shell > .workspace,
+.shell > .sidebar + div {
+  min-width: 0;
+}
+
+.workspace {
+  width: 100% !important;
+  max-width: 100% !important;
+  min-width: 0 !important;
+  padding-inline: var(--crm-layout-gutter) !important;
+}
+
+.workspace > *,
+.workspace :where(main, section, article, header, footer, nav, form, fieldset, div) {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.workspace :where(img, svg, video, canvas) {
+  max-width: 100%;
+}
+
+.workspace :where(input, select, textarea, button) {
+  max-width: 100%;
+}
+
+.workspace :where(input, select, textarea) {
+  min-width: 0;
+}
+
+.workspace :where(.page, .panel, .sectionBlock, .card, .content, .contentArea, .layout, .columns, .gridTwo, .twoCols, .toolbar, .sectionHead, .contentHeading, .panelHead) {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.workspace :where(.header, .pageHeader, .topbar, .sectionHead, .contentHeading, .panelHead, .toolbar, .actions, .topActions) {
+  max-width: 100%;
+}
+
+.workspace :where(.topbar, .sectionHead, .contentHeading, .panelHead, .toolbar, .actions, .topActions) {
+  flex-wrap: wrap;
+}
+
+.workspace :where(.tableWrap, .tableScroll, .dataTableWrap, .tableShell, .weekBoard, .kanban, .leadTableWrap, .leadKanban) {
+  max-width: 100%;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+}
+
+.workspace :where(table) {
+  max-width: 100%;
+}
+
+.workspace :where(.page, .panel, .sectionBlock, .card, .row, .item, .tableWrap, .tableShell) {
+  overflow-wrap: anywhere;
+}
+
+.workspace :where(.row, .item, .card, button, a) {
+  transition: background-color .14s ease, border-color .14s ease, box-shadow .14s ease, transform .14s ease;
+}
+
+.workspace :where(.row, .item, .card, button, a):hover {
+  --crm-hover-shift: -1px;
+}
+
+.workspace :where(.row, .item, .card, button, a):focus-visible {
+  outline: 2px solid var(--crm-focus, rgba(255, 102, 0, .42));
+  outline-offset: 2px;
+}
+
+/* Vehicle record: the hero image is intentionally bounded on laptop screens.
+   Owner is its own block; no decorative line is inserted under the image. */
+[class*="vehicle-record-workspace_vehiclePhoto"] [data-vehicle-render] {
+  width: min(100%, 340px) !important;
+  height: 180px !important;
+  max-width: 100% !important;
+}
+
+[class*="vehicle-record-workspace_ownerBar"] {
+  border-top: 0 !important;
+}
+
+@media (max-width: 1600px) and (min-width: 761px) {
+  :root {
+    --crm-sidebar-fluid: clamp(215px, 14vw, 245px);
+    --crm-layout-gutter: clamp(16px, 1.7vw, 26px);
+  }
+}
+
+@media (max-width: 1366px) and (min-width: 761px) {
+  :root {
+    --crm-sidebar-fluid: 220px;
+    --crm-layout-gutter: 18px;
+  }
+
+  [class*="vehicle-record-workspace_vehiclePhoto"] [data-vehicle-render] {
+    width: min(100%, 300px) !important;
+    height: 160px !important;
+  }
+}
+
+@media (max-width: 1180px) and (min-width: 761px) {
+  :root {
+    --crm-sidebar-fluid: 215px;
+    --crm-layout-gutter: 16px;
+  }
+
+  [class*="parts-catalog_columns"],
+  [class*="vehicle-record-workspace_proposalLayout"],
+  [class*="settingsLayout"],
+  [class*="security-settings-panel_layout"] {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  [class*="parts-catalog_contextHeader"] {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  [class*="parts-catalog_contextHeader"] > :first-child {
+    grid-column: 1 / -1;
+  }
+
+  [class*="vehicle-record-workspace_vehiclePhoto"] [data-vehicle-render] {
+    width: min(100%, 280px) !important;
+    height: 150px !important;
+  }
+}
+
+@media (max-width: 900px) {
+  .workspace :where(.gridTwo, .twoCols, .twoColumns, .proposalLayout, .layout) {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .workspace :where(.header, .pageHeader, .topbar, .sectionHead, .contentHeading, .panelHead) {
+    align-items: flex-start;
+  }
+}
+
+@media (max-width: 760px) {
+  :root {
+    --crm-sidebar-fluid: 0px;
+    --crm-layout-gutter: 14px;
+    --crm-layout-gap: 12px;
+  }
+
+  .shell {
+    display: block !important;
+  }
+
+  .workspace {
+    padding-inline: var(--crm-layout-gutter) !important;
+  }
+
+  .workspace :where(.columns, .grid, .quick, .previewGrid, .summary, .kpis) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .workspace :where(.header, .pageHeader, .topbar, .sectionHead, .contentHeading, .panelHead, .toolbar, .actions, .topActions) {
+    gap: 10px;
+  }
+
+  .workspace :where(button, input, select, textarea) {
+    min-height: var(--crm-touch-target);
+  }
+
+  .workspace :where(.tableWrap, .tableScroll, .dataTableWrap, .tableShell, .weekBoard, .kanban, .leadTableWrap, .leadKanban) {
+    width: 100%;
+  }
+
+  [class*="vehicle-record-workspace_vehiclePhoto"] [data-vehicle-render] {
+    width: min(100%, 280px) !important;
+    height: 150px !important;
+  }
+}
+
+@media (max-width: 480px) {
+  :root {
+    --crm-layout-gutter: 12px;
+  }
+
+  .workspace :where(.columns, .grid, .quick, .previewGrid, .summary, .kpis) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .workspace :where(.actions, .topActions, .toolbar) > button,
+  .workspace :where(.actions, .topActions, .toolbar) > a {
+    flex: 1 1 100%;
+    width: 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .workspace :where(.row, .item, .card, button, a) {
+    transition: none !important;
+  }
+}
