@@ -47,7 +47,6 @@ export function RouteTimelinePanel() {
   if (state.scope.kind === "vehicle") timelineProps.vehicleId = state.scope.id;
 
   return <>
-    {!open && <button type="button" className={styles.launcher} onClick={() => setOpen(true)} aria-label={`Відкрити ${label.toLowerCase()}`}><span aria-hidden="true">◷</span>{label}</button>}
     {open && <div className={styles.backdrop} onMouseDown={(event) => { if (event.target === event.currentTarget) setOpen(false); }}>
       <aside className={styles.panel} aria-label={label}>
         <header className={styles.header}>
