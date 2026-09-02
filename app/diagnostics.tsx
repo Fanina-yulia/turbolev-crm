@@ -174,6 +174,12 @@ export function Diagnostics() {
 
   useEffect(() => { void load(); }, [load]);
   useEffect(() => {
+    if (!routeDiagnosticId || loading || !rows.length) return;
+    const row = rows.find((item) => item.id === routeDiagnosticId);
+    if (!row) return;
+    navigateCrm("Авто", { vehicleId: row.vehicle.id, vehiclePage: "diagnostic-card", diagnosticId: row.id });
+  }, [loading, routeDiagnosticId, rows]);
+  useEffect(() => {
     const sync = () => applyRoute(rows);
     window.addEventListener("popstate", sync);
     return () => window.removeEventListener("popstate", sync);
