@@ -155,6 +155,7 @@ export function PlannerDayView<TAppointment extends AppointmentBase>({ day, loca
   const skipNextClickRef = useRef(false);
   const [draggingAppointmentId, setDraggingAppointmentId] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<{ rowId: string; slotIndex: number } | null>(null);
+  const dropTargetRef = useRef<{ rowId: string; slotIndex: number } | null>(null);
   const suppressDragClickRef = useRef(false);
   const timeZone = location.timezone || "Europe/Kyiv";
   const openMinute = Number.isFinite(location.openMinute) ? location.openMinute : 540;
@@ -201,11 +202,25 @@ export function PlannerDayView<TAppointment extends AppointmentBase>({ day, loca
     skipNextClickRef.current = false;
     setResize(null);
     resizeRef.current = null;
+    dropTargetRef.current = null;
+    setDropTarget(null);
   }, [day, location.id]);
 
   const dayAppointments = useMemo(() => appointments
     .filter((item) => item.locationId === location.id && localParts(item.plannedStartAt, timeZone).day === day && item.status !== "CANCELLED")
     .sort((a, b) => +new Date(a.plannedStartAt) - +new Date(b.plannedStartAt)), [appointments, location.id, timeZone, day]);
+
+  const draggedAppointment = useMemo(
+    () => draggingAppointmentId ? dayAppointments.find((item) => item.id === draggingAppointmentId) || null : null,
+    [dayAppointments, draggingAppointmentId],
+  );
+
+  function updateDropTarget(next: { rowId: string; slotIndex: number } | null) {
+    const current = dropTargetRef.current;
+    if (current?.rowId === next?.rowId && current?.slotIndex === next?.slotIndex) return;
+    dropTargetRef.current = next;
+    setDropTarget(next);
+  }
 
   const availabilityMap = useMemo(() => {
     const map = new Map<string, boolean>();
@@ -321,12 +336,12 @@ export function PlannerDayView<TAppointment extends AppointmentBase>({ day, loca
     event.dataTransfer.effectAllowed = "move";
     event.dataTransfer.setData("text/planner-appointment", item.id);
     setDraggingAppointmentId(item.id);
-    setDropTarget(null);
+    updateDropTarget(null);
   }
 
   function endAppointmentDrag() {
     setDraggingAppointmentId(null);
-    setDropTarget(null);
+    updateDropTarget(null);
     window.setTimeout(() => { suppressDragClickRef.current = false; }, 0);
   }
 
@@ -335,12 +350,12 @@ export function PlannerDayView<TAppointment extends AppointmentBase>({ day, loca
     const item = id ? dayAppointments.find((appointment) => appointment.id === id) : null;
     if (!item || NON_DRAGGABLE.has(item.status)) return;
     if (!canDropRange(row, slotIndex, appointmentDuration(item), item.id)) {
-      setDropTarget(null);
+      updateDropTarget(null);
       return;
     }
     event.preventDefault();
     event.dataTransfer.dropEffect = "move";
-    setDropTarget({ rowId: row.id, slotIndex });
+    updateDropTarget({ rowId: row.id, slotIndex });
   }
 
   function dropOnCell(event: ReactDragEvent<HTMLButtonElement>, row: Row, slotIndex: number) {
@@ -348,7 +363,7 @@ export function PlannerDayView<TAppointment extends AppointmentBase>({ day, loca
     const id = draggingAppointmentId || event.dataTransfer.getData("text/planner-appointment");
     const item = id ? dayAppointments.find((appointment) => appointment.id === id) : null;
     setDraggingAppointmentId(null);
-    setDropTarget(null);
+    updateDropTarget(null);
     if (!item || NON_DRAGGABLE.has(item.status)) return;
     const durationMinutes = appointmentDuration(item);
     if (!canDropRange(row, slotIndex, durationMinutes, item.id)) {
@@ -556,8 +571,7 @@ export function PlannerDayView<TAppointment extends AppointmentBase>({ day, loca
             </div>
             {slots.map((minute, slotIndex) => {
               const available = slotAvailable(row, slotIndex);
-              const draggedItem = draggingAppointmentId ? dayAppointments.find((item) => item.id === draggingAppointmentId) : null;
-              const dragAvailable = draggedItem ? canDropRange(row, slotIndex, appointmentDuration(draggedItem), draggedItem.id) : false;
+              const dragAvailable = draggedAppointment ? canDropRange(row, slotIndex, appointmentDuration(draggedAppointment), draggedAppointment.id) : false;
               const selected = selection?.rowId === row.id && slotIndex >= Math.min(selection.startIndex, selection.endIndex) && slotIndex <= Math.max(selection.startIndex, selection.endIndex);
               const cellClass = available ? styles.free : styles.busy;
               const time = minuteLabel(minute);
@@ -571,7 +585,7 @@ export function PlannerDayView<TAppointment extends AppointmentBase>({ day, loca
                 className={`${styles.cell} ${cellClass} ${selected ? styles.selected : ""} ${dropTarget?.rowId === row.id && dropTarget.slotIndex === slotIndex ? styles.dropTarget : ""} ${compact ? compactStyles.cell : ""}`}
                 key={`${row.id}-${minute}`}
                 style={{ gridColumn: slotIndex + 2, gridRow }}
-                disabled={!available && !dragAvailable}
+                aria-disabled={!available && !dragAvailable}
                 onPointerDown={(event) => beginSelection(event, row, slotIndex)}
                 onPointerEnter={(event) => extendSelection(event, row, slotIndex)}
                 onPointerUp={(event) => commitSelection(event, row, slotIndex)}
