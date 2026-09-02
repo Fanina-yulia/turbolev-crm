@@ -41,7 +41,7 @@
   .header{padding:12px 0}
   .brand{gap:7px}
   .logo{width:36px;height:36px;border-radius:11px}
-  .brand strong{font-size:12px}.brand strong b{font-size:15px}.brand span{font-size:10px}
+  .brand strong{font-size:12px}.brand strong b{font-size:15px}.brand span{font-size:11px}
   .vehicleCard{display:grid;grid-template-columns:1fr;grid-template-rows:auto}
   .vehiclePhoto{min-height:170px;border-radius:0}
   .vehiclePhoto [data-vehicle-render]{height:170px}
