@@ -1,17 +1,11 @@
 .page{display:grid;gap:16px;min-width:0;color:var(--text);padding:0 0 24px;overflow-x:hidden}
-.header{display:grid;grid-template-columns:minmax(0,43fr) minmax(0,57fr);grid-template-rows:minmax(250px,1fr) auto;justify-content:stretch;gap:24px;min-height:360px;box-sizing:border-box;padding:0;overflow:hidden}
-.vehicleVisual{grid-column:1;grid-row:1 / span 2;display:grid;grid-template-rows:minmax(164px,1fr) auto;min-width:0;align-content:stretch}
-.vehiclePhoto{display:flex;align-items:center;justify-content:center;min-width:0;padding:12px 0 0}.vehiclePhoto :global([data-vehicle-render]){width:min(100%,340px);height:180px;max-width:100%}
-.ownerBar{display:flex;align-items:center;justify-content:space-between;gap:14px;min-width:0;margin:0;padding:14px 0 12px;background:transparent}
-.ownerIdentity{display:grid;min-width:0;gap:3px;padding:0;border:0;background:transparent;color:var(--text);text-align:left;cursor:pointer}.ownerIdentity strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:16px}.ownerIdentity span{color:var(--muted);font-size:13px}
-.ownerBar :global([class*="_actions"]){flex:0 0 auto}
-.vehicleSummary{grid-column:2;grid-row:1;position:relative;display:flex;align-items:center;min-width:0;padding:20px 0}.identityCopy{min-width:0}
-.eyebrow{display:block;color:var(--muted);font-size:12px;letter-spacing:.08em;text-transform:uppercase}
-.header h1{margin:6px 0 10px;font-size:30px;line-height:1.1}.plate{color:var(--muted);font-size:13px}
-.headerActions{position:absolute;top:18px;right:0;display:flex;align-items:flex-end;gap:12px;flex-direction:column}
-.back,.cardLink{border:1px solid var(--line);border-radius:9px;background:transparent;color:var(--text);padding:9px 12px;cursor:pointer}
-.header>.tabs{grid-column:1 / -1;grid-row:2;width:100%;max-width:none;min-width:0;margin:0;padding:0;overflow-x:auto;scrollbar-width:none;justify-content:flex-end}.header>.tabs::-webkit-scrollbar{display:none}
-.tabs{display:flex;gap:6px;flex-wrap:nowrap;justify-content:flex-end;border-bottom:1px solid var(--line);padding:0 4px}
+.pageTopline{display:flex;align-items:flex-start;justify-content:space-between;gap:20px;min-width:0}.pageTopline h1{margin:6px 0 4px;font-size:30px;line-height:1.05;letter-spacing:-.02em}.pageTopline p{margin:0;color:var(--muted);font-size:15px;line-height:1.45}.eyebrow{display:block;color:var(--muted);font-size:12px;letter-spacing:.08em;text-transform:uppercase}
+.back{flex:0 0 auto;border:1px solid var(--line);border-radius:9px;background:transparent;color:var(--text);padding:10px 13px;cursor:pointer}.back:hover{border-color:var(--orange);color:var(--orange)}
+.header{display:grid;grid-template-columns:minmax(260px,38%) minmax(0,1fr);align-items:stretch;gap:0;min-height:190px;box-sizing:border-box;padding:14px 18px;border:1px solid var(--line);border-radius:14px;background:var(--panel);overflow:hidden}
+.vehiclePhoto{display:flex;align-items:center;justify-content:center;min-width:0;min-height:170px;padding:0 22px;border-right:1px solid var(--line)}.vehiclePhoto :global([data-vehicle-render]){width:min(100%,340px);height:180px;max-width:100%}
+.vehicleSummary{display:grid;grid-template-columns:minmax(0,1fr) minmax(230px,34%);align-items:center;gap:24px;min-width:0;padding:14px 0 14px 30px}.identityCopy{min-width:0}.header h2{margin:8px 0 12px;font-size:30px;line-height:1.1;letter-spacing:-.025em}.vehicleIdentifiers{display:flex;align-items:center;flex-wrap:wrap;gap:10px}.plate{color:var(--text);font-size:16px;font-weight:800}.vin{color:var(--muted);font-size:14px}.ownerBar{display:flex;align-items:center;justify-content:space-between;gap:14px;min-width:0;padding-left:24px;border-left:1px solid var(--line)}
+.ownerIdentity{display:grid;min-width:0;gap:4px;padding:0;border:0;background:transparent;color:var(--text);text-align:left;cursor:pointer}.ownerIdentity strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:16px}.ownerIdentity>span:last-child{color:var(--muted);font-size:13px}.ownerLabel{color:var(--muted)!important;font-size:11px!important;letter-spacing:.07em;text-transform:uppercase}.ownerBar :global([class*="_actions"]){flex:0 0 auto}
+.tabs{display:flex;gap:4px;flex-wrap:nowrap;justify-content:flex-end;border-bottom:1px solid var(--line);padding:0 4px;overflow-x:auto;scrollbar-width:none}.tabs::-webkit-scrollbar{display:none}
 .tabs button{display:inline-flex;align-items:center;gap:8px;border:0;border-bottom:2px solid transparent;background:transparent;color:var(--muted);padding:14px 16px;font-size:16px;font-weight:700;white-space:nowrap;flex:0 0 auto;cursor:pointer;transition:color .18s ease,border-color .18s ease,background .18s ease}
 .tabs button:hover{color:var(--text)}
 .tabs .statusDot{width:7px;height:7px;flex:0 0 auto;border-radius:50%;background:currentColor}
@@ -20,35 +14,16 @@
 .tabs .statusDanger{color:#ef4444;border-bottom-color:#ef4444}
 .tabs .statusNeutral{color:#94a3b8;border-bottom-color:#94a3b8}
 .tabs .activeTab{background:color-mix(in srgb,var(--orange) 8%,transparent);border-radius:8px 8px 0 0;outline:1px solid color-mix(in srgb,var(--orange) 45%,transparent);outline-offset:-1px}
-.content{display:grid;gap:16px}.contentHeading{display:flex;justify-content:space-between;align-items:flex-start;gap:16px}.contentHeading h2{margin:4px 0;font-size:22px}.contentHeading p{margin:0;color:var(--muted)}
+.content{display:grid;gap:16px}
 .proposalSection{min-width:0}.proposalLayout{display:grid;grid-template-columns:minmax(210px,260px) minmax(0,1fr);gap:14px;align-items:start}
 .proposalList{display:grid;gap:8px;padding:12px;border:1px solid var(--line);border-radius:12px;background:var(--panel)}.proposalList h3{margin:0 0 4px;font-size:14px}
 .proposalList button{display:grid;gap:3px;text-align:left;border:1px solid var(--line);border-radius:9px;background:transparent;color:var(--text);padding:10px;cursor:pointer}.proposalList button:hover,.proposalList .proposalActive{border-color:var(--accent,#ff5a00);background:color-mix(in srgb,var(--accent,#ff5a00) 8%,transparent)}.proposalList span,.proposalList small{color:var(--muted);font-size:12px}
 .state,.loading,.empty,.error{padding:18px;border:1px solid var(--line);border-radius:12px;background:var(--panel)}.empty h3{margin:0 0 8px}.empty p{color:var(--muted);margin:0 0 14px}.empty button{border:0;border-radius:9px;background:var(--accent,#ff5a00);color:#fff;padding:10px 14px;font-weight:700;cursor:pointer}.error{color:#ef4444;border-color:color-mix(in srgb,#ef4444 35%,var(--line))}
-@media(max-width:1600px) and (min-width:761px){
-  .page{gap:12px}
-  .header{grid-template-columns:minmax(0,40fr) minmax(0,60fr);grid-template-rows:minmax(205px,1fr) auto;gap:16px;min-height:300px}
-  .vehicleVisual{grid-template-rows:minmax(170px,1fr) auto}
-  .vehiclePhoto{padding-top:0}
-  .vehiclePhoto :global([data-vehicle-render]){width:min(100%,320px);height:170px}
-  .ownerBar{gap:8px;padding:10px 0}
-  .ownerIdentity strong{font-size:14px}
-  .ownerIdentity span{font-size:12px}
-  .vehicleSummary{padding:16px 0}
-  .header h1{font-size:26px}
-  .eyebrow{font-size:11px}
-  .plate{font-size:12px;overflow-wrap:anywhere}
-  .headerActions{top:10px}
-  .back,.cardLink{font-size:13px;padding:8px 10px}
-  .tabs{gap:2px}
-  .tabs button{gap:6px;padding:11px 10px;font-size:14px}
-}
+@media(max-width:1600px) and (min-width:761px){.page{gap:12px}.pageTopline h1{font-size:26px}.pageTopline p{font-size:14px}.header{min-height:170px;padding:10px 14px}.vehiclePhoto{min-height:150px;padding:0 14px}.vehiclePhoto :global([data-vehicle-render]){width:min(100%,300px);height:160px}.vehicleSummary{grid-template-columns:minmax(0,1fr) minmax(190px,32%);gap:14px;padding-left:20px}.ownerBar{padding-left:16px;gap:8px}.ownerIdentity strong{font-size:14px}.header h2{font-size:26px}.eyebrow{font-size:11px}.plate{font-size:14px}.vin{font-size:12px}.back{font-size:13px;padding:8px 10px}.tabs{gap:2px}.tabs button{gap:6px;padding:11px 10px;font-size:14px}}
 @media(max-width:1360px) and (min-width:761px){
-  .header{grid-template-columns:minmax(0,38fr) minmax(0,62fr);gap:12px;min-height:280px}
-  .vehiclePhoto :global([data-vehicle-render]){width:min(100%,280px);height:150px}
-  .vehicleVisual{grid-template-rows:minmax(150px,1fr) auto}
+  .header{grid-template-columns:minmax(220px,34%) minmax(0,1fr)}.vehiclePhoto :global([data-vehicle-render]){width:min(100%,260px);height:140px}.vehicleSummary{grid-template-columns:minmax(0,1fr) minmax(170px,32%);padding-left:14px}.ownerBar{padding-left:12px}
   .tabs button{gap:5px;padding:10px 8px;font-size:13px}
   .tabs .statusDot{width:6px;height:6px}
 }
-@media(max-width:1180px){.header{grid-template-columns:minmax(0,1fr) minmax(0,1fr);grid-template-rows:minmax(210px,1fr) auto;min-height:300px;gap:14px}.ownerBar{flex-wrap:wrap}.ownerBar :global([class*="_actions"]){width:100%;justify-content:flex-start}.vehicleSummary{padding-left:0}}
-@media(max-width:760px){.header{display:flex;flex-direction:column;gap:0;min-height:0;padding:0}.vehicleVisual{min-height:210px}.vehiclePhoto{padding-top:12px}.vehiclePhoto :global([data-vehicle-render]){width:min(100%,320px);height:180px}.ownerBar{margin:0;padding:10px 0}.vehicleSummary{min-height:180px;padding:18px 0 22px}.headerActions{top:12px;right:0}.headerActions .back{font-size:12px}.header>.tabs{width:auto;max-width:none}.contentHeading{flex-direction:column}.proposalLayout{grid-template-columns:1fr}.tabs{overflow-x:auto;flex-wrap:nowrap;margin:0 -4px}.tabs button{white-space:nowrap}}
+@media(max-width:1180px){.header{grid-template-columns:minmax(210px,35%) minmax(0,1fr)}.vehicleSummary{grid-template-columns:minmax(0,1fr) minmax(175px,34%);gap:12px}.ownerBar{flex-wrap:wrap}.ownerBar :global([class*="_actions"]){width:100%;justify-content:flex-start}.ownerBar{align-content:center}}
+@media(max-width:760px){.pageTopline{display:grid;gap:12px}.pageTopline h1{font-size:25px}.pageTopline p{font-size:14px}.pageTopline .back{justify-self:start}.header{display:flex;flex-direction:column;gap:0;min-height:0;padding:0}.vehiclePhoto{min-height:190px;padding:10px 12px;border-right:0;border-bottom:1px solid var(--line)}.vehiclePhoto :global([data-vehicle-render]){width:min(100%,320px);height:180px}.vehicleSummary{display:grid;grid-template-columns:1fr;gap:18px;min-height:0;padding:18px 16px 16px}.header h2{font-size:25px}.ownerBar{margin:0;padding:16px 0 0;border-left:0;border-top:1px solid var(--line)}.ownerBar :global([class*="_actions"]){width:auto}.tabs{justify-content:flex-start;margin:0 -4px}.tabs button{white-space:nowrap}.proposalLayout{grid-template-columns:1fr}}

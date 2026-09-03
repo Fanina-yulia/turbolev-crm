@@ -57,33 +57,42 @@ export function VehicleRecordWorkspace({ vehicle, loading, page, diagnosticId, o
   ];
 
   return <div className={styles.page}>
+    <div className={styles.pageTopline}>
+      <div>
+        <span className={styles.eyebrow}>КАРТКА АВТОМОБІЛЯ</span>
+        <h1>{pageTitle(page)}</h1>
+        <p>{pageDescription(page)}</p>
+      </div>
+      <button type="button" className={styles.back} onClick={onClose}>← Карта автомобіля</button>
+    </div>
+
     <header className={styles.header}>
-      <div className={styles.vehicleVisual}>
-        <div className={styles.vehiclePhoto}><VehicleRender id={vehicle.id} brand={vehicle.brand} model={vehicle.model} year={vehicle.year} updatedAt={vehicle.updatedAt} exteriorColorName={vehicle.exteriorColorName} exteriorColorHex={vehicle.exteriorColorHex} exteriorColorConfirmed={vehicle.exteriorColorConfirmed} size="hero" eager /></div>
+      <div className={styles.vehiclePhoto}><VehicleRender id={vehicle.id} brand={vehicle.brand} model={vehicle.model} year={vehicle.year} updatedAt={vehicle.updatedAt} exteriorColorName={vehicle.exteriorColorName} exteriorColorHex={vehicle.exteriorColorHex} exteriorColorConfirmed={vehicle.exteriorColorConfirmed} size="hero" eager /></div>
+      <div className={styles.vehicleSummary}>
+        <div className={styles.identityCopy}>
+          <span className={styles.eyebrow}>АВТОМОБІЛЬ · ПЕРСОНАЛЬНИЙ РОЗДІЛ</span>
+          <h2>{title(vehicle)}</h2>
+          <div className={styles.vehicleIdentifiers}>
+            <span className={styles.plate}>{vehicle.plateNumber ? <CopyableValue value={vehicle.plateNumber} label="держномер" /> : "Без держномера"}</span>
+            {vehicle.vin ? <span className={styles.vin}>VIN <CopyableValue value={vehicle.vin} label="VIN" /></span> : null}
+          </div>
+        </div>
         <div className={styles.ownerBar}>
           <button type="button" className={styles.ownerIdentity} onClick={() => navigateCrm("Клієнти", { clientId: vehicle.client.id })}>
+            <span className={styles.ownerLabel}>КЛІЄНТ</span>
             <strong>{vehicle.client.name || "Клієнт без імені"}</strong>
             <span>{vehicle.client.phone}</span>
           </button>
           <ClientCommunicationActions clientId={vehicle.client.id} vehicleId={vehicle.id} phone={vehicle.client.phone} />
         </div>
       </div>
-      <div className={styles.vehicleSummary}>
-        <div className={styles.headerActions}><button type="button" className={styles.back} onClick={onClose}>← До списку автомобілів</button></div>
-        <div className={styles.identityCopy}>
-          <span className={styles.eyebrow}>АВТОМОБІЛЬ · ПЕРСОНАЛЬНИЙ РОЗДІЛ</span>
-          <h1>{title(vehicle)}</h1>
-          <span className={styles.plate}>{vehicle.plateNumber ? <CopyableValue value={vehicle.plateNumber} label="держномер" /> : "Без держномера"}{vehicle.vin ? <> · VIN <CopyableValue value={vehicle.vin} label="VIN" /></> : ""}</span>
-        </div>
-      </div>
-      <nav className={styles.tabs} aria-label="Розділи автомобіля">{links.map(([target, label, tab]) => {
-        const status = getVehicleTabStatus(vehicle, tab);
-        return <button type="button" key={target} className={[styles.tab, vehicleTabToneClass(status.tone, styles), page === target ? styles.activeTab : ""].filter(Boolean).join(" ")} title={label + ": " + status.label} onClick={() => navigateCrm("Авто", { vehicleId: vehicle.id, vehiclePage: target })}><i className={styles.statusDot} aria-hidden="true" />{label}</button>;
-      })}</nav>
     </header>
+    <nav className={styles.tabs} aria-label="Розділи автомобіля">{links.map(([target, label, tab]) => {
+      const status = getVehicleTabStatus(vehicle, tab);
+      return <button type="button" key={target} className={[styles.tab, vehicleTabToneClass(status.tone, styles), page === target ? styles.activeTab : ""].filter(Boolean).join(" ")} title={label + ": " + status.label} onClick={() => navigateCrm("Авто", { vehicleId: vehicle.id, vehiclePage: target })}><i className={styles.statusDot} aria-hidden="true" />{label}</button>;
+    })}</nav>
 
     <section className={styles.content}>
-      <div className={styles.contentHeading}><div><span className={styles.eyebrow}>КАРТКА АВТОМОБІЛЯ</span><h2>{pageTitle(page)}</h2><p>{pageDescription(page)}</p></div><button type="button" className={styles.cardLink} onClick={() => navigateCrm("Авто", { vehicleId: vehicle.id })}>← Картка автомобіля</button></div>
       {page === "diagnostic-card" && <VehicleDiagnosticsTab vehicle={vehicle} diagnosticId={diagnosticId} />}
       {page === "service-history" && <ServiceTimeline vehicleId={vehicle.id} />}
       {page === "commercial-offer" && <div className={styles.proposalSection}>
