@@ -40,6 +40,9 @@ export const PLANNER_STATUSES = [
 ] as const;
 
 export type PlannerStatus = (typeof PLANNER_STATUSES)[number];
+export const PLANNER_PURPOSES = ["DIAGNOSTICS", "REPAIR"] as const;
+export type PlannerPurpose = (typeof PLANNER_PURPOSES)[number];
+type PlannerPaymentStatus = "NOT_FORMED" | "UNPAID" | "PARTIAL" | "PAID" | "OVERDUE" | "CANCELLED";
 
 export type AppointmentWrite = {
   locationId: string;
@@ -49,6 +52,7 @@ export type AppointmentWrite = {
   clientId?: string | null;
   vehicleId?: string | null;
   workOrderId?: string | null;
+  purpose?: PlannerPurpose | null;
   status?: PlannerStatus;
   customerName?: string | null;
   phone?: string | null;
@@ -129,6 +133,39 @@ export function parsePlannerStatus(value: unknown): PlannerStatus | null {
     : null;
 }
 
+export function parsePlannerPurpose(value: unknown): PlannerPurpose | null {
+  return typeof value === "string" && (PLANNER_PURPOSES as readonly string[]).includes(value)
+    ? value as PlannerPurpose
+    : null;
+}
+
+function inferPlannerPurpose(body: Record<string, unknown>, current?: AppointmentWrite): PlannerPurpose {
+  const explicit = parsePlannerPurpose(body.purpose) ?? current?.purpose;
+  if (explicit) return explicit;
+  if (body.workOrderId || current?.workOrderId) return "REPAIR";
+  const status = parsePlannerStatus(body.status) ?? current?.status ?? "BOOKED";
+  return ["WAITING_PARTS_SELECTION", "WAITING_CALCULATION", "WAITING_APPROVAL", "WAITING_PARTS", "READY_FOR_REPAIR", "IN_REPAIR", "WAITING_QC", "WAITING_PAYMENT", "READY_FOR_PICKUP", "WARRANTY", "PAUSED"].includes(status)
+    ? "REPAIR"
+    : "DIAGNOSTICS";
+}
+
+const PROCESS_LABELS: Record<string, string> = {
+  BOOKED: "Записаний",
+  ARRIVED: "Автомобіль прийнято",
+  DIAGNOSTICS: "Діагностика",
+  WAITING_PARTS_SELECTION: "Підбір запчастин",
+  WAITING_CALCULATION: "Калькуляція",
+  WAITING_APPROVAL: "Погодження",
+  WAITING_PARTS: "Очікує запчастини",
+  READY_FOR_REPAIR: "Готовий до ремонту",
+  IN_REPAIR: "У ремонті",
+  WAITING_QC: "Контроль якості",
+  READY_FOR_PICKUP: "Готовий до видачі",
+  COMPLETED: "Завершено",
+  CANCELLED: "Скасований",
+  NO_SHOW: "Не приїхав",
+};
+
 export function parseDateValue(value: unknown, required = false): Date | null {
   if (value == null || value === "") return required ? null : null;
   const date = new Date(String(value));
@@ -163,6 +200,7 @@ export function normalizeAppointmentPayload(body: Record<string, unknown>, curre
     clientId: Object.prototype.hasOwnProperty.call(body, "clientId") ? clean(body.clientId, 80) : current?.clientId ?? null,
     vehicleId: Object.prototype.hasOwnProperty.call(body, "vehicleId") ? clean(body.vehicleId, 80) : current?.vehicleId ?? null,
     workOrderId: Object.prototype.hasOwnProperty.call(body, "workOrderId") ? clean(body.workOrderId, 80) : current?.workOrderId ?? null,
+    purpose: inferPlannerPurpose(body, current),
     status,
     customerName: Object.prototype.hasOwnProperty.call(body, "customerName") ? clean(body.customerName, 160) : current?.customerName ?? null,
     phone: Object.prototype.hasOwnProperty.call(body, "phone") ? clean(body.phone, 32) : current?.phone ?? null,
@@ -211,7 +249,55 @@ export async function getPlannerBoard(from: Date, to: Date, locationId?: string 
       })
     : [];
 
-  return { locations, activeLocationId, appointments };
+  const appointmentIds = appointments.map((row) => row.id);
+  const workOrderIds = Array.from(new Set(appointments.flatMap((row) => row.workOrderId ? [row.workOrderId] : [])));
+  const visitLinks = appointmentIds.length
+    ? await prisma.diagnosticVisitLink.findMany({ where: { appointmentId: { in: appointmentIds } }, select: { appointmentId: true, diagnosticRequestId: true } })
+    : [];
+  const diagnosticIds = Array.from(new Set(visitLinks.map((row) => row.diagnosticRequestId)));
+  const [workOrderRows, obligations, diagnosticPayments] = await Promise.all([
+    workOrderIds.length ? prisma.workOrder.findMany({ where: { id: { in: workOrderIds } }, select: { id: true, status: true } }) : [],
+    workOrderIds.length ? prisma.financialObligation.findMany({ where: { workOrderId: { in: workOrderIds }, direction: "RECEIVABLE", status: { not: "CANCELLED" } }, select: { workOrderId: true, status: true, amount: true, settledAmount: true } }) : [],
+    diagnosticIds.length ? prisma.cashTransaction.findMany({ where: { sourceEntity: "WALK_IN_DIAGNOSTIC_PAYMENT", sourceEntityId: { in: diagnosticIds.map((id) => `${id}:payment`) }, status: "POSTED" }, select: { sourceEntityId: true, amount: true } }) : [],
+  ]);
+  const diagnosticRows = diagnosticIds.length
+    ? await prisma.diagnosticRequest.findMany({ where: { id: { in: diagnosticIds } }, select: { id: true, status: true } })
+    : [];
+  const diagnosticByAppointment = new Map(visitLinks.map((row) => [row.appointmentId, row.diagnosticRequestId]));
+  const diagnosticById = new Map(diagnosticRows.map((row) => [row.id, row]));
+  const workOrderById = new Map(workOrderRows.map((row) => [row.id, row]));
+  const obligationsByWorkOrder = new Map<string, typeof obligations>();
+  for (const row of obligations) if (row.workOrderId) obligationsByWorkOrder.set(row.workOrderId, [...(obligationsByWorkOrder.get(row.workOrderId) || []), row]);
+  const paymentByDiagnostic = new Map(diagnosticPayments.map((row) => [row.sourceEntityId?.split(":")[0] || "", row]));
+
+  const decoratedAppointments = appointments.map((row) => {
+    const purpose = (row.purpose as PlannerPurpose | null) || (row.workOrderId ? "REPAIR" : diagnosticByAppointment.has(row.id) || row.status === "DIAGNOSTICS" ? "DIAGNOSTICS" : inferPlannerPurpose({ status: row.status }));
+    const diagnosticId = diagnosticByAppointment.get(row.id);
+    const diagnostic = diagnosticId ? diagnosticById.get(diagnosticId) : null;
+    const workOrder = row.workOrderId ? workOrderById.get(row.workOrderId) : null;
+    const processStatus = purpose === "REPAIR" ? workOrder?.status || row.status : diagnostic?.status || (row.status === "DIAGNOSTICS" ? row.status : "PENDING");
+    const workOrderObligations = row.workOrderId ? obligationsByWorkOrder.get(row.workOrderId) || [] : [];
+    const amountValue = workOrderObligations.reduce((sum, item) => sum + Number(item.amount), 0);
+    const paidValue = workOrderObligations.reduce((sum, item) => sum + Number(item.settledAmount), 0);
+    const walkInPayment = diagnosticId ? paymentByDiagnostic.get(diagnosticId) : undefined;
+    const paymentStatus: PlannerPaymentStatus = row.workOrderId
+      ? !workOrderObligations.length ? "NOT_FORMED" : paidValue >= amountValue && amountValue > 0 ? "PAID" : workOrderObligations.some((item) => item.status === "OVERDUE") ? "OVERDUE" : paidValue > 0 ? "PARTIAL" : "UNPAID"
+      : walkInPayment ? "PAID" : row.estimatedAmount != null ? "UNPAID" : "NOT_FORMED";
+    return {
+      ...row,
+      purpose,
+      processStatus,
+      processLabel: PROCESS_LABELS[processStatus] || (purpose === "DIAGNOSTICS" ? "Діагностика" : "Ремонт / сервіс"),
+      payment: {
+        status: paymentStatus,
+        amount: row.workOrderId ? amountValue || null : row.estimatedAmount,
+        paid: row.workOrderId ? paidValue : walkInPayment ? Number(walkInPayment.amount) : 0,
+        outstanding: row.workOrderId ? Math.max(0, amountValue - paidValue) : walkInPayment ? 0 : row.estimatedAmount,
+      },
+    };
+  });
+
+  return { locations, activeLocationId, appointments: decoratedAppointments };
 }
 
 export async function validatePlannerResources(input: AppointmentWrite, excludeId?: string) {
@@ -322,6 +408,7 @@ export async function updatePlannerAppointment(id: string, body: Record<string, 
     clientId: existing.clientId,
     vehicleId: existing.vehicleId,
     workOrderId: existing.workOrderId,
+    purpose: (existing as typeof existing & { purpose?: PlannerPurpose | null }).purpose ?? null,
     status: existing.status as PlannerStatus,
     customerName: existing.customerName,
     phone: existing.phone,
