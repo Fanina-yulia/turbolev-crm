@@ -22,6 +22,9 @@ export const PLANNER_STATUS_VALUES = [
 ] as const;
 
 export type PlannerStatusContract = (typeof PLANNER_STATUS_VALUES)[number];
+export const PLANNER_PURPOSE_VALUES = ["DIAGNOSTICS", "REPAIR"] as const;
+export type PlannerPurposeContract = (typeof PLANNER_PURPOSE_VALUES)[number];
+export type PlannerPaymentStatusContract = "NOT_FORMED" | "UNPAID" | "PARTIAL" | "PAID" | "OVERDUE" | "CANCELLED";
 
 export type PlannerPostContract = {
   id: string;
@@ -53,6 +56,15 @@ export type PlannerAppointmentContract = {
   mechanicId: string | null;
   status: PlannerStatusContract;
   workOrderId: string | null;
+  purpose: PlannerPurposeContract | null;
+  processStatus: string | null;
+  processLabel: string | null;
+  payment: {
+    status: PlannerPaymentStatusContract;
+    amount: CrmDecimal | null;
+    paid: CrmDecimal | null;
+    outstanding: CrmDecimal | null;
+  };
   vehicleId: string | null;
   customerName: string | null;
   phone: string | null;
