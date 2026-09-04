@@ -16,6 +16,7 @@ export type PreliminaryWork = {
 };
 
 export type RequestForm = {
+  purpose: "DIAGNOSTICS" | "REPAIR";
   customerName: string;
   phone: string;
   source: string;
