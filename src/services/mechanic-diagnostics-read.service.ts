@@ -88,6 +88,7 @@ export async function listMechanicDiagnosticsReadOnly(userId: string) {
     },
     select: {
       id: true,
+      purpose: true,
       leadId: true,
       vehicleId: true,
       plannedStartAt: true,
@@ -99,19 +100,46 @@ export async function listMechanicDiagnosticsReadOnly(userId: string) {
     take: 40,
   });
 
-  const vehicleIds = Array.from(new Set(appointments.flatMap((row) => row.vehicleId ? [row.vehicleId] : [])));
-  const leadIds = Array.from(new Set(appointments.flatMap((row) => row.leadId ? [row.leadId] : [])));
-  if (!appointments.length || (!vehicleIds.length && !leadIds.length)) {
+  if (!appointments.length) {
+    return { mechanic: { id: mechanic.id, name: mechanic.name, station: mechanic.location }, items: [] };
+  }
+
+  const links = await prisma.diagnosticVisitLink.findMany({
+    where: { appointmentId: { in: appointments.map((row) => row.id) } },
+    select: { appointmentId: true, diagnosticRequestId: true },
+  });
+  const diagnosticByAppointment = new Map(links.map((row) => [row.appointmentId, row.diagnosticRequestId]));
+  const legacyAppointments = appointments.filter((row) => !diagnosticByAppointment.has(row.id) && row.purpose == null);
+  const vehicleIds = Array.from(new Set(legacyAppointments.flatMap((row) => row.vehicleId ? [row.vehicleId] : [])));
+  const leadIds = Array.from(new Set(legacyAppointments.flatMap((row) => row.leadId ? [row.leadId] : [])));
+  const legacyDiagnostics = vehicleIds.length || leadIds.length
+    ? await prisma.diagnosticRequest.findMany({
+        where: {
+          status: { not: DiagnosticRequestStatus.CANCELLED },
+          OR: [
+            ...(vehicleIds.length ? [{ vehicleId: { in: vehicleIds } }] : []),
+            ...(leadIds.length ? [{ leadId: { in: leadIds } }] : []),
+          ],
+        },
+        select: { id: true, vehicleId: true, leadId: true },
+        orderBy: [{ updatedAt: "desc" }, { createdAt: "desc" }],
+      })
+    : [];
+  for (const appointment of legacyAppointments) {
+    const diagnostic = legacyDiagnostics.find((row) => Boolean(appointment.leadId && row.leadId === appointment.leadId))
+      || legacyDiagnostics.find((row) => Boolean(appointment.vehicleId && row.vehicleId === appointment.vehicleId));
+    if (diagnostic) diagnosticByAppointment.set(appointment.id, diagnostic.id);
+  }
+
+  const diagnosticIds = Array.from(new Set(diagnosticByAppointment.values()));
+  if (!diagnosticIds.length) {
     return { mechanic: { id: mechanic.id, name: mechanic.name, station: mechanic.location }, items: [] };
   }
 
   const diagnostics = await prisma.diagnosticRequest.findMany({
     where: {
       status: { not: DiagnosticRequestStatus.CANCELLED },
-      OR: [
-        ...(vehicleIds.length ? [{ vehicleId: { in: vehicleIds } }] : []),
-        ...(leadIds.length ? [{ leadId: { in: leadIds } }] : []),
-      ],
+      id: { in: diagnosticIds },
     },
     include: {
       client: { select: { id: true, name: true, phone: true } },
@@ -120,13 +148,6 @@ export async function listMechanicDiagnosticsReadOnly(userId: string) {
     },
     orderBy: [{ updatedAt: "desc" }, { createdAt: "desc" }],
   });
-
-  const diagnosticByAppointment = new Map<string, string>();
-  for (const appointment of appointments) {
-    const diagnostic = diagnostics.find((row) => Boolean(appointment.leadId && row.leadId === appointment.leadId))
-      || diagnostics.find((row) => Boolean(appointment.vehicleId && row.vehicleId === appointment.vehicleId));
-    if (diagnostic) diagnosticByAppointment.set(appointment.id, diagnostic.id);
-  }
 
   const ids = Array.from(new Set(diagnosticByAppointment.values()));
   const reviews = ids.length
