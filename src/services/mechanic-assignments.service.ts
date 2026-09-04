@@ -6,6 +6,7 @@ export type ActiveMechanicAssignment = {
   vehicleId: string | null;
   workOrderId: string | null;
   diagnosticRequestId: string | null;
+  purpose: "DIAGNOSTICS" | "REPAIR" | null;
   appointmentStatus: string;
   workOrderStatus: string | null;
   vehicleLabel: string | null;
@@ -35,6 +36,7 @@ export async function listActiveMechanicAssignments(mechanicId: string) {
         a."vehicleId",
         a."workOrderId",
         dvl."diagnosticRequestId",
+        a.purpose::text AS "purpose",
         a.status::text AS "appointmentStatus",
         wo.status AS "workOrderStatus",
         a."vehicleLabel",
@@ -90,6 +92,7 @@ export async function listActiveMechanicAssignments(mechanicId: string) {
       "vehicleId",
       "workOrderId",
       "diagnosticRequestId",
+      "purpose",
       "appointmentStatus",
       "workOrderStatus",
       "vehicleLabel",
@@ -123,6 +126,7 @@ export async function listAllActiveMechanicAppointments(mechanicId: string) {
       a."vehicleId",
       a."workOrderId",
       dvl."diagnosticRequestId",
+      a.purpose::text AS "purpose",
       a.status::text AS "appointmentStatus",
       wo.status AS "workOrderStatus",
       a."vehicleLabel",
