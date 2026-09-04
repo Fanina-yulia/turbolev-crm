@@ -6,10 +6,13 @@ import {
   type PlannerLocationContract,
   type PlannerMechanicContract,
   type PlannerPostContract,
+  type PlannerPurposeContract,
+  type PlannerPaymentStatusContract,
   type PlannerStatusContract,
 } from "./planner";
 
 const PLANNER_STATUSES = new Set<string>(PLANNER_STATUS_VALUES);
+const PLANNER_PURPOSES = new Set<string>(["DIAGNOSTICS", "REPAIR"]);
 
 function requiredString(value: unknown) {
   if (typeof value !== "string") return null;
@@ -44,6 +47,16 @@ function decimal(value: unknown) {
 
 function nullableDecimal(value: unknown) {
   return value == null ? null : decimal(value);
+}
+
+function parsePayment(value: unknown) {
+  if (!isRecord(value)) return null;
+  const statuses = new Set<PlannerPaymentStatusContract>(["NOT_FORMED", "UNPAID", "PARTIAL", "PAID", "OVERDUE", "CANCELLED"]);
+  const status = typeof value.status === "string" && statuses.has(value.status as PlannerPaymentStatusContract) ? value.status as PlannerPaymentStatusContract : null;
+  const amount = nullableDecimal(value.amount);
+  const paid = nullableDecimal(value.paid);
+  const outstanding = nullableDecimal(value.outstanding);
+  return status && amount !== undefined && paid !== undefined && outstanding !== undefined ? { status, amount, paid, outstanding } : null;
 }
 
 function parseStringArrayStrict(value: unknown) {
@@ -119,6 +132,10 @@ function parseAppointment(value: unknown): PlannerAppointmentContract | null {
   const postId = nullableString(value.postId);
   const mechanicId = nullableString(value.mechanicId);
   const workOrderId = nullableString(value.workOrderId);
+  const purpose = value.purpose == null ? null : typeof value.purpose === "string" && PLANNER_PURPOSES.has(value.purpose) ? value.purpose as PlannerPurposeContract : undefined;
+  const processStatus = nullableString(value.processStatus);
+  const processLabel = nullableString(value.processLabel);
+  const payment = parsePayment(value.payment);
   const vehicleId = nullableString(value.vehicleId);
   const customerName = nullableString(value.customerName);
   const phone = nullableString(value.phone);
@@ -134,11 +151,11 @@ function parseAppointment(value: unknown): PlannerAppointmentContract | null {
   const partsEtaAt = nullableDateString(value.partsEtaAt);
 
   if (
-    postId === undefined || mechanicId === undefined || workOrderId === undefined || vehicleId === undefined ||
+    postId === undefined || mechanicId === undefined || workOrderId === undefined || purpose === undefined || vehicleId === undefined ||
     customerName === undefined || phone === undefined || vehicleLabel === undefined ||
     plateNumber === undefined || problem === undefined || comment === undefined || source === undefined ||
     estimatedAmount === undefined || actualArrivalAt === undefined || actualStartAt === undefined ||
-    actualEndAt === undefined || partsEtaAt === undefined
+    actualEndAt === undefined || partsEtaAt === undefined || processStatus === undefined || processLabel === undefined || !payment
   ) return null;
 
   const post = value.post == null ? null : parsePost(value.post);
@@ -153,6 +170,10 @@ function parseAppointment(value: unknown): PlannerAppointmentContract | null {
     mechanicId,
     status,
     workOrderId,
+    purpose,
+    processStatus,
+    processLabel,
+    payment,
     vehicleId,
     customerName,
     phone,
