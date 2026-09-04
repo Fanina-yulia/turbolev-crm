@@ -151,12 +151,8 @@ export async function createWorkOrderFromConfirmedDiagnostic(diagnosticRequestId
         status: WORK_ORDER_INITIAL_STATUS,
       },
     });
-    if (diagnosticRequest.leadId) {
-      await tx.serviceAppointment.updateMany({
-        where: { leadId: diagnosticRequest.leadId },
-        data: { clientId: diagnosticRequest.clientId, vehicleId: diagnosticRequest.vehicleId, workOrderId: workOrder.id },
-      });
-    }
+    // A confirmed diagnostic creates a repair case, not a repair appointment.
+    // Only an explicitly scheduled REPAIR appointment may receive this WorkOrder.
     return workOrder;
   });
 }
@@ -214,17 +210,11 @@ export async function getWorkOrder(id: string) {
   if (!workOrder) return null;
 
   const [appointment, recentCalls, cycle] = await Promise.all([
-    workOrder.diagnosticRequest.leadId
-      ? prisma.serviceAppointment.findFirst({
-          where: { leadId: workOrder.diagnosticRequest.leadId },
-          orderBy: { createdAt: "desc" },
-          include: { post: true, mechanic: true },
-        })
-      : prisma.serviceAppointment.findFirst({
-          where: { workOrderId: id },
-          orderBy: { createdAt: "desc" },
-          include: { post: true, mechanic: true },
-        }),
+    prisma.serviceAppointment.findFirst({
+      where: { workOrderId: id },
+      orderBy: { createdAt: "desc" },
+      include: { post: true, mechanic: true },
+    }),
     prisma.callHistory.findMany({
       where: { OR: [{ workOrderId: id }, { clientId: workOrder.clientId }] },
       orderBy: { createdAt: "desc" },
