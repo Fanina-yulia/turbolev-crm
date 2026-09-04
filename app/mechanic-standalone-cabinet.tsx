@@ -105,6 +105,7 @@ type RepairCaseFeed = {
 type Appointment = {
   id: string;
   workOrderId: string | null;
+  purpose?: "DIAGNOSTICS" | "REPAIR" | null;
   status: string;
   workOrderStatus: string | null;
   plannedStartAt: string;
@@ -576,7 +577,7 @@ export function MechanicStandaloneCabinet({ userName }: { userName?: string | nu
 
   const appointments = home?.appointments ?? [];
   const mechanicActionableAppointmentStatuses = new Set(["BOOKED", "ARRIVED", "DIAGNOSTICS", "WAITING_PARTS_SELECTION", "WAITING_CALCULATION", "WAITING_APPROVAL", "WAITING_PARTS", "READY_FOR_REPAIR", "IN_REPAIR", "WAITING_QC", "PAUSED"]);
-  const scheduledAppointments = appointments.filter((item) => mechanicActionableAppointmentStatuses.has(item.status));
+  const scheduledAppointments = appointments.filter((item) => item.purpose !== "DIAGNOSTICS" && mechanicActionableAppointmentStatuses.has(item.status));
   const prioritizedScheduledAppointments = [...scheduledAppointments].sort(appointmentPriority);
   const nextScheduledAppointment = prioritizedScheduledAppointments[0] ?? null;
   const selectedTask = tasks.find((item) => item.id === selectedTaskId) ?? null;
