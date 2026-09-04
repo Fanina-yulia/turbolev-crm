@@ -24,6 +24,7 @@ function toAppointmentWrite(existing: {
   clientId: string | null;
   vehicleId: string | null;
   workOrderId: string | null;
+  purpose: "DIAGNOSTICS" | "REPAIR" | null;
   status: string;
   customerName: string | null;
   phone: string | null;
@@ -53,6 +54,7 @@ function toAppointmentWrite(existing: {
     clientId: existing.clientId,
     vehicleId: existing.vehicleId,
     workOrderId: existing.workOrderId,
+    purpose: existing.purpose,
     status,
     customerName: existing.customerName,
     phone: existing.phone,
@@ -124,12 +126,23 @@ export async function arrivePlannerAppointment(id: string, body: Record<string, 
     let reusedDiagnostic = false;
     let followupWorkVisit = false;
 
-    if (fresh.workOrderId && clientId && vehicleId) {
+    const isRepairVisit = fresh.purpose === "REPAIR" || input.purpose === "REPAIR";
+    if (isRepairVisit && !fresh.workOrderId) {
+      return {
+        ok: false as const,
+        arrivalBlocked: true as const,
+        code: "WORK_ORDER_REQUIRED_FOR_REPAIR",
+        message: "Для заїзду на ремонт спочатку потрібно створити й прив’язати WorkOrder після підтвердженої діагностики.",
+        workflowDecision,
+      };
+    }
+
+    if (isRepairVisit || (fresh.workOrderId && clientId && vehicleId)) {
       const workOrder = await tx.workOrder.findUnique({
-        where: { id: fresh.workOrderId },
-        select: { id: true, clientId: true, vehicleId: true, diagnosticRequestId: true, diagnosticRequest: { select: { status: true } } },
+        where: { id: fresh.workOrderId! },
+        select: { id: true, clientId: true, vehicleId: true, diagnosticRequestId: true },
       });
-      if (!workOrder || workOrder.clientId !== clientId || workOrder.vehicleId !== vehicleId) {
+      if (!workOrder || (clientId && workOrder.clientId !== clientId) || (vehicleId && workOrder.vehicleId !== vehicleId)) {
         return {
           ok: false as const,
           arrivalBlocked: true as const,
@@ -138,8 +151,11 @@ export async function arrivePlannerAppointment(id: string, body: Record<string, 
           workflowDecision,
         };
       }
+      clientId = workOrder.clientId;
+      vehicleId = workOrder.vehicleId;
       diagnosticRequestId = workOrder.diagnosticRequestId;
-      diagnosticStatus = workOrder.diagnosticRequest.status;
+      const diagnostic = await tx.diagnosticRequest.findUnique({ where: { id: workOrder.diagnosticRequestId }, select: { status: true } });
+      diagnosticStatus = diagnostic?.status || null;
       reusedDiagnostic = true;
       followupWorkVisit = true;
       if (fresh.leadId) {
