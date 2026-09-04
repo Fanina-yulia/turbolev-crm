@@ -172,8 +172,10 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
         ? "Один запис не може тривати більше 24 годин."
         : code === "LOCATION_REQUIRED"
           ? "Оберіть локацію СТО."
-          : code === "INVALID_AMOUNT"
+      : code === "INVALID_AMOUNT"
             ? "Некоректна попередня сума."
+            : code === "WORK_ORDER_REQUIRED_FOR_REPAIR"
+              ? "Запис на ремонт має бути прив’язаний до WorkOrder, створеного після підтвердженої діагностики."
             : "Не вдалося змінити запис.";
     return NextResponse.json({ status: "INVALID_DATA", code, message }, { status: ["MECHANIC_REQUIRED", "MECHANIC_UNAVAILABLE", "POST_UNAVAILABLE"].includes(code) ? 422 : 400 });
   }
