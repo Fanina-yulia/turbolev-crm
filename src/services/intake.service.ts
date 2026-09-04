@@ -59,6 +59,7 @@ export type IntakePreliminaryWork = {
 };
 
 export type IntakeInput = {
+  purpose?: "DIAGNOSTICS" | "REPAIR";
   customerName?: string;
   phone: string;
   source?: string;
@@ -354,6 +355,13 @@ export async function createIntake(input: IntakeInput) {
       ? await tx.user.findFirst({ where: { isActive: true, name: { equals: clean(input.responsible, 160)!, mode: "insensitive" } } })
       : null;
     const need = [clean(input.category, 100), clean(input.complaint, 4000)].filter(Boolean).join(" · ") || preliminaryWorks[0]?.name || null;
+    const purpose = input.purpose === "REPAIR"
+      ? "REPAIR"
+      : input.purpose === "DIAGNOSTICS"
+        ? "DIAGNOSTICS"
+        : /діагност/iu.test(need || "")
+          ? "DIAGNOSTICS"
+          : "REPAIR";
 
     let location = null;
     let post = null;
@@ -466,6 +474,7 @@ export async function createIntake(input: IntakeInput) {
           leadId: lead.id,
           clientId: client.id,
           vehicleId: vehicle.id,
+          purpose,
           status: PlannerAppointmentStatus.BOOKED,
           customerName: client.name,
           phone: client.phone,
