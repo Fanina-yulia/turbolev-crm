@@ -54,6 +54,7 @@ export const requestYears = Array.from(
 );
 
 export const initialRequestForm: RequestForm = {
+  purpose: "DIAGNOSTICS",
   customerName: "",
   phone: "",
   source: "Інше",
