@@ -72,6 +72,19 @@
 - канонічна відповідальність Appointment у майбутній декомпозиції: `RESERVE / BOOKED / ARRIVED / NO_SHOW / CANCELLED`;
 - після `ARRIVED` джерело правди поступово переходить до DiagnosticRequest і WorkOrder.
 
+## Appointment purpose (implemented)
+
+`ServiceAppointment.purpose` розділяє фізичний заїзд на два типи:
+
+- `DIAGNOSTICS` — візит для роботи механіка з шаблоном/перевірками та створенням Діагностичної карти;
+- `REPAIR` — візит для виконання WorkOrder та його рядків робіт.
+
+Діагностична карта, підбір запчастин, комерційна пропозиція, погодження та оплата не є новими статусами одного запису. Вони відображаються як окремі доменні процеси. Ремонтний заїзд допускається до прибуття лише як підготовлений слот; при підтвердженні `ARRIVED` він має містити `workOrderId`, інакше CRM зупиняє операцію.
+
+Для старих рядків поле тимчасово nullable. Backfill класифікує записи з WorkOrder як `REPAIR`, записи з точним `DiagnosticVisitLink`/walk-in/старим статусом `DIAGNOSTICS` як `DIAGNOSTICS`; неоднозначні рядки не переписуються мовчки.
+
+Планувальник показує окремо статус запису, статус профільного процесу та фактичний фінансовий статус (`NOT_FORMED`, `UNPAID`, `PARTIAL`, `PAID`, `OVERDUE`, `CANCELLED`). Значення оплати більше не виводиться з `PlannerAppointmentStatus`.
+
 ## Legacy WorkOrder
 
 Старий `src/domain/work-order.ts` змішував до одного списку стани Lead, Booking, Diagnostics, Parts, Repair, Payment та Aftersales. v1 звужує WorkOrder до його фактичного життєвого циклу після підтвердженої діагностики. Legacy-значення мають aliases для читання старих даних там, де це безпечно.
@@ -97,7 +110,7 @@ API зараз read-only. Це навмисно: спочатку стабілі
 ## Наступні етапи
 
 1. Перевести presentation labels/status colors усіх екранів на registry.
-2. Декомпозувати downstream-статуси Planner у Diagnostic/WorkOrder без втрати історії.
+2. Завершити ручний review неоднозначних legacy-записів із `purpose = NULL`.
 3. Типізувати `WorkOrder.status` у БД після аналізу фактичних production-значень.
 4. Додати моделі PartsRequest, Payment, QC, Warranty та StockReservation.
 5. Додати `Blocker` і `VehicleLocation` до операційного контуру.
