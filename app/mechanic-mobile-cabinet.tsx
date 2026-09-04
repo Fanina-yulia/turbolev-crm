@@ -28,6 +28,7 @@ type MechanicTask = {
 
 type MechanicAppointment = {
   id: string;
+  purpose?: "DIAGNOSTICS" | "REPAIR" | null;
   status: string;
   plannedStartAt: string;
   plannedEndAt: string;
@@ -191,7 +192,7 @@ function LegacyMechanicMobileCabinet({ data, userName }: { data: MechanicPayload
   const appointments = useMemo(() => data.appointments ?? [], [data.appointments]);
   const tasks = liveTasks;
   const todayKey = kyivDateKey(new Date());
-  const todayAppointments = useMemo(() => appointments.filter((item) => kyivDateKey(item.plannedStartAt) === todayKey).sort((a, b) => new Date(a.plannedStartAt).getTime() - new Date(b.plannedStartAt).getTime()), [appointments, todayKey]);
+  const todayAppointments = useMemo(() => appointments.filter((item) => item.purpose !== "DIAGNOSTICS" && kyivDateKey(item.plannedStartAt) === todayKey).sort((a, b) => new Date(a.plannedStartAt).getTime() - new Date(b.plannedStartAt).getTime()), [appointments, todayKey]);
 
   const selectedTask = useMemo(() => tasks.find((item) => item.id === selectedTaskId) ?? null, [tasks, selectedTaskId]);
   const selectedOrderTasks = useMemo(() => selectedTask ? tasks.filter((item) => item.workOrderId === selectedTask.workOrderId) : [], [tasks, selectedTask]);
