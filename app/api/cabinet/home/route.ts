@@ -208,8 +208,9 @@ export async function GET(request: Request) {
       ]);
 
       const activeLines = lines.filter((line) => line.status !== "COMPLETED");
-      const assignmentStatuses = activeAssignments.map(effectiveAssignmentStatus);
-      const scheduledToday = activeAssignments.filter((item) => item.plannedStartAt >= startAt && item.plannedStartAt < endAt).length;
+      const repairAssignments = activeAssignments.filter((item) => item.purpose === "REPAIR" || (item.purpose == null && Boolean(item.workOrderId)));
+      const assignmentStatuses = repairAssignments.map(effectiveAssignmentStatus);
+      const scheduledToday = repairAssignments.filter((item) => item.plannedStartAt >= startAt && item.plannedStartAt < endAt).length;
       const inProgressAssignments = assignmentStatuses.filter((status) => status === "IN_REPAIR" || status === "REWORK").length;
       const waitingPartsAssignments = assignmentStatuses.filter((status) => status === "WAITING_PARTS" || status === "WAITING_PARTS_SELECTION").length;
 
@@ -219,7 +220,7 @@ export async function GET(request: Request) {
         linked: true,
         mechanic: { id: mechanic.id, name: mechanic.name, station: mechanic.location },
         kpis: {
-          assigned: activeAssignments.length,
+          assigned: repairAssignments.length,
           scheduledToday,
           inProgress: Math.max(inProgressAssignments, activeLines.filter((line) => line.status === "IN_PROGRESS").length),
           completedToday: lines.filter((line) => line.status === "COMPLETED").length,
@@ -237,9 +238,10 @@ export async function GET(request: Request) {
           workOrderStatus: line.workOrder.status,
           updatedAt: line.updatedAt,
         })),
-        appointments: activeAssignments.map((item) => ({
+        appointments: repairAssignments.map((item) => ({
           id: item.id,
           workOrderId: item.workOrderId,
+          purpose: item.purpose || (item.workOrderId ? "REPAIR" : "DIAGNOSTICS"),
           status: item.appointmentStatus,
           workOrderStatus: item.workOrderStatus,
           plannedStartAt: item.plannedStartAt,
