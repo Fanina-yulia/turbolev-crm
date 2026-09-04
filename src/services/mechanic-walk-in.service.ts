@@ -392,6 +392,7 @@ export async function startMechanicWalkInDiagnostic(userId: string, input: Mecha
         clientId: client.id,
         vehicleId: vehicle.id,
         workOrderId: null,
+        purpose: "DIAGNOSTICS",
         status: "ARRIVED",
         customerName: client.name || clientName,
         phone: phone.display,
