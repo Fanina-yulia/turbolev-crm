@@ -19,6 +19,11 @@ enum PlannerAppointmentStatus {
   RESERVE
 }
 
+enum AppointmentPurpose {
+  DIAGNOSTICS
+  REPAIR
+}
+
 model ServiceLocation {
   id          String   @id @default(cuid())
   name        String
@@ -90,6 +95,8 @@ model ServiceAppointment {
   clientId        String?                  @db.VarChar(64)
   vehicleId       String?                  @db.VarChar(64)
   workOrderId     String?                  @db.VarChar(64)
+  // Nullable during the legacy-data transition. New appointments must set it.
+  purpose         AppointmentPurpose?
   status          PlannerAppointmentStatus @default(BOOKED)
   customerName    String?
   phone           String?                  @db.VarChar(32)
