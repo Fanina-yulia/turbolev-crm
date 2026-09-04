@@ -937,11 +937,15 @@ export function NewRequestWizardV5({showButton=true,onOpenChange}:NewRequestWiza
 
             {step===3&&<section className="requestStep requestFastStep">
               <div className="requestStepTitle">
-                <div><small>КРОК 3</small><h3>Що потрібно перевірити?</h3></div>
-                <span className="requestHint">Коротко — решту уточнить діагностика</span>
+                <div><small>КРОК 3</small><h3>Мета заїзду</h3></div>
+                <span className="requestHint">Діагностика і ремонт мають окремі робочі процеси</span>
+              </div>
+              <div className="requestTags fastCategoryTags" aria-label="Тип візиту">
+                <button type="button" className={form.purpose==="DIAGNOSTICS"?"selected":""} onClick={()=>update("purpose","DIAGNOSTICS")}>Діагностика</button>
+                <button type="button" className={form.purpose==="REPAIR"?"selected":""} onClick={()=>update("purpose","REPAIR")}>Ремонт / сервіс</button>
               </div>
               <label className="requestFullField fastComplaint">
-                <span>Що турбує клієнта?</span>
+                <span>{form.purpose==="DIAGNOSTICS"?"Що потрібно перевірити?":"Які роботи потрібно виконати?"}</span>
                 <textarea value={form.complaint} onChange={event=>update("complaint",event.target.value)} placeholder="Напр.: щось стукає спереду, перевірити ходову…"/>
               </label>
               <div className="requestTags fastCategoryTags">
@@ -1061,7 +1065,7 @@ export function NewRequestWizardV5({showButton=true,onOpenChange}:NewRequestWiza
               ?<button type="button" className="primary" onClick={goNext}>{step===1&&!hasVehicleIdentifier?"Вкажіть номер авто":step===1&&!hasVehicleIdentity?"Уточніть марку і модель":step===2&&!canLeaveClient?"Заповніть клієнта":"Далі →"}</button>
               :plannerEntry
                 ?<button type="button" className="primary fastBookButton" disabled={saving} onClick={goNext}>{saving?"Створюю…":"Створити запис"}</button>
-                :<button type="submit" className="primary fastBookButton" disabled={saving}>{saving?"Записую…":"Записати на діагностику"}</button>}
+                :<button type="submit" className="primary fastBookButton" disabled={saving}>{saving?"Записую…":form.purpose==="DIAGNOSTICS"?"Записати на діагностику":"Записати на ремонт / сервіс"}</button>}
           </div>
         </div>
       </form>}
