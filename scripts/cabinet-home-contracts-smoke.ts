@@ -64,6 +64,7 @@ const managerKpis = {
   proposalsNotSent: 1,
   waitingCustomerDecision: 2,
   partsBlocking: 1,
+  unpaidWorks: 1,
 };
 
 const managerLinked = parseCabinetHomePayload({
@@ -116,6 +117,7 @@ assert.equal(managerLinked.attention[0]?.code, "COMMERCIAL_PROPOSAL_NOT_SENT");
 assert.equal(managerLinked.attention[0]?.action.params?.workOrderTab, "estimate");
 assert.equal(managerLinked.kpis.missedCalls, 2);
 assert.equal(managerLinked.kpis.proposalsNotSent, 1);
+assert.equal(managerLinked.kpis.unpaidWorks, 1);
 assert.equal(managerLinked.kpis.needsAction, 6);
 assert.equal(managerLinked.posts[0]?.occupied, true);
 assert.equal(managerLinked.mechanics[0]?.activeCars, 2);
