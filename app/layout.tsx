@@ -41,6 +41,7 @@ import "./analytics-funnel-agreed-layout.css";
 import "./appearance-global.css";
 import "@/src/lib/global-phone-copy.css";
 import "./crm-responsive-standard.css";
+import "./communications-visual-polish.css";
 import { PhoneInputNormalizer } from "./phone-input-normalizer";
 import { LeadDetailsEnhancer } from "./lead-details-enhancer";
 import { VehicleConfigurationEnhancer } from "./vehicle-configuration-enhancer";

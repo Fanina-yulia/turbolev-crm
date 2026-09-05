@@ -1,0 +1,258 @@
+/* Communications visual hierarchy polish.
+   Scope is intentionally anchored to the inbox filter nav so Integrations and other CRM modules stay untouched. */
+
+nav[aria-label="Фільтри комунікацій"]{
+  gap:6px;
+  padding:10px 0 9px;
+  overflow-x:auto;
+  overscroll-behavior-x:contain;
+  scrollbar-width:none;
+}
+nav[aria-label="Фільтри комунікацій"]::-webkit-scrollbar{display:none}
+nav[aria-label="Фільтри комунікацій"]>button,
+nav[aria-label="Фільтри комунікацій"] .communicationsLifecycleFilters button{
+  min-height:36px!important;
+  padding:0 12px!important;
+  gap:6px!important;
+  font-size:13px!important;
+}
+nav[aria-label="Фільтри комунікацій"]>button span,
+nav[aria-label="Фільтри комунікацій"] .communicationsLifecycleFilters button span{
+  min-width:20px!important;
+  height:20px!important;
+  font-size:11px!important;
+}
+
+/* Keep the inbox as a focused two-pane workspace instead of an endlessly growing document. */
+nav[aria-label="Фільтри комунікацій"]+section{
+  height:calc(100dvh - 205px)!important;
+  min-height:500px!important;
+  max-height:880px!important;
+  grid-template-columns:minmax(360px,420px) minmax(0,1fr)!important;
+  overflow:hidden!important;
+  border-radius:14px!important;
+  box-shadow:0 10px 28px rgba(15,23,42,.045)!important;
+}
+nav[aria-label="Фільтри комунікацій"]+section>aside{
+  min-height:0!important;
+  overflow:hidden!important;
+}
+nav[aria-label="Фільтри комунікацій"]+section>aside>div:last-child{
+  min-height:0!important;
+  overflow-y:auto!important;
+  overflow-x:hidden!important;
+  scrollbar-gutter:stable;
+}
+nav[aria-label="Фільтри комунікацій"]+section>section{
+  min-width:0!important;
+  min-height:0!important;
+  display:flex!important;
+  flex-direction:column!important;
+  overflow:hidden!important;
+}
+nav[aria-label="Фільтри комунікацій"]+section>section>header{
+  flex:0 0 auto!important;
+  align-items:center!important;
+  flex-wrap:nowrap!important;
+  gap:10px!important;
+  min-height:76px;
+  padding:10px 14px!important;
+}
+nav[aria-label="Фільтри комунікацій"]+section>section>header~div:not(.communicationsComposer):not(.communicationsLinkPanel){
+  min-height:0!important;
+  flex:1 1 auto!important;
+  overflow:auto!important;
+}
+
+/* Contact and vehicle summary: client first, car second, state last. */
+nav[aria-label="Фільтри комунікацій"]+section button[title="Відкрити картку контакту"]{
+  flex:0 1 300px!important;
+  max-width:300px!important;
+  padding:2px!important;
+  gap:9px!important;
+}
+nav[aria-label="Фільтри комунікацій"]+section button[title="Відкрити картку контакту"] strong{
+  font-size:15px!important;
+}
+nav[aria-label="Фільтри комунікацій"]+section button[title="Відкрити картку автомобіля"]{
+  min-width:190px!important;
+  flex:0 0 190px!important;
+  padding:7px 9px!important;
+  gap:7px!important;
+  border-radius:10px!important;
+}
+nav[aria-label="Фільтри комунікацій"]+section button[title="Відкрити картку автомобіля"] img,
+nav[aria-label="Фільтри комунікацій"]+section button[title="Відкрити картку автомобіля"] svg{
+  width:34px!important;
+  height:34px!important;
+}
+nav[aria-label="Фільтри комунікацій"]+section button[title="Відкрити картку автомобіля"] strong{
+  font-size:12px!important;
+}
+nav[aria-label="Фільтри комунікацій"]+section button[title="Відкрити картку автомобіля"] small{
+  font-size:11px!important;
+}
+
+/* Lifecycle controls must inform, not dominate. */
+[data-communications-lifecycle-host="row"]{
+  min-width:118px!important;
+  margin-right:4px!important;
+}
+[data-communications-lifecycle-host="header"]{
+  margin-left:auto!important;
+  gap:6px!important;
+}
+.communicationsLifecycleControl.compact select{
+  height:30px!important;
+  min-width:116px!important;
+  max-width:128px!important;
+  padding:0 22px 0 9px!important;
+  font-size:11px!important;
+  font-weight:800!important;
+}
+.communicationsLifecycleControl.header select{
+  height:32px!important;
+  min-width:118px!important;
+  max-width:138px!important;
+  padding:0 24px 0 10px!important;
+  font-size:11px!important;
+  font-weight:800!important;
+}
+.communicationsLifecycleControl[data-state="NEW"] select{
+  border-color:color-mix(in srgb,#2563eb 34%,var(--line))!important;
+  background:color-mix(in srgb,#2563eb 5%,var(--surface))!important;
+}
+.communicationsLifecycleControl[data-state="IN_WORK"] select{
+  border-color:color-mix(in srgb,var(--orange) 34%,var(--line))!important;
+  background:color-mix(in srgb,var(--orange) 5%,var(--surface))!important;
+}
+.communicationsLifecycleControl[data-state="CLOSED"] select{
+  border-color:color-mix(in srgb,#16a34a 30%,var(--line))!important;
+  background:color-mix(in srgb,#16a34a 5%,var(--surface))!important;
+}
+.communicationsLifecycleControl[data-state="NOT_OUR_CLIENT"] select{
+  border-color:color-mix(in srgb,#64748b 36%,var(--line))!important;
+  background:color-mix(in srgb,#64748b 6%,var(--surface))!important;
+}
+.communicationsLifecycleControl[data-state="SPAM"] select{
+  border-color:color-mix(in srgb,#ef4444 32%,var(--line))!important;
+  background:color-mix(in srgb,#ef4444 5%,var(--surface))!important;
+}
+.communicationsClientBadge{
+  height:28px!important;
+  padding:0 8px!important;
+  font-size:11px!important;
+  font-weight:800!important;
+  background:color-mix(in srgb,#16a34a 5%,var(--surface))!important;
+}
+
+/* Conversation area: lighter cards and a composer that always stays at the bottom. */
+nav[aria-label="Фільтри комунікацій"]+section>section article{
+  max-width:min(72%,650px)!important;
+  padding:9px 11px!important;
+  border-radius:12px!important;
+  box-shadow:none!important;
+}
+nav[aria-label="Фільтри комунікацій"]+section>section article p{
+  font-size:13px!important;
+  line-height:1.45!important;
+}
+.communicationsComposer{
+  flex:0 0 auto!important;
+  margin-top:auto!important;
+  position:sticky!important;
+  bottom:0!important;
+  z-index:6!important;
+  padding:10px 12px!important;
+  background:var(--panel)!important;
+  border-top:1px solid var(--line)!important;
+  box-shadow:0 -8px 22px rgba(15,23,42,.035)!important;
+}
+.communicationsReplyMeta{
+  margin:0 0 6px!important;
+  font-size:11px!important;
+}
+.communicationsReplyMeta label small{display:none!important}
+.communicationsReplyMeta select{
+  min-height:32px!important;
+  padding:4px 8px!important;
+}
+.communicationsComposeRow{
+  grid-template-columns:32px minmax(0,1fr) 32px 32px 42px!important;
+  gap:6px!important;
+}
+.communicationsComposeRow textarea{
+  min-height:46px!important;
+  max-height:96px!important;
+  padding:10px 11px!important;
+  border-radius:10px!important;
+  font-size:13px!important;
+}
+.communicationsComposeRow button{
+  height:40px!important;
+  min-height:40px!important;
+  border-radius:9px!important;
+}
+.communicationsComposer>span:last-child{
+  display:block!important;
+  max-width:320px!important;
+  margin-top:5px!important;
+  white-space:nowrap!important;
+  overflow:hidden!important;
+  text-overflow:ellipsis!important;
+  font-size:11px!important;
+  line-height:1.25!important;
+  opacity:.78;
+}
+
+@media(max-width:1366px){
+  nav[aria-label="Фільтри комунікацій"]+section{
+    grid-template-columns:minmax(330px,38%) minmax(0,1fr)!important;
+  }
+  nav[aria-label="Фільтри комунікацій"]+section>section>header{
+    flex-wrap:wrap!important;
+  }
+  nav[aria-label="Фільтри комунікацій"]+section button[title="Відкрити картку контакту"]{
+    flex:1 1 280px!important;
+    max-width:none!important;
+  }
+  [data-communications-lifecycle-host="header"]{margin-left:0!important}
+}
+
+@media(max-width:1100px){
+  nav[aria-label="Фільтри комунікацій"]+section{
+    grid-template-columns:minmax(300px,40%) minmax(0,1fr)!important;
+  }
+  [data-communications-lifecycle-host="row"]{min-width:110px!important}
+  .communicationsLifecycleControl.compact select{min-width:108px!important;max-width:118px!important;font-size:11px!important}
+}
+
+@media(max-width:900px){
+  nav[aria-label="Фільтри комунікацій"]+section{
+    height:auto!important;
+    min-height:0!important;
+    max-height:none!important;
+    grid-template-columns:1fr!important;
+    overflow:visible!important;
+  }
+  nav[aria-label="Фільтри комунікацій"]+section>aside{
+    height:min(390px,48dvh)!important;
+    min-height:300px!important;
+  }
+  nav[aria-label="Фільтри комунікацій"]+section>section{
+    min-height:520px!important;
+  }
+  nav[aria-label="Фільтри комунікацій"]+section>section>header{
+    align-items:flex-start!important;
+  }
+  nav[aria-label="Фільтри комунікацій"]+section>section article{max-width:90%!important}
+  .communicationsComposer{position:relative!important}
+  .communicationsComposer>span:last-child{max-width:100%!important}
+}
+
+@media(max-width:560px){
+  nav[aria-label="Фільтри комунікацій"]+section>aside{height:min(420px,52dvh)!important}
+  .communicationsComposeRow{grid-template-columns:32px minmax(0,1fr) 32px 32px 40px!important}
+  [data-communications-lifecycle-host="row"]{min-width:104px!important}
+  .communicationsLifecycleControl.compact select{min-width:102px!important;max-width:110px!important}
+}
