@@ -70,20 +70,12 @@ export async function listActiveMechanicAssignments(mechanicId: string) {
           OR (a."workOrderId" IS NOT NULL AND wo.id IS NOT NULL AND wo.status NOT IN ('CLOSED', 'CANCELLED'))
           OR (a."workOrderId" IS NOT NULL AND wo.id IS NULL AND a.status::text <> 'COMPLETED')
         )
-        AND (
-          a.source IS NULL OR a.source <> 'WALK_IN'
-          OR a.status::text NOT IN ('ARRIVED', 'DIAGNOSTICS')
-          OR NOT EXISTS (
-            SELECT 1
-            FROM "DiagnosticRequest" dr
-            INNER JOIN "DiagnosticReview" review ON review."diagnosticRequestId" = dr.id
-            WHERE review.state::text IN ('SUBMITTED', 'CONFIRMED')
-              AND dr."createdAt" >= a."createdAt"
-              AND (
-                (a."leadId" IS NOT NULL AND dr."leadId" = a."leadId")
-                OR (a."vehicleId" IS NOT NULL AND dr."vehicleId" = a."vehicleId")
-              )
-          )
+        AND NOT EXISTS (
+          SELECT 1
+          FROM "DiagnosticVisitLink" dvl_done
+          INNER JOIN "DiagnosticReview" review ON review."diagnosticRequestId" = dvl_done."diagnosticRequestId"
+          WHERE dvl_done."appointmentId" = a.id
+            AND review.state::text IN ('SUBMITTED', 'CONFIRMED')
         )
     )
     SELECT
@@ -147,20 +139,12 @@ export async function listAllActiveMechanicAppointments(mechanicId: string) {
         OR (a."workOrderId" IS NOT NULL AND wo.id IS NOT NULL AND wo.status NOT IN ('CLOSED', 'CANCELLED'))
         OR (a."workOrderId" IS NOT NULL AND wo.id IS NULL AND a.status::text <> 'COMPLETED')
       )
-      AND (
-        a.source IS NULL OR a.source <> 'WALK_IN'
-        OR a.status::text NOT IN ('ARRIVED', 'DIAGNOSTICS')
-        OR NOT EXISTS (
-          SELECT 1
-          FROM "DiagnosticRequest" dr
-          INNER JOIN "DiagnosticReview" review ON review."diagnosticRequestId" = dr.id
-          WHERE review.state::text IN ('SUBMITTED', 'CONFIRMED')
-            AND dr."createdAt" >= a."createdAt"
-            AND (
-              (a."leadId" IS NOT NULL AND dr."leadId" = a."leadId")
-              OR (a."vehicleId" IS NOT NULL AND dr."vehicleId" = a."vehicleId")
-            )
-        )
+      AND NOT EXISTS (
+        SELECT 1
+        FROM "DiagnosticVisitLink" dvl_done
+        INNER JOIN "DiagnosticReview" review ON review."diagnosticRequestId" = dvl_done."diagnosticRequestId"
+        WHERE dvl_done."appointmentId" = a.id
+          AND review.state::text IN ('SUBMITTED', 'CONFIRMED')
       )
     ORDER BY
       CASE
