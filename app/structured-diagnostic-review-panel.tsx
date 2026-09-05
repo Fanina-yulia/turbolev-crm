@@ -64,6 +64,7 @@ type DiagnosticCardState = {
   latest?: null | { revision: number; kind: "REVIEW" | "FINAL"; createdAt: string };
   final?: null | { revision: number; kind: "FINAL"; createdAt: string };
 };
+type DiagnosticPdfMeta = { id: string; fileName: string; mimeType: string; fileSize: number; generatedAt: string; revision: number; currentRevision: number; isCurrent: boolean };
 type CommercialLine = {
   id: string;
   type: string;
@@ -164,14 +165,20 @@ export function StructuredDiagnosticReviewPanel({ diagnosticId, onChanged }: { d
   const [managerComment, setManagerComment] = useState("");
   const [technicalConclusion, setTechnicalConclusion] = useState("");
   const [showFullInspection, setShowFullInspection] = useState(false);
+  const [pdf, setPdf] = useState<DiagnosticPdfMeta | null>(null);
+  const [savingPdf, setSavingPdf] = useState(false);
+  const [pdfModalOpen, setPdfModalOpen] = useState(false);
+  const [shareUrl, setShareUrl] = useState("");
+  const [pdfActionMessage, setPdfActionMessage] = useState("");
 
   async function load() {
     setLoading(true);
     setError("");
     try {
-      const [response, cardResponse] = await Promise.all([
+      const [response, cardResponse, pdfResponse] = await Promise.all([
         fetch(`/api/diagnostics/${encodeURIComponent(diagnosticId)}/structured`, { cache: "no-store", credentials: "include" }),
         fetch(`/api/diagnostics/${encodeURIComponent(diagnosticId)}/card`, { cache: "no-store", credentials: "include" }),
+        fetch(`/api/diagnostics/${encodeURIComponent(diagnosticId)}/pdf?meta=1`, { cache: "no-store", credentials: "include" }),
       ]);
       const body = await response.json().catch(() => null) as (View & { ok?: boolean; message?: string; error?: string }) | null;
       const cardBody = await cardResponse.json().catch(() => null) as (DiagnosticCardState & { ok?: boolean }) | null;
@@ -181,6 +188,8 @@ export function StructuredDiagnosticReviewPanel({ diagnosticId, onChanged }: { d
       setTechnicalConclusion(body.diagnostic?.technicalConclusion || "");
       if (cardResponse.ok && cardBody?.ok) setCardState({ card: cardBody.card || null, latest: cardBody.latest || null, final: cardBody.final || null });
       else setCardState({ card: null });
+      const pdfBody = await pdfResponse.json().catch(() => null) as { ok?: boolean; pdf?: DiagnosticPdfMeta | null } | null;
+      setPdf(pdfResponse.ok && pdfBody?.ok ? pdfBody.pdf || null : null);
 
       const workOrderId = body.diagnostic?.workOrder?.id;
       if (workOrderId) {
@@ -285,6 +294,67 @@ export function StructuredDiagnosticReviewPanel({ diagnosticId, onChanged }: { d
     navigateCrm("Комерційна пропозиція", { workOrderId: view.diagnostic.workOrder.id, workOrderTab: tab });
   }
 
+  async function saveDiagnosticPdf() {
+    setSavingPdf(true); setError(""); setPdfActionMessage("");
+    try {
+      const response = await fetch(`/api/diagnostics/${encodeURIComponent(diagnosticId)}/pdf`, { method: "POST", credentials: "include" });
+      const body = await response.json().catch(() => null) as { ok?: boolean; pdf?: DiagnosticPdfMeta; error?: string; message?: string } | null;
+      if (!response.ok || !body?.ok || !body.pdf) throw new Error(body?.message || body?.error || "Не вдалося сформувати PDF-файл.");
+      setPdf(body.pdf);
+      setShareUrl("");
+      setPdfActionMessage("PDF-файл збережено.");
+      await onChanged();
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "Не вдалося сформувати PDF-файл."); }
+    finally { setSavingPdf(false); }
+  }
+
+  async function createPdfShareUrl() {
+    if (shareUrl) return shareUrl;
+    const response = await fetch(`/api/diagnostics/${encodeURIComponent(diagnosticId)}/pdf/share`, { method: "POST", credentials: "include" });
+    const body = await response.json().catch(() => null) as { ok?: boolean; path?: string; error?: string; message?: string } | null;
+    if (!response.ok || !body?.ok || !body.path) throw new Error(body?.message || body?.error || "Не вдалося підготувати посилання на PDF-файл.");
+    const nextUrl = new URL(body.path, window.location.origin).toString();
+    setShareUrl(nextUrl);
+    return nextUrl;
+  }
+
+  async function sharePdf() {
+    if (!pdf) return;
+    setPdfActionMessage(""); setError("");
+    try {
+      const url = await createPdfShareUrl();
+      const shareText = `Діагностична карта ${cardNumber}`;
+      if (typeof navigator.share === "function" && typeof File !== "undefined") {
+        const response = await fetch(`/api/diagnostics/${encodeURIComponent(diagnosticId)}/pdf?download=1`, { credentials: "include" });
+        if (response.ok) {
+          const file = new File([await response.blob()], pdf.fileName, { type: "application/pdf" });
+          const canShareFile = typeof navigator.canShare !== "function" || navigator.canShare({ files: [file] });
+          if (canShareFile) { await navigator.share({ title: shareText, text: shareText, files: [file] }); setPdfActionMessage("PDF-файл передано у меню поширення."); return; }
+        }
+        await navigator.share({ title: shareText, text: shareText, url });
+        return;
+      }
+      setPdfActionMessage("Посилання підготовлено. Оберіть потрібний канал нижче.");
+    } catch (cause) {
+      if (cause instanceof DOMException && cause.name === "AbortError") return;
+      setError(cause instanceof Error ? cause.message : "Не вдалося поділитися PDF-файлом.");
+    }
+  }
+
+  async function copyPdfShareUrl() {
+    if (!shareUrl) return;
+    try { await navigator.clipboard.writeText(shareUrl); setPdfActionMessage("Посилання скопійовано."); }
+    catch { setError("Не вдалося скопіювати посилання."); }
+  }
+
+  function printPdf() {
+    if (!pdf) return;
+    const printWindow = window.open(`/api/diagnostics/${encodeURIComponent(diagnosticId)}/pdf`, "_blank");
+    if (!printWindow) { setError("Браузер заблокував нове вікно для друку."); return; }
+    printWindow.focus();
+    window.setTimeout(() => printWindow.print(), 900);
+  }
+
   if (loading) return <div className={styles.state}>Завантажую Діагностичну карту…</div>;
   if (error && !view) return <div className={styles.error}>{error}<button type="button" onClick={() => void load()}>Повторити</button></div>;
   if (!view || !view.inspections.length) return null;
@@ -305,11 +375,12 @@ export function StructuredDiagnosticReviewPanel({ diagnosticId, onChanged }: { d
   return <section className={styles.panel}>
     {error && <div className={styles.error}>{error}</div>}
     {message && <div className={styles.state}>{message}</div>}
+    {pdfActionMessage && <div className={styles.pdfMessage} role="status">{pdfActionMessage}</div>}
 
     <section className={styles.identityCard}>
     <header className={styles.pageHeader}>
       <div className={styles.pageHeading}><h3>ДІАГНОСТИЧНА КАРТА</h3><p>{cardNumber} <i>·</i> Створено: {formatDate(view.diagnostic.createdAt, true)} <i>·</i> Механік: {view.diagnostic.mechanic?.name || "Не призначено"}</p></div>
-      <div className={styles.headerStatuses}><span className={`${styles.statusPill} ${estimateApproved ? styles.statusGood : styles.statusReview}`}>{estimateApproved ? "✓ " : ""}{diagnosticState}</span><span className={`${styles.revisionPill} ${confirmed ? styles.revisionGood : ""}`}>{revisionState}</span>{!confirmed && <button type="button" className={styles.inspectionToggle} onClick={() => setShowFullInspection((value) => !value)}>{showFullInspection ? "Сховати повну перевірку" : "Повна перевірка"}</button>}</div>
+      <div className={styles.headerStatuses}><span className={`${styles.statusPill} ${estimateApproved ? styles.statusGood : styles.statusReview}`}>{estimateApproved ? "✓ " : ""}{diagnosticState}</span><span className={`${styles.revisionPill} ${confirmed ? styles.revisionGood : ""}`}>{revisionState}</span><button type="button" className={styles.pdfSaveButton} onClick={() => void saveDiagnosticPdf()} disabled={savingPdf}>{savingPdf ? "Формую PDF…" : pdf?.isCurrent ? "Збережено" : "Зберегти"}</button>{pdf ? <button type="button" className={styles.pdfFileButton} aria-label="Відкрити збережений PDF" title="Відкрити PDF" onClick={() => setPdfModalOpen(true)}>▤</button> : null}{!confirmed && <button type="button" className={styles.inspectionToggle} onClick={() => setShowFullInspection((value) => !value)}>{showFullInspection ? "Сховати повну перевірку" : "Повна перевірка"}</button>}</div>
     </header>
 
     <section className={styles.vehicleHero} aria-label="Ідентичність автомобіля">
@@ -349,6 +420,7 @@ export function StructuredDiagnosticReviewPanel({ diagnosticId, onChanged }: { d
     {view.diagnostic.review.state === "RETURNED" && <div className={styles.lock}>Діагностика знову «В роботі». Механік бачить коментар менеджера, доопрацьовує перевірку та повторно передає ДК «На перевірку».</div>}
     {confirmed && <div className={styles.confirmedNote}>Діагностичну карту зафіксовано у фінальній ревізії. Ціни, постачальники та погоджені позиції зберігаються окремо в Комерційній пропозиції.</div>}
     <DiagnosticReportSharePanel diagnosticId={diagnosticId} reviewState={view.diagnostic.review.state} workOrder={view.diagnostic.workOrder} />
+    {pdfModalOpen && pdf ? <div className={styles.pdfModalBackdrop} role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setPdfModalOpen(false); }}><section className={styles.pdfModal} role="dialog" aria-modal="true" aria-labelledby="structured-diagnostic-pdf-title"><header className={styles.pdfModalHeader}><div><span className={styles.eyebrow}>ФАЙЛ ДІАГНОСТИЧНОЇ КАРТИ</span><h4 id="structured-diagnostic-pdf-title">{pdf.fileName}</h4><small>Ревізія {pdf.revision} · {formatDate(pdf.generatedAt, true)}</small></div><button type="button" className={styles.pdfClose} onClick={() => setPdfModalOpen(false)} aria-label="Закрити PDF">×</button></header><div className={styles.pdfActions}><a className={styles.pdfAction} href={`/api/diagnostics/${encodeURIComponent(diagnosticId)}/pdf?download=1`} download={pdf.fileName}>Завантажити</a><button type="button" className={styles.pdfAction} onClick={printPdf}>Друкувати</button><button type="button" className={styles.pdfAction} onClick={() => void sharePdf()}>Поділитися</button></div>{shareUrl ? <div className={styles.shareOptions}><span>Канал поширення:</span><a href={`https://t.me/share/url?url=${encodeURIComponent(shareUrl)}&text=${encodeURIComponent(`Діагностична карта ${cardNumber}`)}`} target="_blank" rel="noreferrer">Telegram</a><a href={`https://wa.me/?text=${encodeURIComponent(`Діагностична карта ${cardNumber}: ${shareUrl}`)}`} target="_blank" rel="noreferrer">WhatsApp</a><a href={`viber://forward?text=${encodeURIComponent(`Діагностична карта ${cardNumber}: ${shareUrl}`)}`}>Viber</a><button type="button" onClick={() => void copyPdfShareUrl()}>Копіювати</button></div> : null}<iframe className={styles.pdfFrame} src={`/api/diagnostics/${encodeURIComponent(diagnosticId)}/pdf#view=FitH`} title={`Перегляд ${pdf.fileName}`} /></section></div> : null}
   </section>;
 }
 

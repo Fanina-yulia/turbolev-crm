@@ -15,6 +15,7 @@ model DiagnosticCard {
 
   diagnosticRequest DiagnosticRequest       @relation(fields: [diagnosticRequestId], references: [id], onDelete: Restrict, onUpdate: Cascade)
   revisions         DiagnosticCardRevision[]
+  pdfs              DiagnosticCardPdf[]
 
   @@index([finalizedAt, updatedAt])
   @@index([confirmedByUserId])
@@ -31,6 +32,7 @@ model DiagnosticCardRevision {
   createdAt         DateTime                   @default(now())
 
   card DiagnosticCard @relation(fields: [diagnosticCardId], references: [id], onDelete: Cascade)
+  pdf  DiagnosticCardPdf?
 
   @@unique([diagnosticCardId, revision])
   @@index([diagnosticCardId, kind, createdAt])

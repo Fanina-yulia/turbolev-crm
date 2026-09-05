@@ -43,6 +43,7 @@ type DiagnosticView = {
   inspections: DiagnosticInspection[];
   counts: { total: number; checked: number; ok: number; attention: number; defect: number };
 };
+type DiagnosticPdfMeta = { id: string; fileName: string; mimeType: string; fileSize: number; generatedAt: string; revision: number; currentRevision: number; isCurrent: boolean };
 
 type Props = { vehicle: VehicleCardContract; diagnosticId?: string | null };
 
@@ -159,11 +160,17 @@ function DiagnosticCardDetail({ row, initialView, initialCardNumber, busy, onOpe
   const [editingComment, setEditingComment] = useState(false);
   const [mechanicComment, setMechanicComment] = useState("");
   const [savingComment, setSavingComment] = useState(false);
+  const [pdf, setPdf] = useState<DiagnosticPdfMeta | null>(null);
+  const [savingPdf, setSavingPdf] = useState(false);
+  const [pdfModalOpen, setPdfModalOpen] = useState(false);
+  const [shareUrl, setShareUrl] = useState("");
+  const [pdfActionMessage, setPdfActionMessage] = useState("");
 
   useEffect(() => {
     if (initialView) {
       setView(initialView);
       setCardNumber(initialCardNumber || row.diagnosticCard?.number || "");
+      setMechanicComment(initialView.diagnostic.review.mechanicComment || "");
       setLoading(false);
       return;
     }
@@ -180,6 +187,17 @@ function DiagnosticCardDetail({ row, initialView, initialCardNumber, busy, onOpe
       }
     }).catch((cause) => { if (!controller.signal.aborted && cause instanceof Error && cause.name !== "AbortError") setError(cause.message); })
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
+    return () => controller.abort();
+  }, [row.id]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void fetch(`/api/diagnostics/${encodeURIComponent(row.id)}/pdf?meta=1`, { cache: "no-store", credentials: "include", signal: controller.signal })
+      .then(async (response) => {
+        const body = await response.json().catch(() => null) as { ok?: boolean; pdf?: DiagnosticPdfMeta | null } | null;
+        if (!controller.signal.aborted && response.ok && body?.ok) setPdf(body.pdf || null);
+      })
+      .catch(() => undefined);
     return () => controller.abort();
   }, [row.id]);
 
@@ -208,11 +226,79 @@ function DiagnosticCardDetail({ row, initialView, initialCardNumber, busy, onOpe
     finally { setSavingComment(false); }
   }
 
+  async function saveDiagnosticPdf() {
+    setSavingPdf(true); setError(""); setPdfActionMessage("");
+    try {
+      const response = await fetch(`/api/diagnostics/${encodeURIComponent(row.id)}/pdf`, { method: "POST", credentials: "include" });
+      const body = await response.json().catch(() => null) as { ok?: boolean; pdf?: DiagnosticPdfMeta; cardNumber?: string; error?: string; message?: string } | null;
+      if (!response.ok || !body?.ok || !body.pdf) throw new Error(body?.message || body?.error || "Не вдалося сформувати PDF-файл.");
+      setPdf(body.pdf);
+      if (body.cardNumber) setCardNumber(body.cardNumber);
+      setShareUrl("");
+      setPdfActionMessage("PDF-файл збережено.");
+      window.dispatchEvent(new CustomEvent("turbolev:data-changed"));
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "Не вдалося сформувати PDF-файл."); }
+    finally { setSavingPdf(false); }
+  }
+
+  async function createPdfShareUrl() {
+    if (shareUrl) return shareUrl;
+    const response = await fetch(`/api/diagnostics/${encodeURIComponent(row.id)}/pdf/share`, { method: "POST", credentials: "include" });
+    const body = await response.json().catch(() => null) as { ok?: boolean; path?: string; error?: string; message?: string } | null;
+    if (!response.ok || !body?.ok || !body.path) throw new Error(body?.message || body?.error || "Не вдалося підготувати посилання на PDF-файл.");
+    const nextUrl = new URL(body.path, window.location.origin).toString();
+    setShareUrl(nextUrl);
+    return nextUrl;
+  }
+
+  async function sharePdf() {
+    if (!pdf) return;
+    setPdfActionMessage(""); setError("");
+    try {
+      const url = await createPdfShareUrl();
+      const shareText = `Діагностична карта ${cardNumber || "автомобіля"}`;
+      if (typeof navigator.share === "function" && typeof File !== "undefined") {
+        const response = await fetch(`/api/diagnostics/${encodeURIComponent(row.id)}/pdf?download=1`, { credentials: "include" });
+        if (response.ok) {
+          const file = new File([await response.blob()], pdf.fileName, { type: "application/pdf" });
+          const canShareFile = typeof navigator.canShare !== "function" || navigator.canShare({ files: [file] });
+          if (canShareFile) {
+            await navigator.share({ title: shareText, text: shareText, files: [file] });
+            setPdfActionMessage("PDF-файл передано у меню поширення.");
+            return;
+          }
+        }
+        await navigator.share({ title: shareText, text: shareText, url });
+        return;
+      }
+      setPdfActionMessage("Посилання підготовлено. Оберіть потрібний канал нижче.");
+    } catch (cause) {
+      if (cause instanceof DOMException && cause.name === "AbortError") return;
+      setError(cause instanceof Error ? cause.message : "Не вдалося поділитися PDF-файлом.");
+    }
+  }
+
+  async function copyPdfShareUrl() {
+    if (!shareUrl) return;
+    try {
+      await navigator.clipboard.writeText(shareUrl);
+      setPdfActionMessage("Посилання скопійовано.");
+    } catch { setError("Не вдалося скопіювати посилання."); }
+  }
+
+  function printPdf() {
+    if (!pdf) return;
+    const printWindow = window.open(`/api/diagnostics/${encodeURIComponent(row.id)}/pdf`, "_blank");
+    if (!printWindow) { setError("Браузер заблокував нове вікно для друку."); return; }
+    printWindow.focus();
+    window.setTimeout(() => printWindow.print(), 900);
+  }
+
   if (loading) return <div className={styles.state}>Завантажую результати діагностики…</div>;
   if (error || !view) return <div className={styles.error}>{error || "Діагностичну карту не знайдено."}<button type="button" onClick={onOpenDiagnostic}>Відкрити діагностику</button></div>;
 
   return <article className={styles.card}>
-    <header className={styles.cardHeader}><div><span className={styles.eyebrow}>ДІАГНОСТИЧНА КАРТА</span><h3>{cardNumber || "Результати діагностики"}</h3><p>{dateText(row.confirmedAt || row.updatedAt || row.createdAt)} · {row.assignedMechanic?.name ? `Механік: ${row.assignedMechanic.name}` : "Механік не вказаний"}</p></div><div className={styles.cardHeaderActions}><span className={`${styles.status} ${status.tone === "good" ? styles.statusGood : status.tone === "danger" ? styles.statusDanger : status.tone === "muted" ? styles.statusMuted : styles.statusReview}`}><i className={styles.statusDot} />{status.label}</span><button type="button" className={styles.iconButton} aria-label="Редагувати примітки механіка" onClick={() => setEditingComment(true)}>✎</button><button type="button" className={styles.secondaryAction} onClick={editingComment ? () => void saveMechanicComment() : onOpenDiagnostic} disabled={savingComment}>{savingComment ? "Зберігаю…" : "Зберегти"}</button><button type="button" className={styles.primaryAction} onClick={onOpenPartsSelection}>Підбір деталей →</button></div></header>
+    <header className={styles.cardHeader}><div><span className={styles.eyebrow}>ДІАГНОСТИЧНА КАРТА</span><h3>{cardNumber || "Результати діагностики"}</h3><p>{dateText(row.confirmedAt || row.updatedAt || row.createdAt)} · {row.assignedMechanic?.name ? `Механік: ${row.assignedMechanic.name}` : "Механік не вказаний"}</p></div><div className={styles.cardHeaderActions}><span className={`${styles.status} ${status.tone === "good" ? styles.statusGood : status.tone === "danger" ? styles.statusDanger : status.tone === "muted" ? styles.statusMuted : styles.statusReview}`}><i className={styles.statusDot} />{status.label}</span><button type="button" className={styles.iconButton} aria-label="Редагувати примітки механіка" onClick={() => setEditingComment(true)}>✎</button><button type="button" className={styles.secondaryAction} onClick={() => void saveDiagnosticPdf()} disabled={savingPdf}>{savingPdf ? "Формую PDF…" : pdf?.isCurrent ? "Збережено" : "Зберегти"}</button>{pdf ? <button type="button" className={styles.pdfButton} aria-label="Відкрити збережений PDF" title="Відкрити PDF" onClick={() => setPdfModalOpen(true)}>▤</button> : null}<button type="button" className={styles.primaryAction} onClick={onOpenPartsSelection}>Підбір деталей →</button></div></header>
     <div className={styles.workspaceGrid}>
       <section className={styles.diagramPanel} aria-label="Схема автомобіля"><div className={styles.panelHeading}><div><span className={styles.eyebrow}>СХЕМА АВТОМОБІЛЯ</span><h4>Проблемні зони</h4></div><span className={styles.legend}><i className={styles.legendDanger}/>Критично <i className={styles.legendAttention}/>Увага</span></div><VehicleSchematic findings={findings} selectedId={selectedFinding?.item.id || null} onSelect={setSelectedFindingId}/>{!findings.length && <div className={styles.healthy}><b>Автомобіль перевірено</b><span>Критичних несправностей не зафіксовано.</span></div>}</section>
       <section className={styles.partsPanel} aria-label="Деталі до заміни"><div className={styles.panelHeading}><div><span className={styles.eyebrow}>РЕКОМЕНДАЦІЇ</span><h4>Деталі до заміни <b className={styles.inlineCount}>{parts.length}</b> <button type="button" className={styles.addFinding} aria-label="Додати деталь, рідину або розхідник">+</button></h4></div></div>{!parts.length && <div className={styles.panelEmpty}>Деталі до заміни за результатами цієї діагностики не визначені.</div>}<div className={styles.findingList}>{parts.map(({ section, item }, index) => <button type="button" className={`${styles.findingRow} ${selectedFinding?.item.id === item.id ? styles.findingSelected : ""}`} key={item.id} onClick={() => setSelectedFindingId(item.id)}><span className={`${styles.findingNumber} ${item.state === "DEFECT" ? styles.findingNumberDanger : styles.findingNumberAttention}`}>{index + 1}</span><span className={styles.findingCopy}><strong>{item.finding?.suggestedPartName || item.name}</strong><small>{section} · {item.finding?.findingText || item.note || "Виявлено несправність"}</small></span><span className={styles.findingSeverity} aria-label={item.state === "DEFECT" ? "Критично" : "Увага"}><i className={item.state === "DEFECT" ? styles.severityDanger : styles.severityAttention} /></span></button>)}</div></section>
@@ -220,6 +306,8 @@ function DiagnosticCardDetail({ row, initialView, initialCardNumber, busy, onOpe
     </div>
     <div className={styles.metaGrid}><section className={styles.notesPanel}><div className={styles.panelHeading}><div><span className={styles.eyebrow}>КОМЕНТАР МЕХАНІКА</span><h4>Примітки механіка</h4></div><button type="button" className={styles.editLink} onClick={() => setEditingComment((value) => !value)}>{editingComment ? "Скасувати" : "✎ Редагувати"}</button></div>{editingComment ? <textarea className={styles.notesEditor} value={mechanicComment} onChange={(event) => setMechanicComment(event.target.value)} maxLength={4000} placeholder="Додайте примітку механіка…" aria-label="Примітки механіка" /> : <p className={styles.notesText}>{view.diagnostic.review.mechanicComment || "Примітка механіка ще не додана."}</p>}{editingComment ? <div className={styles.notesActions}><span>{mechanicComment.length}/4000</span><button type="button" className={styles.primaryAction} onClick={() => void saveMechanicComment()} disabled={savingComment}>{savingComment ? "Зберігаю…" : "Зберегти примітку"}</button></div> : null}</section></div>
     {error ? <div className={styles.inlineError}>{error}</div> : null}
+    {pdfActionMessage ? <div className={styles.pdfMessage} role="status">{pdfActionMessage}</div> : null}
+    {pdfModalOpen && pdf ? <div className={styles.pdfModalBackdrop} role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setPdfModalOpen(false); }}><section className={styles.pdfModal} role="dialog" aria-modal="true" aria-labelledby="diagnostic-pdf-title"><header className={styles.pdfModalHeader}><div><span className={styles.eyebrow}>ФАЙЛ ДІАГНОСТИЧНОЇ КАРТИ</span><h4 id="diagnostic-pdf-title">{pdf.fileName}</h4><small>Ревізія {pdf.revision} · {dateText(pdf.generatedAt)}</small></div><button type="button" className={styles.lightboxClose} onClick={() => setPdfModalOpen(false)} aria-label="Закрити PDF">×</button></header><div className={styles.pdfActions}><a className={styles.pdfAction} href={`/api/diagnostics/${encodeURIComponent(row.id)}/pdf?download=1`} download={pdf.fileName}>Завантажити</a><button type="button" className={styles.pdfAction} onClick={printPdf}>Друкувати</button><button type="button" className={styles.pdfAction} onClick={() => void sharePdf()}>Поділитися</button></div>{shareUrl ? <div className={styles.shareOptions}><span>Канал поширення:</span><a href={`https://t.me/share/url?url=${encodeURIComponent(shareUrl)}&text=${encodeURIComponent(`Діагностична карта ${cardNumber}`)}`} target="_blank" rel="noreferrer">Telegram</a><a href={`https://wa.me/?text=${encodeURIComponent(`Діагностична карта ${cardNumber}: ${shareUrl}`)}`} target="_blank" rel="noreferrer">WhatsApp</a><a href={`viber://forward?text=${encodeURIComponent(`Діагностична карта ${cardNumber}: ${shareUrl}`)}`}>Viber</a><button type="button" onClick={() => void copyPdfShareUrl()}>Копіювати</button></div> : null}<iframe className={styles.pdfFrame} src={`/api/diagnostics/${encodeURIComponent(row.id)}/pdf#view=FitH`} title={`Перегляд ${pdf.fileName}`} /></section></div> : null}
     {lightboxPhoto ? <div className={styles.lightbox} role="dialog" aria-modal="true" aria-label="Збільшене фото" onMouseDown={(event) => { if (event.target === event.currentTarget) setLightboxPhoto(null); }}><button type="button" className={styles.lightboxClose} onClick={() => setLightboxPhoto(null)} aria-label="Закрити">×</button><img src={`/api/diagnostics/${encodeURIComponent(row.id)}/media/${encodeURIComponent(lightboxPhoto.id)}`} alt={lightboxPhoto.fileName}/></div> : null}
   </article>;
 }

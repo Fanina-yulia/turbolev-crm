@@ -73,6 +73,14 @@ const publicReportPolicy = resolveApiSecurityPolicy("/api/public/diagnostic-repo
 assert.equal(publicReportPolicy?.kind, "PUBLIC_TOKEN", "Public diagnostic report actions must remain token-authenticated, not anonymously allowlisted");
 const publicMediaPolicy = resolveApiSecurityPolicy("/api/public/diagnostic-report/[token]/media/[mediaId]", "GET");
 assert.equal(publicMediaPolicy?.kind, "PUBLIC_TOKEN", "Public diagnostic media must remain protected by the report token");
+const publicPdfPolicy = resolveApiSecurityPolicy("/api/public/diagnostic-card-pdf/[token]", "GET");
+assert.equal(publicPdfPolicy?.kind, "PUBLIC_TOKEN", "Public Diagnostic Card PDFs must remain protected by the share token");
+const pdfSavePolicy = resolveApiSecurityPolicy("/api/diagnostics/[id]/pdf", "POST");
+assert.equal(pdfSavePolicy?.permission, PERMISSIONS.DIAGNOSTICS_WRITE, "Saving a Diagnostic Card PDF requires diagnostic write authority");
+assert.equal(pdfSavePolicy?.strict, true, "Saving a Diagnostic Card PDF must remain strict during RBAC SHADOW mode");
+const pdfSharePolicy = resolveApiSecurityPolicy("/api/diagnostics/[id]/pdf/share", "POST");
+assert.equal(pdfSharePolicy?.permission, PERMISSIONS.DIAGNOSTICS_WRITE, "Sharing a Diagnostic Card PDF requires diagnostic write authority");
+assert.equal(pdfSharePolicy?.strict, true, "Sharing a Diagnostic Card PDF must remain strict during RBAC SHADOW mode");
 const reportCreatePolicy = resolveApiSecurityPolicy("/api/diagnostics/[id]/report", "POST");
 assert.equal(reportCreatePolicy?.permission, PERMISSIONS.DIAGNOSTICS_CONFIRM, "Creating client report links requires diagnostics confirmation authority");
 assert.equal(reportCreatePolicy?.strict, true, "Creating client report links must remain strict during RBAC SHADOW mode");

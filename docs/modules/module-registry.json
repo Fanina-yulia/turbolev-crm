@@ -24,6 +24,14 @@
       "title": "Адаптивність усіх сторінок CRM",
       "source": "docs/CRM_RESPONSIVE_STANDARDS.md",
       "enforcedBy": "scripts/check-responsive-contract.mjs"
+    },
+    {
+      "id": "CRM-DOC-001",
+      "status": "ACTIVE",
+      "title": "Незмінний PDF діагностичної карти",
+      "source": "docs/TZ_DIAGNOSTIC_CARD_PDF_EXPORT.md",
+      "trigger": "Користувач зберігає діагностичну карту або відкриває її файл для завантаження, друку чи поширення.",
+      "requiredScope": "Server-side snapshot, immutable revision binding, idempotent storage, protected PDF access, audit trail and responsive popup."
     }
   ],
   "modules": [
@@ -276,6 +284,9 @@
         "app/*diagnostics*",
         "app/api/diagnostic*/**",
         "src/services/diagnostic*",
+        "app/api/public/diagnostic-card-pdf/**",
+        "src/services/diagnostic-card-pdf*",
+        "prisma/diagnostic-card-pdf.prisma",
         "src/services/quick-diagnostic-*",
         "src/services/walk-in-diagnostic-*"
       ],
@@ -290,6 +301,7 @@
         "diagnostic-create",
         "diagnostic-assignment",
         "diagnostic-confirmation",
+        "diagnostic-card-pdf",
         "work-order-gate",
         "walk-in-diagnostic-flow"
       ]
