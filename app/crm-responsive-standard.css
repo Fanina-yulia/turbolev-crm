@@ -37,6 +37,7 @@ body {
   max-width: 100% !important;
   min-width: 0 !important;
   padding-inline: var(--crm-layout-gutter) !important;
+  padding-bottom: calc(34px + env(safe-area-inset-bottom, 0px)) !important;
 }
 
 .workspace > *,
@@ -55,6 +56,30 @@ body {
 
 .workspace :where(input, select, textarea) {
   min-width: 0;
+}
+
+/* CSS-module class names are hashed in production. Match their stable
+   fragments so the page contract also applies to module-local layouts. */
+.workspace :where(
+  [class*="_page__"],
+  [class*="_root__"],
+  [class*="_content__"],
+  [class*="_contentArea__"],
+  [class*="_workspace__"],
+  [class*="_layout__"],
+  [class*="_columns__"]
+) {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+/* The shell owns horizontal gutters. Local page padding was being added a
+   second time and was the main source of cramped 15-inch layouts. */
+.workspace :where([class*="_page__"], [class*="_root__"]) {
+  padding-left: 0 !important;
+  padding-right: 0 !important;
 }
 
 .workspace :where(.page, .panel, .sectionBlock, .card, .content, .contentArea, .layout, .columns, .gridTwo, .twoCols, .toolbar, .sectionHead, .contentHeading, .panelHead) {
@@ -154,6 +179,22 @@ body {
     width: min(100%, 280px) !important;
     height: 150px !important;
   }
+  /* Collapse complex module workspaces before their columns become too
+     narrow. The rules are scoped to .workspace, so the mechanic cabinet is
+     not affected. */
+  .workspace :where(
+    [class*="_columns__"],
+    [class*="_workspaceGrid__"],
+    [class*="_proposalLayout__"],
+    [class*="_settingsLayout__"]
+  ) {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .workspace :where([class*="_contextHeader__"], [class*="_contextGrid__"]) {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
 }
 
 @media (max-width: 900px) {
@@ -164,6 +205,26 @@ body {
   .workspace :where(.header, .pageHeader, .topbar, .sectionHead, .contentHeading, .panelHead) {
     align-items: flex-start;
   }
+  .workspace :where(
+    [class*="_workspace__"],
+    [class*="_workspaceGrid__"],
+    [class*="_twoColumns__"],
+    [class*="_twoColumnsWide__"],
+    [class*="_proposalLayout__"]
+  ) {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .workspace :where(
+    [class*="_header__"],
+    [class*="_headerActions__"],
+    [class*="_toolbar__"],
+    [class*="_actions__"]
+  ) {
+    min-width: 0;
+    max-width: 100%;
+  }
+
 }
 
 @media (max-width: 760px) {
@@ -179,6 +240,7 @@ body {
 
   .workspace {
     padding-inline: var(--crm-layout-gutter) !important;
+    padding-bottom: calc(28px + env(safe-area-inset-bottom, 0px)) !important;
   }
 
   .workspace :where(.columns, .grid, .quick, .previewGrid, .summary, .kpis) {
@@ -195,6 +257,34 @@ body {
 
   .workspace :where(.tableWrap, .tableScroll, .dataTableWrap, .tableShell, .weekBoard, .kanban, .leadTableWrap, .leadKanban) {
     width: 100%;
+  }
+
+  .workspace :where([class*="_page__"], [class*="_root__"]) {
+    padding-top: 0 !important;
+    padding-bottom: 24px !important;
+  }
+
+  .workspace :where(
+    [class*="_header__"],
+    [class*="_head__"],
+    [class*="_headerActions__"],
+    [class*="_actions__"],
+    [class*="_toolbar__"]
+  ) {
+    width: 100%;
+    max-width: 100%;
+    flex-wrap: wrap;
+  }
+
+  .workspace :where(
+    [class*="_vin__"],
+    [class*="_code__"],
+    [class*="_article__"],
+    [class*="_identifier__"],
+    [class*="_number__"]
+  ) {
+    min-width: 0;
+    overflow-wrap: anywhere;
   }
 
   [class*="vehicle-record-workspace_vehiclePhoto"] [data-vehicle-render] {
@@ -216,6 +306,32 @@ body {
   .workspace :where(.actions, .topActions, .toolbar) > a {
     flex: 1 1 100%;
     width: 100%;
+  }
+  .workspace :where(
+    [class*="_headerActions__"] > button,
+    [class*="_actions__"] > button,
+    [class*="_toolbar__"] > button,
+    [class*="_primaryAction__"]
+  ) {
+    width: 100%;
+    flex: 1 1 100%;
+  }
+
+}
+
+/* Feedback surfaces are mounted outside .workspace. Keep them readable and
+   inside the viewport above mobile navigation. */
+:where(.toast, .statusMessage, .globalToast, [role="status"].toast) {
+  max-width: min(620px, calc(100vw - 24px));
+}
+
+@media (max-width: 760px) {
+  :where(.toast, .statusMessage, .globalToast, [role="status"].toast) {
+    right: 12px !important;
+    bottom: calc(76px + env(safe-area-inset-bottom, 0px)) !important;
+    left: 12px !important;
+    width: auto !important;
+    max-width: none !important;
   }
 }
 

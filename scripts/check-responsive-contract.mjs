@@ -44,7 +44,7 @@ for (const marker of ["./crm-responsive-standard.css"]) {
   if (!layout.includes(marker)) failures.push(`layout.tsx does not load ${marker}`);
 }
 
-for (const marker of ["--crm-layout-gutter", "minmax(0, 1fr)", "min-width: 0", "prefers-reduced-motion", "vehicle-record-workspace_vehiclePhoto", "overflow-x: auto"]) {
+for (const marker of ["--crm-layout-gutter", "minmax(0, 1fr)", "min-width: 0", "prefers-reduced-motion", "vehicle-record-workspace_vehiclePhoto", "overflow-x: auto", "[class*=\"_page__\"]", "safe-area-inset-bottom", "bottom: calc(76px"]) {
   if (!responsiveCss.includes(marker)) failures.push(`Responsive CSS is missing contract marker: ${marker}`);
 }
 
