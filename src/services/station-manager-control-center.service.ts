@@ -39,6 +39,7 @@ export type StationManagerControlCenter = {
     proposalsNotSent: number;
     waitingCustomerDecision: number;
     partsBlocking: number;
+    unpaidWorks: number;
   };
   attention: StationManagerControlSignal[];
 };
@@ -69,6 +70,12 @@ function text(value: unknown) {
 
 function ageMinutes(anchor: Date, now: Date) {
   return Math.max(0, Math.floor((now.getTime() - anchor.getTime()) / MINUTE_MS));
+}
+
+function formatMoney(value: unknown, currency: string) {
+  const amount = Number(value);
+  if (!Number.isFinite(amount)) return null;
+  return `${new Intl.NumberFormat("uk-UA", { maximumFractionDigits: 2 }).format(amount)} ${currency}`;
 }
 
 function isMissedCall(row: StationInquiry) {
@@ -123,7 +130,6 @@ const STUCK_CODES = new Set([
   "READY_FOR_REPAIR_STALLED",
   "REPAIR_OVERRUN",
   "QC_STALLED",
-  "PAYMENT_STALLED",
   "PICKUP_STALLED",
   "PAUSED_STALLED",
   "PLAN_OVERRUN",
@@ -253,6 +259,8 @@ export async function buildStationManagerControlCenter(input: {
           workOrderId: true,
           revision: true,
           status: true,
+          currency: true,
+          totalAmount: true,
           sentAt: true,
           createdAt: true,
           updatedAt: true,
@@ -267,7 +275,11 @@ export async function buildStationManagerControlCenter(input: {
     if (!latestEstimate.has(estimate.workOrderId)) latestEstimate.set(estimate.workOrderId, estimate);
   }
 
-  const draftEstimates = [...latestEstimate.values()].filter((row) => row.status === WorkOrderEstimateStatus.DRAFT);
+  const draftEstimates = [...latestEstimate.values()].filter((row) =>
+    row.status === WorkOrderEstimateStatus.DRAFT
+    && Number(row.totalAmount) > 0
+    && row.createdAt.getTime() + 60 * MINUTE_MS <= now.getTime()
+  );
   const sentEstimates = [...latestEstimate.values()].filter((row) => row.status === WorkOrderEstimateStatus.SENT);
 
   const signals: StationManagerControlSignal[] = [];
@@ -299,16 +311,17 @@ export async function buildStationManagerControlCenter(input: {
     if (!appointment) continue;
     commercialWorkOrderIds.add(estimate.workOrderId);
     const age = ageMinutes(estimate.createdAt, now);
-    const dueAt = new Date(estimate.createdAt.getTime() + 15 * MINUTE_MS);
+    const dueAt = new Date(estimate.createdAt.getTime() + 60 * MINUTE_MS);
     const label = appointment.plateNumber || appointment.vehicleLabel || appointment.customerName || "Авто";
+    const amount = formatMoney(estimate.totalAmount, estimate.currency);
     signals.push({
       id: `estimate:${estimate.id}:not-sent`,
       sourceType: "ESTIMATE",
       sourceId: estimate.id,
       code: "COMMERCIAL_PROPOSAL_NOT_SENT",
       title: `${label}: комерційна пропозиція не відправлена`,
-      description: appointment.problem,
-      priority: age >= 60 ? "CRITICAL" : age >= 15 ? "HIGH" : "NORMAL",
+      description: [appointment.problem, amount ? `Сума: ${amount}` : null].filter(Boolean).join(" · ") || null,
+      priority: age >= 4 * 60 ? "CRITICAL" : "HIGH",
       reason: "Остання ревізія кошторису залишається DRAFT. Клієнт ще не отримав комерційну пропозицію.",
       overdue: dueAt <= now,
       waitingMinutes: age,
@@ -366,6 +379,7 @@ export async function buildStationManagerControlCenter(input: {
       proposalsNotSent: draftEstimates.length,
       waitingCustomerDecision: sentEstimates.length,
       partsBlocking: vehicleAttention.filter((row) => row.issues.some((issue) => ["PARTS_SELECTION_STALLED", "PARTS_ETA_OVERDUE", "PARTS_ETA_MISSING"].includes(issue.code))).length,
+      unpaidWorks: vehicleAttention.filter((row) => row.issues.some((issue) => issue.code === "PAYMENT_STALLED")).length,
     },
     attention: signals.slice(0, 40),
   };
