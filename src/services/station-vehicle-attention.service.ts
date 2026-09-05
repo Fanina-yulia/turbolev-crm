@@ -303,8 +303,8 @@ export async function listStationAttentionVehicles(now = new Date(), locationId?
       const dueAt = new Date(row.updatedAt.getTime() + 60 * MINUTE_MS);
       addIssue(issues, {
         code: "PAYMENT_STALLED",
-        title: `${label}: очікує оплату`,
-        reason: "Оплата/закриття розрахунку не зафіксовані протягом години.",
+        title: `${label}: роботи не оплачені`,
+        reason: "Ремонт переведений на етап розрахунку, але повна оплата не зафіксована протягом години.",
         action: "Закрити оплату",
         level: overdueLevel(dueAt, now, 240),
         dueAt,
