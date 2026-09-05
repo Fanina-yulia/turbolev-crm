@@ -232,6 +232,12 @@ function metadataText(value: unknown, key: string) {
   return typeof raw === "string" && raw.trim() ? raw.trim() : null;
 }
 
+function isMissedCallTask(task: TaskLike) {
+  if (task.sourceType !== "INQUIRY") return false;
+  const text = `${task.title} ${task.description || ""}`.toLocaleLowerCase("uk-UA");
+  return text.includes("пропущен") || text.includes("пропущений дзвінок");
+}
+
 function categoryForTask(sourceType: string): AttentionCategory {
   if (sourceType === "INQUIRY" || sourceType === "LEAD") return "COMMUNICATIONS";
   if (sourceType === "APPOINTMENT" || sourceType === "WORK_ORDER") return "SERVICE";
@@ -453,11 +459,11 @@ export async function buildAttentionCenter(options: AttentionCenterOptions): Pro
   const tomorrow = kyivDay(1);
   const dayAfterTomorrow = kyivDay(2);
   const signals: AttentionSignal[] = options.tasks
-    .filter((task) => task.status === "OPEN" || task.status === "IN_PROGRESS")
+    .filter((task) => (task.status === "OPEN" || task.status === "IN_PROGRESS") && !isMissedCallTask(task))
     .map((task) => taskSignal(task, now));
 
   const taskSourceKeys = new Set(options.tasks
-    .filter((task) => (task.status === "OPEN" || task.status === "IN_PROGRESS") && task.sourceId)
+    .filter((task) => (task.status === "OPEN" || task.status === "IN_PROGRESS") && task.sourceId && !isMissedCallTask(task))
     .map((task) => `${task.sourceType}:${task.sourceId}`));
 
   const plannerWhere = options.plannerLocationIds ? { locationId: { in: options.plannerLocationIds } } : {};
