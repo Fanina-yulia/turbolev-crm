@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { PRIMARY_BINOTEL_PBX_NUMBER } from "@/src/domain/binotel-config";
 import type { QueryResultRow } from "pg";
 import { getSqlPool } from "@/src/lib/sql";
 import { normalizePhone as normalizeCanonicalPhone } from "@/src/lib/phone";
@@ -127,6 +128,21 @@ export async function listCommunicationInquiries(input?: { channel?: string; unr
   const pool = getSqlPool();
   const where: string[] = [`i."state" <> 'SPAM'`];
   const values: unknown[] = [];
+  const primaryBinotelLine = normalizePhone(PRIMARY_BINOTEL_PBX_NUMBER);
+  const primaryLineParam = values.length + 1;
+  const primaryLineNormalizedParam = values.length + 2;
+  values.push(PRIMARY_BINOTEL_PBX_NUMBER, primaryBinotelLine);
+  where.push(`(
+    i."channel" <> 'BINOTEL'
+    OR COALESCE(
+      NULLIF(i."metadata"->>'pbxNumber',''),
+      NULLIF(h."rawPayload"->>'pbxNumber',''),
+      NULLIF(h."rawPayload"->'payload'->>'pbxNumber',''),
+      NULLIF(h."rawPayload"->'payload'->'pbxNumberData'->>'number',''),
+      NULLIF(h."rawPayload"->'payload'->'callDetails'->'pbxNumberData'->>'number',''),
+      $${primaryLineParam}
+    ) IN ($${primaryLineParam}, $${primaryLineNormalizedParam})
+  )`);
 
   if (input?.channel && input.channel !== "ALL") {
     values.push(input.channel);
@@ -140,7 +156,7 @@ export async function listCommunicationInquiries(input?: { channel?: string; unr
   }
 
   const inquiryResult = await pool.query<CommunicationInquiryRow>(
-    `SELECT i.* FROM "CommunicationInquiry" i WHERE ${where.join(" AND ")} ORDER BY i."receivedAt" DESC LIMIT 250`,
+    `SELECT i.* FROM "CommunicationInquiry" i LEFT JOIN "CallHistory" h ON h."binotelCallId" = i."metadata"->>'callId' WHERE ${where.join(" AND ")} ORDER BY i."receivedAt" DESC LIMIT 250`,
     values,
   );
   const rows = inquiryResult.rows;
