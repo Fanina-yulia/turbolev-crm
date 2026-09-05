@@ -80,6 +80,7 @@ export type StationManagerKpisContract = {
   proposalsNotSent: number;
   waitingCustomerDecision: number;
   partsBlocking: number;
+  unpaidWorks: number;
 };
 
 export type StationManagerFlowContract = {
