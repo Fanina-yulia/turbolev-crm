@@ -1,3 +1,4 @@
+import { PRIMARY_BINOTEL_PBX_NUMBER } from "@/src/domain/binotel-config";
 import {
   CallStatus,
   CallType,
@@ -40,6 +41,7 @@ type ParsedWebhook = {
   internalNumber: string | null;
   customerName: string | null;
   employeeEmail: string | null;
+  pbxNumber: string;
   type: CallType | null;
   duration: number | null;
   startedAt: Date | null;
@@ -107,6 +109,20 @@ function nestedString(raw: JsonRecord, containerName: string, names: string[]): 
     }
   }
   return null;
+}
+
+function resolveBinotelPbxNumber(raw: JsonRecord): string {
+  const candidates = [
+    firstString(raw, ["pbxNumber", "pbxLine", "lineNumber", "didNumber", "trunkNumber"]),
+    nestedString(raw, "pbxNumberData", ["number", "pbxNumber", "phone"]),
+  ];
+
+  for (const candidate of candidates) {
+    const normalized = normalizePhone(candidate);
+    if (normalized) return normalized;
+  }
+
+  return normalizePhone(PRIMARY_BINOTEL_PBX_NUMBER);
 }
 
 function firstInteger(raw: JsonRecord, names: string[]): number | null {
@@ -225,6 +241,7 @@ export function parseBinotelWebhook(raw: JsonRecord): ParsedWebhook {
     ]),
     customerName: nestedString(raw, "customerData", ["name", "fullName", "customerName"]),
     employeeEmail: nestedString(raw, "employeeData", ["email", "employeeEmail"])?.toLowerCase() || null,
+    pbxNumber: resolveBinotelPbxNumber(raw),
     type: inferCallType(raw, event),
     duration: firstInteger(raw, ["duration", "callDuration", "billsec", "billSec", "seconds"]),
     startedAt: firstDate(raw, ["startedAt", "startTime", "startTimestamp", "callStartTime"]),
@@ -288,6 +305,7 @@ export async function processBinotelWebhook(raw: JsonRecord) {
 
   const variants = phoneVariants(normalizedNumber);
   const now = new Date();
+  const rawPayload = toJson({ event: parsed.event, pbxNumber: parsed.pbxNumber, payload: parsed.raw });
 
   const result = await prisma.$transaction(async (tx) => {
     let client = existing?.clientId
@@ -400,7 +418,7 @@ export async function processBinotelWebhook(raw: JsonRecord) {
         startedAt,
         answeredAt,
         endedAt,
-        rawPayload: toJson({ event: parsed.event, payload: parsed.raw }),
+        rawPayload,
         clientId: client?.id || null,
         leadId: client ? null : lead?.id || null,
         workOrderId: activeWorkOrder?.id || null,
@@ -415,7 +433,7 @@ export async function processBinotelWebhook(raw: JsonRecord) {
         startedAt,
         answeredAt,
         endedAt,
-        rawPayload: toJson({ event: parsed.event, payload: parsed.raw }),
+        rawPayload,
         clientId: client?.id || existing?.clientId || null,
         leadId: client ? null : lead?.id || existing?.leadId || null,
         workOrderId: activeWorkOrder?.id || existing?.workOrderId || null,
@@ -452,7 +470,7 @@ export async function processBinotelWebhook(raw: JsonRecord) {
 
   let inquiryId: string | null = null;
 
-  if (result.call.type === CallType.INCOMING) {
+  if (result.call.type === CallType.INCOMING || result.call.type === CallType.OUTGOING) {
     const eventAt =
       parsed.event === "hangupTheCall"
         ? result.call.endedAt
@@ -463,6 +481,8 @@ export async function processBinotelWebhook(raw: JsonRecord) {
     const inquiry = await syncBinotelInquiry({
       callId: parsed.callId,
       event: parsed.event,
+      callType: result.call.type,
+      pbxNumber: parsed.pbxNumber,
       phone: normalizedNumber,
       name: result.client?.name || result.lead?.name || parsed.customerName || "Невідомий номер",
       status: result.call.status,
