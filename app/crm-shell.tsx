@@ -7,7 +7,13 @@ import { SettingsPersonnelBridge } from "./settings-personnel-bridge";
 import { isSettingsTab, type SettingsTab } from "./settings-tabs";
 import { useCrmAccess } from "./use-crm-access";
 import { CRM_NAV_GROUPS, isCrmSection, resolveCrmSection, sectionFromSlug, slugFromSection, type CrmSectionLabel } from "./crm-navigation";
-import { CRM_ROUTE_KEYS, navigateCrm, type CrmRouteParams } from "./crm-route";
+import {
+  armModifiedCrmNavigation,
+  CRM_ROUTE_KEYS,
+  commitCrmNavigation,
+  navigateCrm,
+  type CrmRouteParams,
+} from "./crm-route";
 import { PERMISSIONS } from "@/src/security/permissions";
 import { turboLevLogoDark, turboLevLogoLight } from "@/src/brand/logos";
 import shellStyles from "./crm-shell.module.css";
@@ -162,10 +168,21 @@ export function CrmShell({ initialSection, initialSettingsTab }: { initialSectio
     }
   }, []);
 
+  useEffect(() => {
+    const captureModifiedNavigation = (event: MouseEvent) => {
+      if (event.button !== 0 || (!event.ctrlKey && !event.metaKey)) return;
+      const target = event.target instanceof Element ? event.target : null;
+      const button = target?.closest("button");
+      if (!button || button.disabled) return;
+      armModifiedCrmNavigation();
+    };
+
+    document.addEventListener("click", captureModifiedNavigation, true);
+    return () => document.removeEventListener("click", captureModifiedNavigation, true);
+  }, []);
+
   const navigateTo = useCallback((next: CrmSectionLabel, historyMode: "push" | "replace" = "push", filter = "", filterLabel = "") => {
     const resolved=resolveCrmSection(next);
-    window.dispatchEvent(new Event("turbolev:close-new-request"));
-    setNewRequestOpen(false); setActive(resolved); setOpenGroup(groupForSection(resolved)); setWorkflowFilter(filter); setWorkflowFilterLabel(filterLabel); setMobileNavOpen(false);
     const url = new URL(window.location.href); const slug = slugFromSection(resolved);
     if (slug === "overview") url.searchParams.delete("section"); else url.searchParams.set("section", slug);
     clearTypedRouteParams(url);
@@ -173,16 +190,18 @@ export function CrmShell({ initialSection, initialSettingsTab }: { initialSectio
     if (filterLabel) url.searchParams.set("filterLabel", filterLabel); else url.searchParams.delete("filterLabel");
     if(resolved!=="Налаштування") url.searchParams.delete("settingsTab");
     const nextUrl = `${url.pathname}${url.search}${url.hash}`;
-    if (historyMode === "replace") window.history.replaceState({}, "", nextUrl); else window.history.pushState({}, "", nextUrl);
+    if (commitCrmNavigation(nextUrl, historyMode)) return;
+    window.dispatchEvent(new Event("turbolev:close-new-request"));
+    setNewRequestOpen(false); setActive(resolved); setOpenGroup(groupForSection(resolved)); setWorkflowFilter(filter); setWorkflowFilterLabel(filterLabel); setMobileNavOpen(false);
   }, []);
 
   const navigateSettings = useCallback((tab:SettingsTab,historyMode:"push"|"replace"="push")=>{
-    window.dispatchEvent(new Event("turbolev:close-new-request"));
-    setNewRequestOpen(false);setActive("Налаштування");setOpenGroup(groupForSection("Налаштування"));setWorkflowFilter("");setWorkflowFilterLabel("");setSettingsTab(tab);setMobileNavOpen(false);
     const url=new URL(window.location.href);url.searchParams.set("section","settings");url.searchParams.set("settingsTab",tab);url.searchParams.delete("filter");url.searchParams.delete("filterLabel");
     for(const key of CRM_ROUTE_KEYS){if(key!=="settingsTab"&&key!=="supplierId"&&key!=="provider")url.searchParams.delete(key);}
     const nextUrl=`${url.pathname}${url.search}${url.hash}`;
-    if(historyMode==="replace")window.history.replaceState({},"",nextUrl);else window.history.pushState({},"",nextUrl);
+    if(commitCrmNavigation(nextUrl, historyMode)) return;
+    window.dispatchEvent(new Event("turbolev:close-new-request"));
+    setNewRequestOpen(false);setActive("Налаштування");setOpenGroup(groupForSection("Налаштування"));setWorkflowFilter("");setWorkflowFilterLabel("");setSettingsTab(tab);setMobileNavOpen(false);
   },[]);
 
   useEffect(() => {
