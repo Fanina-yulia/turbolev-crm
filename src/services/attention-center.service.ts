@@ -234,8 +234,12 @@ function metadataText(value: unknown, key: string) {
 
 function isMissedCallTask(task: TaskLike) {
   if (task.sourceType !== "INQUIRY") return false;
+  const metadata = metadataRecord(task.metadata);
+  const callStatus = typeof metadata.callStatus === "string" ? metadata.callStatus.toUpperCase() : "";
+  if (callStatus === "MISSED" || metadata.missedCall === true) return true;
   const text = `${task.title} ${task.description || ""}`.toLocaleLowerCase("uk-UA");
-  return text.includes("пропущен") || text.includes("пропущений дзвінок");
+  return text.includes("пропущен") || text.includes("пропущений дзвінок")
+    || (String(metadata.channel || "").toUpperCase() === "BINOTEL" && text.includes("дзвін"));
 }
 
 function categoryForTask(sourceType: string): AttentionCategory {
@@ -622,21 +626,18 @@ export async function buildAttentionCenter(options: AttentionCenterOptions): Pro
     if (taskSourceKeys.has(`INQUIRY:${item.id}`)) continue;
     const age = ageMinutes(item.receivedAt, now);
     const text = `${String(item.subject || "")} ${String(item.preview || "")}`.toLocaleLowerCase("uk-UA");
-    const missedCall = item.channel === "BINOTEL" && text.includes("пропущ");
-    if (missedCall) continue;
+    if (item.channel === "BINOTEL" && text.includes("пропущ")) continue;
     const due = new Date(item.receivedAt.getTime() + 15 * MINUTE_MS);
     signals.push(signal({
       id: `inquiry:${item.id}`,
       sourceType: "INQUIRY",
       sourceId: item.id,
       taskId: null,
-      title: missedCall ? "Пропущений дзвінок без реакції" : "Нове звернення без опрацювання",
+      title: "Нове звернення без опрацювання",
       description: [item.subject, item.preview].filter(Boolean).join(" · ").slice(0, 360) || null,
-      reason: missedCall
-        ? "Пропущений дзвінок залишається у нових зверненнях і ще не опрацьований."
-        : `Звернення залишається новим уже ${age} хв. Норматив першої реакції — до 15 хв.`,
+      reason: `Звернення залишається новим уже ${age} хв. Норматив першої реакції — до 15 хв.`,
       category: "COMMUNICATIONS",
-      level: missedCall || age >= 60 ? "CRITICAL" : age >= 15 ? "HIGH" : "MEDIUM",
+      level: age >= 60 ? "CRITICAL" : age >= 15 ? "HIGH" : "MEDIUM",
       bucket: "ACTION",
       dueAt: due.toISOString(),
       dueDate: due,
@@ -645,7 +646,7 @@ export async function buildAttentionCenter(options: AttentionCenterOptions): Pro
       amount: null,
       currency: null,
       counterparty: item.phone || null,
-      action: { label: missedCall ? "Опрацювати дзвінок" : "Відкрити звернення", section: "Нові звернення" },
+      action: { label: "Відкрити звернення", section: "Нові звернення" },
       metadata: { channel: item.channel, phone: item.phone, vehicle: item.vehicle, plate: item.plate },
     }, now));
   }
