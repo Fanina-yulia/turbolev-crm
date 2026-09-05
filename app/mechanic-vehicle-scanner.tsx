@@ -66,10 +66,6 @@ function mechanicNav() {
   return document.querySelector<HTMLElement>('nav[aria-label="Навігація механіка"]');
 }
 
-function mechanicScanSlot() {
-  return document.querySelector<HTMLElement>('[data-mechanic-scan-slot]') || mechanicNav();
-}
-
 function mechanicHero() {
   const notificationButton = document.querySelector<HTMLElement>('[data-mechanic-cabinet="true"] button[aria-label="Сповіщення"]');
   return notificationButton?.closest("header") as HTMLElement | null;
@@ -94,7 +90,6 @@ export function MechanicVehicleScanner() {
   const [result, setResult] = useState<ScanResult | null>(null);
   const [cameraReady, setCameraReady] = useState(false);
   const [cameraError, setCameraError] = useState("");
-  const [navTarget, setNavTarget] = useState<HTMLElement | null>(null);
   const [heroTarget, setHeroTarget] = useState<HTMLElement | null>(null);
   const [countdown, setCountdown] = useState<number | null>(null);
   const [expectedPlate, setExpectedPlate] = useState("");
@@ -121,19 +116,17 @@ export function MechanicVehicleScanner() {
     let frame: number | null = null;
     let boundNav: HTMLElement | null = null;
 
-    const syncTargets = () => {
-      const nextNav = mechanicScanSlot();
+    const syncHero = () => {
       const nextHero = mechanicHero();
-      setNavTarget((current) => current === nextNav ? current : nextNav);
       setHeroTarget((current) => current === nextHero ? current : nextHero);
-      return Boolean(nextNav);
+      return Boolean(nextHero);
     };
 
     const locateAfterNavigation = () => {
       let attempts = 0;
       const locate = () => {
         if (cancelled) return;
-        syncTargets();
+        syncHero();
         attempts += 1;
         if (attempts < 20 && !mechanicHero()) frame = window.requestAnimationFrame(locate);
         else frame = null;
@@ -146,7 +139,7 @@ export function MechanicVehicleScanner() {
     let attempts = 0;
     const bind = () => {
       if (cancelled) return;
-      const found = syncTargets();
+      const found = syncHero();
       const nav = mechanicNav();
       if (nav && nav !== boundNav) {
         boundNav?.removeEventListener("click", onNavClick);
@@ -474,16 +467,11 @@ export function MechanicVehicleScanner() {
     };
   }, [autoAdvanceToDiagnostic, busy, error, open, result?.nextAction, result?.recognition?.plate]);
 
-  const scanButton = <button type="button" className={styles.navScan} onClick={show} aria-label="Сканувати номер автомобіля">
-    <span>▣</span><b>Сканувати</b>
-  </button>;
-
   const profileButton = <button type="button" className={styles.profileTop} onClick={openProfile} aria-label="Профіль механіка" title="Профіль">
     <span>●</span>
   </button>;
 
   return <>
-    {navTarget ? createPortal(scanButton, navTarget) : null}
     {heroTarget ? createPortal(profileButton, heroTarget) : null}
 
     {open && !result && <div className={styles.scannerScreen} role="dialog" aria-modal="true" aria-label="Сканування автомобіля">
