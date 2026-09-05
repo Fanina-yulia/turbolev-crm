@@ -6,6 +6,7 @@ import { getPrisma } from "@/src/lib/prisma";
 export const AUTO_NO_SHOW_AFTER_HOURS = 24;
 export const AUTO_NO_SHOW_AFTER_MS = AUTO_NO_SHOW_AFTER_HOURS * 60 * 60 * 1000;
 export const AUTO_NO_SHOW_BATCH_SIZE = 250;
+export const AUTO_NO_SHOW_ROLLOUT_SETTING_KEY = "planner_auto_no_show_rollout";
 
 type AppointmentNoShowCandidate = {
   status: PlannerAppointmentStatus | string;
@@ -21,6 +22,7 @@ export type AutoNoShowRun = {
   updated: number;
   appointmentIds: string[];
   cutoff: string;
+  rolloutAt: string;
   ranAt: string;
 };
 
@@ -57,7 +59,7 @@ export async function markExpiredBookedAppointmentsAsNoShow(
   const candidates = await prisma.serviceAppointment.findMany({
     where: {
       status: PlannerAppointmentStatus.BOOKED,
-      plannedStartAt: { lte: cutoff },
+      plannedStartAt: { gte: enabledAt, lte: cutoff },
       actualArrivalAt: null,
       actualStartAt: null,
       actualEndAt: null,
@@ -75,6 +77,7 @@ export async function markExpiredBookedAppointmentsAsNoShow(
       updated: 0,
       appointmentIds: [],
       cutoff: cutoff.toISOString(),
+      rolloutAt: enabledAt.toISOString(),
       ranAt: now.toISOString(),
     };
   }
@@ -108,6 +111,7 @@ export async function markExpiredBookedAppointmentsAsNoShow(
     updated: appointmentIds.length,
     appointmentIds,
     cutoff: cutoff.toISOString(),
+    rolloutAt: enabledAt.toISOString(),
     ranAt: now.toISOString(),
   };
 }
