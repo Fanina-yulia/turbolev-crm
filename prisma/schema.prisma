@@ -310,6 +310,7 @@ model DiagnosticRequest {
   lead           Lead?           @relation("LeadDiagnostics", fields: [leadId], references: [id], onDelete: SetNull)
   workOrder      WorkOrder?
   diagnosticCard DiagnosticCard?
+  manualPartRecommendations DiagnosticPartRecommendation[]
 
   @@index([clientId, status])
   @@index([vehicleId, status])

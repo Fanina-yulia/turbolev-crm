@@ -642,7 +642,6 @@ export async function buildAttentionCenter(options: AttentionCenterOptions): Pro
   for (const item of inquiries) {
     if (taskSourceKeys.has(`INQUIRY:${item.id}`)) continue;
     const age = ageMinutes(item.receivedAt, now);
-    const text = `${String(item.subject || "")} ${String(item.preview || "")}`.toLocaleLowerCase("uk-UA");
     if (isMissedCallInquiry(item)) continue;
     const due = new Date(item.receivedAt.getTime() + 15 * MINUTE_MS);
     signals.push(signal({

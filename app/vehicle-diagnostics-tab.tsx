@@ -24,6 +24,8 @@ type DiagnosticRow = {
 type DiagnosticMedia = { id: string; fileName: string; mimeType: string; fileSize: number; createdAt: string };
 type DiagnosticFinding = { id: string; action: string; urgency: string; findingText: string | null; suggestedWorkName: string | null; suggestedPartName: string | null; media: DiagnosticMedia[] };
 type DiagnosticItem = { id: string; templateItemId: string; name: string; position: string | null; state: string; measurementUnit: string | null; measurementValue: string | null; measurementText: string | null; note: string | null; finding: DiagnosticFinding | null };
+type ManualPart = { id: string; diagnosticRequestId: string; findingId: string | null; name: string; article: string | null; brand: string | null; position: string | null; quantity: string | number; note: string | null; source: string; status: string; createdByName: string | null; createdAt: string; updatedAt: string };
+type ManualPartDraft = { name: string; article: string; brand: string; position: string; quantity: string; note: string; findingId: string };
 type DiagnosticSection = { id: string; name: string; items: DiagnosticItem[]; counts: { total: number; checked: number; ok: number; attention: number; defect: number } };
 type DiagnosticInspection = { id: string; templateName: string; sections: DiagnosticSection[]; counts: { total: number; checked: number; ok: number; attention: number; defect: number } };
 type DiagnosticView = {
@@ -51,6 +53,8 @@ const workflowLabels: Record<WorkflowState, string> = { PENDING: "Очікує",
 function stateOf(row: DiagnosticRow): WorkflowState { if (row.reviewState === "RETURNED") return "RETURNED"; return row.workflowState || row.status; }
 function dateText(value: string | null | undefined) { if (!value) return "—"; const date = new Date(value); return Number.isNaN(date.getTime()) ? "—" : new Intl.DateTimeFormat("uk-UA", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }).format(date); }
 function vehicleTitle(vehicle: VehicleCardContract) { return [vehicle.brand, vehicle.model, vehicle.year].filter(Boolean).join(" ") || "Автомобіль"; }
+
+const EMPTY_MANUAL_PART: ManualPartDraft = { name: "", article: "", brand: "", position: "", quantity: "1", note: "", findingId: "" };
 
 type CardStatus = { label: string; tone: "good" | "review" | "danger" | "muted" };
 function cardStatus(row: DiagnosticRow, findings: Array<{ item: DiagnosticItem }>): CardStatus {
@@ -160,6 +164,12 @@ function DiagnosticCardDetail({ row, initialView, initialCardNumber, busy, onOpe
   const [editingComment, setEditingComment] = useState(false);
   const [mechanicComment, setMechanicComment] = useState("");
   const [savingComment, setSavingComment] = useState(false);
+  const [manualParts, setManualParts] = useState<ManualPart[]>([]);
+  const [manualPartDraft, setManualPartDraft] = useState<ManualPartDraft>(EMPTY_MANUAL_PART);
+  const [editingManualPart, setEditingManualPart] = useState<ManualPart | null>(null);
+  const [manualPartModalOpen, setManualPartModalOpen] = useState(false);
+  const [savingManualPart, setSavingManualPart] = useState(false);
+  const [manualPartError, setManualPartError] = useState("");
   const [pdf, setPdf] = useState<DiagnosticPdfMeta | null>(null);
   const [savingPdf, setSavingPdf] = useState(false);
   const [pdfModalOpen, setPdfModalOpen] = useState(false);
@@ -192,6 +202,13 @@ function DiagnosticCardDetail({ row, initialView, initialCardNumber, busy, onOpe
 
   useEffect(() => {
     const controller = new AbortController();
+    void fetch(`/api/diagnostics/${encodeURIComponent(row.id)}/manual-parts`, { cache: "no-store", credentials: "include", signal: controller.signal })
+      .then(async (response) => {
+        const body = await response.json().catch(() => null) as { ok?: boolean; parts?: ManualPart[]; message?: string; error?: string } | null;
+        if (!response.ok || !body?.ok || !Array.isArray(body.parts)) throw new Error(body?.message || body?.error || "Не вдалося завантажити ручні деталі.");
+        if (!controller.signal.aborted) setManualParts(body.parts);
+      })
+      .catch((cause) => { if (!controller.signal.aborted && cause instanceof Error && cause.name !== "AbortError") setManualPartError(cause.message); });
     void fetch(`/api/diagnostics/${encodeURIComponent(row.id)}/pdf?meta=1`, { cache: "no-store", credentials: "include", signal: controller.signal })
       .then(async (response) => {
         const body = await response.json().catch(() => null) as { ok?: boolean; pdf?: DiagnosticPdfMeta | null } | null;
@@ -206,6 +223,7 @@ function DiagnosticCardDetail({ row, initialView, initialCardNumber, busy, onOpe
   const photos = selectedFinding?.item.finding?.media || [];
   const activePhoto = photos.find((photo) => photo.id === activePhotoId) || photos[0] || null;
   const parts = findings.filter(({ item }) => Boolean(item.finding?.suggestedPartName || item.finding?.action === "REPLACE"));
+  const totalParts = parts.length + manualParts.length;
   const state = stateOf(row);
   const status = cardStatus(row, findings);
 
@@ -224,6 +242,70 @@ function DiagnosticCardDetail({ row, initialView, initialCardNumber, busy, onOpe
       window.dispatchEvent(new CustomEvent("turbolev:data-changed"));
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Не вдалося зберегти примітку механіка."); }
     finally { setSavingComment(false); }
+  }
+
+  function openManualPart(part?: ManualPart) {
+    setError("");
+    setManualPartError("");
+    setEditingManualPart(part || null);
+    setManualPartDraft(part ? {
+      name: part.name,
+      article: part.article || "",
+      brand: part.brand || "",
+      position: part.position || "",
+      quantity: String(part.quantity),
+      note: part.note || "",
+      findingId: part.findingId || "",
+    } : { ...EMPTY_MANUAL_PART });
+    setManualPartModalOpen(true);
+  }
+
+  function closeManualPart(force = false) {
+    if (savingManualPart && !force) return;
+    setManualPartModalOpen(false);
+    setEditingManualPart(null);
+    setManualPartDraft({ ...EMPTY_MANUAL_PART });
+  }
+
+  async function saveManualPart() {
+    if (!manualPartDraft.name.trim()) { setManualPartError("Вкажіть назву деталі."); return; }
+    const parsedQuantity = Number(manualPartDraft.quantity);
+    if (!Number.isFinite(parsedQuantity) || parsedQuantity <= 0 || parsedQuantity > 100) { setManualPartError("Кількість деталі має бути від 1 до 100."); return; }
+    setSavingManualPart(true); setManualPartError("");
+    try {
+      const response = await fetch(editingManualPart
+        ? `/api/diagnostics/${encodeURIComponent(row.id)}/manual-parts/${encodeURIComponent(editingManualPart.id)}`
+        : `/api/diagnostics/${encodeURIComponent(row.id)}/manual-parts`, {
+        method: editingManualPart ? "PATCH" : "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...manualPartDraft, quantity: parsedQuantity, findingId: manualPartDraft.findingId || null }),
+      });
+      const body = await response.json().catch(() => null) as { ok?: boolean; part?: ManualPart; message?: string; error?: string } | null;
+      if (!response.ok || !body?.ok || !body.part) throw new Error(body?.message || body?.error || "Не вдалося зберегти деталь.");
+      setManualParts((current) => editingManualPart
+        ? current.map((part) => part.id === body.part!.id ? body.part! : part)
+        : [...current, body.part!]);
+      closeManualPart(true);
+      window.dispatchEvent(new CustomEvent("turbolev:data-changed"));
+    } catch (cause) { setManualPartError(cause instanceof Error ? cause.message : "Не вдалося зберегти деталь."); }
+    finally { setSavingManualPart(false); }
+  }
+
+  async function removeManualPart(part: ManualPart) {
+    if (!window.confirm(`Видалити деталь «${part.name}» зі списку рекомендацій?`)) return;
+    setManualPartError("");
+    try {
+      const response = await fetch(`/api/diagnostics/${encodeURIComponent(row.id)}/manual-parts/${encodeURIComponent(part.id)}`, { method: "DELETE", credentials: "include" });
+      const body = await response.json().catch(() => null) as { ok?: boolean; message?: string; error?: string } | null;
+      if (!response.ok || !body?.ok) throw new Error(body?.message || body?.error || "Не вдалося видалити деталь.");
+      setManualParts((current) => current.filter((item) => item.id !== part.id));
+      window.dispatchEvent(new CustomEvent("turbolev:data-changed"));
+    } catch (cause) { setManualPartError(cause instanceof Error ? cause.message : "Не вдалося видалити деталь."); }
+  }
+
+  function openManualPartSelection(part: ManualPart) {
+    navigateCrm("Підбір запчастин", { diagnosticId: row.id, manualPartId: part.id, vehicleId: row.vehicle.id, plate: row.vehicle.plateNumber || "", vin: row.vehicle.vin || "" });
   }
 
   async function saveDiagnosticPdf() {
@@ -301,7 +383,19 @@ function DiagnosticCardDetail({ row, initialView, initialCardNumber, busy, onOpe
     <header className={styles.cardHeader}><div><span className={styles.eyebrow}>ДІАГНОСТИЧНА КАРТА</span><h3>{cardNumber || "Результати діагностики"}</h3><p>{dateText(row.confirmedAt || row.updatedAt || row.createdAt)} · {row.assignedMechanic?.name ? `Механік: ${row.assignedMechanic.name}` : "Механік не вказаний"}</p></div><div className={styles.cardHeaderActions}><span className={`${styles.status} ${status.tone === "good" ? styles.statusGood : status.tone === "danger" ? styles.statusDanger : status.tone === "muted" ? styles.statusMuted : styles.statusReview}`}><i className={styles.statusDot} />{status.label}</span><button type="button" className={styles.iconButton} aria-label="Редагувати примітки механіка" onClick={() => setEditingComment(true)}>✎</button><button type="button" className={styles.secondaryAction} onClick={() => void saveDiagnosticPdf()} disabled={savingPdf}>{savingPdf ? "Формую PDF…" : pdf?.isCurrent ? "Збережено" : "Зберегти"}</button>{pdf ? <button type="button" className={styles.pdfButton} aria-label="Відкрити збережений PDF" title="Відкрити PDF" onClick={() => setPdfModalOpen(true)}>▤</button> : null}<button type="button" className={styles.primaryAction} onClick={onOpenPartsSelection}>Підбір деталей →</button></div></header>
     <div className={styles.workspaceGrid}>
       <section className={styles.diagramPanel} aria-label="Схема автомобіля"><div className={styles.panelHeading}><div><span className={styles.eyebrow}>СХЕМА АВТОМОБІЛЯ</span><h4>Проблемні зони</h4></div><span className={styles.legend}><i className={styles.legendDanger}/>Критично <i className={styles.legendAttention}/>Увага</span></div><VehicleSchematic findings={findings} selectedId={selectedFinding?.item.id || null} onSelect={setSelectedFindingId}/>{!findings.length && <div className={styles.healthy}><b>Автомобіль перевірено</b><span>Критичних несправностей не зафіксовано.</span></div>}</section>
-      <section className={styles.partsPanel} aria-label="Деталі до заміни"><div className={styles.panelHeading}><div><span className={styles.eyebrow}>РЕКОМЕНДАЦІЇ</span><h4>Деталі до заміни <b className={styles.inlineCount}>{parts.length}</b> <button type="button" className={styles.addFinding} aria-label="Додати деталь, рідину або розхідник">+</button></h4></div></div>{!parts.length && <div className={styles.panelEmpty}>Деталі до заміни за результатами цієї діагностики не визначені.</div>}<div className={styles.findingList}>{parts.map(({ section, item }, index) => <button type="button" className={`${styles.findingRow} ${selectedFinding?.item.id === item.id ? styles.findingSelected : ""}`} key={item.id} onClick={() => setSelectedFindingId(item.id)}><span className={`${styles.findingNumber} ${item.state === "DEFECT" ? styles.findingNumberDanger : styles.findingNumberAttention}`}>{index + 1}</span><span className={styles.findingCopy}><strong>{item.finding?.suggestedPartName || item.name}</strong><small>{section} · {item.finding?.findingText || item.note || "Виявлено несправність"}</small></span><span className={styles.findingSeverity} aria-label={item.state === "DEFECT" ? "Критично" : "Увага"}><i className={item.state === "DEFECT" ? styles.severityDanger : styles.severityAttention} /></span></button>)}</div></section>
+      <section className={styles.partsPanel} aria-label="Деталі до заміни">
+        <div className={styles.panelHeading}><div><span className={styles.eyebrow}>РЕКОМЕНДАЦІЇ</span><h4>Деталі до заміни <b className={styles.inlineCount}>{totalParts}</b> <button type="button" className={styles.addFinding} aria-label="Додати деталь до заміни" onClick={() => openManualPart()} disabled={state === "CANCELLED"}>+</button></h4></div></div>
+        {!totalParts && <div className={styles.panelEmpty}>Деталі до заміни за результатами цієї діагностики не визначені. Додайте позицію вручну кнопкою «+».</div>}
+        {manualPartError ? <div className={styles.inlineError}>{manualPartError}</div> : null}
+        <div className={styles.findingList}>
+          {parts.map(({ section, item }, index) => <button type="button" className={`${styles.findingRow} ${selectedFinding?.item.id === item.id ? styles.findingSelected : ""}`} key={item.id} onClick={() => setSelectedFindingId(item.id)}><span className={`${styles.findingNumber} ${item.state === "DEFECT" ? styles.findingNumberDanger : styles.findingNumberAttention}`}>{index + 1}</span><span className={styles.findingCopy}><strong>{item.finding?.suggestedPartName || item.name}</strong><small>{section} · {item.finding?.findingText || item.note || "Виявлено несправність"}</small></span><span className={styles.findingSeverity} aria-label={item.state === "DEFECT" ? "Критично" : "Увага"}><i className={item.state === "DEFECT" ? styles.severityDanger : styles.severityAttention} /></span></button>)}
+          {manualParts.map((part, index) => <div className={styles.manualPartRow} key={part.id}>
+            <span className={styles.manualPartMarker}>+</span>
+            <div className={styles.findingCopy}><strong>{part.name}</strong><small>{[part.position, part.brand, part.article].filter(Boolean).join(" · ") || "Додано сервіс-менеджером"} · {part.quantity} шт</small><em>Додано вручну</em></div>
+            <div className={styles.manualPartActions}><button type="button" onClick={() => openManualPartSelection(part)}>Підібрати</button><button type="button" onClick={() => openManualPart(part)}>Редагувати</button><button type="button" className={styles.manualPartDelete} onClick={() => void removeManualPart(part)} aria-label={`Видалити ${part.name}`}>×</button></div>
+          </div>)}
+        </div>
+      </section>
       <section className={styles.evidencePanel} aria-label="Фото проблемного місця"><div className={styles.panelHeading}><div><span className={styles.eyebrow}>ДОКАЗИ ДЕФЕКТУ</span><h4>Фото проблемного місця</h4></div>{photos.length ? <span className={styles.photoCounter}>{Math.max(1, photos.findIndex((photo) => photo.id === activePhoto?.id) + 1)}/{photos.length}</span> : null}</div>{activePhoto ? <><button type="button" className={styles.photoMain} onClick={() => setLightboxPhoto(activePhoto)}><img src={`/api/diagnostics/${encodeURIComponent(row.id)}/media/${encodeURIComponent(activePhoto.id)}`} alt={activePhoto.fileName}/><span>Збільшити фото</span></button><div className={styles.thumbnails}>{photos.map((photo) => <button type="button" key={photo.id} className={activePhoto.id === photo.id ? styles.thumbnailActive : ""} onClick={() => setActivePhotoId(photo.id)}><img src={`/api/diagnostics/${encodeURIComponent(row.id)}/media/${encodeURIComponent(photo.id)}`} alt={photo.fileName}/></button>)}</div><div className={styles.evidenceSummary}><strong>{selectedFinding?.item.finding?.suggestedPartName || selectedFinding?.item.name || "Проблемна зона"}</strong><span>{selectedFinding?.section || "—"}</span><p>{selectedFinding?.item.finding?.findingText || selectedFinding?.item.note || "Додатковий опис відсутній."}</p></div></> : <div className={styles.noPhoto}><span aria-hidden="true">▧</span><b>Фото не прикріплені</b><small>Механік може додати фото проблемного місця у своєму кабінеті.</small></div>}</section>
     </div>
     <div className={styles.metaGrid}><section className={styles.notesPanel}><div className={styles.panelHeading}><div><span className={styles.eyebrow}>КОМЕНТАР МЕХАНІКА</span><h4>Примітки механіка</h4></div><button type="button" className={styles.editLink} onClick={() => setEditingComment((value) => !value)}>{editingComment ? "Скасувати" : "✎ Редагувати"}</button></div>{editingComment ? <textarea className={styles.notesEditor} value={mechanicComment} onChange={(event) => setMechanicComment(event.target.value)} maxLength={4000} placeholder="Додайте примітку механіка…" aria-label="Примітки механіка" /> : <p className={styles.notesText}>{view.diagnostic.review.mechanicComment || "Примітка механіка ще не додана."}</p>}{editingComment ? <div className={styles.notesActions}><span>{mechanicComment.length}/4000</span><button type="button" className={styles.primaryAction} onClick={() => void saveMechanicComment()} disabled={savingComment}>{savingComment ? "Зберігаю…" : "Зберегти примітку"}</button></div> : null}</section></div>
@@ -309,7 +403,25 @@ function DiagnosticCardDetail({ row, initialView, initialCardNumber, busy, onOpe
     {pdfActionMessage ? <div className={styles.pdfMessage} role="status">{pdfActionMessage}</div> : null}
     {pdfModalOpen && pdf ? <div className={styles.pdfModalBackdrop} role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setPdfModalOpen(false); }}><section className={styles.pdfModal} role="dialog" aria-modal="true" aria-labelledby="diagnostic-pdf-title"><header className={styles.pdfModalHeader}><div><span className={styles.eyebrow}>ФАЙЛ ДІАГНОСТИЧНОЇ КАРТИ</span><h4 id="diagnostic-pdf-title">{pdf.fileName}</h4><small>Ревізія {pdf.revision} · {dateText(pdf.generatedAt)}</small></div><button type="button" className={styles.lightboxClose} onClick={() => setPdfModalOpen(false)} aria-label="Закрити PDF">×</button></header><div className={styles.pdfActions}><a className={styles.pdfAction} href={`/api/diagnostics/${encodeURIComponent(row.id)}/pdf?download=1`} download={pdf.fileName}>Завантажити</a><button type="button" className={styles.pdfAction} onClick={printPdf}>Друкувати</button><button type="button" className={styles.pdfAction} onClick={() => void sharePdf()}>Поділитися</button></div>{shareUrl ? <div className={styles.shareOptions}><span>Канал поширення:</span><a href={`https://t.me/share/url?url=${encodeURIComponent(shareUrl)}&text=${encodeURIComponent(`Діагностична карта ${cardNumber}`)}`} target="_blank" rel="noreferrer">Telegram</a><a href={`https://wa.me/?text=${encodeURIComponent(`Діагностична карта ${cardNumber}: ${shareUrl}`)}`} target="_blank" rel="noreferrer">WhatsApp</a><a href={`viber://forward?text=${encodeURIComponent(`Діагностична карта ${cardNumber}: ${shareUrl}`)}`}>Viber</a><button type="button" onClick={() => void copyPdfShareUrl()}>Копіювати</button></div> : null}<iframe className={styles.pdfFrame} src={`/api/diagnostics/${encodeURIComponent(row.id)}/pdf#view=FitH`} title={`Перегляд ${pdf.fileName}`} /></section></div> : null}
     {lightboxPhoto ? <div className={styles.lightbox} role="dialog" aria-modal="true" aria-label="Збільшене фото" onMouseDown={(event) => { if (event.target === event.currentTarget) setLightboxPhoto(null); }}><button type="button" className={styles.lightboxClose} onClick={() => setLightboxPhoto(null)} aria-label="Закрити">×</button><img src={`/api/diagnostics/${encodeURIComponent(row.id)}/media/${encodeURIComponent(lightboxPhoto.id)}`} alt={lightboxPhoto.fileName}/></div> : null}
+    {manualPartModalOpen ? <ManualPartModal draft={manualPartDraft} editing={Boolean(editingManualPart)} findings={findings} busy={savingManualPart} error={manualPartError} onChange={setManualPartDraft} onClose={closeManualPart} onSave={() => void saveManualPart()} /> : null}
   </article>;
+}
+
+function ManualPartModal({ draft, editing, findings, busy, error, onChange, onClose, onSave }: { draft: ManualPartDraft; editing: boolean; findings: Array<{ section: string; item: DiagnosticItem }>; busy: boolean; error: string; onChange: (draft: ManualPartDraft) => void; onClose: () => void; onSave: () => void }) {
+  return <div className={styles.modalBackdrop} role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+    <section className={styles.manualPartModal} role="dialog" aria-modal="true" aria-labelledby="manual-part-title">
+      <header className={styles.modalHeader}><div><span className={styles.eyebrow}>РЕКОМЕНДАЦІЇ</span><h3 id="manual-part-title">{editing ? "Редагувати деталь" : "Додати деталь до заміни"}</h3><p>Позиція збережеться у цій Діагностичній карті та буде доступна для підбору.</p></div><button type="button" className={styles.modalClose} onClick={onClose} disabled={busy} aria-label="Закрити">×</button></header>
+      <div className={styles.manualPartForm}>
+        <label><span>Назва деталі *</span><input autoFocus value={draft.name} onChange={(event) => onChange({ ...draft, name: event.target.value })} placeholder="Наприклад: Передні гальмівні колодки" maxLength={500}/></label>
+        <div className={styles.manualPartFields}><label><span>Артикул / OEM</span><input value={draft.article} onChange={(event) => onChange({ ...draft, article: event.target.value })} placeholder="Необов’язково" maxLength={120}/></label><label><span>Бренд</span><input value={draft.brand} onChange={(event) => onChange({ ...draft, brand: event.target.value })} placeholder="Оригінал або аналог" maxLength={120}/></label></div>
+        <div className={styles.manualPartFields}><label><span>Позиція</span><input value={draft.position} onChange={(event) => onChange({ ...draft, position: event.target.value })} placeholder="Ліва / права / передня" maxLength={120}/></label><label><span>Кількість *</span><input type="number" min="1" max="100" step="1" value={draft.quantity} onChange={(event) => onChange({ ...draft, quantity: event.target.value })}/></label></div>
+        <label><span>Прив’язати до несправності</span><select value={draft.findingId} onChange={(event) => onChange({ ...draft, findingId: event.target.value })}><option value="">Без прив’язки</option>{findings.map(({ section, item }) => <option key={item.finding?.id || item.id} value={item.finding?.id || ""} disabled={!item.finding?.id}>{section} · {item.name}</option>)}</select></label>
+        <label><span>Примітка</span><textarea rows={3} value={draft.note} onChange={(event) => onChange({ ...draft, note: event.target.value })} placeholder="Що потрібно врахувати під час підбору…" maxLength={4000}/></label>
+      </div>
+      {error ? <div className={styles.inlineError}>{error}</div> : null}
+      <footer className={styles.modalActions}><button type="button" className={styles.secondaryAction} onClick={onClose} disabled={busy}>Скасувати</button><button type="button" className={styles.primaryAction} onClick={onSave} disabled={busy || !draft.name.trim()}>{busy ? "Зберігаю…" : editing ? "Зберегти зміни" : "Додати деталь"}</button></footer>
+    </section>
+  </div>;
 }
 
 const markerPoints = [[210, 92], [126, 172], [294, 172], [112, 300], [308, 300], [126, 444], [294, 444], [210, 558]] as const;

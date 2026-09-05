@@ -18,8 +18,14 @@ export class DiagnosticCommercialHandoffError extends Error {
 type Suggestion = {
   key: string;
   findingId: string;
+  manualPartId: string | null;
   kind: "LABOR" | "PART";
   description: string;
+  article: string | null;
+  brand: string | null;
+  position: string | null;
+  quantity: number;
+  note: string | null;
   inspection: string;
   section: string;
   checkName: string;
@@ -27,9 +33,12 @@ type Suggestion = {
   urgency: string;
   imported: boolean;
   lineId: string | null;
+  sourceEntity: string;
+  sourceEntityId: string;
 };
 
 const SOURCE_ENTITY = "DIAGNOSTIC_FINDING";
+const MANUAL_SOURCE_ENTITY = "DIAGNOSTIC_MANUAL_PART";
 
 async function buildSuggestions(diagnosticRequestId: string) {
   const prisma = getPrisma();
@@ -42,11 +51,12 @@ async function buildSuggestions(diagnosticRequestId: string) {
     );
   }
 
-  const candidates = view.inspections.flatMap((inspection) => inspection.sections.flatMap((section) => section.items.flatMap((item) => {
+  const automaticCandidates = view.inspections.flatMap((inspection) => inspection.sections.flatMap((section) => section.items.flatMap((item) => {
     const finding = item.finding;
     if (!finding?.id) return [];
     const common = {
       findingId: finding.id,
+      manualPartId: null,
       inspection: inspection.templateName,
       section: section.name,
       checkName: item.name,
@@ -54,23 +64,51 @@ async function buildSuggestions(diagnosticRequestId: string) {
       urgency: finding.urgency,
     };
     const rows: Array<Omit<Suggestion, "imported" | "lineId">> = [];
-    if (finding.suggestedWorkName?.trim()) rows.push({ ...common, key: `${finding.id}:LABOR`, kind: "LABOR", description: finding.suggestedWorkName.trim() });
-    if (finding.suggestedPartName?.trim()) rows.push({ ...common, key: `${finding.id}:PART`, kind: "PART", description: finding.suggestedPartName.trim() });
+    if (finding.suggestedWorkName?.trim()) rows.push({ ...common, key: `${finding.id}:LABOR`, kind: "LABOR", description: finding.suggestedWorkName.trim(), article: null, brand: null, position: item.position, quantity: 1, note: finding.findingText || item.note || null, sourceEntity: SOURCE_ENTITY, sourceEntityId: `${finding.id}:LABOR` });
+    const partName = finding.suggestedPartName?.trim() || (finding.action === "REPLACE" ? item.name?.trim() : "");
+    if (partName) rows.push({ ...common, key: `${finding.id}:PART`, kind: "PART", description: partName, article: null, brand: null, position: item.position, quantity: 1, note: finding.findingText || item.note || null, sourceEntity: SOURCE_ENTITY, sourceEntityId: `${finding.id}:PART` });
     return rows;
   })));
 
-  const keys = candidates.map((item) => item.key);
-  const existing = keys.length ? await prisma.workOrderLine.findMany({
+  const manualParts = await prisma.diagnosticPartRecommendation.findMany({
+    where: { diagnosticRequestId, status: { not: "CANCELLED" } },
+    orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+  });
+  const manualCandidates: Array<Omit<Suggestion, "imported" | "lineId">> = manualParts.map((part) => ({
+    key: `manual:${part.id}`,
+    findingId: part.findingId || "",
+    manualPartId: part.id,
+    kind: "PART",
+    description: part.name,
+    article: part.article,
+    brand: part.brand,
+    position: part.position,
+    quantity: Number(part.quantity),
+    note: part.note,
+    inspection: "Ручна рекомендація",
+    section: part.position || "Додано сервіс-менеджером",
+    checkName: part.name,
+    action: "REPLACE",
+    urgency: "INFO",
+    sourceEntity: MANUAL_SOURCE_ENTITY,
+    sourceEntityId: part.id,
+  }));
+  const candidates = [...automaticCandidates, ...manualCandidates];
+  const automaticKeys = automaticCandidates.map((item) => item.sourceEntityId);
+  const manualKeys = manualCandidates.map((item) => item.sourceEntityId);
+  const existing = automaticKeys.length || manualKeys.length ? await prisma.workOrderLine.findMany({
     where: {
       workOrderId: view.diagnostic.workOrder.id,
-      sourceEntity: SOURCE_ENTITY,
-      sourceEntityId: { in: keys },
+      OR: [
+        ...(automaticKeys.length ? [{ sourceEntity: SOURCE_ENTITY, sourceEntityId: { in: automaticKeys } }] : []),
+        ...(manualKeys.length ? [{ sourceEntity: MANUAL_SOURCE_ENTITY, sourceEntityId: { in: manualKeys } }] : []),
+      ],
       status: { not: "CANCELLED" },
     },
     select: { id: true, sourceEntityId: true },
   }) : [];
   const existingByKey = new Map(existing.flatMap((line) => line.sourceEntityId ? [[line.sourceEntityId, line.id] as const] : []));
-  const suggestions: Suggestion[] = candidates.map((item) => ({ ...item, imported: existingByKey.has(item.key), lineId: existingByKey.get(item.key) || null }));
+  const suggestions: Suggestion[] = candidates.map((item) => ({ ...item, imported: existingByKey.has(item.sourceEntityId), lineId: existingByKey.get(item.sourceEntityId) || null }));
 
   return { view, workOrder: view.diagnostic.workOrder, suggestions };
 }
@@ -98,7 +136,7 @@ export async function importDiagnosticRecommendationsToEstimate(
   const { workOrder, suggestions } = await buildSuggestions(diagnosticRequestId);
   const pending = suggestions.filter((item) => !item.imported);
   const created: Array<{ key: string; lineId: string }> = [];
-  const findingIds = Array.from(new Set(pending.map((item) => item.findingId)));
+  const findingIds = Array.from(new Set(pending.map((item) => item.findingId).filter(Boolean)));
   const issueRows = findingIds.length
     ? await prisma.vehicleIssue.findMany({
         where: { sourceFindingId: { in: findingIds } },
@@ -111,8 +149,8 @@ export async function importDiagnosticRecommendationsToEstimate(
     const duplicate = await prisma.workOrderLine.findFirst({
       where: {
         workOrderId: workOrder.id,
-        sourceEntity: SOURCE_ENTITY,
-        sourceEntityId: suggestion.key,
+        sourceEntity: suggestion.sourceEntity,
+        sourceEntityId: suggestion.sourceEntityId,
         status: { not: "CANCELLED" },
       },
       select: { id: true },
@@ -123,22 +161,27 @@ export async function importDiagnosticRecommendationsToEstimate(
       type: suggestion.kind,
       status: "DRAFT",
       description: suggestion.description,
+      article: suggestion.article,
+      brand: suggestion.brand,
       unit: suggestion.kind === "LABOR" ? "робота" : "шт",
-      plannedQuantity: 1,
+      plannedQuantity: suggestion.quantity,
       plannedUnitPrice: 0,
       plannedUnitCost: 0,
-      sourceEntity: SOURCE_ENTITY,
-      sourceEntityId: suggestion.key,
+      sourceEntity: suggestion.sourceEntity,
+      sourceEntityId: suggestion.sourceEntityId,
       metadata: {
-        source: "DIAGNOSTIC_RECOMMENDATION",
+        source: suggestion.manualPartId ? "DIAGNOSTIC_MANUAL_PART" : "DIAGNOSTIC_RECOMMENDATION",
         diagnosticRequestId,
-        findingId: suggestion.findingId,
-        vehicleIssueId: issueByFinding.get(suggestion.findingId) || null,
+        findingId: suggestion.findingId || null,
+        manualPartId: suggestion.manualPartId,
+        vehicleIssueId: suggestion.findingId ? issueByFinding.get(suggestion.findingId) || null : null,
         inspection: suggestion.inspection,
         section: suggestion.section,
         checkName: suggestion.checkName,
         action: suggestion.action,
         urgency: suggestion.urgency,
+        position: suggestion.position,
+        note: suggestion.note,
       },
     }, actorName);
     created.push({ key: suggestion.key, lineId: result.line.id });

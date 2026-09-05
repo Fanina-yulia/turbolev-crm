@@ -152,7 +152,8 @@ async function ensureReplacementLabor(input: {
 
 export async function selectDiagnosticPartOffer(input: {
   diagnosticRequestId: string;
-  findingId: string;
+  findingId?: string | null;
+  manualPartId?: string | null;
   supplierId: string;
   externalProductId?: string | null;
   article?: string | null;
@@ -166,12 +167,13 @@ export async function selectDiagnosticPartOffer(input: {
 }) {
   const diagnosticRequestId = clean(input.diagnosticRequestId, 160);
   const findingId = clean(input.findingId, 160);
+  const manualPartId = clean(input.manualPartId, 160);
   const supplierId = normalizeSupplier(input.supplierId);
   const quantity = Number(input.quantity ?? 1);
   if (!Number.isFinite(quantity) || quantity <= 0 || quantity > 100) {
     throw new PartsSelectionError("QUANTITY_INVALID", "Кількість деталі має бути від 1 до 100.");
   }
-  if (!diagnosticRequestId || !findingId) throw new PartsSelectionError("CONTEXT_REQUIRED", "Не передано діагностику або виявлену проблему.");
+  if (!diagnosticRequestId || (!findingId && !manualPartId)) throw new PartsSelectionError("CONTEXT_REQUIRED", "Не передано діагностику або позицію до заміни.");
   const searchMode = input.searchMode === "VIN" && clean(input.vehicleVin, 24).length === 17
     ? "VIN"
     : input.searchMode === "PART_NUMBER" ? "PART_NUMBER" : "TEXT";
@@ -182,7 +184,7 @@ export async function selectDiagnosticPartOffer(input: {
   const actorName = clean(input.actorName, 160) || "CRM / Підбір запчастин";
   const commercial = await createCommercialProposalFromDiagnostic(diagnosticRequestId, actorName, input.actorId || null);
   const handoff = await getDiagnosticCommercialHandoff(diagnosticRequestId);
-  const suggestion = handoff.suggestions.find((item) => item.kind === "PART" && item.findingId === findingId);
+  const suggestion = handoff.suggestions.find((item) => item.kind === "PART" && (manualPartId ? item.manualPartId === manualPartId : !item.manualPartId && item.findingId === findingId));
   if (!suggestion) throw new PartsSelectionError("PART_RECOMMENDATION_NOT_FOUND", "Для цієї несправності немає рекомендованої деталі.", 404);
   if (!suggestion.lineId) throw new PartsSelectionError("PART_LINE_NOT_IMPORTED", "Рекомендовану деталь ще не перенесено в Комерційну пропозицію.", 409);
 
@@ -211,10 +213,10 @@ export async function selectDiagnosticPartOffer(input: {
   });
   if (!workOrderVehicle?.vehicle) throw new PartsSelectionError("VEHICLE_NOT_FOUND", "Для WorkOrder не знайдено автомобіль.", 409);
 
-  const laborSuggestion = handoff.suggestions.find((item) => item.kind === "LABOR" && item.findingId === findingId);
+  const laborSuggestion = findingId ? handoff.suggestions.find((item) => item.kind === "LABOR" && item.findingId === findingId) : undefined;
   const labor = await ensureReplacementLabor({
     workOrderId: commercial.workOrder.id,
-    findingId,
+    findingId: findingId || manualPartId,
     laborSuggestion,
     vehicle: workOrderVehicle.vehicle,
     customerProvidedPart: input.customerProvidedPart === true,
@@ -253,7 +255,8 @@ export async function selectDiagnosticPartOffer(input: {
     metadata: {
       ...(isRecord(currentPartLine?.metadata) ? currentPartLine.metadata : {}),
       source: "PART_SELECTION",
-      findingId,
+      findingId: findingId || null,
+      manualPartId: manualPartId || null,
       supplierId: supplier.id,
       supplierName: priced.supplierName,
       searchMode,
@@ -293,13 +296,14 @@ export async function selectDiagnosticPartOffer(input: {
       data: {
         actorId: input.actorId || null,
         actorName,
-        entityType: "DiagnosticFinding",
-        entityId: findingId,
+        entityType: manualPartId ? "DiagnosticPartRecommendation" : "DiagnosticFinding",
+        entityId: manualPartId || findingId,
         action: "PART_OFFER_SELECTED",
         metadata: toPrismaJson({
           diagnosticRequestId,
           workOrderId: commercial.workOrder.id,
           workOrderLineId: suggestion.lineId,
+          manualPartId: manualPartId || null,
           partsRequestId: request.id,
           supplierId: supplier.id,
           supplierCode: supplier.code,
@@ -323,7 +327,8 @@ export async function selectDiagnosticPartOffer(input: {
     workOrderId: commercial.workOrder.id,
     workOrderLineId: suggestion.lineId,
     partsRequestId: partsRequest.id,
-    findingId,
+    findingId: findingId || null,
+    manualPartId: manualPartId || null,
     selected: {
       supplierId,
       supplierName: priced.supplierName,

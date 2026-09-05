@@ -180,6 +180,34 @@ model DiagnosticFinding {
   updatedAt         DateTime                @updatedAt
 
   @@index([urgency, updatedAt])
+
+  manualPartRecommendations DiagnosticPartRecommendation[]
+}
+
+model DiagnosticPartRecommendation {
+  id                  String   @id @default(cuid())
+  diagnosticRequestId String
+  findingId           String?
+  name                String   @db.VarChar(500)
+  article             String?  @db.VarChar(120)
+  brand               String?  @db.VarChar(120)
+  position            String?  @db.VarChar(120)
+  quantity            Decimal  @default(1) @db.Decimal(12, 3)
+  note                String?  @db.Text
+  source              String   @default("MANUAL") @db.VarChar(32)
+  status              String   @default("DRAFT") @db.VarChar(32)
+  dedupeKey           String   @db.VarChar(64)
+  createdByUserId     String?
+  createdByName       String?  @db.VarChar(160)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  diagnosticRequest DiagnosticRequest @relation(fields: [diagnosticRequestId], references: [id], onDelete: Cascade)
+  finding           DiagnosticFinding? @relation(fields: [findingId], references: [id], onDelete: SetNull)
+
+  @@unique([diagnosticRequestId, dedupeKey])
+  @@index([diagnosticRequestId, status, createdAt])
+  @@index([findingId])
 }
 
 model DiagnosticMedia {

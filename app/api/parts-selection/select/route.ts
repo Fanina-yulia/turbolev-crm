@@ -16,7 +16,8 @@ export async function POST(request: Request) {
   try {
     const body = await request.json().catch(() => null) as {
       diagnosticId?: string;
-      findingId?: string;
+      findingId?: string | null;
+      manualPartId?: string | null;
       supplierId?: string;
       externalProductId?: string | null;
       article?: string | null;
@@ -39,7 +40,8 @@ export async function POST(request: Request) {
 
     const result = await selectDiagnosticPartOffer({
       diagnosticRequestId: diagnosticId,
-      findingId: body?.findingId || "",
+      findingId: body?.findingId || null,
+      manualPartId: body?.manualPartId || null,
       supplierId: body?.supplierId || "",
       externalProductId: body?.externalProductId || null,
       article: body?.article || null,
