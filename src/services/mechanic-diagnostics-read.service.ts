@@ -57,19 +57,37 @@ async function assertMechanicReadAccess(userId: string, diagnosticRequestId: str
     return { mechanic, diagnostic };
   }
 
-  // Compatibility for older records: verify access from an active appointment, but do not
-  // backfill or mutate DiagnosticAssignment during a GET request.
-  const appointment = await prisma.serviceAppointment.findFirst({
-    where: {
-      mechanicId: mechanic.id,
-      status: { notIn: ACTIVE_APPOINTMENT_EXCLUSIONS },
-      OR: [
-        ...(diagnostic.vehicleId ? [{ vehicleId: diagnostic.vehicleId }] : []),
-        ...(diagnostic.leadId ? [{ leadId: diagnostic.leadId }] : []),
-      ],
-    },
-    select: { id: true },
+  // Compatibility for older records: use the explicit visit link first. If an
+  // old row has no link, exact leadId matching is the only safe fallback.
+  const visitLink = await prisma.diagnosticVisitLink.findFirst({
+    where: { diagnosticRequestId },
+    select: { appointmentId: true },
   });
+  if (visitLink) {
+    const linkedAppointment = await prisma.serviceAppointment.findFirst({
+      where: {
+        id: visitLink.appointmentId,
+        mechanicId: mechanic.id,
+        status: { notIn: ACTIVE_APPOINTMENT_EXCLUSIONS },
+      },
+      select: { id: true },
+    });
+    if (!linkedAppointment) {
+      throw new StructuredDiagnosticError("DIAGNOSTIC_NOT_ASSIGNED", "Ця діагностика не призначена цьому автомеханіку.", 403);
+    }
+    return { mechanic, diagnostic };
+  }
+
+  const appointment = diagnostic.leadId
+    ? await prisma.serviceAppointment.findFirst({
+        where: {
+          mechanicId: mechanic.id,
+          status: { notIn: ACTIVE_APPOINTMENT_EXCLUSIONS },
+          leadId: diagnostic.leadId,
+        },
+        select: { id: true },
+      })
+    : null;
 
   if (!appointment) {
     throw new StructuredDiagnosticError("DIAGNOSTIC_NOT_ASSIGNED", "Ця діагностика не призначена цьому автомеханіку.", 403);
@@ -109,25 +127,20 @@ export async function listMechanicDiagnosticsReadOnly(userId: string) {
     select: { appointmentId: true, diagnosticRequestId: true },
   });
   const diagnosticByAppointment = new Map(links.map((row) => [row.appointmentId, row.diagnosticRequestId]));
-  const legacyAppointments = appointments.filter((row) => !diagnosticByAppointment.has(row.id) && row.purpose == null);
-  const vehicleIds = Array.from(new Set(legacyAppointments.flatMap((row) => row.vehicleId ? [row.vehicleId] : [])));
+  const legacyAppointments = appointments.filter((row) => !diagnosticByAppointment.has(row.id) && row.purpose == null && row.leadId);
   const leadIds = Array.from(new Set(legacyAppointments.flatMap((row) => row.leadId ? [row.leadId] : [])));
-  const legacyDiagnostics = vehicleIds.length || leadIds.length
+  const legacyDiagnostics = leadIds.length
     ? await prisma.diagnosticRequest.findMany({
         where: {
           status: { not: DiagnosticRequestStatus.CANCELLED },
-          OR: [
-            ...(vehicleIds.length ? [{ vehicleId: { in: vehicleIds } }] : []),
-            ...(leadIds.length ? [{ leadId: { in: leadIds } }] : []),
-          ],
+          leadId: { in: leadIds },
         },
         select: { id: true, vehicleId: true, leadId: true },
         orderBy: [{ updatedAt: "desc" }, { createdAt: "desc" }],
       })
     : [];
   for (const appointment of legacyAppointments) {
-    const diagnostic = legacyDiagnostics.find((row) => Boolean(appointment.leadId && row.leadId === appointment.leadId))
-      || legacyDiagnostics.find((row) => Boolean(appointment.vehicleId && row.vehicleId === appointment.vehicleId));
+    const diagnostic = legacyDiagnostics.find((row) => row.leadId === appointment.leadId);
     if (diagnostic) diagnosticByAppointment.set(appointment.id, diagnostic.id);
   }
 
@@ -204,18 +217,30 @@ export async function getMechanicDiagnosticMode(userId: string, diagnosticReques
 
   let problem = diagnostic.lead?.need || diagnostic.lead?.comment || null;
   if (!problem) {
-    const appointment = await prisma.serviceAppointment.findFirst({
-      where: {
-        mechanicId: mechanic.id,
-        status: { notIn: ACTIVE_APPOINTMENT_EXCLUSIONS },
-        OR: [
-          ...(diagnostic.vehicleId ? [{ vehicleId: diagnostic.vehicleId }] : []),
-          ...(diagnostic.leadId ? [{ leadId: diagnostic.leadId }] : []),
-        ],
-      },
-      select: { problem: true },
-      orderBy: { plannedStartAt: "desc" },
+    const visitLink = await prisma.diagnosticVisitLink.findFirst({
+      where: { diagnosticRequestId },
+      select: { appointmentId: true },
     });
+    const appointment = visitLink
+      ? await prisma.serviceAppointment.findFirst({
+          where: {
+            id: visitLink.appointmentId,
+            mechanicId: mechanic.id,
+            status: { notIn: ACTIVE_APPOINTMENT_EXCLUSIONS },
+          },
+          select: { problem: true },
+        })
+      : diagnostic.leadId
+        ? await prisma.serviceAppointment.findFirst({
+            where: {
+              mechanicId: mechanic.id,
+              status: { notIn: ACTIVE_APPOINTMENT_EXCLUSIONS },
+              leadId: diagnostic.leadId,
+            },
+            select: { problem: true },
+            orderBy: { plannedStartAt: "desc" },
+          })
+        : null;
     problem = appointment?.problem || null;
   }
 
