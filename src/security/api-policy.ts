@@ -60,6 +60,7 @@ const RULES: Rule[] = [
   { match: exact("/api/client-communication/status"), resolve: () => internal(PERMISSIONS.CLIENTS_READ, "TEAM", "Client communication availability is an authenticated client read model and follows the route's team-scoped client access check.") },
   { match: exact("/api/client-communication/action"), resolve: () => internal(PERMISSIONS.COMMUNICATIONS_WRITE, "TEAM", "Client quick communication actions are audited communication writes and remain strict during SHADOW mode.", true) },
   { match: prefix("/api/tasks"), resolve: () => internal(PERMISSIONS.OVERVIEW_READ, "SELF", "Personal task workspace is authenticated and owner-scoped; route handlers only list, create or update the caller's own tasks.") },
+  { match: prefix("/api/attention"), resolve: () => internal(PERMISSIONS.OVERVIEW_READ, "TEAM", "Attention-center decisions are authenticated and perform source-specific permission checks in the route handler.") },
   { match: prefix("/api/security"), resolve: () => internal(PERMISSIONS.SECURITY_ACCESS_MANAGE, "ALL", "Security administration is always strict.", true) },
   { match: exact("/api/me/compensation"), resolve: () => internal(PERMISSIONS.PAYROLL_SELF_READ, "SELF", "Authenticated employee can read only own salary projection.", true) },
   { match: exact("/api/me/ui-preferences"), resolve: () => internal(PERMISSIONS.OVERVIEW_READ, "SELF", "Authenticated employee can read and update only own accessibility/readability preferences.", true) },

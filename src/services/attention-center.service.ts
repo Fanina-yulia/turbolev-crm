@@ -410,6 +410,42 @@ function emptyCategories(): Record<AttentionCategory, number> {
   };
 }
 
+function collapseDuplicateInquirySignals(items: AttentionSignal[]) {
+  const result: AttentionSignal[] = [];
+  const byInquiry = new Map<string, AttentionSignal>();
+  for (const item of items) {
+    if (item.sourceType !== "INQUIRY" || !item.sourceId) {
+      result.push(item);
+      continue;
+    }
+    const key = item.sourceId;
+    const existing = byInquiry.get(key);
+    if (!existing) {
+      byInquiry.set(key, item);
+      result.push(item);
+      continue;
+    }
+    const existingCount = Number(existing.metadata.relatedSignalCount || 1);
+    existing.metadata = {
+      ...existing.metadata,
+      relatedSignalCount: existingCount + 1,
+      relatedSignalIds: [
+        ...(Array.isArray(existing.metadata.relatedSignalIds) ? existing.metadata.relatedSignalIds : [existing.id]),
+        item.id,
+      ],
+      relatedReasons: [
+        ...(Array.isArray(existing.metadata.relatedReasons) ? existing.metadata.relatedReasons : [existing.reason]),
+        item.reason,
+      ],
+    };
+    if (item.level === "CRITICAL" || (item.level === "HIGH" && existing.level === "MEDIUM")) {
+      existing.level = item.level;
+      existing.title = item.title;
+    }
+  }
+  return result;
+}
+
 export async function buildAttentionCenter(options: AttentionCenterOptions): Promise<AttentionCenterResult> {
   const prisma = getPrisma();
   const now = new Date();
@@ -1090,7 +1126,7 @@ export async function buildAttentionCenter(options: AttentionCenterOptions): Pro
     }
   }
 
-  const sorted = sortSignals(signals);
+  const sorted = collapseDuplicateInquirySignals(sortSignals(signals));
   const categories = emptyCategories();
   for (const item of sorted) categories[item.category] += 1;
 
