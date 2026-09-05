@@ -201,6 +201,26 @@ function openAction(action: AttentionAction | null) {
   navigateCrm(action.section, (action.params || {}) as CrmRouteParams);
 }
 
+function isMissedCallSignal(signal: AttentionSignal) {
+  const channel = typeof signal.metadata.channel === "string" ? signal.metadata.channel.toUpperCase() : "";
+  const title = signal.title.toLocaleLowerCase("uk-UA");
+  return signal.sourceType === "INQUIRY" && (channel === "BINOTEL" || title.includes("пропущ"));
+}
+
+function formatAttentionPhone(signal: AttentionSignal) {
+  const raw = typeof signal.metadata.phone === "string" ? signal.metadata.phone : signal.counterparty;
+  const value = raw?.trim() || "";
+  const digits = value.replace(/\D/g, "");
+  if (digits.length === 12 && digits.startsWith("380")) {
+    return "+380 " + digits.slice(3, 5) + " " + digits.slice(5, 8) + " " + digits.slice(8, 10) + " " + digits.slice(10, 12);
+  }
+  return value || "Невідомий номер";
+}
+
+function compactSignalTime(signal: AttentionSignal) {
+  return signal.isOverdue ? durationText(signal.overdueMinutes) + " без реакції" : signalTime(signal);
+}
+
 function matchesView(signal: AttentionSignal, filter: ViewFilter) {
   if (filter === "CRITICAL") return signal.level === "CRITICAL";
   if (filter === "OVERDUE") return signal.isOverdue;
@@ -362,18 +382,45 @@ export function MyTasks() {
   const renderSignal = (signal: AttentionSignal) => {
     const taskStatus = typeof signal.metadata.status === "string" ? signal.metadata.status : "";
     const money = formatMoney(signal.amount, signal.currency);
-    return <article className={`${styles.signalRow} ${styles[`level${signal.level}`] || ""}`} key={signal.id}>
+    const isMissedCall = isMissedCallSignal(signal);
+    const rowClass = styles.signalRow + " " + (styles["level" + signal.level] || "");
+
+    if (isMissedCall) {
+      return <article className={rowClass + " " + styles.compactSignalRow} key={signal.id}>
+        <div className={styles.signalMarker} aria-hidden="true" />
+        <div className={styles.signalBody}>
+          <div className={styles.signalTitleLine}>
+            <strong>Пропущений дзвінок</strong>
+            {signal.level === "CRITICAL" && <span className={styles.criticalBadge}>Критично</span>}
+          </div>
+          <p className={styles.compactDetails}>
+            <span>{formatAttentionPhone(signal)}</span>
+            <i aria-hidden="true">•</i>
+            <span className={signal.isOverdue ? styles.overdueText : ""}>{compactSignalTime(signal)}</span>
+          </p>
+          <div className={styles.compactFooter}>
+            <span className={styles.compactBucket}>{BUCKET_LABEL[signal.bucket]}</span>
+            <div className={styles.signalActions}>
+              {signal.action && <button className={styles.contextButton} type="button" onClick={() => openAction(signal.action)}>Опрацювати</button>}
+              <button type="button" disabled={busyId === signal.id} onClick={() => setDecisionSignal(signal)}>Рішення</button>
+            </div>
+          </div>
+        </div>
+      </article>;
+    }
+
+    return <article className={rowClass} key={signal.id}>
       <div className={styles.signalMarker} aria-hidden="true" />
       <div className={styles.signalBody}>
         <div className={styles.signalTitleLine}>
           <strong>{signal.title}</strong>
-          <span className={`${styles.categoryBadge} ${styles[`category${signal.category}`] || ""}`}>{CATEGORY_LABEL[signal.category]}</span>
+          <span className={styles.categoryBadge + " " + (styles["category" + signal.category] || "")}>{CATEGORY_LABEL[signal.category]}</span>
           {signal.level === "CRITICAL" && <span className={styles.criticalBadge}>Критично</span>}
         </div>
         <p className={styles.reason}>{signal.reason}</p>
         {signal.description && <p className={styles.description}>{signal.description}</p>}
         <div className={styles.signalMeta}>
-          <span className={`${styles.bucket} ${styles[`bucket${signal.bucket}`] || ""}`}>{BUCKET_LABEL[signal.bucket]}</span>
+          <span className={styles.bucket + " " + (styles["bucket" + signal.bucket] || "")}>{BUCKET_LABEL[signal.bucket]}</span>
           <span className={signal.isOverdue ? styles.overdueText : ""}>{signalTime(signal)}</span>
           {signal.counterparty && <><i>•</i><span>{signal.counterparty}</span></>}
           {money && <><i>•</i><strong className={styles.money}>{money}</strong></>}
