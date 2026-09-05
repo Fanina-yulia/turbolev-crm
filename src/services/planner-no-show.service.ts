@@ -50,6 +50,23 @@ export async function markExpiredBookedAppointmentsAsNoShow(
   requestedLimit = AUTO_NO_SHOW_BATCH_SIZE,
 ): Promise<AutoNoShowRun> {
   const prisma = getPrisma();
+  const rolloutSetting = await prisma.crmSetting.upsert({
+    where: { key: AUTO_NO_SHOW_ROLLOUT_SETTING_KEY },
+    create: {
+      key: AUTO_NO_SHOW_ROLLOUT_SETTING_KEY,
+      value: { enabledAt: now.toISOString() },
+    },
+    update: {},
+    select: { value: true },
+  });
+  const enabledAtValue = rolloutSetting.value && typeof rolloutSetting.value === "object" && !Array.isArray(rolloutSetting.value)
+    ? (rolloutSetting.value as { enabledAt?: unknown }).enabledAt
+    : null;
+  const enabledAt = typeof enabledAtValue === "string" ? new Date(enabledAtValue) : null;
+  if (!enabledAt || !Number.isFinite(enabledAt.getTime())) {
+    throw new Error("INVALID_AUTO_NO_SHOW_ROLLOUT_SETTING");
+  }
+
   const cutoff = automaticNoShowCutoff(now);
   const limit = Math.min(
     AUTO_NO_SHOW_BATCH_SIZE,
@@ -88,7 +105,7 @@ export async function markExpiredBookedAppointmentsAsNoShow(
         where: {
           id: candidate.id,
           status: PlannerAppointmentStatus.BOOKED,
-          plannedStartAt: { lte: cutoff },
+          plannedStartAt: { gte: enabledAt, lte: cutoff },
           actualArrivalAt: null,
           actualStartAt: null,
           actualEndAt: null,
