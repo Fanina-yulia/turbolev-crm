@@ -342,7 +342,6 @@ function BottomNav({ screen, onChange }: { screen: Screen; onChange: (screen: Sc
   const workActive = ["WORKS", "WORK_DETAIL", "STOP", "ADDITIONAL_WORK", "FINDING", "SUPPORT"].includes(screen);
   return <nav className={styles.bottomNav} aria-label="Навігація механіка">
     <button type="button" className={screen === "HOME" ? styles.navActive : ""} onClick={() => onChange("HOME")}><span>⌂</span><b>Головна</b></button>
-    <button type="button" className={workActive ? styles.navActive : ""} onClick={() => onChange("WORKS")}><span>▤</span><b>Роботи</b></button>
     <button
       type="button"
       className={styles.scanButton}
@@ -351,6 +350,7 @@ function BottomNav({ screen, onChange }: { screen: Screen; onChange: (screen: Sc
     >
       <span>▣</span><b>Сканувати</b>
     </button>
+    <button type="button" className={workActive ? styles.navActive : ""} onClick={() => onChange("WORKS")}><span>▤</span><b>Роботи</b></button>
   </nav>;
 }
 
