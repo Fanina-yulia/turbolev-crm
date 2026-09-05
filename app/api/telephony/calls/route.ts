@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
+import { PRIMARY_BINOTEL_PBX_NUMBER } from "@/src/domain/binotel-config";
 import { CallStatus, CallType, Prisma } from "@/src/generated/prisma/client";
 import { getPrisma } from "@/src/lib/prisma";
+import { normalizePhone } from "@/src/lib/phone";
 import { authorize } from "@/src/security/authorize";
 import { PERMISSIONS } from "@/src/security/permissions";
 
@@ -76,6 +78,21 @@ export async function GET(request: NextRequest) {
     };
 
     const prisma = getPrisma();
+    const primaryBinotelLine = normalizePhone(PRIMARY_BINOTEL_PBX_NUMBER);
+    const primaryLineCalls = await prisma.$queryRaw<Array<{ binotelCallId: string }>>(Prisma.sql`
+      SELECT "binotelCallId"
+      FROM "CallHistory"
+      WHERE COALESCE(
+        NULLIF("rawPayload"->>'pbxNumber',''),
+        NULLIF("rawPayload"->'payload'->>'pbxNumber',''),
+        NULLIF("rawPayload"->'payload'->'pbxNumberData'->>'number',''),
+        NULLIF("rawPayload"->'payload'->'callDetails'->'pbxNumberData'->>'number',''),
+        ${PRIMARY_BINOTEL_PBX_NUMBER}
+      ) IN (${PRIMARY_BINOTEL_PBX_NUMBER}, ${primaryBinotelLine})
+    `);
+    const primaryLineCallIds = [...new Set(primaryLineCalls.map((call) => call.binotelCallId))];
+    where.binotelCallId = { in: primaryLineCallIds };
+
     const [total, calls, managers] = await Promise.all([
       prisma.callHistory.count({ where }),
       prisma.callHistory.findMany({
@@ -103,7 +120,7 @@ export async function GET(request: NextRequest) {
         },
       }),
       prisma.user.findMany({
-        where: { isActive: true, managedCalls: { some: {} } },
+        where: { isActive: true, managedCalls: { some: { binotelCallId: { in: primaryLineCallIds } } } },
         orderBy: { name: "asc" },
         select: { id: true, name: true, internalNumber: true },
         take: 100,
