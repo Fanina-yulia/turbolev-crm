@@ -30,3 +30,4 @@ The status target is always the exact `DiagnosticRequest.id`, so clicking the ic
 ## UI refresh
 
 Mechanic diagnostic changes emit `turbolev:data-changed`. Vehicle cards and vehicle diagnostic history reload their server state from no-store endpoints, so a newly formed card is reflected without a manual page refresh when the relevant CRM surface is active or reopened.
+- If a legacy row has no visit link, compatibility matching may use the exact `leadId` only; `vehicleId` alone is never sufficient to identify a diagnostic visit.

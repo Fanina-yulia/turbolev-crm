@@ -100,8 +100,8 @@ async function continueAssignedAppointmentDiagnostic(input: {
     diagnostic = diagnostic || (appointment.workOrderId
       ? await tx.diagnosticRequest.findFirst({ where: { workOrder: { is: { id: appointment.workOrderId } }, status: { not: DiagnosticRequestStatus.CANCELLED } }, orderBy: { updatedAt: "desc" } })
       : null);
-    if (!diagnostic && appointment.vehicleId) {
-      diagnostic = await tx.diagnosticRequest.findFirst({ where: { vehicleId: appointment.vehicleId, status: { not: DiagnosticRequestStatus.CANCELLED } }, orderBy: [{ updatedAt: "desc" }, { createdAt: "desc" }] });
+    if (!diagnostic && appointment.leadId) {
+      diagnostic = await tx.diagnosticRequest.findFirst({ where: { leadId: appointment.leadId, status: { not: DiagnosticRequestStatus.CANCELLED } }, orderBy: [{ updatedAt: "desc" }, { createdAt: "desc" }] });
     }
     if (!diagnostic) {
       if (!appointment.clientId || !appointment.vehicleId) {
@@ -221,17 +221,12 @@ async function resolveNextAction(input: {
   userId: string;
   mechanicId: string;
   diagnosticRequestId?: string | null;
-  vehicleId: string | null;
   workOrderId: string | null;
 }) : Promise<NextAction> {
   const prisma = getPrisma();
   const diagnostic = input.diagnosticRequestId
     ? await prisma.diagnosticRequest.findFirst({ where: { id: input.diagnosticRequestId, status: { not: "CANCELLED" } }, select: { id: true, status: true } })
-    : input.vehicleId ? await prisma.diagnosticRequest.findFirst({
-        where: { vehicleId: input.vehicleId, status: { not: "CANCELLED" } },
-        orderBy: [{ updatedAt: "desc" }, { createdAt: "desc" }],
-        select: { id: true, status: true },
-      }) : null;
+    : null;
   const review = diagnostic ? await prisma.diagnosticReview.findUnique({
     where: { diagnosticRequestId: diagnostic.id },
     select: { state: true },
@@ -357,7 +352,10 @@ export async function POST(request: NextRequest) {
       orderBy: [{ updatedAt: "desc" }, { plannedStartAt: "asc" }],
       take: 250,
     });
-    const appointment = appointments.find((item) => canonicalPlate(item.plateNumber) === normalized) || null;
+    const matchingAppointments = appointments.filter((item) => canonicalPlate(item.plateNumber) === normalized);
+    const appointment = matchingAppointments.find((item) => item.mechanicId === mechanic.id)
+      || matchingAppointments[0]
+      || null;
 
     const vehicleSelect = {
       id: true,
@@ -404,7 +402,6 @@ export async function POST(request: NextRequest) {
           userId: access.context.user.id,
           mechanicId: mechanic.id,
           diagnosticRequestId: linkedVisit?.diagnosticRequestId || null,
-          vehicleId: null,
           workOrderId: appointment.workOrderId || null,
         })
       : null;
@@ -419,7 +416,7 @@ export async function POST(request: NextRequest) {
       ? await resolveNextAction({
           userId: access.context.user.id,
           mechanicId: mechanic.id,
-          vehicleId: vehicle?.id || appointment?.vehicleId || null,
+          diagnosticRequestId: linkedVisit?.diagnosticRequestId || null,
           workOrderId: appointment?.workOrderId || null,
         })
       : !appointment
@@ -472,7 +469,7 @@ export async function POST(request: NextRequest) {
 
         arrivalApplied = true;
         finalAppointmentStatus = arrival.appointment.status;
-        diagnosticRequestId = arrival.workflowAction.diagnosticRequestId || null;
+        diagnosticRequestId = arrival.workflowAction.diagnosticRequestId || diagnosticRequestId;
         const arrivalVehicleId = arrival.workflowAction.vehicleId || vehicle?.id || appointment.vehicleId || null;
 
         if (arrivalVehicleId && arrivalVehicleId !== vehicle?.id) {
@@ -485,7 +482,7 @@ export async function POST(request: NextRequest) {
         nextAction = await resolveNextAction({
           userId: access.context.user.id,
           mechanicId: mechanic.id,
-          vehicleId: arrivalVehicleId,
+          diagnosticRequestId,
           workOrderId: appointment.workOrderId || null,
         });
         diagnosticRequestId = nextAction.diagnosticId || diagnosticRequestId;
@@ -496,8 +493,7 @@ export async function POST(request: NextRequest) {
         nextAction = await resolveNextAction({
           userId: access.context.user.id,
           mechanicId: mechanic.id,
-          diagnosticRequestId: linkedVisit?.diagnosticRequestId || null,
-          vehicleId: vehicle?.id || appointment.vehicleId || null,
+          diagnosticRequestId,
           workOrderId: appointment.workOrderId || null,
         });
         diagnosticRequestId = nextAction.diagnosticId || diagnosticRequestId;
