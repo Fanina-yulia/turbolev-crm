@@ -343,7 +343,14 @@ function BottomNav({ screen, onChange }: { screen: Screen; onChange: (screen: Sc
   return <nav className={styles.bottomNav} aria-label="Навігація механіка">
     <button type="button" className={screen === "HOME" ? styles.navActive : ""} onClick={() => onChange("HOME")}><span>⌂</span><b>Головна</b></button>
     <button type="button" className={workActive ? styles.navActive : ""} onClick={() => onChange("WORKS")}><span>▤</span><b>Роботи</b></button>
-    <span className={styles.scanSlot} data-mechanic-scan-slot />
+    <button
+      type="button"
+      className={styles.scanButton}
+      onClick={() => window.dispatchEvent(new CustomEvent("turbolev:mechanic-open-scanner"))}
+      aria-label="Сканувати номер автомобіля"
+    >
+      <span>▣</span><b>Сканувати</b>
+    </button>
   </nav>;
 }
 
