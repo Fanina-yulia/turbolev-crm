@@ -617,6 +617,7 @@ export async function buildAttentionCenter(options: AttentionCenterOptions): Pro
     const age = ageMinutes(item.receivedAt, now);
     const text = `${String(item.subject || "")} ${String(item.preview || "")}`.toLocaleLowerCase("uk-UA");
     const missedCall = item.channel === "BINOTEL" && text.includes("пропущ");
+    if (missedCall) continue;
     const due = new Date(item.receivedAt.getTime() + 15 * MINUTE_MS);
     signals.push(signal({
       id: `inquiry:${item.id}`,

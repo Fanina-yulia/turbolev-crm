@@ -268,6 +268,7 @@ export async function buildStationManagerControlCenter(input: {
   const signals: StationManagerControlSignal[] = [];
   for (const row of inquiries) {
     const missed = isMissedCall(row);
+    if (missed) continue;
     const age = ageMinutes(row.receivedAt, now);
     const dueAt = new Date(row.receivedAt.getTime() + 15 * MINUTE_MS);
     signals.push({
