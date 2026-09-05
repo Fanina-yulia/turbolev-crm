@@ -31,7 +31,7 @@ export async function GET(request: NextRequest) {
 
   try {
     const limit = Number(request.nextUrl.searchParams.get("limit") || "250");
-    const result = await markExpiredBookedAppointments(new Date(), limit);
+    const result = await markExpiredBookedAppointmentsAsNoShow(new Date(), limit);
 
     return NextResponse.json(
       { ok: true, ...result },
