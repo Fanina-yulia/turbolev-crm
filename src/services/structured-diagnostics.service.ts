@@ -9,6 +9,7 @@ import {
 import { getPrisma } from "@/src/lib/prisma";
 import { toPrismaJson } from "@/src/lib/prisma-json";
 import { DIAGNOSTIC_TEMPLATE_SEEDS } from "@/src/services/diagnostic-template-seeds";
+import { resolveDiagnosticWorkflowState } from "@/src/services/diagnostic-workflow.service";
 
 export class StructuredDiagnosticError extends Error {
   code: string;
@@ -103,7 +104,7 @@ export async function listMechanicDiagnostics(userId: string) {
   const byId = new Map(diagnostics.map((row) => [row.id, row])); const reviewById = new Map(reviews.map((row) => [row.diagnosticRequestId, row]));
   const items = appointments.flatMap((appointment) => {
     const id = diagnosticByAppointment.get(appointment.id); const row = id ? byId.get(id) : undefined; if (!row) return [];
-    const review = reviewById.get(row.id); const workflowState = review?.state === DiagnosticReviewState.SUBMITTED ? "SUBMITTED" : review?.state === DiagnosticReviewState.RETURNED ? "RETURNED" : row.status;
+    const review = reviewById.get(row.id); const workflowState = resolveDiagnosticWorkflowState(row.status, review?.state);
     return [{ id: row.id, status: row.status, workflowState, reviewState: review?.state || DiagnosticReviewState.DRAFT, plannedStartAt: appointment.plannedStartAt, plannedEndAt: appointment.plannedEndAt, post: appointment.post?.name || null, problem: appointment.problem || row.lead?.need || null, vehicle: { ...row.vehicle, label: vehicleLabel(row.vehicle) }, client: row.client }];
   });
   return { mechanic: { id: mechanic.id, name: mechanic.name, station: mechanic.location }, items };
@@ -200,7 +201,7 @@ export async function getStructuredDiagnostic(diagnosticRequestId: string) {
     };
   });
   const all = inspectionView.flatMap((inspection) => inspection.sections.flatMap((section) => section.items));
-  return { diagnostic: { id: diagnostic.id, status: diagnostic.status, createdAt: diagnostic.createdAt, updatedAt: diagnostic.updatedAt, workflowState: review?.state === DiagnosticReviewState.SUBMITTED ? "SUBMITTED" : review?.state === DiagnosticReviewState.RETURNED ? "RETURNED" : diagnostic.status, technicalConclusion: diagnostic.technicalConclusion, confirmedAt: diagnostic.confirmedAt, client: diagnostic.client, vehicle: { ...diagnostic.vehicle, label: vehicleLabel(diagnostic.vehicle) }, problem: diagnostic.lead?.need || diagnostic.lead?.comment || null, workOrder: diagnostic.workOrder, assignment, mechanic, review: review || { state: DiagnosticReviewState.DRAFT, submittedAt: null, returnedAt: null, confirmedAt: null, mechanicComment: null, managerComment: null } }, inspections: inspectionView, availableTemplates: availableTemplates.map((template) => ({ id: template.id, code: template.code, name: template.name, description: template.description, added: inspections.some((inspection) => inspection.templateId === template.id) })), counts: counts(all), canSubmit: inspections.length > 0 && all.length > 0 };
+    return { diagnostic: { id: diagnostic.id, status: diagnostic.status, createdAt: diagnostic.createdAt, updatedAt: diagnostic.updatedAt, workflowState: resolveDiagnosticWorkflowState(diagnostic.status, review?.state), technicalConclusion: diagnostic.technicalConclusion, confirmedAt: diagnostic.confirmedAt, client: diagnostic.client, vehicle: { ...diagnostic.vehicle, label: vehicleLabel(diagnostic.vehicle) }, problem: diagnostic.lead?.need || diagnostic.lead?.comment || null, workOrder: diagnostic.workOrder, assignment, mechanic, review: review || { state: DiagnosticReviewState.DRAFT, submittedAt: null, returnedAt: null, confirmedAt: null, mechanicComment: null, managerComment: null } }, inspections: inspectionView, availableTemplates: availableTemplates.map((template) => ({ id: template.id, code: template.code, name: template.name, description: template.description, added: inspections.some((inspection) => inspection.templateId === template.id) })), counts: counts(all), canSubmit: inspections.length > 0 && all.length > 0 };
 }
 
 async function refreshInspection(inspectionId: string) { const prisma = getPrisma(); const checks = await prisma.diagnosticCheck.findMany({ where: { inspectionId }, select: { state: true } }); const complete = checks.length > 0 && checks.every((row) => row.state !== DiagnosticCheckState.NOT_CHECKED); await prisma.diagnosticInspection.update({ where: { id: inspectionId }, data: complete ? { status: DiagnosticInspectionStatus.COMPLETED, completedAt: new Date() } : { status: DiagnosticInspectionStatus.IN_PROGRESS, startedAt: new Date(), completedAt: null } }); }
@@ -218,8 +219,43 @@ export async function setDiagnosticSectionAllOk(userId: string, diagnosticReques
 }
 
 export async function submitStructuredDiagnostic(userId: string, diagnosticRequestId: string, mechanicComment?: string | null) {
-  const prisma = getPrisma(); const { mechanic } = await assertMechanicDiagnostic(userId, diagnosticRequestId); const view = await getStructuredDiagnostic(diagnosticRequestId); if (!view.canSubmit) throw new StructuredDiagnosticError("DIAGNOSTIC_INCOMPLETE", "Перед передачею сервіс-менеджеру перевірте всі пункти.", 409); if (closed(view.diagnostic.status)) throw new StructuredDiagnosticError("DIAGNOSTIC_LOCKED", "Ця діагностика вже закрита.", 409); const now = new Date();
-  await prisma.$transaction(async (tx) => { await tx.diagnosticInspection.updateMany({ where: { diagnosticRequestId }, data: { status: DiagnosticInspectionStatus.COMPLETED, completedAt: now } }); await tx.diagnosticReview.upsert({ where: { diagnosticRequestId }, create: { diagnosticRequestId, state: DiagnosticReviewState.SUBMITTED, submittedAt: now, mechanicComment: mechanicComment?.trim().slice(0,4000) || null }, update: { state: DiagnosticReviewState.SUBMITTED, submittedAt: now, returnedAt: null, mechanicComment: mechanicComment?.trim().slice(0,4000) || null } }); await tx.auditEvent.create({ data: { actorName: mechanic.name, entityType: "DiagnosticRequest", entityId: diagnosticRequestId, action: "DIAGNOSTIC_SUBMITTED", metadata: toPrismaJson({ source:"MECHANIC_MOBILE", counts:view.counts }) } }); }); return getStructuredDiagnostic(diagnosticRequestId);
+  const prisma = getPrisma(); const { mechanic, assignment } = await assertMechanicDiagnostic(userId, diagnosticRequestId); const view = await getStructuredDiagnostic(diagnosticRequestId); if (!view.canSubmit) throw new StructuredDiagnosticError("DIAGNOSTIC_INCOMPLETE", "Перед передачею сервіс-менеджеру перевірте всі пункти.", 409); if (closed(view.diagnostic.status)) throw new StructuredDiagnosticError("DIAGNOSTIC_LOCKED", "Ця діагностика вже закрита.", 409); const now = new Date();
+  await prisma.$transaction(async (tx) => { await tx.diagnosticAssignment.upsert({ where: { diagnosticRequestId }, create: { diagnosticRequestId, locationId: assignment.locationId || mechanic.locationId, mechanicId: mechanic.id }, update: { locationId: assignment.locationId || mechanic.locationId, mechanicId: mechanic.id } }); await tx.diagnosticInspection.updateMany({ where: { diagnosticRequestId }, data: { status: DiagnosticInspectionStatus.COMPLETED, completedAt: now } }); await tx.diagnosticReview.upsert({ where: { diagnosticRequestId }, create: { diagnosticRequestId, state: DiagnosticReviewState.SUBMITTED, submittedAt: now, mechanicComment: mechanicComment?.trim().slice(0,4000) || null }, update: { state: DiagnosticReviewState.SUBMITTED, submittedAt: now, returnedAt: null, mechanicComment: mechanicComment?.trim().slice(0,4000) || null } }); await tx.auditEvent.create({ data: { actorName: mechanic.name, entityType: "DiagnosticRequest", entityId: diagnosticRequestId, action: "DIAGNOSTIC_SUBMITTED", metadata: toPrismaJson({ source:"MECHANIC_MOBILE", counts:view.counts }) } }); }); return getStructuredDiagnostic(diagnosticRequestId);
+}
+
+async function restoreAppointmentAfterDiagnosticReturn(
+  tx: import("@/src/generated/prisma/client").Prisma.TransactionClient,
+  diagnosticRequestId: string,
+  reviewerUserId: string,
+) {
+  const link = await tx.diagnosticVisitLink.findUnique({
+    where: { diagnosticRequestId },
+    select: { appointmentId: true },
+  });
+  if (!link) return null;
+
+  const appointment = await tx.serviceAppointment.findUnique({
+    where: { id: link.appointmentId },
+    select: { id: true, status: true },
+  });
+  if (!appointment || appointment.status !== "WAITING_CALCULATION") return null;
+
+  const updated = await tx.serviceAppointment.update({
+    where: { id: appointment.id },
+    data: { status: "DIAGNOSTICS" },
+    select: { id: true, status: true },
+  });
+  await tx.auditEvent.create({
+    data: {
+      actorId: reviewerUserId,
+      actorName: "CRM / Сервіс-менеджер",
+      entityType: "ServiceAppointment",
+      entityId: appointment.id,
+      action: "DIAGNOSTIC_RETURNED_APPOINTMENT_TO_DIAGNOSTICS",
+      metadata: toPrismaJson({ diagnosticRequestId, from: appointment.status, to: updated.status }),
+    },
+  });
+  return { id: updated.id, from: appointment.status, to: updated.status };
 }
 
 export async function updateMechanicDiagnosticComment(diagnosticRequestId: string, mechanicComment: string | null, actorName = "CRM") {
@@ -237,7 +273,39 @@ export async function updateMechanicDiagnosticComment(diagnosticRequestId: strin
 }
 
 export async function returnStructuredDiagnostic(diagnosticRequestId: string, reviewerUserId: string, managerComment?: string | null) {
-  const prisma = getPrisma(); const review = await ensureReview(diagnosticRequestId); if (review.state !== DiagnosticReviewState.SUBMITTED) throw new StructuredDiagnosticError("DIAGNOSTIC_NOT_SUBMITTED", "Повернути можна лише діагностику, передану на перевірку.", 409); const now = new Date(); await prisma.$transaction(async (tx) => { await tx.diagnosticReview.update({ where: { diagnosticRequestId }, data: { state: DiagnosticReviewState.RETURNED, returnedAt: now, reviewerUserId, managerComment: managerComment?.trim().slice(0,4000) || null } }); await tx.diagnosticInspection.updateMany({ where: { diagnosticRequestId }, data: { status: DiagnosticInspectionStatus.IN_PROGRESS, completedAt: null } }); await tx.auditEvent.create({ data: { actorName:"CRM / Сервіс-менеджер", entityType:"DiagnosticRequest", entityId:diagnosticRequestId, action:"DIAGNOSTIC_RETURNED_TO_MECHANIC", metadata:toPrismaJson({reviewerUserId,managerComment:managerComment||null}) } }); }); return getStructuredDiagnostic(diagnosticRequestId);
+  const prisma = getPrisma();
+  const review = await ensureReview(diagnosticRequestId);
+  if (review.state !== DiagnosticReviewState.SUBMITTED) {
+    throw new StructuredDiagnosticError("DIAGNOSTIC_NOT_SUBMITTED", "Повернути можна лише діагностику, передану на перевірку.", 409);
+  }
+  const now = new Date();
+  await prisma.$transaction(async (tx) => {
+    await tx.diagnosticReview.update({
+      where: { diagnosticRequestId },
+      data: {
+        state: DiagnosticReviewState.RETURNED,
+        returnedAt: now,
+        reviewerUserId,
+        managerComment: managerComment?.trim().slice(0, 4000) || null,
+      },
+    });
+    await tx.diagnosticInspection.updateMany({
+      where: { diagnosticRequestId },
+      data: { status: DiagnosticInspectionStatus.IN_PROGRESS, completedAt: null },
+    });
+    await tx.auditEvent.create({
+      data: {
+        actorId: reviewerUserId,
+        actorName: "CRM / Сервіс-менеджер",
+        entityType: "DiagnosticRequest",
+        entityId: diagnosticRequestId,
+        action: "DIAGNOSTIC_RETURNED_TO_MECHANIC",
+        metadata: toPrismaJson({ reviewerUserId, managerComment: managerComment || null }),
+      },
+    });
+    await restoreAppointmentAfterDiagnosticReturn(tx, diagnosticRequestId, reviewerUserId);
+  });
+  return getStructuredDiagnostic(diagnosticRequestId);
 }
 
 export async function markStructuredDiagnosticConfirmed(diagnosticRequestId: string, reviewerUserId?: string | null) { const now = new Date(); return getPrisma().diagnosticReview.upsert({ where:{diagnosticRequestId}, create:{diagnosticRequestId,state:DiagnosticReviewState.CONFIRMED,confirmedAt:now,reviewerUserId:reviewerUserId||null}, update:{state:DiagnosticReviewState.CONFIRMED,confirmedAt:now,reviewerUserId:reviewerUserId||undefined} }); }

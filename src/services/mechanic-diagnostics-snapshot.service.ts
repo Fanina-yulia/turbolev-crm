@@ -4,6 +4,7 @@ import {
   PlannerAppointmentStatus,
 } from "@/src/generated/prisma/client";
 import { getPrisma } from "@/src/lib/prisma";
+import { resolveDiagnosticWorkflowState } from "@/src/services/diagnostic-workflow.service";
 
 const ACTIVE_APPOINTMENT_EXCLUSIONS: PlannerAppointmentStatus[] = [
   PlannerAppointmentStatus.CANCELLED,
@@ -99,9 +100,7 @@ export async function listMechanicDiagnosticsForSnapshot(mechanicId: string) {
     if (!row) return [];
     const review = reviewById.get(row.id);
     if (review?.state === DiagnosticReviewState.SUBMITTED || review?.state === DiagnosticReviewState.CONFIRMED) return [];
-    const workflowState = review?.state === DiagnosticReviewState.RETURNED
-      ? "RETURNED"
-      : row.status;
+    const workflowState = resolveDiagnosticWorkflowState(row.status, review?.state);
     return [{
       id: row.id,
       status: row.status,

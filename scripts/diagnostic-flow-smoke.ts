@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { DiagnosticCheckState, DiagnosticRequestStatus } from "@/src/generated/prisma/client";
 import { getPrisma } from "@/src/lib/prisma";
 import { arrivePlannerAppointment } from "@/src/services/planner-arrival.service";
-import { startStructuredDiagnostic } from "@/src/services/structured-diagnostics.service";
+import { returnStructuredDiagnostic, startStructuredDiagnostic } from "@/src/services/structured-diagnostics.service";
 import { submitStructuredDiagnosticRespectingOptional } from "@/src/services/diagnostic-completeness.service";
 import { transitionDiagnostic, getDiagnostic } from "@/src/services/diagnostics.service";
 import { createDiagnosticReportShare } from "@/src/services/diagnostic-report.service";
@@ -176,6 +176,27 @@ async function main() {
       "Smoke mechanic completed diagnostics",
     );
     assert.equal(submitted.diagnostic.review.state, "SUBMITTED");
+    const assignment = await prisma.diagnosticAssignment.findUnique({ where: { diagnosticRequestId: diagnosticId } });
+    assert(assignment, "submitting diagnostics must create the CRM location assignment");
+    assert.equal(assignment.locationId, ids.location, "diagnostic assignment must preserve the station scope");
+    assert.equal(assignment.mechanicId, ids.mechanic, "diagnostic assignment must preserve the mechanic");
+    const submittedAppointment = await prisma.serviceAppointment.findUnique({ where: { id: firstAppointment.id }, select: { status: true } });
+    assert.equal(submittedAppointment?.status, "WAITING_CALCULATION", "submitted diagnostic must advance the linked appointment for CRM routing");
+    const submittedView = await getDiagnostic(diagnosticId);
+    assert(submittedView, "submitted diagnostic must remain available to CRM");
+    assert.equal(submittedView.workflowState, "SUBMITTED", "CRM must expose submitted review state before confirmation");
+
+    const returned = await returnStructuredDiagnostic(diagnosticId, `smoke_manager_${suffix}`, "Потрібно уточнити результат перевірки");
+    assert.equal(returned.diagnostic.review.state, "RETURNED", "service manager return must move the review back to the mechanic");
+    const returnedAppointment = await prisma.serviceAppointment.findUnique({ where: { id: firstAppointment.id }, select: { status: true } });
+    assert.equal(returnedAppointment?.status, "DIAGNOSTICS", "returned diagnostic must move the linked appointment back to diagnostics");
+
+    const resubmitted = await submitStructuredDiagnosticRespectingOptional(
+      ids.mechanicUser,
+      diagnosticId,
+      "Smoke mechanic clarified diagnostics",
+    );
+    assert.equal(resubmitted.diagnostic.review.state, "SUBMITTED", "mechanic must be able to resubmit a returned diagnostic");
 
     await assert.rejects(
       () => createWorkOrderFromConfirmedDiagnostic(diagnosticId),

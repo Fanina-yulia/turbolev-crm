@@ -64,6 +64,9 @@ function canonicalizeLegacy(detail: LegacyNavigateDetail): CanonicalTarget | nul
   if (section === "Діагностика" && ENTITY_ID.test(filter)) {
     return { section: "Діагностика", params: { diagnosticId: filter } };
   }
+  if (section === "Діагностика" && filter.toUpperCase() === "SUBMITTED") {
+    return { section: "Діагностика", params: { filter: "SUBMITTED", filterLabel: detail.filterLabel || "На перевірці" } };
+  }
   if (section === "Комерційна пропозиція" && filter === "approval") {
     return { section: "Комерційна пропозиція", params: { status: "WAITING_APPROVAL", workOrderTab: "estimate" } };
   }

@@ -13,6 +13,7 @@ export type ServiceAdvisorKpisContract = {
   waitingParts: number;
   inRepair: number;
   mechanicFindings: number;
+  diagnosticReviews: number;
 };
 
 export type ServiceAdvisorAppointmentContract = {
@@ -29,9 +30,13 @@ export type ServiceAdvisorAppointmentContract = {
 export type ServiceAdvisorDiagnosticContract = {
   id: string;
   status: "PENDING" | "IN_PROGRESS";
+  workflowState: "PENDING" | "IN_PROGRESS" | "SUBMITTED" | "RETURNED" | "CONFIRMED" | "CANCELLED";
+  reviewState: "DRAFT" | "SUBMITTED" | "RETURNED" | "CONFIRMED";
+  submittedAt: CrmDateTime | null;
   plate: string;
   vehicle: string;
   client: string;
+  mechanic: string | null;
 };
 
 export type ServiceAdvisorFindingUrgency = "INFO" | "SOON" | "CRITICAL";

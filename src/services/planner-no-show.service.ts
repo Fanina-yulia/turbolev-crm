@@ -2,20 +2,21 @@ import "server-only";
 
 import { PlannerAppointmentStatus } from "@/src/generated/prisma/client";
 import { getPrisma } from "@/src/lib/prisma";
+import {
+  AUTO_NO_SHOW_BATCH_SIZE,
+  AUTO_NO_SHOW_ROLLOUT_SETTING_KEY,
+  automaticNoShowCutoff,
+  isEligibleForAutomaticNoShow,
+} from "@/src/services/planner-no-show-policy";
 
-export const AUTO_NO_SHOW_AFTER_HOURS = 24;
-export const AUTO_NO_SHOW_AFTER_MS = AUTO_NO_SHOW_AFTER_HOURS * 60 * 60 * 1000;
-export const AUTO_NO_SHOW_BATCH_SIZE = 250;
-export const AUTO_NO_SHOW_ROLLOUT_SETTING_KEY = "planner_auto_no_show_rollout";
-
-type AppointmentNoShowCandidate = {
-  status: PlannerAppointmentStatus | string;
-  plannedStartAt: Date;
-  actualArrivalAt: Date | null;
-  actualStartAt: Date | null;
-  actualEndAt: Date | null;
-  noShowAt: Date | null;
-};
+export {
+  AUTO_NO_SHOW_AFTER_HOURS,
+  AUTO_NO_SHOW_AFTER_MS,
+  AUTO_NO_SHOW_BATCH_SIZE,
+  AUTO_NO_SHOW_ROLLOUT_SETTING_KEY,
+  automaticNoShowCutoff,
+  isEligibleForAutomaticNoShow,
+} from "@/src/services/planner-no-show-policy";
 
 export type AutoNoShowRun = {
   checked: number;
@@ -25,19 +26,6 @@ export type AutoNoShowRun = {
   rolloutAt: string;
   ranAt: string;
 };
-
-export function automaticNoShowCutoff(now = new Date()) {
-  return new Date(now.getTime() - AUTO_NO_SHOW_AFTER_MS);
-}
-
-export function isEligibleForAutomaticNoShow(candidate: AppointmentNoShowCandidate, now = new Date()) {
-  return candidate.status === PlannerAppointmentStatus.BOOKED
-    && candidate.plannedStartAt.getTime() <= automaticNoShowCutoff(now).getTime()
-    && !candidate.actualArrivalAt
-    && !candidate.actualStartAt
-    && !candidate.actualEndAt
-    && !candidate.noShowAt;
-}
 
 /**
  * Moves only untouched BOOKED appointments older than 24 hours to NO_SHOW.

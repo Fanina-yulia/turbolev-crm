@@ -9,6 +9,7 @@ import {
   getMechanicByUserId,
   StructuredDiagnosticError,
 } from "@/src/services/structured-diagnostics.service";
+import { resolveDiagnosticWorkflowState } from "@/src/services/diagnostic-workflow.service";
 
 const ACTIVE_APPOINTMENT_EXCLUSIONS: PlannerAppointmentStatus[] = [
   PlannerAppointmentStatus.CANCELLED,
@@ -175,7 +176,7 @@ export async function listMechanicDiagnosticsReadOnly(userId: string) {
     if (!row) return [];
     const review = reviewById.get(row.id);
     if (review?.state === DiagnosticReviewState.SUBMITTED || review?.state === DiagnosticReviewState.CONFIRMED) return [];
-    const workflowState = review?.state === DiagnosticReviewState.RETURNED ? "RETURNED" : row.status;
+    const workflowState = resolveDiagnosticWorkflowState(row.status, review?.state);
     return [{
       id: row.id,
       status: row.status,
@@ -347,11 +348,7 @@ export async function getStructuredDiagnosticForMechanicReadOnly(userId: string,
       status: diagnostic.status,
       createdAt: diagnostic.createdAt,
       updatedAt: diagnostic.updatedAt,
-      workflowState: review?.state === DiagnosticReviewState.SUBMITTED
-        ? "SUBMITTED"
-        : review?.state === DiagnosticReviewState.RETURNED
-          ? "RETURNED"
-          : diagnostic.status,
+      workflowState: resolveDiagnosticWorkflowState(diagnostic.status, review?.state),
       technicalConclusion: diagnostic.technicalConclusion,
       confirmedAt: diagnostic.confirmedAt,
       client: diagnostic.client,

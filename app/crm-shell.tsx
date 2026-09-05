@@ -147,6 +147,7 @@ function legacyRoute(section:CrmSectionLabel,filter:string):LegacyRoute|null{
 
   if(section==="Підбір запчастин"&&["assigned","waiting-parts","waiting_parts"].includes(value))return{section,params:{}};
   if(section==="Діагностика"&&value==="active")return{section,params:{}};
+  if(section==="Діагностика"&&value.toUpperCase()==="SUBMITTED")return{section,params:{filter:"SUBMITTED",filterLabel:"На перевірці"}};
   return null;
 }
 

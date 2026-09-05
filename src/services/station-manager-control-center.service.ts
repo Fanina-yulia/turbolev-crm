@@ -94,6 +94,9 @@ function priorityRank(priority: StationManagerControlPriority) {
 
 function vehicleAction(row: StationAttentionVehicle): StationManagerControlAction {
   const primaryCode = row.issues[0]?.code || "VEHICLE_ATTENTION";
+  if (primaryCode === "DIAGNOSTIC_REVIEW_PENDING" && row.diagnosticRequestId) {
+    return { label: "Перевірити ДК", section: "Діагностика", params: { diagnosticId: row.diagnosticRequestId, filter: "SUBMITTED" } };
+  }
   if (["NO_SHOW", "MISSED_ARRIVAL"].includes(primaryCode)) {
     return { label: "Відкрити запис", section: "Планувальник", params: { appointmentId: row.appointmentId } };
   }
@@ -122,6 +125,7 @@ function vehicleAction(row: StationAttentionVehicle): StationManagerControlActio
 
 const STUCK_CODES = new Set([
   "ARRIVED_STALLED",
+  "DIAGNOSTIC_REVIEW_PENDING",
   "PARTS_SELECTION_STALLED",
   "CALCULATION_STALLED",
   "APPROVAL_STALLED",

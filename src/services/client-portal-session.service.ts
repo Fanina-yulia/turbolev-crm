@@ -138,6 +138,8 @@ const APPOINTMENT_STATUS: Record<string, { label: string; tone: ClientGarageVehi
 const DIAGNOSTIC_STATUS: Record<string, { label: string; tone: ClientGarageVehicle["status"]["tone"] }> = {
   PENDING: { label: "Заплановано", tone: "info" },
   IN_PROGRESS: { label: "В роботі", tone: "info" },
+  SUBMITTED: { label: "Результати перевіряє сервіс", tone: "warning" },
+  RETURNED: { label: "Потрібне уточнення діагностики", tone: "warning" },
   CONFIRMED: { label: "Завершена діагностика", tone: "success" },
   CANCELLED: { label: "Скасовано", tone: "neutral" },
 };
@@ -324,6 +326,15 @@ export async function getClientGarageSnapshot(clientId: string): Promise<ClientG
   });
   if (!client) throw new ClientPortalSessionError("CLIENT_NOT_FOUND", "Клієнта не знайдено.", 404);
 
+  const diagnosticRequestIds = client.vehicles.flatMap((vehicle) => vehicle.diagnosticRequests.map((diagnostic) => diagnostic.id));
+  const diagnosticReviews = diagnosticRequestIds.length
+    ? await prisma.diagnosticReview.findMany({
+        where: { diagnosticRequestId: { in: diagnosticRequestIds } },
+        select: { diagnosticRequestId: true, state: true, updatedAt: true },
+      })
+    : [];
+  const reviewByDiagnostic = new Map(diagnosticReviews.map((review) => [review.diagnosticRequestId, review]));
+
   const appointments = await prisma.serviceAppointment.findMany({
     where: { clientId },
     orderBy: [{ plannedStartAt: "desc" }, { createdAt: "desc" }],
@@ -359,6 +370,7 @@ export async function getClientGarageSnapshot(clientId: string): Promise<ClientG
     const activeWorkOrder = vehicle.workOrders.find((item) => !["CLOSED", "COMPLETED", "CANCELLED"].includes(item.status)) || null;
     const linkedDiagnosticIds = new Set(vehicle.workOrders.map((item) => item.diagnosticRequestId));
     const activeDiagnostic = vehicle.diagnosticRequests.find((item) => item.status !== "CANCELLED" && !linkedDiagnosticIds.has(item.id)) || null;
+    const activeDiagnosticReview = activeDiagnostic ? reviewByDiagnostic.get(activeDiagnostic.id) : null;
     const activeAppointment = vehicleAppointments.find((item) => !["COMPLETED", "CANCELLED", "NO_SHOW"].includes(String(item.status))) || null;
 
     let statusCode = "OUTSIDE_SERVICE";
@@ -367,7 +379,11 @@ export async function getClientGarageSnapshot(clientId: string): Promise<ClientG
       statusCode = activeWorkOrder.status;
       status = WORK_ORDER_STATUS[statusCode] || { label: "В роботі", tone: "info" };
     } else if (activeDiagnostic) {
-      statusCode = String(activeDiagnostic.status);
+      statusCode = activeDiagnosticReview?.state === "SUBMITTED"
+        ? "SUBMITTED"
+        : activeDiagnosticReview?.state === "RETURNED"
+          ? "RETURNED"
+          : String(activeDiagnostic.status);
       status = DIAGNOSTIC_STATUS[statusCode] || { label: "Діагностика", tone: "info" };
     } else if (activeAppointment) {
       statusCode = String(activeAppointment.status);
@@ -428,8 +444,8 @@ export async function getClientGarageSnapshot(clientId: string): Promise<ClientG
         kind: "DIAGNOSTIC",
         title: "Діагностика",
         subtitle: diagnostic.technicalConclusion || "Перевірка автомобіля",
-        status: DIAGNOSTIC_STATUS[String(diagnostic.status)]?.label || String(diagnostic.status),
-        date: (diagnostic.confirmedAt || diagnostic.updatedAt || diagnostic.createdAt).toISOString(),
+        status: DIAGNOSTIC_STATUS[reviewByDiagnostic.get(diagnostic.id)?.state || String(diagnostic.status)]?.label || String(diagnostic.status),
+        date: (diagnostic.confirmedAt || reviewByDiagnostic.get(diagnostic.id)?.updatedAt || diagnostic.updatedAt || diagnostic.createdAt).toISOString(),
         amount: null,
         currency: null,
       });
@@ -465,7 +481,7 @@ export async function getClientGarageSnapshot(clientId: string): Promise<ClientG
         workOrderId: activeWorkOrder?.id || null,
         diagnosticRequestId: activeWorkOrder?.diagnosticRequestId || activeDiagnostic?.id || null,
         appointmentId: appointmentForCurrent?.id || null,
-        updatedAt: iso(activeWorkOrder?.updatedAt || activeDiagnostic?.updatedAt || appointmentForCurrent?.updatedAt || vehicle.updatedAt),
+        updatedAt: iso(activeWorkOrder?.updatedAt || activeDiagnosticReview?.updatedAt || activeDiagnostic?.updatedAt || appointmentForCurrent?.updatedAt || vehicle.updatedAt),
       },
       counts: {
         services: vehicle._count.workOrders,

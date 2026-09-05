@@ -8,6 +8,7 @@ import {
   getStructuredDiagnostic,
   markStructuredDiagnosticConfirmed,
 } from "@/src/services/structured-diagnostics.service";
+import { resolveDiagnosticWorkflowState } from "@/src/services/diagnostic-workflow.service";
 
 export class DiagnosticNotFoundError extends Error {
   constructor(id: string) { super(`DiagnosticRequest not found: ${id}`); this.name = "DiagnosticNotFoundError"; }
@@ -52,7 +53,17 @@ export function parseDiagnosticStatus(value: unknown): DiagnosticRequestStatus |
 
 async function structuredMeta(ids: string[]) {
   const prisma = getPrisma();
-  if (!ids.length) return new Map<string, { reviewState: string; inspections: number; checked: number; defects: number; attention: number }>();
+  if (!ids.length) return new Map<string, {
+    reviewState: string;
+    submittedAt: Date | null;
+    returnedAt: Date | null;
+    confirmedAt: Date | null;
+    managerComment: string | null;
+    inspections: number;
+    checked: number;
+    defects: number;
+    attention: number;
+  }>();
   const [reviews, inspections] = await Promise.all([
     prisma.diagnosticReview.findMany({ where: { diagnosticRequestId: { in: ids } } }),
     prisma.diagnosticInspection.findMany({ where: { diagnosticRequestId: { in: ids } }, select: { id: true, diagnosticRequestId: true } }),
@@ -60,10 +71,25 @@ async function structuredMeta(ids: string[]) {
   const inspectionIds = inspections.map((item) => item.id);
   const checks = inspectionIds.length ? await prisma.diagnosticCheck.findMany({ where: { inspectionId: { in: inspectionIds } }, select: { inspectionId: true, state: true } }) : [];
   const requestByInspection = new Map(inspections.map((item) => [item.id, item.diagnosticRequestId]));
-  const result = new Map<string, { reviewState: string; inspections: number; checked: number; defects: number; attention: number }>();
+  const result = new Map<string, {
+    reviewState: string;
+    submittedAt: Date | null;
+    returnedAt: Date | null;
+    confirmedAt: Date | null;
+    managerComment: string | null;
+    inspections: number;
+    checked: number;
+    defects: number;
+    attention: number;
+  }>();
   for (const id of ids) {
+    const review = reviews.find((row) => row.diagnosticRequestId === id);
     result.set(id, {
-      reviewState: reviews.find((row) => row.diagnosticRequestId === id)?.state || DiagnosticReviewState.DRAFT,
+      reviewState: review?.state || DiagnosticReviewState.DRAFT,
+      submittedAt: review?.submittedAt || null,
+      returnedAt: review?.returnedAt || null,
+      confirmedAt: review?.confirmedAt || null,
+      managerComment: review?.managerComment || null,
       inspections: inspections.filter((row) => row.diagnosticRequestId === id).length,
       checked: 0,
       defects: 0,
@@ -233,9 +259,7 @@ async function commercialMeta(rows: Array<{ id: string; workOrder: { id: string 
 }
 
 function businessWorkflowState(rowStatus: DiagnosticRequestStatus, reviewState?: string) {
-  if (reviewState === DiagnosticReviewState.SUBMITTED) return "SUBMITTED";
-  if (reviewState === DiagnosticReviewState.RETURNED) return DiagnosticRequestStatus.IN_PROGRESS;
-  return rowStatus;
+  return resolveDiagnosticWorkflowState(rowStatus, reviewState);
 }
 
 export async function listDiagnostics(input?: DiagnosticListInput) {
@@ -275,6 +299,10 @@ export async function listDiagnostics(input?: DiagnosticListInput) {
     return {
       ...row,
       reviewState: structured?.reviewState || DiagnosticReviewState.DRAFT,
+      reviewSubmittedAt: structured?.submittedAt || null,
+      reviewReturnedAt: structured?.returnedAt || null,
+      reviewConfirmedAt: structured?.confirmedAt || null,
+      reviewManagerComment: structured?.managerComment || null,
       workflowState: businessWorkflowState(row.status, structured?.reviewState),
       reportShare,
       diagnosticCard,
@@ -322,6 +350,10 @@ export async function getDiagnostic(id: string) {
   return {
     ...row,
     reviewState: structured?.reviewState || DiagnosticReviewState.DRAFT,
+    reviewSubmittedAt: structured?.submittedAt || null,
+    reviewReturnedAt: structured?.returnedAt || null,
+    reviewConfirmedAt: structured?.confirmedAt || null,
+    reviewManagerComment: structured?.managerComment || null,
     workflowState: businessWorkflowState(row.status, structured?.reviewState),
     reportShare,
     diagnosticCard,

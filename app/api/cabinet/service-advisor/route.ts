@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getAccessContext } from "@/src/security/access-context";
 import { getPrisma } from "@/src/lib/prisma";
+import { resolveDiagnosticWorkflowState } from "@/src/services/diagnostic-workflow.service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -38,13 +39,23 @@ export async function GET(request: Request) {
 
     const vehicleIds = Array.from(new Set(appointments.map((item) => item.vehicleId).filter((value): value is string => Boolean(value))));
     const workOrderIds = Array.from(new Set(appointments.map((item) => item.workOrderId).filter((value): value is string => Boolean(value))));
+    const locationAssignments = await prisma.diagnosticAssignment.findMany({
+      where: { locationId },
+      select: { diagnosticRequestId: true, mechanicId: true },
+      take: 1000,
+    });
+    const assignedDiagnosticIds = locationAssignments.map((row) => row.diagnosticRequestId);
+    const diagnosticScope = [
+      ...(vehicleIds.length ? [{ vehicleId: { in: vehicleIds } }] : []),
+      ...(assignedDiagnosticIds.length ? [{ id: { in: assignedDiagnosticIds } }] : []),
+    ];
 
-    const [diagnostics, findings] = await Promise.all([
-      vehicleIds.length ? prisma.diagnosticRequest.findMany({
-        where: { status: { in: ["PENDING", "IN_PROGRESS"] }, vehicleId: { in: vehicleIds } },
+    const [diagnosticCandidates, findings] = await Promise.all([
+      diagnosticScope.length ? prisma.diagnosticRequest.findMany({
+        where: { status: { in: ["PENDING", "IN_PROGRESS"] }, OR: diagnosticScope },
         include: { vehicle: { select: { brand: true, model: true, plateNumber: true } }, client: { select: { name: true, phone: true } } },
         orderBy: { updatedAt: "desc" },
-        take: 12,
+        take: 100,
       }) : [],
       workOrderIds.length ? prisma.mechanicWorkFinding.findMany({
         where: { workOrderId: { in: workOrderIds }, status: { in: ["SUBMITTED", "REVIEWED"] } },
@@ -53,6 +64,30 @@ export async function GET(request: Request) {
         take: 20,
       }) : [],
     ]);
+
+    const candidateIds = diagnosticCandidates.map((item) => item.id);
+    const [candidateAssignments, candidateReviews] = await Promise.all([
+      candidateIds.length ? prisma.diagnosticAssignment.findMany({
+        where: { diagnosticRequestId: { in: candidateIds } },
+        select: { diagnosticRequestId: true, locationId: true, mechanicId: true },
+      }) : [],
+      candidateIds.length ? prisma.diagnosticReview.findMany({
+        where: { diagnosticRequestId: { in: candidateIds } },
+        select: { diagnosticRequestId: true, state: true, submittedAt: true },
+      }) : [],
+    ]);
+    const assignmentByDiagnostic = new Map(candidateAssignments.map((row) => [row.diagnosticRequestId, row]));
+    const reviewByDiagnostic = new Map(candidateReviews.map((row) => [row.diagnosticRequestId, row]));
+    const diagnostics = diagnosticCandidates.filter((row) => {
+      const assignment = assignmentByDiagnostic.get(row.id);
+      return assignment ? assignment.locationId === locationId : vehicleIds.includes(row.vehicleId);
+    });
+    const mechanicIds = Array.from(new Set(diagnostics.map((row) => assignmentByDiagnostic.get(row.id)?.mechanicId).filter((value): value is string => Boolean(value))));
+    const mechanics = mechanicIds.length
+      ? await prisma.serviceMechanic.findMany({ where: { id: { in: mechanicIds } }, select: { id: true, name: true } })
+      : [];
+    const mechanicById = new Map(mechanics.map((mechanic) => [mechanic.id, mechanic.name]));
+    const diagnosticReviewCount = diagnostics.filter((row) => reviewByDiagnostic.get(row.id)?.state === "SUBMITTED").length;
 
     const findingLineIds = Array.from(new Set(findings.map((item) => item.workOrderLineId)));
     const findingOrderIds = Array.from(new Set(findings.map((item) => item.workOrderId)));
@@ -78,6 +113,7 @@ export async function GET(request: Request) {
         waitingParts: count("WAITING_PARTS_SELECTION", "WAITING_PARTS"),
         inRepair: count("READY_FOR_REPAIR", "IN_REPAIR"),
         mechanicFindings: findings.length,
+        diagnosticReviews: diagnosticReviewCount,
       },
       appointments: appointments.map((x) => ({
         id: x.id,
@@ -89,13 +125,27 @@ export async function GET(request: Request) {
         post: x.post?.name || null,
         mechanic: x.mechanic?.name || null,
       })),
-      diagnostics: diagnostics.map((x) => ({
-        id: x.id,
-        status: x.status,
-        plate: x.vehicle.plateNumber || "—",
-        vehicle: [x.vehicle.brand, x.vehicle.model].filter(Boolean).join(" ") || "Автомобіль",
-        client: x.client.name || x.client.phone,
-      })),
+      diagnostics: diagnostics
+        .sort((a, b) => {
+          const aSubmitted = reviewByDiagnostic.get(a.id)?.state === "SUBMITTED" ? 0 : 1;
+          const bSubmitted = reviewByDiagnostic.get(b.id)?.state === "SUBMITTED" ? 0 : 1;
+          return aSubmitted - bSubmitted || b.updatedAt.getTime() - a.updatedAt.getTime();
+        })
+        .map((x) => {
+          const review = reviewByDiagnostic.get(x.id);
+          const assignment = assignmentByDiagnostic.get(x.id);
+          return {
+            id: x.id,
+            status: x.status,
+            workflowState: resolveDiagnosticWorkflowState(x.status, review?.state),
+            reviewState: review?.state || "DRAFT",
+            submittedAt: review?.submittedAt || null,
+            plate: x.vehicle.plateNumber || "—",
+            vehicle: [x.vehicle.brand, x.vehicle.model].filter(Boolean).join(" ") || "Автомобіль",
+            client: x.client.name || x.client.phone || "Клієнт",
+            mechanic: assignment?.mechanicId ? mechanicById.get(assignment.mechanicId) || null : null,
+          };
+        }),
       mechanicFindings: findings.map((finding) => {
         const order = orderMap.get(finding.workOrderId);
         return {

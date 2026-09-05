@@ -14,6 +14,8 @@ import type {
 
 const PLANNER_STATUSES = new Set<string>(PLANNER_STATUS_VALUES);
 const DIAGNOSTIC_STATUSES = new Set(["PENDING", "IN_PROGRESS"]);
+const DIAGNOSTIC_WORKFLOW_STATES = new Set(["PENDING", "IN_PROGRESS", "SUBMITTED", "RETURNED", "CONFIRMED", "CANCELLED"]);
+const DIAGNOSTIC_REVIEW_STATES = new Set(["DRAFT", "SUBMITTED", "RETURNED", "CONFIRMED"]);
 const FINDING_URGENCIES = new Set(["INFO", "SOON", "CRITICAL"]);
 
 function requiredString(value: unknown) {
@@ -73,8 +75,9 @@ function parseKpis(value: unknown): ServiceAdvisorKpisContract | null {
   const waitingParts = nonNegativeInteger(value.waitingParts);
   const inRepair = nonNegativeInteger(value.inRepair);
   const mechanicFindings = nonNegativeInteger(value.mechanicFindings);
-  if (today == null || arrived == null || approval == null || waitingParts == null || inRepair == null || mechanicFindings == null) return null;
-  return { today, arrived, approval, waitingParts, inRepair, mechanicFindings };
+  const diagnosticReviews = nonNegativeInteger(value.diagnosticReviews);
+  if (today == null || arrived == null || approval == null || waitingParts == null || inRepair == null || mechanicFindings == null || diagnosticReviews == null) return null;
+  return { today, arrived, approval, waitingParts, inRepair, mechanicFindings, diagnosticReviews };
 }
 
 function parseAppointment(value: unknown): ServiceAdvisorAppointmentContract | null {
@@ -97,11 +100,19 @@ function parseDiagnostic(value: unknown): ServiceAdvisorDiagnosticContract | nul
   const status = typeof value.status === "string" && DIAGNOSTIC_STATUSES.has(value.status)
     ? value.status as ServiceAdvisorDiagnosticContract["status"]
     : null;
+  const workflowState = typeof value.workflowState === "string" && DIAGNOSTIC_WORKFLOW_STATES.has(value.workflowState)
+    ? value.workflowState as ServiceAdvisorDiagnosticContract["workflowState"]
+    : null;
+  const reviewState = typeof value.reviewState === "string" && DIAGNOSTIC_REVIEW_STATES.has(value.reviewState)
+    ? value.reviewState as ServiceAdvisorDiagnosticContract["reviewState"]
+    : null;
+  const submittedAt = nullableDateString(value.submittedAt);
   const plate = requiredString(value.plate);
   const vehicle = requiredString(value.vehicle);
   const client = requiredString(value.client);
-  if (!id || !status || !plate || !vehicle || !client) return null;
-  return { id, status, plate, vehicle, client };
+  const mechanic = nullableString(value.mechanic);
+  if (!id || !status || !workflowState || !reviewState || submittedAt === undefined || !plate || !vehicle || !client || mechanic === undefined) return null;
+  return { id, status, workflowState, reviewState, submittedAt, plate, vehicle, client, mechanic };
 }
 
 function parseFindingMedia(value: unknown): ServiceAdvisorFindingMediaContract | null {

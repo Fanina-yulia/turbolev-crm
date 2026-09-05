@@ -31,6 +31,8 @@ const statusLabels: Record<string, string> = {
   RESERVE: "Резерв",
   PENDING: "Очікує діагностику",
   IN_PROGRESS: "Діагностика в роботі",
+  SUBMITTED: "ДК на перевірці",
+  RETURNED: "ДК на доопрацюванні",
 };
 
 function nav(section: string, filter = "", label = "") {
@@ -121,6 +123,7 @@ function Dashboard({ data, userName }: { data: ServiceAdvisorCabinetLinkedPayloa
       <button onClick={() => nav("Підбір запчастин", "waiting-parts", "Очікують деталі")}><span>Запчастини</span><strong>{k.waitingParts}</strong><small>у підборі / очікуванні</small></button>
       <button onClick={() => nav("Виробництво", "in-repair", "Ремонт")}><span>У ремонті</span><strong>{k.inRepair}</strong><small>у виробничому потоці</small></button>
       <button className={k.mechanicFindings ? styles.alertKpi : ""} onClick={() => document.getElementById("service-advisor-findings")?.scrollIntoView({ behavior: "smooth", block: "start" })}><span>Виявлено механіком</span><strong>{k.mechanicFindings}</strong><small>потребують рішення</small></button>
+      <button className={k.diagnosticReviews ? styles.alertKpi : ""} onClick={() => nav("Діагностика", "SUBMITTED", "ДК на перевірці")}><span>ДК на перевірці</span><strong>{k.diagnosticReviews}</strong><small>завершені механіком</small></button>
     </section>
 
     <div className={styles.columns}>
@@ -152,8 +155,8 @@ function Dashboard({ data, userName }: { data: ServiceAdvisorCabinetLinkedPayloa
           {busyFinding?.startsWith(`${finding.id}:`) && <div className={styles.findingBusy}>Зберігаю рішення…</div>}
         </article>) : <div className={styles.empty}>Нових зауважень від механіків немає.</div>}</div>
 
-        <div className={styles.panelHead}><div><span className={styles.eyebrow}>ДІАГНОСТИКА</span><h2>Потребує опрацювання</h2></div></div>
-        <div className={styles.list}>{diagnostics.length ? diagnostics.map((d) => <button key={d.id} className={styles.row} onClick={() => nav("Діагностика", d.id, `${d.plate} · ${d.vehicle}`)}><div><b>{d.plate}</b></div><div><b>{d.vehicle}</b><small>{d.client}</small></div><em className={styles.badge}>{statusLabels[d.status] || d.status}</em></button>) : <div className={styles.empty}>Активних діагностик немає.</div>}</div>
+        <div className={styles.panelHead}><div><span className={styles.eyebrow}>ДІАГНОСТИКА</span><h2>Діагностика та перевірка ДК</h2></div></div>
+        <div className={styles.list}>{diagnostics.length ? diagnostics.map((d) => <button key={d.id} className={styles.row} onClick={() => nav("Діагностика", d.id, `${d.plate} · ${d.vehicle}`)}><div><b>{d.plate}</b></div><div><b>{d.vehicle}</b><small>{d.client}{d.mechanic ? ` · ${d.mechanic}` : ""}</small></div><em className={styles.badge}>{statusLabels[d.workflowState] || d.workflowState}</em></button>) : <div className={styles.empty}>Активних діагностик немає.</div>}</div>
         <div className={styles.panelHead}><div><span className={styles.eyebrow}>ШВИДКІ ДІЇ</span></div></div>
         <div className={styles.quick}><button onClick={() => nav("Діагностика")}>Діагностика</button><button onClick={() => nav("Комерційна пропозиція")}>Кошториси</button><button onClick={() => nav("Підбір запчастин")}>Запчастини</button><button onClick={() => nav("Клієнти")}>Клієнти</button></div>
       </aside>

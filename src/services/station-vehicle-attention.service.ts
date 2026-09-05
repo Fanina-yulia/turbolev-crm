@@ -19,6 +19,7 @@ export type StationVehicleAttentionIssue = {
 export type StationAttentionVehicle = {
   id: string;
   appointmentId: string;
+  diagnosticRequestId: string | null;
   clientId: string | null;
   vehicleId: string | null;
   workOrderId: string | null;
@@ -128,12 +129,44 @@ export async function listStationAttentionVehicles(now = new Date(), locationId?
     take: 500,
   });
 
+  const appointmentIds = rows.map((row) => row.id);
+  const visitLinks = appointmentIds.length
+    ? await prisma.diagnosticVisitLink.findMany({
+        where: { appointmentId: { in: appointmentIds } },
+        select: { appointmentId: true, diagnosticRequestId: true },
+      })
+    : [];
+  const diagnosticRequestIdByAppointment = new Map(visitLinks.map((link) => [link.appointmentId, link.diagnosticRequestId]));
+  const diagnosticRequestIds = visitLinks.map((link) => link.diagnosticRequestId);
+  const diagnosticReviews = diagnosticRequestIds.length
+    ? await prisma.diagnosticReview.findMany({
+        where: { diagnosticRequestId: { in: diagnosticRequestIds } },
+        select: { diagnosticRequestId: true, state: true, submittedAt: true, updatedAt: true },
+      })
+    : [];
+  const reviewByRequest = new Map(diagnosticReviews.map((review) => [review.diagnosticRequestId, review]));
+
   const result: StationAttentionVehicle[] = [];
 
   for (const row of rows) {
     const issues: IssueDraft[] = [];
     const label = row.plateNumber || row.vehicleLabel || row.customerName || "Авто";
     const status = row.status;
+    const diagnosticRequestId = diagnosticRequestIdByAppointment.get(row.id) || null;
+    const diagnosticReview = diagnosticRequestId ? reviewByRequest.get(diagnosticRequestId) : null;
+
+    if (diagnosticReview?.state === "SUBMITTED") {
+      const submittedAt = diagnosticReview.submittedAt || diagnosticReview.updatedAt || row.updatedAt;
+      const dueAt = new Date(submittedAt.getTime() + 15 * MINUTE_MS);
+      addIssue(issues, {
+        code: "DIAGNOSTIC_REVIEW_PENDING",
+        title: `${label}: діагностична карта на перевірці`,
+        reason: "Механік завершив діагностику. Потрібно перевірити факти та технічний висновок.",
+        action: "Перевірити діагностичну карту",
+        level: overdueLevel(dueAt, now, 240),
+        dueAt,
+      }, now);
+    }
 
     if (status === PlannerAppointmentStatus.NO_SHOW) {
       const dueAt = row.noShowAt || row.plannedStartAt;
@@ -215,7 +248,7 @@ export async function listStationAttentionVehicles(now = new Date(), locationId?
       }, now);
     }
 
-    if (status === PlannerAppointmentStatus.WAITING_CALCULATION) {
+    if (status === PlannerAppointmentStatus.WAITING_CALCULATION && diagnosticReview?.state !== "SUBMITTED") {
       const dueAt = new Date(row.updatedAt.getTime() + 30 * MINUTE_MS);
       addIssue(issues, {
         code: "CALCULATION_STALLED",
@@ -358,7 +391,7 @@ export async function listStationAttentionVehicles(now = new Date(), locationId?
       PlannerAppointmentStatus.PAUSED,
       PlannerAppointmentStatus.WARRANTY,
     ]);
-    if (planOverrunStatuses.has(status) && row.plannedEndAt <= now) {
+    if (planOverrunStatuses.has(status) && row.plannedEndAt <= now && !(status === PlannerAppointmentStatus.WAITING_CALCULATION && diagnosticReview?.state === "SUBMITTED")) {
       addIssue(issues, {
         code: "PLAN_OVERRUN",
         title: `${label}: авто вийшло за плановий час`,
@@ -376,6 +409,7 @@ export async function listStationAttentionVehicles(now = new Date(), locationId?
     result.push({
       id: row.id,
       appointmentId: row.id,
+      diagnosticRequestId,
       clientId: row.clientId,
       vehicleId: row.vehicleId,
       workOrderId: row.workOrderId,

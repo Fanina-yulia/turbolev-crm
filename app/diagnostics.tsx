@@ -14,7 +14,7 @@ type CommercialStage = "PARTS_SELECTION" | "DRAFT" | "SENT" | "APPROVED" | "REJE
 type Diagnostic = {
   id: string;
   status: DiagnosticStatus;
-  workflowState?: Exclude<WorkflowState, "RETURNED">;
+  workflowState?: WorkflowState;
   reviewState?: string;
   technicalConclusion: string | null;
   confirmedAt: string | null;
@@ -66,6 +66,10 @@ const filters: Array<{ value: Filter; label: string }> = [
   { value: "COMMERCIAL", label: "Комерційна пропозиція" },
   { value: "CANCELLED", label: "Скасовані" },
 ];
+function routeFilter(value: string | null | undefined): Filter | null {
+  const normalized = (value || "").trim().toUpperCase();
+  return filters.some((item) => item.value === normalized) ? normalized as Filter : null;
+}
 const commercialLabels: Record<CommercialStage, string> = {
   PARTS_SELECTION: "Підбір запчастин",
   DRAFT: "КП · Чернетка",
@@ -127,7 +131,7 @@ function isHistory(row: Diagnostic) {
 export function Diagnostics() {
   const [rows, setRows] = useState<Diagnostic[]>([]);
   const [scope, setScope] = useState<Scope>("CURRENT");
-  const [filter, setFilter] = useState<Filter>("ALL");
+  const [filter, setFilter] = useState<Filter>(() => routeFilter(readCrmRoute().filter) || "ALL");
   const [search, setSearch] = useState("");
   const [mechanic, setMechanic] = useState("ALL");
   const [vehicleIdFilter, setVehicleIdFilter] = useState<string | null>(null);
@@ -143,8 +147,14 @@ export function Diagnostics() {
     const route = readCrmRoute();
     const diagnosticId = route.diagnosticId || null;
     const vehicleId = route.vehicleId || null;
+    const nextFilter = routeFilter(route.filter);
     setRouteDiagnosticId(diagnosticId);
     setVehicleIdFilter(vehicleId);
+    if (nextFilter) {
+      setFilter(nextFilter);
+      if (nextFilter === "CONFIRMED" || nextFilter === "CANCELLED" || nextFilter === "COMMERCIAL") setScope("HISTORY");
+      else setScope("CURRENT");
+    }
     const matchingRows = nextRows.filter((row) => !vehicleId || row.vehicle.id === vehicleId);
     setSelectedId((current) => {
       if (diagnosticId && matchingRows.some((row) => row.id === diagnosticId)) return diagnosticId;
@@ -227,6 +237,7 @@ export function Diagnostics() {
       <button type="button" className={styles.summaryCard} onClick={() => { setScope("CURRENT"); setFilter("ALL"); }}><span>Поточні</span><strong>{rows.filter((row) => !isHistory(row)).length}</strong><small>записів у роботі</small></button>
       <button type="button" className={`${styles.summaryCard} ${styles.summaryAttention}`} onClick={() => { setScope("CURRENT"); setFilter("PENDING"); }}><span>Очікують</span><strong>{rows.filter((row) => workflowState(row) === "PENDING").length}</strong><small>ще не розпочаті</small></button>
       <button type="button" className={`${styles.summaryCard} ${styles.summaryProgress}`} onClick={() => { setScope("CURRENT"); setFilter("IN_PROGRESS"); }}><span>В роботі</span><strong>{rows.filter((row) => matchesFilter(row, "IN_PROGRESS")).length}</strong><small>механік перевіряє</small></button>
+      <button type="button" className={`${styles.summaryCard} ${styles.summaryAttention}`} onClick={() => { setScope("CURRENT"); setFilter("SUBMITTED"); }}><span>На перевірці</span><strong>{rows.filter((row) => workflowState(row) === "SUBMITTED").length}</strong><small>очікують сервіс-менеджера</small></button>
       <button type="button" className={`${styles.summaryCard} ${styles.summaryDone}`} onClick={() => { setScope("HISTORY"); setFilter("CONFIRMED"); }}><span>Завершені</span><strong>{rows.filter((row) => workflowState(row) === "CONFIRMED").length}</strong><small>карта сформована</small></button>
     </section>}
     {!routeDiagnosticId && <nav className={styles.filters} aria-label="Фільтр за етапом">{filters.map((item) => <button type="button" key={item.value} className={filter === item.value ? styles.activeFilter : ""} onClick={() => setFilter(item.value)}>{item.label}<span>{filterCount(item.value)}</span></button>)}</nav>}

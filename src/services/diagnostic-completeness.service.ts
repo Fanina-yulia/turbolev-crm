@@ -199,6 +199,26 @@ export async function submitStructuredDiagnosticRespectingOptional(
   const mechanic = await getMechanicByUserId(userId);
   const now = new Date();
   await prisma.$transaction(async (tx) => {
+    // The assignment is the location-scoped bridge between the mechanic
+    // cabinet and the CRM/service-advisor cabinet. Keep it in the same
+    // transaction as SUBMITTED so a completed diagnostic can never become
+    // invisible to the reviewer because the assignment was missing.
+    const existingAssignment = await tx.diagnosticAssignment.findUnique({
+      where: { diagnosticRequestId },
+      select: { locationId: true },
+    });
+    await tx.diagnosticAssignment.upsert({
+      where: { diagnosticRequestId },
+      create: {
+        diagnosticRequestId,
+        locationId: mechanic.locationId,
+        mechanicId: mechanic.id,
+      },
+      update: {
+        locationId: existingAssignment?.locationId || mechanic.locationId,
+        mechanicId: mechanic.id,
+      },
+    });
     await tx.diagnosticInspection.updateMany({
       where: { diagnosticRequestId },
       data: { status: DiagnosticInspectionStatus.COMPLETED, completedAt: now },

@@ -40,7 +40,7 @@ export async function getDiagnosticVehicleStatuses(vehicleIds: string[]) {
     ? await Promise.all([
         prisma.diagnosticReview.findMany({
           where: { diagnosticRequestId: { in: requestIds } },
-          select: { diagnosticRequestId: true, state: true, updatedAt: true },
+          select: { diagnosticRequestId: true, state: true, submittedAt: true, updatedAt: true },
         }),
         prisma.diagnosticCard.findMany({
           where: { diagnosticRequestId: { in: requestIds } },
@@ -61,7 +61,12 @@ export async function getDiagnosticVehicleStatuses(vehicleIds: string[]) {
 
     const review = reviewByRequest.get(request.id) || null;
     const card = cardByRequest.get(request.id) || null;
-    const updatedAt = newestDate(request.updatedAt, review?.updatedAt, card?.updatedAt);
+    const updatedAt = newestDate(request.updatedAt, review?.submittedAt, review?.updatedAt, card?.updatedAt);
+
+    if (review?.state === "SUBMITTED") {
+      result.set(vehicleId, statusItem("submitted", "На перевірці", "warning", request.id, updatedAt));
+      continue;
+    }
 
     if (review?.state === "RETURNED") {
       result.set(vehicleId, statusItem("in_progress", "На доопрацюванні", "warning", request.id, updatedAt));
@@ -69,8 +74,7 @@ export async function getDiagnosticVehicleStatuses(vehicleIds: string[]) {
     }
 
     const finalCard = request.status === "CONFIRMED" || Boolean(request.confirmedAt) || Boolean(card?.finalizedAt);
-    const reviewCardFormed = review?.state === "SUBMITTED" && Boolean(card && card.currentRevision > 0);
-    if (finalCard || reviewCardFormed) {
+    if (finalCard || review?.state === "CONFIRMED") {
       result.set(vehicleId, statusItem("completed", "Сформована", "success", request.id, updatedAt));
       continue;
     }

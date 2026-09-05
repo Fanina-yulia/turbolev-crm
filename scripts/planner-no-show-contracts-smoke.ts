@@ -4,7 +4,7 @@ import { PlannerAppointmentStatus } from "@/src/generated/prisma/client";
 import {
   automaticNoShowCutoff,
   isEligibleForAutomaticNoShow,
-} from "@/src/services/planner-no-show.service";
+} from "@/src/services/planner-no-show-policy";
 
 const now = new Date("2026-09-05T12:00:00.000Z");
 const exactlyAtCutoff = automaticNoShowCutoff(now);
