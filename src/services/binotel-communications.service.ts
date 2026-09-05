@@ -1,14 +1,17 @@
 import { randomUUID } from "node:crypto";
+import { PRIMARY_BINOTEL_PBX_NUMBER } from "@/src/domain/binotel-config";
 import { getSqlPool } from "@/src/lib/sql";
 
 export type BinotelInquirySyncInput = {
   callId: string;
   event: "incomingCall" | "answeredTheCall" | "hangupTheCall";
+  callType?: "INCOMING" | "OUTGOING" | null;
   phone: string;
   name?: string | null;
   status?: "ANSWERED" | "MISSED" | "BUSY" | null;
   duration?: number | null;
   internalNumber?: string | null;
+  pbxNumber?: string | null;
   recordingAvailable?: boolean;
   clientId?: string | null;
   leadId?: string | null;
@@ -37,49 +40,65 @@ function cleanName(value?: string | null) {
 
 function callCopy(input: BinotelInquirySyncInput) {
   const seconds = Math.max(0, Math.floor(input.duration || 0));
-  const duration = seconds ? ` · ${seconds} с` : "";
+  const duration = ` · ${seconds} с`;
+  const durationSuffix = seconds ? duration : "";
+  const isOutgoing = input.callType === "OUTGOING";
 
   if (input.status === "MISSED") {
+    if (isOutgoing) {
+      return {
+        subject: "Вихідний дзвінок без відповіді",
+        preview: `Вихідний дзвінок${durationSuffix} — без відповіді`,
+        message: `Вихідний дзвінок клієнту не завершився розмовою${durationSuffix}.`,
+      };
+    }
     return {
       subject: "Пропущений дзвінок",
-      preview: `Пропущений дзвінок${duration} — потрібно передзвонити`,
-      message: `Пропущений вхідний дзвінок${duration}. Потрібно передзвонити клієнту.`,
+      preview: `Пропущений дзвінок${durationSuffix} — потрібно передзвонити`,
+      message: `Пропущений вхідний дзвінок${durationSuffix}. Потрібно передзвонити клієнту.`,
     };
   }
 
   if (input.status === "BUSY") {
+    if (isOutgoing) {
+      return {
+        subject: "Вихідний дзвінок — зайнято",
+        preview: `Вихідний дзвінок${durationSuffix} — лінія зайнята`,
+        message: `Вихідний дзвінок клієнту не з’єднався${durationSuffix}.`,
+      };
+    }
     return {
       subject: "Неуспішний вхідний дзвінок",
-      preview: `Вхідний дзвінок не з’єднався${duration}`,
-      message: `Вхідний дзвінок не з’єднався${duration}. Потрібен повторний контакт.`,
+      preview: `Вхідний дзвінок не з’єднався${durationSuffix}`,
+      message: `Вхідний дзвінок не з’єднався${durationSuffix}. Потрібен повторний контакт.`,
     };
   }
 
   if (input.status === "ANSWERED") {
     return {
-      subject: "Вхідний дзвінок",
-      preview: `Розмова з клієнтом завершена${duration}`,
-      message: `Розмова з клієнтом завершена${duration}.${input.recordingAvailable ? " Запис розмови збережено в історії дзвінків." : ""}`,
+      subject: isOutgoing ? "Вихідний дзвінок" : "Вхідний дзвінок",
+      preview: `${isOutgoing ? "Вихідний дзвінок" : "Розмова з клієнтом завершена"}${durationSuffix}`,
+      message: `${isOutgoing ? "Вихідний дзвінок клієнту завершено" : "Розмова з клієнтом завершена"}${durationSuffix}.${input.recordingAvailable ? " Запис розмови збережено в історії дзвінків." : ""}`,
     };
   }
 
   if (input.event === "answeredTheCall") {
     return {
-      subject: "Вхідний дзвінок",
-      preview: "Менеджер відповів на дзвінок",
-      message: "Менеджер відповів на вхідний дзвінок.",
+      subject: isOutgoing ? "Вихідний дзвінок" : "Вхідний дзвінок",
+      preview: isOutgoing ? "Менеджер додзвонився клієнту" : "Менеджер відповів на дзвінок",
+      message: isOutgoing ? "Менеджер додзвонився клієнту." : "Менеджер відповів на вхідний дзвінок.",
     };
   }
 
   return {
-    subject: "Вхідний дзвінок",
-    preview: "Новий вхідний дзвінок",
-    message: "Новий вхідний дзвінок. Контакт зафіксовано в CRM.",
+    subject: isOutgoing ? "Вихідний дзвінок" : "Вхідний дзвінок",
+    preview: isOutgoing ? "Вихідний дзвінок клієнту" : "Новий вхідний дзвінок",
+    message: isOutgoing ? "Вихідний дзвінок клієнту зафіксовано в CRM." : "Новий вхідний дзвінок. Контакт зафіксовано в CRM.",
   };
 }
 
 /**
- * Mirrors an inbound Binotel call into the omnichannel Inbox.
+ * Mirrors a Binotel call into the omnichannel Inbox.
  *
  * Binotel is also a trusted source of the caller phone number: if this phone is not
  * known yet, CRM creates a lightweight Client card immediately and stores the number
@@ -91,10 +110,13 @@ export async function syncBinotelInquiry(input: BinotelInquirySyncInput) {
   const client = await pool.connect();
   const externalId = `binotel-call:${input.callId}`;
   const copy = callCopy(input);
+  const isOutgoing = input.callType === "OUTGOING";
   const isAnswered = input.status === "ANSWERED" || input.event === "answeredTheCall";
-  const state = input.leadId ? "LINKED" : isAnswered ? "IN_WORK" : "NEW";
-  const unread = !isAnswered;
-  const answered = isAnswered;
+  const isHandled = isOutgoing || isAnswered;
+  const state = input.leadId ? "LINKED" : isHandled ? "IN_WORK" : "NEW";
+  const unread = !isHandled;
+  const answered = isHandled;
+  const pbxNumber = normalizePhone(input.pbxNumber || PRIMARY_BINOTEL_PBX_NUMBER) || normalizePhone(PRIMARY_BINOTEL_PBX_NUMBER);
   const eventAt = input.occurredAt || new Date();
 
   try {
@@ -102,7 +124,7 @@ export async function syncBinotelInquiry(input: BinotelInquirySyncInput) {
 
     const phoneNormalized = normalizePhone(input.phone);
     let resolvedClientId = input.clientId || null;
-    if (!resolvedClientId && phoneNormalized.length === 12 && phoneNormalized.startsWith("380")) {
+    if (!resolvedClientId && input.callType !== "OUTGOING" && phoneNormalized.length === 12 && phoneNormalized.startsWith("380")) {
       const existingClient = await client.query(
         `SELECT DISTINCT c."id"
          FROM "Client" c
@@ -145,6 +167,8 @@ export async function syncBinotelInquiry(input: BinotelInquirySyncInput) {
       provider: "BINOTEL",
       callId: input.callId,
       event: input.event,
+      callType: input.callType || "INCOMING",
+      pbxNumber,
       callStatus: input.status || null,
       duration: Math.max(0, Math.floor(input.duration || 0)),
       internalNumber: input.internalNumber || null,
