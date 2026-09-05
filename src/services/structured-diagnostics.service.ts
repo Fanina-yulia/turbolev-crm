@@ -57,17 +57,38 @@ async function ensureReview(diagnosticRequestId: string) {
 async function backfillAssignmentsForMechanic(userId: string) {
   const prisma = getPrisma();
   const mechanic = await getMechanicByUserId(userId);
-  const appointments = await prisma.serviceAppointment.findMany({ where: { mechanicId: mechanic.id, status: { notIn: ["CANCELLED", "NO_SHOW", "RESERVE", "COMPLETED"] } }, select: { id: true, locationId: true, mechanicId: true, leadId: true, vehicleId: true, plannedStartAt: true, plannedEndAt: true, problem: true, post: { select: { name: true } } }, orderBy: { plannedStartAt: "asc" }, take: 40 });
-  const vehicleIds = appointments.flatMap((row) => row.vehicleId ? [row.vehicleId] : []);
-  const leadIds = appointments.flatMap((row) => row.leadId ? [row.leadId] : []);
-  const diagnostics = appointments.length ? await prisma.diagnosticRequest.findMany({ where: { status: { not: DiagnosticRequestStatus.CANCELLED }, OR: [{ vehicleId: { in: vehicleIds } }, { leadId: { in: leadIds } }] }, orderBy: [{ updatedAt: "desc" }, { createdAt: "desc" }] }) : [];
-  const diagnosticByAppointment = new Map<string, string>();
+  const appointments = await prisma.serviceAppointment.findMany({
+    where: { mechanicId: mechanic.id, status: { notIn: ["CANCELLED", "NO_SHOW", "RESERVE", "COMPLETED"] } },
+    select: { id: true, locationId: true, mechanicId: true, leadId: true, plannedStartAt: true, plannedEndAt: true, problem: true, post: { select: { name: true } } },
+    orderBy: { plannedStartAt: "asc" },
+    take: 40,
+  });
+  const links = await prisma.diagnosticVisitLink.findMany({
+    where: { appointmentId: { in: appointments.map((row) => row.id) } },
+    select: { appointmentId: true, diagnosticRequestId: true },
+  });
+  const diagnosticByAppointment = new Map(links.map((row) => [row.appointmentId, row.diagnosticRequestId]));
+  const legacyAppointments = appointments.filter((row) => !diagnosticByAppointment.has(row.id) && row.leadId);
+  const leadIds = Array.from(new Set(legacyAppointments.flatMap((row) => row.leadId ? [row.leadId] : [])));
+  const diagnostics = leadIds.length
+    ? await prisma.diagnosticRequest.findMany({
+        where: { status: { not: DiagnosticRequestStatus.CANCELLED }, leadId: { in: leadIds } },
+        orderBy: [{ updatedAt: "desc" }, { createdAt: "desc" }],
+      })
+    : [];
+  for (const appointment of legacyAppointments) {
+    const diagnostic = diagnostics.find((row) => row.leadId === appointment.leadId);
+    if (diagnostic) diagnosticByAppointment.set(appointment.id, diagnostic.id);
+  }
   for (const appointment of appointments) {
-    const diagnostic = diagnostics.find((row) => Boolean(appointment.leadId && row.leadId === appointment.leadId)) || diagnostics.find((row) => Boolean(appointment.vehicleId && row.vehicleId === appointment.vehicleId));
-    if (!diagnostic) continue;
-    diagnosticByAppointment.set(appointment.id, diagnostic.id);
-    await prisma.diagnosticAssignment.upsert({ where: { diagnosticRequestId: diagnostic.id }, create: { diagnosticRequestId: diagnostic.id, locationId: appointment.locationId, mechanicId: mechanic.id }, update: { locationId: appointment.locationId, mechanicId: mechanic.id } });
-    await ensureReview(diagnostic.id);
+    const diagnosticId = diagnosticByAppointment.get(appointment.id);
+    if (!diagnosticId) continue;
+    await prisma.diagnosticAssignment.upsert({
+      where: { diagnosticRequestId: diagnosticId },
+      create: { diagnosticRequestId: diagnosticId, locationId: appointment.locationId, mechanicId: mechanic.id },
+      update: { locationId: appointment.locationId, mechanicId: mechanic.id },
+    });
+    await ensureReview(diagnosticId);
   }
   return { mechanic, appointments, diagnosticByAppointment };
 }
