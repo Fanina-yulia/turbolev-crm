@@ -88,6 +88,30 @@ body {
   min-width: 0;
 }
 
+/* CSS-module class names are hashed in production. Match their stable
+   fragments so the page contract also applies to module-local layouts. */
+.workspace :where(
+  [class*="_page__"],
+  [class*="_root__"],
+  [class*="_content__"],
+  [class*="_contentArea__"],
+  [class*="_workspace__"],
+  [class*="_layout__"],
+  [class*="_columns__"]
+) {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+/* The shell owns horizontal gutters. Local page padding was being added a
+   second time and was the main source of cramped 15-inch layouts. */
+.workspace :where([class*="_page__"], [class*="_root__"]) {
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+}
+
 .workspace :where(.header, .pageHeader, .topbar, .sectionHead, .contentHeading, .panelHead, .toolbar, .actions, .topActions) {
   max-width: 100%;
 }
@@ -194,7 +218,6 @@ body {
   .workspace :where([class*="_contextHeader__"], [class*="_contextGrid__"]) {
     grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
   }
-
 }
 
 @media (max-width: 900px) {
@@ -224,7 +247,6 @@ body {
     min-width: 0;
     max-width: 100%;
   }
-
 }
 
 @media (max-width: 760px) {
@@ -316,7 +338,6 @@ body {
     width: 100%;
     flex: 1 1 100%;
   }
-
 }
 
 /* Feedback surfaces are mounted outside .workspace. Keep them readable and

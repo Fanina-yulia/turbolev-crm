@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { DocumentTemplateBuilder } from "./document-template-builder";
 import {
   APPEARANCE_PRESETS,
   APPEARANCE_CACHE_KEY,
@@ -239,6 +240,7 @@ export function AppearanceSettingsPanel() {
         </section>
       </div>
     </div>
+    <DocumentTemplateBuilder />
   </section>;
 }
 
