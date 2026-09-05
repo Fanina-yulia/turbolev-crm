@@ -175,10 +175,11 @@
 
 .registryOnly .row {
   display: grid;
-  grid-template-columns: 130px minmax(210px, 1.35fr) minmax(150px, 1fr) minmax(150px, 1fr) minmax(190px, 1.25fr) 160px;
-  align-items: center;
-  gap: 12px;
-  padding: 13px 16px;
+  grid-template-columns: 136px minmax(235px, 1.35fr) minmax(165px, 1fr) minmax(165px, 1fr) minmax(210px, 1.25fr) 176px;
+  align-items: start;
+  column-gap: 12px;
+  row-gap: 10px;
+  padding: 14px 16px 11px;
 }
 
 .detailOnly {
@@ -380,7 +381,18 @@
 
 .registryOnly .rowBottom {
   grid-column: 1 / -1;
+  min-height: 27px;
   margin-top: 0;
+}
+
+.registryOnly .rowBottom .workOrderBadge {
+  margin-top: 0;
+}
+
+.registryOnly .rowCell small,
+.registryOnly .rowDate time {
+  line-height: 1.35;
+  font-variant-numeric: tabular-nums;
 }
 
 .rowStatus,
@@ -390,9 +402,51 @@
   min-width: 0;
 }
 
+.registryOnly .rowStatus,
+.registryOnly .rowVehicle,
+.registryOnly .rowCell,
+.registryOnly .rowDate {
+  align-self: start;
+  min-height: 58px;
+}
+
+.registryOnly .rowStatus {
+  padding-top: 2px;
+}
+
+.registryOnly .rowVehicle {
+  display: grid;
+  align-content: start;
+  justify-items: start;
+  gap: 6px;
+}
+
+.registryOnly .rowVehicle > strong {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text);
+  font-size: 14px;
+  line-height: 18px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.registryOnly .rowVehicle > span {
+  margin-left: 0;
+}
+
+.registryOnly .rowVehicle > [data-vehicle-plate="true"] {
+  display: block;
+  flex: 0 0 auto;
+  margin: 0;
+}
+
 .rowCell,
 .rowDate {
   display: grid;
+  align-content: start;
   gap: 3px;
 }
 
@@ -615,6 +669,10 @@
   .infoGrid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+
+  .registryOnly .row {
+    grid-template-columns: 122px minmax(200px, 1.15fr) minmax(140px, 1fr) minmax(140px, 1fr) minmax(175px, 1.1fr) 150px;
+  }
 }
 
 @media (max-width: 850px) {
@@ -722,6 +780,16 @@
   .registryOnly .rowCell:nth-child(5),
   .registryOnly .rowBottom {
     grid-column: 1 / -1;
+  }
+
+  .registryOnly .rowVehicle {
+    min-height: auto;
+  }
+
+  .registryOnly .rowVehicle > strong {
+    overflow: visible;
+    text-overflow: clip;
+    white-space: normal;
   }
 }
 
