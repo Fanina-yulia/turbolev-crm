@@ -6,6 +6,15 @@
 .commsListScroll{overflow:visible}
 .threadMessages{flex:none;overflow:visible}
 .commsContext{overflow:visible}
+@media(max-width:900px) and (min-width:761px){
+  .commsTop{flex-wrap:wrap}
+  .commsTopRight{margin-left:auto}
+  .commsLayout{grid-template-columns:1fr}
+  .commsFilters{border-right:0;border-bottom:1px solid var(--line);display:grid;grid-template-columns:repeat(4,minmax(0,1fr));align-items:start}
+  .commsFilterTitle,.commsRule{grid-column:1/-1}
+  .commsList{border-right:0;border-bottom:1px solid var(--line)}
+  .commsThread{border-right:0;border-bottom:1px solid var(--line)}
+}
 @media(max-width:760px){
   .commsFilters{max-height:none;overflow:visible}
   .commsList{max-height:none;overflow:visible}

@@ -27,3 +27,124 @@
 }
 @media(max-width:1180px){.header{grid-template-columns:minmax(210px,35%) minmax(0,1fr)}.vehicleSummary{grid-template-columns:minmax(0,1fr) minmax(200px,34%);gap:12px}.ownerBar{grid-template-columns:1fr;gap:8px;padding-left:12px}.ownerBar :global([class*="_actions"]){width:100%;justify-content:flex-start}.ownerBar{align-content:center}}
 @media(max-width:760px){.pageTopline{display:grid;gap:12px}.pageTopline h1{font-size:25px}.pageTopline p{font-size:14px}.pageTopline .back{justify-self:start}.header{display:flex;flex-direction:column;gap:0;min-height:0;padding:0}.vehiclePhoto{min-height:190px;padding:10px 12px;border-right:0;border-bottom:1px solid var(--line)}.vehiclePhoto :global([data-vehicle-render]){width:min(100%,320px);height:180px}.vehicleSummary{display:grid;grid-template-columns:1fr;gap:18px;min-height:0;padding:18px 16px 16px}.header h2{font-size:25px}.ownerBar{margin:0;padding:16px 0 0;border-left:0;border-top:1px solid var(--line)}.ownerBar :global([class*="_actions"]){width:auto}.tabs{justify-content:flex-start;margin:0 -4px}.tabs button{white-space:nowrap}.proposalLayout{grid-template-columns:1fr}}
+
+/* CRM-UI-003: the vehicle record must grow with the document.  The previous
+   desktop layout reserved a wide owner column, kept actions on one line, and
+   clipped the header; on laptop widths that hid the right-most actions. */
+.page {
+  overflow-x: visible;
+  overflow-wrap: anywhere;
+}
+
+.header {
+  min-height: 0;
+  overflow: visible;
+  grid-template-columns: minmax(210px, 34%) minmax(0, 1fr);
+  padding: 12px 16px;
+}
+
+.vehiclePhoto {
+  min-height: clamp(140px, 11vw, 176px);
+  padding-inline: 12px;
+}
+
+.vehiclePhoto :global([data-vehicle-render]) {
+  width: min(100%, 320px) !important;
+  height: clamp(140px, 11vw, 176px) !important;
+}
+
+.vehicleSummary {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 280px);
+  gap: 16px;
+  padding-left: 20px;
+}
+
+.ownerBar {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 10px;
+  padding-left: 16px;
+}
+
+.ownerBar :global([class*="_actions"]) {
+  width: 100%;
+  min-width: 0;
+  flex: 1 1 auto;
+  flex-wrap: wrap;
+  justify-content: flex-start;
+}
+
+.tabs {
+  justify-content: flex-start;
+  flex-wrap: wrap;
+  overflow: visible;
+}
+
+.tabs button {
+  min-height: 40px;
+}
+
+@media (min-width: 1760px) {
+  .vehicleSummary {
+    grid-template-columns: minmax(0, 1fr) minmax(250px, 31%);
+  }
+
+  .ownerBar {
+    grid-template-columns: minmax(0, 1fr) minmax(0, auto);
+  }
+
+  .ownerBar :global([class*="_actions"]) {
+    width: auto;
+    justify-content: flex-end;
+  }
+}
+
+@media (max-width: 1180px) and (min-width: 761px) {
+  .header {
+    grid-template-columns: minmax(180px, 32%) minmax(0, 1fr);
+  }
+
+  .vehicleSummary {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 12px;
+    padding-left: 16px;
+  }
+
+  .ownerBar {
+    grid-template-columns: minmax(0, 1fr);
+    padding-left: 0;
+    border-left: 0;
+  }
+
+  .vehiclePhoto {
+    min-height: 136px;
+  }
+
+  .vehiclePhoto :global([data-vehicle-render]) {
+    width: min(100%, 280px) !important;
+    height: 150px !important;
+  }
+}
+
+@media (max-width: 900px) and (min-width: 761px) {
+  .pageTopline {
+    flex-wrap: wrap;
+  }
+
+  .pageTopline > div {
+    min-width: min(100%, 360px);
+  }
+
+  .header {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .vehiclePhoto {
+    min-height: 150px;
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .vehicleSummary {
+    padding: 14px 16px 16px;
+  }
+}

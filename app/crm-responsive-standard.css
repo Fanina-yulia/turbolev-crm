@@ -224,3 +224,146 @@ body {
     transition: none !important;
   }
 }
+
+/* CRM-UI-003 / second pass — layout safety.  This layer is intentionally
+   loaded last: it neutralizes legacy module defaults that can widen or clip a
+   page after a responsive breakpoint.  It never changes the documented
+   scroll-zone exceptions (tables, planner boards, galleries and dialogs). */
+.workspace,
+.workspace > *,
+.workspace :where(main, section, article, aside, header, footer, nav, form, fieldset, div, ul, ol, li) {
+  box-sizing: border-box;
+}
+
+.workspace :where(
+  [class*="_page__"],
+  [class*="_layout__"],
+  [class*="_columns__"],
+  [class*="_header__"],
+  [class*="_toolbar__"],
+  [class*="_topbar__"],
+  [class*="_panelHead__"],
+  [class*="_contentHeading__"]
+) {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.workspace :where(
+  .plate,
+  [class*="_plate__"],
+  [class*="_vin__"],
+  code
+) {
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+.workspace :where([class*="_page__"], [class*="_layout__"]) {
+  overflow-x: visible;
+}
+
+.workspace :where(
+  [class*="_header__"],
+  [class*="_pageHeader__"],
+  [class*="_toolbar__"],
+  [class*="_actions__"],
+  [class*="_topActions__"]
+) {
+  min-width: 0;
+}
+
+.workspace :where(
+  [class*="_header__"] > *,
+  [class*="_pageHeader__"] > *,
+  [class*="_toolbar__"] > *,
+  [class*="_actions__"] > *,
+  [class*="_topActions__"] > *
+) {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.workspace :where(
+  [class*="_actions__"],
+  [class*="_topActions__"]
+) {
+  min-width: 0;
+}
+
+@media (max-width: 1180px) and (min-width: 761px) {
+  :root {
+    --crm-layout-gutter: 16px;
+  }
+
+  .workspace :where(
+    [class*="_twoColumns__"],
+    [class*="_twoCols__"],
+    [class*="_gridTwo__"],
+    [class*="_columns__"],
+    [class*="_proposalLayout__"],
+    [class*="_settingsLayout__"],
+    [class*="new-inquiries_workspace__"]
+  ) {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .workspace :where(
+    [class*="new-inquiries_queuePane__"],
+    [class*="new-inquiries_detailPane__"]
+  ) {
+    min-height: 0;
+  }
+
+  .workspace :where([class*="new-inquiries_queuePane__"]) {
+    height: auto !important;
+    max-height: none !important;
+  }
+
+  .workspace :where([class*="new-inquiries_detailPane__"]) {
+    position: static !important;
+  }
+
+  .workspace :where(
+    [class*="_header__"] > *,
+    [class*="_pageHeader__"] > *
+  ) {
+    flex: 1 1 260px;
+  }
+}
+
+@media (max-width: 900px) {
+  .workspace :where(
+    [class*="_grid__"],
+    [class*="_columns__"],
+    [class*="_twoColumns__"],
+    [class*="_twoCols__"],
+    [class*="_gridTwo__"],
+    [class*="_layout__"],
+    [class*="parts-catalog-diagram_workspace__"]
+  ) {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .workspace :where(
+    [class*="_header__"],
+    [class*="_pageHeader__"],
+    [class*="_contentHeading__"],
+    [class*="_panelHead__"]
+  ) {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+}
+
+@media (max-width: 760px) {
+  .workspace :where(
+    [class*="_page__"],
+    [class*="_layout__"],
+    [class*="_columns__"]
+  ) {
+    width: 100%;
+    padding-inline: 0;
+  }
+}

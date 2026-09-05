@@ -155,3 +155,11 @@
     height: 30px;
   }
 }
+
+/* CRM-UI-003: this standalone cabinet is still rendered inside the CRM
+   workspace, so it must follow the same document-flow contract. */
+.page {
+  overflow-x: visible;
+  min-width: 0;
+  max-width: 100%;
+}
