@@ -18,7 +18,7 @@ import styles from "./role-cabinet.module.css";
 
 type FlowRoute = { label: string; value: number; section: CrmSectionLabel; params?: CrmRouteParams };
 type LinkedStationManagerCabinet = Extract<StationManagerCabinetPayload, { linked: true }>;
-type ManagerAttentionFilter = "ALL" | "MISSED_CALL" | "NEW_INQUIRY" | "STUCK_CARS" | "COMMERCIAL_PROPOSAL_NOT_SENT" | "CUSTOMER_DECISION_WAIT" | "PARTS_BLOCKING" | "NO_SHOW" | "NO_MECHANIC";
+type ManagerAttentionFilter = "ALL" | "NEW_INQUIRY" | "STUCK_CARS" | "COMMERCIAL_PROPOSAL_NOT_SENT" | "CUSTOMER_DECISION_WAIT" | "PARTS_BLOCKING" | "NO_SHOW" | "NO_MECHANIC";
 
 const STUCK_CAR_CODES = new Set([
   "ARRIVED_STALLED",
@@ -93,13 +93,12 @@ function StationManagerLinkedCabinet({ data, userName }: { data: LinkedStationMa
   ];
 
   const filteredAttention = useMemo(
-    () => data.attention.filter((item) => attentionMatches(item, attentionFilter)),
+    () => data.attention.filter((item) => item.code !== "MISSED_CALL" && attentionMatches(item, attentionFilter)),
     [data.attention, attentionFilter],
   );
 
   const filterLabels: Record<ManagerAttentionFilter, string> = {
     ALL: "Усі сигнали",
-    MISSED_CALL: "Пропущені дзвінки",
     NEW_INQUIRY: "Нові звернення",
     STUCK_CARS: "Завислі авто",
     COMMERCIAL_PROPOSAL_NOT_SENT: "КП не відправлена",
@@ -115,7 +114,6 @@ function StationManagerLinkedCabinet({ data, userName }: { data: LinkedStationMa
   };
 
   const roleKpis: Array<{ label: string; value: number; hint: string; filter: ManagerAttentionFilter; critical?: boolean }> = [
-    { label: "Пропущені дзвінки", value: data.kpis.missedCalls, hint: "ще не опрацьовані", filter: "MISSED_CALL", critical: true },
     { label: "Нові звернення", value: data.kpis.newInquiries, hint: "очікують першої реакції", filter: "NEW_INQUIRY" },
     { label: "Завислі авто", value: data.kpis.stuckCars, hint: "процес не рухається", filter: "STUCK_CARS", critical: true },
     { label: "КП не відправлена", value: data.kpis.proposalsNotSent, hint: "кошторис готовий як DRAFT", filter: "COMMERCIAL_PROPOSAL_NOT_SENT", critical: true },
