@@ -18,7 +18,7 @@ import styles from "./role-cabinet.module.css";
 
 type FlowRoute = { label: string; value: number; section: CrmSectionLabel; params?: CrmRouteParams };
 type LinkedStationManagerCabinet = Extract<StationManagerCabinetPayload, { linked: true }>;
-type ManagerAttentionFilter = "ALL" | "NEW_INQUIRY" | "STUCK_CARS" | "COMMERCIAL_PROPOSAL_NOT_SENT" | "CUSTOMER_DECISION_WAIT" | "PARTS_BLOCKING" | "NO_SHOW" | "NO_MECHANIC";
+type ManagerAttentionFilter = "ALL" | "NEW_INQUIRY" | "STUCK_CARS" | "COMMERCIAL_PROPOSAL_NOT_SENT" | "CUSTOMER_DECISION_WAIT" | "PARTS_BLOCKING" | "UNPAID_WORK" | "NO_SHOW" | "NO_MECHANIC";
 
 const STUCK_CAR_CODES = new Set([
   "ARRIVED_STALLED",
@@ -30,13 +30,13 @@ const STUCK_CAR_CODES = new Set([
   "READY_FOR_REPAIR_STALLED",
   "REPAIR_OVERRUN",
   "QC_STALLED",
-  "PAYMENT_STALLED",
   "PICKUP_STALLED",
   "PAUSED_STALLED",
   "PLAN_OVERRUN",
 ]);
 
 const PARTS_BLOCKING_CODES = new Set(["PARTS_SELECTION_STALLED", "PARTS_ETA_OVERDUE", "PARTS_ETA_MISSING"]);
+const UNPAID_WORK_CODES = new Set(["PAYMENT_STALLED"]);
 
 function Loading() {
   return <div className={styles.state}><strong>Завантажую робочий кабінет…</strong><span>Дані беруться з поточного профілю доступу.</span></div>;
@@ -65,6 +65,7 @@ function attentionMatches(item: StationManagerAttentionContract, filter: Manager
   if (filter === "ALL") return true;
   if (filter === "STUCK_CARS") return STUCK_CAR_CODES.has(item.code);
   if (filter === "PARTS_BLOCKING") return PARTS_BLOCKING_CODES.has(item.code);
+  if (filter === "UNPAID_WORK") return UNPAID_WORK_CODES.has(item.code);
   return item.code === filter;
 }
 
@@ -104,6 +105,7 @@ function StationManagerLinkedCabinet({ data, userName }: { data: LinkedStationMa
     COMMERCIAL_PROPOSAL_NOT_SENT: "КП не відправлена",
     CUSTOMER_DECISION_WAIT: "Очікуємо рішення клієнта",
     PARTS_BLOCKING: "Запчастини блокують ремонт",
+    UNPAID_WORK: "Не оплачені роботи",
     NO_SHOW: "Не прибули",
     NO_MECHANIC: "Без механіка",
   };
@@ -116,7 +118,8 @@ function StationManagerLinkedCabinet({ data, userName }: { data: LinkedStationMa
   const roleKpis: Array<{ label: string; value: number; hint: string; filter: ManagerAttentionFilter; critical?: boolean }> = [
     { label: "Нові звернення", value: data.kpis.newInquiries, hint: "очікують першої реакції", filter: "NEW_INQUIRY" },
     { label: "Завислі авто", value: data.kpis.stuckCars, hint: "процес не рухається", filter: "STUCK_CARS", critical: true },
-    { label: "КП не відправлена", value: data.kpis.proposalsNotSent, hint: "кошторис готовий як DRAFT", filter: "COMMERCIAL_PROPOSAL_NOT_SENT", critical: true },
+    { label: "КП не відправлена", value: data.kpis.proposalsNotSent, hint: "понад 1 годину", filter: "COMMERCIAL_PROPOSAL_NOT_SENT", critical: true },
+    { label: "Не оплачені роботи", value: data.kpis.unpaidWorks, hint: "очікують оплату понад годину", filter: "UNPAID_WORK", critical: true },
     { label: "Очікуємо рішення", value: data.kpis.waitingCustomerDecision, hint: "КП відправлена клієнту", filter: "CUSTOMER_DECISION_WAIT" },
     { label: "Блокують запчастини", value: data.kpis.partsBlocking, hint: "підбір, ETA або поставка", filter: "PARTS_BLOCKING" },
     { label: "Не прибули", value: data.kpis.noShow, hint: "потребують рішення по запису", filter: "NO_SHOW" },

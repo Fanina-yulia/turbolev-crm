@@ -156,10 +156,11 @@ function parseManagerKpis(value: unknown): StationManagerKpisContract | null {
   const proposalsNotSent = nonNegativeInteger(value.proposalsNotSent);
   const waitingCustomerDecision = nonNegativeInteger(value.waitingCustomerDecision);
   const partsBlocking = nonNegativeInteger(value.partsBlocking);
+  const unpaidWorks = nonNegativeInteger(value.unpaidWorks);
   if (
     carsToday == null || carsOnStation == null || inRepair == null || postsOccupied == null || postsTotal == null || mechanicsTotal == null
     || noShow == null || needsAction == null || overdue == null || unassigned == null || missedCalls == null || newInquiries == null
-    || stuckCars == null || proposalsNotSent == null || waitingCustomerDecision == null || partsBlocking == null
+    || stuckCars == null || proposalsNotSent == null || waitingCustomerDecision == null || partsBlocking == null || unpaidWorks == null
   ) return null;
   return {
     carsToday,
@@ -178,6 +179,7 @@ function parseManagerKpis(value: unknown): StationManagerKpisContract | null {
     proposalsNotSent,
     waitingCustomerDecision,
     partsBlocking,
+    unpaidWorks,
   };
 }
 
