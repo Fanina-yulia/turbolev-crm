@@ -53,6 +53,7 @@ type StationInquiry = {
   plate: string | null;
   name: string | null;
   receivedAt: Date;
+  answered: boolean;
   assignedUserId: string | null;
   leadId: string | null;
   metadata: unknown;
@@ -72,9 +73,12 @@ function ageMinutes(anchor: Date, now: Date) {
 
 function isMissedCall(row: StationInquiry) {
   const metadata = record(row.metadata);
-  if (text(metadata.callStatus)?.toUpperCase() === "MISSED") return true;
+  const callStatus = text(metadata.callStatus)?.toUpperCase();
+  if (callStatus === "MISSED" || callStatus === "BUSY" || metadata.missedCall === true) return true;
+  if (row.channel !== "BINOTEL") return false;
+  if (row.answered === false) return true;
   const copy = `${row.subject} ${row.preview}`.toLocaleLowerCase("uk-UA");
-  return row.channel === "BINOTEL" && copy.includes("пропущ");
+  return copy.includes("пропущ") || copy.includes("не з'єдна") || copy.includes("не з’єдна");
 }
 
 function priorityRank(priority: StationManagerControlPriority) {
@@ -178,6 +182,7 @@ async function stationInquiries(locationId: string): Promise<StationInquiry[]> {
         plate: true,
         name: true,
         receivedAt: true,
+        answered: true,
         assignedUserId: true,
         leadId: true,
         metadata: true,
@@ -267,27 +272,24 @@ export async function buildStationManagerControlCenter(input: {
 
   const signals: StationManagerControlSignal[] = [];
   for (const row of inquiries) {
-    const missed = isMissedCall(row);
-    if (missed) continue;
+    if (isMissedCall(row)) continue;
     const age = ageMinutes(row.receivedAt, now);
     const dueAt = new Date(row.receivedAt.getTime() + 15 * MINUTE_MS);
     signals.push({
       id: `inquiry:${row.id}`,
       sourceType: "INQUIRY",
       sourceId: row.id,
-      code: missed ? "MISSED_CALL" : "NEW_INQUIRY",
-      title: missed ? "Пропущений дзвінок без реакції" : "Нове звернення без опрацювання",
+      code: "NEW_INQUIRY",
+      title: "Нове звернення без опрацювання",
       description: [row.subject, row.preview].filter(Boolean).join(" · ").slice(0, 360) || null,
-      priority: missed || age >= 60 ? "CRITICAL" : age >= 15 ? "HIGH" : "NORMAL",
-      reason: missed
-        ? "Клієнт телефонував, але дзвінок залишається у нових зверненнях і ще не опрацьований."
-        : "Звернення ще не взяте в роботу. Норматив першої реакції — до 15 хв.",
+      priority: age >= 60 ? "CRITICAL" : age >= 15 ? "HIGH" : "NORMAL",
+      reason: "Звернення ще не взяте в роботу. Норматив першої реакції — до 15 хв.",
       overdue: dueAt <= now,
       waitingMinutes: age,
       plate: row.plate,
       vehicle: row.vehicle,
       customer: row.name || row.phone,
-      action: { label: missed ? "Опрацювати дзвінок" : "Відкрити звернення", section: "Нові звернення", params: { inquiryId: row.id } },
+      action: { label: "Відкрити звернення", section: "Нові звернення", params: { inquiryId: row.id } },
     });
   }
 
