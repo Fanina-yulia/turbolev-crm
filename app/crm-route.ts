@@ -75,6 +75,47 @@ export const CRM_ROUTE_KEYS: Array<keyof CrmRouteParams> = [
   "workflowFocus",
 ];
 
+let pendingModifiedNavigation = false;
+let modifiedNavigationToken = 0;
+
+export function armModifiedCrmNavigation() {
+  const token = ++modifiedNavigationToken;
+  pendingModifiedNavigation = true;
+  const clearPending = () => {
+    if (modifiedNavigationToken === token) pendingModifiedNavigation = false;
+  };
+
+  if (typeof queueMicrotask === "function") queueMicrotask(clearPending);
+  else setTimeout(clearPending, 0);
+}
+
+function consumeModifiedCrmNavigation() {
+  if (!pendingModifiedNavigation) return false;
+  pendingModifiedNavigation = false;
+  return true;
+}
+
+export function commitCrmNavigation(nextUrl: string, historyMode: "push" | "replace" = "push") {
+  if (typeof window === "undefined") return false;
+
+  if (consumeModifiedCrmNavigation()) {
+    const opened = window.open(new URL(nextUrl, window.location.origin).toString(), "_blank");
+    if (opened) {
+      try {
+        opened.opener = null;
+      } catch {
+        // Some browsers expose opener as read-only.
+      }
+      return true;
+    }
+  }
+
+  if (historyMode === "replace") window.history.replaceState({}, "", nextUrl);
+  else window.history.pushState({}, "", nextUrl);
+  return false;
+}
+
+
 export function readCrmRoute(): CrmRouteParams {
   if (typeof window === "undefined") return {};
   const params = new URL(window.location.href).searchParams;
@@ -148,6 +189,7 @@ export function navigateCrm(section: CrmSectionLabel, params: CrmRouteParams = {
     if (value) url.searchParams.set(key, value);
   }
 
-  window.history.pushState({}, "", `${url.pathname}${url.search}${url.hash}`);
+  const nextUrl = `${url.pathname}${url.search}${url.hash}`;
+  if (commitCrmNavigation(nextUrl)) return;
   window.dispatchEvent(new PopStateEvent("popstate"));
 }
