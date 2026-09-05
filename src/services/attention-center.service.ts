@@ -236,10 +236,27 @@ function isMissedCallTask(task: TaskLike) {
   if (task.sourceType !== "INQUIRY") return false;
   const metadata = metadataRecord(task.metadata);
   const callStatus = typeof metadata.callStatus === "string" ? metadata.callStatus.toUpperCase() : "";
-  if (callStatus === "MISSED" || metadata.missedCall === true) return true;
+  if (callStatus === "MISSED" || callStatus === "BUSY" || metadata.missedCall === true || metadata.answered === false) return true;
   const text = `${task.title} ${task.description || ""}`.toLocaleLowerCase("uk-UA");
   return text.includes("пропущен") || text.includes("пропущений дзвінок")
-    || (String(metadata.channel || "").toUpperCase() === "BINOTEL" && text.includes("дзвін"));
+    || (String(metadata.channel || "").toUpperCase() === "BINOTEL"
+      && (text.includes("не з'єдна") || text.includes("не з’єдна")));
+}
+
+function isMissedCallInquiry(item: {
+  channel: string;
+  subject: string | null;
+  preview: string | null;
+  answered: boolean | null;
+  metadata: unknown;
+}) {
+  const metadata = metadataRecord(item.metadata);
+  const callStatus = typeof metadata.callStatus === "string" ? metadata.callStatus.toUpperCase() : "";
+  if (callStatus === "MISSED" || callStatus === "BUSY" || metadata.missedCall === true) return true;
+  if (item.channel !== "BINOTEL") return false;
+  if (item.answered === false) return true;
+  const text = `${item.subject || ""} ${item.preview || ""}`.toLocaleLowerCase("uk-UA");
+  return text.includes("пропущ") || text.includes("не з'єдна") || text.includes("не з’єдна");
 }
 
 function categoryForTask(sourceType: string): AttentionCategory {
@@ -487,7 +504,7 @@ export async function buildAttentionCenter(options: AttentionCenterOptions): Pro
     options.canCommunications
       ? prisma.communicationInquiry.findMany({
           where: { state: InquiryState.NEW },
-          select: { id: true, channel: true, subject: true, preview: true, receivedAt: true, phone: true, vehicle: true, plate: true },
+          select: { id: true, channel: true, subject: true, preview: true, receivedAt: true, phone: true, vehicle: true, plate: true, answered: true, metadata: true },
           orderBy: { receivedAt: "asc" },
           take: 250,
         })
@@ -626,7 +643,7 @@ export async function buildAttentionCenter(options: AttentionCenterOptions): Pro
     if (taskSourceKeys.has(`INQUIRY:${item.id}`)) continue;
     const age = ageMinutes(item.receivedAt, now);
     const text = `${String(item.subject || "")} ${String(item.preview || "")}`.toLocaleLowerCase("uk-UA");
-    if (item.channel === "BINOTEL" && text.includes("пропущ")) continue;
+    if (isMissedCallInquiry(item)) continue;
     const due = new Date(item.receivedAt.getTime() + 15 * MINUTE_MS);
     signals.push(signal({
       id: `inquiry:${item.id}`,
