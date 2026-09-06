@@ -32,8 +32,9 @@ export function VehicleBrandLogo({ brand, size = 42, className = "" }: Props) {
 
   useEffect(() => setFailed(false), [src]);
 
-  const initials = label.split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase();
+  if (failed) return null;
+
   return <span className={`${styles.logo} ${className}`} style={{ width: size, height: size }} title={label}>
-    {!failed ? <img src={src} alt={`${label} logo`} width={size - 14} height={size - 14} onError={() => setFailed(true)} /> : <b>{initials || "A"}</b>}
+    <img src={src} alt={`${label} logo`} width={size - 14} height={size - 14} onError={() => setFailed(true)} />
   </span>;
 }
