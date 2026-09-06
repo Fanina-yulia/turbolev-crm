@@ -55,3 +55,118 @@
   .technicalGrid{gap:7px}
   .technicalGrid>div{padding:12px}
 }
+
+/* CRM-UI-004: the client vehicle page must remain readable when the browser
+   is zoomed or the page is embedded in a narrow shell. The previous 700px
+   breakpoint was too late for several laptop and browser-zoom combinations. */
+.shell {
+  min-width: 0;
+  max-width: 100%;
+  container-type: inline-size;
+}
+
+.vehicleCard,
+.vehiclePhoto,
+.vehicleSummary,
+.vehicleTabs,
+.ownerSection,
+.technicalSection,
+.timelineSection,
+.section,
+.approvalSection,
+.calmCard {
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.vehicleCard {
+  overflow: hidden;
+}
+
+.vehiclePhoto [data-vehicle-render] {
+  display: grid;
+  width: min(100%, 420px) !important;
+  max-width: 100% !important;
+  height: 220px !important;
+  max-height: 220px !important;
+}
+
+.vehiclePhoto [data-vehicle-render] img {
+  width: 100% !important;
+  max-width: 100% !important;
+  height: 100% !important;
+  max-height: 100% !important;
+  object-fit: contain !important;
+}
+
+.vehicleSummary h1,
+.vehicleIdentifiers,
+.vinValue,
+.technicalGrid b {
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 960px) {
+  .vehicleCard {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto;
+    gap: 0;
+  }
+
+  .vehiclePhoto {
+    min-height: 190px;
+    border-radius: 16px 16px 0 0;
+  }
+
+  .vehiclePhoto [data-vehicle-render] {
+    width: min(100%, 360px) !important;
+    height: 190px !important;
+    max-height: 190px !important;
+  }
+
+  .vehicleSummary {
+    padding: 18px 16px 14px;
+  }
+
+  .vehicleTabs {
+    grid-column: 1;
+    justify-content: flex-start;
+    overflow-x: auto;
+  }
+}
+
+@container (max-width: 760px) {
+  .vehicleCard {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .vehiclePhoto {
+    min-height: 170px;
+    border-radius: 0;
+  }
+
+  .vehiclePhoto [data-vehicle-render] {
+    width: min(100%, 320px) !important;
+    height: 170px !important;
+    max-height: 170px !important;
+  }
+
+  .vehicleSummary h1 {
+    font-size: 26px;
+  }
+
+  .vehicleTabs {
+    margin-top: 0;
+  }
+
+  .ownerCard {
+    min-width: 0;
+  }
+
+  .technicalGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

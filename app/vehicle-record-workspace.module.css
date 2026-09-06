@@ -148,3 +148,90 @@
     padding: 14px 16px 16px;
   }
 }
+
+/* CRM-UI-004: full vehicle-record view shares the same bounded header rules as
+   the drawer. It must never let the image or contact actions widen the CRM
+   workspace on a 15-inch display or under browser zoom. */
+.page,
+.pageTopline,
+.header,
+.vehiclePhoto,
+.vehicleSummary,
+.identityCopy,
+.ownerBar,
+.content {
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.header {
+  overflow: hidden;
+}
+
+.vehiclePhoto {
+  overflow: hidden;
+}
+
+.vehiclePhoto :global([data-vehicle-render]) {
+  display: grid;
+  width: min(100%, 320px) !important;
+  max-width: 100% !important;
+  height: 176px !important;
+  max-height: 176px !important;
+}
+
+.vehiclePhoto :global([data-vehicle-render]) img {
+  width: 100% !important;
+  max-width: 100% !important;
+  height: 100% !important;
+  max-height: 100% !important;
+  object-fit: contain !important;
+}
+
+.ownerBar :global([class*="_actions"]) {
+  min-width: 0;
+  max-width: 100%;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 1000px) and (min-width: 761px) {
+  .header {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .vehiclePhoto {
+    min-height: 160px;
+    padding: 8px 12px;
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .vehiclePhoto :global([data-vehicle-render]) {
+    width: min(100%, 300px) !important;
+    height: 160px !important;
+    max-height: 160px !important;
+  }
+
+  .vehicleSummary {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 280px);
+    gap: 16px;
+    padding: 16px 0 12px;
+  }
+}
+
+@media (max-width: 760px) {
+  .header {
+    overflow: hidden;
+  }
+
+  .vehiclePhoto :global([data-vehicle-render]) {
+    width: min(100%, 320px) !important;
+    height: 170px !important;
+    max-height: 170px !important;
+  }
+
+  .ownerBar :global([class*="_actions"]) {
+    width: auto;
+  }
+}

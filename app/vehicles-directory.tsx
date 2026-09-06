@@ -391,7 +391,9 @@ export function VehiclesDirectory() {
                 <VehicleBrandLogo brand={vehicleCard.brand} size={48} />
                 <span className={styles.identityText}><small>КАРТКА АВТОМОБІЛЯ</small><strong>{vehicleTitle(vehicleCard)}</strong><VehiclePlate value={vehicleCard.plateNumber} size="sm" /><span className={styles.identityVin}>VIN: {vehicleCard.vin ? <CopyableValue value={vehicleCard.vin} label="VIN" /> : "не вказаний"}</span></span>
               </div>
-              <VehicleImage vehicle={vehicleCard} size="drawer" eager />
+              <div className={styles.drawerVehicleImage} data-vehicle-card-image="true">
+                <VehicleImage vehicle={vehicleCard} size="drawer" eager />
+              </div>
             </div>
             <button className={styles.close} onClick={closeVehicle}>×</button>
           </header>
