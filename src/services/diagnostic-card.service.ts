@@ -18,7 +18,7 @@ export class DiagnosticCardError extends Error {
 
 type CardKind = "REVIEW" | "FINAL";
 
-type DiagnosticCardSnapshot = {
+export type DiagnosticCardSnapshot = {
   version: 1;
   cardNumber: string;
   diagnosticRequestId: string;
@@ -362,5 +362,3 @@ export async function getFinalDiagnosticCardSnapshot(diagnosticRequestId: string
   const state = await getDiagnosticCard(diagnosticRequestId);
   return (state?.final?.snapshot as DiagnosticCardSnapshot | undefined) ?? null;
 }
-
-export type { DiagnosticCardSnapshot };

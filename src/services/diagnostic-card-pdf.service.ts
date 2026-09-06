@@ -7,6 +7,7 @@ import {
   type DiagnosticCardSnapshot,
 } from "@/src/services/diagnostic-card.service";
 import { renderDiagnosticCardPdf, type DiagnosticCardPdfMedia } from "@/src/services/diagnostic-card-pdf-renderer";
+import { getDocumentTemplates } from "@/src/services/document-template.service";
 
 const PDF_MAX_BYTES = 15 * 1024 * 1024;
 const SHARE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
@@ -109,7 +110,9 @@ export async function saveDiagnosticCardPdf(
   const media = mediaIds.length
     ? await getPrisma().diagnosticMedia.findMany({ where: { id: { in: mediaIds } }, select: { id: true, fileName: true, mimeType: true, fileData: true } })
     : [];
-  const bytes = await renderDiagnosticCardPdf(snapshot, media as DiagnosticCardPdfMedia[]);
+  const documentTemplates = await getDocumentTemplates();
+  const template = documentTemplates.templates.find((item) => item.type === "DIAGNOSTIC_CARD" && item.status === "PUBLISHED") || undefined;
+  const bytes = await renderDiagnosticCardPdf(snapshot, media as DiagnosticCardPdfMedia[], template);
   if (bytes.byteLength > PDF_MAX_BYTES) {
     throw new DiagnosticCardPdfError("PDF_TOO_LARGE", "Діагностична карта містить забагато фото для одного PDF-файла.", 413);
   }
