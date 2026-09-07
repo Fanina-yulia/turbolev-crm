@@ -124,7 +124,29 @@ export async function saveDiagnosticCardPdf(
       where: { diagnosticCardRevisionId: ensured.revision.id },
       select: { id: true, fileName: true, mimeType: true, fileSize: true, generatedAt: true, revision: { select: { revision: true } } },
     });
-    if (existing) return { row: existing, created: false };
+    if (existing) {
+      const updated = await tx.diagnosticCardPdf.update({
+        where: { diagnosticCardRevisionId: ensured.revision.id },
+        data: {
+          fileSize: bytes.byteLength,
+          fileData: bytes,
+          generatedByUserId: createdByUserId,
+          generatedAt: new Date(),
+        },
+        select: { id: true, fileName: true, mimeType: true, fileSize: true, generatedAt: true, revision: { select: { revision: true } } },
+      });
+      await tx.auditEvent.create({
+        data: {
+          actorId: createdByUserId,
+          actorName,
+          entityType: "DiagnosticCardPdf",
+          entityId: updated.id,
+          action: "DIAGNOSTIC_CARD_PDF_REGENERATED",
+          metadata: toPrismaJson({ diagnosticRequestId, diagnosticCardId: ensured.card.id, revision: ensured.revision.revision, fileName: updated.fileName, fileSize: updated.fileSize }),
+        },
+      });
+      return { row: updated, created: false };
+    }
     const created = await tx.diagnosticCardPdf.create({
       data: {
         diagnosticCardId: ensured.card.id,

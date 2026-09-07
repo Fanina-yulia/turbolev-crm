@@ -53,6 +53,36 @@ function colorFromHex(value: string | undefined, fallback: PdfColor) {
   return rgb(Number.parseInt(value.slice(1, 3), 16) / 255, Number.parseInt(value.slice(3, 5), 16) / 255, Number.parseInt(value.slice(5, 7), 16) / 255);
 }
 
+type HexRgb = { red: number; green: number; blue: number };
+
+function hexRgb(value: string | undefined): HexRgb | null {
+  if (!value || !/^#[0-9a-f]{6}$/i.test(value)) return null;
+  return {
+    red: Number.parseInt(value.slice(1, 3), 16) / 255,
+    green: Number.parseInt(value.slice(3, 5), 16) / 255,
+    blue: Number.parseInt(value.slice(5, 7), 16) / 255,
+  };
+}
+
+function luminance(color: HexRgb) {
+  const channel = (value: number) => value <= 0.03928 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+  return 0.2126 * channel(color.red) + 0.7152 * channel(color.green) + 0.0722 * channel(color.blue);
+}
+
+function contrastRatio(first: HexRgb, second: HexRgb) {
+  const light = Math.max(luminance(first), luminance(second));
+  const dark = Math.min(luminance(first), luminance(second));
+  return (light + 0.05) / (dark + 0.05);
+}
+
+function readableColor(value: string | undefined, fallback: PdfColor, background: string, minimumContrast: number) {
+  const candidate = hexRgb(value);
+  const backgroundRgb = hexRgb(background);
+  return candidate && backgroundRgb && contrastRatio(candidate, backgroundRgb) >= minimumContrast
+    ? colorFromHex(value, fallback)
+    : fallback;
+}
+
 function optionalText(value: string | number | null | undefined) {
   if (value === null || value === undefined) return "";
   return String(value).trim();
@@ -507,7 +537,11 @@ async function readOptionalAsset(root: string, fileName: string, mimeType: strin
 }
 
 function visible(template: DocumentTemplate | undefined, id: string) {
-  return !template || template.blocks.find((block) => block.id === id)?.visible !== false;
+  if (!template) return true;
+  const contentBlockIds = ["summary", "findings", "inspections", "parts", "conclusion", "media", "signature", "contacts"];
+  const hasVisibleContent = contentBlockIds.some((blockId) => template.blocks.find((block) => block.id === blockId)?.visible !== false);
+  if (!hasVisibleContent) return true;
+  return template.blocks.find((block) => block.id === id)?.visible !== false;
 }
 
 export async function renderDiagnosticCardPdf(snapshot: DiagnosticCardSnapshot, media: DiagnosticCardPdfMedia[] = [], template?: DocumentTemplate) {
@@ -523,10 +557,15 @@ export async function renderDiagnosticCardPdf(snapshot: DiagnosticCardSnapshot, 
   ]);
   const regular = await pdf.embedFont(regularBytes, { subset: true });
   const bold = await pdf.embedFont(boldBytes, { subset: true });
-  const accent = colorFromHex(template?.style.accentColor, ORANGE);
-  const text = colorFromHex(template?.style.textColor, DARK);
-  const muted = colorFromHex(template?.style.mutedColor, MUTED);
-  const background = template?.style.background === "brand" ? rgb(1, 0.98, 0.96) : colorFromHex(template?.style.backgroundColor, WHITE);
+  // CRM uses a dark interface, but the PDF is printed on light paper. Prevent
+  // a dark/low-contrast CRM palette from producing an unreadable document.
+  const requestedBackground = template?.style.background === "brand" ? "#FFF7F0" : template?.style.backgroundColor;
+  const backgroundRgb = hexRgb(requestedBackground);
+  const backgroundHex = backgroundRgb && luminance(backgroundRgb) >= 0.42 ? requestedBackground! : "#FFFFFF";
+  const accent = readableColor(template?.style.accentColor, ORANGE, backgroundHex, 3);
+  const text = readableColor(template?.style.textColor, DARK, backgroundHex, 4.5);
+  const muted = readableColor(template?.style.mutedColor, MUTED, backgroundHex, 3);
+  const background = colorFromHex(backgroundHex, WHITE);
   const layout = new PdfLayout(pdf, regular, bold, media, { accent, text, muted, background });
 
   let logo = defaultLogo;

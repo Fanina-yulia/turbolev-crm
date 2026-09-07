@@ -295,6 +295,7 @@ export function StructuredDiagnosticReviewPanel({ diagnosticId, onChanged }: { d
   }
 
   async function saveDiagnosticPdf() {
+    const hadPdf = Boolean(pdf);
     setSavingPdf(true); setError(""); setPdfActionMessage("");
     try {
       const response = await fetch(`/api/diagnostics/${encodeURIComponent(diagnosticId)}/pdf`, { method: "POST", credentials: "include" });
@@ -302,7 +303,7 @@ export function StructuredDiagnosticReviewPanel({ diagnosticId, onChanged }: { d
       if (!response.ok || !body?.ok || !body.pdf) throw new Error(body?.message || body?.error || "Не вдалося сформувати PDF-файл.");
       setPdf(body.pdf);
       setShareUrl("");
-      setPdfActionMessage("PDF-файл збережено.");
+      setPdfActionMessage(hadPdf ? "PDF-файл переформовано." : "PDF-файл збережено.");
       await onChanged();
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Не вдалося сформувати PDF-файл."); }
     finally { setSavingPdf(false); }
@@ -380,7 +381,7 @@ export function StructuredDiagnosticReviewPanel({ diagnosticId, onChanged }: { d
     <section className={styles.identityCard}>
     <header className={styles.pageHeader}>
       <div className={styles.pageHeading}><h3>ДІАГНОСТИЧНА КАРТА</h3><p>{cardNumber} <i>·</i> Створено: {formatDate(view.diagnostic.createdAt, true)} <i>·</i> Механік: {view.diagnostic.mechanic?.name || "Не призначено"}</p></div>
-      <div className={styles.headerStatuses}><span className={`${styles.statusPill} ${estimateApproved ? styles.statusGood : styles.statusReview}`}>{estimateApproved ? "✓ " : ""}{diagnosticState}</span><span className={`${styles.revisionPill} ${confirmed ? styles.revisionGood : ""}`}>{revisionState}</span><button type="button" className={styles.pdfSaveButton} onClick={() => void saveDiagnosticPdf()} disabled={savingPdf}>{savingPdf ? "Формую PDF…" : pdf?.isCurrent ? "Збережено" : "Зберегти"}</button>{pdf ? <button type="button" className={styles.pdfFileButton} aria-label="Відкрити збережений PDF" title="Відкрити PDF" onClick={() => setPdfModalOpen(true)}>▤</button> : null}{!confirmed && <button type="button" className={styles.inspectionToggle} onClick={() => setShowFullInspection((value) => !value)}>{showFullInspection ? "Сховати повну перевірку" : "Повна перевірка"}</button>}</div>
+      <div className={styles.headerStatuses}><span className={`${styles.statusPill} ${estimateApproved ? styles.statusGood : styles.statusReview}`}>{estimateApproved ? "✓ " : ""}{diagnosticState}</span><span className={`${styles.revisionPill} ${confirmed ? styles.revisionGood : ""}`}>{revisionState}</span><button type="button" className={styles.pdfSaveButton} onClick={() => void saveDiagnosticPdf()} disabled={savingPdf}>{savingPdf ? "Формую PDF…" : pdf?.isCurrent ? "Оновити PDF" : "Зберегти PDF"}</button>{pdf ? <button type="button" className={styles.pdfFileButton} aria-label="Відкрити збережений PDF" title="Відкрити PDF" onClick={() => setPdfModalOpen(true)}>▤</button> : null}{!confirmed && <button type="button" className={styles.inspectionToggle} onClick={() => setShowFullInspection((value) => !value)}>{showFullInspection ? "Сховати повну перевірку" : "Повна перевірка"}</button>}</div>
     </header>
 
     <section className={styles.vehicleHero} aria-label="Ідентичність автомобіля">

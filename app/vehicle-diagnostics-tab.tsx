@@ -309,6 +309,7 @@ function DiagnosticCardDetail({ row, initialView, initialCardNumber, busy, onOpe
   }
 
   async function saveDiagnosticPdf() {
+    const hadPdf = Boolean(pdf);
     setSavingPdf(true); setError(""); setPdfActionMessage("");
     try {
       const response = await fetch(`/api/diagnostics/${encodeURIComponent(row.id)}/pdf`, { method: "POST", credentials: "include" });
@@ -317,7 +318,7 @@ function DiagnosticCardDetail({ row, initialView, initialCardNumber, busy, onOpe
       setPdf(body.pdf);
       if (body.cardNumber) setCardNumber(body.cardNumber);
       setShareUrl("");
-      setPdfActionMessage("PDF-файл збережено.");
+      setPdfActionMessage(hadPdf ? "PDF-файл переформовано." : "PDF-файл збережено.");
       window.dispatchEvent(new CustomEvent("turbolev:data-changed"));
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Не вдалося сформувати PDF-файл."); }
     finally { setSavingPdf(false); }
@@ -380,7 +381,7 @@ function DiagnosticCardDetail({ row, initialView, initialCardNumber, busy, onOpe
   if (error || !view) return <div className={styles.error}>{error || "Діагностичну карту не знайдено."}<button type="button" onClick={onOpenDiagnostic}>Відкрити діагностику</button></div>;
 
   return <article className={styles.card}>
-    <header className={styles.cardHeader}><div><span className={styles.eyebrow}>ДІАГНОСТИЧНА КАРТА</span><h3>{cardNumber || "Результати діагностики"}</h3><p>{dateText(row.confirmedAt || row.updatedAt || row.createdAt)} · {row.assignedMechanic?.name ? `Механік: ${row.assignedMechanic.name}` : "Механік не вказаний"}</p></div><div className={styles.cardHeaderActions}><span className={`${styles.status} ${status.tone === "good" ? styles.statusGood : status.tone === "danger" ? styles.statusDanger : status.tone === "muted" ? styles.statusMuted : styles.statusReview}`}><i className={styles.statusDot} />{status.label}</span><button type="button" className={styles.iconButton} aria-label="Редагувати примітки механіка" onClick={() => setEditingComment(true)}>✎</button><button type="button" className={styles.secondaryAction} onClick={() => void saveDiagnosticPdf()} disabled={savingPdf}>{savingPdf ? "Формую PDF…" : pdf?.isCurrent ? "Збережено" : "Зберегти"}</button>{pdf ? <button type="button" className={styles.pdfButton} aria-label="Відкрити збережений PDF" title="Відкрити PDF" onClick={() => setPdfModalOpen(true)}>▤</button> : null}<button type="button" className={styles.primaryAction} onClick={onOpenPartsSelection}>Підбір деталей →</button></div></header>
+    <header className={styles.cardHeader}><div><span className={styles.eyebrow}>ДІАГНОСТИЧНА КАРТА</span><h3>{cardNumber || "Результати діагностики"}</h3><p>{dateText(row.confirmedAt || row.updatedAt || row.createdAt)} · {row.assignedMechanic?.name ? `Механік: ${row.assignedMechanic.name}` : "Механік не вказаний"}</p></div><div className={styles.cardHeaderActions}><span className={`${styles.status} ${status.tone === "good" ? styles.statusGood : status.tone === "danger" ? styles.statusDanger : status.tone === "muted" ? styles.statusMuted : styles.statusReview}`}><i className={styles.statusDot} />{status.label}</span><button type="button" className={styles.iconButton} aria-label="Редагувати примітки механіка" onClick={() => setEditingComment(true)}>✎</button><button type="button" className={styles.secondaryAction} onClick={() => void saveDiagnosticPdf()} disabled={savingPdf}>{savingPdf ? "Формую PDF…" : pdf?.isCurrent ? "Оновити PDF" : "Зберегти PDF"}</button>{pdf ? <button type="button" className={styles.pdfButton} aria-label="Відкрити збережений PDF" title="Відкрити PDF" onClick={() => setPdfModalOpen(true)}>▤</button> : null}<button type="button" className={styles.primaryAction} onClick={onOpenPartsSelection}>Підбір деталей →</button></div></header>
     <div className={styles.workspaceGrid}>
       <section className={styles.diagramPanel} aria-label="Схема автомобіля"><div className={styles.panelHeading}><div><span className={styles.eyebrow}>СХЕМА АВТОМОБІЛЯ</span><h4>Проблемні зони</h4></div><span className={styles.legend}><i className={styles.legendDanger}/>Критично <i className={styles.legendAttention}/>Увага</span></div><VehicleSchematic findings={findings} selectedId={selectedFinding?.item.id || null} onSelect={setSelectedFindingId}/>{!findings.length && <div className={styles.healthy}><b>Автомобіль перевірено</b><span>Критичних несправностей не зафіксовано.</span></div>}</section>
       <section className={styles.partsPanel} aria-label="Деталі до заміни">
