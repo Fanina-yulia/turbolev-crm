@@ -8,6 +8,7 @@ const filter = buildBmVehicleFilter({
 });
 
 assert.equal(filter, "GEELY>EMGRAND X7");
+assert.equal(buildBmVehicleFilter({ brand: "LEXUS", model: "LEXUS ES350/300H" }), "LEXUS>ES350/300H");
 assert.equal(buildBmVehicleFilter({ brand: null, model: "EMGRAND X7" }), "");
 assert.equal(normalizeCatalogNumber("  SOLGY-211125 "), "SOLGY211125");
 assert.equal(normalizePartPosition("Амортизатор передній лівий"), "FRONT_LEFT");
