@@ -109,8 +109,10 @@ export async function GET(request: Request) {
       status: fitment.status,
       confirmed: fitment.confirmed,
       confidence: fitment.confidence,
+      exact: fitment.exact,
       reason: fitment.reason,
       vehicle: fitment.vehicle,
+      providerVehicle: fitment.providerVehicle,
       catalog: fitment.catalog,
       genericArticle: fitment.genericArticle,
     },
@@ -137,6 +139,7 @@ export async function GET(request: Request) {
         role: "VIN_FITMENT",
         status: fitment.status,
         vehicleReferenceId: fitment.catalog?.vehicleReferenceId || null,
+        fitmentExact: fitment.exact,
       },
     ],
   });

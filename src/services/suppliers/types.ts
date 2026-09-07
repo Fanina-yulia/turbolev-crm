@@ -40,6 +40,44 @@ export type SupplierStock = {
   warehouseId?: string | null;
 };
 
+export type SupplierVehicleContext = {
+  provider: SupplierId;
+  vehicleKey: string;
+  externalVehicleId: string | null;
+  externalSecurityKey: string | null;
+  catalogCode: string | null;
+  brand: string | null;
+  model: string | null;
+  variant: string | null;
+  confidence: number;
+  /**
+   * True only when the provider proves the exact vehicle modification.
+   * BM Parts' documented VIN suggest response currently proves the model filter,
+   * so its context is intentionally false until a direct modification filter is confirmed.
+   */
+  exact: boolean;
+  source: string;
+  sourceVersion: string | null;
+  rawEvidence?: unknown;
+};
+
+export type SupplierVehicleSearchInput = {
+  query: string;
+  vehicle: SupplierVehicleContext;
+  limit?: number;
+  position?: string | null;
+};
+
+export type SupplierVehiclePart = {
+  offer: SupplierOffer;
+  oeNumbers: Array<{ number: string; brand: string | null; isOem: boolean | null }>;
+  analogOfArticle?: string | null;
+  vehicleEvidence?: {
+    car: string | null;
+    foundBy: string | null;
+  };
+};
+
 export type SupplierOffer = {
   supplierId: SupplierId;
   supplierName: string;
@@ -53,11 +91,16 @@ export type SupplierOffer = {
   stock: SupplierStock[];
   available: boolean;
   sourceUrl: string | null;
+  imageUrl?: string | null;
+  oeNumbers?: string[];
+  vehicleMatch?: string | null;
+  analogOfArticle?: string | null;
   /** Classification is optional because a supplier response may not prove OEM status. */
   offerClass?: PartOfferClass;
   /** Result of the server-side VIN/catalog compatibility check. */
   fitmentStatus?: PartFitmentStatus;
   fitmentConfidence?: number | null;
+  fitmentExact?: boolean | null;
   fitmentSource?: string | null;
   fitmentReason?: string | null;
   catalogProductId?: string | null;
@@ -129,6 +172,8 @@ export interface SupplierAdapter {
   isConfigured(): Promise<boolean>;
   testConnection(): Promise<SupplierConnectionCheck>;
   search(query: string, limit?: number): Promise<SupplierOffer[]>;
+  resolveVehicle?(identifier: string): Promise<SupplierVehicleContext | null>;
+  searchVehicleParts?(input: SupplierVehicleSearchInput): Promise<SupplierVehiclePart[]>;
   listDeliveryPoints?(): Promise<SupplierDeliveryPoint[]>;
   listTransporters?(input: { date: string; deliveryPointId: string }): Promise<SupplierTransporter[]>;
   listDeliveryOptions?(input: { date: string; deliveryPointId: string; transporterId: string; warehouseIds: string[] }): Promise<SupplierDeliveryOption[]>;

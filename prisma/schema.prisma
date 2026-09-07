@@ -202,7 +202,9 @@ model Vehicle {
   diagnosticRequests DiagnosticRequest[]
   workOrders         WorkOrder[]
   vehicleImages      VehicleImageAsset[]
-  catalogLink        VehicleCatalogLink?
+  catalogLink              VehicleCatalogLink?
+  providerVehicleContexts   ProviderVehicleContext[]
+  providerFitmentAudits     ProviderFitmentSearchAudit[]
 
   @@index([clientId])
   @@index([brand, model])

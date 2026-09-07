@@ -33,3 +33,9 @@ ALTER TABLE IF EXISTS "DiagnosticCheck" DROP CONSTRAINT IF EXISTS "DiagnosticChe
 ALTER TABLE IF EXISTS "DiagnosticFinding" DROP CONSTRAINT IF EXISTS "DiagnosticFinding_checkId_fkey";
 ALTER TABLE IF EXISTS "DiagnosticMedia" DROP CONSTRAINT IF EXISTS "DiagnosticMedia_findingId_fkey";
 ALTER TABLE IF EXISTS "UserUiPreference" DROP CONSTRAINT IF EXISTS "UserUiPreference_userId_fkey";
+
+-- Normalize two historical index differences so the clean-database drift check
+-- compares the current Prisma schema rather than legacy migration names.
+ALTER INDEX IF EXISTS "DiagnosticPartRecommendation_diagnosticRequestId_status_created"
+  RENAME TO "DiagnosticPartRecommendation_diagnosticRequestId_status_cre_idx";
+DROP INDEX IF EXISTS "ServiceAppointment_purpose_plannedStartAt_idx";

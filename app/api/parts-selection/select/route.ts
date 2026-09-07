@@ -29,6 +29,7 @@ export async function POST(request: Request) {
       partName?: string | null;
       position?: string | null;
       fitmentStatus?: PartFitmentStatus | null;
+      fitmentExact?: boolean | null;
       fitmentProductId?: string | null;
       fitmentSource?: string | null;
       manualConfirmation?: boolean;
@@ -61,6 +62,7 @@ export async function POST(request: Request) {
       partName: body?.partName || null,
       position: body?.position || null,
       fitmentStatus: body?.fitmentStatus || null,
+      fitmentExact: body?.fitmentExact ?? null,
       fitmentProductId: body?.fitmentProductId || null,
       fitmentSource: body?.fitmentSource || null,
       manualConfirmation: body?.manualConfirmation === true,
