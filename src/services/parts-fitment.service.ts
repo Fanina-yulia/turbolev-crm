@@ -574,6 +574,9 @@ export async function resolvePartFitment(intent: PartSearchIntent): Promise<Part
       null,
     );
   }
+  if (!vehicleSummary) {
+    return emptyContext("MANUAL_REQUIRED", "Не вдалося сформувати контекст автомобіля.", null);
+  }
 
   const identityVin = normalizeVin(vehicle.vin || requestedVin);
   const vinValidation = validateVin(identityVin);
