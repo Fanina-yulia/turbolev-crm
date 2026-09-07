@@ -11,6 +11,7 @@ import type {
 const DEFAULT_BASE_URL = "https://api.bm.parts";
 const USER_AGENT = "TurboLEV-CRM/0.5.0";
 const VEHICLE_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+export const BM_PARTS_VEHICLE_CONTEXT_VERSION = "v3";
 const PRODUCT_CACHE_TTL_MS = 10 * 60 * 1000;
 
 type JsonRecord = Record<string, unknown>;
@@ -211,7 +212,7 @@ function extractVehicle(payload: unknown, identifier: string): SupplierVehicleCo
     confidence: 90,
     exact: false,
     source: "BM_PARTS_VIN_MODEL_FILTER",
-    sourceVersion: "v2",
+    sourceVersion: BM_PARTS_VEHICLE_CONTEXT_VERSION,
     rawEvidence: {
       brand,
       model,
