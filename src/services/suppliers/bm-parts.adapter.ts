@@ -298,6 +298,11 @@ function isArticleLike(query: string) {
   return /^[a-z0-9][a-z0-9._/\\-]{2,}$/iu.test(query.trim()) && /[0-9]/u.test(query);
 }
 
+/** BM requires a second URL-encoding pass for slashes inside a car model. */
+export function encodeBmCarFilter(carFilter: string) {
+  return carFilter.replace(/\//g, "%2F");
+}
+
 async function getProductDetails(productId: string): Promise<BmProductDetails | null> {
   const cached = cacheGet(productCache, productId);
   if (cached !== undefined) return cached;
@@ -421,7 +426,7 @@ search:
           with_extra: "0",
           save: "0",
           per_page: String(limit),
-          cars: candidateFilter,
+          cars: encodeBmCarFilter(candidateFilter),
         });
         const response = await request("/search/products?" + params.toString());
         if (!response.ok) throw new Error("BM Parts vehicle search HTTP " + response.status);
