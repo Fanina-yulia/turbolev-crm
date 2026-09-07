@@ -443,8 +443,8 @@
 .pdfFileButton { display: inline-grid; place-items: center; width: 38px; padding: 0; border-color: color-mix(in srgb, var(--green) 60%, var(--line)); background: color-mix(in srgb, var(--green) 10%, var(--panel)); color: var(--green); font-size: 21px; line-height: 1; }
 .pdfFileButton:hover { border-color: var(--green); color: var(--green); background: color-mix(in srgb, var(--green) 17%, var(--panel)); }
 .pdfMessage { padding: 9px 11px; border: 1px solid color-mix(in srgb, var(--green) 45%, var(--line)); border-radius: 9px; background: color-mix(in srgb, var(--green) 8%, var(--panel)); color: var(--green); font-size: 12px; }
-.pdfModalBackdrop { position: fixed; z-index: 110; inset: 0; display: grid; place-items: center; padding: 24px; background: rgba(9,15,20,.78); }
-.pdfModal { display: grid; grid-template-rows: auto auto auto minmax(0,1fr); width: min(980px, 100%); height: min(880px, calc(100dvh - 48px)); min-height: 420px; overflow: hidden; border: 1px solid var(--line); border-radius: 14px; background: var(--panel); box-shadow: 0 24px 90px rgba(0,0,0,.45); }
+.pdfModalBackdrop { position: fixed; z-index: 110; inset: 0; display: grid; place-items: center; overflow: auto; padding: 12px; background: rgba(9,15,20,.78); }
+.pdfModal { display: grid; grid-template-rows: auto auto auto minmax(0,1fr); width: min(1700px, calc(100dvw - 24px)); height: calc(100dvh - 24px); min-height: 0; overflow: hidden; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); box-shadow: 0 24px 90px rgba(0,0,0,.45); }
 .pdfModalHeader { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; padding: 14px 16px; border-bottom: 1px solid var(--line); }
 .pdfModalHeader h4 { margin: 4px 0; font-size: 15px; overflow-wrap: anywhere; }
 .pdfModalHeader small { color: var(--muted); font-size: 11px; }
@@ -499,8 +499,8 @@
   .decision > div { display: grid; }
   .returnButton, .confirmButton { width: 100%; }
   .error { align-items: flex-start; flex-direction: column; }
-  .pdfModalBackdrop { padding: 10px; }
-  .pdfModal { height: calc(100vh - 20px); min-height: 360px; }
+  .pdfModalBackdrop { padding: 6px; }
+  .pdfModal { width: 100%; height: calc(100dvh - 12px); min-height: 0; }
   .pdfModalHeader, .pdfActions, .shareOptions { padding-left: 12px; padding-right: 12px; }
   .pdfSaveButton { grid-column: 1 / -1; width: 100%; }
   .pdfFileButton { justify-self: start; }
