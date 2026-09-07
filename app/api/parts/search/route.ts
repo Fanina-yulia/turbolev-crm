@@ -4,6 +4,8 @@ import { decodeVinIntelligence } from "@/src/services/vin-intelligence.service";
 import { validateVin } from "@/src/domain/vin";
 import { resolveLaborPricing } from "@/src/services/labor-pricing.service";
 import { resolvePartFitment } from "@/src/services/parts-fitment.service";
+import { normalizePartNeed } from "@/src/services/part-normalization.service";
+import { resolvePartKnowledge } from "@/src/services/parts-knowledge.service";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -32,6 +34,19 @@ export async function GET(request: Request) {
     vehicleId,
     vin: rawVin,
     plate,
+  });
+
+  const normalization = await normalizePartNeed({
+    query: q,
+    partName,
+    genericArticleId,
+    position,
+  });
+  const knowledge = await resolvePartKnowledge({
+    query: q,
+    partName,
+    genericArticleId,
+    position,
   });
 
   let vehicleContext: Awaited<ReturnType<typeof decodeVinIntelligence>> | null = null;
@@ -115,11 +130,28 @@ export async function GET(request: Request) {
       providerVehicle: fitment.providerVehicle,
       catalog: fitment.catalog,
       genericArticle: fitment.genericArticle,
+      normalization,
     },
     catalogMatches: fitment.matches,
     oeNumbers: fitment.oeNumbers,
     catalogArticles: fitment.catalogArticles,
     analogArticles: fitment.analogArticles,
+    normalization,
+    knowledge: {
+      source: knowledge.source,
+      matchType: knowledge.matchType,
+      confidence: knowledge.confidence,
+      aliasId: knowledge.aliasId,
+      matchedAlias: knowledge.matchedAlias,
+      genericArticleId: knowledge.genericArticleId,
+      canonical: knowledge.definition
+        ? {
+            code: knowledge.definition.code,
+            slug: knowledge.definition.slug,
+            name: knowledge.definition.canonicalName,
+          }
+        : null,
+    },
     parts,
     fitmentPolicy: {
       level: fitment.status,
