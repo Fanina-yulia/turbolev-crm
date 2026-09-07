@@ -461,7 +461,7 @@ function providerAxisWord(provider: PartProvider, axis: PartAxis, definition: Pa
 }
 
 function providerSubPositionWord(provider: PartProvider, subPosition: PartSubPosition) {
-  if (!subPosition || !["FRONT", "REAR"].includes(subPosition)) return "";
+  if (subPosition !== "FRONT" && subPosition !== "REAR") return "";
   if (provider === "BM_PARTS") return subPosition === "FRONT" ? "передний" : "задний";
   return subPosition === "FRONT" ? "передній" : "задній";
 }
