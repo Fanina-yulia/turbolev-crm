@@ -28,7 +28,7 @@ type BmProduct = JsonRecord & {
   default_image?: unknown;
   images?: unknown;
 };
-type BmOeReference = { number?: unknown; article?: unknown; brand?: unknown; is_oem?: unknown };
+type BmOeReference = { number?: unknown; article?: unknown; brand?: unknown; is_oem?: unknown; isOem?: unknown };
 type BmProductDetails = BmProduct & {
   oe?: unknown;
   analogs?: unknown;
