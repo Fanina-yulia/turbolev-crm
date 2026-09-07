@@ -11,6 +11,7 @@ import type {
 const DEFAULT_BASE_URL = "https://api.bm.parts";
 const USER_AGENT = "TurboLEV-CRM/0.5.0";
 const VEHICLE_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+const MODEL_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 export const BM_PARTS_VEHICLE_CONTEXT_VERSION = "v3";
 const PRODUCT_CACHE_TTL_MS = 10 * 60 * 1000;
 
@@ -38,6 +39,7 @@ type BmProductDetails = BmProduct & {
 type CacheEntry<T> = { expiresAt: number; value: T };
 
 const vehicleCache = new Map<string, CacheEntry<SupplierVehicleContext | null>>();
+const modelCache = new Map<string, CacheEntry<string[]>>();
 const productCache = new Map<string, CacheEntry<BmProductDetails | null>>();
 
 function asRecord(value: unknown): JsonRecord | null {
@@ -108,6 +110,53 @@ function extractProducts(payload: unknown): BmProduct[] {
     const product = asRecord(item);
     return product ? [product as BmProduct] : [];
   }) : [];
+}
+
+function extractModelNames(payload: unknown): string[] {
+  const root = asRecord(payload);
+  const data = asRecord(root?.data);
+  const raw = root?.models ?? data?.models;
+  const rows = Array.isArray(raw) ? raw : Object.values(asRecord(raw) || {});
+  return [...new Set(rows.flatMap((row) => {
+    const record = asRecord(row);
+    const name = textValue(record?.name ?? row, 180);
+    return name ? [name] : [];
+  }))];
+}
+
+export function rankBmModelNames(vehicleModel: string, modelNames: string[], limit = 8) {
+  const requestedTokens = normalizeText(vehicleModel).split(" ").filter((token) => token.length >= 2);
+  if (!requestedTokens.length) return [];
+  return modelNames
+    .map((name, index) => {
+      const candidateTokens = normalizeText(name).split(" ").filter((token) => token.length >= 2);
+      const overlap = requestedTokens.reduce((total, token) => total + (
+        candidateTokens.some((candidate) => candidate === token || candidate.includes(token) || token.includes(candidate))
+          ? 1
+          : 0
+      ), 0);
+      if (!overlap) return null;
+      return {
+        name,
+        score: overlap * 100 - Math.abs(candidateTokens.length - requestedTokens.length),
+        index,
+      };
+    })
+    .filter((row): row is { name: string; score: number; index: number } => Boolean(row))
+    .sort((left, right) => right.score - left.score || left.index - right.index)
+    .slice(0, Math.max(limit, 1))
+    .map((row) => row.name);
+}
+
+async function getBmModelNames(brand: string): Promise<string[]> {
+  const key = normalizeText(brand).toUpperCase();
+  if (!key) return [];
+  const cached = cacheGet(modelCache, key);
+  if (cached !== undefined) return cached;
+  const response = await request("/search/products/aggregations/car/" + encodeURIComponent(brand.trim()) + "/models");
+  if (!response.ok) return cacheSet(modelCache, key, [], MODEL_CACHE_TTL_MS);
+  const payload = await response.json() as unknown;
+  return cacheSet(modelCache, key, extractModelNames(payload), MODEL_CACHE_TTL_MS);
 }
 
 function normalizeStocks(value: unknown): SupplierStock[] {
@@ -416,36 +465,57 @@ export const bmPartsAdapter: SupplierAdapter = {
     if (!(await this.isConfigured())) return [];
 
     const limit = Math.min(Math.max(input.limit ?? 20, 1), 50);
-    let carFilter = carFilters[0];
-    let products: BmProduct[] = [];
+
+    const searchScopedProducts = async (filters: string[]) => {
+      let selectedFilter = filters[0] || "";
+      let foundProducts: BmProduct[] = [];
 
 search:
-    for (const candidateFilter of carFilters) {
-      for (const available of ["1", "0"]) {
-        const params = new URLSearchParams({
-          q: query,
-          search_mode: bmSearchMode(query),
-          available,
-          products_as: "arr",
-          warehouses: "all",
-          with_extra: "0",
-          save: "0",
-          per_page: String(limit),
-          cars: encodeBmCarFilter(candidateFilter),
-        });
-        const response = await request("/search/products?" + params.toString());
-        if (!response.ok) throw new Error("BM Parts vehicle search HTTP " + response.status);
-        const payload = await response.json() as unknown;
-        const candidateProducts = extractProducts(payload);
-        if (candidateProducts.length) {
-          carFilter = candidateFilter;
-          products = candidateProducts.slice(0, limit);
-          break search;
+      for (const candidateFilter of filters) {
+        for (const available of ["1", "0"]) {
+          const params = new URLSearchParams({
+            q: query,
+            search_mode: bmSearchMode(query),
+            available,
+            products_as: "arr",
+            warehouses: "all",
+            with_extra: "0",
+            save: "0",
+            per_page: String(limit),
+            cars: encodeBmCarFilter(candidateFilter),
+          });
+          const response = await request("/search/products?" + params.toString());
+          if (!response.ok) throw new Error("BM Parts vehicle search HTTP " + response.status);
+          const payload = await response.json() as unknown;
+          const candidateProducts = extractProducts(payload);
+          if (candidateProducts.length) {
+            selectedFilter = candidateFilter;
+            foundProducts = candidateProducts.slice(0, limit);
+            break search;
+          }
         }
       }
+
+      return { carFilter: selectedFilter, products: foundProducts };
+    };
+
+    let searchResult = await searchScopedProducts(carFilters);
+    if (!searchResult.products.length && vehicle.brand) {
+      let modelNames: string[] = [];
+      try {
+        modelNames = await getBmModelNames(vehicle.brand);
+      } catch {
+        modelNames = [];
+      }
+      const discoveredFilters = rankBmModelNames(vehicle.model || "", modelNames)
+        .map((model) => vehicle.brand + ">" + model)
+        .filter((filter) => !carFilters.includes(filter));
+      if (discoveredFilters.length) searchResult = await searchScopedProducts(discoveredFilters);
     }
 
+    const { carFilter, products } = searchResult;
     if (!products.length) return [];
+
     const detailProducts = products.slice(0, 12);
     const details = await Promise.allSettled(detailProducts.map((product) => {
       const productId = textValue(product.uuid, 180);
