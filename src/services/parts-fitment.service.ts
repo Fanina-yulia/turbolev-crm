@@ -1,4 +1,5 @@
 import { normalizeVin, validateVin } from "@/src/domain/vin";
+import { normalizeRegistrationPlate } from "@/src/domain/registration-plate";
 import { getPrisma } from "@/src/lib/prisma";
 
 export type PartFitmentStatus =
@@ -18,6 +19,7 @@ export type PartSearchIntent = {
   side?: string | null;
   vehicleId?: string | null;
   vin?: string | null;
+  plate?: string | null;
 };
 
 export type CatalogFitmentMatch = {
@@ -182,6 +184,7 @@ function emptyContext(status: PartFitmentStatus, reason: string, vehicle: PartFi
 
 export async function resolvePartFitment(intent: PartSearchIntent): Promise<PartFitmentContext> {
   const requestedVin = normalizeVin(clean(intent.vin, 40));
+  const requestedPlate = normalizeRegistrationPlate(clean(intent.plate, 40));
   const vehicleId = clean(intent.vehicleId, 160);
   let vehicle: {
     id: string;
@@ -250,6 +253,35 @@ export async function resolvePartFitment(intent: PartSearchIntent): Promise<Part
               },
             },
           })
+      : requestedPlate
+        ? await prisma.vehicle.findFirst({
+            where: {
+              OR: [
+                { plateNormalized: requestedPlate },
+                { plateNumber: { equals: clean(intent.plate, 40), mode: "insensitive" } },
+              ],
+            },
+            orderBy: { updatedAt: "desc" },
+            select: {
+              id: true,
+              vin: true,
+              brand: true,
+              model: true,
+              year: true,
+              catalogLink: {
+                select: {
+                  status: true,
+                  confidence: true,
+                  source: true,
+                  sourceVersion: true,
+                  vehicleReferenceId: true,
+                  vehicleReference: {
+                    select: { status: true, fitmentKey: true },
+                  },
+                },
+              },
+            },
+          })
         : null;
   } catch (error) {
     console.warn("Parts fitment context could not read catalog tables", error);
@@ -268,10 +300,12 @@ export async function resolvePartFitment(intent: PartSearchIntent): Promise<Part
 
   if (!vehicle) {
     return emptyContext(
-      requestedVin ? "MANUAL_REQUIRED" : "REFERENCE_ONLY",
+      requestedVin || requestedPlate ? "MANUAL_REQUIRED" : "REFERENCE_ONLY",
       requestedVin
         ? "Автомобіль з таким VIN не знайдено в CRM. Перевірте VIN у картці авто."
-        : "Пошук виконано без ідентифікованого автомобіля.",
+        : requestedPlate
+          ? "Автомобіль з таким держномером не знайдено в CRM. Перевірте номер у картці авто."
+          : "Пошук виконано без ідентифікованого автомобіля.",
       null,
     );
   }
