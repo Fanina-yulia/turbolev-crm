@@ -96,24 +96,24 @@ CREATE TABLE "PartTermObservation" (
     CONSTRAINT "PartTermObservation_pkey" PRIMARY KEY ("id")
 );
 
-CREATE UNIQUE INDEX "generic_article_alias_identity_key_uq" ON "GenericArticleAlias"("identityKey");
+CREATE UNIQUE INDEX "GenericArticleAlias_identityKey_key" ON "GenericArticleAlias"("identityKey");
 CREATE INDEX "generic_article_alias_lookup_idx" ON "GenericArticleAlias"("aliasNormalized", "status");
 CREATE INDEX "generic_article_alias_article_idx" ON "GenericArticleAlias"("genericArticleId", "status");
 CREATE INDEX "generic_article_alias_provider_idx" ON "GenericArticleAlias"("provider", "status");
 
-CREATE UNIQUE INDEX "generic_article_relation_identity_key_uq" ON "GenericArticleRelation"("identityKey");
+CREATE UNIQUE INDEX "GenericArticleRelation_identityKey_key" ON "GenericArticleRelation"("identityKey");
 CREATE INDEX "generic_article_relation_from_idx" ON "GenericArticleRelation"("fromGenericArticleId", "relationType", "status");
 CREATE INDEX "generic_article_relation_to_idx" ON "GenericArticleRelation"("toGenericArticleId", "relationType", "status");
 
-CREATE UNIQUE INDEX "generic_article_operation_identity_key_uq" ON "GenericArticleOperation"("identityKey");
+CREATE UNIQUE INDEX "GenericArticleOperation_identityKey_key" ON "GenericArticleOperation"("identityKey");
 CREATE INDEX "generic_article_operation_article_idx" ON "GenericArticleOperation"("genericArticleId", "status");
 CREATE INDEX "generic_article_operation_service_idx" ON "GenericArticleOperation"("serviceCatalogItemId");
 
-CREATE UNIQUE INDEX "generic_article_media_identity_key_uq" ON "GenericArticleMedia"("identityKey");
+CREATE UNIQUE INDEX "GenericArticleMedia_identityKey_key" ON "GenericArticleMedia"("identityKey");
 CREATE INDEX "generic_article_media_article_idx" ON "GenericArticleMedia"("genericArticleId", "status", "sortOrder");
 CREATE INDEX "generic_article_media_hash_idx" ON "GenericArticleMedia"("contentHash");
 
-CREATE UNIQUE INDEX "part_term_observation_identity_key_uq" ON "PartTermObservation"("identityKey");
+CREATE UNIQUE INDEX "PartTermObservation_identityKey_key" ON "PartTermObservation"("identityKey");
 CREATE INDEX "part_term_observation_lookup_idx" ON "PartTermObservation"("normalizedTerm", "status");
 CREATE INDEX "part_term_observation_queue_idx" ON "PartTermObservation"("status", "lastSeenAt");
 CREATE INDEX "part_term_observation_suggested_idx" ON "PartTermObservation"("suggestedGenericArticleId");
