@@ -422,7 +422,6 @@ const BM_QUERY_TERM_ALIASES: Record<string, string> = {
   "свічки": "свечи",
   "запалювання": "зажигания",
   "ремінь": "ремень",
-  "ремінь": "ремень",
 };
 
 function translateBmQueryToCatalogLanguage(query: string) {
