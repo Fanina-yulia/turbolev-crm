@@ -183,7 +183,24 @@ function emptyContext(status: PartFitmentStatus, reason: string, vehicle: PartFi
 export async function resolvePartFitment(intent: PartSearchIntent): Promise<PartFitmentContext> {
   const requestedVin = normalizeVin(clean(intent.vin, 40));
   const vehicleId = clean(intent.vehicleId, 160);
-  let vehicle: Awaited<ReturnType<ReturnType<typeof getPrisma>["vehicle"]["findFirst"]>> = null;
+  let vehicle: {
+    id: string;
+    vin: string | null;
+    brand: string | null;
+    model: string | null;
+    year: number | null;
+    catalogLink: {
+      status: "PROVISIONAL" | "VERIFIED" | "STALE" | "CONFLICT";
+      confidence: number;
+      source: string;
+      sourceVersion: string | null;
+      vehicleReferenceId: string;
+      vehicleReference: {
+        status: "ACTIVE" | "DEPRECATED" | "MERGED" | "DISABLED";
+        fitmentKey: string;
+      };
+    } | null;
+  } | null = null;
 
   try {
     const prisma = getPrisma();
