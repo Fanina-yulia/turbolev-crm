@@ -23,7 +23,7 @@ ALTER TABLE "GenericArticleAlias"
   ALTER COLUMN "identityKey" SET NOT NULL;
 
 DROP INDEX IF EXISTS "GenericArticleAlias_genericArticleId_aliasNormalized_key";
-CREATE UNIQUE INDEX "GenericArticleAlias_genericArticleId_aliasNormalized_provider_key"
+CREATE UNIQUE INDEX "GenericArticleAlias_identity_provider_key"
   ON "GenericArticleAlias"("genericArticleId", "aliasNormalized", "provider");
 CREATE UNIQUE INDEX "GenericArticleAlias_identityKey_key"
   ON "GenericArticleAlias"("identityKey");
