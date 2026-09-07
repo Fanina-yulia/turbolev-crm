@@ -3,6 +3,7 @@ import { normalizeRegistrationPlate } from "@/src/domain/registration-plate";
 import { getPrisma } from "@/src/lib/prisma";
 import { toPrismaJson } from "@/src/lib/prisma-json";
 import { BM_PARTS_VEHICLE_CONTEXT_VERSION, bmPartsAdapter } from "@/src/services/suppliers/bm-parts.adapter";
+import { resolvePartTerminology } from "@/src/services/parts-terminology.service";
 import type { SupplierVehicleContext, SupplierVehiclePart } from "@/src/services/suppliers/types";
 
 export type PartFitmentStatus =
@@ -85,33 +86,6 @@ export type PartFitmentContext = {
   analogArticles: string[];
 };
 
-const GENERIC_ARTICLE_ALIASES = [
-  {
-    slug: "ball-joint",
-    terms: ["шарова опора", "кульова опора", "шаровая опора", "ball joint", "ball-joint"],
-  },
-  {
-    slug: "shock-absorber",
-    terms: ["амортизатор", "shock absorber", "shock-absorber"],
-  },
-  {
-    slug: "brake-pad",
-    terms: ["гальмівні колодки", "тормозные колодки", "brake pad", "brake-pad"],
-  },
-  {
-    slug: "wheel-bearing",
-    terms: ["ступичний підшипник", "ступичный подшипник", "wheel bearing", "wheel-bearing"],
-  },
-  {
-    slug: "control-arm-bushing",
-    terms: ["сайлентблок", "сайлентблок важеля", "control arm bushing", "control-arm-bushing"],
-  },
-  {
-    slug: "coil-spring",
-    terms: ["пружина", "пружина підвіски", "coil spring", "coil-spring"],
-  },
-] as const;
-
 function clean(value: unknown, max = 240) {
   return typeof value === "string" ? value.trim().slice(0, max) : "";
 }
@@ -138,8 +112,15 @@ export function normalizePartPosition(value: unknown) {
 }
 
 function aliasForIntent(intent: PartSearchIntent) {
-  const source = [intent.partName, intent.query].filter(Boolean).join(" ").toLocaleLowerCase("uk-UA");
-  return GENERIC_ARTICLE_ALIASES.find((alias) => alias.terms.some((term) => source.includes(term.toLocaleLowerCase("uk-UA")))) || null;
+  const resolution = resolvePartTerminology({
+    query: intent.query,
+    partName: intent.partName,
+  });
+  if (!resolution.definition) return null;
+  return {
+    slug: resolution.definition.slug,
+    terms: [...resolution.definition.aliases],
+  };
 }
 
 async function findGenericArticle(intent: PartSearchIntent) {
@@ -408,6 +389,9 @@ async function resolveBmProviderFitment(
       vehicle: providerVehicle,
       limit: 20,
       position: requestedPosition,
+      canonicalPart: genericArticle
+        ? { code: genericArticle.code, slug: genericArticle.slug, name: genericArticle.name }
+        : null,
     });
   } catch (error) {
     await auditProviderSearch({

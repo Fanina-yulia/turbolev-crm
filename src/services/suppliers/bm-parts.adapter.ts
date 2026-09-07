@@ -1,4 +1,5 @@
 import { getIntegrationCredential } from "@/src/services/integration-credentials.service";
+import { buildProviderPartQueryCandidates } from "@/src/services/parts-terminology.service";
 import type {
   SupplierAdapter,
   SupplierConnectionCheck,
@@ -358,83 +359,11 @@ export function bmSearchMode(query: string) {
 }
 
 /**
- * BM Parts catalog names are commonly indexed in Russian while CRM findings
- * are entered in Ukrainian. Keep the original query first and add one bounded
- * catalog-language variant; both variants remain vehicle-scoped.
+ * Kept as a compatibility helper for existing smoke checks and callers.
+ * Vehicle-scoped searches use the richer provider-aware builder below.
  */
-const BM_QUERY_TERM_ALIASES: Record<string, string> = {
-  "передній": "передний",
-  "передня": "передняя",
-  "переднє": "переднее",
-  "переднього": "переднего",
-  "передньої": "передней",
-  "передньому": "переднем",
-  "передніх": "передних",
-  "передні": "передние",
-  "задній": "задний",
-  "задня": "задняя",
-  "заднє": "заднее",
-  "заднього": "заднего",
-  "задньої": "задней",
-  "задньому": "заднем",
-  "задніх": "задних",
-  "задні": "задние",
-  "важіль": "рычаг",
-  "важеля": "рычага",
-  "важелів": "рычагов",
-  "важелем": "рычагом",
-  "важелі": "рычаги",
-  "важелям": "рычагам",
-  "шарова": "шаровая",
-  "шаровий": "шаровой",
-  "шарової": "шаровой",
-  "шарову": "шаровую",
-  "кульова": "шаровая",
-  "кульовий": "шаровой",
-  "кульової": "шаровой",
-  "кульову": "шаровую",
-  "стійка": "стойка",
-  "стійки": "стойки",
-  "стійку": "стойку",
-  "стійкою": "стойкой",
-  "ступичний": "ступичный",
-  "ступична": "ступичная",
-  "ступичної": "ступичной",
-  "ступичну": "ступичную",
-  "підшипник": "подшипник",
-  "підшипника": "подшипника",
-  "підшипники": "подшипники",
-  "гальмівні": "тормозные",
-  "гальмівна": "тормозная",
-  "гальмівної": "тормозной",
-  "гальмівну": "тормозную",
-  "пильник": "пыльник",
-  "пильника": "пыльника",
-  "супорт": "суппорт",
-  "супорти": "суппорты",
-  "охолоджувальної": "охлаждающей",
-  "охолоджувальна": "охлаждающая",
-  "рідини": "жидкости",
-  "фільтр": "фильтр",
-  "паливний": "топливный",
-  "паливного": "топливного",
-  "салонний": "салонный",
-  "свічки": "свечи",
-  "запалювання": "зажигания",
-  "ремінь": "ремень",
-};
-
-function translateBmQueryToCatalogLanguage(query: string) {
-  return query.replace(/[A-Za-zА-Яа-яІіЇїЄєҐґ]+/gu, (token) => (
-    BM_QUERY_TERM_ALIASES[token.toLocaleLowerCase("uk-UA")] || token
-  ));
-}
-
 export function buildBmSearchQueryCandidates(query: string) {
-  const trimmed = query.trim();
-  if (!trimmed) return [];
-  const translated = translateBmQueryToCatalogLanguage(trimmed);
-  return [...new Set([trimmed, translated].filter(Boolean))];
+  return buildProviderPartQueryCandidates({ query, provider: "BM_PARTS" });
 }
 
 /** BM requires a second URL-encoding pass for slashes inside a car model. */
@@ -546,7 +475,13 @@ export const bmPartsAdapter: SupplierAdapter = {
     const query = input.query.trim();
     const vehicle = input.vehicle;
     const carFilters = buildBmVehicleFilterCandidates(vehicle);
-    const queryCandidates = buildBmSearchQueryCandidates(query);
+    const queryCandidates = buildProviderPartQueryCandidates({
+      query,
+      provider: "BM_PARTS",
+      position: input.position,
+      canonicalCode: input.canonicalPart?.code,
+      canonicalSlug: input.canonicalPart?.slug,
+    });
     if (query.length < 2 || !carFilters.length) return [];
     if (!(await this.isConfigured())) return [];
 
