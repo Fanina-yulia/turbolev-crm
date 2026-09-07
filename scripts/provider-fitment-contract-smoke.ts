@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { buildBmVehicleFilter, buildBmVehicleFilterCandidates } from "@/src/services/suppliers/bm-parts.adapter";
+import { buildBmVehicleFilter, buildBmVehicleFilterCandidates, encodeBmCarFilter } from "@/src/services/suppliers/bm-parts.adapter";
 import { buildModelScopedProviderVehicle, normalizeCatalogNumber, normalizePartPosition } from "@/src/services/parts-fitment.service";
 
 const filter = buildBmVehicleFilter({
@@ -13,6 +13,7 @@ assert.deepEqual(buildBmVehicleFilterCandidates({ brand: "LEXUS", model: "LEXUS 
   "LEXUS>ES350/300H",
   "LEXUS>LEXUS ES350/300H",
 ]);
+assert.equal(encodeBmCarFilter("LEXUS>ES350/300H"), "LEXUS>ES350%2F300H");
 assert.equal(buildBmVehicleFilter({ brand: null, model: "EMGRAND X7" }), "");
 assert.equal(normalizeCatalogNumber("  SOLGY-211125 "), "SOLGY211125");
 assert.equal(normalizePartPosition("Амортизатор передній лівий"), "FRONT_LEFT");
