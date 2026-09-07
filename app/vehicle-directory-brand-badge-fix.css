@@ -1,0 +1,5 @@
+/* VEHICLE-DIR-UI: remove redundant monogram/brand badge from vehicle cards.
+   The vehicle image, title, plate and VIN remain the primary identity elements. */
+[class*="vehicleTitleLine"] > [class*="logo"]:first-child {
+  display: none !important;
+}
