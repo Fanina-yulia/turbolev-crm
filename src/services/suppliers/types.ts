@@ -1,3 +1,5 @@
+import type { PartFitmentStatus, PartOfferClass } from "@/src/services/parts-fitment.service";
+
 export type SupplierId = "bm-parts" | "unique-trade" | "autonova-d" | "atl";
 
 export type SupplierCapability =
