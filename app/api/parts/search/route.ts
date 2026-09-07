@@ -13,6 +13,7 @@ export async function GET(request: Request) {
   const q = (searchParams.get("q") ?? "").trim();
   const rawVin = searchParams.get("vin") ?? "";
   const vehicleId = searchParams.get("vehicleId")?.trim() || null;
+  const plate = searchParams.get("plate")?.trim() || null;
   const findingId = searchParams.get("findingId")?.trim() || null;
   const manualPartId = searchParams.get("manualPartId")?.trim() || null;
   const partName = searchParams.get("partName")?.trim() || q;
@@ -30,6 +31,7 @@ export async function GET(request: Request) {
     genericArticleId,
     vehicleId,
     vin: rawVin,
+    plate,
   });
 
   let vehicleContext: Awaited<ReturnType<typeof decodeVinIntelligence>> | null = null;
@@ -84,7 +86,7 @@ export async function GET(request: Request) {
   return NextResponse.json({
     status: "OK",
     query: q,
-    context: { vehicleId, findingId, manualPartId, partName, position },
+    context: { vehicleId, vin: rawVin || null, plate, findingId, manualPartId, partName, position },
     vehicle: displayVehicle ? {
       id: fitment.vehicle?.id || vehicleId,
       vin: displayVehicle.vin,
