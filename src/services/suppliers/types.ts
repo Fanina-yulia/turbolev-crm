@@ -70,6 +70,7 @@ export type SupplierVehicleSearchInput = {
     code?: string | null;
     slug?: string | null;
     name?: string | null;
+    genericArticleId?: string | null;
   } | null;
 };
 
