@@ -234,62 +234,128 @@ function providerVehicleFromRow(row: ProviderVehicleRow): SupplierVehicleContext
   };
 }
 
-async function resolveBmVehicleContext(vehicleId: string, identityVin: string): Promise<SupplierVehicleContext | null> {
-  if (!vehicleId || identityVin.length !== 17) return null;
+export function buildModelScopedProviderVehicle(input: {
+  vehicleId: string;
+  brand: string | null;
+  model: string | null;
+  year: number | null;
+  vin?: string | null;
+}): SupplierVehicleContext | null {
+  const brand = clean(input.brand, 100);
+  const model = clean(input.model, 180);
+  if (!brand || !model) return null;
+  return {
+    provider: "bm-parts",
+    vehicleKey: ["CRM", brand, model].join(":").slice(0, 240),
+    externalVehicleId: null,
+    externalSecurityKey: null,
+    catalogCode: null,
+    brand,
+    model,
+    variant: input.year == null ? null : String(input.year),
+    confidence: 70,
+    exact: false,
+    source: "CRM_VEHICLE_MODEL_FILTER",
+    sourceVersion: "crm-v1",
+    rawEvidence: {
+      vehicleId: input.vehicleId,
+      foundBy: "crm_vehicle_model",
+      year: input.year,
+      vin: clean(input.vin, 40) || null,
+    },
+  };
+}
+
+async function resolveBmVehicleContext(
+  vehicleId: string,
+  identityVin: string,
+  vehicleSummary: NonNullable<PartFitmentContext["vehicle"]>,
+): Promise<SupplierVehicleContext | null> {
+  if (!vehicleId) return null;
+  const modelFallback = buildModelScopedProviderVehicle({
+    vehicleId,
+    brand: vehicleSummary.brand,
+    model: vehicleSummary.model,
+    year: vehicleSummary.year,
+    vin: vehicleSummary.vin,
+  });
+
   try {
     const prisma = getPrisma();
-    const cached = await prisma.providerVehicleContext.findUnique({
-      where: { vehicleId_provider: { vehicleId, provider: "bm-parts" } },
-    }) as ProviderVehicleRow | null;
+    let cached: ProviderVehicleRow | null = null;
+    try {
+      cached = await prisma.providerVehicleContext.findUnique({
+        where: { vehicleId_provider: { vehicleId, provider: "bm-parts" } },
+      }) as ProviderVehicleRow | null;
+    } catch (error) {
+      console.warn("BM Parts vehicle context cache unavailable", error instanceof Error ? error.message : "unknown error");
+    }
     if (cached && (!cached.expiresAt || cached.expiresAt.getTime() > Date.now())) {
       const context = providerVehicleFromRow(cached);
       if (context) return context;
     }
 
-    if (!(await bmPartsAdapter.isConfigured()) || !bmPartsAdapter.resolveVehicle) return null;
-    const resolved = await bmPartsAdapter.resolveVehicle(identityVin);
-    if (!resolved) return null;
+    if (!(await bmPartsAdapter.isConfigured())) return null;
 
-    const rawEvidence = resolved.rawEvidence == null ? undefined : toPrismaJson(resolved.rawEvidence);
-    await prisma.providerVehicleContext.upsert({
-      where: { vehicleId_provider: { vehicleId, provider: "bm-parts" } },
-      create: {
-        vehicleId,
-        provider: "bm-parts",
-        externalVehicleId: resolved.externalVehicleId,
-        externalSecurityKey: resolved.externalSecurityKey,
-        catalogCode: resolved.catalogCode,
-        brand: resolved.brand,
-        model: resolved.model,
-        variant: resolved.variant,
-        source: resolved.source,
-        sourceVersion: resolved.sourceVersion,
-        confidence: resolved.confidence,
-        exact: resolved.exact,
-        rawEvidence,
-        resolvedAt: new Date(),
-        expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
-      },
-      update: {
-        externalVehicleId: resolved.externalVehicleId,
-        externalSecurityKey: resolved.externalSecurityKey,
-        catalogCode: resolved.catalogCode,
-        brand: resolved.brand,
-        model: resolved.model,
-        variant: resolved.variant,
-        source: resolved.source,
-        sourceVersion: resolved.sourceVersion,
-        confidence: resolved.confidence,
-        exact: resolved.exact,
-        rawEvidence,
-        resolvedAt: new Date(),
-        expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
-      },
-    });
-    return resolved;
+    if (identityVin.length === 17 && bmPartsAdapter.resolveVehicle) {
+      try {
+        const resolved = await bmPartsAdapter.resolveVehicle(identityVin);
+        if (resolved) {
+          try {
+            const rawEvidence = resolved.rawEvidence == null ? undefined : toPrismaJson(resolved.rawEvidence);
+            await prisma.providerVehicleContext.upsert({
+              where: { vehicleId_provider: { vehicleId, provider: "bm-parts" } },
+              create: {
+                vehicleId,
+                provider: "bm-parts",
+                externalVehicleId: resolved.externalVehicleId,
+                externalSecurityKey: resolved.externalSecurityKey,
+                catalogCode: resolved.catalogCode,
+                brand: resolved.brand,
+                model: resolved.model,
+                variant: resolved.variant,
+                source: resolved.source,
+                sourceVersion: resolved.sourceVersion,
+                confidence: resolved.confidence,
+                exact: resolved.exact,
+                rawEvidence,
+                resolvedAt: new Date(),
+                expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+              },
+              update: {
+                externalVehicleId: resolved.externalVehicleId,
+                externalSecurityKey: resolved.externalSecurityKey,
+                catalogCode: resolved.catalogCode,
+                brand: resolved.brand,
+                model: resolved.model,
+                variant: resolved.variant,
+                source: resolved.source,
+                sourceVersion: resolved.sourceVersion,
+                confidence: resolved.confidence,
+                exact: resolved.exact,
+                rawEvidence,
+                resolvedAt: new Date(),
+                expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+              },
+            });
+          } catch (error) {
+            console.warn("BM Parts vehicle context cache write unavailable", error instanceof Error ? error.message : "unknown error");
+          }
+          return resolved;
+        }
+      } catch (error) {
+        console.warn("BM Parts VIN vehicle resolve unavailable", error instanceof Error ? error.message : "unknown error");
+      }
+    }
+
+    return modelFallback;
   } catch (error) {
     console.warn("BM Parts vehicle context unavailable", error instanceof Error ? error.message : "unknown error");
-    return null;
+    try {
+      return (await bmPartsAdapter.isConfigured()) ? modelFallback : null;
+    } catch {
+      return null;
+    }
   }
 }
 
@@ -580,9 +646,8 @@ export async function resolvePartFitment(intent: PartSearchIntent): Promise<Part
 
   const identityVin = normalizeVin(vehicle.vin || requestedVin);
   const vinValidation = validateVin(identityVin);
-  if (!vinValidation.formatValid) {
-    return emptyContext("MANUAL_REQUIRED", "У картці автомобіля немає коректного 17-символьного VIN.", vehicleSummary);
-  }
+  const hasValidVin = vinValidation.formatValid
+    && !(vinValidation.northAmerican && vinValidation.checkDigit.status === "INVALID");
 
   let genericArticle: Awaited<ReturnType<typeof findGenericArticle>> = null;
   try {
@@ -591,8 +656,21 @@ export async function resolvePartFitment(intent: PartSearchIntent): Promise<Part
     console.warn("Generic article lookup failed", error);
   }
 
-  const providerVehicle = await resolveBmVehicleContext(vehicle.id, identityVin);
+  const providerVehicle = await resolveBmVehicleContext(vehicle.id, hasValidVin ? identityVin : "", vehicleSummary);
   const link = vehicle.catalogLink;
+  const hasVerifiedCatalogLink = Boolean(
+    link
+    && link.status === "VERIFIED"
+    && link.vehicleReference.status === "ACTIVE",
+  );
+
+  if (!hasValidVin && !providerVehicle && !hasVerifiedCatalogLink) {
+    return emptyContext(
+      "MANUAL_REQUIRED",
+      "У картці автомобіля немає коректного VIN, а BM Parts не налаштований для пошуку за маркою/моделлю.",
+      vehicleSummary,
+    );
+  }
 
   if (!link || link.status !== "VERIFIED" || link.vehicleReference.status !== "ACTIVE") {
     const providerFitment = providerVehicle
