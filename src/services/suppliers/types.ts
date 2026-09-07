@@ -66,6 +66,11 @@ export type SupplierVehicleSearchInput = {
   vehicle: SupplierVehicleContext;
   limit?: number;
   position?: string | null;
+  canonicalPart?: {
+    code?: string | null;
+    slug?: string | null;
+    name?: string | null;
+  } | null;
 };
 
 export type SupplierVehiclePart = {
