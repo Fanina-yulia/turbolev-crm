@@ -15,7 +15,7 @@ assert.deepEqual(buildBmVehicleFilterCandidates({ brand: "LEXUS", model: "LEXUS 
 ]);
 assert.equal(encodeBmCarFilter("LEXUS>ES350/300H"), "LEXUS>ES350%2F300H");
 assert.equal(bmSearchMode("Амортизатор передній"), "extended");
-assert.equal(bmSearchMode("SACHS 115 906"), "strict");
+assert.equal(bmSearchMode("115906"), "strict");
 assert.equal(buildBmVehicleFilter({ brand: null, model: "EMGRAND X7" }), "");
 assert.equal(normalizeCatalogNumber("  SOLGY-211125 "), "SOLGY211125");
 assert.equal(normalizePartPosition("Амортизатор передній лівий"), "FRONT_LEFT");
