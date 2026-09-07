@@ -409,26 +409,29 @@ export const bmPartsAdapter: SupplierAdapter = {
     let carFilter = carFilters[0];
     let products: BmProduct[] = [];
 
+search:
     for (const candidateFilter of carFilters) {
-      const params = new URLSearchParams({
-        q: query,
-        search_mode: isArticleLike(query) ? "strict" : "partial",
-        available: "1",
-        products_as: "arr",
-        warehouses: "all",
-        with_extra: "0",
-        save: "0",
-        per_page: String(limit),
-        cars: candidateFilter,
-      });
-      const response = await request("/search/products?" + params.toString());
-      if (!response.ok) throw new Error("BM Parts vehicle search HTTP " + response.status);
-      const payload = await response.json() as unknown;
-      const candidateProducts = extractProducts(payload);
-      if (candidateProducts.length) {
-        carFilter = candidateFilter;
-        products = candidateProducts.slice(0, limit);
-        break;
+      for (const available of ["1", "0"]) {
+        const params = new URLSearchParams({
+          q: query,
+          search_mode: isArticleLike(query) ? "strict" : "partial",
+          available,
+          products_as: "arr",
+          warehouses: "all",
+          with_extra: "0",
+          save: "0",
+          per_page: String(limit),
+          cars: candidateFilter,
+        });
+        const response = await request("/search/products?" + params.toString());
+        if (!response.ok) throw new Error("BM Parts vehicle search HTTP " + response.status);
+        const payload = await response.json() as unknown;
+        const candidateProducts = extractProducts(payload);
+        if (candidateProducts.length) {
+          carFilter = candidateFilter;
+          products = candidateProducts.slice(0, limit);
+          break search;
+        }
       }
     }
 
