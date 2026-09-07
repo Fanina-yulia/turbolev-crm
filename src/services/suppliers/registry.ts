@@ -92,6 +92,8 @@ export async function testSupplier(id: SupplierId) {
 }
 
 export type SupplierSearchContext = {
+  vehicleId?: string | null;
+  vin?: string | null;
   fitmentStatus?: PartFitmentStatus;
   fitmentConfidence?: number | null;
   fitmentSource?: string | null;
@@ -126,6 +128,17 @@ function annotateOffer(offer: SupplierOffer, context: SupplierSearchContext): Su
 export async function searchConfiguredSuppliers(query: string, limitPerSupplier = 20, context: SupplierSearchContext = {}) {
   const statuses = await listSupplierStatuses();
   const configuredIds = new Set(statuses.filter((supplier) => supplier.configured).map((supplier) => supplier.id));
+  const vehicleScoped = Boolean(context.vehicleId?.trim() || context.vin?.trim());
+  if (vehicleScoped && context.fitmentStatus !== "VERIFIED") {
+    return {
+      offers: [] as SupplierOffer[],
+      providers: [] as Array<{ id: SupplierId; ok: boolean; message?: string }>,
+      configuredSuppliers: [...configuredIds],
+      supplierStatuses: statuses,
+      blocked: true,
+      blockReason: context.fitmentReason || "Запит до постачальників не відправлено: для автомобіля немає підтвердженого зв’язку з OE-каталогом.",
+    };
+  }
   const readiness = supplierAdapters.map((adapter) => ({ adapter, configured: configuredIds.has(adapter.id) }));
   const searchable = readiness
     .filter((item) => item.adapter.id !== "autonova-d" && item.adapter.id !== "atl" && item.configured)
@@ -175,5 +188,7 @@ export async function searchConfiguredSuppliers(query: string, limitPerSupplier 
     providers,
     configuredSuppliers: [...configuredIds],
     supplierStatuses: statuses,
+    blocked: false,
+    blockReason: null,
   };
 }

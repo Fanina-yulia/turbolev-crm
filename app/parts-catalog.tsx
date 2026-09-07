@@ -53,6 +53,7 @@ export function PartsCatalog() {
   const [manualConfirmation, setManualConfirmation] = useState(false);
   const [supplierProviders, setSupplierProviders] = useState<SupplierProvider[]>([]);
   const [configuredSuppliers, setConfiguredSuppliers] = useState<string[]>([]);
+  const [supplierSearchBlocked, setSupplierSearchBlocked] = useState(false);
   const [recommendedParts, setRecommendedParts] = useState<Recommendation[]>([]);
   const [selectedLines, setSelectedLines] = useState<SelectedLine[]>([]);
   const [workOrderOptions, setWorkOrderOptions] = useState<WorkOrderRow[]>([]);
@@ -129,6 +130,7 @@ export function PartsCatalog() {
       return;
     }
     setBusy(true);
+    setSupplierSearchBlocked(false);
     try {
       const recommendation = recommendationOverride
         || recommendedParts.find((item) => recommendationKey(item) === activeFindingId)
@@ -154,8 +156,27 @@ export function PartsCatalog() {
       } | null;
       if (!referenceResponse.ok) throw new Error(referenceData?.error || "Довідковий каталог тимчасово недоступний.");
       setParts(Array.isArray(referenceData?.parts) ? referenceData.parts : []);
-      setFitment(referenceData?.fitment || null);
+      const resolvedFitment = referenceData?.fitment || null;
+      setFitment(resolvedFitment);
       if (referenceData?.vehicle) setVehicle(referenceData.vehicle);
+
+      const vehicleScoped = Boolean(
+        context?.vehicleId
+        || resolvedVin
+        || referenceData?.vehicle?.id
+        || resolvedFitment?.vehicle?.id
+        || resolvedFitment?.vehicle?.vin
+      );
+      if (vehicleScoped && resolvedFitment?.status !== "VERIFIED") {
+        const blockedMessage = "Запит до постачальників не відправлено: для цього автомобіля немає підтвердженого зв’язку з OE-каталогом.";
+        setOffers([]);
+        setSupplierProviders([]);
+        setConfiguredSuppliers([]);
+        setSupplierSearchBlocked(true);
+        setManualConfirmation(false);
+        setMessage(blockedMessage);
+        return;
+      }
 
       const supplierParams = new URLSearchParams({ q: query });
       if (resolvedVin) supplierParams.set("vin", resolvedVin);
@@ -172,6 +193,8 @@ export function PartsCatalog() {
         providers?: SupplierProvider[];
         configuredSuppliers?: string[];
         fitment?: FitmentPayload | null;
+        supplierSearchBlocked?: boolean;
+        supplierSearchBlockReason?: string | null;
         error?: string;
       } | null;
       if (!supplierResponse.ok) throw new Error(supplierData?.error || "Постачальники тимчасово недоступні.");
@@ -179,6 +202,7 @@ export function PartsCatalog() {
       setSupplierProviders(Array.isArray(supplierData?.providers) ? supplierData.providers : []);
       setConfiguredSuppliers(Array.isArray(supplierData?.configuredSuppliers) ? supplierData.configuredSuppliers : []);
       setFitment(supplierData?.fitment || referenceData?.fitment || null);
+      setSupplierSearchBlocked(Boolean(supplierData?.supplierSearchBlocked));
       setManualConfirmation(false);
       setMessage(supplierData?.fitment?.reason || referenceData?.fitmentPolicy?.message || (resolvedVin
         ? "VIN і позицію передано в каталог. Перевірте статус сумісності кожної пропозиції."
@@ -190,6 +214,7 @@ export function PartsCatalog() {
       setFitment(null);
       setSupplierProviders([]);
       setConfiguredSuppliers([]);
+      setSupplierSearchBlocked(false);
       setMessage(error instanceof Error ? error.message : "Каталог тимчасово недоступний.");
     } finally {
       setBusy(false);
@@ -303,6 +328,7 @@ export function PartsCatalog() {
     setQ(query);
     setOffers([]);
     setFitment(null);
+    setSupplierSearchBlocked(false);
     setManualConfirmation(false);
     setPickerOpen(true);
     void searchPart(query, vehicleRef, item);
@@ -441,10 +467,10 @@ export function PartsCatalog() {
           <button type="button" className={activeTab === "originals" ? styles.tabActive : ""} onClick={() => setActiveTab("originals")}>Оригінали <span>{originalOffers.length}</span></button>
           <button type="button" className={activeTab === "analogs" ? styles.tabActive : ""} onClick={() => setActiveTab("analogs")}>Аналоги <span>{analogOffers.length}</span></button>
           <span className={styles.pickerApiStatus}>{fitment?.status === "VERIFIED" ? "VIN-каталог підтверджено" : "Сумісність не підтверджена"}</span>
-          <span className={styles.pickerApiStatus}>{configuredSuppliers.length} API підключено</span>
+          <span className={styles.pickerApiStatus}>{supplierSearchBlocked ? "Запит до API не відправлено" : `${configuredSuppliers.length} API підключено`}</span>
         </div>
-        {(manualOffers.length > 0 || fitment?.status !== "VERIFIED") && <label className={styles.policyNote}><input type="checkbox" checked={manualConfirmation} onChange={(event) => setManualConfirmation(event.target.checked)} /> Я вручну перевірив сумісність цієї деталі з автомобілем</label>}
-        {busy ? <div className={styles.pickerEmptyState}><b>Шукаю пропозиції…</b><span>Передаю VIN, позицію, OE-номери та запит до постачальників.</span></div> : !pickerOffers.length ? <div className={styles.pickerEmptyState}><b>Пропозицій у цій категорії поки немає</b><span>{fitment?.status === "CATALOG_NOT_CONNECTED" ? "Канонічний каталог OE ще не підключений для цього автомобіля. Нижче відображаються лише результати ручного пошуку, якщо вони є." : configuredSuppliers.length ? "Змініть пошуковий запит або перевірте відповідь постачальників." : "Перевірте підключення BM Parts та Юнік Трейд у налаштуваннях CRM."}</span></div> : <div className={styles.pickerOfferList}>
+        {!supplierSearchBlocked && (manualOffers.length > 0 || fitment?.status !== "VERIFIED") && <label className={styles.policyNote}><input type="checkbox" checked={manualConfirmation} onChange={(event) => setManualConfirmation(event.target.checked)} /> Я вручну перевірив сумісність цієї деталі з автомобілем</label>}
+        {busy ? <div className={styles.pickerEmptyState}><b>Шукаю пропозиції…</b><span>Передаю VIN, позицію, OE-номери та запит до постачальників.</span></div> : !pickerOffers.length ? <div className={styles.pickerEmptyState}><b>Пропозицій у цій категорії поки немає</b><span>{supplierSearchBlocked ? "Запит до постачальників не відправлено: для цього автомобіля немає підтвердженого зв’язку з OE-каталогом." : fitment?.status === "CATALOG_NOT_CONNECTED" ? "Канонічний каталог OE ще не підключений для цього автомобіля." : configuredSuppliers.length ? "Змініть пошуковий запит або перевірте відповідь постачальників." : "Перевірте підключення BM Parts та Юнік Трейд у налаштуваннях CRM."}</span></div> : <div className={styles.pickerOfferList}>
           {!categoryOffers.length && manualOffers.length > 0 && <div className={styles.policyNote}>У цій вкладці немає підтверджених {activeTab === "originals" ? "оригіналів" : "аналогів"}. Показано окремі результати ручного пошуку — вони не класифіковані як OE або аналог.</div>}
           {pickerOffers.map((offer, index) => {
             const key = offer.supplierId + ":" + (offer.externalProductId || offer.article);

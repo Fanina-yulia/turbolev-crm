@@ -202,6 +202,19 @@ export async function selectDiagnosticPartOffer(input: {
     vehicleId: clean(input.vehicleId, 160) || null,
     vin: input.vehicleVin || null,
   });
+  const vehicleScoped = Boolean(
+    clean(input.vehicleId, 160)
+    || clean(input.vehicleVin, 24)
+    || fitment.vehicle?.id
+    || fitment.vehicle?.vin
+  );
+  if (vehicleScoped && fitment.status !== "VERIFIED") {
+    throw new PartsSelectionError(
+      "CATALOG_FITMENT_REQUIRED",
+      "Підбір постачальника заблоковано: спочатку підключіть і підтвердьте OE-каталог для цього автомобіля.",
+      409,
+    );
+  }
   const wantedExternalId = clean(input.externalProductId, 200);
   const wantedArticle = clean(input.article, 120).toUpperCase();
   const normalizedWantedArticle = normalizeCatalogNumber(wantedArticle);
@@ -213,7 +226,7 @@ export async function selectDiagnosticPartOffer(input: {
   if (searchMode === "VIN" && !catalogFitmentConfirmed) {
     throw new PartsSelectionError(
       "CATALOG_FITMENT_REQUIRED",
-      "Для підбору за VIN потрібен підтверджений OE-каталог. Увімкніть ручне підтвердження або підключіть каталог сумісності.",
+      "Для підбору за VIN потрібен підтверджений OE-каталог. Підключіть каталог сумісності для цього автомобіля.",
       409,
     );
   }
@@ -222,6 +235,8 @@ export async function selectDiagnosticPartOffer(input: {
   // its article; using the article prevents a valid selected offer from being
   // rejected as stale during the second server-side verification.
   const search = await searchConfiguredSuppliers(wantedArticle || suggestion.description, 50, {
+    vehicleId: clean(input.vehicleId, 160) || null,
+    vin: clean(input.vehicleVin, 24) || null,
     fitmentStatus: fitment.status,
     fitmentConfidence: fitment.confidence,
     fitmentSource: fitment.catalog?.source || input.fitmentSource || null,
