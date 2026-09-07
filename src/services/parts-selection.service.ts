@@ -167,6 +167,7 @@ export async function selectDiagnosticPartOffer(input: {
   partName?: string | null;
   position?: string | null;
   fitmentStatus?: PartFitmentStatus | null;
+  fitmentExact?: boolean | null;
   fitmentProductId?: string | null;
   fitmentSource?: string | null;
   manualConfirmation?: boolean;
@@ -220,9 +221,11 @@ export async function selectDiagnosticPartOffer(input: {
   const normalizedWantedArticle = normalizeCatalogNumber(wantedArticle);
   const selectedArticleIsCatalogued = Boolean(
     normalizedWantedArticle
-    && fitment.catalogArticles.some((article) => normalizeCatalogNumber(article) === normalizedWantedArticle),
+    && [...fitment.catalogArticles, ...fitment.oeNumbers].some((article) => normalizeCatalogNumber(article) === normalizedWantedArticle),
   );
-  const catalogFitmentConfirmed = fitment.status === "VERIFIED" && selectedArticleIsCatalogued;
+  const catalogFitmentConfirmed = fitment.status === "VERIFIED"
+    && fitment.exact
+    && selectedArticleIsCatalogued;
   if (searchMode === "VIN" && !catalogFitmentConfirmed) {
     throw new PartsSelectionError(
       "CATALOG_FITMENT_REQUIRED",
@@ -239,8 +242,10 @@ export async function selectDiagnosticPartOffer(input: {
     vin: clean(input.vehicleVin, 24) || null,
     fitmentStatus: fitment.status,
     fitmentConfidence: fitment.confidence,
+    fitmentExact: fitment.exact,
     fitmentSource: fitment.catalog?.source || input.fitmentSource || null,
     fitmentReason: fitment.reason,
+    providerVehicle: fitment.providerVehicle,
     catalogArticles: fitment.catalogArticles,
     analogArticles: fitment.analogArticles,
     oeNumbers: fitment.oeNumbers,
@@ -251,8 +256,8 @@ export async function selectDiagnosticPartOffer(input: {
     return Boolean(wantedArticle && offer.article.trim().toUpperCase() === wantedArticle);
   });
   if (!liveOffer) throw new PartsSelectionError("OFFER_STALE", "Пропозиція постачальника вже недоступна. Оновіть пошук.", 409);
-  if (searchMode === "VIN" && liveOffer.fitmentStatus !== "VERIFIED") {
-    throw new PartsSelectionError("CATALOG_FITMENT_REQUIRED", "Обрана пропозиція не має підтвердженого зв’язку з VIN-каталогом.", 409);
+  if (searchMode === "VIN" && (liveOffer.fitmentStatus !== "VERIFIED" || liveOffer.fitmentExact === false)) {
+    throw new PartsSelectionError("CATALOG_FITMENT_REQUIRED", "Обрана пропозиція не має підтвердженого зв’язку з точною модифікацією автомобіля.", 409);
   }
   if (!liveOffer.available || liveOffer.purchasePrice == null) throw new PartsSelectionError("OFFER_UNAVAILABLE", "Ця деталь зараз недоступна у постачальника.", 409);
 
@@ -315,6 +320,7 @@ export async function selectDiagnosticPartOffer(input: {
       searchMode,
       manualConfirmation: searchMode !== "VIN",
       fitmentStatus: fitment.status,
+      fitmentExact: fitment.exact,
       fitmentConfirmed: catalogFitmentConfirmed,
       fitmentConfidence: fitment.confidence,
       fitmentSource: fitment.catalog?.source || input.fitmentSource || null,
@@ -375,6 +381,7 @@ export async function selectDiagnosticPartOffer(input: {
           searchMode,
           manualConfirmation: searchMode !== "VIN",
           fitmentStatus: fitment.status,
+          fitmentExact: fitment.exact,
           fitmentConfirmed: catalogFitmentConfirmed,
           fitmentConfidence: fitment.confidence,
           fitmentSource: fitment.catalog?.source || input.fitmentSource || null,
@@ -410,6 +417,7 @@ export async function selectDiagnosticPartOffer(input: {
     searchMode,
     manualConfirmationRequired: searchMode !== "VIN",
     fitmentStatus: fitment.status,
+    fitmentExact: fitment.exact,
     fitmentConfirmed: catalogFitmentConfirmed,
   };
 }
