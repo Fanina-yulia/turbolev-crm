@@ -86,7 +86,7 @@ export async function GET(request: Request) {
     query: q,
     context: { vehicleId, findingId, manualPartId, partName, position },
     vehicle: displayVehicle ? {
-      id: displayVehicle.id || vehicleId,
+      id: fitment.vehicle?.id || vehicleId,
       vin: displayVehicle.vin,
       make: displayVehicle.make,
       model: displayVehicle.model,
