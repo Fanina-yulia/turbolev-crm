@@ -3,18 +3,8 @@ import { buildBmVehicleFilter } from "@/src/services/suppliers/bm-parts.adapter"
 import { normalizeCatalogNumber, normalizePartPosition } from "@/src/services/parts-fitment.service";
 
 const filter = buildBmVehicleFilter({
-  provider: "bm-parts",
-  vehicleKey: "demo",
-  externalVehicleId: null,
-  externalSecurityKey: null,
-  catalogCode: null,
   brand: "GEELY",
   model: "EMGRAND X7",
-  variant: null,
-  confidence: 90,
-  exact: false,
-  source: "BM_PARTS_VIN_MODEL_FILTER",
-  sourceVersion: "v2",
 });
 
 assert.equal(filter, "GEELY>EMGRAND X7");
