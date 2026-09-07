@@ -38,8 +38,58 @@ export async function GET(request: Request) {
     vehicleId,
     vin,
   });
+  const fitmentPayload = {
+    status: fitment.status,
+    confirmed: fitment.confirmed,
+    confidence: fitment.confidence,
+    reason: fitment.reason,
+    vehicle: fitment.vehicle,
+    catalog: fitment.catalog,
+    genericArticle: fitment.genericArticle,
+  };
+  const vehicleScoped = Boolean(vehicleId || vin || fitment.vehicle?.id || fitment.vehicle?.vin);
+  if (vehicleScoped && fitment.status !== "VERIFIED") {
+    const message = "Запит до постачальників не відправлено: для цього автомобіля немає підтвердженого зв’язку з OE-каталогом.";
+    return NextResponse.json({
+      status: "CATALOG_REQUIRED",
+      query: q,
+      context: { vehicleId, vin, partName, position },
+      fitment: fitmentPayload,
+      catalogMatches: fitment.matches,
+      oeNumbers: fitment.oeNumbers,
+      catalogArticles: fitment.catalogArticles,
+      analogArticles: fitment.analogArticles,
+      offers: [],
+      providers: [],
+      configuredSuppliers: [],
+      supplierStatuses: [],
+      suppliers: [],
+      supplierSummary: {
+        added: 0,
+        configured: 0,
+        responded: 0,
+        blocked: true,
+        message,
+      },
+      supplierSearchBlocked: true,
+      supplierSearchBlockReason: message,
+      pricing: {
+        basis: "SUPPLIER_DEFAULT_MARKUP",
+        defaultMarkupPercent: 40,
+        message: "Пошук постачальників заблокований до підтвердження сумісності через OE-каталог.",
+      },
+      policy: {
+        priceType: "PURCHASE_PRICE",
+        fitmentConfirmed: false,
+        supplierSearchAllowed: false,
+        message,
+      },
+    }, { headers: { "Cache-Control": "no-store" } });
+  }
   const [result, suppliers] = await Promise.all([
     searchConfiguredSuppliers(q, 20, {
+      vehicleId,
+      vin,
       fitmentStatus: fitment.status,
       fitmentConfidence: fitment.confidence,
       fitmentSource: fitment.catalog?.source || null,
@@ -59,15 +109,7 @@ export async function GET(request: Request) {
     status: "OK",
     query: q,
     context: { vehicleId, vin, partName, position },
-    fitment: {
-      status: fitment.status,
-      confirmed: fitment.confirmed,
-      confidence: fitment.confidence,
-      reason: fitment.reason,
-      vehicle: fitment.vehicle,
-      catalog: fitment.catalog,
-      genericArticle: fitment.genericArticle,
-    },
+    fitment: fitmentPayload,
     catalogMatches: fitment.matches,
     oeNumbers: fitment.oeNumbers,
     catalogArticles: fitment.catalogArticles,
@@ -89,9 +131,12 @@ export async function GET(request: Request) {
       defaultMarkupPercent: 40,
       message: "Ціна продажу розраховується від закупівельної ціни за правилом постачальника; базове правило Turbo LEV — 40%. Ручний override фіксується в аудиті під час створення supplier order draft.",
     },
+    supplierSearchBlocked: result.blocked,
+    supplierSearchBlockReason: result.blockReason,
     policy: {
       priceType: "PURCHASE_PRICE",
       fitmentConfirmed: fitment.confirmed,
+      supplierSearchAllowed: !result.blocked,
       message: fitment.reason,
     },
   }, { headers: { "Cache-Control": "no-store" } });
