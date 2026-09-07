@@ -141,7 +141,11 @@ model GenericArticle {
   mergedInto   GenericArticle?                    @relation("GenericArticleMerge", fields: [mergedIntoId], references: [id], onDelete: SetNull)
   mergedFrom   GenericArticle[]                   @relation("GenericArticleMerge")
   externalRefs GenericArticleExternalReference[]
-  aliases      GenericArticleAlias[]
+  aliases           GenericArticleAlias[]
+  relationsFrom     GenericArticleRelation[] @relation("GenericArticleRelationFrom")
+  relationsTo       GenericArticleRelation[] @relation("GenericArticleRelationTo")
+  operations        GenericArticleOperation[]
+  media             GenericArticleMedia[]
   categories   CategoryGenericArticle[]
   products     Product[]
   vehicleFitments VehicleFitment[]
@@ -153,22 +157,39 @@ model GenericArticle {
 /// Local, reviewable normalization vocabulary for diagnostic labels and supplier nomenclature.
 /// Diagnostic cards keep their original display text; this table only helps resolve a search intent.
 model GenericArticleAlias {
-  id               String   @id @default(cuid())
+  id               String              @id @default(cuid())
   genericArticleId String
-  aliasRaw         String   @db.VarChar(240)
-  aliasNormalized  String   @db.VarChar(240)
-  source           String   @db.VarChar(64)
+  aliasRaw         String              @db.VarChar(240)
+  aliasNormalized  String              @db.VarChar(240)
+  aliasType        String              @default("SYNONYM") @db.VarChar(40)
+  language         String              @default("uk") @db.VarChar(8)
+  provider         String              @default("") @db.VarChar(64)
+  axisHint         String?             @db.VarChar(16)
+  sideHint         String?             @db.VarChar(16)
+  subPositionHint  String?             @db.VarChar(16)
+  source           String              @db.VarChar(64)
+  sourceVersion    String?             @db.VarChar(160)
   confidence       Int?
-  isApproved       Boolean  @default(false)
-  createdByName    String?  @db.VarChar(160)
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  status           CatalogEntityStatus @default(DRAFT)
+  isApproved       Boolean             @default(false)
+  usageCount       Int                 @default(0)
+  approvedByUserId String?             @db.VarChar(128)
+  approvedAt       DateTime?
+  firstSeenAt      DateTime            @default(now())
+  lastSeenAt       DateTime            @default(now())
+  createdByName    String?             @db.VarChar(160)
+  identityKey      String              @unique @db.VarChar(128)
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
 
   genericArticle GenericArticle @relation(fields: [genericArticleId], references: [id], onDelete: Cascade)
 
-  @@unique([genericArticleId, aliasNormalized])
+  @@unique([genericArticleId, aliasNormalized, provider], map: "GenericArticleAlias_genericArticleId_aliasNormalized_provider_key")
   @@index([aliasNormalized, isApproved])
   @@index([genericArticleId, isApproved])
+  @@index([aliasNormalized, status], map: "generic_article_alias_lookup_idx")
+  @@index([genericArticleId, status], map: "generic_article_alias_article_idx")
+  @@index([provider, status], map: "generic_article_alias_provider_idx")
 }
 
 model GenericArticleExternalReference {

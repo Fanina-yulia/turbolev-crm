@@ -4,7 +4,7 @@ import { getPrisma } from "@/src/lib/prisma";
 import { normalizePartNeed } from "@/src/services/part-normalization.service";
 import { toPrismaJson } from "@/src/lib/prisma-json";
 import { BM_PARTS_VEHICLE_CONTEXT_VERSION, bmPartsAdapter } from "@/src/services/suppliers/bm-parts.adapter";
-import { resolvePartTerminology } from "@/src/services/parts-terminology.service";
+import { resolvePartKnowledge } from "@/src/services/parts-knowledge.service";
 import type { SupplierVehicleContext, SupplierVehiclePart } from "@/src/services/suppliers/types";
 
 export type PartFitmentStatus =
@@ -112,18 +112,6 @@ export function normalizePartPosition(value: unknown) {
   return [axis, side, vertical].filter(Boolean).join("_") || source;
 }
 
-function aliasForIntent(intent: PartSearchIntent) {
-  const resolution = resolvePartTerminology({
-    query: intent.query,
-    partName: intent.partName,
-  });
-  if (!resolution.definition) return null;
-  return {
-    slug: resolution.definition.slug,
-    terms: [...resolution.definition.aliases],
-  };
-}
-
 async function findGenericArticle(intent: PartSearchIntent) {
   const prisma = getPrisma();
   const genericArticleId = clean(intent.genericArticleId, 160);
@@ -142,13 +130,27 @@ async function findGenericArticle(intent: PartSearchIntent) {
   });
   if (normalized.genericArticle) return normalized.genericArticle;
 
-  const alias = aliasForIntent(intent);
+  const knowledge = await resolvePartKnowledge({
+    query: intent.query,
+    partName: intent.partName,
+    position: intent.position,
+    side: intent.side,
+  });
+  if (knowledge.genericArticleId) {
+    const linked = await prisma.genericArticle.findFirst({
+      where: { id: knowledge.genericArticleId, status: "ACTIVE" },
+      select: { id: true, code: true, name: true, slug: true },
+    });
+    if (linked) return linked;
+  }
+
+  const definition = knowledge.definition;
   const normalizedSlug = normalized.canonicalSlug?.trim();
-  if (!alias && !normalizedSlug) return null;
+  if (!definition && !normalizedSlug) return null;
   const conditions = [
-    ...(alias ? [{ slug: { contains: alias.slug, mode: "insensitive" as const } }] : []),
+    ...(definition ? [{ slug: { contains: definition.slug, mode: "insensitive" as const } }] : []),
     ...(normalizedSlug ? [{ slug: { contains: normalizedSlug, mode: "insensitive" as const } }] : []),
-    ...(alias ? alias.terms.map((term) => ({ name: { contains: term, mode: "insensitive" as const } })) : []),
+    ...(definition ? definition.aliases.map((term) => ({ name: { contains: term, mode: "insensitive" as const } })) : []),
     ...(normalized.canonicalName ? [{ name: { contains: normalized.canonicalName, mode: "insensitive" as const } }] : []),
   ];
   return prisma.genericArticle.findFirst({
@@ -402,7 +404,7 @@ async function resolveBmProviderFitment(
       limit: 20,
       position: requestedPosition,
       canonicalPart: genericArticle
-        ? { code: genericArticle.code, slug: genericArticle.slug, name: genericArticle.name }
+        ? { code: genericArticle.code, slug: genericArticle.slug, name: genericArticle.name, genericArticleId: genericArticle.id }
         : null,
     });
   } catch (error) {

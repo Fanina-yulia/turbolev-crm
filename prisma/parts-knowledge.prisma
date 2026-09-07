@@ -1,0 +1,87 @@
+model GenericArticleRelation {
+  id                  String              @id @default(cuid())
+  fromGenericArticleId String
+  toGenericArticleId   String
+  relationType        String              @db.VarChar(48)
+  confidence          Int                 @default(0)
+  status              CatalogEntityStatus @default(DRAFT)
+  source              String              @db.VarChar(64)
+  sourceVersion       String?             @db.VarChar(160)
+  notes               String?             @db.Text
+  identityKey         String              @unique @db.VarChar(128)
+  createdAt           DateTime            @default(now())
+  updatedAt           DateTime            @updatedAt
+
+  fromGenericArticle GenericArticle @relation("GenericArticleRelationFrom", fields: [fromGenericArticleId], references: [id], onDelete: Cascade)
+  toGenericArticle   GenericArticle @relation("GenericArticleRelationTo", fields: [toGenericArticleId], references: [id], onDelete: Cascade)
+
+  @@index([fromGenericArticleId, relationType, status], map: "generic_article_relation_from_idx")
+  @@index([toGenericArticleId, relationType, status], map: "generic_article_relation_to_idx")
+}
+
+model GenericArticleOperation {
+  id                    String              @id @default(cuid())
+  genericArticleId      String
+  operationCode         String              @db.VarChar(80)
+  operationName         String              @db.VarChar(240)
+  serviceCatalogItemId  String?
+  positionRule          String?             @db.VarChar(120)
+  normMinutesOverride   Int?
+  defaultQuantity       Decimal             @default(1) @db.Decimal(10, 3)
+  status                CatalogEntityStatus @default(DRAFT)
+  source                String              @db.VarChar(64)
+  sourceVersion         String?             @db.VarChar(160)
+  notes                 String?             @db.Text
+  identityKey           String              @unique @db.VarChar(128)
+  createdAt             DateTime            @default(now())
+  updatedAt             DateTime            @updatedAt
+
+  genericArticle GenericArticle @relation(fields: [genericArticleId], references: [id], onDelete: Cascade)
+
+  @@index([genericArticleId, status], map: "generic_article_operation_article_idx")
+  @@index([serviceCatalogItemId], map: "generic_article_operation_service_idx")
+}
+
+model GenericArticleMedia {
+  id           String              @id @default(cuid())
+  genericArticleId String
+  mediaType    String              @db.VarChar(32)
+  status       CatalogEntityStatus @default(DRAFT)
+  source       String              @db.VarChar(64)
+  sourceUrl    String?             @db.Text
+  storageKey   String?             @db.Text
+  rights       String?             @db.Text
+  provenance   Json?
+  contentHash  String?             @db.VarChar(128)
+  altText      String?             @db.VarChar(320)
+  sortOrder    Int                 @default(100)
+  identityKey  String              @unique @db.VarChar(128)
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+
+  genericArticle GenericArticle @relation(fields: [genericArticleId], references: [id], onDelete: Cascade)
+
+  @@index([genericArticleId, status, sortOrder], map: "generic_article_media_article_idx")
+  @@index([contentHash], map: "generic_article_media_hash_idx")
+}
+
+model PartTermObservation {
+  id                       String   @id @default(cuid())
+  rawTerm                  String   @db.VarChar(240)
+  normalizedTerm           String   @db.VarChar(240)
+  diagnosticFindingId      String?  @db.VarChar(128)
+  suggestedGenericArticleId String? @db.VarChar(128)
+  resolvedGenericArticleId String? @db.VarChar(128)
+  status                   String   @default("NEW") @db.VarChar(32)
+  source                   String   @db.VarChar(64)
+  metadata                 Json?
+  identityKey              String   @unique @db.VarChar(128)
+  firstSeenAt              DateTime @default(now())
+  lastSeenAt               DateTime @default(now())
+  createdAt                DateTime @default(now())
+  updatedAt                DateTime @updatedAt
+
+  @@index([normalizedTerm, status], map: "part_term_observation_lookup_idx")
+  @@index([status, lastSeenAt], map: "part_term_observation_queue_idx")
+  @@index([suggestedGenericArticleId], map: "part_term_observation_suggested_idx")
+}
