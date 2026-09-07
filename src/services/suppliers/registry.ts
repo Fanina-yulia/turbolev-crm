@@ -3,7 +3,14 @@ import { bmPartsAdapter } from "./bm-parts.adapter";
 import { uniqueTradeAdapter } from "./unique-trade.adapter";
 import type { PartFitmentStatus } from "@/src/services/parts-fitment.service";
 import { normalizeCatalogNumber } from "@/src/services/parts-fitment.service";
-import type { SupplierAdapter, SupplierConnectionCheck, SupplierId, SupplierOffer, SupplierStatus } from "./types";
+import type {
+  SupplierAdapter,
+  SupplierConnectionCheck,
+  SupplierId,
+  SupplierOffer,
+  SupplierStatus,
+  SupplierVehicleContext,
+} from "./types";
 
 const autoNovaAdapter: SupplierAdapter = {
   id: "autonova-d",
@@ -97,18 +104,25 @@ export type SupplierSearchContext = {
   plate?: string | null;
   fitmentStatus?: PartFitmentStatus;
   fitmentConfidence?: number | null;
+  fitmentExact?: boolean | null;
   fitmentSource?: string | null;
   fitmentReason?: string | null;
+  providerVehicle?: SupplierVehicleContext | null;
   catalogArticles?: string[];
   analogArticles?: string[];
   oeNumbers?: string[];
 };
 
+function looksLikePartNumber(value: string) {
+  return /^[a-z0-9][a-z0-9._/\\-]{2,}$/iu.test(value.trim()) && /[0-9]/u.test(value);
+}
+
 function annotateOffer(offer: SupplierOffer, context: SupplierSearchContext): SupplierOffer {
   const article = normalizeCatalogNumber(offer.article);
   const catalogArticles = new Set((context.catalogArticles || []).map(normalizeCatalogNumber).filter(Boolean));
   const analogArticles = new Set((context.analogArticles || []).map(normalizeCatalogNumber).filter(Boolean));
-  const hasCatalogMatch = Boolean(article && catalogArticles.has(article));
+  const oeNumbers = new Set((context.oeNumbers || []).map(normalizeCatalogNumber).filter(Boolean));
+  const hasCatalogMatch = Boolean(article && (catalogArticles.has(article) || oeNumbers.has(article)));
   const isAnalog = Boolean(article && analogArticles.has(article));
   const offerClass = hasCatalogMatch
     ? isAnalog ? "ANALOG" as const : "OEM" as const
@@ -118,12 +132,39 @@ function annotateOffer(offer: SupplierOffer, context: SupplierSearchContext): Su
     ...offer,
     offerClass,
     fitmentStatus: verified ? "VERIFIED" : context.fitmentStatus || "MANUAL_REQUIRED",
-    fitmentConfidence: verified ? context.fitmentConfidence ?? null : 0,
-    fitmentSource: context.fitmentSource || null,
+    fitmentConfidence: verified ? context.fitmentConfidence ?? offer.fitmentConfidence ?? null : 0,
+    fitmentExact: verified ? context.fitmentExact ?? offer.fitmentExact ?? null : false,
+    fitmentSource: verified ? context.fitmentSource || offer.fitmentSource || null : context.fitmentSource || null,
     fitmentReason: verified
-      ? "Артикул знайдено серед товарів, сумісність яких підтверджена VIN-каталогом."
+      ? context.fitmentExact === false
+        ? "Позиція знайдена в BM Parts для підтвердженої моделі. Точний двигун/комплектацію потрібно перевірити вручну."
+        : "Артикул знайдено серед товарів, сумісність яких підтверджена VIN-каталогом."
       : context.fitmentReason || "Сумісність цієї пропозиції з автомобілем не підтверджена каталогом.",
   };
+}
+
+async function vehicleScopedSearch(adapter: SupplierAdapter, query: string, limit: number, context: SupplierSearchContext) {
+  const exactQueries = [...new Set([
+    ...(context.oeNumbers || []),
+    ...(context.catalogArticles || []),
+    ...(context.analogArticles || []),
+    ...(looksLikePartNumber(query) ? [query] : []),
+  ].map((value) => value.trim()).filter((value) => value.length >= 2))].slice(0, 12);
+
+  if (adapter.id === "bm-parts" && adapter.searchVehicleParts && context.providerVehicle) {
+    const result = await adapter.searchVehicleParts({
+      query: query.trim(),
+      vehicle: context.providerVehicle,
+      limit: Math.min(Math.max(limit, 1), 50),
+      position: null,
+    });
+    return result.map((item) => item.offer);
+  }
+
+  if (!exactQueries.length) return [];
+  const perQueryLimit = Math.max(2, Math.ceil(limit / exactQueries.length));
+  const batches = await Promise.all(exactQueries.map((searchQuery) => adapter.search(searchQuery, perQueryLimit)));
+  return batches.flat();
 }
 
 export async function searchConfiguredSuppliers(query: string, limitPerSupplier = 20, context: SupplierSearchContext = {}) {
@@ -140,22 +181,13 @@ export async function searchConfiguredSuppliers(query: string, limitPerSupplier 
       blockReason: context.fitmentReason || "Запит до постачальників не відправлено: для автомобіля немає підтвердженого зв’язку з OE-каталогом.",
     };
   }
-  const readiness = supplierAdapters.map((adapter) => ({ adapter, configured: configuredIds.has(adapter.id) }));
-  const searchable = readiness
-    .filter((item) => item.adapter.id !== "autonova-d" && item.adapter.id !== "atl" && item.configured)
-    .map((item) => item.adapter);
 
-  const queries = [...new Set([
-    query.trim(),
-    ...(context.oeNumbers || []).slice(0, 3),
-    ...(context.catalogArticles || []).slice(0, 3),
-  ].filter((value) => value.length >= 2))].slice(0, 7);
-  const searchQueries = queries.length ? queries : [query.trim()];
-  const perQueryLimit = Math.max(3, Math.ceil(limitPerSupplier / searchQueries.length));
+  const searchable = supplierAdapters
+    .filter((adapter) => adapter.id !== "autonova-d" && adapter.id !== "atl" && configuredIds.has(adapter.id));
 
   const settled = await Promise.allSettled(searchable.map(async (adapter) => {
-    const batches = await Promise.all(searchQueries.map((searchQuery) => adapter.search(searchQuery, perQueryLimit)));
-    return batches.flat();
+    if (vehicleScoped) return vehicleScopedSearch(adapter, query, limitPerSupplier, context);
+    return adapter.search(query.trim(), limitPerSupplier);
   }));
 
   const offers: SupplierOffer[] = [];
@@ -166,7 +198,7 @@ export async function searchConfiguredSuppliers(query: string, limitPerSupplier 
     const adapter = searchable[index];
     if (result.status === "fulfilled") {
       for (const offer of result.value) {
-        const key = adapter.id + ":" + (offer.externalProductId || offer.article);
+        const key = adapter.id + ":" + (offer.externalProductId || normalizeCatalogNumber(offer.article));
         if (seenOffers.has(key)) continue;
         seenOffers.add(key);
         offers.push(annotateOffer(offer, context));
