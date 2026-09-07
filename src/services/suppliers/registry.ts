@@ -1,6 +1,8 @@
 import { getIntegrationCredential } from "@/src/services/integration-credentials.service";
 import { bmPartsAdapter } from "./bm-parts.adapter";
 import { uniqueTradeAdapter } from "./unique-trade.adapter";
+import type { PartFitmentStatus } from "@/src/services/parts-fitment.service";
+import { normalizeCatalogNumber } from "@/src/services/parts-fitment.service";
 import type { SupplierAdapter, SupplierConnectionCheck, SupplierId, SupplierOffer, SupplierStatus } from "./types";
 
 const autoNovaAdapter: SupplierAdapter = {
@@ -89,22 +91,72 @@ export async function testSupplier(id: SupplierId) {
   return adapter.testConnection();
 }
 
-export async function searchConfiguredSuppliers(query: string, limitPerSupplier = 20) {
+export type SupplierSearchContext = {
+  fitmentStatus?: PartFitmentStatus;
+  fitmentConfidence?: number | null;
+  fitmentSource?: string | null;
+  fitmentReason?: string | null;
+  catalogArticles?: string[];
+  analogArticles?: string[];
+  oeNumbers?: string[];
+};
+
+function annotateOffer(offer: SupplierOffer, context: SupplierSearchContext): SupplierOffer {
+  const article = normalizeCatalogNumber(offer.article);
+  const catalogArticles = new Set((context.catalogArticles || []).map(normalizeCatalogNumber).filter(Boolean));
+  const analogArticles = new Set((context.analogArticles || []).map(normalizeCatalogNumber).filter(Boolean));
+  const hasCatalogMatch = Boolean(article && catalogArticles.has(article));
+  const isAnalog = Boolean(article && analogArticles.has(article));
+  const offerClass = hasCatalogMatch
+    ? isAnalog ? "ANALOG" as const : "OEM" as const
+    : offer.offerClass || "UNKNOWN";
+  const verified = context.fitmentStatus === "VERIFIED" && hasCatalogMatch;
+  return {
+    ...offer,
+    offerClass,
+    fitmentStatus: verified ? "VERIFIED" : context.fitmentStatus || "MANUAL_REQUIRED",
+    fitmentConfidence: verified ? context.fitmentConfidence ?? null : 0,
+    fitmentSource: context.fitmentSource || null,
+    fitmentReason: verified
+      ? "Артикул знайдено серед товарів, сумісність яких підтверджена VIN-каталогом."
+      : context.fitmentReason || "Сумісність цієї пропозиції з автомобілем не підтверджена каталогом.",
+  };
+}
+
+export async function searchConfiguredSuppliers(query: string, limitPerSupplier = 20, context: SupplierSearchContext = {}) {
   const statuses = await listSupplierStatuses();
   const configuredIds = new Set(statuses.filter((supplier) => supplier.configured).map((supplier) => supplier.id));
   const readiness = supplierAdapters.map((adapter) => ({ adapter, configured: configuredIds.has(adapter.id) }));
   const searchable = readiness
     .filter((item) => item.adapter.id !== "autonova-d" && item.adapter.id !== "atl" && item.configured)
     .map((item) => item.adapter);
-  const settled = await Promise.allSettled(searchable.map((adapter) => adapter.search(query, limitPerSupplier)));
+
+  const queries = [...new Set([
+    query.trim(),
+    ...(context.oeNumbers || []).slice(0, 3),
+    ...(context.catalogArticles || []).slice(0, 3),
+  ].filter((value) => value.length >= 2))].slice(0, 7);
+  const searchQueries = queries.length ? queries : [query.trim()];
+  const perQueryLimit = Math.max(3, Math.ceil(limitPerSupplier / searchQueries.length));
+
+  const settled = await Promise.allSettled(searchable.map(async (adapter) => {
+    const batches = await Promise.all(searchQueries.map((searchQuery) => adapter.search(searchQuery, perQueryLimit)));
+    return batches.flat();
+  }));
 
   const offers: SupplierOffer[] = [];
   const providers: Array<{ id: SupplierId; ok: boolean; message?: string }> = [];
+  const seenOffers = new Set<string>();
 
   settled.forEach((result, index) => {
     const adapter = searchable[index];
     if (result.status === "fulfilled") {
-      offers.push(...result.value);
+      for (const offer of result.value) {
+        const key = adapter.id + ":" + (offer.externalProductId || offer.article);
+        if (seenOffers.has(key)) continue;
+        seenOffers.add(key);
+        offers.push(annotateOffer(offer, context));
+      }
       providers.push({ id: adapter.id, ok: true });
     } else {
       providers.push({ id: adapter.id, ok: false, message: result.reason instanceof Error ? result.reason.message : "Помилка API" });
