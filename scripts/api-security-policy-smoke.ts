@@ -87,6 +87,10 @@ assert.equal(reportCreatePolicy?.strict, true, "Creating client report links mus
 const handoffPolicy = resolveApiSecurityPolicy("/api/diagnostics/[id]/commercial-handoff", "POST");
 assert.equal(handoffPolicy?.permission, PERMISSIONS.WORK_ORDERS_ESTIMATE, "Commercial handoff requires estimate authority");
 assert.equal(handoffPolicy?.strict, true, "Commercial handoff must remain strict during RBAC SHADOW mode");
+const invoicePdfPolicy = resolveApiSecurityPolicy("/api/work-orders/[id]/invoice-pdf", "GET");
+assert.equal(invoicePdfPolicy?.permission, PERMISSIONS.WORK_ORDERS_READ, "WorkOrder invoice PDF requires WorkOrder read authority");
+assert.equal(invoicePdfPolicy?.intendedScope, "ASSIGNED", "WorkOrder invoice PDF must remain assignment-scoped");
+assert.equal(invoicePdfPolicy?.strict, true, "WorkOrder invoice PDF must remain strict during RBAC SHADOW mode");
 
 const strictSources = [
   "app/api/security/access-catalog/route.ts",

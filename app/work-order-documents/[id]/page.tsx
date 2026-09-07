@@ -122,10 +122,19 @@ export default function WorkOrderDocumentsPage() {
   const diagnostic = data.documents.diagnosticCard.snapshot;
   const recommendations = data.documents.recommendations.items || { works: [], parts: [] };
 
+  function printOrOpenPdf() {
+    if (!id) return;
+    if (tab === "invoice") {
+      window.open(`/api/work-orders/${encodeURIComponent(id)}/invoice-pdf`, "_blank", "noopener,noreferrer");
+      return;
+    }
+    window.print();
+  }
+
   return <main className={styles.page} data-crm-surface="public">
     <header className={styles.topbar}>
       <div><p>TURBO LEV · ДОКУМЕНТИ</p><h1>{data.workOrder.displayNumber}</h1><span>{vehicleLabel(data.workOrder.vehicle)} · {data.workOrder.vehicle.plateNumber || "без номера"} · {data.workOrder.client.name || data.workOrder.client.phone}</span></div>
-      <div className={styles.actions}><button type="button" onClick={() => window.print()}>Друк / PDF</button><button type="button" onClick={() => window.close()}>Закрити</button></div>
+      <div className={styles.actions}><button type="button" onClick={printOrOpenPdf}>{tab === "invoice" ? "Накладна / PDF" : "Друк / PDF"}</button><button type="button" onClick={() => window.close()}>Закрити</button></div>
     </header>
 
     <section className={styles.summary}>

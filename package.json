@@ -30,6 +30,7 @@
     "db:migrate:deploy": "prisma migrate deploy",
     "db:status": "prisma migrate status",
     "pdf:smoke": "node --import tsx scripts/diagnostic-card-pdf-renderer-smoke.ts",
+    "pdf:invoice:smoke": "node --import tsx scripts/work-order-invoice-pdf-renderer-smoke.ts",
     "db:smoke:telephony": "tsx scripts/production-telephony-smoke.ts",
     "data:mvs:import": "python3 scripts/import-mvs-open-data.py",
     "contracts:integration:v1": "node --import tsx scripts/integration-api-vehicle-identity-contract-smoke.ts && node --import tsx scripts/integration-api-v1-attribution-smoke.ts"
