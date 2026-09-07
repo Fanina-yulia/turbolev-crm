@@ -590,9 +590,8 @@ export async function resolvePartFitment(intent: PartSearchIntent): Promise<Part
 
   const providerVehicle = await resolveBmVehicleContext(vehicle.id, identityVin);
   const link = vehicle.catalogLink;
-  const localLinkVerified = Boolean(link && link.status === "VERIFIED" && link.vehicleReference.status === "ACTIVE");
 
-  if (!localLinkVerified) {
+  if (!link || link.status !== "VERIFIED" || link.vehicleReference.status !== "ACTIVE") {
     const providerFitment = providerVehicle
       ? await resolveBmProviderFitment(intent, vehicleSummary, providerVehicle, genericArticle)
       : null;
