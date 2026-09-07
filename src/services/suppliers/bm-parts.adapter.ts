@@ -36,7 +36,6 @@ type BmProductDetails = BmProduct & {
   analogs?: unknown;
   cars?: unknown;
 };
-type BmSearchAttempt = { filter: string; available: string; status: number; products: number; hits: number | null };
 type CacheEntry<T> = { expiresAt: number; value: T };
 
 const vehicleCache = new Map<string, CacheEntry<SupplierVehicleContext | null>>();
@@ -471,10 +470,6 @@ export const bmPartsAdapter: SupplierAdapter = {
     if (!(await this.isConfigured())) return [];
 
     const limit = Math.min(Math.max(input.limit ?? 20, 1), 50);
-    const attempts: BmSearchAttempt[] = [];
-    let modelNames: string[] = [];
-    let discoveredFilters: string[] = [];
-
     const searchScopedProducts = async (filters: string[]) => {
       let selectedFilter = filters[0] || "";
       let foundProducts: BmProduct[] = [];
@@ -496,16 +491,7 @@ search:
           const response = await request("/search/products?" + params.toString());
           if (!response.ok) throw new Error("BM Parts vehicle search HTTP " + response.status);
           const payload = await response.json() as unknown;
-          const root = asRecord(payload);
-          const search = asRecord(root?.search);
           const candidateProducts = extractProducts(payload);
-          attempts.push({
-            filter: candidateFilter,
-            available,
-            status: response.status,
-            products: candidateProducts.length,
-            hits: toNumber(search?.hits),
-          });
           if (candidateProducts.length) {
             selectedFilter = candidateFilter;
             foundProducts = candidateProducts.slice(0, limit);
@@ -519,31 +505,20 @@ search:
 
     let searchResult = await searchScopedProducts(carFilters);
     if (!searchResult.products.length && vehicle.brand) {
+      let modelNames: string[] = [];
       try {
         modelNames = await getBmModelNames(vehicle.brand);
       } catch {
         modelNames = [];
       }
-      discoveredFilters = rankBmModelNames(vehicle.model || "", modelNames)
+      const discoveredFilters = rankBmModelNames(vehicle.model || "", modelNames)
         .map((model) => vehicle.brand + ">" + model)
         .filter((filter) => !carFilters.includes(filter));
       if (discoveredFilters.length) searchResult = await searchScopedProducts(discoveredFilters);
     }
 
     const { carFilter, products } = searchResult;
-    if (!products.length) {
-      console.warn("[BM Parts] vehicle search returned no matches", {
-        query,
-        brand: vehicle.brand,
-        model: vehicle.model,
-        initialFilters: carFilters,
-        discoveredFilters,
-        modelCount: modelNames.length,
-        modelSample: modelNames.slice(0, 20),
-        attempts,
-      });
-      return [];
-    }
+    if (!products.length) return [];
 
     const detailProducts = products.slice(0, 12);
     const details = await Promise.allSettled(detailProducts.map((product) => {
