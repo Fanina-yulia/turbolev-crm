@@ -122,8 +122,15 @@ export function PartsCatalog() {
     const response = await fetch(`/api/vehicles?q=${encodeURIComponent(reference)}&limit=50`, { cache: "no-store", credentials: "include" });
     const data = await response.json().catch(() => null) as { vehicles?: Array<{ plateNumber?: string | null; vin?: string | null }>; error?: string } | null;
     if (!response.ok) throw new Error(data?.error || "Не вдалося перевірити держномер у базі CRM.");
-    const exact = (data?.vehicles || []).find((item) => normalizePlate(item.plateNumber || "") === plate); if (!exact) throw new Error("Авто з таким держномером не знайдено в CRM."); if (!exact.vin) throw new Error("Авто знайдено, але VIN не заповнений. Додайте VIN у картку автомобіля для точного підбору.");
-    const resolvedVin = normalizeVin(exact.vin); if (resolvedVin.length !== 17) throw new Error("VIN у картці автомобіля некоректний."); setResolvedPlate(exact.plateNumber || reference.toUpperCase()); setResolvedVin(resolvedVin); return resolvedVin;
+    const exact = (data?.vehicles || []).find((item) => normalizePlate(item.plateNumber || "") === plate); if (!exact) throw new Error("Авто з таким держномером не знайдено в CRM.");
+    const resolvedVin = normalizeVin(exact.vin || "");
+    setResolvedPlate(exact.plateNumber || reference.toUpperCase());
+    if (resolvedVin.length === 17) {
+      setResolvedVin(resolvedVin);
+      return resolvedVin;
+    }
+    setResolvedVin("");
+    return "";
   }
 
   async function searchPart(queryValue = q, referenceValue = vehicleRef, recommendationOverride?: Recommendation | null) {
