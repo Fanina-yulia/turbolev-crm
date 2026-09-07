@@ -1,9 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getGoogleSheetsKnowledgeConfig } from "@/src/services/parts-knowledge-google-sheets.service";
-import {
-  getPartsKnowledgeStats,
-  seedStaticPartKnowledge,
-} from "@/src/services/parts-knowledge.service";
+import { seedStaticPartKnowledge } from "@/src/services/parts-knowledge.service";
+import { getPartsKnowledgeStats } from "@/src/services/parts-knowledge-sync.service";
 import { syncPartsKnowledgeFromGoogleSheets } from "@/src/services/parts-knowledge-sync.service";
 import { authorize } from "@/src/security/authorize";
 import { PERMISSIONS } from "@/src/security/permissions";
