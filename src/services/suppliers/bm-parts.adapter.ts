@@ -131,7 +131,12 @@ export function rankBmModelNames(vehicleModel: string, modelNames: string[], lim
     .map((name, index) => {
       const candidateTokens = normalizeText(name).split(" ").filter((token) => token.length >= 2);
       const overlap = requestedTokens.reduce((total, token) => total + (
-        candidateTokens.some((candidate) => candidate === token || candidate.includes(token) || token.includes(candidate))
+        candidateTokens.some((candidate) => {
+          const tokenHasLetters = /[a-zа-яіїє]/iu.test(token);
+          const candidateHasLetters = /[a-zа-яіїє]/iu.test(candidate);
+          if (tokenHasLetters !== candidateHasLetters) return false;
+          return candidate === token || candidate.includes(token) || token.includes(candidate);
+        })
           ? 1
           : 0
       ), 0);
