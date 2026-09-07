@@ -348,12 +348,30 @@ export function StructuredDiagnosticReviewPanel({ diagnosticId, onChanged }: { d
     catch { setError("Не вдалося скопіювати посилання."); }
   }
 
-  function printPdf() {
-    if (!pdf) return;
-    const printWindow = window.open(`/api/diagnostics/${encodeURIComponent(diagnosticId)}/pdf`, "_blank");
-    if (!printWindow) { setError("Браузер заблокував нове вікно для друку."); return; }
-    printWindow.focus();
-    window.setTimeout(() => printWindow.print(), 900);
+  async function sendForReview() {
+    if (!confirmed) {
+      setError("Відправити Діагностичну карту на ознайомлення можна після її підтвердження.");
+      return;
+    }
+    setPdfActionMessage(""); setError("");
+    try {
+      const response = await fetch(`/api/diagnostics/${encodeURIComponent(diagnosticId)}/report`, { method: "POST", credentials: "include" });
+      const body = await response.json().catch(() => null) as { ok?: boolean; path?: string; error?: string; message?: string } | null;
+      if (!response.ok || !body?.ok || !body.path) throw new Error(body?.message || body?.error || "Не вдалося підготувати посилання для ознайомлення.");
+      const url = new URL(body.path, window.location.origin).toString();
+      if (typeof navigator.share === "function") {
+        await navigator.share({ title: `Діагностична карта ${cardNumber}`, text: "Діагностична карта готова для ознайомлення.", url });
+        setPdfActionMessage("Посилання передано в меню поширення.");
+      } else {
+        await navigator.clipboard.writeText(url);
+        setPdfActionMessage("Посилання для ознайомлення створено та скопійовано.");
+      }
+      await load();
+      await onChanged();
+    } catch (cause) {
+      if (cause instanceof DOMException && cause.name === "AbortError") return;
+      setError(cause instanceof Error ? cause.message : "Не вдалося відправити Діагностичну карту на ознайомлення.");
+    }
   }
 
   if (loading) return <div className={styles.state}>Завантажую Діагностичну карту…</div>;
@@ -421,7 +439,7 @@ export function StructuredDiagnosticReviewPanel({ diagnosticId, onChanged }: { d
     {view.diagnostic.review.state === "RETURNED" && <div className={styles.lock}>Діагностика знову «В роботі». Механік бачить коментар менеджера, доопрацьовує перевірку та повторно передає ДК «На перевірку».</div>}
     {confirmed && <div className={styles.confirmedNote}>Діагностичну карту зафіксовано у фінальній ревізії. Ціни, постачальники та погоджені позиції зберігаються окремо в Комерційній пропозиції.</div>}
     <DiagnosticReportSharePanel diagnosticId={diagnosticId} reviewState={view.diagnostic.review.state} workOrder={view.diagnostic.workOrder} />
-    {pdfModalOpen && pdf ? <div className={styles.pdfModalBackdrop} role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setPdfModalOpen(false); }}><section className={styles.pdfModal} role="dialog" aria-modal="true" aria-labelledby="structured-diagnostic-pdf-title"><header className={styles.pdfModalHeader}><div><span className={styles.eyebrow}>ФАЙЛ ДІАГНОСТИЧНОЇ КАРТИ</span><h4 id="structured-diagnostic-pdf-title">{pdf.fileName}</h4><small>Ревізія {pdf.revision} · {formatDate(pdf.generatedAt, true)}</small></div><button type="button" className={styles.pdfClose} onClick={() => setPdfModalOpen(false)} aria-label="Закрити PDF">×</button></header><div className={styles.pdfActions}><a className={styles.pdfAction} href={`/api/diagnostics/${encodeURIComponent(diagnosticId)}/pdf?download=1`} download={pdf.fileName}>Завантажити</a><button type="button" className={styles.pdfAction} onClick={printPdf}>Друкувати</button><button type="button" className={styles.pdfAction} onClick={() => void sharePdf()}>Поділитися</button></div>{shareUrl ? <div className={styles.shareOptions}><span>Канал поширення:</span><a href={`https://t.me/share/url?url=${encodeURIComponent(shareUrl)}&text=${encodeURIComponent(`Діагностична карта ${cardNumber}`)}`} target="_blank" rel="noreferrer">Telegram</a><a href={`https://wa.me/?text=${encodeURIComponent(`Діагностична карта ${cardNumber}: ${shareUrl}`)}`} target="_blank" rel="noreferrer">WhatsApp</a><a href={`viber://forward?text=${encodeURIComponent(`Діагностична карта ${cardNumber}: ${shareUrl}`)}`}>Viber</a><button type="button" onClick={() => void copyPdfShareUrl()}>Копіювати</button></div> : null}<iframe className={styles.pdfFrame} src={`/api/diagnostics/${encodeURIComponent(diagnosticId)}/pdf#view=FitH`} title={`Перегляд ${pdf.fileName}`} /></section></div> : null}
+    {pdfModalOpen && pdf ? <div className={styles.pdfModalBackdrop} role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setPdfModalOpen(false); }}><section className={styles.pdfModal} role="dialog" aria-modal="true" aria-labelledby="structured-diagnostic-pdf-title"><header className={styles.pdfModalHeader}><div><span className={styles.eyebrow}>ФАЙЛ ДІАГНОСТИЧНОЇ КАРТИ</span><h4 id="structured-diagnostic-pdf-title">{pdf.fileName}</h4><small>Ревізія {pdf.revision} · {formatDate(pdf.generatedAt, true)}</small></div><button type="button" className={styles.pdfClose} onClick={() => setPdfModalOpen(false)} aria-label="Закрити PDF">×</button></header><div className={styles.pdfActions}><button type="button" className={styles.pdfAction} onClick={() => void sharePdf()}>Поділитися</button><button type="button" className={`${styles.pdfAction} ${styles.pdfActionPrimary}`} onClick={() => void sendForReview()} disabled={!confirmed} title={confirmed ? "Створити захищене посилання для клієнта" : "Спочатку підтвердьте Діагностичну карту"}>Відправити на ознайомлення</button></div>{shareUrl ? <div className={styles.shareOptions}><span>Канал поширення:</span><a href={`https://t.me/share/url?url=${encodeURIComponent(shareUrl)}&text=${encodeURIComponent(`Діагностична карта ${cardNumber}`)}`} target="_blank" rel="noreferrer">Telegram</a><a href={`https://wa.me/?text=${encodeURIComponent(`Діагностична карта ${cardNumber}: ${shareUrl}`)}`} target="_blank" rel="noreferrer">WhatsApp</a><a href={`viber://forward?text=${encodeURIComponent(`Діагностична карта ${cardNumber}: ${shareUrl}`)}`}>Viber</a><button type="button" onClick={() => void copyPdfShareUrl()}>Копіювати</button></div> : null}<iframe className={styles.pdfFrame} src={`/api/diagnostics/${encodeURIComponent(diagnosticId)}/pdf#view=FitH`} title={`Перегляд ${pdf.fileName}`} /></section></div> : null}
   </section>;
 }
 

@@ -23,6 +23,8 @@
 @media(max-width:760px){.card{padding:10px}.cardHeader{align-items:stretch;display:grid}.cardHeaderActions{justify-content:flex-start}.cardHeaderActions .primaryAction{flex:1}.workspaceGrid{grid-template-columns:1fr}.evidencePanel{grid-column:auto}.findingList{grid-template-columns:1fr}.schematicWrap{min-height:280px}.metaGrid{grid-template-columns:1fr}.statusLegend{height:auto}.historyBar{grid-template-columns:1fr}.lightbox{padding:18px}.lightbox img{max-height:calc(100vh - 36px)}.pdfModalBackdrop{padding:10px}.pdfModal{height:calc(100vh - 20px);min-height:360px}.pdfModalHeader{padding:12px}.pdfActions,.shareOptions{padding-left:12px;padding-right:12px}}
 @media(max-width:520px){.manualPartRow{grid-template-columns:25px minmax(0,1fr)}.manualPartActions{grid-column:2;justify-content:flex-start}.manualPartFields{grid-template-columns:1fr}.modalBackdrop{padding:8px}.manualPartModal{max-height:calc(100vh - 16px)}}
 .pdfFrame{grid-row:4;display:block}
+.pdfAction:disabled{opacity:.55;cursor:not-allowed}
+.pdfActionPrimary{border-color:#ff5a1f;background:#ff5a1f;color:#fff}.pdfActionPrimary:hover{border-color:#ff7a42;background:#ff7a42;color:#fff}
 .pdfModalBackdrop{overflow:auto;padding:12px}
 .pdfModal{width:min(1700px,calc(100dvw - 24px));height:calc(100dvh - 24px);min-height:0;border-radius:12px}
 @media(max-width:760px){.pdfModalBackdrop{padding:6px}.pdfModal{width:100%;height:calc(100dvh - 12px);min-height:0}}

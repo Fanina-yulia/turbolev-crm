@@ -369,12 +369,29 @@ function DiagnosticCardDetail({ row, initialView, initialCardNumber, busy, onOpe
     } catch { setError("Не вдалося скопіювати посилання."); }
   }
 
-  function printPdf() {
-    if (!pdf) return;
-    const printWindow = window.open(`/api/diagnostics/${encodeURIComponent(row.id)}/pdf`, "_blank");
-    if (!printWindow) { setError("Браузер заблокував нове вікно для друку."); return; }
-    printWindow.focus();
-    window.setTimeout(() => printWindow.print(), 900);
+  async function sendForReview() {
+    if (!view || view.diagnostic.review.state !== "CONFIRMED") {
+      setError("Відправити Діагностичну карту на ознайомлення можна після її підтвердження.");
+      return;
+    }
+    setPdfActionMessage(""); setError("");
+    try {
+      const response = await fetch(`/api/diagnostics/${encodeURIComponent(row.id)}/report`, { method: "POST", credentials: "include" });
+      const body = await response.json().catch(() => null) as { ok?: boolean; path?: string; error?: string; message?: string } | null;
+      if (!response.ok || !body?.ok || !body.path) throw new Error(body?.message || body?.error || "Не вдалося підготувати посилання для ознайомлення.");
+      const url = new URL(body.path, window.location.origin).toString();
+      if (typeof navigator.share === "function") {
+        await navigator.share({ title: `Діагностична карта ${cardNumber || "автомобіля"}`, text: "Діагностична карта готова для ознайомлення.", url });
+        setPdfActionMessage("Посилання передано в меню поширення.");
+      } else {
+        await navigator.clipboard.writeText(url);
+        setPdfActionMessage("Посилання для ознайомлення створено та скопійовано.");
+      }
+      window.dispatchEvent(new CustomEvent("turbolev:data-changed"));
+    } catch (cause) {
+      if (cause instanceof DOMException && cause.name === "AbortError") return;
+      setError(cause instanceof Error ? cause.message : "Не вдалося відправити Діагностичну карту на ознайомлення.");
+    }
   }
 
   if (loading) return <div className={styles.state}>Завантажую результати діагностики…</div>;
@@ -402,7 +419,7 @@ function DiagnosticCardDetail({ row, initialView, initialCardNumber, busy, onOpe
     <div className={styles.metaGrid}><section className={styles.notesPanel}><div className={styles.panelHeading}><div><span className={styles.eyebrow}>КОМЕНТАР МЕХАНІКА</span><h4>Примітки механіка</h4></div><button type="button" className={styles.editLink} onClick={() => setEditingComment((value) => !value)}>{editingComment ? "Скасувати" : "✎ Редагувати"}</button></div>{editingComment ? <textarea className={styles.notesEditor} value={mechanicComment} onChange={(event) => setMechanicComment(event.target.value)} maxLength={4000} placeholder="Додайте примітку механіка…" aria-label="Примітки механіка" /> : <p className={styles.notesText}>{view.diagnostic.review.mechanicComment || "Примітка механіка ще не додана."}</p>}{editingComment ? <div className={styles.notesActions}><span>{mechanicComment.length}/4000</span><button type="button" className={styles.primaryAction} onClick={() => void saveMechanicComment()} disabled={savingComment}>{savingComment ? "Зберігаю…" : "Зберегти примітку"}</button></div> : null}</section></div>
     {error ? <div className={styles.inlineError}>{error}</div> : null}
     {pdfActionMessage ? <div className={styles.pdfMessage} role="status">{pdfActionMessage}</div> : null}
-    {pdfModalOpen && pdf ? <div className={styles.pdfModalBackdrop} role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setPdfModalOpen(false); }}><section className={styles.pdfModal} role="dialog" aria-modal="true" aria-labelledby="diagnostic-pdf-title"><header className={styles.pdfModalHeader}><div><span className={styles.eyebrow}>ФАЙЛ ДІАГНОСТИЧНОЇ КАРТИ</span><h4 id="diagnostic-pdf-title">{pdf.fileName}</h4><small>Ревізія {pdf.revision} · {dateText(pdf.generatedAt)}</small></div><button type="button" className={styles.lightboxClose} onClick={() => setPdfModalOpen(false)} aria-label="Закрити PDF">×</button></header><div className={styles.pdfActions}><a className={styles.pdfAction} href={`/api/diagnostics/${encodeURIComponent(row.id)}/pdf?download=1`} download={pdf.fileName}>Завантажити</a><button type="button" className={styles.pdfAction} onClick={printPdf}>Друкувати</button><button type="button" className={styles.pdfAction} onClick={() => void sharePdf()}>Поділитися</button></div>{shareUrl ? <div className={styles.shareOptions}><span>Канал поширення:</span><a href={`https://t.me/share/url?url=${encodeURIComponent(shareUrl)}&text=${encodeURIComponent(`Діагностична карта ${cardNumber}`)}`} target="_blank" rel="noreferrer">Telegram</a><a href={`https://wa.me/?text=${encodeURIComponent(`Діагностична карта ${cardNumber}: ${shareUrl}`)}`} target="_blank" rel="noreferrer">WhatsApp</a><a href={`viber://forward?text=${encodeURIComponent(`Діагностична карта ${cardNumber}: ${shareUrl}`)}`}>Viber</a><button type="button" onClick={() => void copyPdfShareUrl()}>Копіювати</button></div> : null}<iframe className={styles.pdfFrame} src={`/api/diagnostics/${encodeURIComponent(row.id)}/pdf#view=FitH`} title={`Перегляд ${pdf.fileName}`} /></section></div> : null}
+    {pdfModalOpen && pdf ? <div className={styles.pdfModalBackdrop} role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setPdfModalOpen(false); }}><section className={styles.pdfModal} role="dialog" aria-modal="true" aria-labelledby="diagnostic-pdf-title"><header className={styles.pdfModalHeader}><div><span className={styles.eyebrow}>ФАЙЛ ДІАГНОСТИЧНОЇ КАРТИ</span><h4 id="diagnostic-pdf-title">{pdf.fileName}</h4><small>Ревізія {pdf.revision} · {dateText(pdf.generatedAt)}</small></div><button type="button" className={styles.lightboxClose} onClick={() => setPdfModalOpen(false)} aria-label="Закрити PDF">×</button></header><div className={styles.pdfActions}><button type="button" className={styles.pdfAction} onClick={() => void sharePdf()}>Поділитися</button><button type="button" className={`${styles.pdfAction} ${styles.pdfActionPrimary}`} onClick={() => void sendForReview()} disabled={view.diagnostic.review.state !== "CONFIRMED"} title={view.diagnostic.review.state === "CONFIRMED" ? "Створити захищене посилання для клієнта" : "Спочатку підтвердьте Діагностичну карту"}>Відправити на ознайомлення</button></div>{shareUrl ? <div className={styles.shareOptions}><span>Канал поширення:</span><a href={`https://t.me/share/url?url=${encodeURIComponent(shareUrl)}&text=${encodeURIComponent(`Діагностична карта ${cardNumber}`)}`} target="_blank" rel="noreferrer">Telegram</a><a href={`https://wa.me/?text=${encodeURIComponent(`Діагностична карта ${cardNumber}: ${shareUrl}`)}`} target="_blank" rel="noreferrer">WhatsApp</a><a href={`viber://forward?text=${encodeURIComponent(`Діагностична карта ${cardNumber}: ${shareUrl}`)}`}>Viber</a><button type="button" onClick={() => void copyPdfShareUrl()}>Копіювати</button></div> : null}<iframe className={styles.pdfFrame} src={`/api/diagnostics/${encodeURIComponent(row.id)}/pdf#view=FitH`} title={`Перегляд ${pdf.fileName}`} /></section></div> : null}
     {lightboxPhoto ? <div className={styles.lightbox} role="dialog" aria-modal="true" aria-label="Збільшене фото" onMouseDown={(event) => { if (event.target === event.currentTarget) setLightboxPhoto(null); }}><button type="button" className={styles.lightboxClose} onClick={() => setLightboxPhoto(null)} aria-label="Закрити">×</button><img src={`/api/diagnostics/${encodeURIComponent(row.id)}/media/${encodeURIComponent(lightboxPhoto.id)}`} alt={lightboxPhoto.fileName}/></div> : null}
     {manualPartModalOpen ? <ManualPartModal draft={manualPartDraft} editing={Boolean(editingManualPart)} findings={findings} busy={savingManualPart} error={manualPartError} onChange={setManualPartDraft} onClose={closeManualPart} onSave={() => void saveManualPart()} /> : null}
   </article>;
