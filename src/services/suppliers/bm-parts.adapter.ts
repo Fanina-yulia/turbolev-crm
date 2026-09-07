@@ -294,6 +294,10 @@ export function buildBmVehicleFilter(vehicle: Pick<SupplierVehicleContext, "bran
   return buildBmVehicleFilterCandidates(vehicle)[0] || "";
 }
 
+function isArticleLike(query: string) {
+  return /^[a-z0-9][a-z0-9._/\\-]{2,}$/iu.test(query.trim()) && /[0-9]/u.test(query);
+}
+
 async function getProductDetails(productId: string): Promise<BmProductDetails | null> {
   const cached = cacheGet(productCache, productId);
   if (cached !== undefined) return cached;
