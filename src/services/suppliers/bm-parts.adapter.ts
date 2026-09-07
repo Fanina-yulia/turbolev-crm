@@ -389,14 +389,16 @@ export const bmPartsAdapter: SupplierAdapter = {
     if (!response.ok) throw new Error(`BM Parts vehicle search HTTP ${response.status}`);
     const payload = await response.json() as unknown;
     const products = extractProducts(payload).slice(0, Math.min(input.limit ?? 20, 50));
-    const details = await Promise.allSettled(products.map((product) => {
+    const detailProducts = products.slice(0, 12);
+    const details = await Promise.allSettled(detailProducts.map((product) => {
       const productId = textValue(product.uuid, 180);
       return productId ? getProductDetails(productId) : Promise.resolve(null);
     }));
     const result: SupplierVehiclePart[] = [];
 
     products.forEach((product, index) => {
-      const detail = details[index]?.status === "fulfilled" ? details[index].value : null;
+      const detailResult = details[index];
+      const detail = detailResult?.status === "fulfilled" ? detailResult.value : null;
       const merged = detail ? { ...product, ...detail } as BmProductDetails : product as BmProductDetails;
       const oeReferences = extractOeReferences(merged);
       const primary = withFitment(mapProductOffer(merged, query), vehicle, carFilter, classifyProduct(merged, oeReferences, vehicle));
