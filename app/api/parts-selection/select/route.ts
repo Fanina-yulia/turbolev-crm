@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { authorize } from "@/src/security/authorize";
 import { PERMISSIONS } from "@/src/security/permissions";
 import { selectDiagnosticPartOffer, PartsSelectionError } from "@/src/services/parts-selection.service";
+import type { PartFitmentStatus } from "@/src/services/parts-fitment.service";
 import { getStructuredDiagnostic, StructuredDiagnosticError } from "@/src/services/structured-diagnostics.service";
 
 export const runtime = "nodejs";
@@ -24,6 +25,12 @@ export async function POST(request: Request) {
       quantity?: number | null;
       searchMode?: "VIN" | "PART_NUMBER" | "TEXT";
       vehicleVin?: string | null;
+      vehicleId?: string | null;
+      partName?: string | null;
+      position?: string | null;
+      fitmentStatus?: PartFitmentStatus | null;
+      fitmentProductId?: string | null;
+      fitmentSource?: string | null;
       manualConfirmation?: boolean;
       customerProvidedPart?: boolean;
     } | null;
@@ -50,6 +57,12 @@ export async function POST(request: Request) {
       actorName: access.context.user.employeeName || access.context.user.name || "CRM / Підбір запчастин",
       searchMode: body?.searchMode,
       vehicleVin: body?.vehicleVin || null,
+      vehicleId: body?.vehicleId || null,
+      partName: body?.partName || null,
+      position: body?.position || null,
+      fitmentStatus: body?.fitmentStatus || null,
+      fitmentProductId: body?.fitmentProductId || null,
+      fitmentSource: body?.fitmentSource || null,
       manualConfirmation: body?.manualConfirmation === true,
       customerProvidedPart: body?.customerProvidedPart === true,
     });
