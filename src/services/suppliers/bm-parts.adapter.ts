@@ -74,6 +74,19 @@ function normalizeText(value: unknown) {
   return textValue(value, 180).toLocaleLowerCase("uk-UA").replace(/[^a-zа-яіїє0-9]+/giu, " ").replace(/\s+/g, " ").trim();
 }
 
+function normalizeVehicleModel(brand: string, model: string) {
+  const cleanBrand = brand.trim();
+  const cleanModel = model.trim();
+  if (!cleanBrand || !cleanModel) return cleanModel;
+  const brandLower = cleanBrand.toLocaleLowerCase("uk-UA");
+  const modelLower = cleanModel.toLocaleLowerCase("uk-UA");
+  if (!modelLower.startsWith(brandLower)) return cleanModel;
+  const separator = modelLower.slice(brandLower.length, brandLower.length + 1);
+  if (!separator) return cleanModel;
+  if (![" ", "-", "_", ":"].includes(separator)) return cleanModel;
+  return cleanModel.slice(cleanBrand.length + 1).trim() || cleanModel;
+}
+
 function extractProducts(payload: unknown): BmProduct[] {
   const root = asRecord(payload);
   const data = asRecord(root?.data);
@@ -174,7 +187,8 @@ function extractVehicle(payload: unknown, identifier: string): SupplierVehicleCo
   const externalSecurityKey = textValue(candidate.ssd ?? candidate.security_key ?? candidate.securityKey, 180) || null;
   const catalogCode = textValue(candidate.catalog_code ?? candidate.catalogCode, 80) || null;
   const brand = textValue(candidate.brand ?? candidate.make, 100) || null;
-  const model = textValue(candidate.name ?? candidate.model ?? candidate.title, 180) || null;
+  const rawModel = textValue(candidate.name ?? candidate.model ?? candidate.title, 180) || null;
+  const model = brand && rawModel ? normalizeVehicleModel(brand, rawModel) : rawModel;
   if (!brand || !model) return null;
 
   const vehicleKey = [catalogCode, externalVehicleId, externalSecurityKey].filter(Boolean).join(":") || identifier;
@@ -194,6 +208,7 @@ function extractVehicle(payload: unknown, identifier: string): SupplierVehicleCo
     rawEvidence: {
       brand,
       model,
+      rawModel,
       catalogCode,
       externalVehicleId,
       externalSecurityKey,
@@ -259,8 +274,8 @@ function mapProductOffer(product: BmProduct, query: string): SupplierOffer {
 
 export function buildBmVehicleFilter(vehicle: Pick<SupplierVehicleContext, "brand" | "model">) {
   const brand = vehicle.brand?.trim() || "";
-  const model = vehicle.model?.trim() || "";
-  return brand && model ? `${brand}>${model}` : "";
+  const model = normalizeVehicleModel(brand, vehicle.model?.trim() || "");
+  return brand && model ? brand + ">" + model : "";
 }
 
 function isArticleLike(query: string) {
