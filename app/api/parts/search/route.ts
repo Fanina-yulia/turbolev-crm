@@ -3,6 +3,7 @@ import { FREE_PARTS_SOURCE, searchReferenceParts } from "@/src/services/free-par
 import { decodeVinIntelligence } from "@/src/services/vin-intelligence.service";
 import { validateVin } from "@/src/domain/vin";
 import { resolveLaborPricing } from "@/src/services/labor-pricing.service";
+import { resolvePartFitment } from "@/src/services/parts-fitment.service";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -11,14 +12,29 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const q = (searchParams.get("q") ?? "").trim();
   const rawVin = searchParams.get("vin") ?? "";
+  const vehicleId = searchParams.get("vehicleId")?.trim() || null;
+  const findingId = searchParams.get("findingId")?.trim() || null;
+  const manualPartId = searchParams.get("manualPartId")?.trim() || null;
+  const partName = searchParams.get("partName")?.trim() || q;
+  const position = searchParams.get("position")?.trim() || null;
+  const genericArticleId = searchParams.get("genericArticleId")?.trim() || null;
 
   if (q.length < 2) {
     return NextResponse.json({ status: "INVALID_QUERY", message: "Введіть щонайменше 2 символи назви деталі." }, { status: 400 });
   }
 
+  const fitment = await resolvePartFitment({
+    query: q,
+    partName,
+    position,
+    genericArticleId,
+    vehicleId,
+    vin: rawVin,
+  });
+
   let vehicleContext: Awaited<ReturnType<typeof decodeVinIntelligence>> | null = null;
-  const validation = validateVin(rawVin);
-  if (rawVin && validation.formatValid && !(validation.northAmerican && validation.checkDigit.status === "INVALID")) {
+  const validation = validateVin(rawVin || fitment.vehicle?.vin || "");
+  if (validation.formatValid && !(validation.northAmerican && validation.checkDigit.status === "INVALID")) {
     try {
       vehicleContext = await decodeVinIntelligence(validation.vin);
     } catch (error) {
@@ -26,45 +42,60 @@ export async function GET(request: Request) {
     }
   }
 
-  const vehicle = vehicleContext?.vehicle ?? null;
-  const pricing = vehicle ? await resolveLaborPricing({
-    make: vehicle.make || undefined,
-    model: vehicle.model || undefined,
-    year: vehicle.year == null ? undefined : String(vehicle.year),
-    engine: vehicle.engine || undefined,
-    engineVolume: vehicle.engineVolumeL == null ? undefined : String(vehicle.engineVolumeL),
-    fuelType: vehicle.fuelType || undefined,
-    bodyType: vehicle.bodyType || undefined,
-    driveType: vehicle.driveType || undefined,
-    vehicleType: vehicle.vehicleType || undefined,
+  const displayVehicle = vehicleContext?.vehicle
+    ? vehicleContext.vehicle
+    : fitment.vehicle
+      ? {
+          id: fitment.vehicle.id || vehicleId,
+          vin: fitment.vehicle.vin,
+          make: fitment.vehicle.brand,
+          model: fitment.vehicle.model,
+          year: fitment.vehicle.year,
+          engine: null,
+          engineVolumeL: null,
+          fuelType: null,
+          bodyType: null,
+          driveType: null,
+          vehicleType: null,
+        }
+      : null;
+  const pricing = displayVehicle ? await resolveLaborPricing({
+    make: displayVehicle.make || undefined,
+    model: displayVehicle.model || undefined,
+    year: displayVehicle.year == null ? undefined : String(displayVehicle.year),
+    engine: displayVehicle.engine || undefined,
+    engineVolume: displayVehicle.engineVolumeL == null ? undefined : String(displayVehicle.engineVolumeL),
+    fuelType: displayVehicle.fuelType || undefined,
+    bodyType: displayVehicle.bodyType || undefined,
+    driveType: displayVehicle.driveType || undefined,
+    vehicleType: displayVehicle.vehicleType || undefined,
   }) : null;
   const reference = await searchReferenceParts(q, 50);
-  const fitmentConfidence = vehicle ? 30 : 10;
   const parts = reference.parts.map((part) => ({
     ...part,
     fitment: {
       status: "REFERENCE_ONLY" as const,
-      confidence: fitmentConfidence,
+      confidence: displayVehicle ? 30 : 10,
       confirmed: false,
-      reason: vehicle
-        ? "VIN визначив автомобіль, але безкоштовний довідник не містить OEM/VIN-прив'язки цієї деталі."
-        : "Пошук лише за назвою деталі без підтвердження автомобіля.",
+      reason: "Це довідкова назва деталі. Точна сумісність береться лише з catalogMatches нижче.",
     },
   }));
 
   return NextResponse.json({
     status: "OK",
     query: q,
-    vehicle: vehicle ? {
-      vin: vehicle.vin,
-      make: vehicle.make,
-      model: vehicle.model,
-      year: vehicle.year,
-      engine: vehicle.engine,
-      engineVolumeL: vehicle.engineVolumeL,
-      fuelType: vehicle.fuelType,
-      confidence: vehicleContext?.confidence ?? 0,
-      source: vehicleContext?.sourceDetail ?? vehicleContext?.source ?? null,
+    context: { vehicleId, findingId, manualPartId, partName, position },
+    vehicle: displayVehicle ? {
+      id: fitment.vehicle?.id || vehicleId,
+      vin: displayVehicle.vin,
+      make: displayVehicle.make,
+      model: displayVehicle.model,
+      year: displayVehicle.year,
+      engine: displayVehicle.engine,
+      engineVolumeL: displayVehicle.engineVolumeL,
+      fuelType: displayVehicle.fuelType,
+      confidence: vehicleContext?.confidence ?? fitment.confidence ?? 0,
+      source: vehicleContext?.sourceDetail ?? vehicleContext?.source ?? "CRM_VEHICLE",
     } : null,
     pricing: pricing ? {
       vehicleType: pricing.pricingVehicleType,
@@ -72,12 +103,25 @@ export async function GET(request: Request) {
       coefficient: pricing.coefficient,
       source: pricing.source,
     } : null,
+    fitment: {
+      status: fitment.status,
+      confirmed: fitment.confirmed,
+      confidence: fitment.confidence,
+      reason: fitment.reason,
+      vehicle: fitment.vehicle,
+      catalog: fitment.catalog,
+      genericArticle: fitment.genericArticle,
+    },
+    catalogMatches: fitment.matches,
+    oeNumbers: fitment.oeNumbers,
+    catalogArticles: fitment.catalogArticles,
+    analogArticles: fitment.analogArticles,
     parts,
     fitmentPolicy: {
-      level: "REFERENCE_ONLY",
-      canAutoApprove: false,
-      requiredForOrder: "OEM_OR_SUPPLIER_CONFIRMATION",
-      message: "CRM не має права позначити деталь як сумісну лише за збігом назви. Перед замовленням потрібне підтвердження OEM-каталогом або API постачальника.",
+      level: fitment.status,
+      canAutoApprove: fitment.confirmed,
+      requiredForOrder: fitment.confirmed ? "NONE" : "MANUAL_CONFIRMATION_OR_CATALOG",
+      message: fitment.reason,
     },
     providers: [
       {
@@ -86,7 +130,12 @@ export async function GET(request: Request) {
         license: reference.remote ? FREE_PARTS_SOURCE.license : "Turbo LEV internal",
         pinnedCommit: reference.remote ? FREE_PARTS_SOURCE.commit : null,
       },
-      { id: vehicleContext?.sourceDetail ?? "VIN_NOT_USED", role: "VEHICLE_IDENTITY" },
+      {
+        id: fitment.catalog?.source || "CATALOG_NOT_CONNECTED",
+        role: "VIN_FITMENT",
+        status: fitment.status,
+        vehicleReferenceId: fitment.catalog?.vehicleReferenceId || null,
+      },
     ],
   });
 }

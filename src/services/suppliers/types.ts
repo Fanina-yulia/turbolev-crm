@@ -1,3 +1,5 @@
+import type { PartFitmentStatus, PartOfferClass } from "@/src/services/parts-fitment.service";
+
 export type SupplierId = "bm-parts" | "unique-trade" | "autonova-d" | "atl";
 
 export type SupplierCapability =
@@ -52,7 +54,13 @@ export type SupplierOffer = {
   available: boolean;
   sourceUrl: string | null;
   /** Classification is optional because a supplier response may not prove OEM status. */
-  offerClass?: "OEM" | "ANALOG" | "UNKNOWN";
+  offerClass?: PartOfferClass;
+  /** Result of the server-side VIN/catalog compatibility check. */
+  fitmentStatus?: PartFitmentStatus;
+  fitmentConfidence?: number | null;
+  fitmentSource?: string | null;
+  fitmentReason?: string | null;
+  catalogProductId?: string | null;
 };
 
 export type SupplierDeliveryPoint = {

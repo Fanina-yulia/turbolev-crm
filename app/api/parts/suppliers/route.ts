@@ -3,6 +3,7 @@ import { PERMISSIONS } from "@/src/security/permissions";
 import { authorizeScopedLocation } from "@/src/security/scoped-location-access";
 import { enrichOffersWithSellPrice } from "@/src/services/suppliers/order.service";
 import { listSupplierStatuses, searchConfiguredSuppliers } from "@/src/services/suppliers/registry";
+import { resolvePartFitment } from "@/src/services/parts-fitment.service";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -11,6 +12,17 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const q = (searchParams.get("q") ?? "").trim();
   const locationId = searchParams.get("locationId")?.trim() || null;
+  const vehicleId = searchParams.get("vehicleId")?.trim() || null;
+  const vin = searchParams.get("vin")?.trim() || null;
+  const partName = searchParams.get("partName")?.trim() || q;
+  const position = searchParams.get("position")?.trim() || null;
+  const genericArticleId = searchParams.get("genericArticleId")?.trim() || null;
+  const oeNumbers = [...new Set((searchParams.get("oeNumbers") || "")
+    .split(",")
+    .map((value) => value.trim())
+    .filter((value) => value.length >= 2)
+    .slice(0, 20))];
+
   const access = await authorizeScopedLocation(PERMISSIONS.PROCUREMENT_READ, request, locationId);
   if (!access.ok) return access.response;
 
@@ -18,8 +30,24 @@ export async function GET(request: Request) {
     return NextResponse.json({ status: "INVALID_QUERY", message: "Введіть артикул або назву деталі." }, { status: 400 });
   }
 
+  const fitment = await resolvePartFitment({
+    query: q,
+    partName,
+    position,
+    genericArticleId,
+    vehicleId,
+    vin,
+  });
   const [result, suppliers] = await Promise.all([
-    searchConfiguredSuppliers(q, 20),
+    searchConfiguredSuppliers(q, 20, {
+      fitmentStatus: fitment.status,
+      fitmentConfidence: fitment.confidence,
+      fitmentSource: fitment.catalog?.source || null,
+      fitmentReason: fitment.reason,
+      catalogArticles: fitment.catalogArticles,
+      analogArticles: fitment.analogArticles,
+      oeNumbers: [...new Set([...fitment.oeNumbers, ...oeNumbers])],
+    }),
     listSupplierStatuses(),
   ]);
   const offers = await enrichOffersWithSellPrice(result.offers);
@@ -30,6 +58,20 @@ export async function GET(request: Request) {
   return NextResponse.json({
     status: "OK",
     query: q,
+    context: { vehicleId, vin, partName, position },
+    fitment: {
+      status: fitment.status,
+      confirmed: fitment.confirmed,
+      confidence: fitment.confidence,
+      reason: fitment.reason,
+      vehicle: fitment.vehicle,
+      catalog: fitment.catalog,
+      genericArticle: fitment.genericArticle,
+    },
+    catalogMatches: fitment.matches,
+    oeNumbers: fitment.oeNumbers,
+    catalogArticles: fitment.catalogArticles,
+    analogArticles: fitment.analogArticles,
     ...result,
     offers,
     suppliers,
@@ -39,7 +81,7 @@ export async function GET(request: Request) {
       configured: configuredCount,
       responded: respondedCount,
       message: configuredCount
-        ? `${configuredCount} постачальник(и) мають збережені доступи; результат відповіді видно після пошуку.`
+        ? configuredCount + " постачальник(и) мають збережені доступи; результат відповіді видно після пошуку."
         : "Постачальники додані, але доступи до API ще не налаштовані.",
     },
     pricing: {
@@ -49,8 +91,8 @@ export async function GET(request: Request) {
     },
     policy: {
       priceType: "PURCHASE_PRICE",
-      fitmentConfirmed: false,
-      message: "Ціна та залишок постачальника не підтверджують сумісність деталі з VIN. Для замовлення потрібне OEM/API підтвердження застосовності.",
+      fitmentConfirmed: fitment.confirmed,
+      message: fitment.reason,
     },
   }, { headers: { "Cache-Control": "no-store" } });
 }
