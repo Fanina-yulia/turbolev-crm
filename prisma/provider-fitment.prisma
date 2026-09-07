@@ -1,0 +1,46 @@
+model ProviderVehicleContext {
+  id                   String   @id @default(cuid())
+  vehicleId            String
+  provider             String   @db.VarChar(64)
+  externalVehicleId    String?  @db.VarChar(180)
+  externalSecurityKey  String?  @db.VarChar(180)
+  catalogCode          String?  @db.VarChar(80)
+  brand                String?  @db.VarChar(120)
+  model                String?  @db.VarChar(180)
+  variant              String?  @db.VarChar(180)
+  source               String   @db.VarChar(80)
+  sourceVersion        String?  @db.VarChar(80)
+  confidence           Int      @default(0)
+  exact                Boolean  @default(false)
+  rawEvidence          Json?
+  resolvedAt           DateTime @default(now())
+  expiresAt            DateTime?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  vehicle Vehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade, map: "provider_vehicle_context_vehicle_fk")
+
+  @@unique([vehicleId, provider], map: "provider_vehicle_context_vehicle_provider_uq")
+  @@index([provider, externalVehicleId], map: "provider_vehicle_context_provider_external_idx")
+  @@index([expiresAt], map: "provider_vehicle_context_expires_idx")
+}
+
+model ProviderFitmentSearchAudit {
+  id            String   @id @default(cuid())
+  vehicleId     String?
+  provider      String   @db.VarChar(64)
+  query         String   @db.VarChar(180)
+  position      String?  @db.VarChar(120)
+  status        String   @db.VarChar(48)
+  resultCount   Int      @default(0)
+  fitmentExact  Boolean  @default(false)
+  sourceVersion String?   @db.VarChar(80)
+  errorCode     String?   @db.VarChar(80)
+  metadata      Json?
+  createdAt     DateTime @default(now())
+
+  vehicle Vehicle? @relation(fields: [vehicleId], references: [id], onDelete: SetNull, map: "provider_fitment_audit_vehicle_fk")
+
+  @@index([vehicleId, provider, createdAt], map: "provider_fitment_audit_vehicle_provider_idx")
+  @@index([provider, createdAt], map: "provider_fitment_audit_provider_created_idx")
+}
