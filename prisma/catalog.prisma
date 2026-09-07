@@ -144,6 +144,11 @@ model GenericArticle {
   categories   CategoryGenericArticle[]
   products     Product[]
   vehicleFitments VehicleFitment[]
+  aliases           GenericArticleAlias[]
+  relationsFrom     GenericArticleRelation[] @relation("GenericArticleRelationFrom")
+  relationsTo       GenericArticleRelation[] @relation("GenericArticleRelationTo")
+  operations        GenericArticleOperation[]
+  media             GenericArticleMedia[]
 
   @@index([status, name])
   @@index([mergedIntoId])
