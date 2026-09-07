@@ -9,7 +9,6 @@ import { normalizePhone } from "@/src/lib/phone";
 import { normalizeVin } from "@/src/domain/vin";
 import { navigateCrm, readCrmRoute, type CrmRouteParams } from "./crm-route";
 import { VehicleRender } from "./vehicle-render";
-import { PartsCatalogDiagram, type PartsDiagramRecommendation } from "./parts-catalog-diagram";
 import styles from "./parts-catalog.module.css";
 
 type Part = { name?: string; slug?: string; category?: string; description?: string; fitment?: { confidence?: number; reason?: string } };
@@ -17,7 +16,7 @@ type VehicleContext = { id?: string; vin?: string; make?: string | null; model?:
 type SupplierOffer = { supplierId: string; supplierName: string; externalProductId: string | null; article: string; brand: string | null; name: string; purchasePrice: number | null; currency: string | null; multiplicity: number | null; stock: Array<{ warehouse: string; quantity: string; warehouseId?: string | null }>; available: boolean; sourceUrl: string | null; markupPercent?: number | null; sellPrice?: number | null };
 type SupplierProvider = { id: string; ok: boolean; message?: string };
 type Recommendation = { findingId: string | null; manualPartId: string | null; name: string; article: string | null; position: string; quantity: number; action: string; urgency: string; note: string; mediaCount: number };
-type SelectedLine = { findingId: string; partName: string; supplierName: string; article: string; brand: string | null; purchasePrice: number; sellPrice: number; markupPercent: number; currency: string; quantity: number };
+type SelectedLine = { findingId: string; partName: string; supplierName: string; article: string; brand: string | null; warehouse: string | null; purchasePrice: number; sellPrice: number; markupPercent: number; currency: string; quantity: number };
 type ManualPartPayload = { id: string; findingId: string | null; name: string; article: string | null; brand: string | null; position: string | null; quantity: string | number; note: string | null };
 type WorkOrderRow = WorkOrderListItemContract;
 type DiagnosticPickerRow = { id: string; number: number | null; status: string; statusLabel: string; updatedAt: string; client: { name: string | null; phone: string }; vehicle: { id: string; brand: string | null; model: string | null; year: number | null; plateNumber: string | null; vin: string | null; mileageKm: number | null; turboLevClass: string | null }; diagnosticRequest: { id: string; status: string } };
@@ -56,16 +55,24 @@ export function PartsCatalog() {
   const [workOrderOptions, setWorkOrderOptions] = useState<WorkOrderRow[]>([]);
   const [orderSearch, setOrderSearch] = useState("");
   const [activeFindingId, setActiveFindingId] = useState("");
+  const [partFilter, setPartFilter] = useState("");
   const [activeTab, setActiveTab] = useState<"originals" | "analogs">("originals");
   const [busy, setBusy] = useState(false);
   const [contextLoading, setContextLoading] = useState(false);
   const [ordersLoading, setOrdersLoading] = useState(false);
   const [selectingOffer, setSelectingOffer] = useState("");
+  const [pickerOpen, setPickerOpen] = useState(false);
   const [resolvedPlate, setResolvedPlate] = useState<string | null>(null);
   const [resolvedVin, setResolvedVin] = useState("");
   const [message, setMessage] = useState("Оберіть ремонтне замовлення або відкрийте підбір із Діагностичної карти.");
 
   useEffect(() => { const onRoute = () => setRoute(readCrmRoute()); window.addEventListener("popstate", onRoute); return () => window.removeEventListener("popstate", onRoute); }, []);
+  useEffect(() => {
+    if (!pickerOpen) return;
+    const closeOnEscape = (event: KeyboardEvent) => { if (event.key === "Escape") setPickerOpen(false); };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [pickerOpen]);
 
   async function loadWorkOrders() {
     setOrdersLoading(true);
@@ -175,7 +182,7 @@ export function PartsCatalog() {
         const allRecommendationRows = [...recommendationRows, ...manualRecommendationRows];
         const nextReference = route.plate || route.vin || diagnosticVehicle?.vin || "";
         const nextContext: ContextSummary = { workOrderId: diagnostic?.workOrder?.id || route.workOrderId || null, orderNumber: route.workOrderNumber || "ЗН-—", clientName: diagnostic?.client?.name || "Клієнт не вказаний", clientPhone: diagnostic?.client?.phone || "—", vehicleId: diagnosticVehicle?.id || route.vehicleId || null, vehicleName: diagnosticVehicle?.label || [diagnosticVehicle?.brand, diagnosticVehicle?.model, diagnosticVehicle?.year].filter(Boolean).join(" ") || "Автомобіль", plateNumber: diagnosticVehicle?.plateNumber || route.plate || null, vin: diagnosticVehicle?.vin || route.vin || null, mileageKm: diagnosticVehicle?.mileageKm ?? null, statusCode: diagnostic?.workOrder?.status || "PARTS_REVIEW", statusLabel: diagnostic?.workOrder?.status || "Підбір деталей", engine: null };
-        setContext(nextContext); setVehicle({ ...diagnosticVehicle, id: diagnosticVehicle?.id || route.vehicleId, vin: diagnosticVehicle?.vin || route.vin, plateNumber: diagnosticVehicle?.plateNumber || route.plate }); setVehicleRef(nextReference.toUpperCase()); setResolvedVin(diagnosticVehicle?.vin || route.vin || ""); setRecommendedParts(allRecommendationRows); const requestedRecommendation = route.manualPartId || route.findingId; const first = allRecommendationRows.find((item) => recommendationKey(item) === requestedRecommendation) || allRecommendationRows[0]; setActiveFindingId(first ? recommendationKey(first) : ""); setQ((current) => current.trim() || first?.article || first?.name || ""); setMessage(allRecommendationRows.length ? `Із Діагностичної карти передано ${allRecommendationRows.length} позицій. Оберіть постачальника.` : "У Діагностичній карті немає деталей, позначених до заміни."); if (first?.name) void searchPart(first.article || first.name, nextReference);
+        setContext(nextContext); setVehicle({ ...diagnosticVehicle, id: diagnosticVehicle?.id || route.vehicleId, vin: diagnosticVehicle?.vin || route.vin, plateNumber: diagnosticVehicle?.plateNumber || route.plate }); setVehicleRef(nextReference.toUpperCase()); setResolvedVin(diagnosticVehicle?.vin || route.vin || ""); setRecommendedParts(allRecommendationRows); const requestedRecommendation = route.manualPartId || route.findingId; const first = allRecommendationRows.find((item) => recommendationKey(item) === requestedRecommendation) || allRecommendationRows[0]; setActiveFindingId(first ? recommendationKey(first) : ""); setQ((current) => current.trim() || first?.article || first?.name || ""); setOffers([]); setPickerOpen(false); setMessage(allRecommendationRows.length ? `Із Діагностичної карти передано ${allRecommendationRows.length} позицій. Натисніть на деталь, щоб відкрити підбір.` : "У Діагностичній карті немає деталей, позначених до заміни.");
       } catch (error) { if (!cancelled) setMessage(error instanceof Error ? error.message : "Не вдалося завантажити Діагностичну карту."); } finally { if (!cancelled) setContextLoading(false); }
     };
     void loadContext(); return () => { cancelled = true; };
@@ -206,17 +213,35 @@ export function PartsCatalog() {
   }, [orderSearch, workOrderOptions]);
   const selectedPurchaseTotal = selectedLines.reduce((sum, line) => sum + line.purchasePrice * line.quantity, 0);
   const selectedSellTotal = selectedLines.reduce((sum, line) => sum + line.sellPrice * line.quantity, 0);
+  const selectedProfitTotal = selectedLines.reduce((sum, line) => sum + (line.sellPrice - line.purchasePrice) * line.quantity, 0);
+  const selectedMarkupValues = [...new Set(selectedLines.map((line) => line.markupPercent))];
+  const selectedMarkupLabel = selectedMarkupValues.length === 1 ? `${selectedMarkupValues[0]}%` : selectedMarkupValues.length > 1 ? "різна" : "—";
   const providerErrors = supplierProviders.filter((provider) => !provider.ok);
+  const visibleRecommendedParts = useMemo(() => {
+    const query = normalizeText(partFilter);
+    if (!query) return recommendedParts;
+    return recommendedParts.filter((item) => normalizeText([item.name, item.article, item.position].filter(Boolean).join(" ")).includes(query));
+  }, [partFilter, recommendedParts]);
 
   function openOrder(row: WorkOrderRow) { if (!row.id) { navigateCrm("Діагностика", { diagnosticId: row.diagnosticRequest.id }); return; } navigateCrm("Підбір запчастин", { diagnosticId: row.diagnosticRequest.id, workOrderId: row.id, workOrderNumber: orderLabel(row), vehicleId: row.vehicle.id, plate: row.vehicle.plateNumber || "", vin: row.vehicle.vin || "" }); }
 
-  function selectDiagramItem(findingId: string) {
-    const item = recommendedParts.find((recommendation) => recommendation.findingId === findingId && !recommendation.manualPartId);
-    if (!item) return;
+  function openPickerFor(item: Recommendation) {
+    const query = item.article || item.name;
     setActiveFindingId(recommendationKey(item));
-    setQ(item.article || item.name);
+    setQ(query);
     setOffers([]);
-    void searchPart(item.article || item.name, vehicleRef);
+    setPickerOpen(true);
+    void searchPart(query, vehicleRef);
+  }
+
+  function openNextPicker() {
+    const next = recommendedParts.find((item) => !selectedLines.some((line) => line.findingId === recommendationKey(item)));
+    if (next) return openPickerFor(next);
+    setMessage("Усі деталі з Діагностичної карти вже підібрані.");
+  }
+
+  function selectedLineFor(item: Recommendation) {
+    return selectedLines.find((line) => line.findingId === recommendationKey(item)) || null;
   }
 
   async function selectOffer(offer: SupplierOffer) {
@@ -230,17 +255,98 @@ export function PartsCatalog() {
       const response = await fetch("/api/parts-selection/select", { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ diagnosticId: route.diagnosticId, findingId: activeRecommendation.findingId, manualPartId: activeRecommendation.manualPartId, quantity: activeRecommendation.quantity, supplierId: offer.supplierId, externalProductId: offer.externalProductId, article: offer.article, searchMode: vinSearch ? "VIN" : "TEXT", vehicleVin: vinSearch ? selectionVin : null, manualConfirmation: !vinSearch }) });
       const data = await response.json().catch(() => null) as { ok?: boolean; message?: string; error?: string; selected?: { supplierName: string; article: string; brand: string | null; purchasePrice: number; markupPercent: number; sellPrice: number; currency: string } } | null;
       if (!response.ok || !data?.ok || !data.selected) throw new Error(data?.message || data?.error || "Не вдалося зберегти вибрану деталь.");
-      const selected = data.selected; const selectedKey = recommendationKey(activeRecommendation); setSelectedLines((current) => [...current.filter((line) => line.findingId !== selectedKey), { findingId: selectedKey, partName: activeRecommendation.name, supplierName: selected.supplierName, article: selected.article, brand: selected.brand, purchasePrice: selected.purchasePrice, sellPrice: selected.sellPrice, markupPercent: selected.markupPercent, currency: selected.currency, quantity: activeRecommendation.quantity }]); setMessage(`Позицію збережено: ${selected.supplierName} · ${selected.article}.`); window.dispatchEvent(new CustomEvent("turbolev:data-changed"));
+      const selected = data.selected; const selectedKey = recommendationKey(activeRecommendation); const warehouse = offer.stock.find((row) => row.warehouseId && Number(row.quantity.replace(/[^0-9.,-]/g, "").replace(",", ".")) > 0)?.warehouse || offer.stock[0]?.warehouse || null; setSelectedLines((current) => [...current.filter((line) => line.findingId !== selectedKey), { findingId: selectedKey, partName: activeRecommendation.name, supplierName: selected.supplierName, article: selected.article, brand: selected.brand, warehouse, purchasePrice: selected.purchasePrice, sellPrice: selected.sellPrice, markupPercent: selected.markupPercent, currency: selected.currency, quantity: activeRecommendation.quantity }]); setPickerOpen(false); setMessage(`Позицію збережено: ${selected.supplierName} · ${selected.article}.`); window.dispatchEvent(new CustomEvent("turbolev:data-changed"));
     } catch (error) { setMessage(error instanceof Error ? error.message : "Не вдалося зберегти вибрану деталь."); } finally { setSelectingOffer(""); }
   }
-
-  const referenceHint = !vehicleRef.trim() ? "VIN не вказаний · потрібне ручне підтвердження" : looksLikeVin(vehicleRef) ? "VIN · 17 символів" : `Держномер · VIN ${resolvedPlate ? "знайдено" : "буде знайдено в CRM"}`;
-
-  const diagramRecommendations: PartsDiagramRecommendation[] = recommendedParts.filter((item): item is Recommendation & { findingId: string; manualPartId: null } => Boolean(item.findingId) && !item.manualPartId).map(({ findingId, name, position, quantity, action, urgency }) => ({ findingId, name, position, quantity, action, urgency }));
 
   if (!route.diagnosticId) return <div className={styles.page}><div className={styles.menuHeader}><div><p>РОЗДІЛ ЗАПЧАСТИН</p><h1>Підбір запчастин</h1><span>Оберіть ремонтне замовлення, щоб відкрити робочу область підбору.</span></div><span className={styles.headerBadge}>ВХІД ІЗ ГОЛОВНОГО МЕНЮ</span></div><section className={styles.orderPicker}><div className={styles.pickerHeader}><div><b>Ремонтні замовлення</b><span>Показані всі записи з прив’язаною Діагностичною картою, незалежно від поточного статусу.</span></div><strong>{workOrderOptions.length}</strong></div><label className={styles.orderSearch}><span>⌕</span><input value={orderSearch} onChange={(event) => setOrderSearch(event.target.value)} onKeyDown={(event) => { if (event.key !== "Enter") return; event.preventDefault(); void loadWorkOrders(); }} placeholder="Пошук за № замовлення, клієнтом, телефоном, держномером або VIN" aria-keyshortcuts="Enter"/><button type="button" onClick={() => setOrderSearch("")} disabled={!orderSearch} aria-label="Очистити пошук">×</button></label>{ordersLoading ? <div className={styles.pickerEmpty}>Завантажую ремонтні замовлення…</div> : filteredOrders.length ? <div className={styles.orderList}>{filteredOrders.map((row) => <button type="button" className={styles.orderRow} key={row.diagnosticRequest.id} onClick={() => openOrder(row)}><span className={styles.orderNumber}>{orderLabel(row)}</span><span className={styles.orderIdentity}><b>{vehicleLabel(row)}</b><small>{row.vehicle.plateNumber || "Номер не вказаний"} · {row.client.name || "Клієнт не вказаний"}</small></span><span className={styles.orderNeed}><b>{row.statusLabel}</b><small>{row.diagnosticRequest.status === "CONFIRMED" ? "Діагностика підтверджена" : "Діагностика в роботі"}</small></span><span className={styles.orderArrow}>→</span></button>)}</div> : <div className={styles.pickerEmpty}>{message}<button type="button" onClick={() => void loadWorkOrders()}>Оновити список</button></div>}</section></div>;
 
   if (contextLoading || !context) return <div className={styles.page}><div className={styles.loadingPanel}><span className={styles.loadingCircle}>2</span><div><b>Завантажую контекст ремонту…</b><small>Підтягую автомобіль, клієнта та деталі з Діагностичної карти.</small></div></div></div>;
+
+  return <div className={styles.page}>
+    <header className={styles.contextHeader}>
+      <button type="button" className={styles.backButton} onClick={() => navigateCrm("Підбір запчастин", {})} aria-label="Повернутися до вибору замовлення">←</button>
+      <div className={styles.orderContext}><small>Ремонтне замовлення</small><b>{context.orderNumber}</b></div>
+      <div className={styles.contextItem}><small>Клієнт</small><b>{context.clientName}</b></div>
+      <div className={styles.contextItem}><small>Телефон</small><b>{context.clientPhone}</b></div>
+      <div className={styles.contextItem}><small>Автомобіль</small><b>{context.vehicleName}</b><span>{context.plateNumber || "Номер не вказаний"}</span></div>
+      <div className={styles.contextItem}><small>Пробіг</small><b>{formatMileage(context.mileageKm)}</b></div>
+      <div className={styles.contextStatus}><small>Статус ЗН</small><b className={statusTone(context.statusCode)}><i/> {context.statusLabel}</b></div>
+    </header>
+
+    <div className={styles.partsWorkspaceHeader}>
+      <div><p>ПІДБІР ЗАПЧАСТИН</p><h1>Комерційна пропозиція · деталі</h1><span>Оберіть деталь з діагностичної карти — результати постачальників відкриються у popup.</span></div>
+      <div className={styles.workspaceHeaderMeta}><b>{selectedLines.length}/{recommendedParts.length}</b><span>позицій підібрано</span></div>
+    </div>
+
+    <div className={styles.columns}>
+      <section className={`${styles.column} ${styles.needsColumn}`}>
+        <div className={styles.columnTitle}><span className={styles.step}>1</span><div><b>Деталі до заміни</b><small>Позиції з Діагностичної карти</small></div></div>
+        <div className={styles.needsToolbar}><label className={styles.partSearch}><span>⌕</span><input value={partFilter} onChange={(event) => setPartFilter(event.target.value)} placeholder="Пошук деталей…" aria-label="Пошук деталей до заміни"/>{partFilter && <button type="button" onClick={() => setPartFilter("")} aria-label="Очистити пошук">×</button>}</label><span className={styles.needsCount}>{visibleRecommendedParts.length} з {recommendedParts.length}</span></div>
+        <div className={styles.needSection}>
+          <div className={styles.needTable}>
+            <div className={styles.needTableHead}><span>№</span><span>Деталь / вузол</span><span>К-ть</span><span>Статус</span></div>
+            {visibleRecommendedParts.length ? visibleRecommendedParts.map((item, index) => {
+              const itemKey = recommendationKey(item);
+              const selectedLine = selectedLineFor(item);
+              const active = itemKey === activeFindingId;
+              return <button type="button" className={`${styles.needRow} ${active ? styles.needRowActive : ""} ${selectedLine ? styles.needRowSelected : ""}`} key={itemKey} onClick={() => openPickerFor(item)}>
+                <span>{index + 1}</span>
+                <span><b>{item.name}</b><small>{item.position}{item.manualPartId ? " · додано вручну" : item.mediaCount ? ` · фото ${item.mediaCount}` : ""}</small></span>
+                <span>{item.quantity} шт</span>
+                <span className={selectedLine ? styles.needStatusSelected : styles.needStatus}>{selectedLine ? "Підібрано" : "Потрібно"}</span>
+              </button>;
+            }) : <div className={styles.pickerEmpty}>За цим пошуком деталей не знайдено.</div>}
+          </div>
+        </div>
+        <div className={styles.needsHint}><span>ⓘ</span><div><b>Натисніть на будь-яку деталь</b><small>Відкриється пошук оригіналів і аналогів у підключених API постачальників.</small></div></div>
+        <div className={styles.needsFooter}><span>Ще не підібрано: <b>{Math.max(recommendedParts.length - selectedLines.length, 0)}</b></span><button type="button" className={styles.secondaryAction} onClick={openNextPicker} disabled={!recommendedParts.some((item) => !selectedLineFor(item))}>Підібрати наступну</button></div>
+      </section>
+
+      <section className={`${styles.column} ${styles.selectedColumn}`}>
+        <div className={styles.columnTitle}><span className={styles.step}>2</span><div><b>Вибрані деталі</b><small>Таблиця для Комерційної пропозиції</small></div><span className={styles.columnBadge}>{selectedLines.length}</span></div>
+        <div className={styles.selectedTableArea}>
+          <div className={styles.selectedTableScroll}>
+            <table className={styles.selectedTable}>
+              <thead><tr><th>№</th><th>К-сть, шт.</th><th>Артикул</th><th>Бренд</th><th>Номенклатура</th><th>Постачальник</th><th>Склад</th><th>Ціна закупки, грн</th><th>Сума закупки, грн</th><th>Ціна продажу, грн</th><th>Сума продажу, грн</th><th>Прибуток, грн</th><th>%</th><th>Дія</th></tr></thead>
+              <tbody>{selectedLines.length ? selectedLines.map((line, index) => {
+                const recommendation = recommendedParts.find((item) => recommendationKey(item) === line.findingId);
+                const purchaseTotal = line.purchasePrice * line.quantity;
+                const sellTotal = line.sellPrice * line.quantity;
+                const profit = (line.sellPrice - line.purchasePrice) * line.quantity;
+                return <tr key={line.findingId}><td>{index + 1}</td><td>{line.quantity}</td><td>{line.article || "—"}</td><td>{line.brand || "—"}</td><td className={styles.nomenclatureCell}>{line.partName}</td><td>{line.supplierName}</td><td>{line.warehouse || "—"}</td><td>{formatMoney(line.purchasePrice, line.currency)}</td><td>{formatMoney(purchaseTotal, line.currency)}</td><td>{formatMoney(line.sellPrice, line.currency)}</td><td className={styles.sellPrice}>{formatMoney(sellTotal, line.currency)}</td><td className={styles.profit}>{formatMoney(profit, line.currency)}</td><td>{line.markupPercent}%</td><td>{recommendation ? <button type="button" className={styles.tableAction} onClick={() => openPickerFor(recommendation)}>Змінити</button> : null}</td></tr>;
+              }) : <tr><td colSpan={14}><div className={styles.selectedEmpty}><span>+</span><b>Вибраних деталей ще немає</b><small>Натисніть на позицію в лівій колонці, щоб відкрити пропозиції постачальників.</small><button type="button" className={styles.secondaryAction} onClick={openNextPicker} disabled={!recommendedParts.length}>Відкрити підбір</button></div></td></tr>}</tbody>
+            </table>
+          </div>
+        </div>
+        <div className={styles.selectedTableFooter}><span>Показано {selectedLines.length} позицій</span><span>Валюта: грн</span></div>
+      </section>
+
+      <aside className={`${styles.column} ${styles.summaryColumn}`}>
+        <div className={styles.columnTitle}><span className={styles.step}>3</span><div><b>Огляд кошика та маржі</b><small>Підсумок по вибраних деталях</small></div></div>
+        <div className={styles.summaryBody}>
+          <div className={`${styles.summaryState} ${selectedLines.length ? styles.summaryStateReady : ""}`}><span>{selectedLines.length === recommendedParts.length && recommendedParts.length ? "✓" : "i"}</span><div><b>{selectedLines.length === recommendedParts.length && recommendedParts.length ? "Підбір завершено" : "Потрібно підібрати деталі"}</b><small>Підібрано {selectedLines.length} з {recommendedParts.length} позицій</small></div></div>
+          <div className={styles.summaryMetrics}><div><span>Закупка</span><b>{formatMoney(selectedPurchaseTotal, "UAH")}</b></div><div><span>Продаж</span><b className={styles.summarySell}>{formatMoney(selectedSellTotal, "UAH")}</b></div><div><span>Прибуток</span><b className={styles.summaryProfit}>{formatMoney(selectedProfitTotal, "UAH")}</b></div><div><span>Націнка</span><b>{selectedMarkupLabel}</b></div></div>
+          <div className={styles.summaryNote}><span>ⓘ</span><div><b>Націнка з налаштувань CRM</b><small>Ціна продажу розраховується автоматично від закупівельної ціни. Для кожної позиції збережено фактичний відсоток.</small></div></div>
+          <div className={styles.summaryDelivery}><b>Постачальники та склад</b><span>{selectedLines.length ? "Позиції збережені з джерелом, складом та ціною API." : "Після вибору деталі тут з’явиться підсумок постачальників."}</span></div>
+          <div className={styles.summaryActions}><button type="button" className={styles.secondaryAction} onClick={() => context.workOrderId && navigateCrm("Замовлення-наряди", { workOrderId: context.workOrderId, workOrderTab: "estimate" })} disabled={!context.workOrderId || !selectedLines.length}>Підготувати до погодження</button><button type="button" className={styles.actionPrimary} onClick={() => context.workOrderId && navigateCrm("Замовлення-наряди", { workOrderId: context.workOrderId, workOrderTab: "parts" })} disabled={!context.workOrderId || !selectedLines.length}>Відкрити в ЗН →</button></div>
+          {message && <div className={styles.policyNote}>{message}</div>}
+        </div>
+      </aside>
+    </div>
+
+    {pickerOpen && <div className={styles.pickerBackdrop} role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setPickerOpen(false); }}>
+      <section className={styles.pickerModal} role="dialog" aria-modal="true" aria-labelledby="parts-picker-title">
+        <header className={styles.pickerHeaderBar}><div><p>ПІДБІР ДЕТАЛІ</p><h2 id="parts-picker-title">{activeRecommendation?.name || "Оберіть деталь"}</h2><span>{activeRecommendation?.position || "Позиція з Діагностичної карти"} · {activeRecommendation?.quantity || 1} шт.</span></div><button type="button" className={styles.pickerClose} onClick={() => setPickerOpen(false)} aria-label="Закрити підбір">×</button></header>
+        <div className={styles.pickerSearchBar}><label><span>Пошук за OEM або назвою</span><div className={styles.inputWithIcon}><input value={q} onChange={(event) => setQ(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void searchPart(); }} placeholder="Артикул або назва деталі"/><button type="button" onClick={() => void searchPart()} aria-label="Пошук">⌕</button></div></label><label><span>Автомобіль</span><div className={styles.pickerVehicleRef}>{vehicleRef || "VIN не вказаний"}</div></label></div>
+        <div className={styles.pickerTabs}><button type="button" className={activeTab === "originals" ? styles.tabActive : ""} onClick={() => setActiveTab("originals")}>Оригінали <span>{activeTab === "originals" ? offers.length : ""}</span></button><button type="button" className={activeTab === "analogs" ? styles.tabActive : ""} onClick={() => setActiveTab("analogs")}>Аналоги <span>{activeTab === "analogs" ? offers.length : ""}</span></button><span className={styles.pickerApiStatus}>{configuredSuppliers.length} API підключено</span></div>
+        {busy ? <div className={styles.pickerEmptyState}><b>Шукаю пропозиції…</b><span>Перевіряю VIN, артикул, наявність і склад у постачальників.</span></div> : !offers.length ? <div className={styles.pickerEmptyState}><b>Пропозицій поки немає</b><span>{configuredSuppliers.length ? "Змініть пошуковий запит або перевірте відповідь постачальників." : "Перевірте підключення BM Parts та Юнік Трейд у налаштуваннях CRM."}</span></div> : <div className={styles.pickerOfferList}>{offers.map((offer, index) => { const key = `${offer.supplierId}:${offer.externalProductId || offer.article}`; return <article className={styles.pickerOffer} key={`${key}-${index}`}><div className={styles.pickerOfferTop}><div><b>{offer.name}</b><span>{offer.brand || "Бренд не вказаний"} · {offer.article}</span></div><span className={offer.available ? styles.available : styles.unavailable}>{offer.available ? "В наявності" : "Уточнити"}</span></div><div className={styles.pickerOfferGrid}><div><small>Постачальник</small><b>{offer.supplierName}</b></div><div><small>Склад</small><b>{offer.stock[0]?.warehouse || "Не вказаний"}</b></div><div><small>Ціна закупки</small><b>{formatMoney(offer.purchasePrice, offer.currency)}</b></div><div><small>Ціна продажу</small><b className={styles.sellPrice}>{formatMoney(offer.sellPrice, offer.currency)}</b></div><button type="button" className={styles.addButton} disabled={!offer.available || offer.purchasePrice == null || selectingOffer === key || !activeRecommendation} onClick={() => void selectOffer(offer)}>{selectingOffer === key ? "Зберігаю…" : "Вибрати"}</button></div></article>; })}</div>}
+        {providerErrors.length ? <div className={styles.warning}>Не всі API відповіли: {providerErrors.map((provider) => `${provider.id}${provider.message ? ` — ${provider.message}` : ""}`).join("; ")}</div> : null}
+        <footer className={styles.pickerFooter}><span aria-live="polite">{message}</span><button type="button" className={styles.secondaryAction} onClick={() => setPickerOpen(false)}>Закрити</button></footer>
+      </section>
+    </div>}
+  </div>;
+  /*
 
   return <div className={styles.page}><header className={styles.contextHeader}><button type="button" className={styles.backButton} onClick={() => navigateCrm("Підбір запчастин", {})} aria-label="Повернутися до вибору замовлення">←</button><div className={styles.orderContext}><small>Ремонтне замовлення</small><b>{context.orderNumber}</b></div><div className={styles.contextItem}><small>Клієнт</small><b>{context.clientName}</b></div><div className={styles.contextItem}><small>Телефон</small><b>{context.clientPhone}</b></div><div className={styles.contextItem}><small>Автомобіль</small><b>{context.vehicleName}</b><span>{context.plateNumber || "Номер не вказаний"}</span></div><div className={styles.contextItem}><small>Пробіг</small><b>{formatMileage(context.mileageKm)}</b></div><div className={styles.contextStatus}><small>Статус ЗН</small><b className={statusTone(context.statusCode)}><i/> {context.statusLabel}</b></div></header><PartsCatalogDiagram vehicleLabel={context.vehicleName} vin={context.vin} recommendations={diagramRecommendations} activeFindingId={activeFindingId} onSelect={selectDiagramItem}/><div className={styles.columns}>
     <section className={`${styles.column} ${styles.needsColumn}`}><div className={styles.columnTitle}><span className={styles.step}>1</span><div><b>Крок 1 · Потреби</b><small>Що потрібно замінити за результатом діагностики</small></div></div><div className={styles.vehicleBlock}><div className={styles.sectionEyebrow}>АВТОМОБІЛЬ</div><div className={styles.vehicleOverview}>{context.vehicleId ? <VehicleRender id={context.vehicleId} brand={vehicle?.make} model={vehicle?.model} year={vehicle?.year} size="mini" eager className={styles.vehicleImage}/> : <div className={styles.vehicleFallback}>🚗</div>}<div><b>{context.vehicleName}</b><span>VIN <strong>{context.vin || "не вказаний"}</strong></span><span>Держномер <strong>{context.plateNumber || "не вказаний"}</strong></span>{context.engine ? <span>Клас авто <strong>{context.engine}</strong></span> : null}<span>Пробіг <strong>{formatMileage(context.mileageKm)}</strong></span></div></div></div><div className={styles.needSection}><div className={styles.sectionLabel}>Діагностовані потреби <span>ⓘ</span></div><div className={styles.needTable}><div className={styles.needTableHead}><span>№</span><span>Деталь / Вузол</span><span>К-ть</span><span>Статус</span></div>{recommendedParts.length ? recommendedParts.map((item, index) => { const itemKey = recommendationKey(item); const searchValue = item.article || item.name; return <button type="button" className={`${styles.needRow} ${itemKey === activeFindingId ? styles.needRowActive : ""}`} key={itemKey} onClick={() => { setActiveFindingId(itemKey); setQ(searchValue); setOffers([]); void searchPart(searchValue, vehicleRef); }}><span>{index + 1}</span><span><b>{item.name}</b><small>{item.position}{item.manualPartId ? " · додано вручну" : item.mediaCount ? ` · фото ${item.mediaCount}` : ""}</small></span><span>{item.quantity} шт</span><span className={styles.needStatus}>Потрібно</span></button>; }) : <div className={styles.pickerEmpty}>Позицій до заміни немає.</div>}</div></div><div className={styles.contextNotice}><span>ⓘ</span><div><b>{vehicleRef.trim() ? "Пошук за VIN доступний" : "VIN відсутній"}</b><small>{vehicleRef.trim() ? "Система використовує VIN як головний ідентифікатор автомобіля." : "Пошук за назвою або артикулом дозволений, але кожну позицію потрібно підтвердити вручну."}</small></div></div><div className={styles.selectionOrder}><span>ПОРЯДОК ПІДБОРУ</span><div className={styles.stepLine}><b>1</b><i/><b>2</b><i/><b>3</b></div><div className={styles.stepCaptions}><span>Пошук за VIN</span><span>Номер деталі</span><span>Ручне підтвердження</span></div></div></section>
@@ -249,4 +355,5 @@ export function PartsCatalog() {
 
     <section className={`${styles.column} ${styles.proposalColumn}`}><div className={styles.columnTitle}><span className={styles.step}>3</span><div><b>Крок 3 · Пропозиція</b><small>Позиції, які увійдуть до Комерційної пропозиції</small></div></div><div className={styles.approvalLine}><span>Погодження клієнта</span><b>Чернетка</b></div><div className={styles.proposalTable}><div className={styles.proposalHead}><span>№</span><span>Деталь</span><span>К-ть</span><span>Постачальник</span><span>Ціна для клієнта</span></div>{selectedLines.length ? selectedLines.map((line, index) => <div className={styles.proposalRow} key={line.findingId}><span>{index + 1}</span><span><b>{line.partName}</b><small>{line.brand ? `${line.brand} · ` : ""}{line.article}</small></span><span>{line.quantity} шт</span><span>{line.supplierName}</span><span className={styles.sellPrice}>{formatMoney(line.sellPrice * line.quantity, line.currency)}</span></div>) : <div className={styles.proposalEmpty}><span>+</span><b>Додайте підібрану деталь</b><small>Виберіть постачальника в другому кроці — позиція з’явиться тут.</small></div>}</div><div className={styles.totalBox}><span>Разом</span><div><small>Закупівельна ціна</small><b>{formatMoney(selectedPurchaseTotal, "UAH")}</b></div><div className={styles.totalSell}><small>Ціна для клієнта</small><b>{formatMoney(selectedSellTotal, "UAH")}</b></div></div><div className={styles.markupNotice}><span>ⓘ</span><div><b>Закупівельна ціна × 1,40</b><small>Націнка формується автоматично з налаштувань CRM і не вводиться вручну.</small></div></div><div className={styles.deliveryBox}><b>Доставка</b><span>Термін уточнюється після вибору постачальника та складу.</span></div><div className={styles.proposalActions}><button type="button" onClick={() => context.workOrderId && navigateCrm("Замовлення-наряди", { workOrderId: context.workOrderId, workOrderTab: "estimate" })} disabled={!context.workOrderId || !selectedLines.length}>Підготувати до погодження</button><button type="button" className={styles.actionPrimary} onClick={() => context.workOrderId && navigateCrm("Замовлення-наряди", { workOrderId: context.workOrderId, workOrderTab: "parts" })} disabled={!context.workOrderId || !selectedLines.length}>Відкрити в ЗН →</button></div></section>
   </div></div>;
+  */
 }
