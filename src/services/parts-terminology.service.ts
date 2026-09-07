@@ -473,7 +473,7 @@ function decorateProviderTerm(term: string, provider: PartProvider, definition: 
   const hasAxis = /(front|rear|передн|задн)/u.test(normalized);
   const armTerm = /(control arm|важел|рычаг)/u.test(normalized);
   if (axisWord && !hasAxis) {
-    const armNoun = provider === "BM_PARTS" ? /(рычаг\\w*)/u : /(важел\\w*)/u;
+    const armNoun = provider === "BM_PARTS" ? /(рычаг\w*)/u : /(важел\w*)/u;
     candidate = armTerm && armNoun.test(candidate)
       ? candidate.replace(armNoun, axisWord + " $1")
       : candidate + " " + axisWord;
