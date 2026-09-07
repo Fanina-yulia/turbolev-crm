@@ -298,6 +298,10 @@ function isArticleLike(query: string) {
   return /^[a-z0-9][a-z0-9._/\\-]{2,}$/iu.test(query.trim()) && /[0-9]/u.test(query);
 }
 
+export function bmSearchMode(query: string) {
+  return isArticleLike(query) ? "strict" : "extended" as const;
+}
+
 /** BM requires a second URL-encoding pass for slashes inside a car model. */
 export function encodeBmCarFilter(carFilter: string) {
   return carFilter.replace(/\//g, "%2F");
@@ -419,7 +423,7 @@ search:
       for (const available of ["1", "0"]) {
         const params = new URLSearchParams({
           q: query,
-          search_mode: isArticleLike(query) ? "strict" : "partial",
+          search_mode: bmSearchMode(query),
           available,
           products_as: "arr",
           warehouses: "all",
