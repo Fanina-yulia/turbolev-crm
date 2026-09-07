@@ -81,7 +81,7 @@ export async function GET(request: Request) {
       configured: configuredCount,
       responded: respondedCount,
       message: configuredCount
-        ? \`\${configuredCount} постачальник(и) мають збережені доступи; результат відповіді видно після пошуку.\`
+        ? configuredCount + " постачальник(и) мають збережені доступи; результат відповіді видно після пошуку."
         : "Постачальники додані, але доступи до API ще не налаштовані.",
     },
     pricing: {
