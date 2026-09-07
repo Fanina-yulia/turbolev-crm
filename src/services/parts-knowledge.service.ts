@@ -199,7 +199,7 @@ export async function buildKnowledgeProviderPartQueryCandidates(
 }
 
 async function ensureCanonicalArticle(
-  tx: ReturnType<typeof getPrisma>,
+  tx: any,
   definition: { code: string; slug: string; canonicalName: string },
 ) {
   const existing = await tx.genericArticle.findFirst({
