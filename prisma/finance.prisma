@@ -58,6 +58,22 @@ enum FinanceSnapshotKind {
   ACTUAL
 }
 
+enum ExpenseDocumentStatus {
+  DRAFT
+  PENDING_APPROVAL
+  APPROVED
+  POSTED
+  REJECTED
+  REVERSED
+}
+
+enum ExpensePaymentStatus {
+  UNPAID
+  PARTIALLY_PAID
+  PAID
+  OVERDUE
+}
+
 model MoneyAccount {
   id               String           @id @default(cuid())
   name             String
@@ -120,6 +136,77 @@ model CostCenter {
 
   @@index([locationId])
   @@index([isActive, sortOrder])
+}
+
+model ExpenseDocument {
+  id               String                @id @default(cuid())
+  number           String                @unique @db.VarChar(32)
+  status           ExpenseDocumentStatus @default(DRAFT)
+  paymentStatus    ExpensePaymentStatus @default(UNPAID)
+  amount           Decimal               @db.Decimal(14, 2)
+  paidAmount       Decimal               @default(0) @db.Decimal(14, 2)
+  currency         String                @default("UAH") @db.VarChar(3)
+  expenseDate      DateTime
+  recognizedAt     DateTime
+  paymentDate      DateTime?
+  dueAt            DateTime?
+  categoryId       String?
+  costCenterId     String?
+  locationId       String?               @db.VarChar(64)
+  supplierId       String?               @db.VarChar(64)
+  counterpartyName String?               @db.VarChar(240)
+  moneyAccountId   String?               @db.VarChar(64)
+  workOrderId      String?               @db.VarChar(64)
+  clientId         String?               @db.VarChar(64)
+  vehicleId        String?               @db.VarChar(64)
+  supplierOrderId  String?               @db.VarChar(64)
+  documentNumber   String?               @db.VarChar(120)
+  description      String?               @db.Text
+  notes            String?               @db.Text
+  createdById      String?               @db.VarChar(64)
+  approvedById     String?               @db.VarChar(64)
+  approvedAt       DateTime?
+  postedAt         DateTime?
+  reversedAt       DateTime?
+  reversalReason   String?               @db.Text
+  createdAt        DateTime              @default(now())
+  updatedAt        DateTime              @updatedAt
+
+  lines ExpenseLine[]
+
+  @@index([status, expenseDate])
+  @@index([paymentStatus, dueAt])
+  @@index([categoryId, expenseDate])
+  @@index([locationId, expenseDate])
+  @@index([supplierId, expenseDate])
+  @@index([moneyAccountId])
+  @@index([workOrderId])
+  @@index([supplierOrderId])
+}
+
+model ExpenseLine {
+  id               String   @id @default(cuid())
+  expenseDocumentId String
+  lineNumber       Int
+  description      String
+  amount           Decimal  @db.Decimal(14, 2)
+  quantity         Decimal? @db.Decimal(14, 4)
+  unit             String?  @db.VarChar(32)
+  unitPrice        Decimal? @db.Decimal(14, 2)
+  categoryId       String?
+  costCenterId     String?
+  workOrderId      String?  @db.VarChar(64)
+  supplierId       String?  @db.VarChar(64)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  expenseDocument ExpenseDocument @relation(fields: [expenseDocumentId], references: [id], onDelete: Cascade)
+
+  @@unique([expenseDocumentId, lineNumber])
+  @@index([categoryId])
+  @@index([costCenterId])
+  @@index([workOrderId])
+  @@index([supplierId])
 }
 
 model FinancialEvent {

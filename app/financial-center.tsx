@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { navigateCrm, readCrmRoute } from "./crm-route";
+import { FinanceExpenseRegister } from "./finance-expense-register";
 import styles from "./financial-center.module.css";
 
 type FinanceSummary = {
@@ -18,13 +19,19 @@ type FinanceSummary = {
   counts: { postedEvents: number; postedCashTransactions: number; openObligations: number; activeMoneyAccounts: number };
 };
 type DrillRow = { id: string; type: string; date: string | null; amount: number; description: string; workOrderId: string | null; workOrderLabel: string | null };
-type Metric = "revenue" | "grossProfit" | "netProfit" | "currentCash" | "receivables" | "payables" | "overdueReceivables" | "overduePayables";
+type Metric = "revenue" | "cogs" | "grossProfit" | "opex" | "netProfit" | "otherExpense" | "tax" | "outflow" | "currentCash" | "receivables" | "payables" | "overdueReceivables" | "overduePayables";
 type Preset = "today" | "week" | "month" | "custom";
+type FinanceTab = "overview" | "expenses";
 
 const METRIC_LABEL: Record<Metric, string> = {
   revenue: "Виручка",
+  cogs: "Прямі витрати / COGS",
   grossProfit: "Валовий прибуток",
+  opex: "Операційні витрати / OPEX",
   netProfit: "Чистий управлінський прибуток",
+  otherExpense: "Інші витрати",
+  tax: "Податки",
+  outflow: "Виплати",
   currentCash: "Гроші зараз",
   receivables: "Дебіторка",
   payables: "Кредиторка",
@@ -56,6 +63,8 @@ export function FinancialCenter() {
   const [from, setFrom] = useState(initial.from);
   const [to, setTo] = useState(initial.to);
   const [locationId, setLocationId] = useState("");
+  const [activeTab, setActiveTab] = useState<FinanceTab>("overview");
+  const [expenseOpenSignal, setExpenseOpenSignal] = useState(0);
   const [metric, setMetric] = useState<Metric | null>(null);
   const [detailRows, setDetailRows] = useState<DrillRow[]>([]);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -135,13 +144,19 @@ export function FinancialCenter() {
     navigateCrm("Фінансовий центр", routeParams(from, to, locationId, null));
   }
 
+  function openExpenseRegister() {
+    setMetric(null);
+    setActiveTab("expenses");
+    setExpenseOpenSignal((current) => current + 1);
+  }
+
   const empty = data && !data.hasFinancialData;
   const periodLabel = `${dateText(`${from}T12:00:00+03:00`)} — ${dateText(`${to}T12:00:00+03:00`)}`;
 
   return <>
     <header className="topbar">
       <div><p className="eyebrow">TURBO LEV · FINANCIAL CORE</p><h1>Фінансовий центр</h1><span className="muted">{loading ? "Синхронізую…" : `P&L · Cash Flow · ${periodLabel}`}</span></div>
-      <button type="button" className="ghost" onClick={() => void load()} disabled={loading}>Оновити</button>
+      <div className={styles.headerActions}><button type="button" className={styles.primaryButton} onClick={openExpenseRegister}>+ Додати витрату</button><button type="button" className="ghost" onClick={() => void load()} disabled={loading}>Оновити</button></div>
     </header>
 
     <section className={styles.filters}>
@@ -156,6 +171,12 @@ export function FinancialCenter() {
     </section>
 
     {error && <div className="alert"><strong>Не вдалося оновити фінанси</strong><span>{error}</span><button onClick={() => void load()}>Повторити</button></div>}
+    <nav className={styles.sectionTabs} aria-label="Розділи фінансового центру">
+      <button type="button" className={activeTab === "overview" ? styles.sectionTabActive : styles.sectionTab} onClick={() => setActiveTab("overview")}>Огляд</button>
+      <button type="button" className={activeTab === "expenses" ? styles.sectionTabActive : styles.sectionTab} onClick={() => setActiveTab("expenses")}>Витрати</button>
+    </nav>
+
+    {activeTab === "expenses" ? <FinanceExpenseRegister from={from} to={to} selectedLocationId={locationId} locations={data?.locations || []} openSignal={expenseOpenSignal} onDataChanged={() => { void load(); }} /> : <>
     {empty && <div className={styles.emptyState}><strong>Фінансове ядро готове до даних</strong><span>За вибраний період/локацію немає проведених фінансових фактів. CRM не підставляє demo-цифри.</span></div>}
 
     <section className={styles.kpiGrid}>
@@ -177,13 +198,14 @@ export function FinancialCenter() {
 
     <section className={styles.columns}>
       <article className={styles.panel}><div className={styles.panelHead}><div><p className="eyebrow">P&L</p><h2>Прибутки та збитки</h2></div><span>{periodLabel}</span></div><div className={styles.rows}>
-        <div><span>Виручка</span><strong>{displayMoney(data, data?.pnl.revenue)}</strong></div><div><span>− Прямі витрати / COGS</span><strong>{displayMoney(data, data?.pnl.cogs)}</strong></div><div className={styles.emphasis}><span>= Валовий прибуток</span><strong>{displayMoney(data, data?.pnl.grossProfit)}</strong></div><div><span>− OPEX</span><strong>{displayMoney(data, data?.pnl.opex)}</strong></div><div><span>= Операційний прибуток</span><strong>{displayMoney(data, data?.pnl.operatingProfit)}</strong></div><div><span>+ Інші доходи</span><strong>{displayMoney(data, data?.pnl.otherIncome)}</strong></div><div><span>− Інші витрати</span><strong>{displayMoney(data, data?.pnl.otherExpense)}</strong></div><div><span>− Податки</span><strong>{displayMoney(data, data?.pnl.tax)}</strong></div><div className={styles.total}><span>= Чистий управлінський прибуток</span><strong>{displayMoney(data, data?.pnl.netProfit)}</strong></div>
+        <button type="button" className={styles.rowButton} onClick={() => openDrill("revenue")}><span>Виручка</span><strong>{displayMoney(data, data?.pnl.revenue)}</strong></button><button type="button" className={styles.rowButton} onClick={() => openDrill("cogs")}><span>− Прямі витрати / COGS</span><strong>{displayMoney(data, data?.pnl.cogs)}</strong></button><div className={styles.emphasis}><span>= Валовий прибуток</span><strong>{displayMoney(data, data?.pnl.grossProfit)}</strong></div><button type="button" className={styles.rowButton} onClick={() => openDrill("opex")}><span>− OPEX</span><strong>{displayMoney(data, data?.pnl.opex)}</strong></button><div><span>= Операційний прибуток</span><strong>{displayMoney(data, data?.pnl.operatingProfit)}</strong></div><div><span>+ Інші доходи</span><strong>{displayMoney(data, data?.pnl.otherIncome)}</strong></div><button type="button" className={styles.rowButton} onClick={() => openDrill("otherExpense")}><span>− Інші витрати</span><strong>{displayMoney(data, data?.pnl.otherExpense)}</strong></button><button type="button" className={styles.rowButton} onClick={() => openDrill("tax")}><span>− Податки</span><strong>{displayMoney(data, data?.pnl.tax)}</strong></button><div className={styles.total}><span>= Чистий управлінський прибуток</span><strong>{displayMoney(data, data?.pnl.netProfit)}</strong></div>
       </div></article>
       <article className={styles.panel}><div className={styles.panelHead}><div><p className="eyebrow">CASH FLOW</p><h2>Рух грошей</h2></div><span>{periodLabel}</span></div><div className={styles.rows}>
-        <div><span>Надходження</span><strong>{displayMoney(data, data?.cashFlow.inflow)}</strong></div><div><span>Виплати</span><strong>{displayMoney(data, data?.cashFlow.outflow)}</strong></div><div className={styles.emphasis}><span>Чистий Cash Flow</span><strong>{displayMoney(data, data?.cashFlow.net)}</strong></div><div><span>Операційний</span><strong>{displayMoney(data, data?.cashFlow.operating)}</strong></div><div><span>Інвестиційний</span><strong>{displayMoney(data, data?.cashFlow.investing)}</strong></div><div><span>Фінансовий</span><strong>{displayMoney(data, data?.cashFlow.financing)}</strong></div><div className={styles.total}><span>Гроші на рахунках</span><strong>{displayMoney(data, data?.cashFlow.currentCash)}</strong></div>
+        <div><span>Надходження</span><strong>{displayMoney(data, data?.cashFlow.inflow)}</strong></div><button type="button" className={styles.rowButton} onClick={() => openDrill("outflow")}><span>Виплати</span><strong>{displayMoney(data, data?.cashFlow.outflow)}</strong></button><div className={styles.emphasis}><span>Чистий Cash Flow</span><strong>{displayMoney(data, data?.cashFlow.net)}</strong></div><div><span>Операційний</span><strong>{displayMoney(data, data?.cashFlow.operating)}</strong></div><div><span>Інвестиційний</span><strong>{displayMoney(data, data?.cashFlow.investing)}</strong></div><div><span>Фінансовий</span><strong>{displayMoney(data, data?.cashFlow.financing)}</strong></div><div className={styles.total}><span>Гроші на рахунках</span><strong>{displayMoney(data, data?.cashFlow.currentCash)}</strong></div>
       </div></article>
     </section>
 
     <section className={styles.integrity}><div><p className="eyebrow">КОНТРОЛЬ ДАНИХ</p><h2>Фінансовий ledger</h2></div><div className={styles.integrityGrid}><span><b>{data?.counts.postedEvents ?? 0}</b> P&L-подій за період</span><span><b>{data?.counts.postedCashTransactions ?? 0}</b> рухів коштів за період</span><span><b>{data?.counts.openObligations ?? 0}</b> відкритих зобов’язань</span><span><b>{data?.counts.activeMoneyAccounts ?? 0}</b> грошових рахунків</span></div><p>Фінансовий центр читає тільки проведені факти. Період і локація застосовуються сервером до ledger-запитів.</p></section>
+    </>}
   </>;
 }

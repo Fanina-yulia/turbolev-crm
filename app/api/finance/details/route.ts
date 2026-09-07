@@ -48,21 +48,29 @@ export async function GET(request: NextRequest) {
   const prisma = getPrisma();
   const locationWhere = access.locationWhere;
 
-  if (["revenue", "grossProfit", "netProfit"].includes(metric)) {
+  if (["revenue", "grossProfit", "netProfit", "cogs", "opex", "otherExpense", "tax"].includes(metric)) {
     const pnlSections: FinancialPnlSection[] = metric === "revenue"
       ? [FinancialPnlSection.REVENUE]
-      : metric === "grossProfit"
-        ? [FinancialPnlSection.REVENUE, FinancialPnlSection.COGS]
-        : [FinancialPnlSection.REVENUE, FinancialPnlSection.COGS, FinancialPnlSection.OPEX, FinancialPnlSection.OTHER_INCOME, FinancialPnlSection.OTHER_EXPENSE, FinancialPnlSection.TAX];
+      : metric === "cogs"
+        ? [FinancialPnlSection.COGS]
+        : metric === "opex"
+          ? [FinancialPnlSection.OPEX]
+          : metric === "otherExpense"
+            ? [FinancialPnlSection.OTHER_EXPENSE]
+            : metric === "tax"
+              ? [FinancialPnlSection.TAX]
+              : metric === "grossProfit"
+                ? [FinancialPnlSection.REVENUE, FinancialPnlSection.COGS]
+                : [FinancialPnlSection.REVENUE, FinancialPnlSection.COGS, FinancialPnlSection.OPEX, FinancialPnlSection.OTHER_INCOME, FinancialPnlSection.OTHER_EXPENSE, FinancialPnlSection.TAX];
     const events = await prisma.financialEvent.findMany({
       where: { status: "POSTED", currency, pnlSection: { in: pnlSections }, recognizedAt: { gte: from, lt: to }, ...locationWhere, ...NON_DEMO_WORK_ORDER },
-      select: { id: true, pnlSection: true, amount: true, recognizedAt: true, description: true, workOrderId: true },
+      select: { id: true, pnlSection: true, amount: true, recognizedAt: true, description: true, workOrderId: true, category: { select: { name: true, code: true } } },
       orderBy: [{ recognizedAt: "desc" }, { createdAt: "desc" }], take: 100,
     });
     const ids = events.map((row) => row.workOrderId).filter(Boolean) as string[];
     const numbers = ids.length ? await prisma.workOrderNumber.findMany({ where: { workOrderId: { in: ids } } }) : [];
     const byWo = new Map(numbers.map((row) => [row.workOrderId, row.number]));
-    return NextResponse.json({ ok: true, metric, rows: events.map((row) => ({ id: row.id, type: row.pnlSection, date: row.recognizedAt, amount: roundMoney(decimalToNumber(row.amount)), description: row.description || row.pnlSection, workOrderId: row.workOrderId, workOrderLabel: row.workOrderId ? workOrderLabel(byWo.get(row.workOrderId)) : null })) });
+    return NextResponse.json({ ok: true, metric, rows: events.map((row) => ({ id: row.id, type: row.pnlSection, date: row.recognizedAt, amount: roundMoney(decimalToNumber(row.amount)), description: row.description || row.category?.name || row.pnlSection, category: row.category, workOrderId: row.workOrderId, workOrderLabel: row.workOrderId ? workOrderLabel(byWo.get(row.workOrderId)) : null })) });
   }
 
   if (metric === "currentCash") {
@@ -76,6 +84,19 @@ export async function GET(request: NextRequest) {
       return { id: account.id, type: "ACCOUNT", date: null, amount: roundMoney(balance), description: account.name, workOrderId: null, workOrderLabel: null };
     }));
     return NextResponse.json({ ok: true, metric, rows });
+  }
+
+  if (metric === "outflow") {
+    const transactions = await prisma.cashTransaction.findMany({
+      where: { status: "POSTED", kind: "OUTFLOW", currency, occurredAt: { gte: from, lt: to }, ...locationWhere, ...NON_DEMO_WORK_ORDER },
+      select: { id: true, amount: true, occurredAt: true, description: true, category: { select: { name: true, code: true } }, workOrderId: true },
+      orderBy: [{ occurredAt: "desc" }, { createdAt: "desc" }],
+      take: 100,
+    });
+    const ids = transactions.map((row) => row.workOrderId).filter(Boolean) as string[];
+    const numbers = ids.length ? await prisma.workOrderNumber.findMany({ where: { workOrderId: { in: ids } } }) : [];
+    const byWo = new Map(numbers.map((row) => [row.workOrderId, row.number]));
+    return NextResponse.json({ ok: true, metric, rows: transactions.map((row) => ({ id: row.id, type: "OUTFLOW", date: row.occurredAt, amount: roundMoney(decimalToNumber(row.amount)), description: row.description || row.category?.name || "Виплата", category: row.category, workOrderId: row.workOrderId, workOrderLabel: row.workOrderId ? workOrderLabel(byWo.get(row.workOrderId)) : null })) });
   }
 
   const direction = metric === "payables" || metric === "overduePayables" ? FinancialObligationDirection.PAYABLE : FinancialObligationDirection.RECEIVABLE;
