@@ -357,6 +357,86 @@ export function bmSearchMode(query: string) {
   return isArticleLike(query) ? "strict" : "extended" as const;
 }
 
+/**
+ * BM Parts catalog names are commonly indexed in Russian while CRM findings
+ * are entered in Ukrainian. Keep the original query first and add one bounded
+ * catalog-language variant; both variants remain vehicle-scoped.
+ */
+const BM_QUERY_TERM_ALIASES: Record<string, string> = {
+  "передній": "передний",
+  "передня": "передняя",
+  "переднє": "переднее",
+  "переднього": "переднего",
+  "передньої": "передней",
+  "передньому": "переднем",
+  "передніх": "передних",
+  "передні": "передние",
+  "задній": "задний",
+  "задня": "задняя",
+  "заднє": "заднее",
+  "заднього": "заднего",
+  "задньої": "задней",
+  "задньому": "заднем",
+  "задніх": "задних",
+  "задні": "задние",
+  "важіль": "рычаг",
+  "важеля": "рычага",
+  "важелів": "рычагов",
+  "важелем": "рычагом",
+  "важелі": "рычаги",
+  "важелям": "рычагам",
+  "шарова": "шаровая",
+  "шаровий": "шаровой",
+  "шарової": "шаровой",
+  "шарову": "шаровую",
+  "кульова": "шаровая",
+  "кульовий": "шаровой",
+  "кульової": "шаровой",
+  "кульову": "шаровую",
+  "стійка": "стойка",
+  "стійки": "стойки",
+  "стійку": "стойку",
+  "стійкою": "стойкой",
+  "ступичний": "ступичный",
+  "ступична": "ступичная",
+  "ступичної": "ступичной",
+  "ступичну": "ступичную",
+  "підшипник": "подшипник",
+  "підшипника": "подшипника",
+  "підшипники": "подшипники",
+  "гальмівні": "тормозные",
+  "гальмівна": "тормозная",
+  "гальмівної": "тормозной",
+  "гальмівну": "тормозную",
+  "пильник": "пыльник",
+  "пильника": "пыльника",
+  "супорт": "суппорт",
+  "супорти": "суппорты",
+  "охолоджувальної": "охлаждающей",
+  "охолоджувальна": "охлаждающая",
+  "рідини": "жидкости",
+  "фільтр": "фильтр",
+  "паливний": "топливный",
+  "паливного": "топливного",
+  "салонний": "салонный",
+  "свічки": "свечи",
+  "запалювання": "зажигания",
+  "ремінь": "ремень",
+};
+
+function translateBmQueryToCatalogLanguage(query: string) {
+  return query.replace(/[A-Za-zА-Яа-яІіЇїЄєҐґ]+/gu, (token) => (
+    BM_QUERY_TERM_ALIASES[token.toLocaleLowerCase("uk-UA")] || token
+  ));
+}
+
+export function buildBmSearchQueryCandidates(query: string) {
+  const trimmed = query.trim();
+  if (!trimmed) return [];
+  const translated = translateBmQueryToCatalogLanguage(trimmed);
+  return [...new Set([trimmed, translated].filter(Boolean))];
+}
+
 /** BM requires a second URL-encoding pass for slashes inside a car model. */
 export function encodeBmCarFilter(carFilter: string) {
   return carFilter.replace(/\//g, "%2F");
@@ -466,36 +546,39 @@ export const bmPartsAdapter: SupplierAdapter = {
     const query = input.query.trim();
     const vehicle = input.vehicle;
     const carFilters = buildBmVehicleFilterCandidates(vehicle);
+    const queryCandidates = buildBmSearchQueryCandidates(query);
     if (query.length < 2 || !carFilters.length) return [];
     if (!(await this.isConfigured())) return [];
 
     const limit = Math.min(Math.max(input.limit ?? 20, 1), 50);
-    const searchScopedProducts = async (filters: string[]) => {
+    const searchScopedProducts = async (filters: string[], searchQueries: string[]) => {
       let selectedFilter = filters[0] || "";
       let foundProducts: BmProduct[] = [];
 
 search:
       for (const candidateFilter of filters) {
-        for (const available of ["1", "0"]) {
-          const params = new URLSearchParams({
-            q: query,
-            search_mode: bmSearchMode(query),
-            available,
-            products_as: "arr",
-            warehouses: "all",
-            with_extra: "0",
-            save: "0",
-            per_page: String(limit),
-            cars: encodeBmCarFilter(candidateFilter),
-          });
-          const response = await request("/search/products?" + params.toString());
-          if (!response.ok) throw new Error("BM Parts vehicle search HTTP " + response.status);
-          const payload = await response.json() as unknown;
-          const candidateProducts = extractProducts(payload);
-          if (candidateProducts.length) {
-            selectedFilter = candidateFilter;
-            foundProducts = candidateProducts.slice(0, limit);
-            break search;
+        for (const searchQuery of searchQueries) {
+          for (const available of ["1", "0"]) {
+            const params = new URLSearchParams({
+              q: searchQuery,
+              search_mode: bmSearchMode(searchQuery),
+              available,
+              products_as: "arr",
+              warehouses: "all",
+              with_extra: "0",
+              save: "0",
+              per_page: String(limit),
+              cars: encodeBmCarFilter(candidateFilter),
+            });
+            const response = await request("/search/products?" + params.toString());
+            if (!response.ok) throw new Error("BM Parts vehicle search HTTP " + response.status);
+            const payload = await response.json() as unknown;
+            const candidateProducts = extractProducts(payload);
+            if (candidateProducts.length) {
+              selectedFilter = candidateFilter;
+              foundProducts = candidateProducts.slice(0, limit);
+              break search;
+            }
           }
         }
       }
@@ -503,7 +586,7 @@ search:
       return { carFilter: selectedFilter, products: foundProducts };
     };
 
-    let searchResult = await searchScopedProducts(carFilters);
+    let searchResult = await searchScopedProducts(carFilters, queryCandidates);
     if (!searchResult.products.length && vehicle.brand) {
       let modelNames: string[] = [];
       try {
@@ -514,7 +597,7 @@ search:
       const discoveredFilters = rankBmModelNames(vehicle.model || "", modelNames)
         .map((model) => vehicle.brand + ">" + model)
         .filter((filter) => !carFilters.includes(filter));
-      if (discoveredFilters.length) searchResult = await searchScopedProducts(discoveredFilters);
+      if (discoveredFilters.length) searchResult = await searchScopedProducts(discoveredFilters, queryCandidates);
     }
 
     const { carFilter, products } = searchResult;
