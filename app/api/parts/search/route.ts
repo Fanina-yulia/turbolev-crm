@@ -4,6 +4,7 @@ import { decodeVinIntelligence } from "@/src/services/vin-intelligence.service";
 import { validateVin } from "@/src/domain/vin";
 import { resolveLaborPricing } from "@/src/services/labor-pricing.service";
 import { resolvePartFitment } from "@/src/services/parts-fitment.service";
+import { resolvePartKnowledge } from "@/src/services/parts-knowledge.service";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -32,6 +33,12 @@ export async function GET(request: Request) {
     vehicleId,
     vin: rawVin,
     plate,
+  });
+
+  const knowledge = await resolvePartKnowledge({
+    query: q,
+    partName,
+    position,
   });
 
   let vehicleContext: Awaited<ReturnType<typeof decodeVinIntelligence>> | null = null;
@@ -105,6 +112,21 @@ export async function GET(request: Request) {
       coefficient: pricing.coefficient,
       source: pricing.source,
     } : null,
+    knowledge: {
+      source: knowledge.source,
+      matchType: knowledge.matchType,
+      confidence: knowledge.confidence,
+      aliasId: knowledge.aliasId,
+      matchedAlias: knowledge.matchedAlias,
+      genericArticleId: knowledge.genericArticleId,
+      canonical: knowledge.definition
+        ? {
+            code: knowledge.definition.code,
+            slug: knowledge.definition.slug,
+            name: knowledge.definition.canonicalName,
+          }
+        : null,
+    },
     fitment: {
       status: fitment.status,
       confirmed: fitment.confirmed,
