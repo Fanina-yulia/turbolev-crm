@@ -88,9 +88,16 @@ function normalizeVehicleModel(brand: string, model: string) {
 }
 
 function extractProducts(payload: unknown): BmProduct[] {
+  if (Array.isArray(payload)) {
+    return payload.flatMap((item) => {
+      const product = asRecord(item);
+      return product ? [product as BmProduct] : [];
+    });
+  }
   const root = asRecord(payload);
-  const data = asRecord(root?.data);
-  const raw = root?.products ?? data?.products;
+  const dataValue = root?.data;
+  const data = asRecord(dataValue);
+  const raw = root?.products ?? data?.products ?? (Array.isArray(dataValue) ? dataValue : null);
   if (Array.isArray(raw)) return raw.flatMap((item) => {
     const product = asRecord(item);
     return product ? [product as BmProduct] : [];
@@ -272,14 +279,19 @@ function mapProductOffer(product: BmProduct, query: string): SupplierOffer {
   };
 }
 
-export function buildBmVehicleFilter(vehicle: Pick<SupplierVehicleContext, "brand" | "model">) {
+export function buildBmVehicleFilterCandidates(vehicle: Pick<SupplierVehicleContext, "brand" | "model">) {
   const brand = vehicle.brand?.trim() || "";
-  const model = normalizeVehicleModel(brand, vehicle.model?.trim() || "");
-  return brand && model ? brand + ">" + model : "";
+  const rawModel = vehicle.model?.trim() || "";
+  const normalizedModel = normalizeVehicleModel(brand, rawModel);
+  const candidates = [
+    brand && normalizedModel ? brand + ">" + normalizedModel : "",
+    brand && rawModel ? brand + ">" + rawModel : "",
+  ];
+  return [...new Set(candidates.filter(Boolean))];
 }
 
-function isArticleLike(query: string) {
-  return /^[a-z0-9][a-z0-9._/\\-]{2,}$/iu.test(query.trim()) && /[0-9]/u.test(query);
+export function buildBmVehicleFilter(vehicle: Pick<SupplierVehicleContext, "brand" | "model">) {
+  return buildBmVehicleFilterCandidates(vehicle)[0] || "";
 }
 
 async function getProductDetails(productId: string): Promise<BmProductDetails | null> {
@@ -385,25 +397,38 @@ export const bmPartsAdapter: SupplierAdapter = {
   async searchVehicleParts(input): Promise<SupplierVehiclePart[]> {
     const query = input.query.trim();
     const vehicle = input.vehicle;
-    const carFilter = buildBmVehicleFilter(vehicle);
-    if (query.length < 2 || !carFilter) return [];
+    const carFilters = buildBmVehicleFilterCandidates(vehicle);
+    if (query.length < 2 || !carFilters.length) return [];
     if (!(await this.isConfigured())) return [];
 
-    const params = new URLSearchParams({
-      q: query,
-      search_mode: isArticleLike(query) ? "strict" : "partial",
-      available: "1",
-      products_as: "arr",
-      warehouses: "all",
-      with_extra: "0",
-      save: "0",
-      per_page: String(Math.min(Math.max(input.limit ?? 20, 1), 50)),
-      cars: carFilter,
-    });
-    const response = await request(`/search/products?${params.toString()}`);
-    if (!response.ok) throw new Error(`BM Parts vehicle search HTTP ${response.status}`);
-    const payload = await response.json() as unknown;
-    const products = extractProducts(payload).slice(0, Math.min(input.limit ?? 20, 50));
+    const limit = Math.min(Math.max(input.limit ?? 20, 1), 50);
+    let carFilter = carFilters[0];
+    let products: BmProduct[] = [];
+
+    for (const candidateFilter of carFilters) {
+      const params = new URLSearchParams({
+        q: query,
+        search_mode: isArticleLike(query) ? "strict" : "partial",
+        available: "1",
+        products_as: "arr",
+        warehouses: "all",
+        with_extra: "0",
+        save: "0",
+        per_page: String(limit),
+        cars: candidateFilter,
+      });
+      const response = await request("/search/products?" + params.toString());
+      if (!response.ok) throw new Error("BM Parts vehicle search HTTP " + response.status);
+      const payload = await response.json() as unknown;
+      const candidateProducts = extractProducts(payload);
+      if (candidateProducts.length) {
+        carFilter = candidateFilter;
+        products = candidateProducts.slice(0, limit);
+        break;
+      }
+    }
+
+    if (!products.length) return [];
     const detailProducts = products.slice(0, 12);
     const details = await Promise.allSettled(detailProducts.map((product) => {
       const productId = textValue(product.uuid, 180);
