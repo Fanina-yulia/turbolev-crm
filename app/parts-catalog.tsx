@@ -8,7 +8,6 @@ import { normalizeRegistrationPlate } from "@/src/domain/registration-plate";
 import { normalizePhone } from "@/src/lib/phone";
 import { normalizeVin } from "@/src/domain/vin";
 import { navigateCrm, readCrmRoute, type CrmRouteParams } from "./crm-route";
-import { VehicleRender } from "./vehicle-render";
 import styles from "./parts-catalog.module.css";
 
 type Part = { name?: string; slug?: string; category?: string; description?: string; fitment?: { confidence?: number; reason?: string } };
@@ -216,6 +215,7 @@ export function PartsCatalog() {
   const selectedProfitTotal = selectedLines.reduce((sum, line) => sum + (line.sellPrice - line.purchasePrice) * line.quantity, 0);
   const selectedMarkupValues = [...new Set(selectedLines.map((line) => line.markupPercent))];
   const selectedMarkupLabel = selectedMarkupValues.length === 1 ? `${selectedMarkupValues[0]}%` : selectedMarkupValues.length > 1 ? "різна" : "—";
+  const displayedMarkupLabel = selectedMarkupLabel === "—" ? "з налаштувань" : selectedMarkupLabel;
   const providerErrors = supplierProviders.filter((provider) => !provider.ok);
   const visibleRecommendedParts = useMemo(() => {
     const query = normalizeText(partFilter);
@@ -266,48 +266,65 @@ export function PartsCatalog() {
   return <div className={styles.page}>
     <header className={styles.contextHeader}>
       <button type="button" className={styles.backButton} onClick={() => navigateCrm("Підбір запчастин", {})} aria-label="Повернутися до вибору замовлення">←</button>
-      <div className={styles.orderContext}><small>Ремонтне замовлення</small><b>{context.orderNumber}</b></div>
+      <div className={styles.orderContext}><small>Замовлення-наряд</small><b>{context.orderNumber}</b></div>
       <div className={styles.contextItem}><small>Клієнт</small><b>{context.clientName}</b></div>
       <div className={styles.contextItem}><small>Телефон</small><b>{context.clientPhone}</b></div>
       <div className={styles.contextItem}><small>Автомобіль</small><b>{context.vehicleName}</b><span>{context.plateNumber || "Номер не вказаний"}</span></div>
       <div className={styles.contextItem}><small>Пробіг</small><b>{formatMileage(context.mileageKm)}</b></div>
-      <div className={styles.contextStatus}><small>Статус ЗН</small><b className={statusTone(context.statusCode)}><i/> {context.statusLabel}</b></div>
+      <div className={styles.contextStatus}><small>Етап</small><b className={statusTone(context.statusCode)}><i/> {context.statusLabel}</b></div>
     </header>
 
-    <div className={styles.partsWorkspaceHeader}>
-      <div><p>ПІДБІР ЗАПЧАСТИН</p><h1>Комерційна пропозиція · деталі</h1><span>Оберіть деталь з діагностичної карти — результати постачальників відкриються у popup.</span></div>
-      <div className={styles.workspaceHeaderMeta}><b>{selectedLines.length}/{recommendedParts.length}</b><span>позицій підібрано</span></div>
-    </div>
+    <section className={styles.proposalHeader} aria-labelledby="parts-proposal-title">
+      <div className={styles.proposalHeaderCopy}>
+        <p>ПІДБІР ЗАПЧАСТИН</p>
+        <h1 id="parts-proposal-title">Комерційна пропозиція <span>· чернетка</span></h1>
+        <small>Виберіть деталі з Діагностичної карти та додайте найкращу пропозицію постачальника.</small>
+      </div>
+      <div className={styles.proposalHeaderMeta} aria-label="Статистика підбору">
+        <strong>{recommendedParts.length} {recommendedParts.length === 1 ? "деталь" : "деталі"}</strong>
+        <span>{selectedLines.length} вибрано · націнка {displayedMarkupLabel}</span>
+      </div>
+    </section>
 
     <div className={styles.columns}>
-      <section className={`${styles.column} ${styles.needsColumn}`}>
-        <div className={styles.columnTitle}><span className={styles.step}>1</span><div><b>Деталі до заміни</b><small>Позиції з Діагностичної карти</small></div></div>
-        <div className={styles.needsToolbar}><label className={styles.partSearch}><span>⌕</span><input value={partFilter} onChange={(event) => setPartFilter(event.target.value)} placeholder="Пошук деталей…" aria-label="Пошук деталей до заміни"/>{partFilter && <button type="button" onClick={() => setPartFilter("")} aria-label="Очистити пошук">×</button>}</label><span className={styles.needsCount}>{visibleRecommendedParts.length} з {recommendedParts.length}</span></div>
+      <section className={`${styles.column} ${styles.needsColumn}`} aria-labelledby="parts-needs-title">
+        <div className={styles.columnTitle}>
+          <div><p>ЗАМІНА · {recommendedParts.length}</p><b id="parts-needs-title">Деталі до заміни</b><small>Позиції з Діагностичної карти</small></div>
+          <span className={styles.columnBadge}>{selectedLines.length}/{recommendedParts.length}</span>
+        </div>
+        <div className={styles.needsToolbar}>
+          <label className={styles.partSearch}><span aria-hidden="true">⌕</span><input value={partFilter} onChange={(event) => setPartFilter(event.target.value)} placeholder="Знайти деталь…" aria-label="Пошук деталей до заміни"/>{partFilter && <button type="button" onClick={() => setPartFilter("")} aria-label="Очистити пошук">×</button>}</label>
+          <span className={styles.needsCount}>{visibleRecommendedParts.length}/{recommendedParts.length}</span>
+        </div>
         <div className={styles.needSection}>
           <div className={styles.needTable}>
-            <div className={styles.needTableHead}><span>№</span><span>Деталь / вузол</span><span>К-ть</span><span>Статус</span></div>
+            <div className={styles.needTableHead}><span>№</span><span>Деталь / вузол</span><span>К-ть</span><span>Стан</span></div>
             {visibleRecommendedParts.length ? visibleRecommendedParts.map((item, index) => {
               const itemKey = recommendationKey(item);
               const selectedLine = selectedLineFor(item);
               const active = itemKey === activeFindingId;
-              return <button type="button" className={`${styles.needRow} ${active ? styles.needRowActive : ""} ${selectedLine ? styles.needRowSelected : ""}`} key={itemKey} onClick={() => openPickerFor(item)}>
-                <span>{index + 1}</span>
-                <span><b>{item.name}</b><small>{item.position}{item.manualPartId ? " · додано вручну" : item.mediaCount ? ` · фото ${item.mediaCount}` : ""}</small></span>
-                <span>{item.quantity} шт</span>
-                <span className={selectedLine ? styles.needStatusSelected : styles.needStatus}>{selectedLine ? "Підібрано" : "Потрібно"}</span>
+              return <button type="button" aria-pressed={Boolean(selectedLine)} className={`${styles.needRow} ${active ? styles.needRowActive : ""} ${selectedLine ? styles.needRowSelected : ""}`} key={itemKey} onClick={() => openPickerFor(item)}>
+                <span className={styles.needIndex}>{index + 1}</span>
+                <span className={styles.needCopy}><b>{item.name}</b><small>{item.position}{item.manualPartId ? " · додано вручну" : item.mediaCount ? ` · фото ${item.mediaCount}` : ""}</small></span>
+                <span className={styles.needQuantity}>{item.quantity} шт</span>
+                <span className={selectedLine ? styles.needStatusSelected : styles.needStatus}>{selectedLine ? "✓ вибрано" : "+ очікує"}</span>
               </button>;
             }) : <div className={styles.pickerEmpty}>За цим пошуком деталей не знайдено.</div>}
           </div>
         </div>
-        <div className={styles.needsHint}><span>ⓘ</span><div><b>Натисніть на будь-яку деталь</b><small>Відкриється пошук оригіналів і аналогів у підключених API постачальників.</small></div></div>
-        <div className={styles.needsFooter}><span>Ще не підібрано: <b>{Math.max(recommendedParts.length - selectedLines.length, 0)}</b></span><button type="button" className={styles.secondaryAction} onClick={openNextPicker} disabled={!recommendedParts.some((item) => !selectedLineFor(item))}>Підібрати наступну</button></div>
+        <div className={styles.needsHint}><span aria-hidden="true">ⓘ</span><div><b>Виберіть деталь</b><small>Відкриється popup з оригіналами та аналогами з підключених API постачальників.</small></div></div>
+        <div className={styles.needsFooter}><span>Залишилось підібрати: <b>{Math.max(recommendedParts.length - selectedLines.length, 0)}</b></span><button type="button" className={styles.secondaryAction} onClick={openNextPicker} disabled={!recommendedParts.some((item) => !selectedLineFor(item))}>Наступна →</button></div>
       </section>
 
-      <section className={`${styles.column} ${styles.selectedColumn}`}>
-        <div className={styles.columnTitle}><span className={styles.step}>2</span><div><b>Вибрані деталі</b><small>Таблиця для Комерційної пропозиції</small></div><span className={styles.columnBadge}>{selectedLines.length}</span></div>
+      <section className={`${styles.column} ${styles.selectedColumn}`} aria-labelledby="selected-parts-title">
+        <div className={styles.columnTitle}>
+          <div><p>КОШИК · {selectedLines.length}</p><b id="selected-parts-title">Вибрані деталі</b><small>Позиції, які увійдуть до Комерційної пропозиції</small></div>
+          <button type="button" className={styles.inlineAdd} onClick={openNextPicker} disabled={!recommendedParts.some((item) => !selectedLineFor(item))}>+ Додати</button>
+        </div>
         <div className={styles.selectedTableArea}>
           <div className={styles.selectedTableScroll}>
             <table className={styles.selectedTable}>
+              <caption className={styles.srOnly}>Вибрані деталі та ціни</caption>
               <thead><tr><th>№</th><th>К-сть, шт.</th><th>Артикул</th><th>Бренд</th><th>Номенклатура</th><th>Постачальник</th><th>Склад</th><th>Ціна закупки, грн</th><th>Сума закупки, грн</th><th>Ціна продажу, грн</th><th>Сума продажу, грн</th><th>Прибуток, грн</th><th>%</th><th>Дія</th></tr></thead>
               <tbody>{selectedLines.length ? selectedLines.map((line, index) => {
                 const recommendation = recommendedParts.find((item) => recommendationKey(item) === line.findingId);
@@ -315,22 +332,23 @@ export function PartsCatalog() {
                 const sellTotal = line.sellPrice * line.quantity;
                 const profit = (line.sellPrice - line.purchasePrice) * line.quantity;
                 return <tr key={line.findingId}><td>{index + 1}</td><td>{line.quantity}</td><td>{line.article || "—"}</td><td>{line.brand || "—"}</td><td className={styles.nomenclatureCell}>{line.partName}</td><td>{line.supplierName}</td><td>{line.warehouse || "—"}</td><td>{formatMoney(line.purchasePrice, line.currency)}</td><td>{formatMoney(purchaseTotal, line.currency)}</td><td>{formatMoney(line.sellPrice, line.currency)}</td><td className={styles.sellPrice}>{formatMoney(sellTotal, line.currency)}</td><td className={styles.profit}>{formatMoney(profit, line.currency)}</td><td>{line.markupPercent}%</td><td>{recommendation ? <button type="button" className={styles.tableAction} onClick={() => openPickerFor(recommendation)}>Змінити</button> : null}</td></tr>;
-              }) : <tr><td colSpan={14}><div className={styles.selectedEmpty}><span>+</span><b>Вибраних деталей ще немає</b><small>Натисніть на позицію в лівій колонці, щоб відкрити пропозиції постачальників.</small><button type="button" className={styles.secondaryAction} onClick={openNextPicker} disabled={!recommendedParts.length}>Відкрити підбір</button></div></td></tr>}</tbody>
+              }) : <tr><td colSpan={14}><div className={styles.selectedEmpty}><span>+</span><b>Вибраних деталей ще немає</b><small>Натисніть на деталь зліва — popup відкриється автоматично.</small><button type="button" className={styles.secondaryAction} onClick={openNextPicker} disabled={!recommendedParts.length}>Додати першу деталь</button></div></td></tr>}</tbody>
             </table>
           </div>
         </div>
-        <div className={styles.selectedTableFooter}><span>Показано {selectedLines.length} позицій</span><span>Валюта: грн</span></div>
+        <div className={styles.selectedTableFooter}><span>{selectedLines.length} із {recommendedParts.length} позицій вибрано</span><span>Ціни в гривнях · горизонтальна прокрутка таблиці</span></div>
       </section>
 
-      <aside className={`${styles.column} ${styles.summaryColumn}`}>
-        <div className={styles.columnTitle}><span className={styles.step}>3</span><div><b>Огляд кошика та маржі</b><small>Підсумок по вибраних деталях</small></div></div>
+      <aside className={`${styles.column} ${styles.summaryColumn}`} aria-labelledby="parts-summary-title">
+        <div className={styles.columnTitle}><div><p>ПІДСУМОК</p><b id="parts-summary-title">Кошик та маржа</b><small>Автоматичний розрахунок пропозиції</small></div></div>
         <div className={styles.summaryBody}>
-          <div className={`${styles.summaryState} ${selectedLines.length ? styles.summaryStateReady : ""}`}><span>{selectedLines.length === recommendedParts.length && recommendedParts.length ? "✓" : "i"}</span><div><b>{selectedLines.length === recommendedParts.length && recommendedParts.length ? "Підбір завершено" : "Потрібно підібрати деталі"}</b><small>Підібрано {selectedLines.length} з {recommendedParts.length} позицій</small></div></div>
-          <div className={styles.summaryMetrics}><div><span>Закупка</span><b>{formatMoney(selectedPurchaseTotal, "UAH")}</b></div><div><span>Продаж</span><b className={styles.summarySell}>{formatMoney(selectedSellTotal, "UAH")}</b></div><div><span>Прибуток</span><b className={styles.summaryProfit}>{formatMoney(selectedProfitTotal, "UAH")}</b></div><div><span>Націнка</span><b>{selectedMarkupLabel}</b></div></div>
-          <div className={styles.summaryNote}><span>ⓘ</span><div><b>Націнка з налаштувань CRM</b><small>Ціна продажу розраховується автоматично від закупівельної ціни. Для кожної позиції збережено фактичний відсоток.</small></div></div>
-          <div className={styles.summaryDelivery}><b>Постачальники та склад</b><span>{selectedLines.length ? "Позиції збережені з джерелом, складом та ціною API." : "Після вибору деталі тут з’явиться підсумок постачальників."}</span></div>
+          <div className={`${styles.summaryState} ${selectedLines.length ? styles.summaryStateReady : ""}`}><span>{selectedLines.length === recommendedParts.length && recommendedParts.length ? "✓" : "!"}</span><div><b>{selectedLines.length === recommendedParts.length && recommendedParts.length ? "Підбір завершено" : "Потрібно підібрати деталі"}</b><small>{selectedLines.length} із {recommendedParts.length} позицій</small></div></div>
+          <div className={styles.summaryMetrics}><div><span>Закупка</span><b>{formatMoney(selectedPurchaseTotal, "UAH")}</b></div><div><span>Продаж</span><b className={styles.summarySell}>{formatMoney(selectedSellTotal, "UAH")}</b></div><div><span>Прибуток</span><b className={styles.summaryProfit}>{formatMoney(selectedProfitTotal, "UAH")}</b></div><div><span>Націнка</span><b>{displayedMarkupLabel}</b></div></div>
+          <div className={styles.summaryTotal}><span>Разом до пропозиції</span><strong>{formatMoney(selectedSellTotal, "UAH")}</strong></div>
+          <div className={styles.summaryNote}><span aria-hidden="true">ⓘ</span><div><b>Ціна розраховується автоматично</b><small>Націнка береться з налаштувань CRM. Ручне редагування ціни продажу тут не використовується.</small></div></div>
+          <div className={styles.summaryDelivery}><b>Джерело даних</b><span>{selectedLines.length ? "Постачальник, склад і ціна збережені з відповіді API." : "Після вибору позиції тут з’явиться її постачальник і склад."}</span></div>
           <div className={styles.summaryActions}><button type="button" className={styles.secondaryAction} onClick={() => context.workOrderId && navigateCrm("Замовлення-наряди", { workOrderId: context.workOrderId, workOrderTab: "estimate" })} disabled={!context.workOrderId || !selectedLines.length}>Підготувати до погодження</button><button type="button" className={styles.actionPrimary} onClick={() => context.workOrderId && navigateCrm("Замовлення-наряди", { workOrderId: context.workOrderId, workOrderTab: "parts" })} disabled={!context.workOrderId || !selectedLines.length}>Відкрити в ЗН →</button></div>
-          {message && <div className={styles.policyNote}>{message}</div>}
+          {message && <div className={styles.policyNote} aria-live="polite">{message}</div>}
         </div>
       </aside>
     </div>
