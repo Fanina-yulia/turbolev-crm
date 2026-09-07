@@ -184,7 +184,7 @@ model GenericArticleAlias {
 
   genericArticle GenericArticle @relation(fields: [genericArticleId], references: [id], onDelete: Cascade)
 
-  @@unique([genericArticleId, aliasNormalized, provider], map: "GenericArticleAlias_genericArticleId_aliasNormalized_provider_key")
+  @@unique([genericArticleId, aliasNormalized, provider], map: "GenericArticleAlias_identity_provider_key")
   @@index([aliasNormalized, isApproved])
   @@index([genericArticleId, isApproved])
   @@index([aliasNormalized, status], map: "generic_article_alias_lookup_idx")
