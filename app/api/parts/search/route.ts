@@ -42,24 +42,40 @@ export async function GET(request: Request) {
     }
   }
 
-  const vehicle = vehicleContext?.vehicle ?? fitment.vehicle ?? null;
-  const pricing = vehicle ? await resolveLaborPricing({
-    make: vehicle.make || undefined,
-    model: vehicle.model || undefined,
-    year: vehicle.year == null ? undefined : String(vehicle.year),
-    engine: vehicle.engine || undefined,
-    engineVolume: vehicle.engineVolumeL == null ? undefined : String(vehicle.engineVolumeL),
-    fuelType: vehicle.fuelType || undefined,
-    bodyType: vehicle.bodyType || undefined,
-    driveType: vehicle.driveType || undefined,
-    vehicleType: vehicle.vehicleType || undefined,
+  const displayVehicle = vehicleContext?.vehicle
+    ? vehicleContext.vehicle
+    : fitment.vehicle
+      ? {
+          id: fitment.vehicle.id || vehicleId,
+          vin: fitment.vehicle.vin,
+          make: fitment.vehicle.brand,
+          model: fitment.vehicle.model,
+          year: fitment.vehicle.year,
+          engine: null,
+          engineVolumeL: null,
+          fuelType: null,
+          bodyType: null,
+          driveType: null,
+          vehicleType: null,
+        }
+      : null;
+  const pricing = displayVehicle ? await resolveLaborPricing({
+    make: displayVehicle.make || undefined,
+    model: displayVehicle.model || undefined,
+    year: displayVehicle.year == null ? undefined : String(displayVehicle.year),
+    engine: displayVehicle.engine || undefined,
+    engineVolume: displayVehicle.engineVolumeL == null ? undefined : String(displayVehicle.engineVolumeL),
+    fuelType: displayVehicle.fuelType || undefined,
+    bodyType: displayVehicle.bodyType || undefined,
+    driveType: displayVehicle.driveType || undefined,
+    vehicleType: displayVehicle.vehicleType || undefined,
   }) : null;
   const reference = await searchReferenceParts(q, 50);
   const parts = reference.parts.map((part) => ({
     ...part,
     fitment: {
       status: "REFERENCE_ONLY" as const,
-      confidence: vehicle ? 30 : 10,
+      confidence: displayVehicle ? 30 : 10,
       confirmed: false,
       reason: "Це довідкова назва деталі. Точна сумісність береться лише з catalogMatches нижче.",
     },
@@ -69,15 +85,15 @@ export async function GET(request: Request) {
     status: "OK",
     query: q,
     context: { vehicleId, findingId, manualPartId, partName, position },
-    vehicle: vehicle ? {
-      id: fitment.vehicle?.id || vehicleId,
-      vin: vehicle.vin,
-      make: vehicle.make,
-      model: vehicle.model,
-      year: vehicle.year,
-      engine: vehicle.engine,
-      engineVolumeL: vehicle.engineVolumeL,
-      fuelType: vehicle.fuelType,
+    vehicle: displayVehicle ? {
+      id: displayVehicle.id || vehicleId,
+      vin: displayVehicle.vin,
+      make: displayVehicle.make,
+      model: displayVehicle.model,
+      year: displayVehicle.year,
+      engine: displayVehicle.engine,
+      engineVolumeL: displayVehicle.engineVolumeL,
+      fuelType: displayVehicle.fuelType,
       confidence: vehicleContext?.confidence ?? fitment.confidence ?? 0,
       source: vehicleContext?.sourceDetail ?? vehicleContext?.source ?? "CRM_VEHICLE",
     } : null,
