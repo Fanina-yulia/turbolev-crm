@@ -6,6 +6,7 @@ import { createWorkOrderLine, updateWorkOrderLine } from "@/src/services/work-or
 import { ensurePartsRequestTx } from "@/src/services/work-order-commercial.service";
 import { enrichOffersWithSellPrice, ensureSupplierRecord } from "@/src/services/suppliers/order.service";
 import { searchConfiguredSuppliers } from "@/src/services/suppliers/registry";
+import { normalizeCatalogNumber, resolvePartFitment, type PartFitmentStatus } from "@/src/services/parts-fitment.service";
 import { calculateCatalogLaborPrice, isReplacementLabor } from "@/src/services/labor-pricing.service";
 import type { SupplierId } from "@/src/services/suppliers/types";
 
@@ -162,6 +163,12 @@ export async function selectDiagnosticPartOffer(input: {
   actorName?: string | null;
   searchMode?: "VIN" | "PART_NUMBER" | "TEXT";
   vehicleVin?: string | null;
+  vehicleId?: string | null;
+  partName?: string | null;
+  position?: string | null;
+  fitmentStatus?: PartFitmentStatus | null;
+  fitmentProductId?: string | null;
+  fitmentSource?: string | null;
   manualConfirmation?: boolean;
   customerProvidedPart?: boolean;
 }) {
@@ -188,19 +195,50 @@ export async function selectDiagnosticPartOffer(input: {
   if (!suggestion) throw new PartsSelectionError("PART_RECOMMENDATION_NOT_FOUND", "Для цієї несправності немає рекомендованої деталі.", 404);
   if (!suggestion.lineId) throw new PartsSelectionError("PART_LINE_NOT_IMPORTED", "Рекомендовану деталь ще не перенесено в Комерційну пропозицію.", 409);
 
+  const fitment = await resolvePartFitment({
+    query: input.partName || suggestion.description,
+    partName: input.partName || suggestion.description,
+    position: input.position || null,
+    vehicleId: clean(input.vehicleId, 160) || null,
+    vin: input.vehicleVin || null,
+  });
   const wantedExternalId = clean(input.externalProductId, 200);
   const wantedArticle = clean(input.article, 120).toUpperCase();
+  const normalizedWantedArticle = normalizeCatalogNumber(wantedArticle);
+  const selectedArticleIsCatalogued = Boolean(
+    normalizedWantedArticle
+    && fitment.catalogArticles.some((article) => normalizeCatalogNumber(article) === normalizedWantedArticle),
+  );
+  const catalogFitmentConfirmed = fitment.status === "VERIFIED" && selectedArticleIsCatalogued;
+  if (searchMode === "VIN" && !catalogFitmentConfirmed) {
+    throw new PartsSelectionError(
+      "CATALOG_FITMENT_REQUIRED",
+      "Для підбору за VIN потрібен підтверджений OE-каталог. Увімкніть ручне підтвердження або підключіть каталог сумісності.",
+      409,
+    );
+  }
   // Re-query by the selected article when possible. A finding description is
   // often a human label, while the supplier adapter indexes the catalogue by
   // its article; using the article prevents a valid selected offer from being
   // rejected as stale during the second server-side verification.
-  const search = await searchConfiguredSuppliers(wantedArticle || suggestion.description, 50);
+  const search = await searchConfiguredSuppliers(wantedArticle || suggestion.description, 50, {
+    fitmentStatus: fitment.status,
+    fitmentConfidence: fitment.confidence,
+    fitmentSource: fitment.catalog?.source || input.fitmentSource || null,
+    fitmentReason: fitment.reason,
+    catalogArticles: fitment.catalogArticles,
+    analogArticles: fitment.analogArticles,
+    oeNumbers: fitment.oeNumbers,
+  });
   const liveOffer = search.offers.find((offer) => {
     if (offer.supplierId !== supplierId) return false;
     if (wantedExternalId && offer.externalProductId === wantedExternalId) return true;
     return Boolean(wantedArticle && offer.article.trim().toUpperCase() === wantedArticle);
   });
   if (!liveOffer) throw new PartsSelectionError("OFFER_STALE", "Пропозиція постачальника вже недоступна. Оновіть пошук.", 409);
+  if (searchMode === "VIN" && liveOffer.fitmentStatus !== "VERIFIED") {
+    throw new PartsSelectionError("CATALOG_FITMENT_REQUIRED", "Обрана пропозиція не має підтвердженого зв’язку з VIN-каталогом.", 409);
+  }
   if (!liveOffer.available || liveOffer.purchasePrice == null) throw new PartsSelectionError("OFFER_UNAVAILABLE", "Ця деталь зараз недоступна у постачальника.", 409);
 
   const [priced] = await enrichOffersWithSellPrice([liveOffer]);
@@ -261,6 +299,11 @@ export async function selectDiagnosticPartOffer(input: {
       supplierName: priced.supplierName,
       searchMode,
       manualConfirmation: searchMode !== "VIN",
+      fitmentStatus: fitment.status,
+      fitmentConfirmed: catalogFitmentConfirmed,
+      fitmentConfidence: fitment.confidence,
+      fitmentSource: fitment.catalog?.source || input.fitmentSource || null,
+      fitmentReason: fitment.reason,
       partsPricingSnapshot: {
         purchasePrice: priced.purchasePrice,
         markupPercent: priced.markupPercent,
@@ -316,6 +359,11 @@ export async function selectDiagnosticPartOffer(input: {
           currency: priced.currency || "UAH",
           searchMode,
           manualConfirmation: searchMode !== "VIN",
+          fitmentStatus: fitment.status,
+          fitmentConfirmed: catalogFitmentConfirmed,
+          fitmentConfidence: fitment.confidence,
+          fitmentSource: fitment.catalog?.source || input.fitmentSource || null,
+          fitmentReason: fitment.reason,
           labor,
         }),
       },
@@ -346,5 +394,7 @@ export async function selectDiagnosticPartOffer(input: {
     labor,
     searchMode,
     manualConfirmationRequired: searchMode !== "VIN",
+    fitmentStatus: fitment.status,
+    fitmentConfirmed: catalogFitmentConfirmed,
   };
 }
