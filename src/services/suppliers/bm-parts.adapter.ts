@@ -1,5 +1,6 @@
 import { getIntegrationCredential } from "@/src/services/integration-credentials.service";
 import { buildProviderPartQueryCandidates } from "@/src/services/parts-terminology.service";
+import { buildKnowledgeProviderPartQueryCandidates } from "@/src/services/parts-knowledge.service";
 import type {
   SupplierAdapter,
   SupplierConnectionCheck,
@@ -475,12 +476,13 @@ export const bmPartsAdapter: SupplierAdapter = {
     const query = input.query.trim();
     const vehicle = input.vehicle;
     const carFilters = buildBmVehicleFilterCandidates(vehicle);
-    const queryCandidates = buildProviderPartQueryCandidates({
+    const queryCandidates = await buildKnowledgeProviderPartQueryCandidates({
       query,
       provider: "BM_PARTS",
       position: input.position,
       canonicalCode: input.canonicalPart?.code,
       canonicalSlug: input.canonicalPart?.slug,
+      genericArticleId: input.canonicalPart?.genericArticleId,
     });
     if (query.length < 2 || !carFilters.length) return [];
     if (!(await this.isConfigured())) return [];
