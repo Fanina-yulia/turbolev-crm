@@ -1,5 +1,3 @@
-import "server-only";
-
 import { createHash } from "node:crypto";
 import { CatalogEntityStatus } from "@/src/generated/prisma/client";
 import { getPrisma } from "@/src/lib/prisma";
