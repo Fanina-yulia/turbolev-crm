@@ -3,6 +3,7 @@ import { bmPartsAdapter } from "./bm-parts.adapter";
 import { uniqueTradeAdapter } from "./unique-trade.adapter";
 import type { PartFitmentStatus } from "@/src/services/parts-fitment.service";
 import { normalizeCatalogNumber } from "@/src/services/parts-fitment.service";
+import { buildKnowledgeProviderPartQueryCandidates } from "@/src/services/parts-knowledge.service";
 import type {
   SupplierAdapter,
   SupplierConnectionCheck,
@@ -113,6 +114,9 @@ export type SupplierSearchContext = {
   analogReferences?: Array<{ brand: string | null; article: string }>;
   oeNumbers?: string[];
   normalizedQuery?: string | null;
+  partName?: string | null;
+  position?: string | null;
+  genericArticleId?: string | null;
 };
 
 function looksLikePartNumber(value: string) {
@@ -165,8 +169,28 @@ function offerRank(offer: SupplierOffer) {
   return fitment + classification + availability;
 }
 
+function knowledgeProviderFor(adapter: SupplierAdapter) {
+  if (adapter.id === "bm-parts") return "BM_PARTS" as const;
+  if (adapter.id === "unique-trade") return "UNITRADE" as const;
+  return null;
+}
+
+async function providerKnowledgeQueries(adapter: SupplierAdapter, query: string, context: SupplierSearchContext) {
+  const provider = knowledgeProviderFor(adapter);
+  if (!provider) return [];
+  return buildKnowledgeProviderPartQueryCandidates({
+    query,
+    partName: context.partName || query,
+    genericArticleId: context.genericArticleId,
+    position: context.position,
+    provider,
+  });
+}
+
 async function vehicleScopedSearch(adapter: SupplierAdapter, query: string, limit: number, context: SupplierSearchContext) {
+  const providerQueries = adapter.id === "bm-parts" ? [] : await providerKnowledgeQueries(adapter, query, context);
   const exactQueries = [...new Set([
+    ...providerQueries,
     ...(context.oeNumbers || []),
     ...(context.catalogArticles || []),
     ...(context.analogArticles || []),
@@ -218,13 +242,16 @@ export async function searchConfiguredSuppliers(query: string, limitPerSupplier 
 
   const settled = await Promise.allSettled(searchable.map(async (adapter) => {
     if (vehicleScoped) return vehicleScopedSearch(adapter, query, limitPerSupplier, context);
-    const batches = await Promise.all(searchQueries.map((searchQuery) => adapter.search(searchQuery, perQueryLimit)));
+    const providerQueries = await providerKnowledgeQueries(adapter, query, context);
+    const adapterSearchQueries = [...new Set([...providerQueries, ...searchQueries])].slice(0, 10);
+    const adapterPerQueryLimit = Math.max(2, Math.ceil(limitPerSupplier / adapterSearchQueries.length));
+    const batches = await Promise.all(adapterSearchQueries.map((searchQuery) => adapter.search(searchQuery, adapterPerQueryLimit)));
     const analogBatches: SupplierOffer[][] = [];
     if (adapter.searchAnalogs && context.fitmentStatus === "VERIFIED") {
       const analogReferences = (context.analogReferences || [])
         .filter((reference) => reference.brand && reference.article)
         .slice(0, 5);
-      const analogResults = await Promise.allSettled(analogReferences.map((reference) => adapter.searchAnalogs!(reference.brand!, reference.article, perQueryLimit)));
+      const analogResults = await Promise.allSettled(analogReferences.map((reference) => adapter.searchAnalogs!(reference.brand!, reference.article, adapterPerQueryLimit)));
       analogResults.forEach((result) => {
         if (result.status === "fulfilled") analogBatches.push(result.value);
       });
