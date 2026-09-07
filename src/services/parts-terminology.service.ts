@@ -379,8 +379,8 @@ function detectAttributes(source: string, definition: PartTerminologyDefinition 
   let subPosition: PartSubPosition = subPositionFromValue(input.subPosition);
 
   if (definition?.code === "CONTROL_ARM_BUSHING" && front && rear) {
-    const frontArm = /(?:front|передн\w*)\s+(?:[a-zа-яіїєґ]+\s+)?(?:control\s+arm|важел\w*|рычаг\w*)/u.test(source);
-    const rearArm = /(?:rear|задн\w*)\s+(?:[a-zа-яіїєґ]+\s+)?(?:control\s+arm|важел\w*|рычаг\w*)/u.test(source);
+    const frontArm = /(?:front|передн[a-zа-яіїєґ]*)\s+(?:[a-zа-яіїєґ]+\s+)?(?:control\s+arm|важел[a-zа-яіїєґ]*|рычаг[a-zа-яіїєґ]*)/u.test(source);
+    const rearArm = /(?:rear|задн[a-zа-яіїєґ]*)\s+(?:[a-zа-яіїєґ]+\s+)?(?:control\s+arm|важел[a-zа-яіїєґ]*|рычаг[a-zа-яіїєґ]*)/u.test(source);
     if (frontArm && !rearArm) {
       axis = "FRONT";
       subPosition = "REAR";
