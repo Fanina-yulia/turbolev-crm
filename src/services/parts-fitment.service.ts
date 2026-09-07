@@ -2,7 +2,7 @@ import { normalizeVin, validateVin } from "@/src/domain/vin";
 import { normalizeRegistrationPlate } from "@/src/domain/registration-plate";
 import { getPrisma } from "@/src/lib/prisma";
 import { toPrismaJson } from "@/src/lib/prisma-json";
-import { bmPartsAdapter } from "@/src/services/suppliers/bm-parts.adapter";
+import { BM_PARTS_VEHICLE_CONTEXT_VERSION, bmPartsAdapter } from "@/src/services/suppliers/bm-parts.adapter";
 import type { SupplierVehicleContext, SupplierVehiclePart } from "@/src/services/suppliers/types";
 
 export type PartFitmentStatus =
@@ -290,7 +290,7 @@ async function resolveBmVehicleContext(
     } catch (error) {
       console.warn("BM Parts vehicle context cache unavailable", error instanceof Error ? error.message : "unknown error");
     }
-    if (cached && (!cached.expiresAt || cached.expiresAt.getTime() > Date.now())) {
+    if (cached && cached.sourceVersion === BM_PARTS_VEHICLE_CONTEXT_VERSION && (!cached.expiresAt || cached.expiresAt.getTime() > Date.now())) {
       const context = providerVehicleFromRow(cached);
       if (context) return context;
     }
