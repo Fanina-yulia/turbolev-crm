@@ -7,6 +7,7 @@ import {
   buildProviderPartQueryCandidates,
   normalizePartTerminology,
   resolvePartTerminology,
+  listPartTerminology,
   type PartProvider,
   type PartTerminologyInput,
   type PartTerminologyResolution,
@@ -132,7 +133,7 @@ export async function resolvePartKnowledge(input: PartKnowledgeInput): Promise<P
       },
     });
 
-    const best = aliases.find((alias) => !candidates.length || candidates.includes(alias.aliasRaw.toLocaleLowerCase("uk-UA").trim().replace(/[_-]+/g, " "))) || aliases[0];
+    const best = aliases.find((alias) => !candidates.length || candidates.includes(normalizePartTerminology(alias.aliasRaw))) || aliases[0];
     if (best && best.genericArticle.status === CatalogEntityStatus.ACTIVE) {
       const score = Math.max(0, Math.min(100, best.confidence || 0));
       const definition = {
@@ -225,7 +226,7 @@ async function ensureCanonicalArticle(
 
 export async function seedStaticPartKnowledge() {
   const prisma = getPrisma();
-  const definitions = (await import("@/src/services/parts-terminology.service")).listPartTerminology();
+  const definitions = listPartTerminology();
   let articleCount = 0;
   let aliasCount = 0;
 
