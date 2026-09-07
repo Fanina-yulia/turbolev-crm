@@ -221,6 +221,7 @@ PDF повинен містити актуальні на момент збер�
 - `POST /api/diagnostics/[id]/pdf` формує та зберігає PDF;
 - `POST /api/diagnostics/[id]/pdf/share` створює тимчасове посилання;
 - `GET /api/public/diagnostic-card-pdf/[token]` повертає файл лише за дійсним token.
+- заголовок `Content-Disposition` має містити ASCII fallback і RFC 5987 `filename*`, щоб українська назва файла коректно працювала в браузерах, download, print і share-сценаріях.
 
 Всі внутрішні маршрути використовують session, permission, scope і row-level access. Public route не повертає CRM metadata, JSON snapshot або внутрішні ідентифікатори.
 
@@ -270,6 +271,7 @@ PDF повинен містити актуальні на момент збер�
 5. Popup, download, print і share продовжують працювати.
 6. Build, smoke та візуальна перевірка пройдені.
 7. Зміни опубліковані у `main` і Production.
+8. PDF API не падає на кириличній назві файла й повертає коректний `Content-Disposition`.
 
 ## 12. Обсяг реалізації
 

@@ -23,7 +23,9 @@ function failure(error: unknown, fallback: string) {
 }
 
 function safeDownloadName(value: string) {
-  return value.replace(/[\r\n"]/g, "_");
+  const normalized = value.replace(/[\r\n"]/g, "_");
+  const asciiFallback = normalized.replace(/[^\x20-\x7e]/g, "_") || "diagnostic-card.pdf";
+  return `filename="${asciiFallback}"; filename*=UTF-8''${encodeURIComponent(normalized)}`;
 }
 
 export async function GET(request: Request, context: { params: Promise<{ id: string }> }) {
@@ -46,7 +48,7 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
       headers: {
         "Content-Type": pdf.mimeType,
         "Content-Length": String(pdf.fileSize),
-        "Content-Disposition": `${disposition}; filename="${safeDownloadName(pdf.fileName)}"`,
+        "Content-Disposition": `${disposition}; ${safeDownloadName(pdf.fileName)}`,
         "Cache-Control": "private, no-store",
         "X-Content-Type-Options": "nosniff",
       },
