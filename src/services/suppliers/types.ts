@@ -109,6 +109,14 @@ export type SupplierOffer = {
   fitmentSource?: string | null;
   fitmentReason?: string | null;
   catalogProductId?: string | null;
+  /** Why this exact offer was returned (OE match, cross, article or free text). */
+  offerReason?: string | null;
+  /** Provenance used by the UI and audit trail. */
+  sourceKind?: "DIRECT" | "OEM" | "ANALOG" | "NAME";
+  /** Aggregated stock for quick comparison; detailed rows remain in `stock`. */
+  stockTotal?: number | null;
+  quantityMode?: "EXACT" | "BAND" | "BOOLEAN_ONLY" | "UNKNOWN";
+  fetchedAt?: string | null;
 };
 
 export type SupplierDeliveryPoint = {
@@ -177,6 +185,8 @@ export interface SupplierAdapter {
   isConfigured(): Promise<boolean>;
   testConnection(): Promise<SupplierConnectionCheck>;
   search(query: string, limit?: number): Promise<SupplierOffer[]>;
+  searchByArticle?(article: string, brand?: string | null, limit?: number): Promise<SupplierOffer[]>;
+  searchAnalogs?(brand: string, article: string, limit?: number): Promise<SupplierOffer[]>;
   resolveVehicle?(identifier: string): Promise<SupplierVehicleContext | null>;
   searchVehicleParts?(input: SupplierVehicleSearchInput): Promise<SupplierVehiclePart[]>;
   listDeliveryPoints?(): Promise<SupplierDeliveryPoint[]>;

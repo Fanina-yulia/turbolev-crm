@@ -141,12 +141,34 @@ model GenericArticle {
   mergedInto   GenericArticle?                    @relation("GenericArticleMerge", fields: [mergedIntoId], references: [id], onDelete: SetNull)
   mergedFrom   GenericArticle[]                   @relation("GenericArticleMerge")
   externalRefs GenericArticleExternalReference[]
+  aliases      GenericArticleAlias[]
   categories   CategoryGenericArticle[]
   products     Product[]
   vehicleFitments VehicleFitment[]
 
   @@index([status, name])
   @@index([mergedIntoId])
+}
+
+/// Local, reviewable normalization vocabulary for diagnostic labels and supplier nomenclature.
+/// Diagnostic cards keep their original display text; this table only helps resolve a search intent.
+model GenericArticleAlias {
+  id               String   @id @default(cuid())
+  genericArticleId String
+  aliasRaw         String   @db.VarChar(240)
+  aliasNormalized  String   @db.VarChar(240)
+  source           String   @db.VarChar(64)
+  confidence       Int?
+  isApproved       Boolean  @default(false)
+  createdByName    String?  @db.VarChar(160)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  genericArticle GenericArticle @relation(fields: [genericArticleId], references: [id], onDelete: Cascade)
+
+  @@unique([genericArticleId, aliasNormalized])
+  @@index([aliasNormalized, isApproved])
+  @@index([genericArticleId, isApproved])
 }
 
 model GenericArticleExternalReference {

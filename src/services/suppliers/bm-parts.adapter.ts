@@ -280,6 +280,11 @@ function extractVehicle(payload: unknown, identifier: string): SupplierVehicleCo
   };
 }
 
+function stockTotal(stocks: SupplierStock[]) {
+  const values = stocks.map((stock) => Number(String(stock.quantity).replace(",", "."))).filter((value) => Number.isFinite(value));
+  return values.length ? values.reduce((sum, value) => sum + value, 0) : null;
+}
+
 function extractOeReferences(product: BmProductDetails | null): Array<{ number: string; brand: string | null; isOem: boolean | null }> {
   const values = Array.isArray(product?.oe) ? product.oe : [];
   return values.flatMap((value) => {
@@ -332,6 +337,10 @@ function mapProductOffer(product: BmProduct, query: string): SupplierOffer {
     available: booleanValue(product.available) === true || stock.length > 0,
     sourceUrl: uuid ? `https://b2b.bm.parts/product/${encodeURIComponent(uuid)}` : "https://b2b.bm.parts/",
     imageUrl: imageUrl(product.default_image ?? product.image ?? product.photo ?? product.images),
+    sourceKind: "DIRECT",
+    stockTotal: stockTotal(stock),
+    quantityMode: "EXACT",
+    fetchedAt: new Date().toISOString(),
   };
 }
 
@@ -579,5 +588,9 @@ search:
       }
     });
     return result;
+  },
+
+  async searchByArticle(article: string, _brand?: string | null, limit = 30) {
+    return this.search(article, limit);
   },
 };

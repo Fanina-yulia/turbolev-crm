@@ -110,7 +110,9 @@ export type SupplierSearchContext = {
   providerVehicle?: SupplierVehicleContext | null;
   catalogArticles?: string[];
   analogArticles?: string[];
+  analogReferences?: Array<{ brand: string | null; article: string }>;
   oeNumbers?: string[];
+  normalizedQuery?: string | null;
 };
 
 function looksLikePartNumber(value: string) {
@@ -124,23 +126,43 @@ function annotateOffer(offer: SupplierOffer, context: SupplierSearchContext): Su
   const oeNumbers = new Set((context.oeNumbers || []).map(normalizeCatalogNumber).filter(Boolean));
   const hasCatalogMatch = Boolean(article && (catalogArticles.has(article) || oeNumbers.has(article)));
   const isAnalog = Boolean(article && analogArticles.has(article));
+  const isOeNumber = Boolean(article && oeNumbers.has(article));
+  const vehicleScoped = Boolean(context.vehicleId?.trim() || context.vin?.trim() || context.plate?.trim());
   const offerClass = hasCatalogMatch
     ? isAnalog ? "ANALOG" as const : "OEM" as const
-    : offer.offerClass || "UNKNOWN";
+    : offer.sourceKind === "ANALOG" ? "ANALOG" as const
+      : offer.offerClass || "UNKNOWN";
   const verified = context.fitmentStatus === "VERIFIED" && hasCatalogMatch;
+  const offerReason = verified && isAnalog
+    ? "Аналог підтверджений крос-номером у VIN-каталозі."
+    : verified
+      ? "Артикул знайдено у підтвердженому VIN-каталозі OE."
+      : isOeNumber
+        ? "Артикул збігається з OE-номером, але його застосовність ще потрібно перевірити."
+        : offer.sourceKind === "ANALOG"
+          ? "Постачальник повернув аналог; застосовність підтверджується вручну."
+          : "Знайдено за запитом постачальника; потрібна ручна перевірка застосовності.";
   return {
     ...offer,
     offerClass,
-    fitmentStatus: verified ? "VERIFIED" : context.fitmentStatus || "MANUAL_REQUIRED",
-    fitmentConfidence: verified ? context.fitmentConfidence ?? offer.fitmentConfidence ?? null : 0,
+    fitmentStatus: verified ? "VERIFIED" : vehicleScoped ? "MANUAL_REQUIRED" : context.fitmentStatus || "MANUAL_REQUIRED",
+    fitmentConfidence: verified ? context.fitmentConfidence ?? null : 0,
     fitmentExact: verified ? context.fitmentExact ?? offer.fitmentExact ?? null : false,
     fitmentSource: verified ? context.fitmentSource || offer.fitmentSource || null : context.fitmentSource || null,
-    fitmentReason: verified
-      ? context.fitmentExact === false
-        ? "Позиція знайдена в BM Parts для підтвердженої моделі. Точний двигун/комплектацію потрібно перевірити вручну."
-        : "Артикул знайдено серед товарів, сумісність яких підтверджена VIN-каталогом."
-      : context.fitmentReason || "Сумісність цієї пропозиції з автомобілем не підтверджена каталогом.",
+    fitmentReason: offerReason,
+    offerReason,
   };
+}
+
+function offerKey(offer: SupplierOffer) {
+  return `${offer.supplierId}:${offer.externalProductId || `${normalizeCatalogNumber(offer.brand)}:${normalizeCatalogNumber(offer.article)}`}`;
+}
+
+function offerRank(offer: SupplierOffer) {
+  const fitment = offer.fitmentStatus === "VERIFIED" ? 100 : offer.fitmentStatus === "REFERENCE_ONLY" ? 30 : 0;
+  const classification = offer.offerClass === "OEM" ? 20 : offer.offerClass === "ANALOG" ? 10 : 0;
+  const availability = offer.available ? 5 : 0;
+  return fitment + classification + availability;
 }
 
 async function vehicleScopedSearch(adapter: SupplierAdapter, query: string, limit: number, context: SupplierSearchContext) {
@@ -185,23 +207,42 @@ export async function searchConfiguredSuppliers(query: string, limitPerSupplier 
   const searchable = supplierAdapters
     .filter((adapter) => adapter.id !== "autonova-d" && adapter.id !== "atl" && configuredIds.has(adapter.id));
 
+  const queries = [...new Set([
+    context.normalizedQuery?.trim() || "",
+    query.trim(),
+    ...(context.oeNumbers || []).slice(0, 3),
+    ...(context.catalogArticles || []).slice(0, 3),
+  ].filter((value) => value.length >= 2))].slice(0, 7);
+  const searchQueries = queries.length ? queries : [query.trim()];
+  const perQueryLimit = Math.max(3, Math.ceil(limitPerSupplier / searchQueries.length));
+
   const settled = await Promise.allSettled(searchable.map(async (adapter) => {
     if (vehicleScoped) return vehicleScopedSearch(adapter, query, limitPerSupplier, context);
-    return adapter.search(query.trim(), limitPerSupplier);
+    const batches = await Promise.all(searchQueries.map((searchQuery) => adapter.search(searchQuery, perQueryLimit)));
+    const analogBatches: SupplierOffer[][] = [];
+    if (adapter.searchAnalogs && context.fitmentStatus === "VERIFIED") {
+      const analogReferences = (context.analogReferences || [])
+        .filter((reference) => reference.brand && reference.article)
+        .slice(0, 5);
+      const analogResults = await Promise.allSettled(analogReferences.map((reference) => adapter.searchAnalogs!(reference.brand!, reference.article, perQueryLimit)));
+      analogResults.forEach((result) => {
+        if (result.status === "fulfilled") analogBatches.push(result.value);
+      });
+    }
+    return [...batches.flat(), ...analogBatches.flat()];
   }));
 
-  const offers: SupplierOffer[] = [];
+  const offersByKey = new Map<string, SupplierOffer>();
   const providers: Array<{ id: SupplierId; ok: boolean; message?: string }> = [];
-  const seenOffers = new Set<string>();
 
   settled.forEach((result, index) => {
     const adapter = searchable[index];
     if (result.status === "fulfilled") {
       for (const offer of result.value) {
-        const key = adapter.id + ":" + (offer.externalProductId || normalizeCatalogNumber(offer.article));
-        if (seenOffers.has(key)) continue;
-        seenOffers.add(key);
-        offers.push(annotateOffer(offer, context));
+        const annotated = annotateOffer(offer, context);
+        const key = offerKey(annotated);
+        const previous = offersByKey.get(key);
+        if (!previous || offerRank(annotated) > offerRank(previous)) offersByKey.set(key, annotated);
       }
       providers.push({ id: adapter.id, ok: true });
     } else {
@@ -209,7 +250,10 @@ export async function searchConfiguredSuppliers(query: string, limitPerSupplier 
     }
   });
 
+  const offers = [...offersByKey.values()];
   offers.sort((a, b) => {
+    const rankDiff = offerRank(b) - offerRank(a);
+    if (rankDiff) return rankDiff;
     if (a.purchasePrice == null && b.purchasePrice == null) return 0;
     if (a.purchasePrice == null) return 1;
     if (b.purchasePrice == null) return -1;
@@ -217,7 +261,7 @@ export async function searchConfiguredSuppliers(query: string, limitPerSupplier 
   });
 
   return {
-    offers,
+    offers: offers.slice(0, Math.max(limitPerSupplier * Math.max(searchable.length, 1), 40)),
     providers,
     configuredSuppliers: [...configuredIds],
     supplierStatuses: statuses,

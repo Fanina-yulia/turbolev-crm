@@ -90,7 +90,11 @@ async function loadRemote(): Promise<ReferencePart[]> {
   const raw = await response.json();
   if (!Array.isArray(raw)) throw new Error("Reference catalog payload is not an array");
   return raw
-    .map((item) => ({ slug: String(item?.slug ?? "").trim(), name: String(item?.name ?? "").trim() }))
+    .map((item) => ({
+      slug: String(item?.slug ?? "").trim(),
+      name: String(item?.name ?? "").trim(),
+      aliases: Array.isArray(item?.aliases) ? item.aliases.map((alias: unknown) => String(alias).trim()).filter(Boolean) : [],
+    }))
     .filter((item) => item.slug && item.name);
 }
 

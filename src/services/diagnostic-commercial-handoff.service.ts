@@ -35,6 +35,17 @@ type Suggestion = {
   lineId: string | null;
   sourceEntity: string;
   sourceEntityId: string;
+  selected?: {
+    supplierId: string | null;
+    supplierName: string;
+    article: string;
+    brand: string | null;
+    warehouse: string | null;
+    purchasePrice: number;
+    sellPrice: number;
+    markupPercent: number | null;
+    currency: string;
+  };
 };
 
 const SOURCE_ENTITY = "DIAGNOSTIC_FINDING";
@@ -105,10 +116,51 @@ async function buildSuggestions(diagnosticRequestId: string) {
       ],
       status: { not: "CANCELLED" },
     },
-    select: { id: true, sourceEntityId: true },
+    select: {
+      id: true,
+      sourceEntityId: true,
+      article: true,
+      brand: true,
+      plannedQuantity: true,
+      plannedUnitPrice: true,
+      plannedUnitCost: true,
+      currency: true,
+      supplierId: true,
+      supplierQuoteId: true,
+      metadata: true,
+    },
   }) : [];
+  const quoteIds = [...new Set(existing.map((line) => line.supplierQuoteId).filter((id): id is string => Boolean(id)))];
+  const quotes = quoteIds.length ? await prisma.supplierProductQuote.findMany({
+    where: { id: { in: quoteIds } },
+    select: { id: true, purchasePrice: true, currency: true, stock: true, supplier: { select: { name: true, code: true } } },
+  }) : [];
+  const quoteById = new Map(quotes.map((quote) => [quote.id, quote]));
   const existingByKey = new Map(existing.flatMap((line) => line.sourceEntityId ? [[line.sourceEntityId, line.id] as const] : []));
-  const suggestions: Suggestion[] = candidates.map((item) => ({ ...item, imported: existingByKey.has(item.sourceEntityId), lineId: existingByKey.get(item.sourceEntityId) || null }));
+  const selectedByKey = new Map(existing.flatMap((line) => {
+    if (!line.sourceEntityId) return [];
+    const quote = line.supplierQuoteId ? quoteById.get(line.supplierQuoteId) : null;
+    const lineCost = Number(line.plannedUnitCost);
+    const purchasePrice = lineCost > 0 ? lineCost : Number(quote?.purchasePrice || 0);
+    const sellPrice = Number(line.plannedUnitPrice);
+    if (!line.article || purchasePrice <= 0 || sellPrice <= 0) return [];
+    const metadata = line.metadata && typeof line.metadata === "object" && !Array.isArray(line.metadata) ? line.metadata as Record<string, unknown> : {};
+    const snapshot = metadata.partsPricingSnapshot && typeof metadata.partsPricingSnapshot === "object" && !Array.isArray(metadata.partsPricingSnapshot) ? metadata.partsPricingSnapshot as Record<string, unknown> : {};
+    const stock = quote?.stock && Array.isArray(quote.stock) ? quote.stock as Array<{ warehouse?: string; quantity?: string | number }> : [];
+    const warehouse = stock.find((row) => Number(String(row.quantity ?? "0").replace(",", ".")) > 0)?.warehouse || stock[0]?.warehouse || null;
+    return [[line.sourceEntityId, {
+      supplierId: line.supplierId,
+      supplierName: typeof metadata.supplierName === "string" ? metadata.supplierName : quote?.supplier.name || "Постачальник",
+      article: line.article,
+      brand: line.brand,
+      warehouse,
+      purchasePrice,
+      sellPrice,
+      markupPercent: typeof snapshot.markupPercent === "number" ? snapshot.markupPercent : null,
+      currency: line.currency || quote?.currency || "UAH",
+    }] as const];
+  }));
+  const suggestions: Suggestion[] = candidates.map((item) => ({ ...item, imported: existingByKey.has(item.sourceEntityId), lineId: existingByKey.get(item.sourceEntityId) || null, selected: selectedByKey.get(item.sourceEntityId) }));
 
   return { view, workOrder: view.diagnostic.workOrder, suggestions };
 }

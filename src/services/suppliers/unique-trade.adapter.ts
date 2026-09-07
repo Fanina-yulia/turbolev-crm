@@ -28,7 +28,7 @@ type UniqueTradeDetail = {
   remains?: Array<{ storage?: { id?: number; name?: string }; remain?: string | number }>;
   isDisabled?: boolean;
 };
-type SearchResponse = { details?: UniqueTradeDetail[] };
+type SearchResponse = { details?: UniqueTradeDetail[] } | UniqueTradeDetail[];
 type TokenSession = { key: string; token: string; refreshToken: string; validUntil: number };
 type DeliveryPointsResponse = { deliveryPoints?: Array<{ id?: number; address?: string }> };
 type UniqueTradeOrder = {
@@ -146,6 +146,41 @@ function normalizeStocks(detail: UniqueTradeDetail): SupplierStock[] {
     .filter((item) => item.quantity !== "0" && item.quantity !== "-");
 }
 
+function stockTotal(stock: SupplierStock[], fallback: number | undefined) {
+  const values = stock.map((item) => Number(String(item.quantity).replace(",", "."))).filter((value) => Number.isFinite(value));
+  if (values.length) return values.reduce((sum, value) => sum + value, 0);
+  return typeof fallback === "number" && Number.isFinite(fallback) ? fallback : null;
+}
+
+function detailRows(payload: SearchResponse) {
+  return Array.isArray(payload) ? payload : payload.details ?? [];
+}
+
+function toOffers(details: UniqueTradeDetail[], query: string, sourceKind: "DIRECT" | "ANALOG" = "DIRECT", limit = 30): SupplierOffer[] {
+  return details.slice(0, limit).map((detail) => {
+    const price = detail.yourPriceUAH ?? detail.yourPrice;
+    const stock = normalizeStocks(detail);
+    return {
+      supplierId: "unique-trade",
+      supplierName: "Юнік Трейд",
+      externalProductId: detail.id == null ? null : String(detail.id),
+      article: detail.article?.trim() || query.trim(),
+      brand: detail.displayBrand?.trim() || null,
+      name: detail.title?.trim() || "Запчастина",
+      purchasePrice: typeof price?.amount === "number" ? price.amount : null,
+      currency: price?.currency?.code?.trim() || "UAH",
+      multiplicity: typeof detail.multiplicity === "number" ? detail.multiplicity : null,
+      stock,
+      available: detail.isDisabled !== true && (stock.length > 0 || (detail.quantity ?? 0) > 0),
+      sourceUrl: "https://order24.utr.ua/ua/home",
+      sourceKind,
+      stockTotal: stockTotal(stock, detail.quantity),
+      quantityMode: "EXACT" as const,
+      fetchedAt: new Date().toISOString(),
+    };
+  });
+}
+
 function normalizeOrder(order: UniqueTradeOrder): SupplierOrderResult {
   if (order.id == null) throw new Error("Юнік Трейд не повернув id замовлення.");
   return {
@@ -188,24 +223,21 @@ export const uniqueTradeAdapter: SupplierAdapter = {
     const response = await authenticatedFetch(`/api/search/${encodeURIComponent(query.trim())}?info=1`);
     if (!response.ok) throw new Error(`Юнік Трейд search HTTP ${response.status}`);
     const data = (await response.json()) as SearchResponse;
-    return (data.details ?? []).slice(0, limit).map((detail) => {
-      const price = detail.yourPriceUAH ?? detail.yourPrice;
-      const stock = normalizeStocks(detail);
-      return {
-        supplierId: "unique-trade",
-        supplierName: "Юнік Трейд",
-        externalProductId: detail.id == null ? null : String(detail.id),
-        article: detail.article?.trim() || query.trim(),
-        brand: detail.displayBrand?.trim() || null,
-        name: detail.title?.trim() || "Запчастина",
-        purchasePrice: typeof price?.amount === "number" ? price.amount : null,
-        currency: price?.currency?.code?.trim() || "UAH",
-        multiplicity: typeof detail.multiplicity === "number" ? detail.multiplicity : null,
-        stock,
-        available: detail.isDisabled !== true && (stock.length > 0 || (detail.quantity ?? 0) > 0),
-        sourceUrl: "https://order24.utr.ua/ua/home",
-      };
-    });
+    return toOffers(detailRows(data), query, "DIRECT", limit);
+  },
+
+  async searchByArticle(article: string, brand?: string | null, limit = 30) {
+    const query = brand?.trim() ? `${brand.trim()} ${article.trim()}` : article;
+    return this.search(query, limit);
+  },
+
+  async searchAnalogs(brand: string, article: string, limit = 30) {
+    if (!(await this.isConfigured())) return [];
+    const path = `/api/analogs/${encodeURIComponent(brand.trim())}/${encodeURIComponent(article.trim())}?info=1`;
+    const response = await authenticatedFetch(path);
+    if (!response.ok) throw new Error(`Юнік Трейд analogs HTTP ${response.status}`);
+    const data = (await response.json()) as SearchResponse;
+    return toOffers(detailRows(data), article, "ANALOG", limit);
   },
 
   async listDeliveryPoints(): Promise<SupplierDeliveryPoint[]> {

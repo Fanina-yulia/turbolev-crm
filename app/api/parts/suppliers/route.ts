@@ -4,6 +4,7 @@ import { authorizeScopedLocation } from "@/src/security/scoped-location-access";
 import { enrichOffersWithSellPrice } from "@/src/services/suppliers/order.service";
 import { listSupplierStatuses, searchConfiguredSuppliers } from "@/src/services/suppliers/registry";
 import { resolvePartFitment } from "@/src/services/parts-fitment.service";
+import { normalizePartNeed } from "@/src/services/part-normalization.service";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -40,6 +41,7 @@ export async function GET(request: Request) {
     vin,
     plate,
   });
+  const normalization = await normalizePartNeed({ query: q, partName, genericArticleId, position });
   const fitmentPayload = {
     status: fitment.status,
     confirmed: fitment.confirmed,
@@ -50,6 +52,7 @@ export async function GET(request: Request) {
     providerVehicle: fitment.providerVehicle,
     catalog: fitment.catalog,
     genericArticle: fitment.genericArticle,
+    normalization,
   };
   const vehicleScoped = Boolean(vehicleId || vin || plate || fitment.vehicle?.id || fitment.vehicle?.vin);
   if (vehicleScoped && fitment.status !== "VERIFIED") {
@@ -63,6 +66,7 @@ export async function GET(request: Request) {
       oeNumbers: fitment.oeNumbers,
       catalogArticles: fitment.catalogArticles,
       analogArticles: fitment.analogArticles,
+      normalization,
       offers: [],
       providers: [],
       configuredSuppliers: [],
@@ -104,6 +108,8 @@ export async function GET(request: Request) {
       catalogArticles: fitment.catalogArticles,
       analogArticles: fitment.analogArticles,
       oeNumbers: [...new Set([...fitment.oeNumbers, ...oeNumbers])],
+      normalizedQuery: normalization.normalizedQuery,
+      analogReferences: fitment.matches.map((match) => ({ brand: match.brand, article: match.article })).slice(0, 8),
     }),
     listSupplierStatuses(),
   ]);

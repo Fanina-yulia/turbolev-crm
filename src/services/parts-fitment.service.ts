@@ -1,6 +1,7 @@
 import { normalizeVin, validateVin } from "@/src/domain/vin";
 import { normalizeRegistrationPlate } from "@/src/domain/registration-plate";
 import { getPrisma } from "@/src/lib/prisma";
+import { normalizePartNeed } from "@/src/services/part-normalization.service";
 import { toPrismaJson } from "@/src/lib/prisma-json";
 import { BM_PARTS_VEHICLE_CONTEXT_VERSION, bmPartsAdapter } from "@/src/services/suppliers/bm-parts.adapter";
 import { resolvePartTerminology } from "@/src/services/parts-terminology.service";
@@ -133,11 +134,22 @@ async function findGenericArticle(intent: PartSearchIntent) {
     });
   }
 
+  const normalized = await normalizePartNeed({
+    query: intent.query,
+    partName: intent.partName,
+    genericArticleId: null,
+    position: intent.position || intent.side,
+  });
+  if (normalized.genericArticle) return normalized.genericArticle;
+
   const alias = aliasForIntent(intent);
-  if (!alias) return null;
+  const normalizedSlug = normalized.canonicalSlug?.trim();
+  if (!alias && !normalizedSlug) return null;
   const conditions = [
-    { slug: { contains: alias.slug, mode: "insensitive" as const } },
-    ...alias.terms.map((term) => ({ name: { contains: term, mode: "insensitive" as const } })),
+    ...(alias ? [{ slug: { contains: alias.slug, mode: "insensitive" as const } }] : []),
+    ...(normalizedSlug ? [{ slug: { contains: normalizedSlug, mode: "insensitive" as const } }] : []),
+    ...(alias ? alias.terms.map((term) => ({ name: { contains: term, mode: "insensitive" as const } })) : []),
+    ...(normalized.canonicalName ? [{ name: { contains: normalized.canonicalName, mode: "insensitive" as const } }] : []),
   ];
   return prisma.genericArticle.findFirst({
     where: { status: "ACTIVE", OR: conditions },
