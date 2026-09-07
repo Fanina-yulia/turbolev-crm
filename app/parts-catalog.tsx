@@ -199,8 +199,8 @@ export function PartsCatalog() {
   useEffect(() => {
     let cancelled = false;
     const loadContext = async () => {
-      if (!route.diagnosticId) { setContext(null); setVehicle(null); setRecommendedParts([]); setSelectedLines([]); setActiveFindingId(""); setOffers([]); setParts([]); void loadWorkOrders(); return; }
-      setContextLoading(true); setContext(null); setRecommendedParts([]); setSelectedLines([]); setOffers([]);
+      if (!route.diagnosticId) { setContext(null); setVehicle(null); setRecommendedParts([]); setSelectedLines([]); setActiveFindingId(""); setOffers([]); setFitment(null); setManualConfirmation(false); setParts([]); void loadWorkOrders(); return; }
+      setContextLoading(true); setContext(null); setRecommendedParts([]); setSelectedLines([]); setOffers([]); setFitment(null); setManualConfirmation(false);
       try {
         const [response, manualResponse] = await Promise.all([
           fetch(`/api/diagnostics/${encodeURIComponent(route.diagnosticId)}/structured`, { cache: "no-store", credentials: "include" }),
