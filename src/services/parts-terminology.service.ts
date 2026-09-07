@@ -450,8 +450,12 @@ function translateCatalogTerms(query: string) {
   ));
 }
 
-function providerAxisWord(provider: PartProvider, axis: PartAxis) {
+function providerAxisWord(provider: PartProvider, axis: PartAxis, definition: PartTerminologyDefinition) {
   if (!axis) return "";
+  if (definition.code === "CONTROL_ARM_BUSHING") {
+    if (provider === "BM_PARTS") return axis === "FRONT" ? "переднего" : "заднего";
+    return axis === "FRONT" ? "переднього" : "заднього";
+  }
   if (provider === "BM_PARTS") return axis === "FRONT" ? "передний" : "задний";
   return axis === "FRONT" ? "передній" : "задній";
 }
@@ -465,13 +469,17 @@ function providerSubPositionWord(provider: PartProvider, subPosition: PartSubPos
 function decorateProviderTerm(term: string, provider: PartProvider, definition: PartTerminologyDefinition, attributes: PartTerminologyAttributes) {
   let candidate = term.trim();
   const normalized = normalizePartTerminology(candidate);
-  const axisWord = providerAxisWord(provider, attributes.axis);
+  const axisWord = providerAxisWord(provider, attributes.axis, definition);
   const hasAxis = /(front|rear|передн|задн)/u.test(normalized);
-  if (axisWord && !hasAxis) candidate += " " + axisWord;
-
   const armTerm = /(control arm|важел|рычаг)/u.test(normalized);
+  if (axisWord && !hasAxis) {
+    const armNoun = provider === "BM_PARTS" ? /(рычаг\\w*)/u : /(важел\\w*)/u;
+    candidate = armTerm && armNoun.test(candidate)
+      ? candidate.replace(armNoun, axisWord + " $1")
+      : candidate + " " + axisWord;
+  }
+
   const subPositionWord = providerSubPositionWord(provider, attributes.subPosition);
-  const hasSubPosition = /(front|rear|передн|задн)/u.test(normalized);
   if (subPositionWord && definition.code === "CONTROL_ARM_BUSHING" && armTerm && !normalized.includes(subPositionWord)) {
     candidate += " " + subPositionWord;
   }
