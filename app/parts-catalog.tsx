@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { WorkOrderListItemContract } from "@/src/lib/contracts/crm-core";
 import { parseWorkOrderListPayload, parseWorkOrderNumbersPayload } from "@/src/lib/contracts/work-order-payload.parsers";
 import { formatWorkOrderNumber } from "@/src/domain/work-order-number";
@@ -69,6 +69,8 @@ export function PartsCatalog() {
   const [resolvedPlate, setResolvedPlate] = useState<string | null>(null);
   const [resolvedVin, setResolvedVin] = useState("");
   const [message, setMessage] = useState("Оберіть ремонтне замовлення або відкрийте підбір із Діагностичної карти.");
+  const searchRequestRef = useRef(0);
+  const searchAbortRef = useRef<AbortController | null>(null);
 
   useEffect(() => { const onRoute = () => setRoute(readCrmRoute()); window.addEventListener("popstate", onRoute); return () => window.removeEventListener("popstate", onRoute); }, []);
   useEffect(() => {
@@ -124,28 +126,52 @@ export function PartsCatalog() {
   }
 
   async function searchPart(queryValue = q, referenceValue = vehicleRef, recommendationOverride?: Recommendation | null) {
+    const requestId = ++searchRequestRef.current;
+    searchAbortRef.current?.abort();
+    const controller = new AbortController();
+    searchAbortRef.current = controller;
     const query = queryValue.trim();
+    const contextVehicleId = context?.vehicleId || route.vehicleId || "";
+    const contextVin = context?.vin || route.vin || "";
+    const activeReference = referenceValue.trim() || contextVin || context?.plateNumber || route.plate || "";
+    const vehicleReferenceProvided = Boolean(contextVehicleId || activeReference);
+
     if (query.length < 2) {
       setMessage("Введіть щонайменше 2 символи назви або артикулу деталі.");
+      if (searchAbortRef.current === controller) searchAbortRef.current = null;
       return;
     }
+
     setBusy(true);
     setSupplierSearchBlocked(false);
+    setOffers([]);
+    setSupplierProviders([]);
+    setConfiguredSuppliers([]);
+    setManualConfirmation(false);
     try {
       const recommendation = recommendationOverride
         || recommendedParts.find((item) => recommendationKey(item) === activeFindingId)
         || recommendedParts.find((item) => normalizeText(item.name) === normalizeText(query))
         || null;
-      const resolvedVin = await resolveVinFromReference(referenceValue);
+      const knownVin = normalizeVin(contextVin);
+      const resolvedVin = knownVin.length === 17
+        ? knownVin
+        : contextVehicleId
+          ? ""
+          : await resolveVinFromReference(activeReference);
+      if (knownVin.length === 17) setResolvedVin(knownVin);
+      if (requestId !== searchRequestRef.current) return;
+      const plateReference = activeReference && !looksLikeVin(activeReference) ? activeReference : "";
       const params = new URLSearchParams({ q: query });
       if (resolvedVin) params.set("vin", resolvedVin);
-      if (context?.vehicleId) params.set("vehicleId", context.vehicleId);
+      if (contextVehicleId) params.set("vehicleId", contextVehicleId);
+      if (plateReference) params.set("plate", plateReference);
       if (recommendation?.findingId) params.set("findingId", recommendation.findingId);
       if (recommendation?.manualPartId) params.set("manualPartId", recommendation.manualPartId);
       if (recommendation?.name) params.set("partName", recommendation.name);
       if (recommendation?.position) params.set("position", recommendation.position);
 
-      const referenceResponse = await fetch("/api/parts/search?" + params.toString(), { cache: "no-store", credentials: "include" });
+      const referenceResponse = await fetch("/api/parts/search?" + params.toString(), { cache: "no-store", credentials: "include", signal: controller.signal });
       const referenceData = await referenceResponse.json().catch(() => null) as {
         parts?: Part[];
         vehicle?: VehicleContext | null;
@@ -154,6 +180,7 @@ export function PartsCatalog() {
         error?: string;
         fitmentPolicy?: { message?: string };
       } | null;
+      if (requestId !== searchRequestRef.current) return;
       if (!referenceResponse.ok) throw new Error(referenceData?.error || "Довідковий каталог тимчасово недоступний.");
       setParts(Array.isArray(referenceData?.parts) ? referenceData.parts : []);
       const resolvedFitment = referenceData?.fitment || null;
@@ -161,8 +188,7 @@ export function PartsCatalog() {
       if (referenceData?.vehicle) setVehicle(referenceData.vehicle);
 
       const vehicleScoped = Boolean(
-        context?.vehicleId
-        || resolvedVin
+        vehicleReferenceProvided
         || referenceData?.vehicle?.id
         || resolvedFitment?.vehicle?.id
         || resolvedFitment?.vehicle?.vin
@@ -180,14 +206,15 @@ export function PartsCatalog() {
 
       const supplierParams = new URLSearchParams({ q: query });
       if (resolvedVin) supplierParams.set("vin", resolvedVin);
-      if (context?.vehicleId) supplierParams.set("vehicleId", context.vehicleId);
+      if (contextVehicleId) supplierParams.set("vehicleId", contextVehicleId);
+      if (plateReference) supplierParams.set("plate", plateReference);
       if (recommendation?.findingId) supplierParams.set("findingId", recommendation.findingId);
       if (recommendation?.manualPartId) supplierParams.set("manualPartId", recommendation.manualPartId);
       if (recommendation?.name) supplierParams.set("partName", recommendation.name);
       if (recommendation?.position) supplierParams.set("position", recommendation.position);
       if (Array.isArray(referenceData?.oeNumbers) && referenceData.oeNumbers.length) supplierParams.set("oeNumbers", referenceData.oeNumbers.join(","));
 
-      const supplierResponse = await fetch("/api/parts/suppliers?" + supplierParams.toString(), { cache: "no-store", credentials: "include" });
+      const supplierResponse = await fetch("/api/parts/suppliers?" + supplierParams.toString(), { cache: "no-store", credentials: "include", signal: controller.signal });
       const supplierData = await supplierResponse.json().catch(() => null) as {
         offers?: SupplierOffer[];
         providers?: SupplierProvider[];
@@ -197,30 +224,36 @@ export function PartsCatalog() {
         supplierSearchBlockReason?: string | null;
         error?: string;
       } | null;
+      if (requestId !== searchRequestRef.current) return;
       if (!supplierResponse.ok) throw new Error(supplierData?.error || "Постачальники тимчасово недоступні.");
-      setOffers(Array.isArray(supplierData?.offers) ? supplierData.offers : []);
-      setSupplierProviders(Array.isArray(supplierData?.providers) ? supplierData.providers : []);
-      setConfiguredSuppliers(Array.isArray(supplierData?.configuredSuppliers) ? supplierData.configuredSuppliers : []);
+      const supplierBlocked = Boolean(supplierData?.supplierSearchBlocked);
+      setOffers(supplierBlocked ? [] : Array.isArray(supplierData?.offers) ? supplierData.offers : []);
+      setSupplierProviders(supplierBlocked ? [] : Array.isArray(supplierData?.providers) ? supplierData.providers : []);
+      setConfiguredSuppliers(supplierBlocked ? [] : Array.isArray(supplierData?.configuredSuppliers) ? supplierData.configuredSuppliers : []);
       setFitment(supplierData?.fitment || referenceData?.fitment || null);
-      setSupplierSearchBlocked(Boolean(supplierData?.supplierSearchBlocked));
+      setSupplierSearchBlocked(supplierBlocked);
       setManualConfirmation(false);
       setMessage(supplierData?.fitment?.reason || referenceData?.fitmentPolicy?.message || (resolvedVin
         ? "VIN і позицію передано в каталог. Перевірте статус сумісності кожної пропозиції."
         : "Пошук виконано без VIN. Перед додаванням потрібне ручне підтвердження сумісності."));
     } catch (error) {
+      if (requestId !== searchRequestRef.current) return;
       setParts([]);
       setVehicle(null);
       setOffers([]);
       setFitment(null);
       setSupplierProviders([]);
       setConfiguredSuppliers([]);
-      setSupplierSearchBlocked(false);
+      setSupplierSearchBlocked(vehicleReferenceProvided);
+      setManualConfirmation(false);
       setMessage(error instanceof Error ? error.message : "Каталог тимчасово недоступний.");
     } finally {
-      setBusy(false);
+      if (requestId === searchRequestRef.current) {
+        setBusy(false);
+        if (searchAbortRef.current === controller) searchAbortRef.current = null;
+      }
     }
   }
-
   useEffect(() => {
     let cancelled = false;
     const loadContext = async () => {
@@ -318,7 +351,7 @@ export function PartsCatalog() {
   const analogOffers = offers.filter((offer) => offer.offerClass === "ANALOG");
   const manualOffers = offers.filter((offer) => offer.offerClass !== "OEM" && offer.offerClass !== "ANALOG");
   const categoryOffers = activeTab === "originals" ? originalOffers : analogOffers;
-  const pickerOffers = categoryOffers.length ? categoryOffers : manualOffers;
+  const pickerOffers = supplierSearchBlocked ? [] : categoryOffers.length ? categoryOffers : manualOffers;
 
   function openOrder(row: WorkOrderRow) { if (!row.id) { navigateCrm("Діагностика", { diagnosticId: row.diagnosticRequest.id }); return; } navigateCrm("Підбір запчастин", { diagnosticId: row.diagnosticRequest.id, workOrderId: row.id, workOrderNumber: orderLabel(row), vehicleId: row.vehicle.id, plate: row.vehicle.plateNumber || "", vin: row.vehicle.vin || "" }); }
 
