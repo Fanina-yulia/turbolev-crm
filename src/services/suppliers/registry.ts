@@ -94,6 +94,7 @@ export async function testSupplier(id: SupplierId) {
 export type SupplierSearchContext = {
   vehicleId?: string | null;
   vin?: string | null;
+  plate?: string | null;
   fitmentStatus?: PartFitmentStatus;
   fitmentConfidence?: number | null;
   fitmentSource?: string | null;
@@ -128,7 +129,7 @@ function annotateOffer(offer: SupplierOffer, context: SupplierSearchContext): Su
 export async function searchConfiguredSuppliers(query: string, limitPerSupplier = 20, context: SupplierSearchContext = {}) {
   const statuses = await listSupplierStatuses();
   const configuredIds = new Set(statuses.filter((supplier) => supplier.configured).map((supplier) => supplier.id));
-  const vehicleScoped = Boolean(context.vehicleId?.trim() || context.vin?.trim());
+  const vehicleScoped = Boolean(context.vehicleId?.trim() || context.vin?.trim() || context.plate?.trim());
   if (vehicleScoped && context.fitmentStatus !== "VERIFIED") {
     return {
       offers: [] as SupplierOffer[],

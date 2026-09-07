@@ -13,6 +13,7 @@ export async function GET(request: Request) {
   const q = (searchParams.get("q") ?? "").trim();
   const locationId = searchParams.get("locationId")?.trim() || null;
   const vehicleId = searchParams.get("vehicleId")?.trim() || null;
+  const plate = searchParams.get("plate")?.trim() || null;
   const vin = searchParams.get("vin")?.trim() || null;
   const partName = searchParams.get("partName")?.trim() || q;
   const position = searchParams.get("position")?.trim() || null;
@@ -37,6 +38,7 @@ export async function GET(request: Request) {
     genericArticleId,
     vehicleId,
     vin,
+    plate,
   });
   const fitmentPayload = {
     status: fitment.status,
@@ -47,13 +49,13 @@ export async function GET(request: Request) {
     catalog: fitment.catalog,
     genericArticle: fitment.genericArticle,
   };
-  const vehicleScoped = Boolean(vehicleId || vin || fitment.vehicle?.id || fitment.vehicle?.vin);
+  const vehicleScoped = Boolean(vehicleId || vin || plate || fitment.vehicle?.id || fitment.vehicle?.vin);
   if (vehicleScoped && fitment.status !== "VERIFIED") {
     const message = "Запит до постачальників не відправлено: для цього автомобіля немає підтвердженого зв’язку з OE-каталогом.";
     return NextResponse.json({
       status: "CATALOG_REQUIRED",
       query: q,
-      context: { vehicleId, vin, partName, position },
+      context: { vehicleId, vin, plate, partName, position },
       fitment: fitmentPayload,
       catalogMatches: fitment.matches,
       oeNumbers: fitment.oeNumbers,
@@ -90,6 +92,7 @@ export async function GET(request: Request) {
     searchConfiguredSuppliers(q, 20, {
       vehicleId,
       vin,
+      plate,
       fitmentStatus: fitment.status,
       fitmentConfidence: fitment.confidence,
       fitmentSource: fitment.catalog?.source || null,
@@ -108,7 +111,7 @@ export async function GET(request: Request) {
   return NextResponse.json({
     status: "OK",
     query: q,
-    context: { vehicleId, vin, partName, position },
+    context: { vehicleId, vin, plate, partName, position },
     fitment: fitmentPayload,
     catalogMatches: fitment.matches,
     oeNumbers: fitment.oeNumbers,
