@@ -115,6 +115,10 @@ export type SupplierSearchContext = {
   oeNumbers?: string[];
   normalizedQuery?: string | null;
   partName?: string | null;
+  canonicalCode?: string | null;
+  axis?: string | null;
+  side?: string | null;
+  subPosition?: string | null;
   position?: string | null;
   genericArticleId?: string | null;
 };
@@ -181,8 +185,12 @@ async function providerKnowledgeQueries(adapter: SupplierAdapter, query: string,
   return buildKnowledgeProviderPartQueryCandidates({
     query,
     partName: context.partName || query,
+    canonicalCode: context.canonicalCode,
     genericArticleId: context.genericArticleId,
     position: context.position,
+    axis: context.axis,
+    side: context.side,
+    subPosition: context.subPosition,
     provider,
   });
 }
@@ -202,6 +210,9 @@ async function vehicleScopedSearch(adapter: SupplierAdapter, query: string, limi
       vehicle: context.providerVehicle,
       limit: Math.min(Math.max(limit, 1), 50),
       position: null,
+      canonicalPart: context.canonicalCode || context.partName
+        ? { code: context.canonicalCode || null, name: context.partName || query, genericArticleId: context.genericArticleId || null }
+        : null,
     });
     return result.map((item) => item.offer);
   }

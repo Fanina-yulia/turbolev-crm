@@ -19,9 +19,12 @@ export type PartOfferClass = "OEM" | "ANALOG" | "UNKNOWN";
 export type PartSearchIntent = {
   query?: string | null;
   partName?: string | null;
+  canonicalCode?: string | null;
+  axis?: string | null;
   genericArticleId?: string | null;
   position?: string | null;
   side?: string | null;
+  subPosition?: string | null;
   vehicleId?: string | null;
   vin?: string | null;
   plate?: string | null;
@@ -125,16 +128,22 @@ async function findGenericArticle(intent: PartSearchIntent) {
   const normalized = await normalizePartNeed({
     query: intent.query,
     partName: intent.partName,
+    canonicalCode: intent.canonicalCode,
     genericArticleId: null,
     position: intent.position || intent.side,
+    axis: intent.axis,
+    side: intent.side,
+    subPosition: intent.subPosition,
   });
   if (normalized.genericArticle) return normalized.genericArticle;
 
   const knowledge = await resolvePartKnowledge({
     query: intent.query,
     partName: intent.partName,
+    canonicalCode: intent.canonicalCode,
     position: intent.position,
     side: intent.side,
+    subPosition: intent.subPosition,
   });
   if (knowledge.genericArticleId) {
     const linked = await prisma.genericArticle.findFirst({
@@ -405,7 +414,9 @@ async function resolveBmProviderFitment(
       position: requestedPosition,
       canonicalPart: genericArticle
         ? { code: genericArticle.code, slug: genericArticle.slug, name: genericArticle.name, genericArticleId: genericArticle.id }
-        : null,
+        : intent.canonicalCode || intent.partName
+          ? { code: intent.canonicalCode || null, slug: null, name: intent.partName || intent.query || null, genericArticleId: null }
+          : null,
     });
   } catch (error) {
     await auditProviderSearch({

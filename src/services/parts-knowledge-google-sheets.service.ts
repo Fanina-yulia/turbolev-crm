@@ -10,6 +10,7 @@ export const PARTS_KNOWLEDGE_SHEET_TABS = [
   "Operations",
   "Photos",
   "Unrecognized Terms",
+  "Diagnostic Mappings",
 ] as const;
 
 export type PartsKnowledgeSheetTab = (typeof PARTS_KNOWLEDGE_SHEET_TABS)[number];

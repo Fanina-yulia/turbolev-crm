@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getGoogleSheetsKnowledgeConfig } from "@/src/services/parts-knowledge-google-sheets.service";
-import { seedStaticPartKnowledge } from "@/src/services/parts-knowledge.service";
 import { getPartsKnowledgeStats, syncPartsKnowledgeFromGoogleSheets } from "@/src/services/parts-knowledge-sync.service";
 import {
   dualWritePartsKnowledge,
   PartsKnowledgeValidationError,
   retryPartsKnowledgeDualWrite,
+  seedPartsKnowledgeDualWrite,
 } from "@/src/services/parts-knowledge-dual-write.service";
 import { authorize } from "@/src/security/authorize";
 import { PERMISSIONS } from "@/src/security/permissions";
@@ -102,11 +102,11 @@ export async function POST(request: NextRequest) {
     }
 
     if (action === "SEED_DEFAULTS") {
-      const result = await seedStaticPartKnowledge();
+      const result = await seedPartsKnowledgeDualWrite();
       return NextResponse.json({
         ok: true,
         status: "SEEDED",
-        message: "Базові канонічні групи та синоніми додані до CRM. Для нових записів використовуйте UPSERT_DUAL.",
+        message: "Повний каталог діагностичних деталей і відповідностей записано до CRM та Google Sheets.",
         result,
       });
     }

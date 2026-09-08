@@ -1,4 +1,5 @@
 import { getPrisma } from "@/src/lib/prisma";
+import { resolvePartTerminology } from "@/src/services/parts-terminology.service";
 
 export type PartNormalizationSource = "EXPLICIT_ARTICLE" | "LOCAL_ALIAS" | "CATALOG_NAME" | "REFERENCE_RULE" | "NONE";
 
@@ -19,6 +20,8 @@ export type NormalizedPartNeed = {
   side: "LEFT" | "RIGHT" | null;
   confidence: number;
   source: PartNormalizationSource;
+  canonicalCode?: string | null;
+  subPosition?: "FRONT" | "REAR" | "UPPER" | "LOWER" | null;
 };
 
 type Rule = {
@@ -166,17 +169,34 @@ async function findCatalogArticle(input: {
 export async function normalizePartNeed(input: {
   query?: string | null;
   partName?: string | null;
+  canonicalCode?: string | null;
   genericArticleId?: string | null;
   position?: string | null;
+  axis?: string | null;
+  side?: string | null;
+  subPosition?: string | null;
 }) : Promise<NormalizedPartNeed> {
   const displayName = clean(input.partName || input.query) || "Запчастина";
   const source = normalizePartText([input.partName, input.query].filter(Boolean).join(" "));
   const normalizedQuery = normalizePartText(input.query || input.partName);
   const normalizedArticle = normalizePartArticle(input.query);
-  const position = normalizePartPosition(input.position || source);
+  const terminology = resolvePartTerminology({
+    query: input.query,
+    partName: input.partName,
+    canonicalCode: input.canonicalCode,
+    axis: input.axis,
+    position: input.position,
+    side: input.side,
+    subPosition: input.subPosition,
+  });
+  const explicitPosition = [input.axis, input.side, input.subPosition].filter(Boolean).join("_");
+  const position = normalizePartPosition(input.position || explicitPosition || source);
   const { axis, side } = positionParts(position);
   const rule = ruleFor(source);
   const candidates = phraseCandidates(source);
+  const canonicalNameFromTerminology = terminology.definition?.canonicalName || null;
+  const canonicalSlugFromTerminology = terminology.definition?.slug || null;
+  const subPosition = terminology.attributes.subPosition;
 
   if (input.genericArticleId?.trim()) {
     try {
@@ -185,14 +205,16 @@ export async function normalizePartNeed(input: {
         displayName,
         normalizedQuery,
         normalizedArticle,
-        canonicalName: genericArticle?.name || rule?.name || null,
-        canonicalSlug: genericArticle?.slug || rule?.slug || null,
+        canonicalName: genericArticle?.name || canonicalNameFromTerminology || rule?.name || null,
+        canonicalSlug: genericArticle?.slug || canonicalSlugFromTerminology || rule?.slug || null,
         genericArticle: genericArticle || null,
         position,
         axis,
         side,
         confidence: genericArticle ? 100 : 78,
         source: genericArticle ? "EXPLICIT_ARTICLE" : "REFERENCE_RULE",
+        canonicalCode: terminology.definition?.code || input.canonicalCode || null,
+        subPosition,
       };
     } catch (error) {
       console.warn("Explicit generic article lookup failed", error);
@@ -210,14 +232,16 @@ export async function normalizePartNeed(input: {
         displayName,
         normalizedQuery,
         normalizedArticle,
-        canonicalName: genericArticle.name,
-        canonicalSlug: genericArticle.slug,
+        canonicalName: genericArticle.name || canonicalNameFromTerminology,
+        canonicalSlug: genericArticle.slug || canonicalSlugFromTerminology,
         genericArticle,
         position,
         axis,
         side,
         confidence: aliasMatched ? 96 : 88,
         source: aliasMatched ? "LOCAL_ALIAS" : "CATALOG_NAME",
+        canonicalCode: terminology.definition?.code || input.canonicalCode || null,
+        subPosition,
       };
     }
   } catch (error) {
@@ -229,13 +253,15 @@ export async function normalizePartNeed(input: {
     displayName,
     normalizedQuery,
     normalizedArticle,
-    canonicalName: rule?.name || null,
-    canonicalSlug: rule?.slug || null,
+    canonicalName: canonicalNameFromTerminology || rule?.name || null,
+    canonicalSlug: canonicalSlugFromTerminology || rule?.slug || null,
     genericArticle: null,
     position,
     axis,
     side,
     confidence: rule ? 78 : 0,
     source: rule ? "REFERENCE_RULE" : "NONE",
+    canonicalCode: terminology.definition?.code || input.canonicalCode || null,
+    subPosition,
   };
 }

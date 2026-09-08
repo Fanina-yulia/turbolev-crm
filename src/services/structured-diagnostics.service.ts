@@ -10,6 +10,7 @@ import { getPrisma } from "@/src/lib/prisma";
 import { toPrismaJson } from "@/src/lib/prisma-json";
 import { DIAGNOSTIC_TEMPLATE_SEEDS } from "@/src/services/diagnostic-template-seeds";
 import { resolveDiagnosticWorkflowState } from "@/src/services/diagnostic-workflow.service";
+import { resolveMechanicDiagnosticPart } from "@/src/services/mechanic-part-catalog";
 
 export class StructuredDiagnosticError extends Error {
   code: string;
@@ -163,9 +164,16 @@ export async function getStructuredDiagnostic(diagnosticRequestId: string) {
           // combustion-only rows from an electric vehicle diagnostic.
           if (!check) return [];
           const finding = findingByCheck.get(check.id);
+          const mechanicPart = resolveMechanicDiagnosticPart({
+            itemCode: item.code,
+            itemName: item.name,
+            position: item.position,
+            sectionCode: section.code,
+          });
           return [{
             id: check.id,
             templateItemId: item.id,
+            code: item.code,
             name: item.name,
             position: item.position,
             measurementUnit: item.measurementUnit,
@@ -179,7 +187,8 @@ export async function getStructuredDiagnostic(diagnosticRequestId: string) {
               urgency: finding.urgency,
               findingText: finding.findingText,
               suggestedWorkName: finding.suggestedWorkName,
-              suggestedPartName: finding.suggestedPartName,
+              suggestedPartName: mechanicPart?.displayName || finding.suggestedPartName,
+              part: mechanicPart,
               media: mediaByFinding.get(finding.id) || [],
             } : null,
           }];
@@ -209,8 +218,10 @@ async function refreshInspection(inspectionId: string) { const prisma = getPrism
 export async function updateDiagnosticCheck(userId: string, diagnosticRequestId: string, checkId: string, input: { state: string; measurementValue?: string | number | null; measurementText?: string | null; note?: string | null; action?: string | null; urgency?: string | null; findingText?: string | null }) {
   const prisma = getPrisma(); await assertMechanicDiagnostic(userId, diagnosticRequestId); const review = await ensureReview(diagnosticRequestId); if (reviewLocked(review.state)) throw new StructuredDiagnosticError("DIAGNOSTIC_LOCKED", "Діагностика вже передана на перевірку.", 409);
   const state = Object.values(DiagnosticCheckState).find((value) => value === String(input.state || "").toUpperCase()); if (!state) throw new StructuredDiagnosticError("INVALID_CHECK_STATE", "Оберіть коректний стан перевірки."); const check = await prisma.diagnosticCheck.findUnique({ where: { id: checkId } }); if (!check) throw new StructuredDiagnosticError("CHECK_NOT_FOUND", "Пункт перевірки не знайдено.", 404); const inspection = await prisma.diagnosticInspection.findUnique({ where: { id: check.inspectionId } }); if (!inspection || inspection.diagnosticRequestId !== diagnosticRequestId) throw new StructuredDiagnosticError("CHECK_SCOPE_MISMATCH", "Пункт не належить цій діагностиці.", 403); const item = await prisma.diagnosticTemplateItem.findUnique({ where: { id: check.templateItemId } });
+  const mechanicPart = resolveMechanicDiagnosticPart({ itemCode: item?.code, itemName: item?.name, position: item?.position });
+  const suggestedPartName = mechanicPart?.displayName || item?.suggestedPartName || null;
   const measurementValue = input.measurementValue === "" || input.measurementValue == null ? null : Number(input.measurementValue); if (measurementValue !== null && !Number.isFinite(measurementValue)) throw new StructuredDiagnosticError("INVALID_MEASUREMENT", "Вкажіть коректний числовий замір."); const action = Object.values(DiagnosticFindingAction).find((value) => value === String(input.action || "NONE").toUpperCase()) || DiagnosticFindingAction.NONE; const urgency = Object.values(DiagnosticUrgency).find((value) => value === String(input.urgency || "INFO").toUpperCase()) || DiagnosticUrgency.INFO;
-  await prisma.$transaction(async (tx) => { await tx.diagnosticCheck.update({ where: { id: checkId }, data: { state, measurementValue, measurementText: typeof input.measurementText === "string" ? input.measurementText.trim().slice(0,160) || null : null, note: typeof input.note === "string" ? input.note.trim().slice(0,4000) || null : null, checkedAt: state === DiagnosticCheckState.NOT_CHECKED ? null : new Date() } }); const problem = state === DiagnosticCheckState.ATTENTION || state === DiagnosticCheckState.DEFECT; if (problem) await tx.diagnosticFinding.upsert({ where: { checkId }, create: { checkId, action, urgency, findingText: typeof input.findingText === "string" ? input.findingText.trim().slice(0,4000) || null : null, suggestedWorkName: item?.suggestedWorkName || null, suggestedPartName: item?.suggestedPartName || null }, update: { action, urgency, findingText: typeof input.findingText === "string" ? input.findingText.trim().slice(0,4000) || null : null, suggestedWorkName: item?.suggestedWorkName || undefined, suggestedPartName: item?.suggestedPartName || undefined } }); else { const finding = await tx.diagnosticFinding.findUnique({ where: { checkId } }); if (finding) { await tx.diagnosticMedia.deleteMany({ where: { findingId: finding.id } }); await tx.diagnosticFinding.delete({ where: { id: finding.id } }); } } }); await refreshInspection(inspection.id); return getStructuredDiagnosticForMechanic(userId, diagnosticRequestId);
+  await prisma.$transaction(async (tx) => { await tx.diagnosticCheck.update({ where: { id: checkId }, data: { state, measurementValue, measurementText: typeof input.measurementText === "string" ? input.measurementText.trim().slice(0,160) || null : null, note: typeof input.note === "string" ? input.note.trim().slice(0,4000) || null : null, checkedAt: state === DiagnosticCheckState.NOT_CHECKED ? null : new Date() } }); const problem = state === DiagnosticCheckState.ATTENTION || state === DiagnosticCheckState.DEFECT; if (problem) await tx.diagnosticFinding.upsert({ where: { checkId }, create: { checkId, action, urgency, findingText: typeof input.findingText === "string" ? input.findingText.trim().slice(0,4000) || null : null, suggestedWorkName: item?.suggestedWorkName || null, suggestedPartName }, update: { action, urgency, findingText: typeof input.findingText === "string" ? input.findingText.trim().slice(0,4000) || null : null, suggestedWorkName: item?.suggestedWorkName || undefined, suggestedPartName: suggestedPartName || undefined } }); else { const finding = await tx.diagnosticFinding.findUnique({ where: { checkId } }); if (finding) { await tx.diagnosticMedia.deleteMany({ where: { findingId: finding.id } }); await tx.diagnosticFinding.delete({ where: { id: finding.id } }); } } }); await refreshInspection(inspection.id); return getStructuredDiagnosticForMechanic(userId, diagnosticRequestId);
 }
 
 export async function setDiagnosticSectionAllOk(userId: string, diagnosticRequestId: string, inspectionId: string, sectionId: string) {

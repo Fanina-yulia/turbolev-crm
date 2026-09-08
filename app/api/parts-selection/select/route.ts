@@ -27,6 +27,10 @@ export async function POST(request: Request) {
       vehicleVin?: string | null;
       vehicleId?: string | null;
       partName?: string | null;
+      canonicalCode?: string | null;
+      axis?: string | null;
+      side?: string | null;
+      subPosition?: string | null;
       position?: string | null;
       fitmentStatus?: PartFitmentStatus | null;
       fitmentExact?: boolean | null;
@@ -60,6 +64,10 @@ export async function POST(request: Request) {
       vehicleVin: body?.vehicleVin || null,
       vehicleId: body?.vehicleId || null,
       partName: body?.partName || null,
+      canonicalCode: body?.canonicalCode || null,
+      axis: body?.axis || null,
+      side: body?.side || null,
+      subPosition: body?.subPosition || null,
       position: body?.position || null,
       fitmentStatus: body?.fitmentStatus || null,
       fitmentExact: body?.fitmentExact ?? null,

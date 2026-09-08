@@ -17,6 +17,10 @@ export async function GET(request: Request) {
   const plate = searchParams.get("plate")?.trim() || null;
   const vin = searchParams.get("vin")?.trim() || null;
   const partName = searchParams.get("partName")?.trim() || q;
+  const canonicalCode = searchParams.get("canonicalCode")?.trim() || null;
+  const axis = searchParams.get("axis")?.trim() || null;
+  const side = searchParams.get("side")?.trim() || null;
+  const subPosition = searchParams.get("subPosition")?.trim() || null;
   const position = searchParams.get("position")?.trim() || null;
   const genericArticleId = searchParams.get("genericArticleId")?.trim() || null;
   const oeNumbers = [...new Set((searchParams.get("oeNumbers") || "")
@@ -35,13 +39,17 @@ export async function GET(request: Request) {
   const fitment = await resolvePartFitment({
     query: q,
     partName,
+    canonicalCode,
+    axis,
     position,
+    side,
+    subPosition,
     genericArticleId,
     vehicleId,
     vin,
     plate,
   });
-  const normalization = await normalizePartNeed({ query: q, partName, genericArticleId, position });
+  const normalization = await normalizePartNeed({ query: q, partName, canonicalCode, genericArticleId, position, axis, side, subPosition });
   const fitmentPayload = {
     status: fitment.status,
     confirmed: fitment.confirmed,
@@ -60,7 +68,7 @@ export async function GET(request: Request) {
     return NextResponse.json({
       status: "CATALOG_REQUIRED",
       query: q,
-      context: { vehicleId, vin, plate, partName, position },
+      context: { vehicleId, vin, plate, partName, canonicalCode, axis, side, subPosition, position },
       fitment: fitmentPayload,
       catalogMatches: fitment.matches,
       oeNumbers: fitment.oeNumbers,
@@ -106,6 +114,10 @@ export async function GET(request: Request) {
       fitmentReason: fitment.reason,
       providerVehicle: fitment.providerVehicle,
       partName,
+      canonicalCode,
+      axis,
+      side,
+      subPosition,
       position,
       genericArticleId,
       catalogArticles: fitment.catalogArticles,
@@ -124,7 +136,7 @@ export async function GET(request: Request) {
   return NextResponse.json({
     status: "OK",
     query: q,
-    context: { vehicleId, vin, plate, partName, position },
+    context: { vehicleId, vin, plate, partName, canonicalCode, axis, side, subPosition, position },
     fitment: fitmentPayload,
     catalogMatches: fitment.matches,
     oeNumbers: fitment.oeNumbers,

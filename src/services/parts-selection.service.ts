@@ -165,6 +165,10 @@ export async function selectDiagnosticPartOffer(input: {
   vehicleVin?: string | null;
   vehicleId?: string | null;
   partName?: string | null;
+  canonicalCode?: string | null;
+  axis?: string | null;
+  side?: string | null;
+  subPosition?: string | null;
   position?: string | null;
   fitmentStatus?: PartFitmentStatus | null;
   fitmentExact?: boolean | null;
@@ -199,6 +203,10 @@ export async function selectDiagnosticPartOffer(input: {
   const fitment = await resolvePartFitment({
     query: input.partName || suggestion.description,
     partName: input.partName || suggestion.description,
+    canonicalCode: input.canonicalCode || null,
+    axis: input.axis || null,
+    side: input.side || null,
+    subPosition: input.subPosition || null,
     position: input.position || null,
     vehicleId: clean(input.vehicleId, 160) || null,
     vin: input.vehicleVin || null,
@@ -246,6 +254,13 @@ export async function selectDiagnosticPartOffer(input: {
     fitmentSource: fitment.catalog?.source || input.fitmentSource || null,
     fitmentReason: fitment.reason,
     providerVehicle: fitment.providerVehicle,
+    canonicalCode: input.canonicalCode || null,
+    axis: input.axis || null,
+    side: input.side || null,
+    subPosition: input.subPosition || null,
+    partName: input.partName || suggestion.description,
+    position: input.position || null,
+    genericArticleId: fitment.genericArticle?.id || null,
     catalogArticles: fitment.catalogArticles,
     analogArticles: fitment.analogArticles,
     oeNumbers: fitment.oeNumbers,

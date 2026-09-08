@@ -5,6 +5,8 @@ import { CatalogEntityStatus } from "@/src/generated/prisma/client";
 import { getPrisma } from "@/src/lib/prisma";
 import { toPrismaJson } from "@/src/lib/prisma-json";
 import { normalizePartTerminology } from "@/src/services/parts-terminology.service";
+import { listMechanicDiagnosticMappings } from "@/src/services/mechanic-part-catalog";
+import { listPartTerminology } from "@/src/services/parts-terminology.service";
 import {
   writePartsKnowledgeToGoogleSheets,
   type PartsKnowledgeSheetWrite,
@@ -39,6 +41,7 @@ export type PartsKnowledgeDualWriteInput = {
   } | null;
   aliases?: unknown;
   providerTerms?: unknown;
+  diagnosticMappings?: unknown;
 };
 
 type NormalizedPart = {
@@ -65,10 +68,31 @@ type NormalizedAlias = {
   sourceVersion: string;
 };
 
+type NormalizedDiagnosticMapping = {
+  itemCode: string;
+  sectionCode: string;
+  itemName: string;
+  canonicalCode: string;
+  canonicalName: string;
+  displayName: string;
+  axis: string;
+  side: string;
+  subPosition: string;
+  position: string;
+  category: string;
+  bmPartsTerms: string;
+  unitradeTerms: string;
+  synonyms: string;
+  searchEnabled: boolean;
+  source: string;
+  sourceVersion: string;
+};
+
 type NormalizedInput = {
   part: NormalizedPart;
   aliases: NormalizedAlias[];
   providerTerms: NormalizedAlias[];
+  diagnosticMappings: NormalizedDiagnosticMapping[];
 };
 
 type CrmWriteResult = {
@@ -177,6 +201,37 @@ function dedupeAliases(values: NormalizedAlias[]) {
   return result;
 }
 
+function stringList(value: unknown) {
+  const values = Array.isArray(value) ? value : [value];
+  return [...new Set(values.map((item) => text(item, 240)).filter(Boolean))].join(" | ");
+}
+
+function diagnosticMappingFromUnknown(value: unknown, fallback: { source: string; sourceVersion: string }): NormalizedDiagnosticMapping | null {
+  const source = record(value);
+  const itemCode = text(source.itemCode ?? source.item_code, 80).toUpperCase();
+  const canonicalCode = text(source.canonicalCode ?? source.canonical_code, 80).toUpperCase();
+  if (!itemCode || !canonicalCode) return null;
+  return {
+    itemCode,
+    sectionCode: text(source.sectionCode ?? source.section_code, 100),
+    itemName: text(source.itemName ?? source.item_name, 240),
+    canonicalCode,
+    canonicalName: text(source.canonicalName ?? source.canonical_name, 240),
+    displayName: text(source.displayName ?? source.display_name, 280),
+    axis: hint(source.axis, ["FRONT", "REAR"]),
+    side: hint(source.side, ["LEFT", "RIGHT"]),
+    subPosition: hint(source.subPosition ?? source.sub_position, ["FRONT", "REAR", "UPPER", "LOWER"]),
+    position: text(source.position, 160),
+    category: text(source.category, 120),
+    bmPartsTerms: stringList(source.bmPartsTerms ?? source.bm_parts_terms),
+    unitradeTerms: stringList(source.unitradeTerms ?? source.unitrade_terms),
+    synonyms: stringList(source.synonyms),
+    searchEnabled: source.searchEnabled === false || source.search_enabled === false ? false : true,
+    source: text(source.source, 64) || fallback.source,
+    sourceVersion: text(source.sourceVersion ?? source.source_version, 160) || fallback.sourceVersion,
+  };
+}
+
 function normalizeInput(input: unknown): NormalizedInput {
   const root = record(input);
   const rawPart = record(root.part);
@@ -197,6 +252,7 @@ function normalizeInput(input: unknown): NormalizedInput {
 
   const rawAliases = Array.isArray(root.aliases) ? root.aliases : [];
   const rawProviderTerms = Array.isArray(root.providerTerms) ? root.providerTerms : [];
+  const rawDiagnosticMappings = Array.isArray(root.diagnosticMappings) ? root.diagnosticMappings : [];
   const aliases = dedupeAliases([
     {
       alias: name,
@@ -221,11 +277,15 @@ function normalizeInput(input: unknown): NormalizedInput {
     ...value,
     aliasType: "PROVIDER_TERM",
   }));
+  const diagnosticMappings = rawDiagnosticMappings
+    .map((value) => diagnosticMappingFromUnknown(value, { source: part.source, sourceVersion: part.sourceVersion }))
+    .filter(Boolean) as NormalizedDiagnosticMapping[];
 
   return {
     part,
     aliases: aliases.filter((value) => !value.provider),
     providerTerms,
+    diagnosticMappings,
   };
 }
 
@@ -288,6 +348,32 @@ function buildSheetWrites(input: NormalizedInput): PartsKnowledgeSheetWrite[] {
         status: term.status,
         source: term.source,
         source_version: term.sourceVersion,
+      }),
+    });
+  }
+
+  for (const mapping of input.diagnosticMappings) {
+    writes.push({
+      tab: "Diagnostic Mappings",
+      matchBy: ["item_code"],
+      row: sheetRow({
+        item_code: mapping.itemCode,
+        section_code: mapping.sectionCode,
+        item_name: mapping.itemName,
+        canonical_code: mapping.canonicalCode,
+        canonical_name: mapping.canonicalName,
+        display_name: mapping.displayName,
+        axis: mapping.axis,
+        side: mapping.side,
+        sub_position: mapping.subPosition,
+        position: mapping.position,
+        category: mapping.category,
+        bm_parts_terms: mapping.bmPartsTerms,
+        unitrade_terms: mapping.unitradeTerms,
+        synonyms: mapping.synonyms,
+        search_enabled: String(mapping.searchEnabled),
+        source: mapping.source,
+        source_version: mapping.sourceVersion,
       }),
     });
   }
@@ -531,4 +617,63 @@ export async function retryPartsKnowledgeDualWrite(operationId: unknown) {
   if (!operation) throw new PartsKnowledgeValidationError("Dual-write операцію не знайдено.");
 
   return dualWritePartsKnowledge(operation.payload, { operationKey: operation.operationKey });
+}
+
+/**
+ * Publishes the complete mechanic vocabulary to both stores. The CRM and the
+ * spreadsheet are still written independently for every canonical part, so a
+ * temporary outage in either destination is visible as a partial operation.
+ */
+export async function seedPartsKnowledgeDualWrite() {
+  const definitions = listPartTerminology();
+  const mappings = listMechanicDiagnosticMappings();
+  const results: Array<{ code: string; status: string; operationId?: string }> = [];
+
+  for (const definition of definitions) {
+    const providerTerms = [
+      ...definition.providerTerms.BM_PARTS.map((term) => ({ term, provider: "BM_PARTS", language: "ru" })),
+      ...definition.providerTerms.UNITRADE.map((term) => ({ term, provider: "UNITRADE", language: "uk" })),
+    ];
+    const diagnosticMappings = mappings
+      .filter((mapping) => mapping.code === definition.code)
+      .map((mapping) => ({
+        itemCode: mapping.itemCode,
+        canonicalCode: mapping.code,
+        canonicalName: mapping.canonicalName,
+        displayName: mapping.displayName,
+        axis: mapping.axis,
+        side: mapping.side,
+        subPosition: mapping.subPosition,
+        position: mapping.position,
+        category: mapping.category,
+        bmPartsTerms: definition.providerTerms.BM_PARTS,
+        unitradeTerms: definition.providerTerms.UNITRADE,
+        synonyms: definition.aliases,
+        searchEnabled: mapping.searchable,
+        source: "MECHANIC_DIAGNOSTIC_CATALOG",
+        sourceVersion: "v2",
+      }));
+
+    const result = await dualWritePartsKnowledge({
+      part: {
+        code: definition.code,
+        name: definition.canonicalName,
+        slug: definition.slug,
+        category: definition.category,
+        source: "MECHANIC_DIAGNOSTIC_CATALOG",
+        sourceVersion: "v2",
+      },
+      aliases: definition.aliases,
+      providerTerms,
+      diagnosticMappings,
+    }, { operationKey: `MECHANIC_DIAGNOSTIC_CATALOG:v2:${definition.code}` });
+    results.push({ code: definition.code, status: result.status, operationId: result.operationId });
+  }
+
+  return {
+    status: results.every((result) => result.status === "SUCCEEDED") ? "SUCCEEDED" : "PARTIAL",
+    definitionCount: definitions.length,
+    mappingCount: mappings.length,
+    operations: results,
+  };
 }

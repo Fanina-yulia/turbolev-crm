@@ -29,6 +29,7 @@ const TAB_HEADERS: Record<PartsKnowledgeSheetTab, string[]> = {
   Operations: ["generic_code", "operation_code", "operation_name", "service_code", "position_rule", "norm_minutes", "default_quantity", "status", "source", "source_version", "notes"],
   Photos: ["generic_code", "media_type", "url", "storage_key", "rights", "status", "alt_text", "sort_order", "content_hash", "source"],
   "Unrecognized Terms": ["raw_term", "normalized_term", "suggested_code", "status", "source", "diagnostic_finding_id", "metadata_json"],
+  "Diagnostic Mappings": ["item_code", "section_code", "item_name", "canonical_code", "canonical_name", "display_name", "axis", "side", "sub_position", "position", "category", "bm_parts_terms", "unitrade_terms", "synonyms", "search_enabled", "source", "source_version"],
 };
 
 function text(value: unknown, max = 500) {

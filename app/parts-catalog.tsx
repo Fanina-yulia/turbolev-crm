@@ -18,7 +18,7 @@ type FitmentPayload = FitmentSummary & { vehicle?: { id?: string | null; vin?: s
 type VehicleContext = { id?: string; vin?: string; make?: string | null; model?: string | null; year?: number | null; engine?: string | null; engineVolumeL?: number | null; fuelType?: string | null; mileageKm?: number | null; plateNumber?: string | null; confidence?: number; source?: string | null; label?: string | null; generation?: { name?: string } | null };
 type SupplierOffer = { supplierId: string; supplierName: string; externalProductId: string | null; article: string; brand: string | null; name: string; purchasePrice: number | null; currency: string | null; multiplicity: number | null; stock: Array<{ warehouse: string; quantity: string; warehouseId?: string | null }>; available: boolean; sourceUrl: string | null; imageUrl?: string | null; oeNumbers?: string[]; vehicleMatch?: string | null; analogOfArticle?: string | null; markupPercent?: number | null; sellPrice?: number | null; offerClass?: "OEM" | "ANALOG" | "UNKNOWN"; fitmentStatus?: string; fitmentConfidence?: number | null; fitmentExact?: boolean | null; fitmentSource?: string | null; fitmentReason?: string | null; catalogProductId?: string | null; offerReason?: string | null; sourceKind?: "DIRECT" | "OEM" | "ANALOG" | "NAME"; stockTotal?: number | null; quantityMode?: string; fetchedAt?: string | null };
 type SupplierProvider = { id: string; ok: boolean; message?: string };
-type Recommendation = { findingId: string | null; manualPartId: string | null; name: string; article: string | null; position: string; quantity: number; action: string; urgency: string; note: string; mediaCount: number };
+type Recommendation = { findingId: string | null; manualPartId: string | null; name: string; article: string | null; position: string; quantity: number; action: string; urgency: string; note: string; mediaCount: number; canonicalCode: string | null; canonicalName: string | null; axis: string | null; side: string | null; subPosition: string | null };
 type SelectedLine = { findingId: string; partName: string; supplierName: string; article: string; brand: string | null; warehouse: string | null; purchasePrice: number; sellPrice: number; markupPercent: number; currency: string; quantity: number; externalProductId?: string | null; offerClass?: "OEM" | "ANALOG" | "UNKNOWN"; fitmentReason?: string | null };
 type ManualPartPayload = { id: string; findingId: string | null; name: string; article: string | null; brand: string | null; position: string | null; quantity: string | number; note: string | null };
 type WorkOrderRow = WorkOrderListItemContract;
@@ -28,7 +28,7 @@ type ContextSummary = { workOrderId: string | null; orderNumber: string; clientN
 type DiagnosticPartsPayload = {
   ok?: boolean;
   diagnostic?: { workOrder?: { id?: string; status?: string } | null; client?: { name?: string | null; phone?: string | null } | null; vehicle?: { id?: string; brand?: string | null; model?: string | null; year?: number | null; label?: string | null; plateNumber?: string | null; vin?: string | null; mileageKm?: number | null } | null };
-  inspections?: Array<{ sections?: Array<{ name?: string; items?: Array<{ name?: string; position?: string | null; finding?: { id?: string; action?: string; urgency?: string; findingText?: string | null; suggestedPartName?: string | null; media?: unknown[] } | null }> }> }>;
+  inspections?: Array<{ sections?: Array<{ name?: string; items?: Array<{ code?: string; name?: string; position?: string | null; part?: { code?: string; canonicalName?: string; displayName?: string; axis?: string | null; side?: string | null; subPosition?: string | null; position?: string | null } | null; finding?: { id?: string; action?: string; urgency?: string; findingText?: string | null; suggestedPartName?: string | null; media?: unknown[] } | null }> }> }>;
   manualParts?: ManualPartPayload[];
 };
 
@@ -192,6 +192,10 @@ export function PartsCatalog() {
       if (recommendation?.findingId) params.set("findingId", recommendation.findingId);
       if (recommendation?.manualPartId) params.set("manualPartId", recommendation.manualPartId);
       if (recommendation?.name) params.set("partName", recommendation.name);
+      if (recommendation?.canonicalCode) params.set("canonicalCode", recommendation.canonicalCode);
+      if (recommendation?.axis) params.set("axis", recommendation.axis);
+      if (recommendation?.side) params.set("side", recommendation.side);
+      if (recommendation?.subPosition) params.set("subPosition", recommendation.subPosition);
       if (recommendation?.position) params.set("position", recommendation.position);
 
       const referenceResponse = await fetch("/api/parts/search?" + params.toString(), { cache: "no-store", credentials: "include", signal: controller.signal });
@@ -234,6 +238,10 @@ export function PartsCatalog() {
       if (recommendation?.findingId) supplierParams.set("findingId", recommendation.findingId);
       if (recommendation?.manualPartId) supplierParams.set("manualPartId", recommendation.manualPartId);
       if (recommendation?.name) supplierParams.set("partName", recommendation.name);
+      if (recommendation?.canonicalCode) supplierParams.set("canonicalCode", recommendation.canonicalCode);
+      if (recommendation?.axis) supplierParams.set("axis", recommendation.axis);
+      if (recommendation?.side) supplierParams.set("side", recommendation.side);
+      if (recommendation?.subPosition) supplierParams.set("subPosition", recommendation.subPosition);
       if (recommendation?.position) supplierParams.set("position", recommendation.position);
       if (Array.isArray(referenceData?.oeNumbers) && referenceData.oeNumbers.length) supplierParams.set("oeNumbers", referenceData.oeNumbers.join(","));
 
@@ -298,19 +306,25 @@ export function PartsCatalog() {
             (section.items || []).flatMap((item) => {
               const finding = item.finding;
               if (!finding?.id) return [];
-              const partName = finding.suggestedPartName?.trim() || (finding.action === "REPLACE" ? item.name?.trim() : "");
+              const part = item.part;
+              const partName = part?.displayName?.trim() || finding.suggestedPartName?.trim() || (finding.action === "REPLACE" ? item.name?.trim() : "");
               if (!partName) return [];
               const recommendation: Recommendation = {
                 findingId: finding.id,
                 manualPartId: null,
                 name: partName,
                 article: null,
-                position: item.position?.trim() || section.name?.trim() || "—",
+                position: part?.position?.trim() || item.position?.trim() || section.name?.trim() || "—",
                 quantity: 1,
                 action: finding.action || "REPLACE",
                 urgency: finding.urgency || "INFO",
                 note: finding.findingText?.trim() || "Зафіксовано в Діагностичній карті",
                 mediaCount: Array.isArray(finding.media) ? finding.media.length : 0,
+                canonicalCode: part?.code || null,
+                canonicalName: part?.canonicalName || null,
+                axis: part?.axis || null,
+                side: part?.side || null,
+                subPosition: part?.subPosition || null,
               };
               return [recommendation];
             }),
@@ -327,6 +341,11 @@ export function PartsCatalog() {
           urgency: "INFO",
           note: part.note?.trim() || "Додано вручну в Діагностичній карті",
           mediaCount: 0,
+          canonicalCode: null,
+          canonicalName: null,
+          axis: null,
+          side: null,
+          subPosition: null,
         }));
         const allRecommendationRows = [...recommendationRows, ...manualRecommendationRows];
         const hydratedSelectedLines: SelectedLine[] = (handoffPayload?.suggestions || []).flatMap((suggestion) => {
@@ -451,7 +470,7 @@ export function PartsCatalog() {
         return;
       }
       const vinSearch = selectionVin.length === 17 && catalogVerified;
-      const response = await fetch("/api/parts-selection/select", { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ diagnosticId: route.diagnosticId, findingId: activeRecommendation.findingId, manualPartId: activeRecommendation.manualPartId, quantity: activeRecommendation.quantity, supplierId: offer.supplierId, externalProductId: offer.externalProductId, article: offer.article, searchMode: vinSearch ? "VIN" : "PART_NUMBER", vehicleVin: selectionVin || null, vehicleId: context?.vehicleId || null, partName: activeRecommendation.name, position: activeRecommendation.position, fitmentStatus: offer.fitmentStatus || fitment?.status || null, fitmentExact: offer.fitmentExact ?? fitment?.exact ?? null, fitmentProductId: offer.catalogProductId || null, fitmentSource: offer.fitmentSource || fitment?.source || null, manualConfirmation: !vinSearch }) });
+      const response = await fetch("/api/parts-selection/select", { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ diagnosticId: route.diagnosticId, findingId: activeRecommendation.findingId, manualPartId: activeRecommendation.manualPartId, quantity: activeRecommendation.quantity, supplierId: offer.supplierId, externalProductId: offer.externalProductId, article: offer.article, searchMode: vinSearch ? "VIN" : "PART_NUMBER", vehicleVin: selectionVin || null, vehicleId: context?.vehicleId || null, partName: activeRecommendation.name, canonicalCode: activeRecommendation.canonicalCode, axis: activeRecommendation.axis, side: activeRecommendation.side, subPosition: activeRecommendation.subPosition, position: activeRecommendation.position, fitmentStatus: offer.fitmentStatus || fitment?.status || null, fitmentExact: offer.fitmentExact ?? fitment?.exact ?? null, fitmentProductId: offer.catalogProductId || null, fitmentSource: offer.fitmentSource || fitment?.source || null, manualConfirmation: !vinSearch }) });
       const data = await response.json().catch(() => null) as { ok?: boolean; message?: string; error?: string; selected?: { supplierId?: string; supplierName: string; article: string; brand: string | null; purchasePrice: number; markupPercent: number; sellPrice: number; currency: string; externalProductId?: string | null } } | null;
       if (!response.ok || !data?.ok || !data.selected) throw new Error(data?.message || data?.error || "Не вдалося зберегти вибрану деталь.");
       const selected = data.selected; const selectedKey = recommendationKey(activeRecommendation); const warehouse = offer.stock.find((row) => row.warehouseId && Number(row.quantity.replace(/[^0-9.,-]/g, "").replace(",", ".")) > 0)?.warehouse || offer.stock[0]?.warehouse || null; setSelectedLines((current) => [...current.filter((line) => line.findingId !== selectedKey), { findingId: selectedKey, partName: activeRecommendation.name, supplierName: selected.supplierName, article: selected.article, brand: selected.brand, warehouse, purchasePrice: selected.purchasePrice, sellPrice: selected.sellPrice, markupPercent: selected.markupPercent, currency: selected.currency, quantity: activeRecommendation.quantity, externalProductId: selected.externalProductId || offer.externalProductId, offerClass: offer.offerClass, fitmentReason: offer.fitmentReason || offer.offerReason }]); setPickerOpen(false); setMessage(`Позицію збережено: ${selected.supplierName} · ${selected.article}.`); window.dispatchEvent(new CustomEvent("turbolev:data-changed"));

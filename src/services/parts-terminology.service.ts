@@ -1,3 +1,8 @@
+import {
+  MECHANIC_PART_DEFINITIONS,
+  type MechanicPartDefinition,
+} from "@/src/services/mechanic-part-catalog";
+
 export type PartProvider = "BM_PARTS" | "UNITRADE";
 
 export type PartAxis = "FRONT" | "REAR" | null;
@@ -16,6 +21,8 @@ export type PartTerminologyDefinition = {
   canonicalName: string;
   aliases: readonly string[];
   providerTerms?: Partial<Record<PartProvider, readonly string[]>>;
+  category?: string;
+  searchable?: boolean;
 };
 
 export type PartTerminologyResolution = {
@@ -31,12 +38,13 @@ export type PartTerminologyInput = {
   partName?: string | null;
   canonicalCode?: string | null;
   canonicalSlug?: string | null;
+  axis?: string | null;
   position?: string | null;
   side?: string | null;
   subPosition?: string | null;
 };
 
-const PART_TERMINOLOGY: readonly PartTerminologyDefinition[] = [
+const BASE_PART_TERMINOLOGY: readonly PartTerminologyDefinition[] = [
   {
     slug: "ball-joint",
     code: "BALL_JOINT",
@@ -261,6 +269,25 @@ const PART_TERMINOLOGY: readonly PartTerminologyDefinition[] = [
   },
 ] as const;
 
+function extensionToTerminology(definition: MechanicPartDefinition): PartTerminologyDefinition {
+  return {
+    slug: definition.slug,
+    code: definition.code,
+    canonicalName: definition.canonicalName,
+    aliases: definition.aliases,
+    providerTerms: definition.providerTerms,
+    category: definition.category,
+    searchable: definition.searchable,
+  };
+}
+
+const PART_TERMINOLOGY: readonly PartTerminologyDefinition[] = [
+  ...BASE_PART_TERMINOLOGY,
+  ...MECHANIC_PART_DEFINITIONS
+    .filter((definition) => !BASE_PART_TERMINOLOGY.some((item) => item.code === definition.code))
+    .map(extensionToTerminology),
+];
+
 const CATALOG_LANGUAGE_ALIASES: Record<string, string> = {
   "передній": "передний",
   "передня": "передняя",
@@ -375,7 +402,7 @@ function detectAttributes(source: string, definition: PartTerminologyDefinition 
   const rear = /(rear|задн)/u.test(source);
   const left = /(left|лів|лев)/u.test(source);
   const right = /(right|прав)/u.test(source);
-  let axis: PartAxis = axisFromValue(input.position) || (front ? "FRONT" : rear ? "REAR" : null);
+  let axis: PartAxis = axisFromValue(input.axis) || axisFromValue(input.position) || (front ? "FRONT" : rear ? "REAR" : null);
   let subPosition: PartSubPosition = subPositionFromValue(input.subPosition);
 
   if (definition?.code === "CONTROL_ARM_BUSHING" && front && rear) {
@@ -424,7 +451,12 @@ export function resolvePartTerminology(input: PartTerminologyInput): PartTermino
     .filter((item) => item.normalizedAlias && source.includes(item.normalizedAlias)))
     .sort((left, right) => right.normalizedAlias.length - left.normalizedAlias.length);
 
-  const best = matches[0];
+  const genericControlArmBushing = PART_TERMINOLOGY.find((item) => item.code === "CONTROL_ARM_BUSHING") || null;
+  const genericBushingPhrase = genericControlArmBushing
+    && /сайлентблок.*(?:передн|задн).*важел/u.test(source)
+    ? { definition: genericControlArmBushing, normalizedAlias: source }
+    : null;
+  const best = genericBushingPhrase || matches[0];
   if (!best) {
     return {
       originalQuery,
@@ -521,5 +553,11 @@ export function listPartTerminology() {
     code: item.code,
     canonicalName: item.canonicalName,
     aliases: [...item.aliases],
+    providerTerms: {
+      BM_PARTS: [...(item.providerTerms?.BM_PARTS || [])],
+      UNITRADE: [...(item.providerTerms?.UNITRADE || [])],
+    },
+    category: item.category || "other",
+    searchable: item.searchable !== false,
   }));
 }

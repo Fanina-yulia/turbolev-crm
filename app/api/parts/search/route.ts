@@ -19,6 +19,10 @@ export async function GET(request: Request) {
   const findingId = searchParams.get("findingId")?.trim() || null;
   const manualPartId = searchParams.get("manualPartId")?.trim() || null;
   const partName = searchParams.get("partName")?.trim() || q;
+  const canonicalCode = searchParams.get("canonicalCode")?.trim() || null;
+  const axis = searchParams.get("axis")?.trim() || null;
+  const side = searchParams.get("side")?.trim() || null;
+  const subPosition = searchParams.get("subPosition")?.trim() || null;
   const position = searchParams.get("position")?.trim() || null;
   const genericArticleId = searchParams.get("genericArticleId")?.trim() || null;
 
@@ -29,7 +33,11 @@ export async function GET(request: Request) {
   const fitment = await resolvePartFitment({
     query: q,
     partName,
+    canonicalCode,
+    axis,
     position,
+    side,
+    subPosition,
     genericArticleId,
     vehicleId,
     vin: rawVin,
@@ -38,14 +46,21 @@ export async function GET(request: Request) {
   const normalization = await normalizePartNeed({
     query: q,
     partName,
+    canonicalCode,
     genericArticleId,
     position,
+    axis,
+    side,
+    subPosition,
   });
   const knowledge = await resolvePartKnowledge({
     query: q,
     partName,
+    canonicalCode,
     genericArticleId,
     position,
+    side,
+    subPosition,
   });
 
   let vehicleContext: Awaited<ReturnType<typeof decodeVinIntelligence>> | null = null;
@@ -100,7 +115,7 @@ export async function GET(request: Request) {
   return NextResponse.json({
     status: "OK",
     query: q,
-    context: { vehicleId, vin: rawVin || null, plate, findingId, manualPartId, partName, position },
+    context: { vehicleId, vin: rawVin || null, plate, findingId, manualPartId, partName, canonicalCode, axis, side, subPosition, position },
     vehicle: displayVehicle ? {
       id: fitment.vehicle?.id || vehicleId,
       vin: displayVehicle.vin,

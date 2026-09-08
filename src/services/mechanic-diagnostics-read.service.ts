@@ -10,6 +10,7 @@ import {
   StructuredDiagnosticError,
 } from "@/src/services/structured-diagnostics.service";
 import { resolveDiagnosticWorkflowState } from "@/src/services/diagnostic-workflow.service";
+import { resolveMechanicDiagnosticPart } from "@/src/services/mechanic-part-catalog";
 
 const ACTIVE_APPOINTMENT_EXCLUSIONS: PlannerAppointmentStatus[] = [
   PlannerAppointmentStatus.CANCELLED,
@@ -303,9 +304,16 @@ export async function getStructuredDiagnosticForMechanicReadOnly(userId: string,
           // exhaust items on an EV), so they must not become phantom required rows.
           if (!check) return [];
           const finding = findingByCheck.get(check.id);
+          const mechanicPart = resolveMechanicDiagnosticPart({
+            itemCode: item.code,
+            itemName: item.name,
+            position: item.position,
+            sectionCode: section.code,
+          });
           return [{
             id: check.id,
             templateItemId: item.id,
+            code: item.code,
             name: item.name,
             position: item.position,
             measurementUnit: item.measurementUnit,
@@ -319,7 +327,8 @@ export async function getStructuredDiagnosticForMechanicReadOnly(userId: string,
               urgency: finding.urgency,
               findingText: finding.findingText,
               suggestedWorkName: finding.suggestedWorkName,
-              suggestedPartName: finding.suggestedPartName,
+              suggestedPartName: mechanicPart?.displayName || finding.suggestedPartName,
+              part: mechanicPart,
               media: mediaByFinding.get(finding.id) || [],
             } : null,
           }];
