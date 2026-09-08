@@ -78,7 +78,7 @@ function base64Url(value: string | Uint8Array) {
   return encoded.replace(/=/g, "").replace(/\+/g, "-").replace(/\//g, "_");
 }
 
-async function googleAccessToken() {
+export async function getGoogleSheetsAccessToken() {
   const config = getGoogleSheetsKnowledgeConfig();
   if (!config.configured || !config.spreadsheetId) throw new Error(config.reason || "Google Sheets не налаштований.");
 
@@ -101,7 +101,7 @@ async function googleAccessToken() {
   const header = base64Url(JSON.stringify({ alg: "RS256", typ: "JWT" }));
   const claim = base64Url(JSON.stringify({
     iss: email,
-    scope: "https://www.googleapis.com/auth/spreadsheets.readonly",
+    scope: "https://www.googleapis.com/auth/spreadsheets",
     aud: "https://oauth2.googleapis.com/token",
     iat: now,
     exp: now + 3600,
@@ -185,7 +185,7 @@ async function readTab(tab: PartsKnowledgeSheetTab, accessToken: string, spreads
 export async function readPartsKnowledgeSheets(): Promise<PartsKnowledgeSheetTables> {
   const config = getGoogleSheetsKnowledgeConfig();
   if (!config.configured || !config.spreadsheetId) throw new Error(config.reason || "Google Sheets не налаштований.");
-  const token = await googleAccessToken();
+  const token = await getGoogleSheetsAccessToken();
   const results = await Promise.all(PARTS_KNOWLEDGE_SHEET_TABS.map(async (tab) => {
     try {
       return { tab, rows: await readTab(tab, token, config.spreadsheetId!), error: null };

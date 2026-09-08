@@ -522,3 +522,24 @@ model CatalogImportRecord {
   @@index([batchId, state])
   @@index([matchedProductId, state])
 }
+
+/// Idempotent audit log for a single user action written to CRM and Google Sheets in parallel.
+/// This is intentionally not a synchronization cursor: it records the outcome of each dual-write attempt.
+model PartsKnowledgeDualWrite {
+  id                 String   @id @default(cuid())
+  operationKey       String   @unique @db.VarChar(128)
+  payload            Json
+  status             String   @default("PENDING") @db.VarChar(32)
+  crmStatus          String   @default("PENDING") @db.VarChar(32)
+  googleSheetsStatus String   @default("PENDING") @db.VarChar(32)
+  crmError           String?  @db.Text
+  googleSheetsError  String?  @db.Text
+  attempts            Int      @default(0)
+  lastAttemptAt      DateTime?
+  completedAt        DateTime?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@index([status, updatedAt])
+  @@index([googleSheetsStatus, updatedAt])
+}
