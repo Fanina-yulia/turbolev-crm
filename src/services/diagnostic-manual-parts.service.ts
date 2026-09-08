@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { Prisma } from "@/src/generated/prisma/client";
 import { getPrisma } from "@/src/lib/prisma";
 import { toPrismaJson } from "@/src/lib/prisma-json";
@@ -25,6 +25,8 @@ export type DiagnosticManualPartInput = {
   article?: unknown;
   brand?: unknown;
   position?: unknown;
+  genericArticleId?: unknown;
+  catalogCode?: unknown;
   quantity?: unknown;
   note?: unknown;
   findingId?: unknown;
@@ -43,9 +45,12 @@ function normalize(value: string) {
     .trim();
 }
 
-function dedupeKey(input: { name: string; article: string | null; brand: string | null; position: string | null }) {
+function dedupeKey(input: { name: string; article: string | null; brand: string | null; position: string | null; findingId: string | null }) {
   return createHash("sha256")
-    .update([input.name, input.article || "", input.brand || "", input.position || ""].map(normalize).join("|"))
+    // A recommendation is an explicit row, even when another row has the
+    // same name. The random component keeps the technical legacy unique key
+    // from deduplicating user intent.
+    .update([input.name, input.article || "", input.brand || "", input.position || "", input.findingId || "", randomUUID()].map(normalize).join("|"))
     .digest("hex");
 }
 
@@ -57,17 +62,19 @@ function quantity(value: unknown, fallback = 1) {
   return new Prisma.Decimal(raw);
 }
 
-function inputValues(input: DiagnosticManualPartInput, fallback?: { name: string; article: string | null; brand: string | null; position: string | null; quantity: Prisma.Decimal; note: string | null; findingId: string | null }) {
+function inputValues(input: DiagnosticManualPartInput, fallback?: { name: string; article: string | null; brand: string | null; position: string | null; genericArticleId: string | null; catalogCode: string | null; quantity: Prisma.Decimal; note: string | null; findingId: string | null }) {
   const source = input && typeof input === "object" && !Array.isArray(input) ? input : {};
   const name = clean(source.name, 500) || fallback?.name || "";
   if (!name) throw new DiagnosticManualPartError("NAME_REQUIRED", "Вкажіть назву деталі.");
   const article = source.article === undefined ? fallback?.article || null : clean(source.article, 120) || null;
   const brand = source.brand === undefined ? fallback?.brand || null : clean(source.brand, 120) || null;
   const position = source.position === undefined ? fallback?.position || null : clean(source.position, 120) || null;
+  const genericArticleId = source.genericArticleId === undefined ? fallback?.genericArticleId || null : clean(source.genericArticleId, 160) || null;
+  const catalogCode = source.catalogCode === undefined ? fallback?.catalogCode || null : clean(source.catalogCode, 80) || null;
   const note = source.note === undefined ? fallback?.note || null : clean(source.note, 4000) || null;
   const findingId = source.findingId === undefined ? fallback?.findingId || null : clean(source.findingId, 160) || null;
   const parsedQuantity = source.quantity === undefined ? fallback?.quantity || new Prisma.Decimal(1) : quantity(source.quantity);
-  return { name, article, brand, position, quantity: parsedQuantity, note, findingId };
+  return { name, article, brand, position, genericArticleId, catalogCode, quantity: parsedQuantity, note, findingId };
 }
 
 function serialize(row: {
@@ -78,6 +85,8 @@ function serialize(row: {
   article: string | null;
   brand: string | null;
   position: string | null;
+  genericArticleId: string | null;
+  catalogCode: string | null;
   quantity: Prisma.Decimal;
   note: string | null;
   source: string;
@@ -99,6 +108,16 @@ async function ensureFindingScope(tx: Prisma.TransactionClient, diagnosticReques
   if (!inspection || inspection.diagnosticRequestId !== diagnosticRequestId) {
     throw new DiagnosticManualPartError("FINDING_SCOPE_MISMATCH", "Несправність не належить цій діагностичній карті.", 403);
   }
+}
+
+async function ensureGenericArticle(tx: Prisma.TransactionClient, genericArticleId: string | null) {
+  if (!genericArticleId) return null;
+  const article = await tx.genericArticle.findFirst({
+    where: { id: genericArticleId, status: "ACTIVE" },
+    select: { id: true, code: true, name: true },
+  });
+  if (!article) throw new DiagnosticManualPartError("CATALOG_ARTICLE_NOT_FOUND", "Обрану деталь не знайдено в активному каталозі CRM.", 409);
+  return article;
 }
 
 async function ensureDiagnostic(tx: Prisma.TransactionClient, diagnosticRequestId: string) {
@@ -123,7 +142,7 @@ function lineIsLocked(line: { status: string; supplierId: string | null; supplie
   return line.status !== "DRAFT" || Boolean(line.supplierId || line.supplierQuoteId) || Number(line.plannedUnitPrice) > 0;
 }
 
-async function createDraftLine(tx: Prisma.TransactionClient, workOrderId: string, recommendation: { id: string; diagnosticRequestId: string; name: string; article: string | null; brand: string | null; position: string | null; quantity: Prisma.Decimal; note: string | null }, actorName: string) {
+async function createDraftLine(tx: Prisma.TransactionClient, workOrderId: string, recommendation: { id: string; diagnosticRequestId: string; name: string; article: string | null; brand: string | null; position: string | null; genericArticleId: string | null; catalogCode: string | null; quantity: Prisma.Decimal; note: string | null }, actorName: string) {
   const current = await linkedLine(tx, recommendation.id, workOrderId);
   if (current) return current;
   const max = await tx.workOrderLine.aggregate({ where: { workOrderId }, _max: { sortOrder: true } });
@@ -133,6 +152,7 @@ async function createDraftLine(tx: Prisma.TransactionClient, workOrderId: string
       type: "PART",
       status: "DRAFT",
       description: recommendation.name,
+      code: recommendation.catalogCode,
       article: recommendation.article,
       brand: recommendation.brand,
       unit: "шт",
@@ -148,6 +168,8 @@ async function createDraftLine(tx: Prisma.TransactionClient, workOrderId: string
         source: SOURCE,
         diagnosticRequestId: recommendation.diagnosticRequestId,
         recommendationId: recommendation.id,
+        genericArticleId: recommendation.genericArticleId,
+        catalogCode: recommendation.catalogCode,
         position: recommendation.position,
         note: recommendation.note,
       }),
@@ -184,18 +206,14 @@ export async function createDiagnosticManualPart(
   try {
     return await prisma.$transaction(async (tx) => {
       const diagnostic = await ensureDiagnostic(tx, diagnosticRequestId);
-      const values = inputValues(input);
+      const draftValues = inputValues(input);
+      const catalogArticle = await ensureGenericArticle(tx, draftValues.genericArticleId);
+      const values = catalogArticle ? { ...draftValues, name: catalogArticle.name, catalogCode: catalogArticle.code } : draftValues;
       await ensureFindingScope(tx, diagnosticRequestId, values.findingId);
       const key = dedupeKey(values);
-      const existing = await tx.diagnosticPartRecommendation.findUnique({ where: { diagnosticRequestId_dedupeKey: { diagnosticRequestId, dedupeKey: key } } });
-      if (existing && existing.status !== CANCELLED_STATUS) {
-        throw new DiagnosticManualPartError("DUPLICATE_PART", "Така деталь уже додана до цієї діагностичної карти.", 409);
-      }
-      const recommendation = existing
-        ? await tx.diagnosticPartRecommendation.update({ where: { id: existing.id }, data: { ...values, source: SOURCE, status: ACTIVE_STATUS, createdByUserId: actor.id, createdByName: actor.name } })
-        : await tx.diagnosticPartRecommendation.create({ data: { diagnosticRequestId, ...values, dedupeKey: key, source: SOURCE, status: ACTIVE_STATUS, createdByUserId: actor.id, createdByName: actor.name } });
+      const recommendation = await tx.diagnosticPartRecommendation.create({ data: { diagnosticRequestId, ...values, dedupeKey: key, source: SOURCE, status: ACTIVE_STATUS, createdByUserId: actor.id, createdByName: actor.name } });
       if (diagnostic.workOrder) await createDraftLine(tx, diagnostic.workOrder.id, recommendation, actor.name);
-      await tx.auditEvent.create({ data: { actorId: actor.id, actorName: actor.name, entityType: "DiagnosticPartRecommendation", entityId: recommendation.id, action: existing ? "DIAGNOSTIC_MANUAL_PART_RESTORED" : "DIAGNOSTIC_MANUAL_PART_CREATED", after: toPrismaJson(recommendation), metadata: toPrismaJson({ diagnosticRequestId, workOrderId: diagnostic.workOrder?.id || null }) } });
+      await tx.auditEvent.create({ data: { actorId: actor.id, actorName: actor.name, entityType: "DiagnosticPartRecommendation", entityId: recommendation.id, action: "DIAGNOSTIC_MANUAL_PART_CREATED", after: toPrismaJson(recommendation), metadata: toPrismaJson({ diagnosticRequestId, workOrderId: diagnostic.workOrder?.id || null, catalogArticleId: recommendation.genericArticleId }) } });
       return serialize(recommendation);
     });
   } catch (error) {
@@ -219,14 +237,13 @@ export async function updateDiagnosticManualPart(
       if (!current) throw new DiagnosticManualPartError("PART_NOT_FOUND", "Ручну деталь не знайдено.", 404);
       const line = await linkedLine(tx, recommendationId, diagnostic.workOrder?.id || null);
       if (line && lineIsLocked(line)) throw new DiagnosticManualPartError("PART_LOCKED", "Підібрану або погоджену деталь не можна редагувати з Діагностичної карти.", 409);
-      const values = inputValues(input, current);
+      const draftValues = inputValues(input, current);
+      const catalogArticle = await ensureGenericArticle(tx, draftValues.genericArticleId);
+      const values = catalogArticle ? { ...draftValues, name: catalogArticle.name, catalogCode: catalogArticle.code } : draftValues;
       await ensureFindingScope(tx, diagnosticRequestId, values.findingId);
-      const key = dedupeKey(values);
-      const duplicate = await tx.diagnosticPartRecommendation.findFirst({ where: { diagnosticRequestId, dedupeKey: key, id: { not: recommendationId }, status: { not: CANCELLED_STATUS } }, select: { id: true } });
-      if (duplicate) throw new DiagnosticManualPartError("DUPLICATE_PART", "Така деталь уже додана до цієї діагностичної карти.", 409);
-      const recommendation = await tx.diagnosticPartRecommendation.update({ where: { id: recommendationId }, data: { ...values, dedupeKey: key, createdByUserId: actor.id, createdByName: actor.name } });
+      const recommendation = await tx.diagnosticPartRecommendation.update({ where: { id: recommendationId }, data: { ...values, createdByUserId: actor.id, createdByName: actor.name } });
       if (line && diagnostic.workOrder) {
-        await tx.workOrderLine.update({ where: { id: line.id }, data: { description: recommendation.name, article: recommendation.article, brand: recommendation.brand, plannedQuantity: recommendation.quantity, metadata: toPrismaJson({ source: SOURCE, diagnosticRequestId, recommendationId: recommendation.id, position: recommendation.position, note: recommendation.note }) } });
+        await tx.workOrderLine.update({ where: { id: line.id }, data: { description: recommendation.name, code: recommendation.catalogCode, article: recommendation.article, brand: recommendation.brand, plannedQuantity: recommendation.quantity, metadata: toPrismaJson({ source: SOURCE, diagnosticRequestId, recommendationId: recommendation.id, genericArticleId: recommendation.genericArticleId, catalogCode: recommendation.catalogCode, position: recommendation.position, note: recommendation.note }) } });
       }
       await tx.auditEvent.create({ data: { actorId: actor.id, actorName: actor.name, entityType: "DiagnosticPartRecommendation", entityId: recommendation.id, action: "DIAGNOSTIC_MANUAL_PART_UPDATED", before: toPrismaJson(current), after: toPrismaJson(recommendation), metadata: toPrismaJson({ diagnosticRequestId }) } });
       return serialize(recommendation);

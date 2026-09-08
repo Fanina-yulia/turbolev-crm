@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type KeyboardEvent } from "react";
 import type { VehicleCardContract } from "@/src/lib/contracts/crm-core";
 import { navigateCrm } from "./crm-route";
 import styles from "./vehicle-diagnostic-card.module.css";
@@ -24,8 +24,9 @@ type DiagnosticRow = {
 type DiagnosticMedia = { id: string; fileName: string; mimeType: string; fileSize: number; createdAt: string };
 type DiagnosticFinding = { id: string; action: string; urgency: string; findingText: string | null; suggestedWorkName: string | null; suggestedPartName: string | null; media: DiagnosticMedia[] };
 type DiagnosticItem = { id: string; templateItemId: string; name: string; position: string | null; state: string; measurementUnit: string | null; measurementValue: string | null; measurementText: string | null; note: string | null; finding: DiagnosticFinding | null };
-type ManualPart = { id: string; diagnosticRequestId: string; findingId: string | null; name: string; article: string | null; brand: string | null; position: string | null; quantity: string | number; note: string | null; source: string; status: string; createdByName: string | null; createdAt: string; updatedAt: string };
-type ManualPartDraft = { name: string; article: string; brand: string; position: string; quantity: string; note: string; findingId: string };
+type PartSuggestion = { id: string | null; code: string; name: string; category: string | null; matchedAlias: string | null; positionHint: string | null; source: "CRM_CATALOG" | "STATIC_FALLBACK" };
+type ManualPart = { id: string; diagnosticRequestId: string; findingId: string | null; genericArticleId: string | null; catalogCode: string | null; name: string; article: string | null; brand: string | null; position: string | null; quantity: string | number; note: string | null; source: string; status: string; createdByName: string | null; createdAt: string; updatedAt: string };
+type ManualPartDraft = { name: string; article: string; brand: string; position: string; genericArticleId: string; catalogCode: string; quantity: string; note: string; findingId: string };
 type DiagnosticSection = { id: string; name: string; items: DiagnosticItem[]; counts: { total: number; checked: number; ok: number; attention: number; defect: number } };
 type DiagnosticInspection = { id: string; templateName: string; sections: DiagnosticSection[]; counts: { total: number; checked: number; ok: number; attention: number; defect: number } };
 type DiagnosticView = {
@@ -54,7 +55,7 @@ function stateOf(row: DiagnosticRow): WorkflowState { if (row.reviewState === "R
 function dateText(value: string | null | undefined) { if (!value) return "—"; const date = new Date(value); return Number.isNaN(date.getTime()) ? "—" : new Intl.DateTimeFormat("uk-UA", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }).format(date); }
 function vehicleTitle(vehicle: VehicleCardContract) { return [vehicle.brand, vehicle.model, vehicle.year].filter(Boolean).join(" ") || "Автомобіль"; }
 
-const EMPTY_MANUAL_PART: ManualPartDraft = { name: "", article: "", brand: "", position: "", quantity: "1", note: "", findingId: "" };
+const EMPTY_MANUAL_PART: ManualPartDraft = { name: "", article: "", brand: "", position: "", genericArticleId: "", catalogCode: "", quantity: "1", note: "", findingId: "" };
 
 type CardStatus = { label: string; tone: "good" | "review" | "danger" | "muted" };
 function cardStatus(row: DiagnosticRow, findings: Array<{ item: DiagnosticItem }>): CardStatus {
@@ -253,6 +254,8 @@ function DiagnosticCardDetail({ row, initialView, initialCardNumber, busy, onOpe
       article: part.article || "",
       brand: part.brand || "",
       position: part.position || "",
+      genericArticleId: part.genericArticleId || "",
+      catalogCode: part.catalogCode || "",
       quantity: String(part.quantity),
       note: part.note || "",
       findingId: part.findingId || "",
@@ -409,7 +412,7 @@ function DiagnosticCardDetail({ row, initialView, initialCardNumber, busy, onOpe
           {parts.map(({ section, item }, index) => <button type="button" className={`${styles.findingRow} ${selectedFinding?.item.id === item.id ? styles.findingSelected : ""}`} key={item.id} onClick={() => setSelectedFindingId(item.id)}><span className={`${styles.findingNumber} ${item.state === "DEFECT" ? styles.findingNumberDanger : styles.findingNumberAttention}`}>{index + 1}</span><span className={styles.findingCopy}><strong>{item.finding?.suggestedPartName || item.name}</strong><small>{section} · {item.finding?.findingText || item.note || "Виявлено несправність"}</small></span><span className={styles.findingSeverity} aria-label={item.state === "DEFECT" ? "Критично" : "Увага"}><i className={item.state === "DEFECT" ? styles.severityDanger : styles.severityAttention} /></span></button>)}
           {manualParts.map((part, index) => <div className={styles.manualPartRow} key={part.id}>
             <span className={styles.manualPartMarker}>+</span>
-            <div className={styles.findingCopy}><strong>{part.name}</strong><small>{[part.position, part.brand, part.article].filter(Boolean).join(" · ") || "Додано сервіс-менеджером"} · {part.quantity} шт</small><em>Додано вручну</em></div>
+            <div className={styles.findingCopy}><strong>{part.name}</strong><small>{[part.position, part.brand, part.article, part.catalogCode].filter(Boolean).join(" · ") || "Додано сервіс-менеджером"} · {part.quantity} шт</small><em>Додано вручну</em></div>
             <div className={styles.manualPartActions}><button type="button" onClick={() => openManualPartSelection(part)}>Підібрати</button><button type="button" onClick={() => openManualPart(part)}>Редагувати</button><button type="button" className={styles.manualPartDelete} onClick={() => void removeManualPart(part)} aria-label={`Видалити ${part.name}`}>×</button></div>
           </div>)}
         </div>
@@ -426,11 +429,80 @@ function DiagnosticCardDetail({ row, initialView, initialCardNumber, busy, onOpe
 }
 
 function ManualPartModal({ draft, editing, findings, busy, error, onChange, onClose, onSave }: { draft: ManualPartDraft; editing: boolean; findings: Array<{ section: string; item: DiagnosticItem }>; busy: boolean; error: string; onChange: (draft: ManualPartDraft) => void; onClose: () => void; onSave: () => void }) {
+  const [suggestions, setSuggestions] = useState<PartSuggestion[]>([]);
+  const [suggestionsLoading, setSuggestionsLoading] = useState(false);
+  const [suggestionsOpen, setSuggestionsOpen] = useState(false);
+  const [activeSuggestion, setActiveSuggestion] = useState(0);
+
+  useEffect(() => {
+    const query = draft.name.trim();
+    if (draft.genericArticleId || query.length < 2) {
+      setSuggestions([]);
+      setSuggestionsLoading(false);
+      setSuggestionsOpen(false);
+      setActiveSuggestion(0);
+      return;
+    }
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => {
+      setSuggestionsLoading(true);
+      void fetch(`/api/parts/autocomplete?q=${encodeURIComponent(query)}&limit=8`, { cache: "no-store", credentials: "include", signal: controller.signal })
+        .then(async (response) => {
+          const body = await response.json().catch(() => null) as { ok?: boolean; suggestions?: PartSuggestion[] } | null;
+          if (!response.ok || !body?.ok || !Array.isArray(body.suggestions)) throw new Error("autocomplete unavailable");
+          if (controller.signal.aborted) return;
+          setSuggestions(body.suggestions);
+          setSuggestionsOpen(true);
+          setActiveSuggestion(0);
+        })
+        .catch(() => { if (!controller.signal.aborted) { setSuggestions([]); setSuggestionsOpen(false); } })
+        .finally(() => { if (!controller.signal.aborted) setSuggestionsLoading(false); });
+    }, 180);
+    return () => { window.clearTimeout(timer); controller.abort(); };
+  }, [draft.name, draft.genericArticleId]);
+
+  function updateName(name: string) {
+    onChange({ ...draft, name, genericArticleId: "", catalogCode: "" });
+    const query = name.trim();
+    setSuggestions([]);
+    setSuggestionsLoading(query.length >= 2);
+    setSuggestionsOpen(query.length >= 2);
+    setActiveSuggestion(0);
+  }
+
+  function selectSuggestion(suggestion: PartSuggestion) {
+    onChange({
+      ...draft,
+      name: suggestion.name,
+      genericArticleId: suggestion.id || "",
+      catalogCode: suggestion.code,
+      position: draft.position || suggestion.positionHint || "",
+    });
+    setSuggestionsOpen(false);
+    setActiveSuggestion(0);
+  }
+
+  function handleNameKeyDown(event: KeyboardEvent<HTMLInputElement>) {
+    if (!suggestionsOpen || !suggestions.length) {
+      if (event.key === "Escape") setSuggestionsOpen(false);
+      return;
+    }
+    if (event.key === "ArrowDown") { event.preventDefault(); setActiveSuggestion((value) => (value + 1) % suggestions.length); }
+    if (event.key === "ArrowUp") { event.preventDefault(); setActiveSuggestion((value) => (value - 1 + suggestions.length) % suggestions.length); }
+    if (event.key === "Enter") { event.preventDefault(); selectSuggestion(suggestions[activeSuggestion] || suggestions[0]); }
+    if (event.key === "Escape") { event.preventDefault(); setSuggestionsOpen(false); }
+  }
+
   return <div className={styles.modalBackdrop} role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
     <section className={styles.manualPartModal} role="dialog" aria-modal="true" aria-labelledby="manual-part-title">
-      <header className={styles.modalHeader}><div><span className={styles.eyebrow}>РЕКОМЕНДАЦІЇ</span><h3 id="manual-part-title">{editing ? "Редагувати деталь" : "Додати деталь до заміни"}</h3><p>Позиція збережеться у цій Діагностичній карті та буде доступна для підбору.</p></div><button type="button" className={styles.modalClose} onClick={onClose} disabled={busy} aria-label="Закрити">×</button></header>
+      <header className={styles.modalHeader}><div><span className={styles.eyebrow}>РЕКОМЕНДАЦІЇ</span><h3 id="manual-part-title">{editing ? "Редагувати деталь" : "Додати деталь до заміни"}</h3><p>Почніть вводити назву — CRM запропонує деталі з каталогу. Кожна додана позиція зберігається окремим рядком.</p></div><button type="button" className={styles.modalClose} onClick={onClose} disabled={busy} aria-label="Закрити">×</button></header>
       <div className={styles.manualPartForm}>
-        <label><span>Назва деталі *</span><input autoFocus value={draft.name} onChange={(event) => onChange({ ...draft, name: event.target.value })} placeholder="Наприклад: Передні гальмівні колодки" maxLength={500}/></label>
+        <label><span>Назва деталі *</span><div className={styles.catalogInputWrap}><input autoFocus value={draft.name} onChange={(event) => updateName(event.target.value)} onFocus={() => { if (!draft.genericArticleId && draft.name.trim().length >= 2) setSuggestionsOpen(true); }} onBlur={() => window.setTimeout(() => setSuggestionsOpen(false), 0)} onKeyDown={handleNameKeyDown} placeholder="Почніть вводити назву деталі…" maxLength={500} role="combobox" aria-autocomplete="list" aria-expanded={suggestionsOpen} aria-controls="manual-part-suggestions" />{suggestionsOpen ? <div id="manual-part-suggestions" className={styles.catalogSuggestions} role="listbox" aria-label="Підказки деталей">
+          {suggestionsLoading ? <div className={styles.catalogSuggestionStatus}>Шукаю в каталозі CRM…</div> : null}
+          {!suggestionsLoading && suggestions.map((suggestion, index) => <button type="button" key={`${suggestion.code}-${suggestion.id || "fallback"}`} className={`${styles.catalogSuggestion} ${index === activeSuggestion ? styles.catalogSuggestionActive : ""}`} role="option" aria-selected={index === activeSuggestion} onMouseDown={(event) => event.preventDefault()} onClick={() => selectSuggestion(suggestion)}><span className={styles.catalogSuggestionName}>{suggestion.name}</span><span className={styles.catalogSuggestionMeta}>{suggestion.code}{suggestion.category ? ` · ${suggestion.category}` : ""}{suggestion.matchedAlias ? ` · ${suggestion.matchedAlias}` : ""}</span></button>)}
+          {!suggestionsLoading && !suggestions.length ? <div className={styles.catalogSuggestionStatus}>Не знайдено в каталозі. Можна зберегти назву вручну.</div> : null}
+        </div> : null}</div></label>
+        {draft.catalogCode ? <div className={styles.catalogSelection}><span>✓</span><span>{draft.genericArticleId ? "Обрано з каталогу CRM" : "Підказка резервного каталогу"} · <b>{draft.catalogCode}</b>{draft.genericArticleId ? " · позицію буде збережено канонічно" : " · сумісність уточнюється під час підбору"}</span></div> : <div className={styles.catalogHint}>Можна вибрати підказку або продовжити ручне введення.</div>}
         <div className={styles.manualPartFields}><label><span>Артикул / OEM</span><input value={draft.article} onChange={(event) => onChange({ ...draft, article: event.target.value })} placeholder="Необов’язково" maxLength={120}/></label><label><span>Бренд</span><input value={draft.brand} onChange={(event) => onChange({ ...draft, brand: event.target.value })} placeholder="Оригінал або аналог" maxLength={120}/></label></div>
         <div className={styles.manualPartFields}><label><span>Позиція</span><input value={draft.position} onChange={(event) => onChange({ ...draft, position: event.target.value })} placeholder="Ліва / права / передня" maxLength={120}/></label><label><span>Кількість *</span><input type="number" min="1" max="100" step="1" value={draft.quantity} onChange={(event) => onChange({ ...draft, quantity: event.target.value })}/></label></div>
         <label><span>Прив’язати до несправності</span><select value={draft.findingId} onChange={(event) => onChange({ ...draft, findingId: event.target.value })}><option value="">Без прив’язки</option>{findings.map(({ section, item }) => <option key={item.finding?.id || item.id} value={item.finding?.id || ""} disabled={!item.finding?.id}>{section} · {item.name}</option>)}</select></label>

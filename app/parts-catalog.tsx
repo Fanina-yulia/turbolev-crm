@@ -18,9 +18,9 @@ type FitmentPayload = FitmentSummary & { vehicle?: { id?: string | null; vin?: s
 type VehicleContext = { id?: string; vin?: string; make?: string | null; model?: string | null; year?: number | null; engine?: string | null; engineVolumeL?: number | null; fuelType?: string | null; mileageKm?: number | null; plateNumber?: string | null; confidence?: number; source?: string | null; label?: string | null; generation?: { name?: string } | null };
 type SupplierOffer = { supplierId: string; supplierName: string; externalProductId: string | null; article: string; brand: string | null; name: string; purchasePrice: number | null; currency: string | null; multiplicity: number | null; stock: Array<{ warehouse: string; quantity: string; warehouseId?: string | null }>; available: boolean; sourceUrl: string | null; imageUrl?: string | null; oeNumbers?: string[]; vehicleMatch?: string | null; analogOfArticle?: string | null; markupPercent?: number | null; sellPrice?: number | null; offerClass?: "OEM" | "ANALOG" | "UNKNOWN"; fitmentStatus?: string; fitmentConfidence?: number | null; fitmentExact?: boolean | null; fitmentSource?: string | null; fitmentReason?: string | null; catalogProductId?: string | null; offerReason?: string | null; sourceKind?: "DIRECT" | "OEM" | "ANALOG" | "NAME"; stockTotal?: number | null; quantityMode?: string; fetchedAt?: string | null };
 type SupplierProvider = { id: string; ok: boolean; message?: string };
-type Recommendation = { findingId: string | null; manualPartId: string | null; name: string; article: string | null; position: string; quantity: number; action: string; urgency: string; note: string; mediaCount: number; canonicalCode: string | null; canonicalName: string | null; axis: string | null; side: string | null; subPosition: string | null };
+type Recommendation = { findingId: string | null; manualPartId: string | null; genericArticleId?: string | null; catalogCode?: string | null; name: string; article: string | null; position: string; quantity: number; action: string; urgency: string; note: string; mediaCount: number; canonicalCode?: string | null; canonicalName?: string | null; axis?: string | null; side?: string | null; subPosition?: string | null };
 type SelectedLine = { findingId: string; partName: string; supplierName: string; article: string; brand: string | null; warehouse: string | null; purchasePrice: number; sellPrice: number; markupPercent: number; currency: string; quantity: number; externalProductId?: string | null; offerClass?: "OEM" | "ANALOG" | "UNKNOWN"; fitmentReason?: string | null };
-type ManualPartPayload = { id: string; findingId: string | null; name: string; article: string | null; brand: string | null; position: string | null; quantity: string | number; note: string | null };
+type ManualPartPayload = { id: string; findingId: string | null; genericArticleId?: string | null; catalogCode?: string | null; name: string; article: string | null; brand: string | null; position: string | null; quantity: string | number; note: string | null };
 type WorkOrderRow = WorkOrderListItemContract;
 type DiagnosticPickerRow = { id: string; number: number | null; status: string; statusLabel: string; updatedAt: string; client: { name: string | null; phone: string }; vehicle: { id: string; brand: string | null; model: string | null; year: number | null; plateNumber: string | null; vin: string | null; mileageKm: number | null; turboLevClass: string | null }; diagnosticRequest: { id: string; status: string } };
 type ContextSummary = { workOrderId: string | null; orderNumber: string; clientName: string; clientPhone: string; vehicleId: string | null; vehicleName: string; plateNumber: string | null; vin: string | null; mileageKm: number | null; statusCode: string; statusLabel: string; engine: string | null };
@@ -38,6 +38,8 @@ type CommercialHandoffPayload = {
     kind?: "LABOR" | "PART";
     findingId?: string;
     manualPartId?: string | null;
+    genericArticleId?: string | null;
+    catalogCode?: string | null;
     lineId?: string | null;
     selected?: { supplierId?: string | null; supplierName?: string; article?: string; brand?: string | null; warehouse?: string | null; purchasePrice?: number; sellPrice?: number; markupPercent?: number | null; currency?: string };
   }>;
@@ -197,6 +199,7 @@ export function PartsCatalog() {
       if (recommendation?.side) params.set("side", recommendation.side);
       if (recommendation?.subPosition) params.set("subPosition", recommendation.subPosition);
       if (recommendation?.position) params.set("position", recommendation.position);
+      if (recommendation?.genericArticleId) params.set("genericArticleId", recommendation.genericArticleId);
 
       const referenceResponse = await fetch("/api/parts/search?" + params.toString(), { cache: "no-store", credentials: "include", signal: controller.signal });
       const referenceData = await referenceResponse.json().catch(() => null) as {
@@ -243,6 +246,7 @@ export function PartsCatalog() {
       if (recommendation?.side) supplierParams.set("side", recommendation.side);
       if (recommendation?.subPosition) supplierParams.set("subPosition", recommendation.subPosition);
       if (recommendation?.position) supplierParams.set("position", recommendation.position);
+      if (recommendation?.genericArticleId) supplierParams.set("genericArticleId", recommendation.genericArticleId);
       if (Array.isArray(referenceData?.oeNumbers) && referenceData.oeNumbers.length) supplierParams.set("oeNumbers", referenceData.oeNumbers.join(","));
 
       const supplierResponse = await fetch("/api/parts/suppliers?" + supplierParams.toString(), { cache: "no-store", credentials: "include", signal: controller.signal });
@@ -312,6 +316,8 @@ export function PartsCatalog() {
               const recommendation: Recommendation = {
                 findingId: finding.id,
                 manualPartId: null,
+                genericArticleId: null,
+                catalogCode: null,
                 name: partName,
                 article: null,
                 position: part?.position?.trim() || item.position?.trim() || section.name?.trim() || "—",
@@ -333,6 +339,8 @@ export function PartsCatalog() {
         const manualRecommendationRows: Recommendation[] = (manualPayload?.ok && Array.isArray(manualPayload.parts) ? manualPayload.parts : []).map((part) => ({
           findingId: part.findingId,
           manualPartId: part.id,
+          genericArticleId: part.genericArticleId || null,
+          catalogCode: part.catalogCode || null,
           name: part.name,
           article: part.article,
           position: part.position?.trim() || "Ручна рекомендація",
@@ -470,7 +478,7 @@ export function PartsCatalog() {
         return;
       }
       const vinSearch = selectionVin.length === 17 && catalogVerified;
-      const response = await fetch("/api/parts-selection/select", { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ diagnosticId: route.diagnosticId, findingId: activeRecommendation.findingId, manualPartId: activeRecommendation.manualPartId, quantity: activeRecommendation.quantity, supplierId: offer.supplierId, externalProductId: offer.externalProductId, article: offer.article, searchMode: vinSearch ? "VIN" : "PART_NUMBER", vehicleVin: selectionVin || null, vehicleId: context?.vehicleId || null, partName: activeRecommendation.name, canonicalCode: activeRecommendation.canonicalCode, axis: activeRecommendation.axis, side: activeRecommendation.side, subPosition: activeRecommendation.subPosition, position: activeRecommendation.position, fitmentStatus: offer.fitmentStatus || fitment?.status || null, fitmentExact: offer.fitmentExact ?? fitment?.exact ?? null, fitmentProductId: offer.catalogProductId || null, fitmentSource: offer.fitmentSource || fitment?.source || null, manualConfirmation: !vinSearch }) });
+      const response = await fetch("/api/parts-selection/select", { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ diagnosticId: route.diagnosticId, findingId: activeRecommendation.findingId, manualPartId: activeRecommendation.manualPartId, quantity: activeRecommendation.quantity, supplierId: offer.supplierId, externalProductId: offer.externalProductId, article: offer.article, searchMode: vinSearch ? "VIN" : "PART_NUMBER", vehicleVin: selectionVin || null, vehicleId: context?.vehicleId || null, partName: activeRecommendation.name, genericArticleId: activeRecommendation.genericArticleId || null, canonicalCode: activeRecommendation.canonicalCode || activeRecommendation.catalogCode || null, axis: activeRecommendation.axis, side: activeRecommendation.side, subPosition: activeRecommendation.subPosition, position: activeRecommendation.position, fitmentStatus: offer.fitmentStatus || fitment?.status || null, fitmentExact: offer.fitmentExact ?? fitment?.exact ?? null, fitmentProductId: offer.catalogProductId || null, fitmentSource: offer.fitmentSource || fitment?.source || null, manualConfirmation: !vinSearch }) });
       const data = await response.json().catch(() => null) as { ok?: boolean; message?: string; error?: string; selected?: { supplierId?: string; supplierName: string; article: string; brand: string | null; purchasePrice: number; markupPercent: number; sellPrice: number; currency: string; externalProductId?: string | null } } | null;
       if (!response.ok || !data?.ok || !data.selected) throw new Error(data?.message || data?.error || "Не вдалося зберегти вибрану деталь.");
       const selected = data.selected; const selectedKey = recommendationKey(activeRecommendation); const warehouse = offer.stock.find((row) => row.warehouseId && Number(row.quantity.replace(/[^0-9.,-]/g, "").replace(",", ".")) > 0)?.warehouse || offer.stock[0]?.warehouse || null; setSelectedLines((current) => [...current.filter((line) => line.findingId !== selectedKey), { findingId: selectedKey, partName: activeRecommendation.name, supplierName: selected.supplierName, article: selected.article, brand: selected.brand, warehouse, purchasePrice: selected.purchasePrice, sellPrice: selected.sellPrice, markupPercent: selected.markupPercent, currency: selected.currency, quantity: activeRecommendation.quantity, externalProductId: selected.externalProductId || offer.externalProductId, offerClass: offer.offerClass, fitmentReason: offer.fitmentReason || offer.offerReason }]); setPickerOpen(false); setMessage(`Позицію збережено: ${selected.supplierName} · ${selected.article}.`); window.dispatchEvent(new CustomEvent("turbolev:data-changed"));

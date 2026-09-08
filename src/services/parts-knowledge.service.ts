@@ -26,12 +26,132 @@ export type PartKnowledgeResolution = PartTerminologyResolution & {
 
 type KnowledgeAttributes = PartKnowledgeResolution["attributes"];
 
+export type PartNameSuggestion = {
+  id: string | null;
+  code: string;
+  name: string;
+  category: string | null;
+  matchedAlias: string | null;
+  positionHint: string | null;
+  source: "CRM_CATALOG" | "STATIC_FALLBACK";
+};
+
 function text(value: unknown, max = 240) {
   return typeof value === "string" ? value.trim().slice(0, max) : "";
 }
 
 function unique<T>(values: T[]) {
   return [...new Set(values)];
+}
+
+function suggestionPosition(axisHint: string | null | undefined, sideHint: string | null | undefined, subPositionHint: string | null | undefined) {
+  const axis = axisHint === "FRONT" ? "передня" : axisHint === "REAR" ? "задня" : "";
+  const side = sideHint === "LEFT" ? "ліва" : sideHint === "RIGHT" ? "права" : "";
+  const sub = subPositionHint === "UPPER" ? "верхня" : subPositionHint === "LOWER" ? "нижня" : "";
+  return [axis, side, sub].filter(Boolean).join(" ") || null;
+}
+
+function suggestionScore(query: string, tokens: string[], name: string, code: string, aliases: string[]) {
+  const normalizedName = normalizePartTerminology(name);
+  const normalizedCode = normalizePartTerminology(code);
+  const normalizedAliases = aliases.map(normalizePartTerminology);
+  const haystack = [normalizedName, normalizedCode, ...normalizedAliases].join(" ");
+  const allTokens = tokens.every((token) => haystack.includes(token));
+  const exactName = normalizedName === query;
+  const startsName = normalizedName.startsWith(query);
+  const exactAlias = normalizedAliases.some((alias) => alias === query);
+  const startsAlias = normalizedAliases.some((alias) => alias.startsWith(query));
+  return (exactName ? 1000 : 0)
+    + (exactAlias ? 850 : 0)
+    + (startsName ? 700 : 0)
+    + (startsAlias ? 550 : 0)
+    + (allTokens ? 300 : 0)
+    + (normalizedName.includes(query) ? 120 : 0)
+    + (normalizedCode.includes(query) ? 100 : 0);
+}
+
+/**
+ * Lightweight name-only search for the review form. It deliberately does not
+ * call supplier APIs or resolve VIN fitment; those are expensive and belong
+ * to the next, explicit parts-selection step.
+ */
+export async function searchPartNameSuggestions(query: string, limit = 8): Promise<PartNameSuggestion[]> {
+  const normalizedQuery = normalizePartTerminology(query);
+  if (normalizedQuery.length < 2) return [];
+  const safeLimit = Math.max(1, Math.min(12, Math.floor(limit) || 8));
+  const tokens = normalizedQuery.split(" ").filter(Boolean);
+  const fallback = listPartTerminology().map((definition) => ({
+    id: null,
+    code: definition.code,
+    name: definition.canonicalName,
+    category: null,
+    matchedAlias: definition.aliases.find((alias) => normalizePartTerminology(alias).includes(normalizedQuery)) || null,
+    positionHint: null,
+    source: "STATIC_FALLBACK" as const,
+    score: suggestionScore(normalizedQuery, tokens, definition.canonicalName, definition.code, [...definition.aliases]),
+  })).filter((item) => item.score > 0);
+
+  const catalog: Array<PartNameSuggestion & { score: number }> = [];
+  try {
+    const prisma = getPrisma();
+    const rows = await prisma.genericArticle.findMany({
+      where: {
+        status: CatalogEntityStatus.ACTIVE,
+        OR: tokens.flatMap((token) => [
+          { name: { contains: token, mode: "insensitive" as const } },
+          { code: { contains: token, mode: "insensitive" as const } },
+          { aliases: { some: { status: CatalogEntityStatus.ACTIVE, aliasNormalized: { contains: token, mode: "insensitive" as const } } } },
+          { aliases: { some: { status: CatalogEntityStatus.ACTIVE, aliasRaw: { contains: token, mode: "insensitive" as const } } } },
+        ]),
+      },
+      take: 100,
+      select: {
+        id: true,
+        code: true,
+        name: true,
+        aliases: {
+          where: { status: CatalogEntityStatus.ACTIVE },
+          orderBy: [{ confidence: "desc" }, { usageCount: "desc" }, { updatedAt: "desc" }],
+          take: 20,
+          select: { aliasRaw: true, axisHint: true, sideHint: true, subPositionHint: true },
+        },
+        categories: {
+          select: { sortOrder: true, category: { select: { name: true, status: true } } },
+        },
+      },
+    });
+
+    for (const row of rows) {
+      const aliases = row.aliases.map((alias) => alias.aliasRaw);
+      const score = suggestionScore(normalizedQuery, tokens, row.name, row.code, aliases);
+      if (score <= 0) continue;
+      const matched = aliases.find((alias) => normalizePartTerminology(alias).includes(normalizedQuery)) || null;
+      const hintedAlias = row.aliases.find((alias) => matched === alias.aliasRaw) || row.aliases[0];
+      const category = row.categories
+        .filter((item) => item.category.status === CatalogEntityStatus.ACTIVE)
+        .sort((a, b) => a.sortOrder - b.sortOrder)[0]?.category.name || null;
+      catalog.push({
+        id: row.id,
+        code: row.code,
+        name: row.name,
+        category,
+        matchedAlias: matched && normalizePartTerminology(matched) !== normalizePartTerminology(row.name) ? matched : null,
+        positionHint: hintedAlias ? suggestionPosition(hintedAlias.axisHint, hintedAlias.sideHint, hintedAlias.subPositionHint) : null,
+        source: "CRM_CATALOG",
+        score,
+      });
+    }
+  } catch (error) {
+    console.warn("Parts autocomplete catalog unavailable; using static fallback", error instanceof Error ? error.message : "unknown error");
+  }
+
+  const merged = new Map<string, PartNameSuggestion & { score: number }>();
+  for (const item of fallback) merged.set(item.code, item);
+  for (const item of catalog) merged.set(item.code, item);
+  return [...merged.values()]
+    .sort((a, b) => b.score - a.score || a.name.localeCompare(b.name, "uk"))
+    .slice(0, safeLimit)
+    .map(({ score: _score, ...item }) => item);
 }
 
 function identityKey(...values: string[]) {

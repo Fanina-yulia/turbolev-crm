@@ -31,6 +31,7 @@ export async function POST(request: Request) {
       axis?: string | null;
       side?: string | null;
       subPosition?: string | null;
+      genericArticleId?: string | null;
       position?: string | null;
       fitmentStatus?: PartFitmentStatus | null;
       fitmentExact?: boolean | null;
@@ -68,6 +69,7 @@ export async function POST(request: Request) {
       axis: body?.axis || null,
       side: body?.side || null,
       subPosition: body?.subPosition || null,
+      genericArticleId: body?.genericArticleId || null,
       position: body?.position || null,
       fitmentStatus: body?.fitmentStatus || null,
       fitmentExact: body?.fitmentExact ?? null,

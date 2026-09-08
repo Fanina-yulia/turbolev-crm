@@ -188,6 +188,8 @@ model DiagnosticPartRecommendation {
   id                  String   @id @default(cuid())
   diagnosticRequestId String
   findingId           String?
+  genericArticleId    String?
+  catalogCode         String?  @db.VarChar(80)
   name                String   @db.VarChar(500)
   article             String?  @db.VarChar(120)
   brand               String?  @db.VarChar(120)
@@ -204,10 +206,12 @@ model DiagnosticPartRecommendation {
 
   diagnosticRequest DiagnosticRequest @relation(fields: [diagnosticRequestId], references: [id], onDelete: Cascade)
   finding           DiagnosticFinding? @relation(fields: [findingId], references: [id], onDelete: SetNull)
+  genericArticle    GenericArticle? @relation(fields: [genericArticleId], references: [id], onDelete: SetNull)
 
   @@unique([diagnosticRequestId, dedupeKey])
   @@index([diagnosticRequestId, status, createdAt])
   @@index([findingId])
+  @@index([genericArticleId])
 }
 
 model DiagnosticMedia {

@@ -169,6 +169,7 @@ export async function selectDiagnosticPartOffer(input: {
   axis?: string | null;
   side?: string | null;
   subPosition?: string | null;
+  genericArticleId?: string | null;
   position?: string | null;
   fitmentStatus?: PartFitmentStatus | null;
   fitmentExact?: boolean | null;
@@ -207,6 +208,7 @@ export async function selectDiagnosticPartOffer(input: {
     axis: input.axis || null,
     side: input.side || null,
     subPosition: input.subPosition || null,
+    genericArticleId: clean(input.genericArticleId, 160) || suggestion.genericArticleId || null,
     position: input.position || null,
     vehicleId: clean(input.vehicleId, 160) || null,
     vin: input.vehicleVin || null,
@@ -260,7 +262,7 @@ export async function selectDiagnosticPartOffer(input: {
     subPosition: input.subPosition || null,
     partName: input.partName || suggestion.description,
     position: input.position || null,
-    genericArticleId: fitment.genericArticle?.id || null,
+    genericArticleId: fitment.genericArticle?.id || clean(input.genericArticleId, 160) || suggestion.genericArticleId || null,
     catalogArticles: fitment.catalogArticles,
     analogArticles: fitment.analogArticles,
     oeNumbers: fitment.oeNumbers,

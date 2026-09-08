@@ -21,6 +21,8 @@ type Suggestion = {
   manualPartId: string | null;
   kind: "LABOR" | "PART";
   description: string;
+  genericArticleId: string | null;
+  catalogCode: string | null;
   article: string | null;
   brand: string | null;
   position: string | null;
@@ -68,6 +70,8 @@ async function buildSuggestions(diagnosticRequestId: string) {
     const common = {
       findingId: finding.id,
       manualPartId: null,
+      genericArticleId: null,
+      catalogCode: null,
       inspection: inspection.templateName,
       section: section.name,
       checkName: item.name,
@@ -89,6 +93,8 @@ async function buildSuggestions(diagnosticRequestId: string) {
     key: `manual:${part.id}`,
     findingId: part.findingId || "",
     manualPartId: part.id,
+    genericArticleId: part.genericArticleId,
+    catalogCode: part.catalogCode,
     kind: "PART",
     description: part.name,
     article: part.article,
@@ -213,6 +219,7 @@ export async function importDiagnosticRecommendationsToEstimate(
       type: suggestion.kind,
       status: "DRAFT",
       description: suggestion.description,
+      code: suggestion.catalogCode,
       article: suggestion.article,
       brand: suggestion.brand,
       unit: suggestion.kind === "LABOR" ? "робота" : "шт",
@@ -226,6 +233,8 @@ export async function importDiagnosticRecommendationsToEstimate(
         diagnosticRequestId,
         findingId: suggestion.findingId || null,
         manualPartId: suggestion.manualPartId,
+        genericArticleId: suggestion.genericArticleId,
+        catalogCode: suggestion.catalogCode,
         vehicleIssueId: suggestion.findingId ? issueByFinding.get(suggestion.findingId) || null : null,
         inspection: suggestion.inspection,
         section: suggestion.section,

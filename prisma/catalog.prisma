@@ -149,6 +149,7 @@ model GenericArticle {
   categories   CategoryGenericArticle[]
   products     Product[]
   vehicleFitments VehicleFitment[]
+  diagnosticPartRecommendations DiagnosticPartRecommendation[]
 
   @@index([status, name])
   @@index([mergedIntoId])
