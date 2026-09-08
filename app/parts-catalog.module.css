@@ -32,6 +32,7 @@
 
 .pickerFilters{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:9px 19px;border-bottom:1px solid var(--line);background:rgba(255,255,255,.018)}
 .pickerFilters label{display:flex;align-items:center;gap:7px;color:var(--muted);font-size:11px}
+.truncatedValue{min-width:0}
 .pickerFilters select{min-height:29px;max-width:230px;padding:0 9px;border:1px solid var(--line);border-radius:5px;background:var(--parts-surface-raised);color:var(--text);font-size:11px}
 .normalizationBadge{padding:5px 8px;border:1px solid rgba(98,201,119,.32);border-radius:5px;color:#70d981;font-size:11px}
 .pickerOfferTop small{max-width:620px;color:var(--muted);font-size:11px;line-height:1.35}

@@ -186,7 +186,6 @@ async function providerKnowledgeQueries(adapter: SupplierAdapter, query: string,
     provider,
   });
 }
-
 async function vehicleScopedSearch(adapter: SupplierAdapter, query: string, limit: number, context: SupplierSearchContext) {
   const providerQueries = adapter.id === "bm-parts" ? [] : await providerKnowledgeQueries(adapter, query, context);
   const exactQueries = [...new Set([

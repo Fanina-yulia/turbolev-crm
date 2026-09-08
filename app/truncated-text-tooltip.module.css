@@ -1,0 +1,52 @@
+.anchor {
+  position: relative;
+  display: block;
+  min-width: 0;
+  max-width: 100%;
+  outline: none;
+  cursor: help;
+}
+
+.value {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.anchor:focus-visible {
+  border-radius: 4px;
+  outline: 2px solid color-mix(in srgb, var(--orange) 68%, transparent);
+  outline-offset: 2px;
+}
+
+.tooltip {
+  position: fixed;
+  z-index: 4000;
+  box-sizing: border-box;
+  max-height: min(260px, calc(100vh - 24px));
+  overflow: auto;
+  padding: 9px 11px;
+  border: 1px solid color-mix(in srgb, var(--orange) 55%, var(--line));
+  border-radius: 7px;
+  background: var(--panel-2);
+  color: var(--text);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, .22);
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .tooltip {
+    animation: tooltipIn .12s ease-out;
+  }
+}
+
+@keyframes tooltipIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}

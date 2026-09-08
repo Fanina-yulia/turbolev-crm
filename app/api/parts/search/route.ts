@@ -35,7 +35,6 @@ export async function GET(request: Request) {
     vin: rawVin,
     plate,
   });
-
   const normalization = await normalizePartNeed({
     query: q,
     partName,
