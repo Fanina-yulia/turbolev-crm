@@ -139,8 +139,8 @@ const RULES: Rule[] = [
   { match: exact("/api/telephony/binotel-health"), resolve: () => internal(PERMISSIONS.SETTINGS_INTEGRATIONS, "ALL", "Telephony integration health is an integration-administration concern.") },
   { match: prefix("/api/settings/integrations"), resolve: () => internal(PERMISSIONS.SETTINGS_INTEGRATIONS, "ALL", "Integration configuration and credential operations.") },
   { match: exact("/api/settings/parts-knowledge"), resolve: (method) => method.toUpperCase() === "GET"
-    ? internal(PERMISSIONS.SETTINGS_READ, "ALL", "Parts terminology and catalog knowledge status.")
-    : internal(PERMISSIONS.SETTINGS_WRITE, "ALL", "Parts knowledge seed and Google Sheets synchronization.", true) },
+    ? internal(PERMISSIONS.SETTINGS_READ, "ALL", "Parts terminology and catalog knowledge status, including explicit dual-write operations.")
+    : internal(PERMISSIONS.SETTINGS_WRITE, "ALL", "Parts knowledge seed, explicit dual-write operations, and legacy Google Sheets import.", true) },
   { match: prefix("/api/settings"), resolve: (method) => readWrite(method, PERMISSIONS.SETTINGS_READ, PERMISSIONS.SETTINGS_WRITE, "ALL", "CRM operational settings.") },
   { match: exact("/api/work-prices"), resolve: (method) => readWrite(method, PERMISSIONS.SETTINGS_READ, PERMISSIONS.SETTINGS_WRITE, "ALL", "Labor price catalog is controlled configuration.") },
   { match: prefix("/api/workflow"), resolve: () => internal(PERMISSIONS.SETTINGS_READ, "ALL", "Workflow/status architecture presentation and validation metadata.") },
