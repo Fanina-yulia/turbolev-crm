@@ -10,12 +10,12 @@ const CONTENT_WIDTH = PAGE_WIDTH - MARGIN * 2;
 const FOOTER_HEIGHT = 35;
 const SAFE_BOTTOM = FOOTER_HEIGHT + 18;
 
-const ORANGE = rgb(0.96, 0.24, 0.08);
-const DARK = rgb(0.09, 0.105, 0.13);
-const TEXT = rgb(0.10, 0.11, 0.13);
-const MUTED = rgb(0.35, 0.39, 0.44);
-const LINE = rgb(0.79, 0.82, 0.86);
-const ROW_LIGHT = rgb(0.93, 0.945, 0.96);
+const ORANGE = rgb(0.941176, 0.290196, 0.137255);
+const DARK = rgb(0.082353, 0.094118, 0.117647);
+const TEXT = rgb(0.082353, 0.094118, 0.117647);
+const MUTED = rgb(0.333333, 0.356863, 0.380392);
+const LINE = rgb(0.843137, 0.862745, 0.882353);
+const ROW_LIGHT = rgb(0.94902, 0.956863, 0.964706);
 const WHITE = rgb(1, 1, 1);
 
 type PdfColor = ReturnType<typeof rgb>;
@@ -148,6 +148,10 @@ class InvoicePdfLayout {
 
   private paintPage() {
     this.page.drawRectangle({ x: 0, y: 0, width: PAGE_WIDTH, height: PAGE_HEIGHT, color: WHITE });
+    // The orange/white corner mark is part of the supplied Turbo LEV document
+    // artwork and intentionally touches the top and left page edges.
+    this.page.drawRectangle({ x: 0, y: PAGE_HEIGHT - 38, width: 52, height: 38, color: ORANGE });
+    this.page.drawRectangle({ x: 14, y: PAGE_HEIGHT - 38, width: 9, height: 38, color: WHITE });
   }
 
   private startContinuation() {
@@ -177,6 +181,15 @@ class InvoicePdfLayout {
     this.page.drawText(value, { x: centerX - width / 2, y, size, font, color });
   }
 
+  private roundedRectangle(x: number, y: number, width: number, height: number, radius: number, options: { color?: PdfColor; borderColor?: PdfColor; borderWidth?: number }) {
+    const r = Math.min(radius, width / 2, height / 2);
+    const path = `M ${r} 0 L ${width - r} 0 Q ${width} 0 ${width} ${r} L ${width} ${height - r} Q ${width} ${height} ${width - r} ${height} L ${r} ${height} Q 0 ${height} 0 ${height - r} L 0 ${r} Q 0 0 ${r} 0 Z`;
+    // pdf-lib flips SVG Y coordinates, so the SVG origin must be the top edge
+    // while the public helper keeps the same bottom-left coordinates as
+    // drawRectangle.
+    this.page.drawSvgPath(path, { x, y: y + height, color: options.color, borderColor: options.borderColor, borderWidth: options.borderWidth });
+  }
+
   private drawCellText(value: string, x: number, top: number, width: number, height: number, size: number, font: PDFFont, color = TEXT, align: "left" | "center" | "right" = "left", maxLines = 2) {
     const lines = wrap(value || "—", font, size, Math.max(8, width - 8)).slice(0, maxLines);
     const lineHeight = size * 1.28;
@@ -192,16 +205,18 @@ class InvoicePdfLayout {
   async header(data: WorkOrderInvoicePdfData) {
     const logo = this.logo;
     if (logo) {
-      const scale = Math.min(190 / logo.width, 112 / logo.height, 1);
-      this.page.drawImage(logo, { x: MARGIN, y: 807 - logo.height * scale, width: logo.width * scale, height: logo.height * scale });
+      const width = 204;
+      const height = 102;
+      this.page.drawImage(logo, { x: 26.5, y: PAGE_HEIGHT - 48 - height, width, height });
     }
     if (this.car) {
-      const scale = Math.min(211 / this.car.width, 116 / this.car.height, 1);
-      this.page.drawImage(this.car, { x: PAGE_WIDTH - MARGIN - this.car.width * scale, y: 807 - this.car.height * scale, width: this.car.width * scale, height: this.car.height * scale });
+      const width = 205;
+      const height = 111.8893;
+      this.page.drawImage(this.car, { x: PAGE_WIDTH - 15 - width, y: PAGE_HEIGHT - 33.0554 - height, width, height });
     }
 
-    this.centered("НАКЛАДНА", PAGE_WIDTH / 2, 684, 24, this.bold, TEXT);
-    this.centered("ЗАПЧАСТИНИ ТА РОБОТИ", PAGE_WIDTH / 2, 664, 11.8, this.bold, ORANGE);
+    this.centered("НАКЛАДНА", PAGE_WIDTH / 2, 684, 22, this.bold, TEXT);
+    this.centered("ЗАПЧАСТИНИ ТА РОБОТИ", PAGE_WIDTH / 2, 664, 11, this.bold, ORANGE);
     this.page.drawLine({ start: { x: MARGIN, y: 653 }, end: { x: PAGE_WIDTH - MARGIN, y: 653 }, thickness: 0.85, color: ORANGE });
 
     const rowY = 639;
@@ -220,7 +235,7 @@ class InvoicePdfLayout {
     this.ensure(34);
     const top = this.y;
     this.page.drawRectangle({ x: MARGIN, y: top - 18, width: 7, height: 18, color: ORANGE });
-    this.page.drawText(title, { x: MARGIN + 15, y: top - 14, size: 16, font: this.bold, color: TEXT });
+    this.page.drawText(title, { x: MARGIN + 15, y: top - 16, size: 14, font: this.bold, color: TEXT });
     this.y = top - 28;
   }
 
@@ -283,11 +298,11 @@ class InvoicePdfLayout {
     const rows = data.parts.length
       ? data.parts.map((line) => [printable(line.article || line.code), printable(line.brand), printable(line.description), money(line.unitPrice), quantity(line.quantity), money(lineAmount(line))])
       : [["—", "—", "Запчастини не додані", "—", "0", "0.00"]];
-    this.tableRows(rows, widths, { rowHeight: 35, align: ["left", "left", "left", "right", "center", "right"], boldColumns: [0, 3, 4, 5] }, headers);
+    this.tableRows(rows, widths, { rowHeight: 38, align: ["left", "left", "left", "right", "center", "right"], boldColumns: [0, 3, 4, 5] }, headers);
     const totalQuantity = data.parts.reduce((sum, line) => sum + numberOf(line.quantity), 0);
     const totalAmount = data.parts.reduce((sum, line) => sum + lineAmount(line), 0);
     this.totalRow("Всього запчастини:", quantity(totalQuantity), money(totalAmount), widths);
-    this.y -= 14;
+    this.y -= 12;
   }
 
   works(data: WorkOrderInvoicePdfData) {
@@ -298,7 +313,7 @@ class InvoicePdfLayout {
     const rows = data.works.length
       ? data.works.map((line, index) => [String(index + 1), printable(line.description), quantity(line.quantity), money(line.unitPrice), money(lineAmount(line))])
       : [["—", "Роботи не додані", "0", "0.00", "0.00"]];
-    this.tableRows(rows, widths, { rowHeight: 25, align: ["center", "left", "center", "right", "right"], boldColumns: [2, 3, 4] }, headers);
+    this.tableRows(rows, widths, { rowHeight: 22, align: ["center", "left", "center", "right", "right"], boldColumns: [2, 3, 4] }, headers);
     const totalAmount = data.works.reduce((sum, line) => sum + lineAmount(line), 0);
     const height = 22;
     if (this.y - height < SAFE_BOTTOM) this.startContinuation();
@@ -311,7 +326,7 @@ class InvoicePdfLayout {
     this.page.drawLine({ start: { x: MARGIN, y: top }, end: { x: PAGE_WIDTH - MARGIN, y: top }, thickness: 0.75, color: ORANGE });
     this.centered("Всього роботи:", MARGIN + 38 + 345 / 2, top - 14, 6.7, this.regular, MUTED);
     this.drawCellText(money(totalAmount), MARGIN + 38 + 345 + 45 + 70, top, 68, height, 7.1, this.bold, TEXT, "right", 1);
-    this.y = top - height - 2;
+    this.y = top - height;
   }
 
   async total(data: WorkOrderInvoicePdfData) {
@@ -321,27 +336,28 @@ class InvoicePdfLayout {
     const grandTotal = partsTotal + worksTotal;
     const top = this.y;
     const leftWidth = 400;
-    const gap = 21;
+    const gap = 22.2756;
     const rightX = MARGIN + leftWidth + gap;
     const rightWidth = CONTENT_WIDTH - leftWidth - gap;
-    const boxHeight = 50;
+    const leftHeight = 48;
+    const rightHeight = 53;
 
-    this.page.drawRectangle({ x: MARGIN, y: top - boxHeight, width: leftWidth, height: boxHeight, color: WHITE, borderColor: ORANGE, borderWidth: 1.25 });
-    this.page.drawRectangle({ x: MARGIN + 12, y: top - boxHeight + 8, width: 32, height: 32, color: ORANGE });
-    this.centered("₴", MARGIN + 28, top - boxHeight + 18, 17, this.bold, WHITE);
+    this.roundedRectangle(MARGIN, top - leftHeight, leftWidth, leftHeight, 9, { color: WHITE, borderColor: ORANGE, borderWidth: 1.25 });
+    this.roundedRectangle(MARGIN + 12, top - leftHeight + 8, 32, 32, 8, { color: ORANGE });
+    this.centered("₴", MARGIN + 28, top - leftHeight + 18, 17, this.bold, WHITE);
     this.page.drawText("Загальна сума до сплати:", { x: MARGIN + 63, y: top - 18, size: 11.4, font: this.bold, color: TEXT });
     this.page.drawText(money(grandTotal), { x: MARGIN + 63, y: top - 40, size: 22, font: this.bold, color: ORANGE });
     this.page.drawText("грн", { x: MARGIN + 254, y: top - 36, size: 12.3, font: this.bold, color: TEXT });
 
-    this.page.drawRectangle({ x: rightX, y: top - boxHeight, width: rightWidth, height: boxHeight, color: WHITE, borderColor: LINE, borderWidth: 1.1 });
+    this.roundedRectangle(rightX, top - rightHeight, rightWidth, rightHeight, 9, { color: WHITE, borderColor: LINE, borderWidth: 1.1 });
     if (this.qr) {
-      const scale = Math.min(38 / this.qr.width, 38 / this.qr.height, 1);
-      this.page.drawImage(this.qr, { x: rightX + 11, y: top - 44, width: this.qr.width * scale, height: this.qr.height * scale });
+      const scale = Math.min(43 / this.qr.width, 43 / this.qr.height, 1);
+      this.page.drawImage(this.qr, { x: rightX + 7, y: top - 48, width: this.qr.width * scale, height: this.qr.height * scale });
     }
     this.page.drawText("Скануй QR", { x: rightX + 54, y: top - 19, size: 7.6, font: this.bold, color: TEXT });
     this.page.drawText("для зв'язку", { x: rightX + 54, y: top - 31, size: 6.2, font: this.regular, color: TEXT });
     this.page.drawText(data.site || "turbolev.net", { x: rightX + 54, y: top - 43, size: 6.5, font: this.bold, color: ORANGE });
-    this.y = top - boxHeight - 9;
+    this.y = top - rightHeight - 4;
   }
 
   note(data: WorkOrderInvoicePdfData) {
