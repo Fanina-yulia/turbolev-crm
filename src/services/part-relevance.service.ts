@@ -121,6 +121,11 @@ export function checkPartOfferRelevance(offer: SupplierOffer, input: PartRelevan
   if (canonicalCode !== "BALL_JOINT") {
     return { relevant: true, canonicalCode, reason: "Для цієї групи діє загальна перевірка постачальника." };
   }
+
+  // The BALL_JOINT branch above returns for every possible outcome. Keep an
+  // explicit defensive fallback so strict production type-checking remains
+  // stable if the terminology union grows in the future.
+  return { relevant: true, canonicalCode, reason: "Результат залишено для ручної перевірки." };
 }
 
 export function isPartOfferRelevant(offer: SupplierOffer, input: PartRelevanceInput) {
