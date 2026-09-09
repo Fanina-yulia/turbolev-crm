@@ -349,7 +349,11 @@ export function getPartPackageRule(input: PartOperationInput = {}): PartPackageR
     priceQuantity = current.priceBasis === "PER_WHEEL" ? 2 : 1;
   }
   const quantityHint = numberValue(input.quantityHint, 0);
-  if (quantityHint > 0 && current.soldAs !== "LITER") {
+  if (quantityHint > 0 && current.soldAs === "LITER") {
+    packageQuantity = quantityHint;
+    priceQuantity = quantityHint;
+    current.packageLabel = quantityHint + " л";
+  } else if (quantityHint > 0 && current.soldAs !== "LITER") {
     packageQuantity = quantityHint;
     if (current.priceBasis === "PER_PIECE") priceQuantity = quantityHint;
   }
@@ -366,14 +370,22 @@ function explicitPerPieceName(value: string) {
   return /(?:за\s*колес|per\s*wheel|поштуч|1\s*(?:шт|pc|piece)|single)/iu.test(value);
 }
 
-export function resolveSupplierOfferQuantity(ruleInput: PartPackageRule, offer: Pick<SupplierOffer, "name" | "multiplicity">) {
+export function resolveSupplierOfferQuantity(ruleInput: PartPackageRule, offer: Pick<SupplierOffer, "name" | "multiplicity">, quantityHint?: number | null) {
   const name = clean(offer.name, 320);
   const packageInName = explicitPackageName(name);
   const pieceInName = explicitPerPieceName(name);
   let quantity = ruleInput.priceQuantity ?? ruleInput.packageQuantity ?? 1;
   let priceBasis = ruleInput.priceBasis;
   if (ruleInput.soldAs === "LITER") {
-    return { quantity: 1, priceBasis: "PER_LITER" as const, label: "обсяг уточнюється", note: ruleInput.note, packageLabel: ruleInput.packageLabel, multiplicity: offer.multiplicity ?? null };
+    const volume = numberValue(quantityHint, 0);
+    return {
+      quantity: volume,
+      priceBasis: "PER_LITER" as const,
+      label: volume > 0 ? volume + " л" : "обсяг уточнюється",
+      note: volume > 0 ? "Ціна розрахована за підтвердженим обсягом у літрах." : ruleInput.note,
+      packageLabel: volume > 0 ? volume + " л" : ruleInput.packageLabel,
+      multiplicity: offer.multiplicity ?? null,
+    };
   }
   if (packageInName && ruleInput.coverage === "AXLE") {
     quantity = ruleInput.packageQuantity ?? 1;
@@ -396,12 +408,12 @@ export function resolveSupplierOfferQuantity(ruleInput: PartPackageRule, offer: 
 export function decorateSupplierOffersWithPackaging(offers: SupplierOffer[], input: PartOperationInput = {}) {
   const partRule = getPartPackageRule(input);
   return offers.map((offer) => {
-    const resolved = resolveSupplierOfferQuantity(partRule, offer);
-    const purchasePrice = offer.purchasePrice == null ? null : Math.round(offer.purchasePrice * resolved.quantity * 100) / 100;
-    const sellPrice = offer.sellPrice == null ? null : Math.round(offer.sellPrice * resolved.quantity * 100) / 100;
+    const resolved = resolveSupplierOfferQuantity(partRule, offer, input.quantityHint);
+    const purchasePrice = offer.purchasePrice == null || resolved.quantity <= 0 ? null : Math.round(offer.purchasePrice * resolved.quantity * 100) / 100;
+    const sellPrice = offer.sellPrice == null || resolved.quantity <= 0 ? null : Math.round(offer.sellPrice * resolved.quantity * 100) / 100;
     return {
       ...offer,
-      catalogQuantity: resolved.quantity,
+      catalogQuantity: resolved.quantity > 0 ? resolved.quantity : null,
       catalogPriceBasis: resolved.priceBasis,
       catalogQuantityLabel: resolved.label,
       catalogPackageLabel: resolved.packageLabel,
