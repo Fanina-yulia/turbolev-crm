@@ -526,3 +526,19 @@
 .cartPartSearch button:hover{background:var(--orange-2)}
 .cartPartSearch:focus-within{border-color:var(--orange);box-shadow:0 0 0 3px color-mix(in srgb,var(--orange) 14%,transparent)}
 @media(max-width:700px){.cartPartSearch{width:100%;height:38px}.cartPartSearch input,.cartPartSearch input:focus,.cartPartSearch input:active{height:30px;line-height:30px}.cartPartSearch button{width:30px;height:30px}}
+
+.quantityNote{display:block;color:var(--muted);font-size:11px;line-height:1.25}
+.compactPrice{display:grid;justify-items:end;gap:2px}
+.compactPrice small{color:var(--muted);font-size:10px;font-weight:500}
+.servicesRows{display:grid;min-width:0}
+.serviceRow{display:grid;grid-template-columns:1.3fr 2fr 120px 170px 150px;gap:10px;align-items:center;padding:9px 11px;border-top:1px solid var(--parts-border);color:var(--text);font-size:12px}
+.serviceRow>span{min-width:0}
+.serviceRow b,.serviceRow small{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.serviceRow small{margin-top:3px;color:var(--muted);font-size:11px;font-weight:400}
+.servicePart b,.serviceName b{font-weight:700}
+.servicePrice{display:grid;gap:2px;font-weight:700}
+.servicePrice small,.serviceUnmapped small{font-weight:400}
+.serviceMapped{color:var(--parts-success);font-weight:700}
+.serviceUnmapped{color:var(--orange);font-weight:700}
+.servicesLoading{padding:26px 12px;color:var(--muted);text-align:center}
+@media(max-width:900px){.serviceRow{min-width:700px}.servicesRows{overflow:auto}}
