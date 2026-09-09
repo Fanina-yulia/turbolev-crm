@@ -92,26 +92,6 @@ CREATE TRIGGER trg_finance_supplier_order_payable
 AFTER INSERT OR UPDATE OF "status", "totalPurchase", "currency", "externalOrderId" ON "SupplierOrder"
 FOR EACH ROW EXECUTE FUNCTION finance_sync_supplier_order_payable();
 
--- Backfill existing active supplier orders idempotently.
-DO $backfill$
-DECLARE
-  r "SupplierOrder"%ROWTYPE;
-BEGIN
-  FOR r IN
-    SELECT * FROM "SupplierOrder"
-     WHERE "status"::text IN ('CONFIRMED', 'PARTIAL', 'FULFILLED')
-       AND "totalPurchase" IS NOT NULL
-       AND "totalPurchase" > 0
-  LOOP
-    PERFORM finance_sync_supplier_order_payable_row(r);
-  END LOOP;
-EXCEPTION
-  WHEN undefined_function THEN
-    -- The helper below is intentionally not required; the explicit INSERT handles backfill.
-    NULL;
-END
-$backfill$;
-
 -- Explicit supplier AP backfill, guarded by source identity.
 INSERT INTO "FinancialObligation" (
   "id", "direction", "status", "amount", "settledAmount", "currency", "issuedAt",
