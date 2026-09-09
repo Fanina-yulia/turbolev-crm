@@ -197,3 +197,8 @@
   padding:0;
   line-height:1;
 }
+
+
+/* Unified cart: financial summary lives inside the cart section. */
+.cartSummary{margin-top:12px;border-top:1px solid var(--line);background:rgba(18,34,42,.34)}
+.cartSummary .summaryBody{padding:14px}
