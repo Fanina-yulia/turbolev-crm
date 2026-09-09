@@ -24,6 +24,8 @@ import {
   requestExpenseApproval,
   reverseExpense,
 } from "@/src/services/finance-expense-governance.service";
+import { listApprovalRules, saveApprovalRule, setApprovalRuleActive } from "@/src/services/financial-approval-rules.service";
+import { applyCustomerAdvance, listCustomerAdvances, refundCustomerAdvance } from "@/src/services/customer-advance.service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -96,6 +98,11 @@ async function targetLocationForAction(action: string, body: Record<string, unkn
     const expense = await getPrisma().expenseDocument.findUnique({ where: { id: expenseId }, select: { locationId: true } });
     return expense?.locationId || null;
   }
+  const advanceId = text(body.advanceId, 96);
+  if (advanceId) {
+    const advance = await getPrisma().customerAdvance.findUnique({ where: { id: advanceId }, select: { locationId: true } });
+    return advance?.locationId || null;
+  }
   return null;
 }
 
@@ -124,6 +131,14 @@ export async function GET(request: NextRequest) {
       const result = await approvalRequirementForExpense(expenseId);
       if (access.allowedLocationIds && result.expense.locationId && !access.allowedLocationIds.includes(result.expense.locationId)) return NextResponse.json({ ok: false, code: "LOCATION_FORBIDDEN", error: "Немає доступу до цієї витрати." }, { status: 403 });
       return NextResponse.json({ ok: true, ...result }, { headers: { "Cache-Control": "no-store" } });
+    }
+    if (view === "approval-rules") {
+      const rules = await listApprovalRules(requestedLocationId, access.grantedScope === "LOCATION" ? access.allowedLocationIds : null);
+      return NextResponse.json({ ok: true, rules: rules.map((row) => ({ ...row, minAmount: Number(row.minAmount), maxAmount: row.maxAmount == null ? null : Number(row.maxAmount) })) }, { headers: { "Cache-Control": "no-store" } });
+    }
+    if (view === "customer-advances") {
+      const advances = await listCustomerAdvances(requestedLocationId, access.grantedScope === "LOCATION" ? access.allowedLocationIds : null);
+      return NextResponse.json({ ok: true, advances: advances.map((row) => ({ ...row, amount: Number(row.amount), appliedAmount: Number(row.appliedAmount), remainingAmount: Math.max(0, Number(row.amount) - Number(row.appliedAmount)) })) }, { headers: { "Cache-Control": "no-store" } });
     }
 
     const data = await getFinancialCenterV2({
@@ -180,12 +195,34 @@ export async function POST(request: NextRequest) {
       case "SAVE_SETTINGS":
         result = await saveFinancialSettings({ ...body, locationId: requestedLocationId }, identity);
         break;
+      case "SAVE_APPROVAL_RULE":
+        result = await saveApprovalRule({ ...body, locationId: requestedLocationId }, identity);
+        break;
+      case "SET_APPROVAL_RULE_ACTIVE": {
+        const ruleId = text(body.ruleId, 96);
+        if (!ruleId) throw new FinancialCenterV2Error("RULE_ID_REQUIRED", "Вкажіть правило погодження.");
+        result = await setApprovalRuleActive(ruleId, body.isActive !== false, identity);
+        break;
+      }
       case "ADD_ATTACHMENT":
         result = await addExpenseAttachment(body, identity);
         break;
       case "CREATE_CUSTOMER_ADVANCE":
         result = await createCustomerAdvance({ ...body, locationId: requestedLocationId }, identity);
         break;
+      case "APPLY_CUSTOMER_ADVANCE": {
+        const advanceId = text(body.advanceId, 96);
+        const workOrderId = text(body.workOrderId, 64);
+        if (!advanceId || !workOrderId) throw new FinancialCenterV2Error("ADVANCE_FIELDS_REQUIRED", "Вкажіть аванс і замовлення.");
+        result = await applyCustomerAdvance(advanceId, workOrderId, body.amount, identity);
+        break;
+      }
+      case "REFUND_CUSTOMER_ADVANCE": {
+        const advanceId = text(body.advanceId, 96);
+        if (!advanceId) throw new FinancialCenterV2Error("ADVANCE_ID_REQUIRED", "Вкажіть аванс.");
+        result = await refundCustomerAdvance(advanceId, identity);
+        break;
+      }
       case "REQUEST_EXPENSE_APPROVAL": {
         const expenseId = text(body.expenseId, 96);
         if (!expenseId) throw new FinancialCenterV2Error("EXPENSE_ID_REQUIRED", "Вкажіть витрату.");
