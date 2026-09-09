@@ -1,6 +1,8 @@
 import { getPrisma } from "@/src/lib/prisma";
 import { classifyVehicle, type VehicleTechnicalInput } from "@/src/domain/vehicle-intelligence";
 
+export type { VehicleTechnicalInput } from "@/src/domain/vehicle-intelligence";
+
 export type PricingVehicleType =
   | "PASSENGER"
   | "CROSSOVER"

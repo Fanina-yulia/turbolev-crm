@@ -37,6 +37,7 @@
     "app/api/procurement/**",
     "app/procurement-workspace.tsx",
     "app/procurement-workspace.module.css",
+    "src/services/labor-pricing.service.ts",
     "src/services/suppliers/bm-parts.adapter.ts",
     "src/services/suppliers/registry.ts",
     "src/services/suppliers/types.ts"

@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated": "2026-08-30",
+  "updated": "2026-09-10",
   "rule": "Every production change must be assigned to at least one module. Start analysis from the module passport, then inspect declared dependencies only when the change can affect them.",
   "globalRules": [
     {
@@ -489,21 +489,28 @@
       "description": "Payments, cash, payroll/economics, financial core and work-order financial calculations.",
       "keywords": [
         "finance",
+        "financial center",
         "payment",
         "cash",
+        "cash flow",
         "payroll",
         "salary",
         "margin",
         "p&l",
+        "budget",
+        "forecast",
         "balance"
       ],
       "paths": [
         "app/finance-*",
+        "app/financial-center*",
         "app/*payment*",
         "app/*payroll*",
         "app/api/finance/**",
         "app/api/payments/**",
         "src/services/finance*",
+        "src/services/financial-*",
+        "src/services/customer-advance*",
         "src/services/*payment*",
         "src/services/*payroll*"
       ],
