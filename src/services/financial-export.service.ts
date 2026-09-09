@@ -124,17 +124,26 @@ async function reportRows(kind: FinancialExportKind, scope: FinancialCenterScope
   }
 
   if (kind === "expenses") {
-    const rows = await prisma.expenseDocument.findMany({
+    const expenses = await prisma.expenseDocument.findMany({
       where: { expenseDate: { gte: scope.from, lt: scope.to }, currency: scope.currency || "UAH", ...locationFilter },
-      include: { category: { select: { name: true } }, lines: true },
+      select: {
+        expenseDate: true, number: true, status: true, paymentStatus: true, counterpartyName: true,
+        categoryId: true, amount: true, paidAmount: true, dueAt: true, workOrderId: true, description: true,
+      },
       orderBy: [{ expenseDate: "desc" }, { createdAt: "desc" }],
       take: 5000,
     });
+    const categoryIds = [...new Set(expenses.map((row) => row.categoryId).filter((id): id is string => Boolean(id)))];
+    const categories = categoryIds.length ? await prisma.financialCategory.findMany({
+      where: { id: { in: categoryIds } },
+      select: { id: true, name: true },
+    }) : [];
+    const categoryName = new Map(categories.map((row) => [row.id, row.name]));
     return {
       title: "Витрати",
       rows: [
         ["Дата", "Номер", "Статус", "Оплата", "Контрагент", "Категорія", "Сума, грн", "Оплачено, грн", "Строк", "ЗН", "Опис"],
-        ...rows.map((row) => [shortDate(row.expenseDate), row.number, row.status, row.paymentStatus, row.counterpartyName || "", row.category?.name || "", number(row.amount), number(row.paidAmount), shortDate(row.dueAt), row.workOrderId || "", row.description || ""]),
+        ...expenses.map((row) => [shortDate(row.expenseDate), row.number, row.status, row.paymentStatus, row.counterpartyName || "", row.categoryId ? categoryName.get(row.categoryId) || row.categoryId : "", number(row.amount), number(row.paidAmount), shortDate(row.dueAt), row.workOrderId || "", row.description || ""]),
       ],
     };
   }
@@ -181,9 +190,9 @@ export async function renderFinancialPdf(kind: Extract<FinancialExportKind, "pnl
     page = pdf.addPage([width, height]);
     y = height - margin;
   };
-  const line = (text: string, isBold = false, size = 9) => {
+  const line = (textValue: string, isBold = false, size = 9) => {
     if (y < margin + lineHeight) newPage();
-    page.drawText(text, { x: margin, y, size, font: isBold ? bold : regular, color: rgb(0.08, 0.08, 0.08), maxWidth: width - margin * 2 });
+    page.drawText(textValue, { x: margin, y, size, font: isBold ? bold : regular, color: rgb(0.08, 0.08, 0.08), maxWidth: width - margin * 2 });
     y -= lineHeight;
   };
 
@@ -194,8 +203,8 @@ export async function renderFinancialPdf(kind: Extract<FinancialExportKind, "pnl
 
   for (const row of report.rows) {
     if (!row.length) { y -= 8; continue; }
-    const text = row.map((cell) => typeof cell === "number" ? new Intl.NumberFormat("uk-UA", { maximumFractionDigits: 2 }).format(cell) : fitText(cell, 58)).join("   |   ");
-    line(text, row === report.rows[0], row === report.rows[0] ? 9 : 8);
+    const rowText = row.map((cell) => typeof cell === "number" ? new Intl.NumberFormat("uk-UA", { maximumFractionDigits: 2 }).format(cell) : fitText(cell, 58)).join("   |   ");
+    line(rowText, row === report.rows[0], row === report.rows[0] ? 9 : 8);
   }
   return Buffer.from(await pdf.save());
 }
