@@ -203,32 +203,40 @@ class InvoicePdfLayout {
   }
 
   async header(data: WorkOrderInvoicePdfData) {
-    const logo = this.logo;
-    if (logo) {
-      const width = 204;
-      const height = 102;
-      this.page.drawImage(logo, { x: 26.5, y: PAGE_HEIGHT - 48 - height, width, height });
-    }
+    // Variant 3: one panoramic brand composition. The logo and the vehicle
+    // image share one visual band; the panorama asset carries the smooth
+    // white fade and orange motion lines visually connect both assets.
     if (this.car) {
-      const width = 205;
-      const height = 111.8893;
-      this.page.drawImage(this.car, { x: PAGE_WIDTH - 15 - width, y: PAGE_HEIGHT - 33.0554 - height, width, height });
+      const width = 225;
+      const height = 122.7273;
+      const x = PAGE_WIDTH - 15 - width;
+      this.page.drawImage(this.car, { x, y: 696, width, height });
     }
+    if (this.logo) {
+      const width = 155;
+      const height = 77.5;
+      this.page.drawImage(this.logo, { x: 26.5, y: 722, width, height });
+    }
+    [
+      { start: { x: 145, y: 753 }, end: { x: 288, y: 753 }, thickness: 2.2, opacity: 0.34 },
+      { start: { x: 168, y: 746 }, end: { x: 311, y: 741 }, thickness: 1.5, opacity: 0.22 },
+      { start: { x: 202, y: 737 }, end: { x: 332, y: 730 }, thickness: 0.9, opacity: 0.16 },
+    ].forEach((line) => this.page.drawLine({ ...line, color: ORANGE }));
 
-    this.centered("НАКЛАДНА", PAGE_WIDTH / 2, 684, 22, this.bold, TEXT);
-    this.centered("ЗАПЧАСТИНИ ТА РОБОТИ", PAGE_WIDTH / 2, 664, 11, this.bold, ORANGE);
-    this.page.drawLine({ start: { x: MARGIN, y: 653 }, end: { x: PAGE_WIDTH - MARGIN, y: 653 }, thickness: 0.85, color: ORANGE });
+    this.centered("НАКЛАДНА", PAGE_WIDTH / 2, 674, 22, this.bold, TEXT);
+    this.centered("ЗАПЧАСТИНИ ТА РОБОТИ", PAGE_WIDTH / 2, 654, 11, this.bold, ORANGE);
+    this.page.drawLine({ start: { x: MARGIN, y: 643 }, end: { x: PAGE_WIDTH - MARGIN, y: 643 }, thickness: 0.85, color: ORANGE });
 
-    const rowY = 639;
+    const rowY = 629;
     this.page.drawText("Автомобіль:", { x: MARGIN + 2, y: rowY, size: 7.2, font: this.bold, color: TEXT });
-    this.page.drawText(printable(data.vehicleLabel), { x: MARGIN + 49, y: rowY, size: 7.2, font: this.regular, color: TEXT });
+    this.page.drawText(printable(data.vehicleLabel), { x: MARGIN + 54, y: rowY, size: 7.2, font: this.regular, color: TEXT });
     this.page.drawText("VIN:", { x: MARGIN + 191, y: rowY, size: 7.2, font: this.bold, color: TEXT });
     this.page.drawText(printable(data.vin), { x: MARGIN + 221, y: rowY, size: 7.2, font: this.regular, color: TEXT });
     this.page.drawText("Дата:", { x: PAGE_WIDTH - MARGIN - 112, y: rowY, size: 7.2, font: this.bold, color: TEXT });
     const dateValue = dateOnly(data.date);
     const dateWidth = this.regular.widthOfTextAtSize(dateValue, 7.2);
     this.page.drawText(dateValue, { x: PAGE_WIDTH - MARGIN - dateWidth, y: rowY, size: 7.2, font: this.regular, color: TEXT });
-    this.y = 632;
+    this.y = 628;
   }
 
   private sectionTitle(title: string) {
@@ -402,7 +410,7 @@ export async function renderWorkOrderInvoicePdf(data: WorkOrderInvoicePdfData) {
   const boldBytes = await readFile(path.join(root, "public", "fonts", "DejaVuSans-Bold.ttf"));
   const [logo, car, qr] = await Promise.all([
     readAsset(pdf, root, "turbo-lev-document-logo.png", "image/png"),
-    readAsset(pdf, root, "turbo-lev-document-car.png", "image/png"),
+    readAsset(pdf, root, "turbo-lev-document-car-panorama.png", "image/png"),
     readAsset(pdf, root, "turbo-lev-contact-qr.png", "image/png"),
   ]);
   const regular = await pdf.embedFont(regularBytes, { subset: true });

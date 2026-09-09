@@ -319,25 +319,38 @@ class PdfLayout {
   }
 
   async header(snapshot: DiagnosticCardSnapshot, title: string, description: string, logo: PdfAsset | null, car: PdfAsset | null) {
-    // Compact approved-document header: brand, title and vehicle image share
-    // one row, followed by a dense metadata grid.
-    this.ensure(151);
+    // Variant 3: one panoramic brand composition. The logo and the vehicle
+    // image share one visual band; the panorama asset carries the smooth
+    // white fade and the orange motion lines connect both assets.
+    this.ensure(200);
     const top = this.y;
-    await this.drawAsset(logo, { x: MARGIN, top: top - 2, width: 92, maxHeight: 48 });
-    await this.drawAsset(car, { x: PAGE_WIDTH - MARGIN - 132, top: top - 2, width: 132, maxHeight: 62 });
+    const logoImage = logo ? await this.embedImage(logo.bytes, logo.mimeType) : null;
+    const carImage = car ? await this.embedImage(car.bytes, car.mimeType) : null;
+    if (carImage) {
+      const carWidth = 270;
+      const carHeight = 147.2727;
+      const carX = PAGE_WIDTH - MARGIN - carWidth;
+      this.page.drawImage(carImage, { x: carX, y: top - 147, width: carWidth, height: carHeight });
+    }
+    if (logoImage) this.page.drawImage(logoImage, { x: MARGIN, y: top - 79, width: 155, height: 77.5 });
+    [
+      { start: { x: 145, y: top - 60 }, end: { x: 288, y: top - 60 }, thickness: 2.2, opacity: 0.34 },
+      { start: { x: 168, y: top - 67 }, end: { x: 311, y: top - 72 }, thickness: 1.5, opacity: 0.22 },
+      { start: { x: 202, y: top - 76 }, end: { x: 332, y: top - 83 }, thickness: 0.9, opacity: 0.16 },
+    ].forEach((line) => this.page.drawLine({ ...line, color: this.accent }));
 
     const centerX = PAGE_WIDTH / 2;
     const eyebrow = "TURBO LEV · АВТОСЕРВІС";
     const titleText = title.toUpperCase();
     const titleSize = 17;
     const titleWidth = this.bold.widthOfTextAtSize(titleText, titleSize);
-    this.page.drawText(eyebrow, { x: centerX - this.bold.widthOfTextAtSize(eyebrow, 7.4) / 2, y: top - 13, size: 7.4, font: this.bold, color: this.accent });
-    this.page.drawText(titleText, { x: centerX - titleWidth / 2, y: top - 35, size: titleSize, font: this.bold, color: this.textColor });
+    this.page.drawText(eyebrow, { x: centerX - this.bold.widthOfTextAtSize(eyebrow, 7.4) / 2, y: top - 137, size: 7.4, font: this.bold, color: this.accent });
+    this.page.drawText(titleText, { x: centerX - titleWidth / 2, y: top - 158, size: titleSize, font: this.bold, color: this.textColor });
     const subtitle = description || "Результати проведеної діагностики автомобіля.";
     const subtitleWidth = this.regular.widthOfTextAtSize(subtitle, 7.2);
-    this.page.drawText(subtitle, { x: centerX - subtitleWidth / 2, y: top - 49, size: 7.2, font: this.regular, color: this.mutedColor });
-    this.page.drawRectangle({ x: MARGIN, y: top - 61, width: CONTENT_WIDTH, height: 2, color: this.accent });
-    this.y = top - 71;
+    this.page.drawText(subtitle, { x: centerX - subtitleWidth / 2, y: top - 172, size: 7.2, font: this.regular, color: this.mutedColor });
+    this.page.drawRectangle({ x: MARGIN, y: top - 184, width: CONTENT_WIDTH, height: 2, color: this.accent });
+    this.y = top - 194;
 
     const status = cardStatus(snapshot);
     this.infoRow([
@@ -556,7 +569,7 @@ export async function renderDiagnosticCardPdf(snapshot: DiagnosticCardSnapshot, 
     readFile(path.join(root, "public", "fonts", "DejaVuSans.ttf")),
     readFile(path.join(root, "public", "fonts", "DejaVuSans-Bold.ttf")),
     readOptionalAsset(root, "turbo-lev-document-logo.png", "image/png"),
-    readOptionalAsset(root, "turbo-lev-document-car.png", "image/png"),
+    readOptionalAsset(root, "turbo-lev-document-car-panorama.png", "image/png"),
     readOptionalAsset(root, "turbo-lev-document-qr.png", "image/png"),
   ]);
   const regular = await pdf.embedFont(regularBytes, { subset: true });

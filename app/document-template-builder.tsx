@@ -238,7 +238,14 @@ function InvoiceReferencePreview() {
   ];
   return <article className={styles.referenceDocument}>
     <div className={styles.referenceCorner}/>
-    <header className={styles.referenceHeader}><img src="/brand/turbo-lev-document-logo.png" alt="Турбо Лев"/><div><h1>НАКЛАДНА</h1><strong>ЗАПЧАСТИНИ ТА РОБОТИ</strong></div><img src="/brand/turbo-lev-document-car.png" alt="Автомобіль"/></header>
+    <header className={styles.referenceHeader}>
+      <div className={styles.referencePanorama}>
+        <img className={styles.referenceBrandLogo} src="/brand/turbo-lev-document-logo.png" alt="Турбо Лев"/>
+        <img className={styles.referenceCar} src="/brand/turbo-lev-document-car-panorama.png" alt="Автомобіль"/>
+        <div className={styles.referenceMotion} aria-hidden="true"><i/><i/><i/></div>
+      </div>
+      <div className={styles.referenceHeading}><h1>НАКЛАДНА</h1><strong>ЗАПЧАСТИНИ ТА РОБОТИ</strong></div>
+    </header>
     <div className={styles.referenceMeta}><span>Автомобіль: <b>Citroen C3</b></span><span>VIN: <b>VF7SXHNVTKT682038</b></span><span>Дата: <b>05.08.2026</b></span></div>
     <ReferenceTable title="ЗАПЧАСТИНИ" columns={["Артикул", "Бренд", "Найменування", "Ціна/шт.", "Кільк.", "Сума"]} rows={parts} total={"10 787.00"}/>
     <ReferenceTable title="РОБОТИ" columns={["№", "Найменування робіт", "Кільк.", "Ціна", "Сума"]} rows={works} total={"6 000.00"}/>
