@@ -435,10 +435,13 @@ export function PartsCatalog() {
   const compactPickerOffers = supplierSearchBlocked ? [] : offers.filter((offer) => supplierFilter === "ALL" || offer.supplierId === supplierFilter);
   function renderCompactOffer(offer: SupplierOffer, index: number) {
     const key = offer.supplierId + ":" + (offer.externalProductId || offer.article);
+    const stockRows = offer.stock.length
+      ? offer.stock
+      : [{ warehouse: "Склад не вказаний", quantity: "—" }];
     return <button type="button" className={styles.compactOfferRow} key={key + "-" + index} disabled={!offer.available || offer.purchasePrice == null || selectingOffer === key || !activeRecommendation} onClick={() => void selectOffer(offer, true)}>
       <span className={styles.compactOfferImage}>{offer.imageUrl ? <img src={offer.imageUrl} alt="" /> : <span aria-hidden="true">⚙</span>}</span>
       <span className={styles.compactOfferName}><b>{offer.name}</b></span>
-      <span className={styles.compactAvailability}><b>Наявність <i aria-hidden="true">ⓘ</i></b><span>{offer.available ? "В наявності" : "Уточнити"}</span></span>
+      <span className={styles.compactAvailability}><b>Наявність <span className={styles.compactInfo} aria-label={`Інформація про склади ${offer.supplierName}`} role="img" tabIndex={0}>ⓘ</span></b><span>{offer.available ? "В наявності" : "Уточнити"}</span><span className={styles.compactStockTooltip} role="tooltip" aria-label="Складські залишки">{stockRows.map((stock, stockIndex) => <span key={`${stock.warehouse}-${stockIndex}`}><b>{stock.warehouse}</b> — {stock.quantity}</span>)}</span></span>
       <span className={styles.compactSupplier}>{offer.supplierName || "—"}</span>
       <span className={styles.compactBrand}><small>{offer.brand || "Бренд не вказаний"}</small><b>{offer.article}</b></span>
       <span className={styles.compactPrice}>{formatMoney(offer.purchasePrice, offer.currency)}</span>
