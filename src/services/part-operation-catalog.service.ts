@@ -448,7 +448,7 @@ export function listPartOperationDefinitions(input: PartOperationInput = {}): Pa
   const subPosition = subPositionValue(input.subPosition) || subPositionValue(input.partName);
   const rows = STATIC_OPERATIONS[code] || defaultOperationsForCode(code);
   const scopedRows = rows.filter((row) => {
-    if (!axis || !["BRAKE_PAD", "BRAKE_DISC"].includes(code)) return true;
+    if (!axis || !["BRAKE_PAD", "BRAKE_DISC"].includes(code || "")) return true;
     const operationCode = row.operationCode.toUpperCase();
     if (operationCode.includes("FRONT")) return axis === "FRONT";
     if (operationCode.includes("REAR")) return axis === "REAR";
