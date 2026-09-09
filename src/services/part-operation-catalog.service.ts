@@ -330,6 +330,12 @@ function operationNameFor(row: StaticOperationRow, code: string, axis: "FRONT" |
   return names[code] || row.operationName;
 }
 
+function storedSoldAs(value: unknown): PartPackageRule["soldAs"] | null {
+  const normalized = clean(value, 32).toUpperCase();
+  if (["PIECE", "PAIR", "SET", "KIT", "ASSEMBLY", "LITER", "UNKNOWN"].includes(normalized)) return normalized as PartPackageRule["soldAs"];
+  return null;
+}
+
 export function getPartPackageRule(input: PartOperationInput = {}): PartPackageRule {
   const code = canonicalCodeFromInput(input);
   const base = code ? PACKAGE_RULES[code] : null;
@@ -337,6 +343,13 @@ export function getPartPackageRule(input: PartOperationInput = {}): PartPackageR
   const side = sideValue(input.side) || sideValue(input.position);
   const defaultRule = rule(code, "UNKNOWN", "UNKNOWN", "UNKNOWN", "шт", "Кількість уточнюється", "Для цієї позиції ще не визначено одиницю продажу.", { packageQuantity: 1, priceQuantity: 1 });
   const current = base ? { ...base } : defaultRule;
+  const soldAsOverride = storedSoldAs(input.soldAs);
+  if (soldAsOverride && soldAsOverride !== "UNKNOWN") {
+    current.soldAs = soldAsOverride;
+    if (current.priceBasis === "UNKNOWN") current.priceBasis = soldAsOverride === "LITER" ? "PER_LITER" : ["PAIR", "SET", "KIT", "ASSEMBLY"].includes(soldAsOverride) ? "PACKAGE" : "PER_PIECE";
+    if (current.coverage === "UNKNOWN") current.coverage = soldAsOverride === "LITER" ? "FLUID" : "VEHICLE";
+    current.requiresQuantityInput = current.requiresQuantityInput || soldAsOverride === "LITER";
+  }
   let packageQuantity = current.packageQuantity;
   let priceQuantity = current.priceQuantity;
   if (current.coverage === "WHEEL" && current.soldAs !== "LITER" && !side && axis) {
