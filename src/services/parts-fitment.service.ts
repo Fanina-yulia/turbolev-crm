@@ -5,6 +5,7 @@ import { normalizePartNeed } from "@/src/services/part-normalization.service";
 import { toPrismaJson } from "@/src/lib/prisma-json";
 import { BM_PARTS_VEHICLE_CONTEXT_VERSION, bmPartsAdapter } from "@/src/services/suppliers/bm-parts.adapter";
 import { resolvePartKnowledge } from "@/src/services/parts-knowledge.service";
+import { isPartOfferRelevant } from "@/src/services/part-relevance.service";
 import type { SupplierVehicleContext, SupplierVehiclePart } from "@/src/services/suppliers/types";
 
 export type PartFitmentStatus =
@@ -467,10 +468,29 @@ async function resolveBmProviderFitment(
     return null;
   }
 
+  const relevantProviderParts = providerParts.filter((item) => isPartOfferRelevant(item.offer, {
+    query: intent.query,
+    partName: genericArticle?.name || intent.partName || intent.query,
+    canonicalCode: genericArticle?.code || intent.canonicalCode,
+  }));
+  if (!relevantProviderParts.length) {
+    await auditProviderSearch({
+      vehicleId: vehicleSummary.id || "",
+      query,
+      position: requestedPosition,
+      status: "NO_RELEVANT_MATCH",
+      resultCount: providerParts.length,
+      fitmentExact: providerVehicle.exact,
+      sourceVersion: providerVehicle.sourceVersion,
+      metadata: { reason: "Supplier results belonged to another part family." },
+    });
+    return null;
+  }
+
   const matches: CatalogFitmentMatch[] = [];
   const seen = new Set<string>();
   const reason = "BM Parts звузив пошук до автомобіля " + providerVehicle.brand + " " + providerVehicle.model + ". Точний двигун/комплектацію потрібно перевірити вручну.";
-  for (const item of providerParts) {
+  for (const item of relevantProviderParts) {
     const offer = item.offer;
     const productId = clean(offer.catalogProductId || offer.externalProductId || offer.article, 180);
     const article = clean(offer.article, 160);

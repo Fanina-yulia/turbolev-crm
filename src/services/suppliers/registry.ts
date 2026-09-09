@@ -4,6 +4,7 @@ import { uniqueTradeAdapter } from "./unique-trade.adapter";
 import type { PartFitmentStatus } from "@/src/services/parts-fitment.service";
 import { normalizeCatalogNumber } from "@/src/services/parts-fitment.service";
 import { buildKnowledgeProviderPartQueryCandidates } from "@/src/services/parts-knowledge.service";
+import { isPartOfferRelevant } from "@/src/services/part-relevance.service";
 import type {
   SupplierAdapter,
   SupplierConnectionCheck,
@@ -290,7 +291,15 @@ export async function searchConfiguredSuppliers(query: string, limitPerSupplier 
   settled.forEach((result, index) => {
     const adapter = searchable[index];
     if (result.status === "fulfilled") {
-      for (const offer of result.value) {
+      const relevantOffers = result.value.filter((offer) => isPartOfferRelevant(offer, {
+        query,
+        partName: context.partName || query,
+        canonicalCode: context.canonicalCode,
+        catalogArticles: context.catalogArticles,
+        analogArticles: context.analogArticles,
+        oeNumbers: context.oeNumbers,
+      }));
+      for (const offer of relevantOffers) {
         const annotated = annotateOffer(offer, context);
         const key = offerKey(annotated);
         const previous = offersByKey.get(key);
