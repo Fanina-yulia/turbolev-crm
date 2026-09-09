@@ -142,7 +142,7 @@ model ExpenseDocument {
   id               String                @id @default(cuid())
   number           String                @unique @db.VarChar(32)
   status           ExpenseDocumentStatus @default(DRAFT)
-  paymentStatus    ExpensePaymentStatus @default(UNPAID)
+  paymentStatus    ExpensePaymentStatus  @default(UNPAID)
   amount           Decimal               @db.Decimal(14, 2)
   paidAmount       Decimal               @default(0) @db.Decimal(14, 2)
   currency         String                @default("UAH") @db.VarChar(3)
@@ -185,20 +185,20 @@ model ExpenseDocument {
 }
 
 model ExpenseLine {
-  id               String   @id @default(cuid())
+  id                String   @id @default(cuid())
   expenseDocumentId String
-  lineNumber       Int
-  description      String
-  amount           Decimal  @db.Decimal(14, 2)
-  quantity         Decimal? @db.Decimal(14, 4)
-  unit             String?  @db.VarChar(32)
-  unitPrice        Decimal? @db.Decimal(14, 2)
-  categoryId       String?
-  costCenterId     String?
-  workOrderId      String?  @db.VarChar(64)
-  supplierId       String?  @db.VarChar(64)
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  lineNumber        Int
+  description       String
+  amount            Decimal  @db.Decimal(14, 2)
+  quantity          Decimal? @db.Decimal(14, 4)
+  unit              String?  @db.VarChar(32)
+  unitPrice         Decimal? @db.Decimal(14, 2)
+  categoryId        String?
+  costCenterId      String?
+  workOrderId       String?  @db.VarChar(64)
+  supplierId        String?  @db.VarChar(64)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 
   expenseDocument ExpenseDocument @relation(fields: [expenseDocumentId], references: [id], onDelete: Cascade)
 
@@ -323,7 +323,7 @@ model CashTransaction {
   fromAccount MoneyAccount?        @relation("CashTransactionFromAccount", fields: [fromAccountId], references: [id], onDelete: Restrict)
   toAccount   MoneyAccount?        @relation("CashTransactionToAccount", fields: [toAccountId], references: [id], onDelete: Restrict)
   category    FinancialCategory?   @relation(fields: [categoryId], references: [id], onDelete: SetNull)
-  costCenter  CostCenter?           @relation(fields: [costCenterId], references: [id], onDelete: SetNull)
+  costCenter  CostCenter?          @relation(fields: [costCenterId], references: [id], onDelete: SetNull)
   obligation  FinancialObligation? @relation(fields: [obligationId], references: [id], onDelete: SetNull)
   reversalOf  CashTransaction?     @relation("CashTransactionReversal", fields: [reversalOfId], references: [id], onDelete: SetNull)
   reversedBy  CashTransaction?     @relation("CashTransactionReversal")
@@ -372,4 +372,158 @@ model WorkOrderFinanceSnapshot {
   @@unique([workOrderId, kind])
   @@index([kind, calculatedAt])
   @@index([workOrderId])
+}
+
+// Financial Center V2 planning layer. These models store plans and controls only;
+// FinancialEvent, FinancialObligation and CashTransaction remain the sole factual ledger.
+model FinancialBudget {
+  id           String   @id @default(cuid())
+  name         String   @db.VarChar(160)
+  metric       String   @db.VarChar(40)
+  amount       Decimal  @db.Decimal(14, 2)
+  currency     String   @default("UAH") @db.VarChar(3)
+  periodStart  DateTime
+  periodEnd    DateTime
+  categoryId   String?  @db.VarChar(80)
+  costCenterId String?  @db.VarChar(80)
+  locationId   String?  @db.VarChar(64)
+  status       String   @default("ACTIVE") @db.VarChar(24)
+  notes        String?  @db.Text
+  createdById  String?  @db.VarChar(64)
+  approvedById String?  @db.VarChar(64)
+  approvedAt   DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([periodStart, periodEnd, status])
+  @@index([locationId, periodStart, periodEnd])
+  @@index([categoryId, periodStart, periodEnd])
+  @@index([costCenterId, periodStart, periodEnd])
+  @@index([metric, periodStart, periodEnd])
+}
+
+model RecurringFinancialRule {
+  id               String   @id @default(cuid())
+  name             String   @db.VarChar(180)
+  direction        String   @default("OUTFLOW") @db.VarChar(16)
+  amount           Decimal  @db.Decimal(14, 2)
+  currency         String   @default("UAH") @db.VarChar(3)
+  frequency        String   @default("MONTHLY") @db.VarChar(24)
+  intervalCount    Int      @default(1)
+  dayOfMonth       Int?
+  dayOfWeek        Int?
+  startAt          DateTime
+  endAt            DateTime?
+  nextOccurrenceAt DateTime
+  categoryId       String?  @db.VarChar(80)
+  costCenterId     String?  @db.VarChar(80)
+  locationId       String?  @db.VarChar(64)
+  counterpartyName String?  @db.VarChar(240)
+  moneyAccountId   String?  @db.VarChar(64)
+  description      String?  @db.Text
+  isActive         Boolean  @default(true)
+  autoPost         Boolean  @default(false)
+  createdById      String?  @db.VarChar(64)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([isActive, nextOccurrenceAt])
+  @@index([locationId, isActive])
+  @@index([categoryId, isActive])
+}
+
+model FinancialForecastItem {
+  id                      String   @id @default(cuid())
+  direction               String   @db.VarChar(16)
+  status                  String   @default("PLANNED") @db.VarChar(24)
+  amount                  Decimal  @db.Decimal(14, 2)
+  currency                String   @default("UAH") @db.VarChar(3)
+  expectedAt              DateTime
+  probability             Int      @default(100)
+  categoryId              String?  @db.VarChar(80)
+  costCenterId            String?  @db.VarChar(80)
+  locationId              String?  @db.VarChar(64)
+  moneyAccountId          String?  @db.VarChar(64)
+  counterpartyName        String?  @db.VarChar(240)
+  sourceEntity            String?  @db.VarChar(40)
+  sourceEntityId          String?  @db.VarChar(96)
+  actualCashTransactionId String?  @db.VarChar(96)
+  description             String?  @db.Text
+  createdById             String?  @db.VarChar(64)
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+
+  @@index([status, expectedAt])
+  @@index([locationId, expectedAt])
+  @@index([sourceEntity, sourceEntityId])
+}
+
+model FinancialApprovalRule {
+  id                 String   @id @default(cuid())
+  name               String   @db.VarChar(160)
+  operationType      String   @default("EXPENSE") @db.VarChar(32)
+  minAmount          Decimal  @default(0) @db.Decimal(14, 2)
+  maxAmount          Decimal? @db.Decimal(14, 2)
+  locationId         String?  @db.VarChar(64)
+  requiredPermission String?  @db.VarChar(96)
+  requiredRole       String?  @db.VarChar(96)
+  isActive           Boolean  @default(true)
+  sortOrder          Int      @default(100)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@index([operationType, isActive, sortOrder])
+  @@index([locationId, isActive])
+}
+
+model FinancialSettings {
+  id                        String   @id @default(cuid())
+  scopeKey                  String   @unique @db.VarChar(80)
+  locationId                String?  @db.VarChar(64)
+  defaultCurrency           String   @default("UAH") @db.VarChar(3)
+  minimumCashReserve        Decimal  @default(0) @db.Decimal(14, 2)
+  fixedMonthlyCosts         Decimal  @default(0) @db.Decimal(14, 2)
+  targetGrossMarginPercent  Decimal  @default(40) @db.Decimal(7, 2)
+  warningGrossMarginPercent Decimal  @default(25) @db.Decimal(7, 2)
+  forecastHorizonDays       Int      @default(90)
+  updatedById               String?  @db.VarChar(64)
+  createdAt                 DateTime @default(now())
+  updatedAt                 DateTime @updatedAt
+
+  @@index([locationId])
+}
+
+model ExpenseAttachment {
+  id                String   @id @default(cuid())
+  expenseDocumentId String   @db.VarChar(96)
+  fileName          String   @db.VarChar(240)
+  mimeType          String   @db.VarChar(120)
+  url               String   @db.Text
+  sizeBytes         Int?
+  uploadedById      String?  @db.VarChar(64)
+  createdAt         DateTime @default(now())
+
+  @@index([expenseDocumentId, createdAt])
+}
+
+model CustomerAdvance {
+  id                      String   @id @default(cuid())
+  clientId                String   @db.VarChar(64)
+  workOrderId             String?  @db.VarChar(64)
+  amount                  Decimal  @db.Decimal(14, 2)
+  appliedAmount           Decimal  @default(0) @db.Decimal(14, 2)
+  currency                String   @default("UAH") @db.VarChar(3)
+  receivedAt              DateTime
+  moneyAccountId          String   @db.VarChar(64)
+  locationId              String?  @db.VarChar(64)
+  cashTransactionId       String   @unique @db.VarChar(96)
+  status                  String   @default("OPEN") @db.VarChar(24)
+  description             String?  @db.Text
+  createdById             String?  @db.VarChar(64)
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+
+  @@index([clientId, status])
+  @@index([workOrderId])
+  @@index([locationId, status])
 }

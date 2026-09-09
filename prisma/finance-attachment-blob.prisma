@@ -1,0 +1,8 @@
+model ExpenseAttachmentBlob {
+  id           String   @id @default(cuid())
+  attachmentId String   @unique @db.VarChar(96)
+  fileData     Bytes
+  createdAt    DateTime @default(now())
+
+  @@index([attachmentId])
+}
