@@ -10,6 +10,7 @@ import { normalizePartNeed } from "@/src/services/part-normalization.service";
 import { resolvePartKnowledge } from "@/src/services/parts-knowledge.service";
 import { enrichOffersWithSellPrice } from "@/src/services/suppliers/order.service";
 import { searchConfiguredSuppliers } from "@/src/services/suppliers/registry";
+import { decorateSupplierOffersWithPackaging, getPartPackageRule } from "@/src/services/part-operation-catalog.service";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -176,7 +177,26 @@ export async function GET(request: Request) {
     pricingPromise,
     supplierPromise || Promise.resolve(null),
   ]);
-  const supplierOffers = supplierSearch ? await enrichOffersWithSellPrice(supplierSearch.offers) : null;
+  const supplierOffers = supplierSearch
+    ? decorateSupplierOffersWithPackaging(await enrichOffersWithSellPrice(supplierSearch.offers), {
+        genericArticleId: resolvedGenericArticleId,
+        canonicalCode: resolvedCanonicalCode,
+        partName: resolvedPartName,
+        axis: resolvedAxis,
+        side: resolvedSide,
+        position: resolvedPosition,
+        subPosition: resolvedSubPosition,
+      })
+    : null;
+  const packaging = getPartPackageRule({
+    genericArticleId: resolvedGenericArticleId,
+    canonicalCode: resolvedCanonicalCode,
+    partName: resolvedPartName,
+    axis: resolvedAxis,
+    side: resolvedSide,
+    position: resolvedPosition,
+    subPosition: resolvedSubPosition,
+  });
   const parts = reference.parts.map((part) => ({
     ...part,
     fitment: {
@@ -238,6 +258,7 @@ export async function GET(request: Request) {
     oeNumbers: fitment.oeNumbers,
     catalogArticles: fitment.catalogArticles,
     analogArticles: fitment.analogArticles,
+    packaging,
     normalization,
     knowledge: {
       source: knowledge.source,
