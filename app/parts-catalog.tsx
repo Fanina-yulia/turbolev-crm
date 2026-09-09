@@ -608,18 +608,37 @@ export function PartsCatalog() {
         </div>
         <div className={styles.selectedTableFooter}><span>{selectedLines.length} із {recommendedParts.length} позицій вибрано</span><span>Ціни в гривнях · горизонтальна прокрутка таблиці</span></div>
 
-<div className={styles.cartSummary}>
-        <div className={styles.summaryBody}>
-          <div className={`${styles.summaryState} ${selectedLines.length ? styles.summaryStateReady : ""}`}><span>{selectedLines.length === recommendedParts.length && recommendedParts.length ? "✓" : "!"}</span><div><b>{selectedLines.length === recommendedParts.length && recommendedParts.length ? "Підбір завершено" : "Потрібно підібрати деталі"}</b><small>{selectedLines.length} із {recommendedParts.length} позицій</small></div></div>
-          <div className={styles.summaryMetrics}><div><span>Закупка</span><b>{formatMoney(selectedPurchaseTotal, "UAH")}</b></div><div><span>Продаж</span><b className={styles.summarySell}>{formatMoney(selectedSellTotal, "UAH")}</b></div><div><span>Прибуток</span><b className={styles.summaryProfit}>{formatMoney(selectedProfitTotal, "UAH")}</b></div><div><span>Націнка</span><b>{displayedMarkupLabel}</b></div></div>
-          <div className={styles.summaryTotal}><span>Разом до пропозиції</span><strong>{formatMoney(selectedSellTotal, "UAH")}</strong></div>
-          <div className={styles.summaryNote}><span aria-hidden="true">ⓘ</span><div><b>Ціна розраховується автоматично</b><small>Націнка береться з налаштувань CRM. Ручне редагування ціни продажу тут не використовується.</small></div></div>
-          <div className={styles.summaryDelivery}><b>Джерело даних</b><span>{selectedLines.length ? "Постачальник, склад і ціна збережені з відповіді API." : "Після вибору позиції тут з’явиться її постачальник і склад."}</span></div>
-          <div className={styles.summaryActions}><button type="button" className={styles.secondaryAction} onClick={() => context.workOrderId && navigateCrm("Замовлення-наряди", { workOrderId: context.workOrderId, workOrderTab: "estimate" })} disabled={!context.workOrderId || !selectedLines.length}>Підготувати до погодження</button><button type="button" className={styles.actionPrimary} onClick={() => context.workOrderId && navigateCrm("Замовлення-наряди", { workOrderId: context.workOrderId, workOrderTab: "parts" })} disabled={!context.workOrderId || !selectedLines.length}>Відкрити в ЗН →</button></div>
-          {message && <div className={styles.policyNote} aria-live="polite">{message}</div>}
+<div className={styles.cartSummary} aria-label="Підсумок кошика">
+          <div className={styles.cartSummaryHeader}>
+            <div><p>ПІДСУМОК КОШИКА</p><b>Деталі та маржа</b></div>
+            <span>{selectedLines.length} із {recommendedParts.length} позицій вибрано</span>
+          </div>
+          <div className={styles.cartTotals}>
+            <div><span>Закупівля</span><b>{formatMoney(selectedPurchaseTotal, "UAH")}</b></div>
+            <div><span>Продаж деталей</span><b className={styles.summarySell}>{formatMoney(selectedSellTotal, "UAH")}</b></div>
+            <div><span>Прибуток</span><b className={styles.summaryProfit}>{formatMoney(selectedProfitTotal, "UAH")}</b></div>
+            <div><span>Націнка</span><b>{displayedMarkupLabel}</b></div>
+          </div>
+          <div className={styles.cartTotalLine}><span>Разом за деталі</span><strong>{formatMoney(selectedSellTotal, "UAH")}</strong></div>
         </div>
-      </div>
       </section>
+
+      <section className={styles.servicesPanel} aria-labelledby="parts-services-title">
+        <div className={styles.servicesHeader}>
+          <div><p>ПОСЛУГИ</p><b id="parts-services-title">Роботи по автомобілю</b></div>
+          <div className={styles.serviceMode}><span>Оберіть спосіб розрахунку цін робіт</span><label><input type="radio" name="parts-service-mode" defaultChecked/> Фіксований прайс</label><label><input type="radio" name="parts-service-mode"/> Нормогодини</label></div>
+        </div>
+        <div className={styles.servicesTable}>
+          <div className={styles.servicesHead}><span>Послуга</span><span>Назва послуги</span><span>Кількість</span><span>Вартість послуги</span><span>Сума</span></div>
+          <div className={styles.servicesEmpty}><span>✓</span><b>Послуги ще не додані</b><small>Додайте роботи після узгодження переліку ремонту.</small></div>
+        </div>
+      </section>
+
+      <div className={styles.proposalBottomBar}>
+        <button type="button" className={styles.secondaryAction} onClick={() => context.workOrderId && navigateCrm("Замовлення-наряди", { workOrderId: context.workOrderId, workOrderTab: "estimate" })} disabled={!context.workOrderId || !selectedLines.length}>Підготувати до погодження</button>
+        <div><span>Загальна сума КП</span><strong>{formatMoney(selectedSellTotal, "UAH")}</strong></div>
+        <button type="button" className={styles.secondaryAction} onClick={() => context.workOrderId && navigateCrm("Замовлення-наряди", { workOrderId: context.workOrderId, workOrderTab: "parts" })} disabled={!context.workOrderId || !selectedLines.length}>Відкрити в ЗН →</button>
+      </div>
 
     </div>
 
