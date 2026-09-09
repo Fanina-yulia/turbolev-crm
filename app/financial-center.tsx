@@ -20,6 +20,20 @@ type DashboardPayload = {
   accounts?: Account[];
 };
 
+type ExportKind = "pnl" | "cash-flow" | "expenses" | "ar" | "ap" | "plan-fact";
+type ExportFormat = "xlsx" | "pdf";
+
+const EXPORTS: Array<{ kind: ExportKind; format: ExportFormat; label: string }> = [
+  { kind: "pnl", format: "xlsx", label: "P&L · XLSX" },
+  { kind: "pnl", format: "pdf", label: "P&L · PDF" },
+  { kind: "cash-flow", format: "xlsx", label: "Cash Flow · XLSX" },
+  { kind: "cash-flow", format: "pdf", label: "Cash Flow · PDF" },
+  { kind: "expenses", format: "xlsx", label: "Витрати · XLSX" },
+  { kind: "ar", format: "xlsx", label: "Дебіторка · XLSX" },
+  { kind: "ap", format: "xlsx", label: "Кредиторка · XLSX" },
+  { kind: "plan-fact", format: "xlsx", label: "План / факт · XLSX" },
+];
+
 function currentFinanceRoute() {
   const route = readCrmRoute();
   return {
@@ -28,6 +42,20 @@ function currentFinanceRoute() {
     from: route.from || "",
     to: route.to || "",
   };
+}
+
+function downloadExport(kind: ExportKind, format: ExportFormat) {
+  const current = currentFinanceRoute();
+  const params = new URLSearchParams({ kind, format });
+  if (current.from) params.set("from", current.from);
+  if (current.to) params.set("to", current.to);
+  if (current.locationId) params.set("locationId", current.locationId);
+  const anchor = document.createElement("a");
+  anchor.href = `/api/finance/v2/export?${params.toString()}`;
+  anchor.download = "";
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
 }
 
 export function FinancialCenter() {
@@ -67,6 +95,14 @@ export function FinancialCenter() {
   }, [loadAccounts]);
 
   return <>
+    <div className={styles.shell} style={{ paddingBottom: 0 }}>
+      <section className={styles.panel}>
+        <div className={styles.panelHeader}>
+          <div><span className={styles.eyebrow}>REPORT EXPORT</span><h2>Вивантаження фінансів</h2><p>Файли формуються з тих самих фактів і поточного періоду/локації, що й Financial Center.</p></div>
+          <div className={styles.headerActions}>{EXPORTS.map((item) => <button key={`${item.kind}:${item.format}`} type="button" className={styles.secondaryButton} onClick={() => downloadExport(item.kind, item.format)}>{item.label}</button>)}</div>
+        </div>
+      </section>
+    </div>
     <FinancialCenterBody />
     {route.scope === "settings" && <div className={styles.shell}>
       {governanceError && <div className={styles.errorBox}>{governanceError}</div>}
