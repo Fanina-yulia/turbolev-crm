@@ -432,7 +432,14 @@ export function listPartOperationDefinitions(input: PartOperationInput = {}): Pa
   const axis = axisValue(input.axis) || axisValue(input.position);
   const subPosition = subPositionValue(input.subPosition) || subPositionValue(input.partName);
   const rows = STATIC_OPERATIONS[code] || defaultOperationsForCode(code);
-  return rows.map((row) => ({
+  const scopedRows = rows.filter((row) => {
+    if (!axis || !["BRAKE_PAD", "BRAKE_DISC"].includes(code)) return true;
+    const operationCode = row.operationCode.toUpperCase();
+    if (operationCode.includes("FRONT")) return axis === "FRONT";
+    if (operationCode.includes("REAR")) return axis === "REAR";
+    return true;
+  });
+  return scopedRows.map((row) => ({
     operationCode: row.operationCode,
     operationName: operationNameFor(row, code, axis, subPosition),
     aliases: unique([...row.aliases, row.operationName]),
