@@ -125,7 +125,12 @@ export function checkPartOfferRelevance(offer: SupplierOffer, input: PartRelevan
   // The BALL_JOINT branch above returns for every possible outcome. Keep an
   // explicit defensive fallback so strict production type-checking remains
   // stable if the terminology union grows in the future.
-  return { relevant: true, canonicalCode, reason: "Результат залишено для ручної перевірки." };
+  const fallback: PartRelevanceResult = {
+    relevant: true,
+    canonicalCode,
+    reason: "Результат залишено для ручної перевірки.",
+  };
+  return fallback;
 }
 
 export function isPartOfferRelevant(offer: SupplierOffer, input: PartRelevanceInput) {
