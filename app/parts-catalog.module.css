@@ -19,23 +19,6 @@
 @media(max-width:700px){.menuHeader{align-items:flex-start;flex-direction:column}.headerBadge{align-self:flex-start}.orderRow{grid-template-columns:1fr 28px;gap:7px}.orderNumber{grid-column:1/-1}.orderNeed{grid-column:1}.contextHeader{grid-template-columns:34px 1fr 1fr}.contextHeader>.contextItem,.contextHeader>.contextStatus{display:none}.contextHeader>.contextItem:nth-of-type(2){display:grid}.contextHeader>.contextItem:nth-of-type(3){display:grid}.columns{grid-template-columns:1fr}.proposalColumn{grid-column:auto}.column{min-height:unset}.searchFields{grid-template-columns:1fr}.offerBody{grid-template-columns:1fr 1fr}.addButton{grid-column:1/-1}.proposalHead,.proposalRow{grid-template-columns:22px minmax(100px,1fr) 40px minmax(74px,1fr) 86px;gap:5px}.totalBox{grid-template-columns:1fr 1fr}.totalBox>span{grid-column:1/-1}.proposalActions{grid-template-columns:1fr}}
 .emptyState button{justify-self:center;padding:8px 12px;border:1px solid rgba(255,102,0,.5);border-radius:5px;background:rgba(255,102,0,.09);color:var(--orange);font-size:11px;font-weight:800;cursor:pointer}.emptyState button:hover{background:rgba(255,102,0,.16)}
 
-.searchAnimation{display:flex;align-items:center;justify-content:center;gap:14px;width:min(100%,380px);min-height:92px;padding:12px 18px;border:1px solid color-mix(in srgb,var(--orange) 20%,var(--parts-border));border-radius:10px;background:linear-gradient(135deg,color-mix(in srgb,var(--orange) 7%,var(--parts-surface)),var(--parts-surface));box-shadow:0 10px 26px color-mix(in srgb,var(--orange) 8%,transparent);text-align:left}
-.searchAnimationVisual{position:relative;width:58px;height:58px;flex:0 0 auto;border:1px solid color-mix(in srgb,var(--orange) 52%,var(--parts-border));border-radius:50%;background:radial-gradient(circle at 50% 50%,color-mix(in srgb,var(--orange) 13%,transparent),transparent 62%);overflow:hidden}
-.searchAnimationVisual:before{content:"";position:absolute;inset:6px;border:1px dashed color-mix(in srgb,var(--orange) 36%,transparent);border-radius:50%;animation:partsSearchOrbit 7s linear infinite}
-.searchAnimationVisual:after{content:"";position:absolute;inset:0;border-radius:50%;background:conic-gradient(from 0deg,transparent 0deg,transparent 245deg,color-mix(in srgb,var(--orange) 8%,transparent) 285deg,color-mix(in srgb,var(--orange) 64%,transparent) 330deg,transparent 350deg);animation:partsSearchSweep 1.8s linear infinite}
-.searchAnimationOrbit{position:absolute;z-index:2;top:4px;left:25px;width:7px;height:7px;border-radius:50%;background:var(--orange);box-shadow:0 0 0 3px color-mix(in srgb,var(--orange) 14%,transparent),0 0 12px color-mix(in srgb,var(--orange) 70%,transparent);transform-origin:4px 25px;animation:partsSearchDot 2.4s linear infinite}
-.searchAnimationPulse{position:absolute;z-index:1;inset:16px;border:1px solid color-mix(in srgb,var(--orange) 68%,transparent);border-radius:50%;animation:partsSearchPulse 1.8s ease-out infinite}
-.searchAnimationCore{position:absolute;z-index:3;top:20px;left:20px;display:grid;place-items:center;width:18px;height:18px;border:2px solid var(--orange);border-radius:5px;background:var(--parts-surface);box-shadow:0 0 14px color-mix(in srgb,var(--orange) 36%,transparent);transform:rotate(45deg)}
-.searchAnimationCore i{display:block;width:5px;height:5px;border-radius:50%;background:var(--parts-success);box-shadow:0 0 8px color-mix(in srgb,var(--parts-success) 75%,transparent);transform:rotate(-45deg);animation:partsSearchCore 1.2s ease-in-out infinite}
-.searchAnimationCopy{display:grid;gap:5px;min-width:0}.searchAnimationCopy b{font-size:12px;line-height:1.2}.searchAnimationCopy>span:not(.searchAnimationSteps){color:var(--muted);font-size:11px;line-height:1.35;white-space:nowrap}.searchAnimationSteps{display:flex;gap:4px;align-items:center;height:8px}.searchAnimationSteps i{width:5px;height:5px;border-radius:50%;background:var(--orange);opacity:.3;animation:partsSearchStep 1.2s ease-in-out infinite}.searchAnimationSteps i:nth-child(2){animation-delay:.16s}.searchAnimationSteps i:nth-child(3){animation-delay:.32s}
-@keyframes partsSearchOrbit{to{transform:rotate(360deg)}}
-@keyframes partsSearchSweep{to{transform:rotate(360deg)}}
-@keyframes partsSearchDot{to{transform:rotate(360deg)}}
-@keyframes partsSearchPulse{0%{opacity:.8;transform:scale(.65)}70%,100%{opacity:0;transform:scale(1.65)}}
-@keyframes partsSearchCore{0%,100%{opacity:.55;transform:rotate(-45deg) scale(.82)}50%{opacity:1;transform:rotate(-45deg) scale(1.08)}}
-@keyframes partsSearchStep{0%,100%{opacity:.25;transform:translateY(0)}45%{opacity:1;transform:translateY(-3px)}}
-@media(prefers-reduced-motion:reduce){.searchAnimationVisual:before,.searchAnimationVisual:after,.searchAnimationOrbit,.searchAnimationPulse,.searchAnimationCore i,.searchAnimationSteps i{animation:none}.searchAnimationVisual:after{opacity:.35}.searchAnimationSteps i{opacity:.7}}
-
 /* CRM-UI-005 · selected-parts workspace (visual variant 3) */
 .partsWorkspaceHeader{display:flex;align-items:flex-end;justify-content:space-between;gap:18px;padding:2px 2px 4px}.partsWorkspaceHeader p{margin:0;color:var(--orange);font-size:11px;font-weight:850;letter-spacing:.13em}.partsWorkspaceHeader h1{margin:5px 0 4px;font-size:26px;letter-spacing:-.03em}.partsWorkspaceHeader span{color:var(--muted);font-size:13px}.workspaceHeaderMeta{display:grid;justify-items:end;gap:2px;padding:9px 12px;border:1px solid rgba(91,204,112,.35);border-radius:7px;background:rgba(91,204,112,.07)}.workspaceHeaderMeta b{color:#70d981;font-size:18px}.workspaceHeaderMeta span{font-size:11px;color:var(--muted)}
 .columns{grid-template-columns:minmax(260px,.78fr) minmax(520px,2fr) minmax(285px,.86fr);gap:12px}.selectedColumn{min-width:0}.summaryColumn{min-width:0}.columnBadge{display:grid;place-items:center;min-width:25px;height:25px;margin-left:auto;border:1px solid rgba(91,204,112,.38);border-radius:50%;color:#70d981;font-size:11px}
@@ -54,6 +37,41 @@
 .normalizationBadge{padding:5px 8px;border:1px solid rgba(98,201,119,.32);border-radius:5px;color:#70d981;font-size:11px}
 .pickerOfferTop small{max-width:620px;color:var(--muted);font-size:11px;line-height:1.35}
 @media(max-width:700px){.pickerFilters{align-items:flex-start;flex-direction:column}.pickerFilters select{max-width:none;width:100%}.normalizationBadge{width:100%}}
+
+/* Parts picker: compact results table aligned with the approved reference. */
+.pickerModal{width:min(1320px,calc(100vw - 32px));height:min(900px,calc(100vh - 32px));max-height:none;border-radius:12px;background:var(--panel);border-color:var(--line);box-shadow:0 28px 90px rgba(0,0,0,.42)}
+.pickerHeaderBar{padding:18px 26px 14px;background:var(--panel);border-bottom:1px solid var(--line)}
+.pickerHeaderBar p{font-size:13px;letter-spacing:.16em}
+.pickerHeaderBar h2{font-size:28px;letter-spacing:-.025em;color:var(--text)}
+.pickerHeaderBar span{font-size:13px}
+.pickerClose{width:42px;height:42px;border-radius:8px;background:var(--panel);font-size:24px}
+.pickerSearchBar{grid-template-columns:minmax(0,2fr) minmax(260px,.85fr);padding:14px 26px;border-bottom:1px solid var(--line)}
+.pickerSearchBar label>span,.pickerFilters label,.pickerTabs button,.pickerApiStatus{font-size:13px}
+.pickerSearchBar .inputWithIcon{height:48px;border-radius:8px;background:var(--panel);border-color:var(--line)}
+.pickerSearchBar .inputWithIcon input{height:46px;font-size:16px;color:var(--text)}
+.pickerVehicleRef{height:48px;font-size:16px;border-radius:8px;background:var(--panel)}
+.pickerTabs{gap:30px;padding:0 26px;min-height:58px;background:var(--panel)}
+.pickerTabs button{padding:17px 2px 14px;color:var(--muted)}
+.pickerTabs button span{font-size:13px}
+.pickerApiStatus{margin-left:auto;white-space:nowrap}
+.pickerFilters{padding:11px 26px;border-bottom:1px solid var(--line);background:var(--panel)}
+.pickerFilters select{min-height:38px;border-radius:8px;font-size:14px;background:var(--panel)}
+.normalizationBadge{padding:8px 11px;border-radius:8px;font-size:13px}
+.pickerOfferList{flex:1;min-height:0;gap:10px;padding:12px 26px;overflow:auto;background:var(--panel)}
+.pickerOffer{display:grid;grid-template-columns:minmax(270px,2.2fr) minmax(125px,.8fr) minmax(155px,1.1fr) minmax(105px,.75fr) minmax(105px,.75fr) minmax(145px,1fr) 150px;align-items:center;gap:18px;min-height:106px;padding:14px 16px;border:1px solid var(--line);border-radius:9px;background:var(--panel)}
+.pickerOffer:hover{border-color:color-mix(in srgb,var(--orange) 65%,var(--line));background:color-mix(in srgb,var(--orange) 5%,var(--panel))}
+.pickerOfferName,.pickerOfferCell{display:grid;gap:4px;min-width:0}
+.pickerOfferName b{font-size:15px;line-height:1.25;white-space:normal;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.pickerOfferName small,.pickerOfferName span,.pickerOfferCell small{font-size:12px;color:var(--muted);line-height:1.25}
+.pickerOfferName span{color:var(--muted)}
+.pickerOfferName small:last-child{color:var(--muted)}
+.pickerOfferCell b{font-size:14px;white-space:normal;overflow:hidden;text-overflow:ellipsis}
+.pickerOfferCell em{font-size:12px;font-style:normal}
+.pickerOffer .addButton{min-height:40px;border-radius:8px;font-size:14px;background:var(--orange)}
+.pickerFooter{padding:12px 26px;background:var(--panel)}
+.policyNote{padding:8px 26px;border-top:1px solid var(--line);font-size:13px;background:var(--panel)}
+@media(max-width:1050px){.pickerOffer{grid-template-columns:minmax(240px,2fr) repeat(3,minmax(110px,1fr)) 130px}.pickerOfferCell:nth-of-type(5),.pickerOfferCell:nth-of-type(6){display:none}}
+@media(max-width:700px){.pickerModal{width:calc(100vw - 12px);height:calc(100vh - 12px);border-radius:10px}.pickerHeaderBar{padding:14px}.pickerHeaderBar h2{font-size:20px}.pickerSearchBar,.pickerTabs,.pickerFilters,.pickerOfferList{padding-left:14px;padding-right:14px}.pickerTabs{gap:18px;overflow-x:auto}.pickerApiStatus{display:none}.pickerOffer{grid-template-columns:minmax(0,1fr) 95px;gap:8px;min-height:0;padding:12px}.pickerOfferName{grid-column:1/-1}.pickerOfferCell:nth-of-type(2),.pickerOfferCell:nth-of-type(3),.pickerOfferCell:nth-of-type(4),.pickerOfferCell:nth-of-type(5){display:none}.pickerOffer .addButton{grid-column:2;grid-row:2}.pickerFooter{padding:10px 14px}}
 /* CRM-UI-005 · Variant 3 reference alignment. The data flow remains the
    existing diagnostic/API flow; this layer aligns the page with the approved
    compact commercial-proposal sample. */
@@ -83,5 +101,3 @@
 .pickerOfferList{background:var(--parts-surface)}.pickerOffer{border-color:var(--parts-border);background:var(--parts-surface)}.pickerOffer:hover{border-color:color-mix(in srgb,var(--orange) 60%,var(--parts-border));background:color-mix(in srgb,var(--orange) 5%,var(--parts-surface))}.pickerOfferTop b,.pickerOfferGrid b{color:var(--text)}.pickerOfferTop span,.pickerOfferGrid small{color:var(--muted)}
 .pickerEmptyState{display:grid;place-items:center;gap:6px;min-height:120px;padding:22px;color:var(--muted);text-align:center;background:var(--parts-surface)}.pickerEmptyState b{color:var(--text);font-size:12px}.pickerEmptyState span{max-width:420px;font-size:11px;line-height:1.4}
 .pickerFooter{border-color:var(--parts-border);background:var(--parts-surface-raised);color:var(--muted)}.warning{border-color:color-mix(in srgb,var(--parts-warning) 42%,var(--parts-border));background:color-mix(in srgb,var(--parts-warning) 7%,var(--parts-surface));color:var(--parts-warning)}
-
-.contextVin{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace!important;font-size:11px!important;letter-spacing:.025em}

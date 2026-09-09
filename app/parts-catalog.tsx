@@ -78,7 +78,6 @@ export function PartsCatalog() {
   const [activeTab, setActiveTab] = useState<"all" | "originals" | "analogs" | "review" | "manual">("all");
   const [supplierFilter, setSupplierFilter] = useState("ALL");
   const [busy, setBusy] = useState(false);
-  const [searchSlow, setSearchSlow] = useState(false);
   const [contextLoading, setContextLoading] = useState(false);
   const [ordersLoading, setOrdersLoading] = useState(false);
   const [selectingOffer, setSelectingOffer] = useState("");
@@ -167,20 +166,13 @@ export function PartsCatalog() {
     }
 
     setBusy(true);
-    setSearchSlow(false);
     setSupplierSearchBlocked(false);
     setOffers([]);
     setSupplierProviders([]);
+    setConfiguredSuppliers([]);
     setSupplierFilter("ALL");
     setActiveTab("all");
     setManualConfirmation(false);
-    let slowTimer: number | undefined;
-    slowTimer = window.setTimeout(() => {
-      if (requestId === searchRequestRef.current) {
-        setSearchSlow(true);
-        setMessage("Пошук триває довше очікуваного. Один із постачальників може відповідати повільно — результати з’являться після завершення запиту.");
-      }
-    }, 8000);
     try {
       const recommendation = recommendationOverride
         || recommendedParts.find((item) => recommendationKey(item) === activeFindingId)
@@ -199,7 +191,6 @@ export function PartsCatalog() {
       if (resolvedVin) params.set("vin", resolvedVin);
       if (contextVehicleId) params.set("vehicleId", contextVehicleId);
       if (plateReference) params.set("plate", plateReference);
-      params.set("includeSuppliers", "1");
       if (recommendation?.findingId) params.set("findingId", recommendation.findingId);
       if (recommendation?.manualPartId) params.set("manualPartId", recommendation.manualPartId);
       if (recommendation?.name) params.set("partName", recommendation.name);
@@ -216,12 +207,6 @@ export function PartsCatalog() {
         vehicle?: VehicleContext | null;
         fitment?: FitmentPayload | null;
         oeNumbers?: string[];
-        offers?: SupplierOffer[];
-        providers?: SupplierProvider[];
-        supplierProviders?: SupplierProvider[];
-        configuredSuppliers?: string[];
-        supplierSearchBlocked?: boolean;
-        supplierSearchBlockReason?: string | null;
         error?: string;
         fitmentPolicy?: { message?: string };
       } | null;
@@ -231,21 +216,61 @@ export function PartsCatalog() {
       const resolvedFitment = referenceData?.fitment || null;
       setFitment(resolvedFitment);
       if (referenceData?.vehicle) setVehicle(referenceData.vehicle);
-      setSearchSlow(false);
-      const supplierBlocked = Boolean(referenceData?.supplierSearchBlocked);
-      setOffers(supplierBlocked ? [] : Array.isArray(referenceData?.offers) ? referenceData.offers : []);
-      setSupplierProviders(supplierBlocked ? [] : Array.isArray(referenceData?.supplierProviders)
-        ? referenceData.supplierProviders
-        : Array.isArray(referenceData?.providers) ? referenceData.providers : []);
-      setConfiguredSuppliers(supplierBlocked ? [] : Array.isArray(referenceData?.configuredSuppliers) ? referenceData.configuredSuppliers : []);
-      setFitment(referenceData?.fitment || null);
+
+      const vehicleScoped = Boolean(
+        vehicleReferenceProvided
+        || referenceData?.vehicle?.id
+        || resolvedFitment?.vehicle?.id
+        || resolvedFitment?.vehicle?.vin
+      );
+      if (vehicleScoped && resolvedFitment?.status !== "VERIFIED") {
+        const blockedMessage = "Запит до постачальників не відправлено: для цього автомобіля немає підтвердженого зв’язку з OE-каталогом.";
+        setOffers([]);
+        setSupplierProviders([]);
+        setConfiguredSuppliers([]);
+        setSupplierSearchBlocked(true);
+        setManualConfirmation(false);
+        setMessage(blockedMessage);
+        return;
+      }
+
+      const supplierParams = new URLSearchParams({ q: query });
+      if (resolvedVin) supplierParams.set("vin", resolvedVin);
+      if (contextVehicleId) supplierParams.set("vehicleId", contextVehicleId);
+      if (plateReference) supplierParams.set("plate", plateReference);
+      if (recommendation?.findingId) supplierParams.set("findingId", recommendation.findingId);
+      if (recommendation?.manualPartId) supplierParams.set("manualPartId", recommendation.manualPartId);
+      if (recommendation?.name) supplierParams.set("partName", recommendation.name);
+      if (recommendation?.canonicalCode) supplierParams.set("canonicalCode", recommendation.canonicalCode);
+      if (recommendation?.axis) supplierParams.set("axis", recommendation.axis);
+      if (recommendation?.side) supplierParams.set("side", recommendation.side);
+      if (recommendation?.subPosition) supplierParams.set("subPosition", recommendation.subPosition);
+      if (recommendation?.position) supplierParams.set("position", recommendation.position);
+      if (recommendation?.genericArticleId) supplierParams.set("genericArticleId", recommendation.genericArticleId);
+      if (Array.isArray(referenceData?.oeNumbers) && referenceData.oeNumbers.length) supplierParams.set("oeNumbers", referenceData.oeNumbers.join(","));
+
+      const supplierResponse = await fetch("/api/parts/suppliers?" + supplierParams.toString(), { cache: "no-store", credentials: "include", signal: controller.signal });
+      const supplierData = await supplierResponse.json().catch(() => null) as {
+        offers?: SupplierOffer[];
+        providers?: SupplierProvider[];
+        configuredSuppliers?: string[];
+        fitment?: FitmentPayload | null;
+        supplierSearchBlocked?: boolean;
+        supplierSearchBlockReason?: string | null;
+        error?: string;
+      } | null;
+      if (requestId !== searchRequestRef.current) return;
+      if (!supplierResponse.ok) throw new Error(supplierData?.error || "Постачальники тимчасово недоступні.");
+      const supplierBlocked = Boolean(supplierData?.supplierSearchBlocked);
+      setOffers(supplierBlocked ? [] : Array.isArray(supplierData?.offers) ? supplierData.offers : []);
+      setSupplierProviders(supplierBlocked ? [] : Array.isArray(supplierData?.providers) ? supplierData.providers : []);
+      setConfiguredSuppliers(supplierBlocked ? [] : Array.isArray(supplierData?.configuredSuppliers) ? supplierData.configuredSuppliers : []);
+      setFitment(supplierData?.fitment || referenceData?.fitment || null);
       setSupplierSearchBlocked(supplierBlocked);
       setManualConfirmation(false);
-      setMessage(referenceData?.fitment?.reason || referenceData?.fitmentPolicy?.message || (resolvedFitment?.status !== "VERIFIED"
-        ? "Пошук у постачальників виконано без підтвердженого OE-зв’язку. Перед додаванням потрібно вручну перевірити сумісність."
-        : resolvedVin
-          ? "VIN і позицію передано в каталог. Перевірте статус сумісності кожної пропозиції."
-          : "Пошук виконано без VIN. Перед додаванням потрібне ручне підтвердження сумісності."));
+      setMessage(supplierData?.fitment?.reason || referenceData?.fitmentPolicy?.message || (resolvedVin
+        ? "VIN і позицію передано в каталог. Перевірте статус сумісності кожної пропозиції."
+        : "Пошук виконано без VIN. Перед додаванням потрібне ручне підтвердження сумісності."));
     } catch (error) {
       if (requestId !== searchRequestRef.current) return;
       setParts([]);
@@ -258,7 +283,6 @@ export function PartsCatalog() {
       setManualConfirmation(false);
       setMessage(error instanceof Error ? error.message : "Каталог тимчасово недоступний.");
     } finally {
-      if (slowTimer !== undefined) window.clearTimeout(slowTimer);
       if (requestId === searchRequestRef.current) {
         setBusy(false);
         if (searchAbortRef.current === controller) searchAbortRef.current = null;
@@ -469,8 +493,8 @@ export function PartsCatalog() {
     <header className={styles.contextHeader}>
       <button type="button" className={styles.backButton} onClick={() => navigateCrm("Підбір запчастин", {})} aria-label="Повернутися до вибору замовлення">←</button>
       <div className={styles.orderContext}><small>Замовлення-наряд</small><b>{context.orderNumber}</b></div>
-      <div className={styles.contextItem}><small>Клієнт</small><b>{context.clientName}</b><span>{context.clientPhone}</span></div>
-      <div className={styles.contextItem} title={context.vin || "VIN не вказаний"}><small>VIN-код</small><b className={styles.contextVin}>{context.vin || "VIN не вказаний"}</b></div>
+      <div className={styles.contextItem}><small>Клієнт</small><b>{context.clientName}</b></div>
+      <div className={styles.contextItem}><small>Телефон</small><b>{context.clientPhone}</b></div>
       <div className={styles.contextItem}><small>Автомобіль</small><b>{context.vehicleName}</b><span>{context.plateNumber || "Номер не вказаний"}</span></div>
       <div className={styles.contextItem}><small>Пробіг</small><b>{formatMileage(context.mileageKm)}</b></div>
       <div className={styles.contextStatus}><small>Етап</small><b className={statusTone(context.statusCode)}><i/> {context.statusLabel}</b></div>
@@ -566,28 +590,14 @@ export function PartsCatalog() {
           <button type="button" className={activeTab === "analogs" ? styles.tabActive : ""} onClick={() => setActiveTab("analogs")}>Аналоги <span>{analogOffers.length}</span></button>
           <button type="button" className={activeTab === "review" ? styles.tabActive : ""} onClick={() => setActiveTab("review")}>Перевірка <span>{manualOffers.length}</span></button>
           <span className={styles.pickerApiStatus}>{fitment?.status === "VERIFIED" ? fitment.exact === false ? "Модель підтверджена · перевірте двигун" : "VIN-каталог підтверджено" : "Сумісність не підтверджена"}</span>
-          <span className={styles.pickerApiStatus}>{busy ? "Перевіряю API…" : supplierSearchBlocked ? "Запит до API не відправлено" : `${configuredSuppliers.length} API підключено`}</span>
+          <span className={styles.pickerApiStatus}>{supplierSearchBlocked ? "Запит до API не відправлено" : `${configuredSuppliers.length} API підключено`}</span>
         </div>
         <div className={styles.pickerFilters}>
           <label><span>Постачальник</span><select value={supplierFilter} onChange={(event) => setSupplierFilter(event.target.value)}><option value="ALL">Усі постачальники</option>{supplierOptions.map(([id, name]) => <option value={id} key={id}>{name}</option>)}</select></label>
           {fitment?.normalization?.canonicalName ? <span className={styles.normalizationBadge}>Каталог: {fitment.normalization.canonicalName} · {fitment.normalization.confidence || 0}%</span> : null}
         </div>
         {!supplierSearchBlocked && (manualOffers.length > 0 || fitment?.status !== "VERIFIED") && <label className={styles.policyNote}><input type="checkbox" checked={manualConfirmation} onChange={(event) => setManualConfirmation(event.target.checked)} /> Я вручну перевірив сумісність цієї деталі з автомобілем</label>}
-        {busy ? <div className={styles.pickerEmptyState} role="status" aria-live="polite">
-          <div className={styles.searchAnimation} aria-hidden="true">
-            <div className={styles.searchAnimationVisual}>
-              <span className={styles.searchAnimationOrbit} />
-              <span className={styles.searchAnimationPulse} />
-              <span className={styles.searchAnimationCore}><i /></span>
-            </div>
-            <div className={styles.searchAnimationCopy}>
-              <b>{searchSlow ? "Пошук триває довше…" : "Підбираю сумісні варіанти"}</b>
-              <span>{searchSlow ? "Чекаю відповідь постачальників. Не запускайте повторний пошук." : "VIN · OE-каталог · постачальники"}</span>
-              <span className={styles.searchAnimationSteps}><i /><i /><i /></span>
-            </div>
-          </div>
-          <span className={styles.srOnly}>Шукаю пропозиції. Передаю VIN, позицію, OE-номери та запит до постачальників.</span>
-        </div> : !pickerOffers.length ? <div className={styles.pickerEmptyState}><b>Пропозицій у цій категорії поки немає</b><span>{supplierSearchBlocked ? "Запит до постачальників тимчасово заблокований." : configuredSuppliers.length ? fitment?.status === "VERIFIED" ? "Змініть пошуковий запит або перевірте відповідь постачальників." : "Запит до постачальників відправлено без OE-підтвердження, але збігів не знайдено. Перевірте назву або номер деталі." : "Перевірте підключення BM Parts та Юнік Трейд у налаштуваннях CRM."}</span></div> : <div className={styles.pickerOfferList}>
+        {busy ? <div className={styles.pickerEmptyState}><b>Шукаю пропозиції…</b><span>Передаю VIN, позицію, OE-номери та запит до постачальників.</span></div> : !pickerOffers.length ? <div className={styles.pickerEmptyState}><b>Пропозицій у цій категорії поки немає</b><span>{supplierSearchBlocked ? "Запит до постачальників не відправлено: для цього автомобіля немає підтвердженого зв’язку з OE-каталогом." : fitment?.status === "CATALOG_NOT_CONNECTED" ? "Канонічний каталог OE ще не підключений для цього автомобіля." : configuredSuppliers.length ? "Змініть пошуковий запит або перевірте відповідь постачальників." : "Перевірте підключення BM Parts та Юнік Трейд у налаштуваннях CRM."}</span></div> : <div className={styles.pickerOfferList}>
           {activeTab !== "review" && !categoryOffers.length && manualOffers.length > 0 && <div className={styles.policyNote}>У цій вкладці немає підтверджених результатів. Непідтверджені пропозиції винесені у вкладку «Перевірка».</div>}
           {pickerOffers.map((offer, index) => {
             const key = offer.supplierId + ":" + (offer.externalProductId || offer.article);
@@ -598,8 +608,13 @@ export function PartsCatalog() {
                 ? "Модель підтверджена"
                 : "Сумісність підтверджена";
             return <article className={styles.pickerOffer} key={key + "-" + index}>
-              <div className={styles.pickerOfferTop}><div><b>{offer.name}</b><span>{offer.brand || "Бренд не вказаний"} · {offer.article} · {offerClassLabel}</span><small>{offer.offerReason || offer.fitmentReason || "Причина зіставлення не вказана"}</small>{offer.oeNumbers?.length ? <small>OE: {offer.oeNumbers.slice(0, 3).join(", ")}</small> : null}</div><span className={offer.available ? styles.available : styles.unavailable}>{offer.available ? "В наявності" : "Уточнити"}</span></div>
-              <div className={styles.pickerOfferGrid}><div><small>Постачальник</small><b>{offer.supplierName}</b></div><div><small>Склади / залишок</small><b>{offer.stock.length ? offer.stock.map((stock) => `${stock.warehouse}: ${stock.quantity}`).join(" · ") : "Не вказаний"}</b></div><div><small>Ціна закупки</small><b>{formatMoney(offer.purchasePrice, offer.currency)}</b></div><div><small>Ціна продажу</small><b className={styles.sellPrice}>{formatMoney(offer.sellPrice, offer.currency)}</b></div><div><small>Сумісність</small><b className={offer.fitmentStatus === "VERIFIED" ? styles.available : styles.unavailable}>{fitmentLabel}</b></div><button type="button" className={styles.addButton} disabled={!offer.available || offer.purchasePrice == null || selectingOffer === key || !activeRecommendation || ((offer.fitmentStatus !== "VERIFIED" || offer.fitmentExact === false || fitment?.exact === false) && !manualConfirmation)} onClick={() => void selectOffer(offer)}>{selectingOffer === key ? "Зберігаю…" : offer.fitmentStatus === "VERIFIED" && offer.fitmentExact !== false && fitment?.exact !== false ? "Вибрати" : "Додати вручну"}</button></div>
+              <div className={styles.pickerOfferName}><b>{offer.name}</b><small>{offer.brand || "Бренд не вказаний"} · {offer.article} · {offerClassLabel}</small><span>{offer.offerReason || offer.fitmentReason || "Знайдено за запитом постачальника"}</span>{offer.oeNumbers?.length ? <small>OE: {offer.oeNumbers.slice(0, 3).join(", ")}</small> : null}</div>
+              <div className={styles.pickerOfferCell}><small>Постачальник</small><b>{offer.supplierName}</b></div>
+              <div className={styles.pickerOfferCell}><small>Склади / залишок</small><b>{offer.stock.length ? offer.stock.map((stock) => `${stock.warehouse}: ${stock.quantity}`).join(" · ") : "Не вказаний"}</b><em className={offer.available ? styles.available : styles.unavailable}>{offer.available ? "В наявності" : "Уточнити"}</em></div>
+              <div className={styles.pickerOfferCell}><small>Ціна закупки</small><b>{formatMoney(offer.purchasePrice, offer.currency)}</b></div>
+              <div className={styles.pickerOfferCell}><small>Ціна продажу</small><b className={styles.sellPrice}>{formatMoney(offer.sellPrice, offer.currency)}</b></div>
+              <div className={styles.pickerOfferCell}><small>Сумісність</small><b className={offer.fitmentStatus === "VERIFIED" ? styles.available : styles.unavailable}>{fitmentLabel}</b></div>
+              <button type="button" className={styles.addButton} disabled={!offer.available || offer.purchasePrice == null || selectingOffer === key || !activeRecommendation || ((offer.fitmentStatus !== "VERIFIED" || offer.fitmentExact === false || fitment?.exact === false) && !manualConfirmation)} onClick={() => void selectOffer(offer)}>{selectingOffer === key ? "Зберігаю…" : offer.fitmentStatus === "VERIFIED" && offer.fitmentExact !== false && fitment?.exact !== false ? "Вибрати" : "Додати вручну"}</button>
             </article>;
           })}
         </div>}
