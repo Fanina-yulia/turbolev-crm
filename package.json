@@ -34,7 +34,8 @@
     "db:smoke:telephony": "tsx scripts/production-telephony-smoke.ts",
     "data:mvs:import": "python3 scripts/import-mvs-open-data.py",
     "contracts:integration:v1": "node --import tsx scripts/integration-api-vehicle-identity-contract-smoke.ts && node --import tsx scripts/integration-api-v1-attribution-smoke.ts",
-    "parts:knowledge:seed": "node --import tsx scripts/parts-knowledge-seed.ts"
+    "parts:knowledge:seed": "node --import tsx scripts/parts-knowledge-seed.ts",
+    "parts:search:performance:smoke": "node scripts/parts-search-performance-smoke.mjs"
   },
   "dependencies": {
     "@neondatabase/auth": "0.4.2-beta",

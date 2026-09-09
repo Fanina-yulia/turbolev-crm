@@ -16,6 +16,10 @@ const VEHICLE_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 const MODEL_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 export const BM_PARTS_VEHICLE_CONTEXT_VERSION = "v3";
 const PRODUCT_CACHE_TTL_MS = 10 * 60 * 1000;
+const REQUEST_TIMEOUT_MS = 5_000;
+const CREDENTIAL_CACHE_TTL_MS = 30_000;
+const MAX_VEHICLE_FILTERS = 2;
+const MAX_VEHICLE_QUERY_CANDIDATES = 3;
 
 type JsonRecord = Record<string, unknown>;
 type BmStock = { name?: unknown; quantity?: unknown; warehouse_id?: unknown; id?: unknown };
@@ -43,6 +47,8 @@ type CacheEntry<T> = { expiresAt: number; value: T };
 const vehicleCache = new Map<string, CacheEntry<SupplierVehicleContext | null>>();
 const modelCache = new Map<string, CacheEntry<string[]>>();
 const productCache = new Map<string, CacheEntry<BmProductDetails | null>>();
+let credentialCache: { expiresAt: number; value: { apiKey: string; baseUrl: string } } | null = null;
+let credentialInFlight: Promise<{ apiKey: string; baseUrl: string }> | null = null;
 
 function asRecord(value: unknown): JsonRecord | null {
   return value !== null && typeof value === "object" && !Array.isArray(value) ? value as JsonRecord : null;
@@ -210,18 +216,29 @@ function cacheSet<T>(cache: Map<string, CacheEntry<T>>, key: string, value: T, t
 }
 
 async function credentials() {
-  const config = await getIntegrationCredential("BM_PARTS");
-  return {
-    apiKey: config?.apiKey?.trim() || "",
-    baseUrl: (config?.baseUrl || DEFAULT_BASE_URL).replace(/\/$/, ""),
-  };
+  if (credentialCache && credentialCache.expiresAt > Date.now()) return credentialCache.value;
+  if (credentialInFlight) return credentialInFlight;
+  credentialInFlight = (async () => {
+    const config = await getIntegrationCredential("BM_PARTS");
+    const value = {
+      apiKey: config?.apiKey?.trim() || "",
+      baseUrl: (config?.baseUrl || DEFAULT_BASE_URL).replace(/\/$/, ""),
+    };
+    credentialCache = { value, expiresAt: Date.now() + CREDENTIAL_CACHE_TTL_MS };
+    return value;
+  })();
+  try {
+    return await credentialInFlight;
+  } finally {
+    credentialInFlight = null;
+  }
 }
 
-async function request(path: string) {
+async function request(path: string, timeoutMs = REQUEST_TIMEOUT_MS) {
   const config = await credentials();
   if (!config.apiKey) throw new Error("BM Parts API key не налаштований.");
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 12_000);
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {
     return await fetch(`${config.baseUrl}${path}`, {
       headers: { Accept: "application/json", Authorization: config.apiKey, "User-Agent": USER_AGENT },
@@ -484,8 +501,8 @@ export const bmPartsAdapter: SupplierAdapter = {
   async searchVehicleParts(input): Promise<SupplierVehiclePart[]> {
     const query = input.query.trim();
     const vehicle = input.vehicle;
-    const carFilters = buildBmVehicleFilterCandidates(vehicle);
-    const queryCandidates = await buildKnowledgeProviderPartQueryCandidates({
+    const carFilters = buildBmVehicleFilterCandidates(vehicle).slice(0, MAX_VEHICLE_FILTERS);
+    const discoveredQueryCandidates = await buildKnowledgeProviderPartQueryCandidates({
       query,
       provider: "BM_PARTS",
       position: input.position,
@@ -493,63 +510,57 @@ export const bmPartsAdapter: SupplierAdapter = {
       canonicalSlug: input.canonicalPart?.slug,
       genericArticleId: input.canonicalPart?.genericArticleId,
     });
+    const queryCandidates = [...new Set([query, ...discoveredQueryCandidates])]
+      .map((value) => value.trim())
+      .filter((value) => value.length >= 2)
+      .slice(0, MAX_VEHICLE_QUERY_CANDIDATES);
     if (query.length < 2 || !carFilters.length) return [];
     if (!(await this.isConfigured())) return [];
 
     const limit = Math.min(Math.max(input.limit ?? 20, 1), 50);
     const searchScopedProducts = async (filters: string[], searchQueries: string[]) => {
-      let selectedFilter = filters[0] || "";
-      let foundProducts: BmProduct[] = [];
+      const boundedFilters = filters.slice(0, MAX_VEHICLE_FILTERS);
+      const boundedQueries = searchQueries.slice(0, MAX_VEHICLE_QUERY_CANDIDATES);
+      const searchOne = async (candidateFilter: string, searchQuery: string, available: "0" | "1") => {
+        const params = new URLSearchParams({
+          q: searchQuery,
+          search_mode: bmSearchMode(searchQuery),
+          available,
+          products_as: "arr",
+          warehouses: "all",
+          with_extra: "0",
+          save: "0",
+          per_page: String(limit),
+          cars: encodeBmCarFilter(candidateFilter),
+        });
+        const response = await request("/search/products?" + params.toString());
+        if (!response.ok) throw new Error("BM Parts vehicle search HTTP " + response.status);
+        const payload = await response.json() as unknown;
+        return { carFilter: candidateFilter, products: extractProducts(payload).slice(0, limit) };
+      };
+      const primary = await Promise.allSettled(boundedFilters.flatMap((candidateFilter) =>
+        boundedQueries.map((searchQuery) => searchOne(candidateFilter, searchQuery, "1"))));
+      const firstPrimary = primary.find((result): result is PromiseFulfilledResult<{ carFilter: string; products: BmProduct[] }> =>
+        result.status === "fulfilled" && result.value.products.length > 0);
+      if (firstPrimary) return firstPrimary.value;
 
-search:
-      for (const candidateFilter of filters) {
-        for (const searchQuery of searchQueries) {
-          for (const available of ["1", "0"]) {
-            const params = new URLSearchParams({
-              q: searchQuery,
-              search_mode: bmSearchMode(searchQuery),
-              available,
-              products_as: "arr",
-              warehouses: "all",
-              with_extra: "0",
-              save: "0",
-              per_page: String(limit),
-              cars: encodeBmCarFilter(candidateFilter),
-            });
-            const response = await request("/search/products?" + params.toString());
-            if (!response.ok) throw new Error("BM Parts vehicle search HTTP " + response.status);
-            const payload = await response.json() as unknown;
-            const candidateProducts = extractProducts(payload);
-            if (candidateProducts.length) {
-              selectedFilter = candidateFilter;
-              foundProducts = candidateProducts.slice(0, limit);
-              break search;
-            }
-          }
-        }
-      }
-
-      return { carFilter: selectedFilter, products: foundProducts };
+      // Availability is a fallback only. It is intentionally limited to the
+      // original query so a slow/empty supplier cannot create a long waterfall.
+      const fallback = await Promise.allSettled(boundedFilters.map((candidateFilter) => searchOne(candidateFilter, query, "0")));
+      const firstFallback = fallback.find((result): result is PromiseFulfilledResult<{ carFilter: string; products: BmProduct[] }> =>
+        result.status === "fulfilled" && result.value.products.length > 0);
+      return firstFallback?.value || { carFilter: boundedFilters[0] || "", products: [] };
     };
 
-    let searchResult = await searchScopedProducts(carFilters, queryCandidates);
-    if (!searchResult.products.length && vehicle.brand) {
-      let modelNames: string[] = [];
-      try {
-        modelNames = await getBmModelNames(vehicle.brand);
-      } catch {
-        modelNames = [];
-      }
-      const discoveredFilters = rankBmModelNames(vehicle.model || "", modelNames)
-        .map((model) => vehicle.brand + ">" + model)
-        .filter((filter) => !carFilters.includes(filter));
-      if (discoveredFilters.length) searchResult = await searchScopedProducts(discoveredFilters, queryCandidates);
-    }
+    // Model-name discovery is kept for explicit catalog tooling, not for the
+    // interactive picker. The two CRM-derived filters above are bounded and
+    // avoid a second remote model-list request on every click.
+    const searchResult = await searchScopedProducts(carFilters, queryCandidates);
 
     const { carFilter, products } = searchResult;
     if (!products.length) return [];
 
-    const detailProducts = products.slice(0, 12);
+    const detailProducts = products.slice(0, 10);
     const details = await Promise.allSettled(detailProducts.map((product) => {
       const productId = textValue(product.uuid, 180);
       return productId ? getProductDetails(productId) : Promise.resolve(null);

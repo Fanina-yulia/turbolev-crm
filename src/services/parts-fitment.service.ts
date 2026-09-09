@@ -94,6 +94,27 @@ function clean(value: unknown, max = 240) {
   return typeof value === "string" ? value.trim().slice(0, max) : "";
 }
 
+const FITMENT_CACHE_TTL_MS = 5 * 60 * 1000;
+const FITMENT_CACHE_MAX_ENTRIES = 256;
+const fitmentCache = new Map<string, { expiresAt: number; value: PartFitmentContext }>();
+const fitmentInFlight = new Map<string, Promise<PartFitmentContext>>();
+
+function fitmentCacheKey(intent: PartSearchIntent) {
+  return JSON.stringify({
+    query: clean(intent.query).toLocaleLowerCase("uk-UA"),
+    partName: clean(intent.partName).toLocaleLowerCase("uk-UA"),
+    canonicalCode: normalizeCatalogNumber(intent.canonicalCode),
+    axis: clean(intent.axis, 80).toLocaleLowerCase("uk-UA"),
+    genericArticleId: clean(intent.genericArticleId, 160),
+    position: normalizePartPosition(intent.position),
+    side: clean(intent.side, 80).toLocaleLowerCase("uk-UA"),
+    subPosition: clean(intent.subPosition, 120).toLocaleLowerCase("uk-UA"),
+    vehicleId: clean(intent.vehicleId, 160),
+    vin: normalizeVin(clean(intent.vin, 40)),
+    plate: normalizeRegistrationPlate(clean(intent.plate, 40)),
+  });
+}
+
 export function normalizeCatalogNumber(value: unknown) {
   return clean(value, 180).toUpperCase().replace(/[^A-ZА-ЯІЇЄ0-9]/giu, "");
 }
@@ -522,7 +543,7 @@ async function resolveBmProviderFitment(
   };
 }
 
-export async function resolvePartFitment(intent: PartSearchIntent): Promise<PartFitmentContext> {
+async function resolvePartFitmentUncached(intent: PartSearchIntent): Promise<PartFitmentContext> {
   const requestedVin = normalizeVin(clean(intent.vin, 40));
   const requestedPlate = normalizeRegistrationPlate(clean(intent.plate, 40));
   const vehicleId = clean(intent.vehicleId, 160);
@@ -908,5 +929,37 @@ export async function resolvePartFitment(intent: PartSearchIntent): Promise<Part
       genericArticle,
       providerVehicle,
     };
+  }
+}
+
+/**
+ * Fitment is requested twice by several CRM flows (context and supplier search).
+ * Keep the result briefly and share an in-flight lookup so one user action does
+ * not trigger duplicate DB/BM Parts/VIN calls.
+ */
+export async function resolvePartFitment(intent: PartSearchIntent): Promise<PartFitmentContext> {
+  const key = fitmentCacheKey(intent);
+  const cached = fitmentCache.get(key);
+  if (cached) {
+    if (cached.expiresAt > Date.now()) return cached.value;
+    fitmentCache.delete(key);
+  }
+
+  const running = fitmentInFlight.get(key);
+  if (running) return running;
+
+  const lookup = resolvePartFitmentUncached(intent);
+  fitmentInFlight.set(key, lookup);
+  try {
+    const value = await lookup;
+    fitmentCache.set(key, { value, expiresAt: Date.now() + FITMENT_CACHE_TTL_MS });
+    while (fitmentCache.size > FITMENT_CACHE_MAX_ENTRIES) {
+      const oldestKey = fitmentCache.keys().next().value;
+      if (typeof oldestKey !== "string") break;
+      fitmentCache.delete(oldestKey);
+    }
+    return value;
+  } finally {
+    if (fitmentInFlight.get(key) === lookup) fitmentInFlight.delete(key);
   }
 }

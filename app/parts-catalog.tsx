@@ -78,6 +78,7 @@ export function PartsCatalog() {
   const [activeTab, setActiveTab] = useState<"all" | "originals" | "analogs" | "review" | "manual">("all");
   const [supplierFilter, setSupplierFilter] = useState("ALL");
   const [busy, setBusy] = useState(false);
+  const [searchSlow, setSearchSlow] = useState(false);
   const [contextLoading, setContextLoading] = useState(false);
   const [ordersLoading, setOrdersLoading] = useState(false);
   const [selectingOffer, setSelectingOffer] = useState("");
@@ -166,13 +167,20 @@ export function PartsCatalog() {
     }
 
     setBusy(true);
+    setSearchSlow(false);
     setSupplierSearchBlocked(false);
     setOffers([]);
     setSupplierProviders([]);
-    setConfiguredSuppliers([]);
     setSupplierFilter("ALL");
     setActiveTab("all");
     setManualConfirmation(false);
+    let slowTimer: number | undefined;
+    slowTimer = window.setTimeout(() => {
+      if (requestId === searchRequestRef.current) {
+        setSearchSlow(true);
+        setMessage("Пошук триває довше очікуваного. Один із постачальників може відповідати повільно — результати з’являться після завершення запиту.");
+      }
+    }, 8000);
     try {
       const recommendation = recommendationOverride
         || recommendedParts.find((item) => recommendationKey(item) === activeFindingId)
@@ -191,6 +199,7 @@ export function PartsCatalog() {
       if (resolvedVin) params.set("vin", resolvedVin);
       if (contextVehicleId) params.set("vehicleId", contextVehicleId);
       if (plateReference) params.set("plate", plateReference);
+      params.set("includeSuppliers", "1");
       if (recommendation?.findingId) params.set("findingId", recommendation.findingId);
       if (recommendation?.manualPartId) params.set("manualPartId", recommendation.manualPartId);
       if (recommendation?.name) params.set("partName", recommendation.name);
@@ -207,6 +216,12 @@ export function PartsCatalog() {
         vehicle?: VehicleContext | null;
         fitment?: FitmentPayload | null;
         oeNumbers?: string[];
+        offers?: SupplierOffer[];
+        providers?: SupplierProvider[];
+        supplierProviders?: SupplierProvider[];
+        configuredSuppliers?: string[];
+        supplierSearchBlocked?: boolean;
+        supplierSearchBlockReason?: string | null;
         error?: string;
         fitmentPolicy?: { message?: string };
       } | null;
@@ -216,42 +231,17 @@ export function PartsCatalog() {
       const resolvedFitment = referenceData?.fitment || null;
       setFitment(resolvedFitment);
       if (referenceData?.vehicle) setVehicle(referenceData.vehicle);
-
-      const supplierParams = new URLSearchParams({ q: query });
-      if (resolvedVin) supplierParams.set("vin", resolvedVin);
-      if (contextVehicleId) supplierParams.set("vehicleId", contextVehicleId);
-      if (plateReference) supplierParams.set("plate", plateReference);
-      if (recommendation?.findingId) supplierParams.set("findingId", recommendation.findingId);
-      if (recommendation?.manualPartId) supplierParams.set("manualPartId", recommendation.manualPartId);
-      if (recommendation?.name) supplierParams.set("partName", recommendation.name);
-      if (recommendation?.canonicalCode) supplierParams.set("canonicalCode", recommendation.canonicalCode);
-      if (recommendation?.axis) supplierParams.set("axis", recommendation.axis);
-      if (recommendation?.side) supplierParams.set("side", recommendation.side);
-      if (recommendation?.subPosition) supplierParams.set("subPosition", recommendation.subPosition);
-      if (recommendation?.position) supplierParams.set("position", recommendation.position);
-      if (recommendation?.genericArticleId) supplierParams.set("genericArticleId", recommendation.genericArticleId);
-      if (Array.isArray(referenceData?.oeNumbers) && referenceData.oeNumbers.length) supplierParams.set("oeNumbers", referenceData.oeNumbers.join(","));
-
-      const supplierResponse = await fetch("/api/parts/suppliers?" + supplierParams.toString(), { cache: "no-store", credentials: "include", signal: controller.signal });
-      const supplierData = await supplierResponse.json().catch(() => null) as {
-        offers?: SupplierOffer[];
-        providers?: SupplierProvider[];
-        configuredSuppliers?: string[];
-        fitment?: FitmentPayload | null;
-        supplierSearchBlocked?: boolean;
-        supplierSearchBlockReason?: string | null;
-        error?: string;
-      } | null;
-      if (requestId !== searchRequestRef.current) return;
-      if (!supplierResponse.ok) throw new Error(supplierData?.error || "Постачальники тимчасово недоступні.");
-      const supplierBlocked = Boolean(supplierData?.supplierSearchBlocked);
-      setOffers(supplierBlocked ? [] : Array.isArray(supplierData?.offers) ? supplierData.offers : []);
-      setSupplierProviders(supplierBlocked ? [] : Array.isArray(supplierData?.providers) ? supplierData.providers : []);
-      setConfiguredSuppliers(supplierBlocked ? [] : Array.isArray(supplierData?.configuredSuppliers) ? supplierData.configuredSuppliers : []);
-      setFitment(supplierData?.fitment || referenceData?.fitment || null);
+      setSearchSlow(false);
+      const supplierBlocked = Boolean(referenceData?.supplierSearchBlocked);
+      setOffers(supplierBlocked ? [] : Array.isArray(referenceData?.offers) ? referenceData.offers : []);
+      setSupplierProviders(supplierBlocked ? [] : Array.isArray(referenceData?.supplierProviders)
+        ? referenceData.supplierProviders
+        : Array.isArray(referenceData?.providers) ? referenceData.providers : []);
+      setConfiguredSuppliers(supplierBlocked ? [] : Array.isArray(referenceData?.configuredSuppliers) ? referenceData.configuredSuppliers : []);
+      setFitment(referenceData?.fitment || null);
       setSupplierSearchBlocked(supplierBlocked);
       setManualConfirmation(false);
-      setMessage(supplierData?.fitment?.reason || referenceData?.fitmentPolicy?.message || (resolvedFitment?.status !== "VERIFIED"
+      setMessage(referenceData?.fitment?.reason || referenceData?.fitmentPolicy?.message || (resolvedFitment?.status !== "VERIFIED"
         ? "Пошук у постачальників виконано без підтвердженого OE-зв’язку. Перед додаванням потрібно вручну перевірити сумісність."
         : resolvedVin
           ? "VIN і позицію передано в каталог. Перевірте статус сумісності кожної пропозиції."
@@ -268,6 +258,7 @@ export function PartsCatalog() {
       setManualConfirmation(false);
       setMessage(error instanceof Error ? error.message : "Каталог тимчасово недоступний.");
     } finally {
+      if (slowTimer !== undefined) window.clearTimeout(slowTimer);
       if (requestId === searchRequestRef.current) {
         setBusy(false);
         if (searchAbortRef.current === controller) searchAbortRef.current = null;
@@ -575,7 +566,7 @@ export function PartsCatalog() {
           <button type="button" className={activeTab === "analogs" ? styles.tabActive : ""} onClick={() => setActiveTab("analogs")}>Аналоги <span>{analogOffers.length}</span></button>
           <button type="button" className={activeTab === "review" ? styles.tabActive : ""} onClick={() => setActiveTab("review")}>Перевірка <span>{manualOffers.length}</span></button>
           <span className={styles.pickerApiStatus}>{fitment?.status === "VERIFIED" ? fitment.exact === false ? "Модель підтверджена · перевірте двигун" : "VIN-каталог підтверджено" : "Сумісність не підтверджена"}</span>
-          <span className={styles.pickerApiStatus}>{supplierSearchBlocked ? "Запит до API не відправлено" : `${configuredSuppliers.length} API підключено`}</span>
+          <span className={styles.pickerApiStatus}>{busy ? "Перевіряю API…" : supplierSearchBlocked ? "Запит до API не відправлено" : `${configuredSuppliers.length} API підключено`}</span>
         </div>
         <div className={styles.pickerFilters}>
           <label><span>Постачальник</span><select value={supplierFilter} onChange={(event) => setSupplierFilter(event.target.value)}><option value="ALL">Усі постачальники</option>{supplierOptions.map(([id, name]) => <option value={id} key={id}>{name}</option>)}</select></label>
@@ -590,8 +581,8 @@ export function PartsCatalog() {
               <span className={styles.searchAnimationCore}><i /></span>
             </div>
             <div className={styles.searchAnimationCopy}>
-              <b>Підбираю сумісні варіанти</b>
-              <span>VIN · OE-каталог · постачальники</span>
+              <b>{searchSlow ? "Пошук триває довше…" : "Підбираю сумісні варіанти"}</b>
+              <span>{searchSlow ? "Чекаю відповідь постачальників. Не запускайте повторний пошук." : "VIN · OE-каталог · постачальники"}</span>
               <span className={styles.searchAnimationSteps}><i /><i /><i /></span>
             </div>
           </div>

@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { PERMISSIONS } from "@/src/security/permissions";
+import { authorizeScopedLocation } from "@/src/security/scoped-location-access";
 import { FREE_PARTS_SOURCE, searchReferenceParts } from "@/src/services/free-parts-catalog.service";
 import { decodeVinIntelligence } from "@/src/services/vin-intelligence.service";
 import { validateVin } from "@/src/domain/vin";
@@ -6,6 +8,8 @@ import { resolveLaborPricing } from "@/src/services/labor-pricing.service";
 import { resolvePartFitment } from "@/src/services/parts-fitment.service";
 import { normalizePartNeed } from "@/src/services/part-normalization.service";
 import { resolvePartKnowledge } from "@/src/services/parts-knowledge.service";
+import { enrichOffersWithSellPrice } from "@/src/services/suppliers/order.service";
+import { searchConfiguredSuppliers } from "@/src/services/suppliers/registry";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -13,6 +17,8 @@ export const maxDuration = 30;
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const q = (searchParams.get("q") ?? "").trim();
+  const includeSuppliers = searchParams.get("includeSuppliers") === "1";
+  const locationId = searchParams.get("locationId")?.trim() || null;
   const rawVin = searchParams.get("vin") ?? "";
   const vehicleId = searchParams.get("vehicleId")?.trim() || null;
   const plate = searchParams.get("plate")?.trim() || null;
@@ -26,11 +32,28 @@ export async function GET(request: Request) {
   const position = searchParams.get("position")?.trim() || null;
   const genericArticleId = searchParams.get("genericArticleId")?.trim() || null;
 
+  if (includeSuppliers) {
+    const access = await authorizeScopedLocation(PERMISSIONS.PROCUREMENT_READ, request, locationId);
+    if (!access.ok) return access.response;
+  }
+
   if (q.length < 2) {
     return NextResponse.json({ status: "INVALID_QUERY", message: "Введіть щонайменше 2 символи назви деталі." }, { status: 400 });
   }
 
-  const fitment = await resolvePartFitment({
+  const decodeVehicleContext = async (candidate: string) => {
+    const validation = validateVin(candidate);
+    if (!validation.formatValid || (validation.northAmerican && validation.checkDigit.status === "INVALID")) return null;
+    try {
+      return await decodeVinIntelligence(validation.vin);
+    } catch (error) {
+      console.warn("VIN context for parts search unavailable", error);
+      return null;
+    }
+  };
+  const rawVehicleContextPromise = decodeVehicleContext(rawVin);
+
+  const fitmentPromise = resolvePartFitment({
     query: q,
     partName,
     canonicalCode,
@@ -43,7 +66,7 @@ export async function GET(request: Request) {
     vin: rawVin,
     plate,
   });
-  const normalization = await normalizePartNeed({
+  const normalizationPromise = normalizePartNeed({
     query: q,
     partName,
     canonicalCode,
@@ -53,7 +76,7 @@ export async function GET(request: Request) {
     side,
     subPosition,
   });
-  const knowledge = await resolvePartKnowledge({
+  const knowledgePromise = resolvePartKnowledge({
     query: q,
     partName,
     canonicalCode,
@@ -62,15 +85,43 @@ export async function GET(request: Request) {
     side,
     subPosition,
   });
+  const referencePromise = searchReferenceParts(q, 50);
+  const fitment = await fitmentPromise;
+  const [normalization, knowledge, reference] = await Promise.all([
+    normalizationPromise,
+    knowledgePromise,
+    referencePromise,
+  ]);
 
-  let vehicleContext: Awaited<ReturnType<typeof decodeVinIntelligence>> | null = null;
-  const validation = validateVin(rawVin || fitment.vehicle?.vin || "");
-  if (validation.formatValid && !(validation.northAmerican && validation.checkDigit.status === "INVALID")) {
-    try {
-      vehicleContext = await decodeVinIntelligence(validation.vin);
-    } catch (error) {
-      console.warn("VIN context for parts search unavailable", error);
-    }
+  const supplierPromise = includeSuppliers
+    ? searchConfiguredSuppliers(q, 20, {
+        vehicleId,
+        vin: rawVin,
+        plate,
+        fitmentStatus: fitment.status,
+        fitmentConfidence: fitment.confidence,
+        fitmentExact: fitment.exact,
+        fitmentSource: fitment.catalog?.source || null,
+        fitmentReason: fitment.reason,
+        providerVehicle: fitment.providerVehicle,
+        partName,
+        canonicalCode,
+        axis,
+        side,
+        subPosition,
+        position,
+        genericArticleId,
+        catalogArticles: fitment.catalogArticles,
+        analogArticles: fitment.analogArticles,
+        oeNumbers: fitment.oeNumbers,
+        normalizedQuery: normalization.normalizedQuery,
+        analogReferences: fitment.matches.map((match) => ({ brand: match.brand, article: match.article })).slice(0, 8),
+      })
+    : null;
+
+  let vehicleContext = await rawVehicleContextPromise;
+  if (!vehicleContext && fitment.vehicle?.vin && fitment.vehicle.vin !== rawVin) {
+    vehicleContext = await decodeVehicleContext(fitment.vehicle.vin);
   }
 
   const displayVehicle = vehicleContext?.vehicle
@@ -90,7 +141,7 @@ export async function GET(request: Request) {
           vehicleType: null,
         }
       : null;
-  const pricing = displayVehicle ? await resolveLaborPricing({
+  const pricingPromise = displayVehicle ? resolveLaborPricing({
     make: displayVehicle.make || undefined,
     model: displayVehicle.model || undefined,
     year: displayVehicle.year == null ? undefined : String(displayVehicle.year),
@@ -100,8 +151,12 @@ export async function GET(request: Request) {
     bodyType: displayVehicle.bodyType || undefined,
     driveType: displayVehicle.driveType || undefined,
     vehicleType: displayVehicle.vehicleType || undefined,
-  }) : null;
-  const reference = await searchReferenceParts(q, 50);
+  }) : Promise.resolve(null);
+  const [pricing, supplierSearch] = await Promise.all([
+    pricingPromise,
+    supplierPromise || Promise.resolve(null),
+  ]);
+  const supplierOffers = supplierSearch ? await enrichOffersWithSellPrice(supplierSearch.offers) : null;
   const parts = reference.parts.map((part) => ({
     ...part,
     fitment: {
@@ -173,7 +228,7 @@ export async function GET(request: Request) {
       requiredForOrder: fitment.confirmed ? "NONE" : "MANUAL_CONFIRMATION_OR_CATALOG",
       message: fitment.reason,
     },
-    providers: [
+    providers: supplierSearch?.providers || [
       {
         id: reference.remote ? FREE_PARTS_SOURCE.id : "TURBO_LEV_LOCAL_FALLBACK",
         role: "REFERENCE_CATALOG",
@@ -188,5 +243,27 @@ export async function GET(request: Request) {
         fitmentExact: fitment.exact,
       },
     ],
+    ...(supplierSearch ? {
+      offers: supplierOffers,
+      suppliers: supplierSearch.supplierStatuses,
+      supplierStatuses: supplierSearch.supplierStatuses,
+      configuredSuppliers: supplierSearch.configuredSuppliers,
+      supplierProviders: supplierSearch.providers,
+      supplierSummary: {
+        added: supplierSearch.supplierStatuses.length,
+        configured: supplierSearch.configuredSuppliers.length,
+        responded: supplierSearch.providers.filter((provider) => provider.ok).length,
+        message: supplierSearch.configuredSuppliers.length
+          ? supplierSearch.configuredSuppliers.length + " постачальник(и) мають збережені доступи; результат відповіді видно після пошуку."
+          : "Постачальники додані, але доступи до API ще не налаштовані.",
+      },
+      supplierPricing: {
+        basis: "SUPPLIER_DEFAULT_MARKUP",
+        defaultMarkupPercent: 40,
+        message: "Ціна продажу розраховується від закупівельної ціни за правилом постачальника; базове правило Turbo LEV — 40%.",
+      },
+      supplierSearchBlocked: supplierSearch.blocked,
+      supplierSearchBlockReason: supplierSearch.blockReason,
+    } : {}),
   });
 }

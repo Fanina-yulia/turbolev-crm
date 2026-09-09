@@ -71,6 +71,26 @@ const atlAdapter: SupplierAdapter = {
 
 export const supplierAdapters: SupplierAdapter[] = [bmPartsAdapter, uniqueTradeAdapter, autoNovaAdapter, atlAdapter];
 
+const SUPPLIER_REQUEST_TIMEOUT_MS = 8_000;
+const MAX_SUPPLIER_SEARCH_QUERIES = 4;
+const MAX_PROVIDER_SEARCH_QUERIES = 3;
+
+function withTimeout<T>(promise: Promise<T>, label: string, timeoutMs = SUPPLIER_REQUEST_TIMEOUT_MS) {
+  return new Promise<T>((resolve, reject) => {
+    const timeout = setTimeout(() => reject(new Error(`${label} не відповів за ${Math.round(timeoutMs / 1000)} с.`)), timeoutMs);
+    promise.then(
+      (value) => {
+        clearTimeout(timeout);
+        resolve(value);
+      },
+      (error) => {
+        clearTimeout(timeout);
+        reject(error);
+      },
+    );
+  });
+}
+
 export function getSupplierAdapter(id: SupplierId) {
   return supplierAdapters.find((adapter) => adapter.id === id) ?? null;
 }
@@ -202,7 +222,7 @@ async function vehicleScopedSearch(adapter: SupplierAdapter, query: string, limi
     ...(context.catalogArticles || []),
     ...(context.analogArticles || []),
     ...(looksLikePartNumber(query) ? [query] : []),
-  ].map((value) => value.trim()).filter((value) => value.length >= 2))].slice(0, 12);
+  ].map((value) => value.trim()).filter((value) => value.length >= 2))].slice(0, MAX_PROVIDER_SEARCH_QUERIES * 2);
 
   if (adapter.id === "bm-parts" && adapter.searchVehicleParts && context.providerVehicle) {
     const result = await adapter.searchVehicleParts({
@@ -219,8 +239,8 @@ async function vehicleScopedSearch(adapter: SupplierAdapter, query: string, limi
 
   if (!exactQueries.length) return [];
   const perQueryLimit = Math.max(2, Math.ceil(limit / exactQueries.length));
-  const batches = await Promise.all(exactQueries.map((searchQuery) => adapter.search(searchQuery, perQueryLimit)));
-  return batches.flat();
+  const batches = await Promise.allSettled(exactQueries.map((searchQuery) => adapter.search(searchQuery, perQueryLimit)));
+  return batches.flatMap((batch) => batch.status === "fulfilled" ? batch.value : []);
 }
 
 export async function searchConfiguredSuppliers(query: string, limitPerSupplier = 20, context: SupplierSearchContext = {}) {
@@ -241,28 +261,28 @@ export async function searchConfiguredSuppliers(query: string, limitPerSupplier 
     query.trim(),
     ...(context.oeNumbers || []).slice(0, 3),
     ...(context.catalogArticles || []).slice(0, 3),
-  ].filter((value) => value.length >= 2))].slice(0, 7);
+  ].filter((value) => value.length >= 2))].slice(0, MAX_SUPPLIER_SEARCH_QUERIES);
   const searchQueries = queries.length ? queries : [query.trim()];
-  const perQueryLimit = Math.max(3, Math.ceil(limitPerSupplier / searchQueries.length));
 
-  const settled = await Promise.allSettled(searchable.map(async (adapter) => {
+  const settled = await Promise.allSettled(searchable.map((adapter) => withTimeout((async () => {
     if (useVehicleScopedSearch) return vehicleScopedSearch(adapter, query, limitPerSupplier, context);
     const providerQueries = await providerKnowledgeQueries(adapter, query, context);
-    const adapterSearchQueries = [...new Set([...providerQueries, ...searchQueries])].slice(0, 10);
+    const adapterSearchQueries = [...new Set([...providerQueries, ...searchQueries])].slice(0, MAX_SUPPLIER_SEARCH_QUERIES);
     const adapterPerQueryLimit = Math.max(2, Math.ceil(limitPerSupplier / adapterSearchQueries.length));
-    const batches = await Promise.all(adapterSearchQueries.map((searchQuery) => adapter.search(searchQuery, adapterPerQueryLimit)));
+    const batches = await Promise.allSettled(adapterSearchQueries.map((searchQuery) => adapter.search(searchQuery, adapterPerQueryLimit)));
+    const directOffers = batches.flatMap((result) => result.status === "fulfilled" ? result.value : []);
     const analogBatches: SupplierOffer[][] = [];
     if (adapter.searchAnalogs && context.fitmentStatus === "VERIFIED") {
       const analogReferences = (context.analogReferences || [])
         .filter((reference) => reference.brand && reference.article)
-        .slice(0, 5);
+        .slice(0, 3);
       const analogResults = await Promise.allSettled(analogReferences.map((reference) => adapter.searchAnalogs!(reference.brand!, reference.article, adapterPerQueryLimit)));
       analogResults.forEach((result) => {
         if (result.status === "fulfilled") analogBatches.push(result.value);
       });
     }
-    return [...batches.flat(), ...analogBatches.flat()];
-  }));
+    return [...directOffers, ...analogBatches.flat()];
+  })(), `Постачальник ${adapter.name}`)));
 
   const offersByKey = new Map<string, SupplierOffer>();
   const providers: Array<{ id: SupplierId; ok: boolean; message?: string }> = [];

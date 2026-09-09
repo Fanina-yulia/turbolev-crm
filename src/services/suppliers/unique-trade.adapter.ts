@@ -14,6 +14,8 @@ import type {
 } from "./types";
 
 const DEFAULT_BASE_URL = "https://order24-api.utr.ua";
+const REQUEST_TIMEOUT_MS = 5_000;
+const CREDENTIAL_CACHE_TTL_MS = 30_000;
 
 type LoginResponse = { token?: string; expires_at?: string; refresh_token?: string };
 type UniqueTradeDetail = {
@@ -45,6 +47,9 @@ type UniqueTradeOrder = {
 };
 
 let cachedToken: TokenSession | null = null;
+let credentialCache: { expiresAt: number; value: { email: string; password: string; baseUrl: string; fingerprint: string } } | null = null;
+let credentialInFlight: Promise<{ email: string; password: string; baseUrl: string; fingerprint: string }> | null = null;
+let authenticationInFlight: { key: string; promise: Promise<string> } | null = null;
 
 function generatedFingerprint(email: string) {
   const source = email.trim().toLowerCase() || "turbolev-crm";
@@ -52,19 +57,30 @@ function generatedFingerprint(email: string) {
 }
 
 async function credentials() {
-  const config = await getIntegrationCredential("UNIQUE_TRADE");
-  const email = config?.email?.trim() || "";
-  return {
-    email,
-    password: config?.password || "",
-    baseUrl: (config?.baseUrl || DEFAULT_BASE_URL).replace(/\/$/, ""),
-    fingerprint: (config?.fingerprint?.trim() || generatedFingerprint(email)).slice(0, 128),
-  };
+  if (credentialCache && credentialCache.expiresAt > Date.now()) return credentialCache.value;
+  if (credentialInFlight) return credentialInFlight;
+  credentialInFlight = (async () => {
+    const config = await getIntegrationCredential("UNIQUE_TRADE");
+    const email = config?.email?.trim() || "";
+    const value = {
+      email,
+      password: config?.password || "",
+      baseUrl: (config?.baseUrl || DEFAULT_BASE_URL).replace(/\/$/, ""),
+      fingerprint: (config?.fingerprint?.trim() || generatedFingerprint(email)).slice(0, 128),
+    };
+    credentialCache = { value, expiresAt: Date.now() + CREDENTIAL_CACHE_TTL_MS };
+    return value;
+  })();
+  try {
+    return await credentialInFlight;
+  } finally {
+    credentialInFlight = null;
+  }
 }
 
 async function fetchWithTimeout(url: string, init?: RequestInit) {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 12_000);
+  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   try {
     return await fetch(url, { ...init, cache: "no-store", signal: controller.signal });
   } finally {
@@ -92,16 +108,25 @@ async function authenticate(force = false) {
   if (!config.email || !config.password) throw new Error("Юнік Трейд login/password не налаштовані.");
   const key = sessionKey(config);
   if (!force && cachedToken && cachedToken.key === key && cachedToken.validUntil > Date.now()) return cachedToken.token;
+  if (!force && authenticationInFlight?.key === key) return authenticationInFlight.promise;
 
-  const url = `${config.baseUrl}/api/login_check?browser_fingerprint=${encodeURIComponent(config.fingerprint)}`;
-  const response = await fetchWithTimeout(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Accept: "application/json" },
-    body: JSON.stringify({ email: config.email, password: config.password }),
-  });
-  if (!response.ok) throw new Error(`Юнік Трейд auth HTTP ${response.status}`);
-  const data = (await response.json()) as LoginResponse;
-  return cacheSession(key, data);
+  const promise = (async () => {
+    const url = `${config.baseUrl}/api/login_check?browser_fingerprint=${encodeURIComponent(config.fingerprint)}`;
+    const response = await fetchWithTimeout(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify({ email: config.email, password: config.password }),
+    });
+    if (!response.ok) throw new Error(`Юнік Трейд auth HTTP ${response.status}`);
+    const data = (await response.json()) as LoginResponse;
+    return cacheSession(key, data);
+  })();
+  if (!force) authenticationInFlight = { key, promise };
+  try {
+    return await promise;
+  } finally {
+    if (authenticationInFlight?.promise === promise) authenticationInFlight = null;
+  }
 }
 
 async function refreshAuthentication() {
