@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { FinancialCenter as FinancialCenterBody } from "./financial-center-legacy";
 import { FinancialGovernancePanel } from "./financial-center-governance-panel";
 import { FinancialCenterMarginApprovals } from "./financial-center-margin-approvals";
-import { readCrmRoute } from "./crm-route";
+import { navigateCrm, readCrmRoute } from "./crm-route";
 import styles from "./financial-center-v2.module.css";
 
 type Account = {
@@ -34,10 +34,27 @@ const EXPORTS: Array<{ kind: ExportKind; format: ExportFormat; label: string }> 
   { kind: "plan-fact", format: "xlsx", label: "План / факт · XLSX" },
 ];
 
+const LEGACY_METRIC_SCOPE: Record<string, string> = {
+  revenue: "pnl",
+  cogs: "pnl",
+  grossProfit: "pnl",
+  opex: "pnl",
+  netProfit: "pnl",
+  otherExpense: "pnl",
+  tax: "pnl",
+  outflow: "cash",
+  currentCash: "accounts",
+  receivables: "debts",
+  payables: "debts",
+  overdueReceivables: "debts",
+  overduePayables: "debts",
+};
+
 function currentFinanceRoute() {
   const route = readCrmRoute();
   return {
     scope: route.scope || "overview",
+    metric: route.metric || "",
     locationId: route.locationId || "",
     from: route.from || "",
     to: route.to || "",
@@ -69,6 +86,28 @@ export function FinancialCenter() {
     window.addEventListener("popstate", refreshRoute);
     return () => window.removeEventListener("popstate", refreshRoute);
   }, [refreshRoute]);
+
+  useEffect(() => {
+    if (!route.metric) return;
+    const mappedScope = LEGACY_METRIC_SCOPE[route.metric];
+    if (!mappedScope) return;
+    navigateCrm("Фінансовий центр", {
+      scope: mappedScope,
+      ...(route.from ? { from: route.from } : {}),
+      ...(route.to ? { to: route.to } : {}),
+      ...(route.locationId ? { locationId: route.locationId } : {}),
+    });
+  }, [route.from, route.locationId, route.metric, route.to]);
+
+  useEffect(() => {
+    const openWorkOrder = (event: Event) => {
+      const detail = (event as CustomEvent<{ workOrderId?: string }>).detail;
+      const workOrderId = detail?.workOrderId?.trim();
+      if (workOrderId) navigateCrm("Комерційна пропозиція", { workOrderId: workOrderId });
+    };
+    window.addEventListener("turbolev:finance-open-work-order", openWorkOrder);
+    return () => window.removeEventListener("turbolev:finance-open-work-order", openWorkOrder);
+  }, []);
 
   const loadAccounts = useCallback(async () => {
     if (route.scope !== "settings") return;
