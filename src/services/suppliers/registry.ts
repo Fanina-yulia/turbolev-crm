@@ -133,6 +133,8 @@ export type SupplierSearchContext = {
   catalogArticles?: string[];
   analogArticles?: string[];
   analogReferences?: Array<{ brand: string | null; article: string }>;
+  /** Live provider matches already resolved while building VIN/vehicle fitment. */
+  fitmentOffers?: SupplierOffer[];
   oeNumbers?: string[];
   normalizedQuery?: string | null;
   partName?: string | null;
@@ -248,14 +250,24 @@ export async function searchConfiguredSuppliers(query: string, limitPerSupplier 
   const statuses = await listSupplierStatuses();
   const configuredIds = new Set(statuses.filter((supplier) => supplier.configured).map((supplier) => supplier.id));
   const vehicleScoped = Boolean(context.vehicleId?.trim() || context.vin?.trim() || context.plate?.trim());
+  const reusableFitmentOffers = (context.fitmentOffers || []).filter((offer) => offer.supplierId === "bm-parts");
   // A vehicle context must not suppress the supplier request. Use the VIN/OE
   // scoped adapter search only after fitment is verified; otherwise run the
   // ordinary article/name search and mark every returned offer for manual
   // compatibility confirmation in annotateOffer().
-  const useVehicleScopedSearch = vehicleScoped && context.fitmentStatus === "VERIFIED";
+  // resolvePartFitment may already have called BM Parts with the VIN/model
+  // filter and returned live offers. Reusing those offers is essential: a
+  // second vehicle search adds another 5–10 seconds and was the main source
+  // of the production 30-second timeout.
+  const useVehicleScopedSearch = vehicleScoped && context.fitmentStatus === "VERIFIED" && !reusableFitmentOffers.length;
 
   const searchable = supplierAdapters
     .filter((adapter) => adapter.id !== "autonova-d" && adapter.id !== "atl" && configuredIds.has(adapter.id));
+  const searchMode = reusableFitmentOffers.length || (vehicleScoped && context.fitmentStatus === "VERIFIED")
+    ? "VIN_OE"
+    : context.canonicalCode || context.genericArticleId
+      ? "CANONICAL_NAME"
+      : "FREE_TEXT";
 
   const queries = [...new Set([
     context.normalizedQuery?.trim() || "",
@@ -266,6 +278,7 @@ export async function searchConfiguredSuppliers(query: string, limitPerSupplier 
   const searchQueries = queries.length ? queries : [query.trim()];
 
   const settled = await Promise.allSettled(searchable.map((adapter) => withTimeout((async () => {
+    if (adapter.id === "bm-parts" && reusableFitmentOffers.length) return reusableFitmentOffers;
     if (useVehicleScopedSearch) return vehicleScopedSearch(adapter, query, limitPerSupplier, context);
     const providerQueries = await providerKnowledgeQueries(adapter, query, context);
     const adapterSearchQueries = [...new Set([...providerQueries, ...searchQueries])].slice(0, MAX_SUPPLIER_SEARCH_QUERIES);
@@ -324,8 +337,9 @@ export async function searchConfiguredSuppliers(query: string, limitPerSupplier 
   return {
     offers: offers.slice(0, Math.max(limitPerSupplier * Math.max(searchable.length, 1), 40)),
     providers,
-    configuredSuppliers: [...configuredIds],
     supplierStatuses: statuses,
+    configuredSuppliers: searchable.map((adapter) => adapter.id),
+    searchMode,
     blocked: false,
     blockReason: null,
   };

@@ -50,6 +50,13 @@ export async function GET(request: Request) {
     plate,
   });
   const normalization = await normalizePartNeed({ query: q, partName, canonicalCode, genericArticleId, position, axis, side, subPosition });
+  const resolvedGenericArticleId = genericArticleId || normalization.genericArticle?.id || null;
+  const resolvedCanonicalCode = canonicalCode || normalization.genericArticle?.code || normalization.canonicalCode || null;
+  const resolvedPartName = normalization.genericArticle?.name || normalization.canonicalName || partName;
+  const resolvedAxis = axis || normalization.axis || null;
+  const resolvedSide = side || normalization.side || null;
+  const resolvedSubPosition = subPosition || normalization.subPosition || null;
+  const resolvedPosition = position || normalization.position || null;
   const fitmentPayload = {
     status: fitment.status,
     confirmed: fitment.confirmed,
@@ -73,13 +80,14 @@ export async function GET(request: Request) {
       fitmentSource: fitment.catalog?.source || null,
       fitmentReason: fitment.reason,
       providerVehicle: fitment.providerVehicle,
-      partName,
-      canonicalCode,
-      axis,
-      side,
-      subPosition,
-      position,
-      genericArticleId,
+      fitmentOffers: fitment.matches.flatMap((match) => match.offer ? [match.offer] : []),
+      partName: resolvedPartName,
+      canonicalCode: resolvedCanonicalCode,
+      axis: resolvedAxis,
+      side: resolvedSide,
+      subPosition: resolvedSubPosition,
+      position: resolvedPosition,
+      genericArticleId: resolvedGenericArticleId,
       catalogArticles: fitment.catalogArticles,
       analogArticles: fitment.analogArticles,
       oeNumbers: [...new Set([...fitment.oeNumbers, ...oeNumbers])],
@@ -90,7 +98,7 @@ export async function GET(request: Request) {
   ]);
   const offers = await enrichOffersWithSellPrice(result.offers);
   const supplierStatuses = result.supplierStatuses;
-  const configuredCount = supplierStatuses.filter((supplier) => supplier.configured).length;
+  const configuredCount = result.configuredSuppliers.length;
   const respondedCount = result.providers.filter((provider) => provider.ok).length;
 
   return NextResponse.json({
@@ -121,6 +129,7 @@ export async function GET(request: Request) {
     },
     supplierSearchBlocked: result.blocked,
     supplierSearchBlockReason: result.blockReason,
+    supplierSearchMode: result.searchMode,
     policy: {
       priceType: "PURCHASE_PRICE",
       fitmentConfirmed: fitment.confirmed,

@@ -69,6 +69,7 @@ export function PartsCatalog() {
   const [supplierProviders, setSupplierProviders] = useState<SupplierProvider[]>([]);
   const [configuredSuppliers, setConfiguredSuppliers] = useState<string[]>([]);
   const [supplierSearchBlocked, setSupplierSearchBlocked] = useState(false);
+  const [supplierSearchMode, setSupplierSearchMode] = useState<string | null>(null);
   const [recommendedParts, setRecommendedParts] = useState<Recommendation[]>([]);
   const [selectedLines, setSelectedLines] = useState<SelectedLine[]>([]);
   const [workOrderOptions, setWorkOrderOptions] = useState<WorkOrderRow[]>([]);
@@ -79,6 +80,7 @@ export function PartsCatalog() {
   const [activeTab, setActiveTab] = useState<"all" | "originals" | "analogs" | "review" | "manual">("all");
   const [supplierFilter, setSupplierFilter] = useState("ALL");
   const [busy, setBusy] = useState(false);
+  const [searchSlow, setSearchSlow] = useState(false);
   const [contextLoading, setContextLoading] = useState(false);
   const [ordersLoading, setOrdersLoading] = useState(false);
   const [selectingOffer, setSelectingOffer] = useState("");
@@ -158,8 +160,6 @@ export function PartsCatalog() {
     const contextVehicleId = context?.vehicleId || route.vehicleId || "";
     const contextVin = context?.vin || route.vin || "";
     const activeReference = referenceValue.trim() || contextVin || context?.plateNumber || route.plate || "";
-    const vehicleReferenceProvided = Boolean(contextVehicleId || activeReference);
-
     if (query.length < 2) {
       setMessage("Введіть щонайменше 2 символи назви або артикулу деталі.");
       if (searchAbortRef.current === controller) searchAbortRef.current = null;
@@ -167,13 +167,21 @@ export function PartsCatalog() {
     }
 
     setBusy(true);
+    setSearchSlow(false);
     setSupplierSearchBlocked(false);
+    setSupplierSearchMode(null);
     setOffers([]);
     setSupplierProviders([]);
-    setConfiguredSuppliers([]);
     setSupplierFilter("ALL");
     setActiveTab("all");
     setManualConfirmation(false);
+    let slowTimer: number | undefined;
+    slowTimer = window.setTimeout(() => {
+      if (requestId === searchRequestRef.current) {
+        setSearchSlow(true);
+        setMessage("Пошук триває довше очікуваного. Один із постачальників може відповідати повільно — результати з’являться після завершення запиту.");
+      }
+    }, 8000);
     try {
       const recommendation = recommendationOverride
         || recommendedParts.find((item) => recommendationKey(item) === activeFindingId)
@@ -192,6 +200,7 @@ export function PartsCatalog() {
       if (resolvedVin) params.set("vin", resolvedVin);
       if (contextVehicleId) params.set("vehicleId", contextVehicleId);
       if (plateReference) params.set("plate", plateReference);
+      params.set("includeSuppliers", "1");
       if (recommendation?.findingId) params.set("findingId", recommendation.findingId);
       if (recommendation?.manualPartId) params.set("manualPartId", recommendation.manualPartId);
       if (recommendation?.name) params.set("partName", recommendation.name);
@@ -208,6 +217,13 @@ export function PartsCatalog() {
         vehicle?: VehicleContext | null;
         fitment?: FitmentPayload | null;
         oeNumbers?: string[];
+        offers?: SupplierOffer[];
+        providers?: SupplierProvider[];
+        supplierProviders?: SupplierProvider[];
+        configuredSuppliers?: string[];
+        supplierSearchMode?: string | null;
+        supplierSearchBlocked?: boolean;
+        supplierSearchBlockReason?: string | null;
         error?: string;
         fitmentPolicy?: { message?: string };
       } | null;
@@ -217,44 +233,22 @@ export function PartsCatalog() {
       const resolvedFitment = referenceData?.fitment || null;
       setFitment(resolvedFitment);
       if (referenceData?.vehicle) setVehicle(referenceData.vehicle);
-
-      const supplierParams = new URLSearchParams({ q: query });
-      if (resolvedVin) supplierParams.set("vin", resolvedVin);
-      if (contextVehicleId) supplierParams.set("vehicleId", contextVehicleId);
-      if (plateReference) supplierParams.set("plate", plateReference);
-      if (recommendation?.findingId) supplierParams.set("findingId", recommendation.findingId);
-      if (recommendation?.manualPartId) supplierParams.set("manualPartId", recommendation.manualPartId);
-      if (recommendation?.name) supplierParams.set("partName", recommendation.name);
-      if (recommendation?.canonicalCode) supplierParams.set("canonicalCode", recommendation.canonicalCode);
-      if (recommendation?.axis) supplierParams.set("axis", recommendation.axis);
-      if (recommendation?.side) supplierParams.set("side", recommendation.side);
-      if (recommendation?.subPosition) supplierParams.set("subPosition", recommendation.subPosition);
-      if (recommendation?.position) supplierParams.set("position", recommendation.position);
-      if (recommendation?.genericArticleId) supplierParams.set("genericArticleId", recommendation.genericArticleId);
-      if (Array.isArray(referenceData?.oeNumbers) && referenceData.oeNumbers.length) supplierParams.set("oeNumbers", referenceData.oeNumbers.join(","));
-
-      const supplierResponse = await fetch("/api/parts/suppliers?" + supplierParams.toString(), { cache: "no-store", credentials: "include", signal: controller.signal });
-      const supplierData = await supplierResponse.json().catch(() => null) as {
-        offers?: SupplierOffer[];
-        providers?: SupplierProvider[];
-        configuredSuppliers?: string[];
-        fitment?: FitmentPayload | null;
-        supplierSearchBlocked?: boolean;
-        supplierSearchBlockReason?: string | null;
-        error?: string;
-      } | null;
-      if (requestId !== searchRequestRef.current) return;
-      if (!supplierResponse.ok) throw new Error(supplierData?.error || "Постачальники тимчасово недоступні.");
-      const supplierBlocked = Boolean(supplierData?.supplierSearchBlocked);
-      setOffers(supplierBlocked ? [] : Array.isArray(supplierData?.offers) ? supplierData.offers : []);
-      setSupplierProviders(supplierBlocked ? [] : Array.isArray(supplierData?.providers) ? supplierData.providers : []);
-      setConfiguredSuppliers(supplierBlocked ? [] : Array.isArray(supplierData?.configuredSuppliers) ? supplierData.configuredSuppliers : []);
-      setFitment(supplierData?.fitment || referenceData?.fitment || null);
+      setSearchSlow(false);
+      const supplierBlocked = Boolean(referenceData?.supplierSearchBlocked);
+      setOffers(supplierBlocked ? [] : Array.isArray(referenceData?.offers) ? referenceData.offers : []);
+      setSupplierProviders(supplierBlocked ? [] : Array.isArray(referenceData?.supplierProviders)
+        ? referenceData.supplierProviders
+        : Array.isArray(referenceData?.providers) ? referenceData.providers : []);
+      setConfiguredSuppliers(supplierBlocked ? [] : Array.isArray(referenceData?.configuredSuppliers) ? referenceData.configuredSuppliers : []);
+      setSupplierSearchMode(referenceData?.supplierSearchMode || null);
+      setFitment(referenceData?.fitment || null);
       setSupplierSearchBlocked(supplierBlocked);
       setManualConfirmation(false);
-      setMessage(supplierData?.fitment?.reason || referenceData?.fitmentPolicy?.message || (resolvedVin
-        ? "VIN і позицію передано в каталог. Перевірте статус сумісності кожної пропозиції."
-        : "Пошук виконано без VIN. Перед додаванням потрібне ручне підтвердження сумісності."));
+      setMessage(referenceData?.fitment?.reason || referenceData?.fitmentPolicy?.message || (resolvedFitment?.status !== "VERIFIED"
+        ? "Пошук у постачальників виконано без підтвердженого OE-зв’язку. Перед додаванням потрібно вручну перевірити сумісність."
+        : resolvedVin
+          ? "VIN і позицію передано в каталог. Перевірте статус сумісності кожної пропозиції."
+          : "Пошук виконано без VIN. Перед додаванням потрібне ручне підтвердження сумісності."));
     } catch (error) {
       if (requestId !== searchRequestRef.current) return;
       setParts([]);
@@ -263,10 +257,16 @@ export function PartsCatalog() {
       setFitment(null);
       setSupplierProviders([]);
       setConfiguredSuppliers([]);
-      setSupplierSearchBlocked(vehicleReferenceProvided);
+      setSupplierSearchMode(null);
+      // The request was sent and may have failed at one or more providers;
+      // do not report that it was never sent. Provider errors are rendered
+      // separately below so the operator can distinguish an API failure from
+      // a missing supplier configuration.
+      setSupplierSearchBlocked(false);
       setManualConfirmation(false);
       setMessage(error instanceof Error ? error.message : "Каталог тимчасово недоступний.");
     } finally {
+      if (slowTimer !== undefined) window.clearTimeout(slowTimer);
       if (requestId === searchRequestRef.current) {
         setBusy(false);
         if (searchAbortRef.current === controller) searchAbortRef.current = null;
@@ -301,7 +301,7 @@ export function PartsCatalog() {
                 findingId: finding.id,
                 manualPartId: null,
                 genericArticleId: null,
-                catalogCode: null,
+                catalogCode: part?.code || null,
                 name: partName,
                 article: null,
                 position: part?.position?.trim() || item.position?.trim() || section.name?.trim() || "—",
@@ -365,7 +365,7 @@ export function PartsCatalog() {
         });
         const nextReference = route.plate || route.vin || diagnosticVehicle?.vin || "";
         const nextContext: ContextSummary = { workOrderId: diagnostic?.workOrder?.id || route.workOrderId || null, orderNumber: route.workOrderNumber || "ЗН-—", clientName: diagnostic?.client?.name || "Клієнт не вказаний", clientPhone: diagnostic?.client?.phone || "—", vehicleId: diagnosticVehicle?.id || route.vehicleId || null, vehicleName: diagnosticVehicle?.label || [diagnosticVehicle?.brand, diagnosticVehicle?.model, diagnosticVehicle?.year].filter(Boolean).join(" ") || "Автомобіль", plateNumber: diagnosticVehicle?.plateNumber || route.plate || null, vin: diagnosticVehicle?.vin || route.vin || null, mileageKm: diagnosticVehicle?.mileageKm ?? null, statusCode: diagnostic?.workOrder?.status || "PARTS_REVIEW", statusLabel: diagnostic?.workOrder?.status || "Підбір деталей", engine: null };
-        setContext(nextContext); setVehicle({ ...diagnosticVehicle, id: diagnosticVehicle?.id || route.vehicleId, vin: diagnosticVehicle?.vin || route.vin, plateNumber: diagnosticVehicle?.plateNumber || route.plate }); setVehicleRef(nextReference.toUpperCase()); setResolvedVin(diagnosticVehicle?.vin || route.vin || ""); setRecommendedParts(allRecommendationRows); setSelectedLines(hydratedSelectedLines); const requestedRecommendation = route.manualPartId || route.findingId; const first = allRecommendationRows.find((item) => recommendationKey(item) === requestedRecommendation) || allRecommendationRows[0]; setActiveFindingId(first ? recommendationKey(first) : ""); setQ((current) => current.trim() || first?.article || first?.name || ""); setOffers([]); setMessage(allRecommendationRows.length ? `Із Діагностичної карти передано ${allRecommendationRows.length} позицій. Натисніть на деталь, щоб відкрити підбір.` : "У Діагностичній карті немає деталей, позначених до заміни.");
+        setContext(nextContext); setVehicle({ ...diagnosticVehicle, id: diagnosticVehicle?.id || route.vehicleId, vin: diagnosticVehicle?.vin || route.vin, plateNumber: diagnosticVehicle?.plateNumber || route.plate }); setVehicleRef(nextReference.toUpperCase()); setResolvedVin(diagnosticVehicle?.vin || route.vin || ""); setRecommendedParts(allRecommendationRows); setSelectedLines(hydratedSelectedLines); const requestedRecommendation = route.manualPartId || route.findingId; const first = allRecommendationRows.find((item) => recommendationKey(item) === requestedRecommendation) || allRecommendationRows[0]; setActiveFindingId(first ? recommendationKey(first) : ""); setQ((current) => current.trim() || first?.article || first?.name || ""); setOffers([]); setPickerOpen(false); setMessage(allRecommendationRows.length ? `Із Діагностичної карти передано ${allRecommendationRows.length} позицій. Натисніть на деталь, щоб відкрити підбір.` : "У Діагностичній карті немає деталей, позначених до заміни.");
       } catch (error) { if (!cancelled) setMessage(error instanceof Error ? error.message : "Не вдалося завантажити Діагностичну карту."); } finally { if (!cancelled) setContextLoading(false); }
     };
     void loadContext(); return () => { cancelled = true; };
@@ -401,6 +401,18 @@ export function PartsCatalog() {
   const selectedMarkupLabel = selectedMarkupValues.length === 1 ? `${selectedMarkupValues[0]}%` : selectedMarkupValues.length > 1 ? "різна" : "—";
   const displayedMarkupLabel = selectedMarkupLabel === "—" ? "з налаштувань" : selectedMarkupLabel;
   const providerErrors = supplierProviders.filter((provider) => !provider.ok);
+  const respondingSuppliers = supplierProviders.filter((provider) => provider.ok).length;
+  const supplierStatusLabel = busy
+    ? "Перевіряю BM Parts та Юнік Трейд…"
+      : supplierSearchBlocked
+      ? "Запит до API не відправлено"
+      : supplierSearchMode === "VIN_OE"
+        ? configuredSuppliers.length ? `${respondingSuppliers}/${configuredSuppliers.length} · VIN/OE пошук` : "VIN/OE план сформовано · API не налаштовані"
+        : supplierSearchMode === "CANONICAL_NAME"
+          ? configuredSuppliers.length ? `${respondingSuppliers}/${configuredSuppliers.length} · канонічна деталь` : "Канонічну деталь визначено · API не налаштовані"
+          : configuredSuppliers.length
+            ? `${respondingSuppliers}/${configuredSuppliers.length} API відповіли`
+            : "Запит відправлено · API не налаштовані";
   const visibleRecommendedParts = useMemo(() => {
     const query = normalizeText(partFilter);
     if (!query) return recommendedParts;
@@ -602,7 +614,7 @@ export function PartsCatalog() {
           <button type="button" className={activeTab === "analogs" ? styles.tabActive : ""} onClick={() => setActiveTab("analogs")}>Аналоги <span>{analogOffers.length}</span></button>
           <button type="button" className={activeTab === "review" ? styles.tabActive : ""} onClick={() => setActiveTab("review")}>Перевірка <span>{manualOffers.length}</span></button>
           <span className={styles.pickerApiStatus}>{fitment?.status === "VERIFIED" ? fitment.exact === false ? "Модель підтверджена · перевірте двигун" : "VIN-каталог підтверджено" : "Сумісність не підтверджена"}</span>
-          <span className={styles.pickerApiStatus}>{supplierSearchBlocked ? "Запит до API не відправлено" : `${configuredSuppliers.length} API підключено`}</span>
+          <span className={styles.pickerApiStatus}>{supplierStatusLabel}</span>
         </div>
         <div className={styles.pickerFilters}>
           <label><span>Постачальник</span><select value={supplierFilter} onChange={(event) => setSupplierFilter(event.target.value)}><option value="ALL">Усі постачальники</option>{supplierOptions.map(([id, name]) => <option value={id} key={id}>{name}</option>)}</select></label>
@@ -617,13 +629,13 @@ export function PartsCatalog() {
               <span className={styles.searchAnimationCore}><i /></span>
             </div>
             <div className={styles.searchAnimationCopy}>
-              <b>Підбираю сумісні варіанти</b>
-              <span>VIN · OE-каталог · постачальники</span>
+              <b>{searchSlow ? "Пошук триває довше…" : "Підбираю сумісні варіанти"}</b>
+              <span>{searchSlow ? "Чекаю відповідь постачальників. Не запускайте повторний пошук." : "VIN · OE-каталог · постачальники"}</span>
               <span className={styles.searchAnimationSteps}><i /><i /><i /></span>
             </div>
           </div>
           <span className={styles.srOnly}>Шукаю пропозиції. Передаю VIN, позицію, OE-номери та запит до постачальників.</span>
-        </div> : !pickerOffers.length ? <div className={styles.pickerEmptyState}><b>Пропозицій у цій категорії поки немає</b><span>{supplierSearchBlocked ? "Запит до постачальників не відправлено: для цього автомобіля немає підтвердженого зв’язку з OE-каталогом." : fitment?.status === "CATALOG_NOT_CONNECTED" ? "Канонічний каталог OE ще не підключений для цього автомобіля." : configuredSuppliers.length ? "Змініть пошуковий запит або перевірте відповідь постачальників." : "Перевірте підключення BM Parts та Юнік Трейд у налаштуваннях CRM."}</span></div> : <div className={styles.pickerOfferList}>
+        </div> : !pickerOffers.length ? <div className={styles.pickerEmptyState}><b>Пропозицій у цій категорії поки немає</b><span>{supplierSearchBlocked ? "Запит до постачальників тимчасово заблокований." : configuredSuppliers.length ? fitment?.status === "VERIFIED" ? "Змініть пошуковий запит або перевірте відповідь постачальників." : "Запит до постачальників відправлено без OE-підтвердження, але збігів не знайдено. Перевірте назву або номер деталі." : "Перевірте підключення BM Parts та Юнік Трейд у налаштуваннях CRM."}</span></div> : <div className={styles.pickerOfferList}>
           {activeTab !== "review" && !categoryOffers.length && manualOffers.length > 0 && <div className={styles.policyNote}>У цій вкладці немає підтверджених результатів. Непідтверджені пропозиції винесені у вкладку «Перевірка».</div>}
           {pickerOffers.map((offer, index) => {
             const key = offer.supplierId + ":" + (offer.externalProductId || offer.article);

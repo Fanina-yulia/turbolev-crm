@@ -93,6 +93,25 @@ export async function GET(request: Request) {
     referencePromise,
   ]);
 
+  // Resolve the mechanic-facing label once and pass the same canonical intent
+  // to every supplier. The provider adapters must not independently guess
+  // whether "кульова опора — ліва сторона, передня вісь" means a ball joint,
+  // a control arm, or a bushing.
+  const resolvedGenericArticleId = genericArticleId || normalization.genericArticle?.id || knowledge.genericArticleId || null;
+  const resolvedCanonicalCode = canonicalCode
+    || normalization.genericArticle?.code
+    || normalization.canonicalCode
+    || knowledge.definition?.code
+    || null;
+  const resolvedPartName = normalization.genericArticle?.name
+    || knowledge.definition?.canonicalName
+    || normalization.canonicalName
+    || partName;
+  const resolvedAxis = axis || normalization.axis || knowledge.attributes.axis || null;
+  const resolvedSide = side || normalization.side || knowledge.attributes.side || null;
+  const resolvedSubPosition = subPosition || normalization.subPosition || knowledge.attributes.subPosition || null;
+  const resolvedPosition = position || normalization.position || null;
+
   const supplierPromise = includeSuppliers
     ? searchConfiguredSuppliers(q, 20, {
         vehicleId,
@@ -104,13 +123,14 @@ export async function GET(request: Request) {
         fitmentSource: fitment.catalog?.source || null,
         fitmentReason: fitment.reason,
         providerVehicle: fitment.providerVehicle,
-        partName,
-        canonicalCode,
-        axis,
-        side,
-        subPosition,
-        position,
-        genericArticleId,
+        fitmentOffers: fitment.matches.flatMap((match) => match.offer ? [match.offer] : []),
+        partName: resolvedPartName,
+        canonicalCode: resolvedCanonicalCode,
+        axis: resolvedAxis,
+        side: resolvedSide,
+        subPosition: resolvedSubPosition,
+        position: resolvedPosition,
+        genericArticleId: resolvedGenericArticleId,
         catalogArticles: fitment.catalogArticles,
         analogArticles: fitment.analogArticles,
         oeNumbers: fitment.oeNumbers,
@@ -170,7 +190,20 @@ export async function GET(request: Request) {
   return NextResponse.json({
     status: "OK",
     query: q,
-    context: { vehicleId, vin: rawVin || null, plate, findingId, manualPartId, partName, canonicalCode, axis, side, subPosition, position },
+    context: {
+      vehicleId,
+      vin: rawVin || null,
+      plate,
+      findingId,
+      manualPartId,
+      partName: resolvedPartName,
+      canonicalCode: resolvedCanonicalCode,
+      genericArticleId: resolvedGenericArticleId,
+      axis: resolvedAxis,
+      side: resolvedSide,
+      subPosition: resolvedSubPosition,
+      position: resolvedPosition,
+    },
     vehicle: displayVehicle ? {
       id: fitment.vehicle?.id || vehicleId,
       vin: displayVehicle.vin,
@@ -264,6 +297,7 @@ export async function GET(request: Request) {
       },
       supplierSearchBlocked: supplierSearch.blocked,
       supplierSearchBlockReason: supplierSearch.blockReason,
+      supplierSearchMode: supplierSearch.searchMode,
     } : {}),
   });
 }

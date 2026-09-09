@@ -6,7 +6,7 @@ import { toPrismaJson } from "@/src/lib/prisma-json";
 import { BM_PARTS_VEHICLE_CONTEXT_VERSION, bmPartsAdapter } from "@/src/services/suppliers/bm-parts.adapter";
 import { resolvePartKnowledge } from "@/src/services/parts-knowledge.service";
 import { isPartOfferRelevant } from "@/src/services/part-relevance.service";
-import type { SupplierVehicleContext, SupplierVehiclePart } from "@/src/services/suppliers/types";
+import type { SupplierOffer, SupplierVehicleContext, SupplierVehiclePart } from "@/src/services/suppliers/types";
 
 export type PartFitmentStatus =
   | "VERIFIED"
@@ -42,6 +42,8 @@ export type CatalogFitmentMatch = {
   imageUrl?: string | null;
   analogOfArticle?: string | null;
   vehicleMatch?: string | null;
+  /** Raw supplier offer when the match came from a live provider search. */
+  offer?: SupplierOffer;
   fitment: {
     status: "VERIFIED";
     confidence: number;
@@ -509,6 +511,7 @@ async function resolveBmProviderFitment(
       imageUrl: offer.imageUrl || null,
       analogOfArticle: item.analogOfArticle || offer.analogOfArticle || null,
       vehicleMatch: item.vehicleEvidence?.car || offer.vehicleMatch || null,
+      offer,
       fitment: {
         status: "VERIFIED",
         confidence: offer.fitmentConfidence ?? providerVehicle.confidence,
