@@ -345,7 +345,8 @@ export function PartsCatalog() {
         if (item.subPosition) params.set("subPosition", item.subPosition);
         if (activeContext?.vehicleId) params.set("vehicleId", activeContext.vehicleId);
         if (activeContext?.workOrderId) params.set("workOrderId", activeContext.workOrderId);
-        if (item.findingId) params.set("findingId", item.findingId);
+        const relationFindingId = item.findingId || item.manualPartId;
+        if (relationFindingId) params.set("findingId", relationFindingId);
         try {
           const response = await fetch("/api/parts/related-operations?" + params.toString(), { cache: "no-store", credentials: "include" });
           const payload = await response.json().catch(() => null) as RelatedOperationsResponse | null;
