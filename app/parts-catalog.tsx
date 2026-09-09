@@ -218,23 +218,6 @@ export function PartsCatalog() {
       setFitment(resolvedFitment);
       if (referenceData?.vehicle) setVehicle(referenceData.vehicle);
 
-      const vehicleScoped = Boolean(
-        vehicleReferenceProvided
-        || referenceData?.vehicle?.id
-        || resolvedFitment?.vehicle?.id
-        || resolvedFitment?.vehicle?.vin
-      );
-      if (vehicleScoped && resolvedFitment?.status !== "VERIFIED") {
-        const blockedMessage = "Запит до постачальників не відправлено: для цього автомобіля немає підтвердженого зв’язку з OE-каталогом.";
-        setOffers([]);
-        setSupplierProviders([]);
-        setConfiguredSuppliers([]);
-        setSupplierSearchBlocked(true);
-        setManualConfirmation(false);
-        setMessage(blockedMessage);
-        return;
-      }
-
       const supplierParams = new URLSearchParams({ q: query });
       if (resolvedVin) supplierParams.set("vin", resolvedVin);
       if (contextVehicleId) supplierParams.set("vehicleId", contextVehicleId);
@@ -459,8 +442,8 @@ export function PartsCatalog() {
     setMessage("Усі деталі з Діагностичної карти вже підібрані.");
   }
 
-  function startCartSearch() {
-    const query = cartSearchQuery.trim();
+  function startCartSearch(queryOverride?: string) {
+    const query = (queryOverride ?? cartSearchQuery).trim();
     if (query.length < 2) {
       setMessage("Введіть щонайменше 2 символи номера або назви деталі.");
       setPickerOpen(true);
@@ -570,10 +553,10 @@ export function PartsCatalog() {
       <section className={`${styles.column} ${styles.selectedColumn}`} aria-labelledby="selected-parts-title">
         <div className={styles.columnTitle}>
           <div><p>КОШИК · {selectedLines.length}</p><b id="selected-parts-title">Вибрані деталі</b><small>Позиції, які увійдуть до Комерційної пропозиції</small></div>
-          <form className={styles.cartPartSearch} onSubmit={(event) => { event.preventDefault(); startCartSearch(); }}>
+          <form className={styles.cartPartSearch} onSubmit={(event) => { event.preventDefault(); const input = event.currentTarget.elements.namedItem("cart-part-search"); startCartSearch(input instanceof HTMLInputElement ? input.value : undefined); }}>
             <label className={styles.srOnly} htmlFor="cart-part-search">Пошук деталі за номером або OEM-кодом</label>
             <span aria-hidden="true">⌕</span>
-            <input id="cart-part-search" value={cartSearchQuery} onChange={(event) => setCartSearchQuery(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); startCartSearch(); } }} placeholder="Пошук за номером деталі / OEM"/>
+            <input id="cart-part-search" value={cartSearchQuery} onChange={(event) => setCartSearchQuery(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); event.stopPropagation(); startCartSearch(event.currentTarget.value); } }} onKeyUp={(event) => { if (event.key === "Enter") event.preventDefault(); }} placeholder="Пошук за номером деталі / OEM"/>
             <button type="button" aria-label="Знайти деталь" onMouseDown={(event) => { event.preventDefault(); }} onClick={() => startCartSearch()}>↵</button>
           </form>
         </div>
