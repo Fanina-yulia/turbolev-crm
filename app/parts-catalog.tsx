@@ -632,6 +632,14 @@ export function PartsCatalog() {
           <button type="button" className={styles.compactSort} onClick={() => setActiveTab("all")}>Ціна ↕</button>
           <button type="button" className={styles.compactClose} onClick={() => setPickerOpen(false)} aria-label="Закрити підбір">×</button>
         </div>
+        <div className={styles.compactHeaderRow} aria-hidden="true">
+          <span />
+          <span>Деталь / назва</span>
+          <span>Наявність</span>
+          <span>Постачальник</span>
+          <span>Бренд · артикул</span>
+          <span>Ціна</span>
+        </div>
         {busy ? <div className={styles.pickerEmptyState} role="status" aria-live="polite"><div className={styles.searchAnimation} aria-hidden="true"><div className={styles.searchAnimationVisual}><span className={styles.searchAnimationOrbit} /><span className={styles.searchAnimationPulse} /><span className={styles.searchAnimationCore}><i /></span></div><div className={styles.searchAnimationCopy}><b>{searchSlow ? "Пошук триває довше…" : "Підбираю сумісні варіанти"}</b><span>VIN · OE-каталог · постачальники</span><span className={styles.searchAnimationSteps}><i /><i /><i /></span></div></div></div>
           : !compactPickerOffers.length ? <div className={styles.pickerEmptyState}><b>Пропозицій не знайдено</b><span>{supplierSearchBlocked ? "Запит до постачальників тимчасово заблокований." : "Змініть пошуковий запит або перевірте відповідь постачальників."}</span></div>
           : <div className={styles.compactResults}>
