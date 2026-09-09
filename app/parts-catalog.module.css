@@ -515,3 +515,14 @@
   .searchAnimationVisual:before,.searchAnimationVisual:after,.searchAnimationLoaderRing,.searchAnimationLoaderDots,.searchAnimationLoaderDots i,.searchAnimationScanner,.searchAnimationMascot img{animation:none}
   .searchAnimationVisual:after{opacity:.45}
 }
+
+
+/* Cart part search: one clean control with no nested borders or input background. */
+.cartPartSearch{grid-template-columns:24px minmax(0,1fr) 32px;gap:6px;width:min(360px,100%);height:40px;margin-left:auto;padding:3px 4px 3px 8px;border:1px solid var(--parts-border);border-radius:8px;background:var(--parts-surface-soft);box-sizing:border-box}
+.cartPartSearch>span{display:grid;place-items:center;color:var(--muted);font-size:16px;line-height:1}
+.cartPartSearch input,.cartPartSearch input:focus,.cartPartSearch input:active{width:100%;min-width:0;height:32px;margin:0;padding:0 4px;border:0!important;border-radius:4px;outline:0!important;background:transparent!important;box-shadow:none!important;color:var(--text)!important;-webkit-text-fill-color:var(--text);font-size:13px;line-height:32px}
+.cartPartSearch input::selection{background:color-mix(in srgb,var(--orange) 26%,transparent);color:var(--text)}
+.cartPartSearch button{display:grid;place-items:center;width:32px;height:32px;margin:0;border:0;border-radius:6px;background:var(--orange);color:#fff;font-size:14px;font-weight:850;line-height:1;cursor:pointer}
+.cartPartSearch button:hover{background:var(--orange-2)}
+.cartPartSearch:focus-within{border-color:var(--orange);box-shadow:0 0 0 3px color-mix(in srgb,var(--orange) 14%,transparent)}
+@media(max-width:700px){.cartPartSearch{width:100%;height:38px}.cartPartSearch input,.cartPartSearch input:focus,.cartPartSearch input:active{height:30px;line-height:30px}.cartPartSearch button{width:30px;height:30px}}
