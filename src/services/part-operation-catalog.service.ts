@@ -520,7 +520,7 @@ function positionLabel(ruleName: OperationPositionRule, axis: "FRONT" | "REAR" |
 }
 
 export async function listRelatedPartOperations(input: PartOperationInput & { vehicle?: unknown; workOrderId?: string | null; findingId?: string | null }) {
-  const code = canonicalCodeFromInput(input);
+  let code = canonicalCodeFromInput(input);
   const axis = axisValue(input.axis) || axisValue(input.position);
   const side = sideValue(input.side) || sideValue(input.position);
   const subPosition = subPositionValue(input.subPosition) || subPositionValue(input.partName);
@@ -544,6 +544,10 @@ export async function listRelatedPartOperations(input: PartOperationInput & { ve
         where: { code, status: { in: [CatalogEntityStatus.ACTIVE, CatalogEntityStatus.DRAFT] } },
         select: { id: true, code: true, name: true, soldAs: true, quantityPerVehicle: true, operations: { where: { status: CatalogEntityStatus.ACTIVE }, orderBy: { updatedAt: "desc" } } },
       });
+    }
+    if (article?.code) {
+      code = normalizeCode(article.code);
+      Object.assign(partRule, getPartPackageRule({ ...input, canonicalCode: code, axis, side, subPosition }));
     }
     if (article?.soldAs) {
       const storedSoldAs = String(article.soldAs).toUpperCase();
