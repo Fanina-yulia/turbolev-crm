@@ -138,10 +138,21 @@ export function normalizeDocumentTemplate(input: unknown, type: DocumentTemplate
     const row = item && typeof item === "object" ? item as Record<string, unknown> : {};
     return [String(row.id || ""), row] as const;
   }));
-  const blocks = base.blocks.map((block) => ({
-    ...block,
-    visible: byId.has(block.id) ? byId.get(block.id)?.visible !== false : block.visible,
-  }));
+  // Preserve the order selected in the builder. Unknown, removed or legacy
+  // block ids are ignored and any missing canonical blocks are appended in the
+  // documented default order. Diagnostic-card blocks are always present and
+  // visible: the approved structure is exactly 9/9 blocks.
+  const orderedIds = incomingBlocks
+    .map((item) => item && typeof item === "object" ? String((item as Record<string, unknown>).id || "") : "")
+    .filter((id, index, ids) => id && ids.indexOf(id) === index && base.blocks.some((block) => block.id === id));
+  const blockOrder = [...orderedIds, ...base.blocks.map((block) => block.id).filter((id) => !orderedIds.includes(id))];
+  const blocks = blockOrder.map((id) => {
+    const block = base.blocks.find((item) => item.id === id)!;
+    return {
+      ...block,
+      visible: type === "DIAGNOSTIC_CARD" ? true : (byId.has(block.id) ? byId.get(block.id)?.visible !== false : block.visible),
+    };
+  });
 
   return {
     type,
