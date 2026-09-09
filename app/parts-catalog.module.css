@@ -202,3 +202,17 @@
 /* Unified cart: financial summary lives inside the cart section. */
 .cartSummary{margin-top:12px;border-top:1px solid var(--line);background:rgba(18,34,42,.34)}
 .cartSummary .summaryBody{padding:14px}
+
+
+/* Compact supplier results: readable columns in both light and dark themes. */
+.compactToolbar>span{color:var(--muted)}
+.compactHeaderRow{display:grid;grid-template-columns:39px minmax(280px,1.5fr) minmax(145px,.8fr) minmax(110px,.65fr) minmax(150px,.8fr) minmax(110px,.55fr);align-items:center;gap:9px;padding:7px 24px;border-bottom:1px solid var(--line);color:var(--muted);font-size:11px;font-weight:750;letter-spacing:.02em;text-transform:uppercase;background:color-mix(in srgb,var(--panel-2) 45%,var(--panel))}
+.compactOfferRow{grid-template-columns:39px minmax(280px,1.5fr) minmax(145px,.8fr) minmax(110px,.65fr) minmax(150px,.8fr) minmax(110px,.55fr);min-height:62px}
+.compactOfferName,.compactSupplier,.compactBrand,.compactAvailability{min-width:0}
+.compactOfferName b,.compactSupplier,.compactBrand small,.compactBrand b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.compactSupplier{display:block}
+.compactAvailability b,.compactAvailability>span:not(.compactStockTooltip){white-space:nowrap}
+@media(max-width:800px){
+  .compactHeaderRow{display:none}
+  .compactOfferRow{grid-template-columns:39px minmax(0,1fr) 90px}
+}
