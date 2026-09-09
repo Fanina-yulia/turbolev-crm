@@ -161,3 +161,39 @@
 .summaryColumn{grid-column:2;grid-row:auto}
 @media(max-width:1050px){.columns{grid-template-columns:minmax(230px,.75fr) minmax(0,1.8fr)}.summaryColumn{grid-column:2}}
 @media(max-width:700px){.columns{grid-template-columns:1fr}.summaryColumn{grid-column:1}}
+
+
+/* Search input visual polish: keep typed/autofilled values inside the CRM theme. */
+.partSearch input{
+  appearance:none;
+  -webkit-appearance:none;
+  background:transparent!important;
+  color:var(--text)!important;
+  caret-color:var(--text);
+  line-height:30px;
+}
+.partSearch input::selection{
+  background:color-mix(in srgb,var(--orange) 22%,var(--parts-surface-soft));
+  color:var(--text);
+}
+.partSearch input:-webkit-autofill,
+.partSearch input:-webkit-autofill:hover,
+.partSearch input:-webkit-autofill:focus,
+.partSearch input:-webkit-autofill:active{
+  -webkit-text-fill-color:var(--text)!important;
+  -webkit-box-shadow:0 0 0 1000px var(--parts-surface-soft) inset!important;
+  box-shadow:0 0 0 1000px var(--parts-surface-soft) inset!important;
+  caret-color:var(--text);
+  transition:background-color 9999s ease-in-out 0s;
+}
+.partSearch:focus-within{
+  background:var(--parts-surface-soft);
+}
+.partSearch button{
+  display:grid;
+  place-items:center;
+  width:22px;
+  height:24px;
+  padding:0;
+  line-height:1;
+}
