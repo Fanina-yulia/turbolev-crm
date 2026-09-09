@@ -32,6 +32,18 @@ type Template = {
 };
 type ApiResponse = { ok?: boolean; templates?: Template[]; error?: string };
 
+const DIAGNOSTIC_BLOCKS: Array<Pick<Block, "id" | "label">> = [
+  { id: "identity", label: "Клієнт та автомобіль" },
+  { id: "summary", label: "Загальний висновок" },
+  { id: "inspections", label: "Результати перевірки" },
+  { id: "findings", label: "Виявлені несправності" },
+  { id: "parts", label: "Деталі, що потребують заміни" },
+  { id: "media", label: "Фото та докази" },
+  { id: "conclusion", label: "Рекомендації механіка" },
+  { id: "signature", label: "Механік та дата" },
+  { id: "contacts", label: "Контакти станції" },
+];
+
 const TYPE_LABEL: Record<TemplateType, string> = {
   DIAGNOSTIC_CARD: "Діагностична карта",
   COMMERCIAL_PROPOSAL: "Комерційна пропозиція",
@@ -147,13 +159,13 @@ export function DocumentTemplateBuilder() {
   function resetSelected() {
     if (!selected || !window.confirm(`Повернути стандартну структуру «${templateLabel(selectedType)}»?`)) return;
     const blocks = selectedType === "DIAGNOSTIC_CARD"
-      ? ["Клієнт та автомобіль", "Загальний висновок", "Результати перевірки", "Виявлені несправності", "Деталі, що потребують заміни", "Фото та докази", "Рекомендації механіка", "Механік та дата", "Контакти станції"]
-      : ["Клієнт та автомобіль", "Вступний текст", "Роботи", "Запчастини", "Підсумок та сума", "Умови та гарантія", "Підтвердження клієнта", "Контакти станції"];
+      ? DIAGNOSTIC_BLOCKS
+      : ["Клієнт та автомобіль", "Вступний текст", "Роботи", "Запчастини", "Підсумок та сума", "Умови та гарантія", "Підтвердження клієнта", "Контакти станції"].map((label, index) => ({ id: `block-${index + 1}`, label }));
     updateSelected({
       title: templateLabel(selectedType),
       description: selectedType === "DIAGNOSTIC_CARD" ? "Результати проведеної діагностики автомобіля." : "Перелік робіт, запчастин і вартості ремонту.",
       style: { ...selected.style, background: "plain", backgroundColor: "#FFFFFF", backgroundImageDataUrl: "", logo: "global", logoDataUrl: "" },
-      blocks: blocks.map((label, index) => ({ id: `block-${index + 1}`, label, visible: true })),
+      blocks: blocks.map((block) => ({ id: block.id, label: block.label, visible: true })),
     });
   }
 
@@ -190,7 +202,7 @@ export function DocumentTemplateBuilder() {
 
         <section className={styles.card}><div className={styles.cardTitle}><div><p>ФОН</p><h3>Оформлення сторінки</h3></div></div><div className={styles.segmented}>{(Object.keys(BACKGROUND_LABEL) as TemplateBackground[]).map((background) => <button key={background} type="button" className={selected.style.background === background ? styles.choiceActive : ""} onClick={() => updateStyle({ background })}>{BACKGROUND_LABEL[background]}</button>)}</div>{selected.style.background !== "image" && <label><span>Колір фону</span><span className={styles.colorInput}><input type="color" value={selected.style.backgroundColor} onChange={(event) => updateStyle({ backgroundColor: event.target.value })}/><input value={selected.style.backgroundColor} maxLength={7} onChange={(event) => updateStyle({ backgroundColor: event.target.value })}/></span></label>}{selected.style.background === "image" && <label className={styles.upload}><span>Фонове зображення</span><input type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => readImage(event, (value) => updateStyle({ backgroundImageDataUrl: value }), setError)}/><small>Зображення використовується з низькою інтенсивністю для читабельності тексту.</small></label>}</section>
 
-        <section className={styles.card}><div className={styles.cardTitle}><div><p>СТРУКТУРА</p><h3>Блоки документа</h3></div><span>{visibleBlocks.length}/{selected.blocks.length}</span></div><div className={styles.blockList}>{selected.blocks.map((block, index) => <div className={`${styles.blockRow} ${block.visible ? "" : styles.blockHidden}`} key={block.id}><button type="button" className={styles.visibility} aria-label={`${block.visible ? "Сховати" : "Показати"} блок ${block.label}`} onClick={() => updateSelected({ blocks: selected.blocks.map((item) => item.id === block.id ? { ...item, visible: !item.visible } : item) })}>{block.visible ? "◉" : "○"}</button><span>{index + 1}. {block.label}</span><button type="button" className={styles.move} aria-label={`Перемістити ${block.label} вгору`} disabled={index === 0} onClick={() => updateSelected({ blocks: moveBlock(selected.blocks, index, -1) })}>↑</button><button type="button" className={styles.move} aria-label={`Перемістити ${block.label} вниз`} disabled={index === selected.blocks.length - 1} onClick={() => updateSelected({ blocks: moveBlock(selected.blocks, index, 1) })}>↓</button></div>)}</div></section>
+        <section className={styles.card}><div className={styles.cardTitle}><div><p>СТРУКТУРА</p><h3>Блоки документа</h3></div><span>{selectedType === "DIAGNOSTIC_CARD" ? "9/9" : `${visibleBlocks.length}/${selected.blocks.length}`}</span></div><div className={styles.blockList}>{selected.blocks.map((block, index) => <div className={`${styles.blockRow} ${block.visible ? "" : styles.blockHidden}`} key={block.id}>{selectedType === "DIAGNOSTIC_CARD" ? <span className={styles.visibility} aria-hidden="true">◉</span> : <button type="button" className={styles.visibility} aria-label={`${block.visible ? "Сховати" : "Показати"} блок ${block.label}`} onClick={() => updateSelected({ blocks: selected.blocks.map((item) => item.id === block.id ? { ...item, visible: !item.visible } : item) })}>{block.visible ? "◉" : "○"}</button>}<span>{index + 1}. {block.label}</span><button type="button" className={styles.move} aria-label={`Перемістити ${block.label} вгору`} disabled={index === 0} onClick={() => updateSelected({ blocks: moveBlock(selected.blocks, index, -1) })}>↑</button><button type="button" className={styles.move} aria-label={`Перемістити ${block.label} вниз`} disabled={index === selected.blocks.length - 1} onClick={() => updateSelected({ blocks: moveBlock(selected.blocks, index, 1) })}>↓</button></div>)}</div></section>
         <button type="button" className={styles.saveDraft} disabled={!dirty || saving} onClick={() => void save("DRAFT")}>Зберегти як чернетку</button>
       </div>
 
