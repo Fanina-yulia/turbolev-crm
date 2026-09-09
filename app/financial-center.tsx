@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { FinancialCenter as FinancialCenterBody } from "./financial-center-legacy";
 import { FinancialGovernancePanel } from "./financial-center-governance-panel";
+import { FinancialCenterMarginApprovals } from "./financial-center-margin-approvals";
 import { readCrmRoute } from "./crm-route";
 import styles from "./financial-center-v2.module.css";
 
@@ -60,6 +61,11 @@ export function FinancialCenter() {
 
   useEffect(() => { void loadAccounts(); }, [loadAccounts]);
 
+  const notifyChanged = useCallback(() => {
+    void loadAccounts();
+    window.dispatchEvent(new CustomEvent("turbolev:data-changed"));
+  }, [loadAccounts]);
+
   return <>
     <FinancialCenterBody />
     {route.scope === "settings" && <div className={styles.shell}>
@@ -67,11 +73,9 @@ export function FinancialCenter() {
       <FinancialGovernancePanel
         locationId={route.locationId}
         accounts={accounts}
-        onChanged={() => {
-          void loadAccounts();
-          window.dispatchEvent(new CustomEvent("turbolev:data-changed"));
-        }}
+        onChanged={notifyChanged}
       />
+      <FinancialCenterMarginApprovals locationId={route.locationId} onChanged={notifyChanged} />
     </div>}
   </>;
 }
