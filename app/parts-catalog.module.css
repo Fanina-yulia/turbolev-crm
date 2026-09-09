@@ -83,3 +83,5 @@
 .pickerOfferList{background:var(--parts-surface)}.pickerOffer{border-color:var(--parts-border);background:var(--parts-surface)}.pickerOffer:hover{border-color:color-mix(in srgb,var(--orange) 60%,var(--parts-border));background:color-mix(in srgb,var(--orange) 5%,var(--parts-surface))}.pickerOfferTop b,.pickerOfferGrid b{color:var(--text)}.pickerOfferTop span,.pickerOfferGrid small{color:var(--muted)}
 .pickerEmptyState{display:grid;place-items:center;gap:6px;min-height:120px;padding:22px;color:var(--muted);text-align:center;background:var(--parts-surface)}.pickerEmptyState b{color:var(--text);font-size:12px}.pickerEmptyState span{max-width:420px;font-size:11px;line-height:1.4}
 .pickerFooter{border-color:var(--parts-border);background:var(--parts-surface-raised);color:var(--muted)}.warning{border-color:color-mix(in srgb,var(--parts-warning) 42%,var(--parts-border));background:color-mix(in srgb,var(--parts-warning) 7%,var(--parts-surface));color:var(--parts-warning)}
+
+.contextVin{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace!important;font-size:11px!important;letter-spacing:.025em}

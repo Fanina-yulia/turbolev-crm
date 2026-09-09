@@ -469,8 +469,8 @@ export function PartsCatalog() {
     <header className={styles.contextHeader}>
       <button type="button" className={styles.backButton} onClick={() => navigateCrm("Підбір запчастин", {})} aria-label="Повернутися до вибору замовлення">←</button>
       <div className={styles.orderContext}><small>Замовлення-наряд</small><b>{context.orderNumber}</b></div>
-      <div className={styles.contextItem}><small>Клієнт</small><b>{context.clientName}</b></div>
-      <div className={styles.contextItem}><small>Телефон</small><b>{context.clientPhone}</b></div>
+      <div className={styles.contextItem}><small>Клієнт</small><b>{context.clientName}</b><span>{context.clientPhone}</span></div>
+      <div className={styles.contextItem} title={context.vin || "VIN не вказаний"}><small>VIN-код</small><b className={styles.contextVin}>{context.vin || "VIN не вказаний"}</b></div>
       <div className={styles.contextItem}><small>Автомобіль</small><b>{context.vehicleName}</b><span>{context.plateNumber || "Номер не вказаний"}</span></div>
       <div className={styles.contextItem}><small>Пробіг</small><b>{formatMileage(context.mileageKm)}</b></div>
       <div className={styles.contextStatus}><small>Етап</small><b className={statusTone(context.statusCode)}><i/> {context.statusLabel}</b></div>
