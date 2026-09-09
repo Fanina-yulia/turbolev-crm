@@ -568,7 +568,15 @@ export async function listRelatedPartOperations(input: PartOperationInput & { ve
       const storedSoldAs = String(article.soldAs).toUpperCase();
       if (storedSoldAs !== "UNKNOWN") Object.assign(partRule, getPartPackageRule({ ...input, canonicalCode: article.code || code, soldAs: storedSoldAs, axis, side, subPosition }));
     }
-    if (article?.operations?.length) dbOperations = article.operations;
+    if (article?.operations?.length) {
+      dbOperations = article.operations.filter((relation: any) => {
+        if (!axis || !["BRAKE_PAD", "BRAKE_DISC"].includes(code)) return true;
+        const operationCode = String(relation.operationCode || "").toUpperCase();
+        if (operationCode.includes("FRONT")) return axis === "FRONT";
+        if (operationCode.includes("REAR")) return axis === "REAR";
+        return true;
+      });
+    }
     candidates = await loadServiceCatalogCandidates(prisma);
     if (input.workOrderId && input.findingId) {
       existingLine = await prisma.workOrderLine.findFirst({
