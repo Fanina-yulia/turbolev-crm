@@ -2,6 +2,8 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import fontkit from "@pdf-lib/fontkit";
 import { PDFDocument, rgb, type PDFFont, type PDFPage } from "pdf-lib";
+import type { DocumentTemplate } from "@/src/services/document-template.service";
+import { maskDocumentArticle } from "@/src/services/document-article-masking";
 import { drawNeutralVehicle } from "@/src/services/vehicle-document-art";
 import { getVehicleDocumentImage } from "@/src/services/vehicle-images/vehicle-document-asset.service";
 
@@ -47,6 +49,9 @@ export type WorkOrderInvoicePdfData = {
   address?: string | null;
   site?: string | null;
   warning?: string | null;
+  documentKind?: "INVOICE" | "COMMERCIAL_PROPOSAL";
+  maskArticles?: boolean;
+  template?: DocumentTemplate;
 };
 
 function text(value: string | number | null | undefined) {
@@ -135,14 +140,22 @@ class InvoicePdfLayout {
   private readonly logo: PdfImage | null;
   private readonly car: PdfImage | null;
   private readonly qr: PdfImage | null;
+  private readonly documentKind: "INVOICE" | "COMMERCIAL_PROPOSAL";
 
-  constructor(pdf: PDFDocument, regular: PDFFont, bold: PDFFont, assets: { logo: PdfImage | null; car: PdfImage | null; qr: PdfImage | null }) {
+  constructor(
+    pdf: PDFDocument,
+    regular: PDFFont,
+    bold: PDFFont,
+    assets: { logo: PdfImage | null; car: PdfImage | null; qr: PdfImage | null },
+    documentKind: "INVOICE" | "COMMERCIAL_PROPOSAL",
+  ) {
     this.pdf = pdf;
     this.regular = regular;
     this.bold = bold;
     this.logo = assets.logo;
     this.car = assets.car;
     this.qr = assets.qr;
+    this.documentKind = documentKind;
     this.page = this.pdf.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
     this.pages.push(this.page);
     this.paintPage();
@@ -161,7 +174,8 @@ class InvoicePdfLayout {
     this.page = this.pdf.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
     this.pages.push(this.page);
     this.paintPage();
-    this.page.drawText("НАКЛАДНА · ПРОДОВЖЕННЯ", { x: MARGIN, y: PAGE_HEIGHT - 27, size: 8, font: this.bold, color: ORANGE });
+    const label = this.documentKind === "COMMERCIAL_PROPOSAL" ? "КОМЕРЦІЙНА ПРОПОЗИЦІЯ · ПРОДОВЖЕННЯ" : "НАКЛАДНА · ПРОДОВЖЕННЯ";
+    this.page.drawText(label, { x: MARGIN, y: PAGE_HEIGHT - 27, size: 8, font: this.bold, color: ORANGE });
     this.y = PAGE_HEIGHT - 46;
   }
 
@@ -230,8 +244,11 @@ class InvoicePdfLayout {
       { start: { x: 154, y: 756 }, end: { x: 252, y: 751 }, thickness: 1.6, opacity: 0.32 },
     ].forEach((line) => this.page.drawLine({ ...line, color: ORANGE }));
 
-    this.centered("НАКЛАДНА", PAGE_WIDTH / 2, 674, 22, this.bold, TEXT);
-    this.centered("ЗАПЧАСТИНИ ТА РОБОТИ", PAGE_WIDTH / 2, 654, 11, this.bold, ORANGE);
+    const commercial = data.documentKind === "COMMERCIAL_PROPOSAL";
+    const title = data.template?.title?.trim() || (commercial ? "КОМЕРЦІЙНА ПРОПОЗИЦІЯ" : "НАКЛАДНА");
+    const description = data.template?.description?.trim() || (commercial ? "ЗАПЧАСТИНИ ТА ВАРТІСТЬ ПОСЛУГ" : "ЗАПЧАСТИНИ ТА РОБОТИ");
+    this.centered(title.toUpperCase(), PAGE_WIDTH / 2, 674, 19, this.bold, TEXT);
+    this.centered(description.toUpperCase(), PAGE_WIDTH / 2, 654, 10.5, this.bold, ORANGE);
     this.page.drawLine({ start: { x: MARGIN, y: 643 }, end: { x: PAGE_WIDTH - MARGIN, y: 643 }, thickness: 0.85, color: ORANGE });
 
     const rowY = 629;
@@ -311,7 +328,7 @@ class InvoicePdfLayout {
     const headers = ["Артикул", "Бренд", "Найменування", "Ціна/шт.\n(грн)", "Кільк.", "Сума\n(грн)"];
     this.tableHeader(headers, widths);
     const rows = data.parts.length
-      ? data.parts.map((line) => [printable(line.article || line.code), printable(line.brand), printable(line.description), money(line.unitPrice), quantity(line.quantity), money(lineAmount(line))])
+      ? data.parts.map((line) => [printable(data.maskArticles ? maskDocumentArticle(line.article || line.code) : line.article || line.code), printable(line.brand), printable(line.description), money(line.unitPrice), quantity(line.quantity), money(lineAmount(line))])
       : [["—", "—", "Запчастини не додані", "—", "0", "0.00"]];
     this.tableRows(rows, widths, { rowHeight: 38, align: ["left", "left", "left", "right", "center", "right"], boldColumns: [0, 3, 4, 5] }, headers);
     const totalQuantity = data.parts.reduce((sum, line) => sum + numberOf(line.quantity), 0);
@@ -321,13 +338,17 @@ class InvoicePdfLayout {
   }
 
   works(data: WorkOrderInvoicePdfData) {
-    this.sectionTitle("РОБОТИ");
+    const title = data.documentKind === "COMMERCIAL_PROPOSAL" ? "ПОСЛУГИ" : "РОБОТИ";
+    const itemLabel = data.documentKind === "COMMERCIAL_PROPOSAL" ? "Найменування послуг" : "Найменування робіт";
+    const emptyLabel = data.documentKind === "COMMERCIAL_PROPOSAL" ? "Послуги не додані" : "Роботи не додані";
+    const totalLabel = data.documentKind === "COMMERCIAL_PROPOSAL" ? "Всього послуги:" : "Всього роботи:";
+    this.sectionTitle(title);
     const widths = [38, 345, 45, 70, 68];
-    const headers = ["№", "Найменування робіт", "Кільк.", "Ціна\n(грн)", "Сума\n(грн)"];
+    const headers = ["№", itemLabel, "Кільк.", "Ціна\n(грн)", "Сума\n(грн)"];
     this.tableHeader(headers, widths);
     const rows = data.works.length
       ? data.works.map((line, index) => [String(index + 1), printable(line.description), quantity(line.quantity), money(line.unitPrice), money(lineAmount(line))])
-      : [["—", "Роботи не додані", "0", "0.00", "0.00"]];
+      : [["—", emptyLabel, "0", "0.00", "0.00"]];
     this.tableRows(rows, widths, { rowHeight: 22, align: ["center", "left", "center", "right", "right"], boldColumns: [2, 3, 4] }, headers);
     const totalAmount = data.works.reduce((sum, line) => sum + lineAmount(line), 0);
     const height = 22;
@@ -339,7 +360,7 @@ class InvoicePdfLayout {
       x += width;
     });
     this.page.drawLine({ start: { x: MARGIN, y: top }, end: { x: PAGE_WIDTH - MARGIN, y: top }, thickness: 0.75, color: ORANGE });
-    this.centered("Всього роботи:", MARGIN + 38 + 345 / 2, top - 14, 6.7, this.regular, MUTED);
+    this.centered(totalLabel, MARGIN + 38 + 345 / 2, top - 14, 6.7, this.regular, MUTED);
     this.drawCellText(money(totalAmount), MARGIN + 38 + 345 + 45 + 70, top, 68, height, 7.1, this.bold, TEXT, "right", 1);
     this.y = top - height;
   }
@@ -360,7 +381,7 @@ class InvoicePdfLayout {
     this.roundedRectangle(MARGIN, top - leftHeight, leftWidth, leftHeight, 9, { color: WHITE, borderColor: ORANGE, borderWidth: 1.25 });
     this.roundedRectangle(MARGIN + 12, top - leftHeight + 8, 32, 32, 8, { color: ORANGE });
     this.centered("₴", MARGIN + 28, top - leftHeight + 18, 17, this.bold, WHITE);
-    this.page.drawText("Загальна сума до сплати:", { x: MARGIN + 63, y: top - 18, size: 11.4, font: this.bold, color: TEXT });
+    this.page.drawText(data.documentKind === "COMMERCIAL_PROPOSAL" ? "Загальна сума пропозиції:" : "Загальна сума до сплати:", { x: MARGIN + 63, y: top - 18, size: 11.4, font: this.bold, color: TEXT });
     this.page.drawText(money(grandTotal), { x: MARGIN + 63, y: top - 40, size: 22, font: this.bold, color: ORANGE });
     this.page.drawText("грн", { x: MARGIN + 254, y: top - 36, size: 12.3, font: this.bold, color: TEXT });
 
@@ -376,7 +397,9 @@ class InvoicePdfLayout {
   }
 
   note(data: WorkOrderInvoicePdfData) {
-    const value = data.warning || "Увага: накладну сформовано за наданим кошиком. Перед установленням необхідно окремо перевірити сумісність кожної деталі з VIN автомобіля.";
+    const value = data.warning || (data.documentKind === "COMMERCIAL_PROPOSAL"
+      ? "Ціни наведені для погодження ремонту. Остаточна сумісність кожної деталі перевіряється за VIN автомобіля перед установленням."
+      : "Увага: накладну сформовано за наданим кошиком. Перед установленням необхідно окремо перевірити сумісність кожної деталі з VIN автомобіля.");
     const lines = wrap(value, this.regular, 5.9, CONTENT_WIDTH).slice(0, 2);
     const needed = Math.max(17, lines.length * 7 + 8);
     this.ensure(needed);
@@ -423,7 +446,7 @@ export async function renderWorkOrderInvoicePdf(data: WorkOrderInvoicePdfData) {
   const car = vehicleImage ? await pdf.embedPng(vehicleImage.bytes) : null;
   const regular = await pdf.embedFont(regularBytes, { subset: true });
   const bold = await pdf.embedFont(boldBytes, { subset: true });
-  const layout = new InvoicePdfLayout(pdf, regular, bold, { logo, car, qr });
+  const layout = new InvoicePdfLayout(pdf, regular, bold, { logo, car, qr }, data.documentKind || "INVOICE");
   await layout.header(data);
   layout.parts(data);
   layout.works(data);

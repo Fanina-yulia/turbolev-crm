@@ -6,11 +6,9 @@ import {
   ensureDiagnosticCardReviewRevision,
   type DiagnosticCardSnapshot,
 } from "@/src/services/diagnostic-card.service";
-import { renderDiagnosticCardPdf, type DiagnosticCardPdfMedia } from "@/src/services/diagnostic-card-pdf-renderer";
+import { renderDiagnosticCardPdf } from "@/src/services/diagnostic-card-pdf-renderer";
 import { getDocumentTemplates } from "@/src/services/document-template.service";
 import { getWorkOrderDocumentPackage } from "@/src/services/work-order-document-package.service";
-import { buildWorkOrderInvoicePdfData } from "@/src/services/work-order-invoice-pdf.service";
-import { renderWorkOrderInvoicePdf } from "@/src/services/work-order-invoice-pdf-renderer";
 
 const PDF_MAX_BYTES = 15 * 1024 * 1024;
 const SHARE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
@@ -109,28 +107,38 @@ export async function saveDiagnosticCardPdf(
 ) {
   const ensured = await ensureDiagnosticCardReviewRevision(diagnosticRequestId, createdByUserId, actorName);
   const snapshot = ensured.revision.snapshot as unknown as DiagnosticCardSnapshot;
-  const mediaIds = snapshot.inspections.flatMap((inspection) => inspection.sections.flatMap((section) => section.items.flatMap((item) => item.finding?.mediaIds || [])));
-  const media = mediaIds.length
-    ? await getPrisma().diagnosticMedia.findMany({ where: { id: { in: mediaIds } }, select: { id: true, fileName: true, mimeType: true, fileData: true } })
-    : [];
   const linkedDiagnostic = await getPrisma().diagnosticRequest.findUnique({
     where: { id: diagnosticRequestId },
     select: { workOrder: { select: { id: true } } },
   });
 
-  // The approved customer-facing document is the A4 "НАКЛАДНА · ЗАПЧАСТИНИ
-  // ТА РОБОТИ" layout. A diagnostic can exist before a work order is created,
-  // so keep the technical diagnostic renderer as a safe fallback for that
-  // incomplete stage of the workflow.
-  let bytes: Buffer;
+  const documentTemplates = await getDocumentTemplates();
+  const template = documentTemplates.templates.find((item) => item.type === "DIAGNOSTIC_CARD" && item.status === "PUBLISHED") || undefined;
+  let documentParts = snapshot.recommendations.parts;
+
+  // A final diagnostic can later be connected to a work order where the
+  // parts-selection flow has filled in article, brand and quantity. Reuse
+  // those customer-facing part rows for the diagnostic-card list, but never
+  // render service prices or internal purchase data here.
   if (linkedDiagnostic?.workOrder?.id) {
     const packageData = await getWorkOrderDocumentPackage(linkedDiagnostic.workOrder.id);
-    bytes = await renderWorkOrderInvoicePdf(buildWorkOrderInvoicePdfData(packageData));
-  } else {
-    const documentTemplates = await getDocumentTemplates();
-    const template = documentTemplates.templates.find((item) => item.type === "DIAGNOSTIC_CARD" && item.status === "PUBLISHED") || undefined;
-    bytes = await renderDiagnosticCardPdf(snapshot, media as DiagnosticCardPdfMedia[], template);
+    const selectedParts = packageData.documents.invoice.lines
+      .filter((line) => line.type === "PART")
+      .map((line) => ({
+        findingId: line.id,
+        name: line.description,
+        action: "REPLACE",
+        urgency: "ATTENTION",
+        section: "",
+        checkName: "",
+        article: line.article || line.code || null,
+        brand: line.brand || null,
+        quantity: line.quantity,
+      }));
+    if (selectedParts.length) documentParts = selectedParts;
   }
+
+  const bytes = await renderDiagnosticCardPdf(snapshot, [], template, documentParts);
   if (bytes.byteLength > PDF_MAX_BYTES) {
     throw new DiagnosticCardPdfError("PDF_TOO_LARGE", "Діагностична карта містить забагато фото для одного PDF-файла.", 413);
   }

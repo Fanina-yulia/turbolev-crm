@@ -5,6 +5,7 @@ import type {
   ClientPortalMessage,
   ClientPortalSnapshot,
 } from "@/src/services/client-portal.service";
+import { maskDocumentArticle } from "@/src/services/document-article-masking";
 import styles from "./client-portal.module.css";
 import { VehiclePlate } from "../../vehicle-plate";
 
@@ -260,7 +261,7 @@ export function ClientPortal({ token, initialSnapshot }: { token: string; initia
         {estimate ? <>
           <div className={styles.estimateLines}>
             {estimate.lines.map((line) => <div className={styles.estimateLine} key={line.id}>
-              <div><strong>{line.description}</strong><small>{line.type === "LABOR" ? "Робота" : line.type === "PART" ? "Запчастина" : "Матеріал / послуга"}{line.brand ? ` · ${line.brand}` : ""}{line.article ? ` · ${line.article}` : ""}</small></div>
+              <div><strong>{line.description}</strong><small>{line.type === "LABOR" ? "Робота" : line.type === "PART" ? "Запчастина" : "Матеріал / послуга"}{line.brand ? ` · ${line.brand}` : ""}{line.article ? ` · ${maskDocumentArticle(line.article)}` : ""}</small></div>
               <div><b>{money(line.total, estimate.currency)}</b><small>{line.quantity} {line.unit} × {money(line.unitPrice, estimate.currency)}</small></div>
             </div>)}
           </div>

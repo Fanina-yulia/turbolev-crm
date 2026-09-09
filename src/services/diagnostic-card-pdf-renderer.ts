@@ -4,6 +4,7 @@ import fontkit from "@pdf-lib/fontkit";
 import { PDFDocument, rgb, type PDFFont, type PDFPage } from "pdf-lib";
 import type { DiagnosticCardSnapshot } from "@/src/services/diagnostic-card.service";
 import type { DocumentTemplate } from "@/src/services/document-template.service";
+import { maskDocumentArticle } from "@/src/services/document-article-masking";
 import { drawNeutralVehicle } from "@/src/services/vehicle-document-art";
 import { getVehicleDocumentImage } from "@/src/services/vehicle-images/vehicle-document-asset.service";
 
@@ -28,6 +29,13 @@ export type DiagnosticCardPdfMedia = {
   fileName: string;
   mimeType: string;
   fileData: Uint8Array;
+};
+
+export type DiagnosticCardPdfPart = {
+  name: string;
+  article?: string | number | null;
+  brand?: string | null;
+  quantity?: string | number | null;
 };
 
 type PdfColor = ReturnType<typeof rgb>;
@@ -460,6 +468,26 @@ class PdfLayout {
     this.table(["№", title, "Опис / стан"], safeRows.map((row, index) => [String(index + 1), row.name, row.detail]), [30, 245, CONTENT_WIDTH - 275], safeRows.map((row) => row.tone), 2);
   }
 
+  replacementParts(parts: DiagnosticCardPdfPart[]) {
+    this.section("ДЕТАЛІ ДО ЗАМІНИ", 31 + 27 + 32);
+    const rows = parts.length
+      ? parts.map((part, index) => [
+        String(index + 1),
+        maskDocumentArticle(part.article) || "—",
+        part.brand?.trim() || "—",
+        part.name.trim() || "—",
+        String(part.quantity ?? "1"),
+      ])
+      : [["—", "—", "—", "Деталі до заміни не додані", "0"]];
+    this.table(
+      ["№", "Артикул", "Бренд", "Найменування деталі", "Кільк."],
+      rows,
+      [30, 100, 82, 277, 50],
+      [],
+      -1,
+    );
+  }
+
   async photos(snapshot: DiagnosticCardSnapshot) {
     const ids = snapshot.inspections.flatMap((inspection) => inspection.sections.flatMap((section) => section.items.flatMap((item) => item.finding?.mediaIds || [])));
     const invalid: string[] = [];
@@ -560,15 +588,12 @@ async function readOptionalAsset(root: string, fileName: string, mimeType: strin
   }
 }
 
-function visible(template: DocumentTemplate | undefined, id: string) {
-  if (!template) return true;
-  const contentBlockIds = ["summary", "findings", "inspections", "parts", "conclusion", "media", "signature", "contacts"];
-  const hasVisibleContent = contentBlockIds.some((blockId) => template.blocks.find((block) => block.id === blockId)?.visible !== false);
-  if (!hasVisibleContent) return true;
-  return template.blocks.find((block) => block.id === id)?.visible !== false;
-}
-
-export async function renderDiagnosticCardPdf(snapshot: DiagnosticCardSnapshot, media: DiagnosticCardPdfMedia[] = [], template?: DocumentTemplate) {
+export async function renderDiagnosticCardPdf(
+  snapshot: DiagnosticCardSnapshot,
+  media: DiagnosticCardPdfMedia[] = [],
+  template?: DocumentTemplate,
+  parts: DiagnosticCardPdfPart[] = snapshot.recommendations.parts,
+) {
   const pdf = await PDFDocument.create();
   pdf.registerFontkit(fontkit);
   const root = process.cwd();
@@ -600,82 +625,22 @@ export async function renderDiagnosticCardPdf(snapshot: DiagnosticCardSnapshot, 
     logo = custom ? { bytes: custom.bytes, mimeType: custom.mimeType } : defaultLogo;
   }
 
-  await layout.header(snapshot, template?.title || "Діагностична карта", template?.description || "Результати проведеної діагностики автомобіля.", logo, car);
+  await layout.header(snapshot, template?.title || "Діагностична карта", template?.description || "Перелік деталей до заміни автомобіля.", logo, car);
 
-  const defaultBlockOrder = ["identity", "summary", "inspections", "findings", "parts", "media", "conclusion", "signature", "contacts"];
-  const blockOrder = template?.blocks?.length
+  const defaultBlockOrder = ["identity", "parts", "contacts"];
+  const requestedBlockOrder = template?.blocks?.length
     ? template.blocks.map((block) => block.id).filter((id, index, ids) => ids.indexOf(id) === index)
     : defaultBlockOrder;
+  const blockOrder = [
+    ...requestedBlockOrder.filter((id) => defaultBlockOrder.includes(id)),
+    ...defaultBlockOrder.filter((id) => !requestedBlockOrder.includes(id)),
+  ];
 
   const renderBlock = async (id: string) => {
     if (id === "identity") return;
-    if (!visible(template, id)) return;
-
-    if (id === "summary") {
-      layout.section("ПІДСУМОК ДІАГНОСТИКИ", 31 + 40);
-      layout.metrics(snapshot);
-      if (snapshot.problem) layout.callout("Заявлена проблема", snapshot.problem);
-      return;
-    }
-
-    if (id === "findings") {
-      const findings = snapshot.inspections.flatMap((inspection) => inspection.sections.flatMap((section) => section.items.filter((item) => item.state !== "OK").map((item) => ({ item, section }))));
-      layout.section("ВИЯВЛЕНІ НЕСПРАВНОСТІ", 31 + 27 + 32);
-      layout.list("Вузол / елемент", findings.map(({ item, section }) => ({
-        name: item.name,
-        detail: [section.name, stateLabels[item.state] || item.state, item.finding?.text, item.note].filter(Boolean).join(" · "),
-        tone: stateColor(item.state),
-      })));
-      return;
-    }
-
-    if (id === "inspections") {
-      layout.section("РЕЗУЛЬТАТИ ПЕРЕВІРКИ", 31 + 22 + 22 + 27 + 32);
-      for (const inspection of snapshot.inspections) {
-        layout.subsection(inspection.name);
-        for (const section of inspection.sections) {
-          layout.subsection(section.name);
-          const rows = section.items.map((item, index) => {
-            const details = [item.position, measurementText(item), item.finding?.text, item.finding?.action && item.finding.action !== "NONE" ? actionLabels[item.finding.action] || item.finding.action : "", item.note].filter(Boolean).join(" · ");
-            return [String(index + 1), item.name, stateLabels[item.state] || item.state, details || "—"];
-          });
-          layout.table(["№", "Вузол / елемент", "Стан", "Результат / примітки"], rows, [27, 158, 62, CONTENT_WIDTH - 247], section.items.map((item) => stateColor(item.state)), 2);
-        }
-      }
-      return;
-    }
 
     if (id === "parts") {
-      layout.section("ДЕТАЛІ ДО ЗАМІНИ", 31 + 27 + 32);
-      layout.list("Деталь", snapshot.recommendations.parts.map((item) => ({
-        name: item.name,
-        detail: [item.section, item.checkName, actionLabels[item.action] || item.action].filter(Boolean).join(" · "),
-        tone: item.urgency === "CRITICAL" ? RED : item.urgency === "ATTENTION" ? YELLOW : MUTED,
-      })));
-      return;
-    }
-
-    if (id === "conclusion") {
-      layout.section("РЕКОМЕНДОВАНІ РОБОТИ", 31 + 27 + 32);
-      layout.list("Робота", snapshot.recommendations.works.map((item) => ({
-        name: item.name,
-        detail: [item.section, item.checkName, actionLabels[item.action] || item.action].filter(Boolean).join(" · "),
-        tone: item.urgency === "CRITICAL" ? RED : item.urgency === "ATTENTION" ? YELLOW : MUTED,
-      })));
-      if (snapshot.technicalConclusion) layout.callout("Технічний висновок", snapshot.technicalConclusion);
-      if (snapshot.mechanicComment) layout.callout("Коментар механіка", snapshot.mechanicComment, muted);
-      if (snapshot.managerComment) layout.callout("Коментар сервіс-менеджера", snapshot.managerComment, muted);
-      return;
-    }
-
-    if (id === "media") {
-      layout.section("ФОТО ТА ДОКАЗИ", 31 + 125 + 5);
-      await layout.photos(snapshot);
-      return;
-    }
-
-    if (id === "signature") {
-      layout.signature(snapshot);
+      layout.replacementParts(parts);
       return;
     }
 
