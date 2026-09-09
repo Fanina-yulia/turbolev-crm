@@ -8,6 +8,7 @@ import { enrichOffersWithSellPrice, ensureSupplierRecord } from "@/src/services/
 import { searchConfiguredSuppliers } from "@/src/services/suppliers/registry";
 import { normalizeCatalogNumber, resolvePartFitment, type PartFitmentStatus } from "@/src/services/parts-fitment.service";
 import { calculateCatalogLaborPrice, isReplacementLabor } from "@/src/services/labor-pricing.service";
+import { findReplacementOperation, getPartPackageRule, resolveSupplierOfferQuantity } from "@/src/services/part-operation-catalog.service";
 import type { SupplierId } from "@/src/services/suppliers/types";
 
 const SUPPLIER_IDS = new Set<SupplierId>(["bm-parts", "unique-trade", "autonova-d", "atl"]);
@@ -79,23 +80,50 @@ async function ensureReplacementLabor(input: {
   workOrderId: string;
   findingId: string;
   laborSuggestion: { description: string; lineId: string | null } | undefined;
+  genericArticleId?: string | null;
+  canonicalCode?: string | null;
+  partName?: string | null;
+  axis?: string | null;
+  side?: string | null;
+  position?: string | null;
+  subPosition?: string | null;
   vehicle: { brand: string | null; model: string | null; year: number | null; engineName: string | null; engineVolumeCm3: number | null; fuelType: string | null; bodyType: string | null; grossWeightKg: number | null; driveType: string | null; vehicleType: string | null };
   customerProvidedPart: boolean;
   actorName: string;
 }) {
-  if (!input.laborSuggestion) {
-    return { status: "NOT_MAPPED" as const, message: "Для цієї деталі в Діагностичній карті не вказана робота заміни." };
-  }
   const prisma = getPrisma();
-  const current = input.laborSuggestion.lineId
+  const operation = await findReplacementOperation({
+    genericArticleId: input.genericArticleId,
+    canonicalCode: input.canonicalCode,
+    partName: input.partName || input.laborSuggestion?.description || null,
+    axis: input.axis,
+    side: input.side,
+    position: input.position,
+    subPosition: input.subPosition,
+    vehicle: input.vehicle,
+  });
+  const laborDescription = input.laborSuggestion?.description || operation?.name || "";
+  const current = input.laborSuggestion?.lineId
     ? await prisma.workOrderLine.findFirst({ where: { id: input.laborSuggestion.lineId, workOrderId: input.workOrderId } })
-    : null;
-  const catalogItem = await findLaborCatalogItem(input.laborSuggestion.description, current?.catalogItemId);
+    : await prisma.workOrderLine.findFirst({ where: { workOrderId: input.workOrderId, sourceEntityId: input.findingId + ":LABOR", status: { not: "CANCELLED" } } });
+  const catalogItem = operation?.catalogItem && operation.basePrice != null
+    ? {
+        id: operation.catalogItem.id,
+        code: operation.catalogItem.code,
+        displayName: operation.catalogItem.displayName,
+        basePrice: operation.basePrice,
+        vehicleCoefficientEnabled: operation.catalogItem.vehicleCoefficientEnabled,
+        normMinutes: operation.normMinutes,
+      }
+    : await findLaborCatalogItem(laborDescription, current?.catalogItemId);
+  if (!laborDescription && !catalogItem) {
+    return { status: "NOT_MAPPED" as const, message: "Для цієї деталі не визначено роботу заміни." };
+  }
   if (!catalogItem || catalogItem.basePrice == null) {
     if (current && Number(current.plannedUnitPrice) > 0) return { status: "EXISTING_PRICE" as const, lineId: current.id, message: "Роботу залишено з уже встановленою ціною." };
-    return { status: "MANUAL_REQUIRED" as const, message: `У прайс-листі не знайдено роботу «${input.laborSuggestion.description}».` };
+    return { status: "MANUAL_REQUIRED" as const, message: "У прайс-листі не знайдено роботу «" + laborDescription + "»." };
   }
-  const vehicle = {
+  const operationQuantity = Math.max(1, Number(operation?.quantity || 1));  const vehicle = {
     make: input.vehicle.brand || undefined,
     model: input.vehicle.model || undefined,
     year: input.vehicle.year == null ? undefined : String(input.vehicle.year),
@@ -110,6 +138,7 @@ async function ensureReplacementLabor(input: {
   const pricing = await calculateCatalogLaborPrice({
     basePrice: Number(catalogItem.basePrice),
     vehicle,
+    quantity: operationQuantity,
     vehicleCoefficientEnabled: catalogItem.vehicleCoefficientEnabled,
     customerProvidedPart: input.customerProvidedPart,
     replacementOperation: isReplacementLabor(catalogItem),
@@ -131,13 +160,20 @@ async function ensureReplacementLabor(input: {
       total: pricing.total,
       capturedAt: new Date().toISOString(),
     },
+    relatedOperation: operation ? {
+      operationCode: operation.operationCode,
+      relationId: operation.relationId,
+      positionRule: operation.positionRule,
+      quantity: operationQuantity,
+      packageLabel: operation.note || null,
+    } : null,
   };
   const lineBody = {
     type: "LABOR",
     description: catalogItem.displayName,
     code: catalogItem.code,
     catalogItemId: catalogItem.id,
-    plannedQuantity: 1,
+    plannedQuantity: operationQuantity,
     plannedUnitPrice: pricing.total,
     plannedUnitCost: 0,
     laborHours: catalogItem.normMinutes == null ? null : catalogItem.normMinutes / 60,
@@ -265,6 +301,18 @@ export async function selectDiagnosticPartOffer(input: {
   }
   if (!liveOffer.available || liveOffer.purchasePrice == null) throw new PartsSelectionError("OFFER_UNAVAILABLE", "Ця деталь зараз недоступна у постачальника.", 409);
 
+  const packagingRule = getPartPackageRule({
+    genericArticleId: clean(input.genericArticleId, 160) || suggestion.genericArticleId || null,
+    canonicalCode: input.canonicalCode || null,
+    partName: input.partName || suggestion.description,
+    axis: input.axis || null,
+    side: input.side || null,
+    position: input.position || null,
+    subPosition: input.subPosition || null,
+  });
+  const packageResolution = resolveSupplierOfferQuantity(packagingRule, liveOffer);
+  const supplierQuantity = packageResolution.quantity;
+
   const [priced] = await enrichOffersWithSellPrice([liveOffer]);
   if (!priced || priced.sellPrice == null) throw new PartsSelectionError("PRICE_UNAVAILABLE", "Постачальник не повернув коректну ціну.", 409);
   const supplier = await ensureSupplierRecord(supplierId);
@@ -280,6 +328,13 @@ export async function selectDiagnosticPartOffer(input: {
     workOrderId: commercial.workOrder.id,
     findingId: findingId || manualPartId,
     laborSuggestion,
+    genericArticleId: fitment.genericArticle?.id || clean(input.genericArticleId, 160) || suggestion.genericArticleId || null,
+    canonicalCode: input.canonicalCode || null,
+    partName: input.partName || suggestion.description,
+    axis: input.axis || null,
+    side: input.side || null,
+    position: input.position || null,
+    subPosition: input.subPosition || null,
     vehicle: workOrderVehicle.vehicle,
     customerProvidedPart: input.customerProvidedPart === true,
     actorName,
@@ -311,7 +366,7 @@ export async function selectDiagnosticPartOffer(input: {
     currency: priced.currency || supplier.defaultCurrency || "UAH",
     plannedUnitCost: priced.purchasePrice,
     plannedUnitPrice: priced.sellPrice,
-    plannedQuantity: quantity,
+    plannedQuantity: supplierQuantity,
     supplierId: supplier.id,
     supplierQuoteId: quote.id,
     metadata: {
@@ -335,6 +390,11 @@ export async function selectDiagnosticPartOffer(input: {
         sellPrice: priced.sellPrice,
         currency: priced.currency || supplier.defaultCurrency || "UAH",
         capturedAt: new Date().toISOString(),
+        catalogQuantity: supplierQuantity,
+        catalogPriceBasis: packageResolution.priceBasis,
+        catalogQuantityLabel: packageResolution.label,
+        catalogPackageLabel: packageResolution.packageLabel,
+        catalogPackagingNote: packageResolution.note,
       },
     },
   }, actorName);
@@ -355,8 +415,10 @@ export async function selectDiagnosticPartOffer(input: {
           purchasePrice: priced.purchasePrice,
           sellPrice: priced.sellPrice,
           currency: priced.currency || supplier.defaultCurrency || "UAH",
-          quantity,
-          note: searchMode === "VIN" ? "Підібрано за VIN" : "Підібрано за номером/назвою після ручного підтвердження",
+          quantity: supplierQuantity,
+          note: searchMode === "VIN"
+            ? "Підібрано за VIN"
+            : "Підібрано за номером/назвою після ручного підтвердження" + (packageResolution.priceBasis === "PER_WHEEL" ? "; ціна скоригована на кількість коліс" : ""),
         },
       });
     }
@@ -382,6 +444,9 @@ export async function selectDiagnosticPartOffer(input: {
           markupPercent: priced.markupPercent,
           sellPrice: priced.sellPrice,
           currency: priced.currency || "UAH",
+          quantity: supplierQuantity,
+          catalogQuantityLabel: packageResolution.label,
+          catalogPriceBasis: packageResolution.priceBasis,
           searchMode,
           manualConfirmation: searchMode !== "VIN",
           fitmentStatus: fitment.status,
@@ -413,7 +478,7 @@ export async function selectDiagnosticPartOffer(input: {
       markupPercent: priced.markupPercent,
       sellPrice: priced.sellPrice,
       currency: priced.currency || "UAH",
-      quantity,
+      quantity: supplierQuantity,
       quoteId: quote.id,
     },
     line: updated.line,
