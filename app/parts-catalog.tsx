@@ -461,21 +461,23 @@ export function PartsCatalog() {
 
   function startCartSearch() {
     const query = cartSearchQuery.trim();
-    const next = recommendedParts.find((item) => !selectedLines.some((line) => line.findingId === recommendationKey(item)));
-    if (!next) {
-      setMessage("Усі деталі з Діагностичної карти вже підібрані.");
-      return;
-    }
     if (query.length < 2) {
       setMessage("Введіть щонайменше 2 символи номера або назви деталі.");
+      setPickerOpen(true);
       return;
     }
-    setActiveFindingId(recommendationKey(next));
+
+    const next = recommendedParts.find((item) => !selectedLines.some((line) => line.findingId === recommendationKey(item)))
+      || recommendedParts[0]
+      || null;
+
+    setActiveFindingId(next ? recommendationKey(next) : "");
     setQ(query);
     setOffers([]);
     setFitment(null);
     setSupplierSearchBlocked(false);
     setManualConfirmation(false);
+    setActiveTab("all");
     setPickerOpen(true);
     void searchPart(query, vehicleRef, next);
   }
@@ -571,8 +573,8 @@ export function PartsCatalog() {
           <form className={styles.cartPartSearch} onSubmit={(event) => { event.preventDefault(); startCartSearch(); }}>
             <label className={styles.srOnly} htmlFor="cart-part-search">Пошук деталі за номером або OEM-кодом</label>
             <span aria-hidden="true">⌕</span>
-            <input id="cart-part-search" value={cartSearchQuery} onChange={(event) => setCartSearchQuery(event.target.value)} placeholder="Пошук за номером деталі / OEM" disabled={!recommendedParts.some((item) => !selectedLineFor(item))}/>
-            <button type="submit" aria-label="Знайти деталь" disabled={!recommendedParts.some((item) => !selectedLineFor(item))}>↵</button>
+            <input id="cart-part-search" value={cartSearchQuery} onChange={(event) => setCartSearchQuery(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); startCartSearch(); } }} placeholder="Пошук за номером деталі / OEM"/>
+            <button type="submit" aria-label="Знайти деталь" onClick={(event) => { event.preventDefault(); startCartSearch(); }}>↵</button>
           </form>
         </div>
         <div className={styles.selectedTableArea}>
