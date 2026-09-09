@@ -309,9 +309,13 @@ export async function selectDiagnosticPartOffer(input: {
     side: input.side || null,
     position: input.position || null,
     subPosition: input.subPosition || null,
+    quantityHint: input.quantity,
   });
-  const packageResolution = resolveSupplierOfferQuantity(packagingRule, liveOffer);
+  const packageResolution = resolveSupplierOfferQuantity(packagingRule, liveOffer, input.quantity);
   const supplierQuantity = packageResolution.quantity;
+  if (packagingRule.requiresQuantityInput && supplierQuantity <= 0) {
+    throw new PartsSelectionError("QUANTITY_REQUIRED", "Для цієї позиції потрібно вказати підтверджений обсяг у літрах.");
+  }
 
   const [priced] = await enrichOffersWithSellPrice([liveOffer]);
   if (!priced || priced.sellPrice == null) throw new PartsSelectionError("PRICE_UNAVAILABLE", "Постачальник не повернув коректну ціну.", 409);
