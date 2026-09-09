@@ -72,7 +72,7 @@ type CommercialHandoffPayload = {
     genericArticleId?: string | null;
     catalogCode?: string | null;
     lineId?: string | null;
-    selected?: { supplierId?: string | null; supplierName?: string; article?: string; brand?: string | null; warehouse?: string | null; purchasePrice?: number; sellPrice?: number; markupPercent?: number | null; currency?: string };
+    selected?: { supplierId?: string | null; supplierName?: string; article?: string; brand?: string | null; warehouse?: string | null; purchasePrice?: number; sellPrice?: number; markupPercent?: number | null; currency?: string; quantity?: number; quantityLabel?: string | null; priceBasis?: string | null; packagingNote?: string | null };
   }>;
 };
 
