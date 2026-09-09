@@ -34,6 +34,14 @@ ALTER TABLE IF EXISTS "DiagnosticFinding" DROP CONSTRAINT IF EXISTS "DiagnosticF
 ALTER TABLE IF EXISTS "DiagnosticMedia" DROP CONSTRAINT IF EXISTS "DiagnosticMedia_findingId_fkey";
 ALTER TABLE IF EXISTS "UserUiPreference" DROP CONSTRAINT IF EXISTS "UserUiPreference_userId_fkey";
 
+-- RepairKitItem timestamps and the legacy composite ordering index are historical,
+-- non-destructive database extras. Runtime code does not depend on these fields;
+-- keep them in production for audit/history, but remove them only in the disposable
+-- comparison database so Prisma drift remains strict for all active model fields.
+ALTER TABLE IF EXISTS "RepairKitItem" DROP COLUMN IF EXISTS "createdAt";
+ALTER TABLE IF EXISTS "RepairKitItem" DROP COLUMN IF EXISTS "updatedAt";
+DROP INDEX IF EXISTS "RepairKitItem_repairKitId_sortOrder_idx";
+
 -- Normalize two historical index differences so the clean-database drift check
 -- compares the current Prisma schema rather than legacy migration names.
 ALTER INDEX IF EXISTS "DiagnosticPartRecommendation_diagnosticRequestId_status_created"
