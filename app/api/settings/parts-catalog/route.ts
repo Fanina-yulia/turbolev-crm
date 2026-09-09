@@ -16,7 +16,7 @@ export async function GET(request: NextRequest) {
     const parts = await listCatalogParts({ query: params.get("q") || undefined, status: params.get("status") || undefined, limit: Number(params.get("limit") || 50) });
     const prisma = getPrisma();
     const [kits, pendingChanges, observations] = await Promise.all([
-      prisma.repairKit.findMany({ where: { status: CatalogEntityStatus.ACTIVE }, include: { items: { include: { genericArticle: { select: { code: true, name: true } } } }, orderBy: { name: "asc" } }),
+      prisma.repairKit.findMany({ where: { status: CatalogEntityStatus.ACTIVE }, include: { items: { include: { genericArticle: { select: { code: true, name: true } } } } }, orderBy: { name: "asc" } }),
       prisma.partCatalogChange.count({ where: { status: "PENDING" } }),
       prisma.partTermObservation.count({ where: { status: "NEW" } }),
     ]);
