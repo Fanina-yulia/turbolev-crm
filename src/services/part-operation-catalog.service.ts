@@ -570,7 +570,7 @@ export async function listRelatedPartOperations(input: PartOperationInput & { ve
     }
     if (article?.operations?.length) {
       dbOperations = article.operations.filter((relation: any) => {
-        if (!axis || !["BRAKE_PAD", "BRAKE_DISC"].includes(code)) return true;
+        if (!axis || !["BRAKE_PAD", "BRAKE_DISC"].includes(code || "")) return true;
         const operationCode = String(relation.operationCode || "").toUpperCase();
         if (operationCode.includes("FRONT")) return axis === "FRONT";
         if (operationCode.includes("REAR")) return axis === "REAR";
