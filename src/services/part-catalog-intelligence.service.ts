@@ -62,6 +62,7 @@ export function buildPartQueryPlan(input: {
   const providerTerms = input.provider && definition?.providerTerms?.[input.provider]
     ? definition.providerTerms[input.provider]
     : [];
+  const normalizedProviderTerms = providerTerms || [];
   const attributes = input.attributes || {};
   const positionTerms = [attributes.axis, attributes.side, attributes.position, attributes.subPosition]
     .map((value) => clean(value, 32))
@@ -70,7 +71,7 @@ export function buildPartQueryPlan(input: {
     clean(input.query),
     clean(input.partName),
     canonicalName,
-    ...providerTerms,
+    ...normalizedProviderTerms,
     ...(definition?.aliases || []),
   ]).map((query) => positionTerms.length ? `${query} ${positionTerms.join(" ")}` : query);
   const reason = [
