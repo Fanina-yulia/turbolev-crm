@@ -216,3 +216,159 @@
   .compactHeaderRow{display:none}
   .compactOfferRow{grid-template-columns:39px minmax(0,1fr) 90px}
 }
+
+
+/* Commercial proposal layout: separate cart totals, services and final actions. */
+.columns{
+  grid-template-columns:minmax(220px,.55fr) minmax(0,2.45fr);
+  align-items:start;
+}
+.selectedColumn{grid-column:2;min-width:0}
+.cartSummary{
+  margin:12px 10px 0;
+  border:1px solid var(--parts-border);
+  border-radius:8px;
+  background:var(--parts-surface);
+  overflow:hidden;
+}
+.cartSummaryHeader{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  padding:9px 11px;
+  border-bottom:1px solid var(--parts-border);
+  background:var(--parts-surface-raised);
+}
+.cartSummaryHeader p,.servicesHeader p{
+  margin:0 0 2px;
+  color:var(--orange);
+  font-size:10px;
+  font-weight:900;
+  letter-spacing:.12em;
+}
+.cartSummaryHeader b,.servicesHeader b{
+  color:var(--text);
+  font-size:12px;
+}
+.cartSummaryHeader>span{
+  color:var(--muted);
+  font-size:11px;
+  white-space:nowrap;
+}
+.cartTotals{
+  display:grid;
+  grid-template-columns:repeat(4,minmax(0,1fr));
+  border-bottom:1px solid var(--parts-border);
+}
+.cartTotals>div{
+  display:grid;
+  gap:3px;
+  min-width:0;
+  padding:10px 11px;
+  border-right:1px solid var(--parts-border);
+}
+.cartTotals>div:last-child{border-right:0}
+.cartTotals span{color:var(--muted);font-size:11px}
+.cartTotals b{color:var(--text);font-size:13px;white-space:nowrap}
+.cartTotalLine{
+  display:flex;
+  align-items:center;
+  justify-content:flex-end;
+  gap:18px;
+  padding:10px 11px;
+}
+.cartTotalLine span{color:var(--muted);font-size:11px}
+.cartTotalLine strong{color:var(--parts-success);font-size:16px}
+.servicesPanel{
+  display:grid;
+  gap:0;
+  margin-top:12px;
+  border:1px solid var(--parts-border);
+  border-radius:8px;
+  background:var(--parts-surface);
+  overflow:hidden;
+}
+.servicesHeader{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:14px;
+  padding:9px 11px;
+  border-bottom:1px solid var(--parts-border);
+  background:var(--parts-surface-raised);
+}
+.serviceMode{
+  display:flex;
+  align-items:center;
+  justify-content:flex-end;
+  flex-wrap:wrap;
+  gap:12px;
+  color:var(--muted);
+  font-size:11px;
+}
+.serviceMode label{display:flex;align-items:center;gap:5px;color:var(--text);white-space:nowrap}
+.serviceMode input{accent-color:var(--orange)}
+.servicesTable{min-width:0}
+.servicesHead{
+  display:grid;
+  grid-template-columns:1.3fr 2fr 120px 170px 130px;
+  gap:10px;
+  padding:9px 11px;
+  background:var(--parts-surface);
+  color:var(--muted);
+  font-size:11px;
+  font-weight:800;
+}
+.servicesEmpty{
+  display:grid;
+  place-items:center;
+  gap:4px;
+  min-height:72px;
+  border-top:1px solid var(--parts-border);
+  color:var(--muted);
+  text-align:center;
+}
+.servicesEmpty>span{
+  display:grid;
+  place-items:center;
+  width:22px;
+  height:22px;
+  border:1px dashed var(--parts-border);
+  border-radius:50%;
+  color:var(--parts-success);
+}
+.servicesEmpty b{color:var(--text);font-size:11px}
+.servicesEmpty small{font-size:11px}
+.proposalBottomBar{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  margin-top:12px;
+  padding:10px 0 2px;
+}
+.proposalBottomBar>div{
+  display:grid;
+  justify-items:center;
+  gap:2px;
+}
+.proposalBottomBar>div span{color:var(--muted);font-size:11px}
+.proposalBottomBar>div strong{color:var(--text);font-size:16px}
+@media(max-width:900px){
+  .columns{grid-template-columns:1fr}
+  .selectedColumn{grid-column:auto}
+  .cartTotals{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .cartTotals>div:nth-child(2){border-right:0}
+  .cartTotals>div:nth-child(-n+2){border-bottom:1px solid var(--parts-border)}
+  .servicesHeader{align-items:flex-start;flex-direction:column}
+  .serviceMode{justify-content:flex-start}
+  .servicesHead{grid-template-columns:1.2fr 1.8fr 80px 110px 95px;min-width:620px}
+  .servicesTable{overflow:auto}
+}
+@media(max-width:560px){
+  .cartSummaryHeader{align-items:flex-start;flex-direction:column}
+  .proposalBottomBar{align-items:stretch;flex-direction:column}
+  .proposalBottomBar>div{order:-1}
+  .proposalBottomBar button{width:100%}
+}
