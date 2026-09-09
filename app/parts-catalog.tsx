@@ -599,7 +599,21 @@ export function PartsCatalog() {
           {fitment?.normalization?.canonicalName ? <span className={styles.normalizationBadge}>Каталог: {fitment.normalization.canonicalName} · {fitment.normalization.confidence || 0}%</span> : null}
         </div>
         {!supplierSearchBlocked && (manualOffers.length > 0 || fitment?.status !== "VERIFIED") && <label className={styles.policyNote}><input type="checkbox" checked={manualConfirmation} onChange={(event) => setManualConfirmation(event.target.checked)} /> Я вручну перевірив сумісність цієї деталі з автомобілем</label>}
-        {busy ? <div className={styles.pickerEmptyState}><b>Шукаю пропозиції…</b><span>Передаю VIN, позицію, OE-номери та запит до постачальників.</span></div> : !pickerOffers.length ? <div className={styles.pickerEmptyState}><b>Пропозицій у цій категорії поки немає</b><span>{supplierSearchBlocked ? "Запит до постачальників не відправлено: для цього автомобіля немає підтвердженого зв’язку з OE-каталогом." : fitment?.status === "CATALOG_NOT_CONNECTED" ? "Канонічний каталог OE ще не підключений для цього автомобіля." : configuredSuppliers.length ? "Змініть пошуковий запит або перевірте відповідь постачальників." : "Перевірте підключення BM Parts та Юнік Трейд у налаштуваннях CRM."}</span></div> : <div className={styles.pickerOfferList}>
+        {busy ? <div className={styles.pickerEmptyState} role="status" aria-live="polite">
+          <div className={styles.searchAnimation} aria-hidden="true">
+            <div className={styles.searchAnimationVisual}>
+              <span className={styles.searchAnimationOrbit}/>
+              <span className={styles.searchAnimationPulse}/>
+              <span className={styles.searchAnimationCore}><i/></span>
+            </div>
+            <div className={styles.searchAnimationCopy}>
+              <b>Підбираю сумісні варіанти</b>
+              <span>VIN · OE-каталог · постачальники</span>
+              <span className={styles.searchAnimationSteps}><i/><i/><i/></span>
+            </div>
+          </div>
+          <span className={styles.srOnly}>Шукаю пропозиції. Передаю VIN, позицію, OE-номери та запит до постачальників.</span>
+        </div> : !pickerOffers.length ? <div className={styles.pickerEmptyState}><b>Пропозицій у цій категорії поки немає</b><span>{supplierSearchBlocked ? "Запит до постачальників не відправлено: для цього автомобіля немає підтвердженого зв’язку з OE-каталогом." : fitment?.status === "CATALOG_NOT_CONNECTED" ? "Канонічний каталог OE ще не підключений для цього автомобіля." : configuredSuppliers.length ? "Змініть пошуковий запит або перевірте відповідь постачальників." : "Перевірте підключення BM Parts та Юнік Трейд у налаштуваннях CRM."}</span></div> : <div className={styles.pickerOfferList}>
           {activeTab !== "review" && !categoryOffers.length && manualOffers.length > 0 && <div className={styles.policyNote}>У цій вкладці немає підтверджених результатів. Непідтверджені пропозиції винесені у вкладку «Перевірка».</div>}
           {pickerOffers.map((offer, index) => {
             const key = offer.supplierId + ":" + (offer.externalProductId || offer.article);
