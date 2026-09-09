@@ -46,7 +46,7 @@ type RelatedOperation = {
 type RelatedOperationsResponse = {
   ok?: boolean;
   part?: { genericArticleId?: string | null; canonicalCode?: string | null; canonicalName?: string | null; axis?: string | null; side?: string | null; subPosition?: string | null };
-  packaging?: { packageQuantity?: number | null; priceQuantity?: number | null; unitLabel?: string; packageLabel?: string; priceBasis?: string; note?: string | null };
+  packaging?: { packageQuantity?: number | null; priceQuantity?: number | null; unitLabel?: string; packageLabel?: string; priceBasis?: string; requiresQuantityInput?: boolean; note?: string | null };
   operations?: RelatedOperation[];
 };
 type Recommendation = { findingId: string | null; manualPartId: string | null; genericArticleId?: string | null; catalogCode?: string | null; name: string; article: string | null; position: string; quantity: number; action: string; urgency: string; note: string; mediaCount: number; canonicalCode?: string | null; canonicalName?: string | null; axis?: string | null; side?: string | null; subPosition?: string | null };
@@ -121,6 +121,7 @@ export function PartsCatalog() {
   const [partsMarkupPercent, setPartsMarkupPercent] = useState(40);
   const [relatedOperations, setRelatedOperations] = useState<Record<string, RelatedOperationsResponse>>({});
   const [relatedOperationsLoading, setRelatedOperationsLoading] = useState(false);
+  const [quantityOverrides, setQuantityOverrides] = useState<Record<string, number>>({});
   const [message, setMessage] = useState("Оберіть ремонтне замовлення або відкрийте підбір із Діагностичної карти.");
   const searchRequestRef = useRef(0);
   const searchAbortRef = useRef<AbortController | null>(null);
@@ -243,6 +244,8 @@ export function PartsCatalog() {
       if (requestId !== searchRequestRef.current) return;
       const plateReference = activeReference && !looksLikeVin(activeReference) ? activeReference : "";
       const params = new URLSearchParams({ q: query });
+      const quantityHint = recommendation ? quantityOverrides[recommendationKey(recommendation)] || 0 : 0;
+      if (quantityHint > 0) params.set("quantity", String(quantityHint));
       if (resolvedVin) params.set("vin", resolvedVin);
       if (contextVehicleId) params.set("vehicleId", contextVehicleId);
       if (plateReference) params.set("plate", plateReference);
@@ -362,8 +365,8 @@ export function PartsCatalog() {
   useEffect(() => {
     let cancelled = false;
     const loadContext = async () => {
-      if (!route.diagnosticId) { setContext(null); setVehicle(null); setRecommendedParts([]); setSelectedLines([]); setRelatedOperations({}); setRelatedOperationsLoading(false); setActiveFindingId(""); setOffers([]); setFitment(null); setManualConfirmation(false); setParts([]); void loadWorkOrders(); return; }
-      setContextLoading(true); setContext(null); setRecommendedParts([]); setSelectedLines([]); setRelatedOperations({}); setRelatedOperationsLoading(false); setOffers([]); setFitment(null); setManualConfirmation(false);
+      if (!route.diagnosticId) { setContext(null); setVehicle(null); setRecommendedParts([]); setSelectedLines([]); setRelatedOperations({}); setRelatedOperationsLoading(false); setQuantityOverrides({}); setActiveFindingId(""); setOffers([]); setFitment(null); setManualConfirmation(false); setParts([]); void loadWorkOrders(); return; }
+      setContextLoading(true); setContext(null); setRecommendedParts([]); setSelectedLines([]); setRelatedOperations({}); setRelatedOperationsLoading(false); setQuantityOverrides({}); setOffers([]); setFitment(null); setManualConfirmation(false);
       try {
         const [response, manualResponse, handoffResponse] = await Promise.all([
           fetch(`/api/diagnostics/${encodeURIComponent(route.diagnosticId)}/structured`, { cache: "no-store", credentials: "include" }),
@@ -445,7 +448,10 @@ export function PartsCatalog() {
             sellPrice: Number(selected.sellPrice),
             markupPercent,
             currency: selected.currency || "UAH",
-            quantity: recommendation.quantity,
+            quantity: Number(selected.quantity) > 0 ? Number(selected.quantity) : recommendation.quantity,
+            quantityLabel: selected.quantityLabel || null,
+            priceBasis: selected.priceBasis || null,
+            packagingNote: selected.packagingNote || null,
             externalProductId: null,
           }];
         });
@@ -460,6 +466,8 @@ export function PartsCatalog() {
   }, [route.diagnosticId, route.findingId, route.manualPartId, route.plate, route.vehicleId, route.vin, route.workOrderId]);
 
   const activeRecommendation = useMemo(() => recommendedParts.find((item) => recommendationKey(item) === activeFindingId) || recommendedParts.find((item) => normalizeText(item.name) === normalizeText(q)) || null, [recommendedParts, activeFindingId, q]);
+  const activePackaging = activeRecommendation ? relatedOperations[recommendationKey(activeRecommendation)]?.packaging || null : null;
+  const activeQuantityHint = activeRecommendation ? quantityOverrides[recommendationKey(activeRecommendation)] || 0 : 0;
   const filteredOrders = useMemo(() => {
     const query = normalizeText(orderSearch);
     if (!query) return workOrderOptions;
@@ -528,13 +536,22 @@ export function PartsCatalog() {
     const stockRows = offer.stock.length
       ? offer.stock
       : [{ warehouse: "Склад не вказаний", quantity: "—" }];
-    return <button type="button" className={styles.compactOfferRow} key={key + "-" + index} disabled={!offer.available || offer.purchasePrice == null || selectingOffer === key} onClick={() => void selectOffer(offer, true)}>
+    const effectiveQuantity = activePackaging?.requiresQuantityInput ? activeQuantityHint : offer.catalogQuantity || 1;
+    const effectivePrice = offer.purchasePrice == null || effectiveQuantity <= 0
+      ? null
+      : activePackaging?.requiresQuantityInput
+        ? Math.round(offer.purchasePrice * effectiveQuantity * 100) / 100
+        : offer.catalogPurchaseTotal ?? offer.purchasePrice;
+    const quantityLabel = activePackaging?.requiresQuantityInput
+      ? effectiveQuantity > 0 ? effectiveQuantity + " л" : "вкажіть обсяг"
+      : offer.catalogQuantityLabel;
+    return <button type="button" className={styles.compactOfferRow} key={key + "-" + index} disabled={!offer.available || offer.purchasePrice == null || selectingOffer === key || Boolean(activePackaging?.requiresQuantityInput && activeQuantityHint <= 0)} onClick={() => void selectOffer(offer, true)}>
       <span className={styles.compactOfferImage}>{offer.imageUrl ? <img src={offer.imageUrl} alt="" /> : <span aria-hidden="true">⚙</span>}</span>
       <span className={styles.compactOfferName}><b>{offer.name}</b></span>
       <span className={styles.compactAvailability}><b>Наявність <span className={styles.compactInfo} aria-label={`Інформація про склади ${offer.supplierName}`} role="img" tabIndex={0}>ⓘ</span></b><span>{offer.available ? "В наявності" : "Уточнити"}</span><span className={styles.compactStockTooltip} role="tooltip" aria-label="Складські залишки">{stockRows.map((stock, stockIndex) => <span key={`${stock.warehouse}-${stockIndex}`}><b>{stock.warehouse}</b> — {stock.quantity}</span>)}</span></span>
       <span className={styles.compactSupplier}>{offer.supplierName || "—"}</span>
       <span className={styles.compactBrand}><small>{offer.brand || "Бренд не вказаний"}</small><b>{offer.article}</b></span>
-      <span className={styles.compactPrice}><b>{formatMoney(offer.catalogPurchaseTotal ?? offer.purchasePrice, offer.currency)}</b>{offer.catalogQuantityLabel ? <small>{offer.catalogQuantityLabel}</small> : null}</span>
+      <span className={styles.compactPrice}><b>{formatMoney(effectivePrice, offer.currency)}</b>{quantityLabel ? <small>{quantityLabel}</small> : null}</span>
     </button>;
   }
 
@@ -593,6 +610,7 @@ export function PartsCatalog() {
       || recommendedParts.find((item) => !selectedLines.some((line) => line.findingId === recommendationKey(item)))
       || null;
     if (!route.diagnosticId || !selectionRecommendation) { setMessage("Спочатку оберіть позицію з Діагностичної карти."); return; }
+    if (activePackaging?.requiresQuantityInput && activeQuantityHint <= 0) { setMessage("Для цієї рідини спочатку вкажіть підтверджений обсяг у літрах."); return; }
     const key = `${offer.supplierId}:${offer.externalProductId || offer.article}`; setSelectingOffer(key);
     try {
       const selectionVin = looksLikeVin(vehicleRef)
@@ -607,10 +625,11 @@ export function PartsCatalog() {
         return;
       }
       const vinSearch = selectionVin.length === 17 && catalogVerified;
-      const response = await fetch("/api/parts-selection/select", { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ diagnosticId: route.diagnosticId, findingId: selectionRecommendation.findingId, manualPartId: selectionRecommendation.manualPartId, quantity: selectionRecommendation.quantity, supplierId: offer.supplierId, externalProductId: offer.externalProductId, article: offer.article, searchMode: vinSearch ? "VIN" : "PART_NUMBER", vehicleVin: selectionVin || null, vehicleId: context?.vehicleId || null, partName: selectionRecommendation.name, genericArticleId: selectionRecommendation.genericArticleId || null, canonicalCode: selectionRecommendation.canonicalCode || selectionRecommendation.catalogCode || null, axis: selectionRecommendation.axis, side: selectionRecommendation.side, subPosition: selectionRecommendation.subPosition, position: selectionRecommendation.position, fitmentStatus: offer.fitmentStatus || fitment?.status || null, fitmentExact: offer.fitmentExact ?? fitment?.exact ?? null, fitmentProductId: offer.catalogProductId || null, fitmentSource: offer.fitmentSource || fitment?.source || null, manualConfirmation: !vinSearch }) });
+      const requestedQuantity = activePackaging?.requiresQuantityInput ? activeQuantityHint || null : selectionRecommendation.quantity;
+      const response = await fetch("/api/parts-selection/select", { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ diagnosticId: route.diagnosticId, findingId: selectionRecommendation.findingId, manualPartId: selectionRecommendation.manualPartId, quantity: requestedQuantity, supplierId: offer.supplierId, externalProductId: offer.externalProductId, article: offer.article, searchMode: vinSearch ? "VIN" : "PART_NUMBER", vehicleVin: selectionVin || null, vehicleId: context?.vehicleId || null, partName: selectionRecommendation.name, genericArticleId: selectionRecommendation.genericArticleId || null, canonicalCode: selectionRecommendation.canonicalCode || selectionRecommendation.catalogCode || null, axis: selectionRecommendation.axis, side: selectionRecommendation.side, subPosition: selectionRecommendation.subPosition, position: selectionRecommendation.position, fitmentStatus: offer.fitmentStatus || fitment?.status || null, fitmentExact: offer.fitmentExact ?? fitment?.exact ?? null, fitmentProductId: offer.catalogProductId || null, fitmentSource: offer.fitmentSource || fitment?.source || null, manualConfirmation: !vinSearch }) });
       const data = await response.json().catch(() => null) as { ok?: boolean; message?: string; error?: string; selected?: { supplierId?: string; supplierName: string; article: string; brand: string | null; purchasePrice: number; markupPercent: number; sellPrice: number; currency: string; quantity?: number; quantityLabel?: string | null; priceBasis?: string | null; packagingNote?: string | null; externalProductId?: string | null } } | null;
       if (!response.ok || !data?.ok || !data.selected) throw new Error(data?.message || data?.error || "Не вдалося зберегти вибрану деталь.");
-      const selected = data.selected; const selectedQuantity = Number(selected.quantity) > 0 ? Number(selected.quantity) : offer.catalogQuantity || selectionRecommendation.quantity; const selectedKey = recommendationKey(selectionRecommendation); const warehouse = offer.stock.find((row) => row.warehouseId && Number(row.quantity.replace(/[^0-9.,-]/g, "").replace(",", ".")) > 0)?.warehouse || offer.stock[0]?.warehouse || null; setSelectedLines((current) => [...current.filter((line) => line.findingId !== selectedKey), { findingId: selectedKey, partName: selectionRecommendation.name, supplierName: selected.supplierName, article: selected.article, brand: selected.brand, warehouse, purchasePrice: selected.purchasePrice, sellPrice: selected.sellPrice, markupPercent: selected.markupPercent, currency: selected.currency, quantity: selectedQuantity, quantityLabel: selected.quantityLabel || offer.catalogQuantityLabel || null, priceBasis: selected.priceBasis || offer.catalogPriceBasis || null, packagingNote: selected.packagingNote || offer.catalogPackagingNote || null, externalProductId: selected.externalProductId || offer.externalProductId, offerClass: offer.offerClass, fitmentReason: offer.fitmentReason || offer.offerReason }]); void loadRelatedOperations(recommendedParts, context); setPickerOpen(false); setMessage(`Позицію збережено: ${selected.supplierName} · ${selected.article}.`); window.dispatchEvent(new CustomEvent("turbolev:data-changed"));
+      const selected = data.selected; const selectedQuantity = Number(selected.quantity) > 0 ? Number(selected.quantity) : offer.catalogQuantity || requestedQuantity || selectionRecommendation.quantity; const selectedKey = recommendationKey(selectionRecommendation); const warehouse = offer.stock.find((row) => row.warehouseId && Number(row.quantity.replace(/[^0-9.,-]/g, "").replace(",", ".")) > 0)?.warehouse || offer.stock[0]?.warehouse || null; setSelectedLines((current) => [...current.filter((line) => line.findingId !== selectedKey), { findingId: selectedKey, partName: selectionRecommendation.name, supplierName: selected.supplierName, article: selected.article, brand: selected.brand, warehouse, purchasePrice: selected.purchasePrice, sellPrice: selected.sellPrice, markupPercent: selected.markupPercent, currency: selected.currency, quantity: selectedQuantity, quantityLabel: selected.quantityLabel || offer.catalogQuantityLabel || null, priceBasis: selected.priceBasis || offer.catalogPriceBasis || null, packagingNote: selected.packagingNote || offer.catalogPackagingNote || null, externalProductId: selected.externalProductId || offer.externalProductId, offerClass: offer.offerClass, fitmentReason: offer.fitmentReason || offer.offerReason }]); void loadRelatedOperations(recommendedParts, context); setPickerOpen(false); setMessage(`Позицію збережено: ${selected.supplierName} · ${selected.article}.`); window.dispatchEvent(new CustomEvent("turbolev:data-changed"));
     } catch (error) { setMessage(error instanceof Error ? error.message : "Не вдалося зберегти вибрану деталь."); } finally { setSelectingOffer(""); }
   }
 
@@ -762,6 +781,14 @@ export function PartsCatalog() {
           <span>Бренд · артикул</span>
           <span>Ціна</span>
         </div>
+        {activePackaging ? <div className={styles.packagingBanner}>
+          <div><b>Комплектність: {activePackaging.packageLabel || "уточнюється"}</b><span>{activePackaging.note || "Кількість визначається правилом каталогу."}</span></div>
+          {activePackaging.requiresQuantityInput ? <label>Обсяг, л<input type="number" min="0.1" step="0.1" value={activeQuantityHint || ""} onChange={(event) => {
+            const value = Number(event.target.value);
+            const key = activeRecommendation ? recommendationKey(activeRecommendation) : "";
+            if (key) setQuantityOverrides((current) => ({ ...current, [key]: Number.isFinite(value) && value > 0 ? value : 0 }));
+          }} placeholder="Вкажіть літри" /></label> : null}
+        </div> : null}
         {busy ? <div className={styles.pickerEmptyState} role="status" aria-live="polite"><div className={styles.searchAnimation} aria-hidden="true"><div className={styles.searchAnimationVisual}><span className={styles.searchAnimationLoaderRing}/><span className={styles.searchAnimationLoaderDots}><i/><i/><i/></span><span className={styles.searchAnimationScanner}/><picture className={styles.searchAnimationMascot}><source media="(prefers-reduced-motion: reduce)" srcSet="/brand/turbo-lev-search-static.png" /><img src="/brand/turbo-lev-search.webp" alt="" /></picture></div><div className={styles.searchAnimationCopy}><b>{searchSlow ? "Пошук триває довше…" : "Підбираю сумісні варіанти"}</b><span>VIN · OE-каталог · постачальники</span><span className={styles.searchAnimationSteps}><i/><i/><i/></span></div></div><span className={styles.srOnly}>Шукаю пропозиції. Передаю VIN, позицію, OE-номери та запит до постачальників.</span></div>
           : !compactPickerOffers.length ? <div className={styles.pickerEmptyState}><b>Пропозицій не знайдено</b><span>{supplierSearchBlocked ? "Запит до постачальників тимчасово заблокований." : "Змініть пошуковий запит або перевірте відповідь постачальників."}</span></div>
           : <div className={styles.compactResults}>
