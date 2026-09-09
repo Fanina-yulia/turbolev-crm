@@ -328,6 +328,9 @@ export function getPartPackageRule(input: PartOperationInput = {}): PartPackageR
   const side = sideValue(input.side) || sideValue(input.position);
   const defaultRule = rule(code, "UNKNOWN", "UNKNOWN", "UNKNOWN", "шт", "Кількість уточнюється", "Для цієї позиції ще не визначено одиницю продажу.", { packageQuantity: 1, priceQuantity: 1 });
   const current = base ? { ...base } : defaultRule;
+  const storedSoldAs = clean(input.soldAs, 32).toUpperCase();
+  const allowedSoldAs = new Set(["PIECE", "PAIR", "SET", "KIT", "ASSEMBLY", "LITER", "UNKNOWN"]);
+  if (allowedSoldAs.has(storedSoldAs)) current.soldAs = storedSoldAs as PartPackageRule["soldAs"];
   let packageQuantity = current.packageQuantity;
   let priceQuantity = current.priceQuantity;
   if (current.coverage === "WHEEL" && current.soldAs !== "LITER" && !side && axis) {
