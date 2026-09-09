@@ -8,6 +8,9 @@ import {
 } from "@/src/services/diagnostic-card.service";
 import { renderDiagnosticCardPdf, type DiagnosticCardPdfMedia } from "@/src/services/diagnostic-card-pdf-renderer";
 import { getDocumentTemplates } from "@/src/services/document-template.service";
+import { getWorkOrderDocumentPackage } from "@/src/services/work-order-document-package.service";
+import { buildWorkOrderInvoicePdfData } from "@/src/services/work-order-invoice-pdf.service";
+import { renderWorkOrderInvoicePdf } from "@/src/services/work-order-invoice-pdf-renderer";
 
 const PDF_MAX_BYTES = 15 * 1024 * 1024;
 const SHARE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
@@ -110,12 +113,28 @@ export async function saveDiagnosticCardPdf(
   const media = mediaIds.length
     ? await getPrisma().diagnosticMedia.findMany({ where: { id: { in: mediaIds } }, select: { id: true, fileName: true, mimeType: true, fileData: true } })
     : [];
-  const documentTemplates = await getDocumentTemplates();
-  const template = documentTemplates.templates.find((item) => item.type === "DIAGNOSTIC_CARD" && item.status === "PUBLISHED") || undefined;
-  const bytes = await renderDiagnosticCardPdf(snapshot, media as DiagnosticCardPdfMedia[], template);
+  const linkedDiagnostic = await getPrisma().diagnosticRequest.findUnique({
+    where: { id: diagnosticRequestId },
+    select: { workOrder: { select: { id: true } } },
+  });
+
+  // The approved customer-facing document is the A4 "НАКЛАДНА · ЗАПЧАСТИНИ
+  // ТА РОБОТИ" layout. A diagnostic can exist before a work order is created,
+  // so keep the technical diagnostic renderer as a safe fallback for that
+  // incomplete stage of the workflow.
+  let bytes: Buffer;
+  if (linkedDiagnostic?.workOrder?.id) {
+    const packageData = await getWorkOrderDocumentPackage(linkedDiagnostic.workOrder.id);
+    bytes = await renderWorkOrderInvoicePdf(buildWorkOrderInvoicePdfData(packageData));
+  } else {
+    const documentTemplates = await getDocumentTemplates();
+    const template = documentTemplates.templates.find((item) => item.type === "DIAGNOSTIC_CARD" && item.status === "PUBLISHED") || undefined;
+    bytes = await renderDiagnosticCardPdf(snapshot, media as DiagnosticCardPdfMedia[], template);
+  }
   if (bytes.byteLength > PDF_MAX_BYTES) {
     throw new DiagnosticCardPdfError("PDF_TOO_LARGE", "Діагностична карта містить забагато фото для одного PDF-файла.", 413);
   }
+  const fileData = new Uint8Array(bytes);
 
   const prisma = getPrisma();
   const saved = await prisma.$transaction(async (tx) => {
@@ -129,7 +148,7 @@ export async function saveDiagnosticCardPdf(
         where: { diagnosticCardRevisionId: ensured.revision.id },
         data: {
           fileSize: bytes.byteLength,
-          fileData: bytes,
+          fileData,
           generatedByUserId: createdByUserId,
           generatedAt: new Date(),
         },
@@ -154,7 +173,7 @@ export async function saveDiagnosticCardPdf(
         fileName: safeFileName(ensured.card.number),
         mimeType: "application/pdf",
         fileSize: bytes.byteLength,
-        fileData: bytes,
+        fileData,
         generatedByUserId: createdByUserId,
       },
       select: { id: true, fileName: true, mimeType: true, fileSize: true, generatedAt: true, revision: { select: { revision: true } } },
@@ -176,7 +195,7 @@ export async function saveDiagnosticCardPdf(
     created: saved.created,
     cardNumber: ensured.card.number,
     revision: ensured.revision.revision,
-    pdf: meta(saved.row, ensured.card.currentRevision),
+    pdf: meta(saved.row as PdfMetaRow, ensured.card.currentRevision),
   };
 }
 
