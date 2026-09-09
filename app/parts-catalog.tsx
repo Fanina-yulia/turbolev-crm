@@ -432,6 +432,18 @@ export function PartsCatalog() {
     ? []
     : categoryOffers.filter((offer) => supplierFilter === "ALL" || offer.supplierId === supplierFilter);
   const supplierOptions = [...new Map(offers.map((offer) => [offer.supplierId, offer.supplierName])).entries()];
+  const compactPickerOffers = supplierSearchBlocked ? [] : offers.filter((offer) => supplierFilter === "ALL" || offer.supplierId === supplierFilter);
+  function renderCompactOffer(offer: SupplierOffer, index: number) {
+    const key = offer.supplierId + ":" + (offer.externalProductId || offer.article);
+    return <button type="button" className={styles.compactOfferRow} key={key + "-" + index} disabled={!offer.available || offer.purchasePrice == null || selectingOffer === key || !activeRecommendation} onClick={() => void selectOffer(offer, true)}>
+      <span className={styles.compactOfferImage}>{offer.imageUrl ? <img src={offer.imageUrl} alt="" /> : <span aria-hidden="true">⚙</span>}</span>
+      <span className={styles.compactOfferName}><b>{offer.name}</b></span>
+      <span className={styles.compactAvailability}><b>Наявність <i aria-hidden="true">ⓘ</i></b><span>{offer.available ? "В наявності" : "Уточнити"}</span></span>
+      <span className={styles.compactSupplier}>{offer.supplierName || "—"}</span>
+      <span className={styles.compactBrand}><small>{offer.brand || "Бренд не вказаний"}</small><b>{offer.article}</b></span>
+      <span className={styles.compactPrice}>{formatMoney(offer.purchasePrice, offer.currency)}</span>
+    </button>;
+  }
 
   function openOrder(row: WorkOrderRow) { if (!row.id) { navigateCrm("Діагностика", { diagnosticId: row.diagnosticRequest.id }); return; } navigateCrm("Підбір запчастин", { diagnosticId: row.diagnosticRequest.id, workOrderId: row.id, workOrderNumber: orderLabel(row), vehicleId: row.vehicle.id, plate: row.vehicle.plateNumber || "", vin: row.vehicle.vin || "" }); }
 
@@ -481,7 +493,7 @@ export function PartsCatalog() {
     return selectedLines.find((line) => line.findingId === recommendationKey(item)) || null;
   }
 
-  async function selectOffer(offer: SupplierOffer) {
+  async function selectOffer(offer: SupplierOffer, allowManualConfirmation = false) {
     if (!route.diagnosticId || !activeRecommendation) { setMessage("Спочатку оберіть позицію з Діагностичної карти."); return; }
     const key = `${offer.supplierId}:${offer.externalProductId || offer.article}`; setSelectingOffer(key);
     try {
@@ -491,7 +503,7 @@ export function PartsCatalog() {
       const catalogVerified = offer.fitmentStatus === "VERIFIED"
         && offer.fitmentExact !== false
         && fitment?.exact !== false;
-      if (!catalogVerified && !manualConfirmation) {
+      if (!catalogVerified && !manualConfirmation && !allowManualConfirmation) {
         setMessage("Поставте позначку ручної перевірки сумісності перед додаванням пропозиції.");
         setSelectingOffer("");
         return;
@@ -606,62 +618,21 @@ export function PartsCatalog() {
 
     {pickerOpen && <div className={styles.pickerBackdrop} role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setPickerOpen(false); }}>
       <section className={styles.pickerModal} role="dialog" aria-modal="true" aria-labelledby="parts-picker-title">
-        <header className={styles.pickerHeaderBar}><div><p>ПІДБІР ДЕТАЛІ</p><h2 id="parts-picker-title">{activeRecommendation?.name || "Оберіть деталь"}</h2><span>{activeRecommendation?.position || "Позиція з Діагностичної карти"} · {activeRecommendation?.quantity || 1} шт.</span></div><button type="button" className={styles.pickerClose} onClick={() => setPickerOpen(false)} aria-label="Закрити підбір">×</button></header>
-        <div className={styles.pickerSearchBar}><label><span>Пошук за OEM або назвою</span><div className={styles.inputWithIcon}><input value={q} onChange={(event) => setQ(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void searchPart(); }} placeholder="Артикул або назва деталі"/><button type="button" onClick={() => void searchPart()} aria-label="Пошук">⌕</button></div></label><label><span>Автомобіль</span><div className={styles.pickerVehicleRef}>{vehicleRef || "VIN не вказаний"}</div></label></div>
-        <div className={styles.pickerTabs}>
-          <button type="button" className={activeTab === "all" ? styles.tabActive : ""} onClick={() => setActiveTab("all")}>Усі <span>{offers.length}</span></button>
-          <button type="button" className={activeTab === "originals" ? styles.tabActive : ""} onClick={() => setActiveTab("originals")}>Оригінали <span>{originalOffers.length}</span></button>
-          <button type="button" className={activeTab === "analogs" ? styles.tabActive : ""} onClick={() => setActiveTab("analogs")}>Аналоги <span>{analogOffers.length}</span></button>
-          <button type="button" className={activeTab === "review" ? styles.tabActive : ""} onClick={() => setActiveTab("review")}>Перевірка <span>{manualOffers.length}</span></button>
-          <span className={styles.pickerApiStatus}>{fitment?.status === "VERIFIED" ? fitment.exact === false ? "Модель підтверджена · перевірте двигун" : "VIN-каталог підтверджено" : "Сумісність не підтверджена"}</span>
-          <span className={styles.pickerApiStatus}>{supplierStatusLabel}</span>
+        <div className={styles.compactToolbar}>
+          <select value={supplierFilter} onChange={(event) => setSupplierFilter(event.target.value)} aria-label="Постачальник"><option value="ALL">Усі постачальники</option>{supplierOptions.map(([id, name]) => <option value={id} key={id}>{name}</option>)}</select>
+          <span>К-ть знайдених запчастин: <b>{compactPickerOffers.length}</b></span>
+          <button type="button" className={styles.compactSort} onClick={() => setActiveTab("all")}>Бренд ↕</button>
+          <button type="button" className={styles.compactSort} onClick={() => setActiveTab("all")}>Ціна ↕</button>
+          <button type="button" className={styles.compactClose} onClick={() => setPickerOpen(false)} aria-label="Закрити підбір">×</button>
         </div>
-        <div className={styles.pickerFilters}>
-          <label><span>Постачальник</span><select value={supplierFilter} onChange={(event) => setSupplierFilter(event.target.value)}><option value="ALL">Усі постачальники</option>{supplierOptions.map(([id, name]) => <option value={id} key={id}>{name}</option>)}</select></label>
-          {fitment?.normalization?.canonicalName ? <span className={styles.normalizationBadge}>Каталог: {fitment.normalization.canonicalName} · {fitment.normalization.confidence || 0}%</span> : null}
-        </div>
-        {!supplierSearchBlocked && (manualOffers.length > 0 || fitment?.status !== "VERIFIED") && <label className={styles.policyNote}><input type="checkbox" checked={manualConfirmation} onChange={(event) => setManualConfirmation(event.target.checked)} /> Я вручну перевірив сумісність цієї деталі з автомобілем</label>}
-        {busy ? <div className={styles.pickerEmptyState} role="status" aria-live="polite">
-          <div className={styles.searchAnimation} aria-hidden="true">
-            <div className={styles.searchAnimationVisual}>
-              <span className={styles.searchAnimationOrbit} />
-              <span className={styles.searchAnimationPulse} />
-              <span className={styles.searchAnimationCore}><i /></span>
-            </div>
-            <div className={styles.searchAnimationCopy}>
-              <b>{searchSlow ? "Пошук триває довше…" : "Підбираю сумісні варіанти"}</b>
-              <span>{searchSlow ? "Чекаю відповідь постачальників. Не запускайте повторний пошук." : "VIN · OE-каталог · постачальники"}</span>
-              <span className={styles.searchAnimationSteps}><i /><i /><i /></span>
-            </div>
-          </div>
-          <span className={styles.srOnly}>Шукаю пропозиції. Передаю VIN, позицію, OE-номери та запит до постачальників.</span>
-        </div> : !pickerOffers.length ? <div className={styles.pickerEmptyState}><b>Пропозицій у цій категорії поки немає</b><span>{supplierSearchBlocked ? "Запит до постачальників тимчасово заблокований." : configuredSuppliers.length ? fitment?.status === "VERIFIED" ? "Змініть пошуковий запит або перевірте відповідь постачальників." : "Запит до постачальників відправлено без OE-підтвердження, але збігів не знайдено. Перевірте назву або номер деталі." : "Перевірте підключення BM Parts та Юнік Трейд у налаштуваннях CRM."}</span></div> : <div className={styles.pickerOfferList}>
-          {activeTab !== "review" && !categoryOffers.length && manualOffers.length > 0 && <div className={styles.policyNote}>У цій вкладці немає підтверджених результатів. Непідтверджені пропозиції винесені у вкладку «Перевірка».</div>}
-          {pickerOffers.map((offer, index) => {
-            const key = offer.supplierId + ":" + (offer.externalProductId || offer.article);
-            const offerClassLabel = offer.offerClass === "OEM" ? "Оригінал / OEM" : offer.offerClass === "ANALOG" ? "Аналог / крос" : "Ручна перевірка";
-            const stockDetails = offer.stock.length
-              ? offer.stock.map((stock) => `${stock.warehouse}: ${stock.quantity}`).join(" · ")
-              : "Склад не вказаний";
-            const fitmentLabel = offer.fitmentStatus !== "VERIFIED"
-              ? "Потрібна ручна перевірка"
-              : offer.fitmentExact === false || fitment?.exact === false
-                ? "Модель підтверджена"
-                : "Сумісність підтверджена";
-            return <article className={styles.pickerOffer} key={key + "-" + index}>
-              <div className={styles.pickerOfferName}><b>{offer.name}</b><small>{offer.brand || "Бренд не вказаний"} · {offer.article} · {offerClassLabel}</small><span>{offer.offerReason || offer.fitmentReason || "Знайдено за запитом постачальника"}</span>{offer.oeNumbers?.length ? <small>OE: {offer.oeNumbers.slice(0, 3).join(", ")}</small> : null}</div>
-              <div className={styles.pickerOfferCell}><small>Постачальник</small><b>{offer.supplierName}</b></div>
-              <div className={styles.pickerOfferCell}><small className={styles.offerStockLabel}>Наявність <button type="button" className={styles.offerInfo} aria-label={`Деталі пропозиції ${offer.article}`}>i</button></small><b>{offer.available ? "В наявності" : "Уточнити"}</b><em className={offer.available ? styles.available : styles.unavailable}>{stockDetails}</em><div className={styles.offerInfoPopover} role="tooltip"><strong>Деталі пропозиції</strong><span>Постачальник: {offer.supplierName}</span><span>Артикул: {offer.article}</span><span>Склад: {stockDetails}</span><span>Ціна закупки: {formatMoney(offer.purchasePrice, offer.currency)}</span></div></div>
-              <div className={styles.pickerOfferCell}><small>Ціна закупки</small><b>{formatMoney(offer.purchasePrice, offer.currency)}</b></div>
-              <div className={styles.pickerOfferCell}><small>Ціна продажу</small><b className={styles.sellPrice}>{formatMoney(offer.sellPrice, offer.currency)}</b></div>
-              <div className={styles.pickerOfferCell}><small>Сумісність</small><b className={offer.fitmentStatus === "VERIFIED" ? styles.available : styles.unavailable}>{fitmentLabel}</b></div>
-              <button type="button" className={styles.addButton} disabled={!offer.available || offer.purchasePrice == null || selectingOffer === key || !activeRecommendation || ((offer.fitmentStatus !== "VERIFIED" || offer.fitmentExact === false || fitment?.exact === false) && !manualConfirmation)} onClick={() => void selectOffer(offer)}>{selectingOffer === key ? "Зберігаю…" : offer.fitmentStatus === "VERIFIED" && offer.fitmentExact !== false && fitment?.exact !== false ? "Вибрати" : "Додати вручну"}</button>
-            </article>;
-          })}
-        </div>}
-
+        {busy ? <div className={styles.pickerEmptyState} role="status" aria-live="polite"><div className={styles.searchAnimation} aria-hidden="true"><div className={styles.searchAnimationVisual}><span className={styles.searchAnimationOrbit} /><span className={styles.searchAnimationPulse} /><span className={styles.searchAnimationCore}><i /></span></div><div className={styles.searchAnimationCopy}><b>{searchSlow ? "Пошук триває довше…" : "Підбираю сумісні варіанти"}</b><span>VIN · OE-каталог · постачальники</span><span className={styles.searchAnimationSteps}><i /><i /><i /></span></div></div></div>
+          : !compactPickerOffers.length ? <div className={styles.pickerEmptyState}><b>Пропозицій не знайдено</b><span>{supplierSearchBlocked ? "Запит до постачальників тимчасово заблокований." : "Змініть пошуковий запит або перевірте відповідь постачальників."}</span></div>
+          : <div className={styles.compactResults}>
+            {originalOffers.filter((offer) => supplierFilter === "ALL" || offer.supplierId === supplierFilter).length ? <section><h3>Оригінали:</h3>{originalOffers.filter((offer) => supplierFilter === "ALL" || offer.supplierId === supplierFilter).map(renderCompactOffer)}</section> : null}
+            {analogOffers.filter((offer) => supplierFilter === "ALL" || offer.supplierId === supplierFilter).length ? <section><h3>Аналоги:</h3>{analogOffers.filter((offer) => supplierFilter === "ALL" || offer.supplierId === supplierFilter).map(renderCompactOffer)}</section> : null}
+            {manualOffers.filter((offer) => supplierFilter === "ALL" || offer.supplierId === supplierFilter).length ? <section><h3>Перевірка:</h3>{manualOffers.filter((offer) => supplierFilter === "ALL" || offer.supplierId === supplierFilter).map(renderCompactOffer)}</section> : null}
+          </div>}
         {providerErrors.length ? <div className={styles.warning}>Не всі API відповіли: {providerErrors.map((provider) => `${provider.id}${provider.message ? ` — ${provider.message}` : ""}`).join("; ")}</div> : null}
-        <footer className={styles.pickerFooter}><span aria-live="polite">{message}</span><button type="button" className={styles.secondaryAction} onClick={() => setPickerOpen(false)}>Закрити</button></footer>
       </section>
     </div>}
   </div>;
