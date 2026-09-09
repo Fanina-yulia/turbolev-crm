@@ -56,19 +56,13 @@ const MAX_IMAGE_BYTES = 1024 * 1024;
 const BLOCKS: Record<DocumentTemplateType, DocumentTemplateBlock[]> = {
   DIAGNOSTIC_CARD: [
     { id: "identity", label: "Клієнт та автомобіль", visible: true },
-    { id: "summary", label: "Загальний висновок", visible: true },
-    { id: "inspections", label: "Результати перевірки", visible: true },
-    { id: "findings", label: "Виявлені несправності", visible: true },
     { id: "parts", label: "Деталі, що потребують заміни", visible: true },
-    { id: "media", label: "Фото та докази", visible: true },
-    { id: "conclusion", label: "Рекомендації механіка", visible: true },
-    { id: "signature", label: "Механік та дата", visible: true },
     { id: "contacts", label: "Контакти станції", visible: true },
   ],
   COMMERCIAL_PROPOSAL: [
     { id: "identity", label: "Клієнт та автомобіль", visible: true },
     { id: "intro", label: "Вступний текст", visible: true },
-    { id: "works", label: "Роботи", visible: true },
+    { id: "works", label: "Послуги", visible: true },
     { id: "parts", label: "Запчастини", visible: true },
     { id: "totals", label: "Підсумок та сума", visible: true },
     { id: "terms", label: "Умови та гарантія", visible: true },
@@ -120,8 +114,8 @@ export function defaultDocumentTemplate(type: DocumentTemplateType): DocumentTem
     type,
     title: type === "DIAGNOSTIC_CARD" ? "Діагностична карта" : "Комерційна пропозиція",
     description: type === "DIAGNOSTIC_CARD"
-      ? "Результати проведеної діагностики автомобіля."
-      : "Перелік робіт, запчастин і вартості ремонту.",
+      ? "Перелік деталей до заміни автомобіля."
+      : "Перелік запчастин і вартості послуг.",
     status: "PUBLISHED",
     version: 1,
     style: defaultStyle(),
@@ -140,8 +134,8 @@ export function normalizeDocumentTemplate(input: unknown, type: DocumentTemplate
   }));
   // Preserve the order selected in the builder. Unknown, removed or legacy
   // block ids are ignored and any missing canonical blocks are appended in the
-  // documented default order. Diagnostic-card blocks are always present and
-  // visible: the approved structure is exactly 9/9 blocks.
+  // documented default order. The diagnostic card has a deliberately small,
+  // fixed customer-facing profile: identity, replacement parts and contacts.
   const orderedIds = incomingBlocks
     .map((item) => item && typeof item === "object" ? String((item as Record<string, unknown>).id || "") : "")
     .filter((id, index, ids) => id && ids.indexOf(id) === index && base.blocks.some((block) => block.id === id));
@@ -153,11 +147,15 @@ export function normalizeDocumentTemplate(input: unknown, type: DocumentTemplate
       visible: type === "DIAGNOSTIC_CARD" ? true : (byId.has(block.id) ? byId.get(block.id)?.visible !== false : block.visible),
     };
   });
+  const normalizedDescription = safeText(source.description, base.description, 300);
+  const description = type === "DIAGNOSTIC_CARD" && normalizedDescription === "Результати проведеної діагностики автомобіля."
+    ? base.description
+    : normalizedDescription;
 
   return {
     type,
     title: safeText(source.title, base.title, 120),
-    description: safeText(source.description, base.description, 300),
+    description,
     status: enumValue(source.status, STATUSES, base.status),
     version: Math.max(1, Math.min(9999, Number(source.version) || base.version)),
     style: {

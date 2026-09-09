@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ClientVehiclePortalDetail } from "@/src/services/client-portal-vehicle.service";
+import { maskDocumentArticle } from "@/src/services/document-article-masking";
 import { CopyableValue } from "@/app/copyable-value";
 import { VehiclePlate } from "@/app/vehicle-plate";
 import { VehicleRender } from "@/app/vehicle-render";
@@ -275,7 +276,7 @@ export function VehicleDetailClient({ initialDetail }: { initialDetail: ClientVe
             {estimate.lines.map((line) => <article className={`${styles.estimateLine} ${decisions[line.id] === "APPROVE" ? styles.lineApproved : decisions[line.id] === "REJECT" ? styles.lineRejected : ""}`} key={line.id}>
               <div className={styles.lineTop}><span>{lineType(line.type)}</span>{line.requiredForRepair ? <em>Потрібно для ремонту</em> : <em>Рекомендовано</em>}</div>
               <h3>{line.description}</h3>
-              {(line.brand || line.article) ? <p>{[line.brand, line.article].filter(Boolean).join(" · ")}</p> : null}
+              {(line.brand || line.article) ? <p>{[line.brand, maskDocumentArticle(line.article)].filter(Boolean).join(" · ")}</p> : null}
               <div className={styles.linePrice}><span>{line.quantity} {line.unit} × {money(line.unitPrice, estimate.currency)}</span><b>{money(line.total, estimate.currency)}</b></div>
               <div className={styles.lineActions}>
                 <button type="button" className={decisions[line.id] === "APPROVE" ? styles.approveActive : ""} onClick={() => choose(line.id, "APPROVE")}>✓ Погодити</button>

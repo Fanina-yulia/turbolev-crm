@@ -1,8 +1,9 @@
 import { createHash } from "node:crypto";
 import { CatalogEntityStatus, PartCatalogReviewStatus, PartSoldAs } from "@/src/generated/prisma/client";
 import { getPrisma } from "@/src/lib/prisma";
+import type { VehicleTechnicalInput } from "@/src/domain/vehicle-intelligence";
 import { normalizePartTerminology, resolvePartTerminology, listPartTerminology } from "@/src/services/parts-terminology.service";
-import { calculateCatalogLaborPrice, type VehicleTechnicalInput } from "@/src/services/labor-pricing.service";
+import { calculateCatalogLaborPrice } from "@/src/services/labor-pricing.service";
 import type { SupplierOffer } from "@/src/services/suppliers/types";
 
 export type PartCoverage = "SIDE" | "WHEEL" | "AXLE" | "VEHICLE" | "FLUID" | "UNKNOWN";
@@ -328,9 +329,6 @@ export function getPartPackageRule(input: PartOperationInput = {}): PartPackageR
   const side = sideValue(input.side) || sideValue(input.position);
   const defaultRule = rule(code, "UNKNOWN", "UNKNOWN", "UNKNOWN", "шт", "Кількість уточнюється", "Для цієї позиції ще не визначено одиницю продажу.", { packageQuantity: 1, priceQuantity: 1 });
   const current = base ? { ...base } : defaultRule;
-  const storedSoldAs = clean(input.soldAs, 32).toUpperCase();
-  const allowedSoldAs = new Set(["PIECE", "PAIR", "SET", "KIT", "ASSEMBLY", "LITER", "UNKNOWN"]);
-  if (allowedSoldAs.has(storedSoldAs)) current.soldAs = storedSoldAs as PartPackageRule["soldAs"];
   let packageQuantity = current.packageQuantity;
   let priceQuantity = current.priceQuantity;
   if (current.coverage === "WHEEL" && current.soldAs !== "LITER" && !side && axis) {

@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
+import { maskDocumentArticle } from "@/src/services/document-article-masking";
 import styles from "./page.module.css";
 
 type MoneyLine = {
@@ -121,11 +122,16 @@ export default function WorkOrderDocumentsPage() {
 
   const diagnostic = data.documents.diagnosticCard.snapshot;
   const recommendations = data.documents.recommendations.items || { works: [], parts: [] };
+  const diagnosticParts = data.documents.invoice.lines.filter((line) => line.type === "PART");
 
   function printOrOpenPdf() {
     if (!id) return;
     if (tab === "invoice") {
       window.open(`/api/work-orders/${encodeURIComponent(id)}/invoice-pdf`, "_blank", "noopener,noreferrer");
+      return;
+    }
+    if (tab === "estimate") {
+      window.open(`/api/work-orders/${encodeURIComponent(id)}/commercial-proposal-pdf`, "_blank", "noopener,noreferrer");
       return;
     }
     window.print();
@@ -134,7 +140,7 @@ export default function WorkOrderDocumentsPage() {
   return <main className={styles.page} data-crm-surface="public">
     <header className={styles.topbar}>
       <div><p>TURBO LEV · ДОКУМЕНТИ</p><h1>{data.workOrder.displayNumber}</h1><span>{vehicleLabel(data.workOrder.vehicle)} · {data.workOrder.vehicle.plateNumber || "без номера"} · {data.workOrder.client.name || data.workOrder.client.phone}</span></div>
-      <div className={styles.actions}><button type="button" onClick={printOrOpenPdf}>{tab === "invoice" ? "Накладна / PDF" : "Друк / PDF"}</button><button type="button" onClick={() => window.close()}>Закрити</button></div>
+      <div className={styles.actions}><button type="button" onClick={printOrOpenPdf}>{tab === "invoice" ? "Накладна / PDF" : tab === "estimate" ? "Комерційна пропозиція / PDF" : "Друк / PDF"}</button><button type="button" onClick={() => window.close()}>Закрити</button></div>
     </header>
 
     <section className={styles.summary}>
@@ -149,10 +155,8 @@ export default function WorkOrderDocumentsPage() {
     {tab === "diagnostic" && <section className={styles.document}>
       <div className={styles.docHeader}><div><p>ДІАГНОСТИЧНА КАРТА</p><h2>{data.documents.diagnosticCard.number || "Ще не сформована"}</h2></div><span>{date(data.documents.diagnosticCard.finalizedAt)}</span></div>
       {!diagnostic ? <div className={styles.empty}>FINAL-ревізії Діагностичної карти ще немає.</div> : <>
-        <div className={styles.callout}><b>Технічний висновок</b><p>{diagnostic.technicalConclusion || "Висновок не вказано."}</p></div>
-        <div className={styles.metrics}><div><span>Перевірено</span><b>{diagnostic.counts?.checked ?? 0}/{diagnostic.counts?.total ?? 0}</b></div><div><span>OK</span><b>{diagnostic.counts?.ok ?? 0}</b></div><div><span>Увага</span><b>{diagnostic.counts?.attention ?? 0}</b></div><div><span>Дефекти</span><b>{diagnostic.counts?.defect ?? 0}</b></div></div>
-        {(diagnostic.inspections || []).map((inspection: any, i: number) => <div className={styles.group} key={`${inspection.name}-${i}`}><h3>{inspection.name}</h3>{(inspection.sections || []).map((section: any, j: number) => <div key={`${section.name}-${j}`}><h4>{section.name}</h4>{(section.items || []).map((item: any, k: number) => <div className={styles.check} key={`${item.name}-${k}`}><div><b>{item.name}</b><span>{[item.position, item.measurementValue && `${item.measurementValue} ${item.measurementUnit || ""}`, item.measurementText].filter(Boolean).join(" · ")}</span></div><strong>{item.state}</strong>{item.finding && <p>{[item.finding.text, item.finding.suggestedWorkName, item.finding.suggestedPartName].filter(Boolean).join(" · ")}</p>}</div>)}</div>)}</div>)}
-        <div className={styles.twoCols}><div><h3>Рекомендовані роботи</h3>{(recommendations.works || []).length ? recommendations.works.map((item: any) => <p key={`${item.findingId}-${item.name}`}>{item.name} <small>· {item.urgency}</small></p>) : <span>Немає</span>}</div><div><h3>Рекомендовані деталі</h3>{(recommendations.parts || []).length ? recommendations.parts.map((item: any) => <p key={`${item.findingId}-${item.name}`}>{item.name} <small>· {item.urgency}</small></p>) : <span>Немає</span>}</div></div>
+        <div className={styles.callout}><b>Деталі до заміни</b><p>Діагностична карта містить перелік деталей без вартості послуг та підсумків.</p></div>
+        {diagnosticParts.length ? <div className={styles.tableWrap}><table className={styles.table}><thead><tr><th>Артикул</th><th>Бренд</th><th>Деталь</th><th>К-ть</th></tr></thead><tbody>{diagnosticParts.map((line) => <tr key={line.id}><td>{maskDocumentArticle(line.article || line.code) || "—"}</td><td>{line.brand || "—"}</td><td><b>{line.description}</b></td><td>{line.quantity} {line.unit}</td></tr>)}</tbody></table></div> : <div className={styles.list}>{(recommendations.parts || []).length ? recommendations.parts.map((item: any) => <article key={`${item.findingId}-${item.name}`}><h3>{item.name}</h3><p>Рекомендовано до заміни</p></article>) : <div className={styles.empty}>Деталі до заміни ще не додані.</div>}</div>}
       </>}
     </section>}
 

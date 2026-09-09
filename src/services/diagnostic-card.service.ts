@@ -58,7 +58,17 @@ export type DiagnosticCardSnapshot = {
   managerComment: string | null;
   recommendations: {
     works: Array<{ findingId: string; name: string; action: string; urgency: string; section: string; checkName: string }>;
-    parts: Array<{ findingId: string; name: string; action: string; urgency: string; section: string; checkName: string }>;
+    parts: Array<{
+      findingId: string;
+      name: string;
+      action: string;
+      urgency: string;
+      section: string;
+      checkName: string;
+      article?: string | null;
+      brand?: string | null;
+      quantity?: string | number | null;
+    }>;
   };
   inspections: Array<{
     name: string;
