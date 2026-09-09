@@ -35,6 +35,7 @@ const SETTINGS_NAV_ITEMS: SettingsNavItem[] = [
   { id: "appearance", label: "Оформлення" },
   { id: "workflow", label: "Процеси та статуси" },
   { id: "security", label: "Ролі та доступи" },
+  { id: "partsCatalog", label: "Каталог запчастин" },
 ];
 
 function isDesktop() {

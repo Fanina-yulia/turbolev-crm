@@ -30,6 +30,15 @@ const TAB_HEADERS: Record<PartsKnowledgeSheetTab, string[]> = {
   Photos: ["generic_code", "media_type", "url", "storage_key", "rights", "status", "alt_text", "sort_order", "content_hash", "source"],
   "Unrecognized Terms": ["raw_term", "normalized_term", "suggested_code", "status", "source", "diagnostic_finding_id", "metadata_json"],
   "Diagnostic Mappings": ["item_code", "section_code", "item_name", "canonical_code", "canonical_name", "display_name", "axis", "side", "sub_position", "position", "category", "bm_parts_terms", "unitrade_terms", "synonyms", "search_enabled", "source", "source_version"],
+  "Canonical Parts": ["code", "name", "category_code", "assembly", "part_type", "axis", "side", "position", "sub_position", "quantity_per_vehicle", "sold_as", "requires_vin", "confidence", "review_status", "last_verified_at", "successful_matches", "rejected_matches"],
+  "OEM Crosses": ["canonical_code", "oem_number", "brand", "provider", "article", "cross_type", "fitment_status", "source", "verified_at"],
+  "Vehicle Fitment": ["canonical_code", "vehicle_id", "make", "model", "year_from", "year_to", "engine", "transmission", "drive", "fitment_status", "source", "verified_at"],
+  "Related Parts": ["from_code", "to_code", "relation_type", "confidence", "status", "source", "notes"],
+  "Repair Kits": ["kit_code", "kit_name", "part_code", "quantity", "required", "sort_order", "status", "source"],
+  "Part Operations": ["part_code", "operation_code", "operation_name", "service_catalog_id", "position_rule", "norm_minutes", "default_quantity", "status", "source"],
+  "Rejected Matches": ["canonical_code", "provider", "article", "brand", "name", "reason", "source", "active", "created_at"],
+  "Change Log": ["entity_type", "entity_id", "canonical_code", "action", "status", "reason", "requested_by", "reviewed_by", "created_at", "reviewed_at"],
+  "Search Feedback": ["canonical_code", "vehicle_id", "query", "provider", "selected_article", "selected_brand", "result_status", "reason", "created_by", "created_at"],
 };
 
 function text(value: unknown, max = 500) {

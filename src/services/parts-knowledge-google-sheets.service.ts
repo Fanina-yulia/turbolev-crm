@@ -11,6 +11,15 @@ export const PARTS_KNOWLEDGE_SHEET_TABS = [
   "Photos",
   "Unrecognized Terms",
   "Diagnostic Mappings",
+  "Canonical Parts",
+  "OEM Crosses",
+  "Vehicle Fitment",
+  "Related Parts",
+  "Repair Kits",
+  "Part Operations",
+  "Rejected Matches",
+  "Change Log",
+  "Search Feedback",
 ] as const;
 
 export type PartsKnowledgeSheetTab = (typeof PARTS_KNOWLEDGE_SHEET_TABS)[number];

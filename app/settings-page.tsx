@@ -13,6 +13,7 @@ import { SettingsOperationsPage } from "./settings-operations-page";
 import { SettingsRouteFocusBridge } from "./settings-route-focus-bridge";
 import type { SettingsTab } from "./settings-tabs";
 import { WorkflowSettingsPanel } from "./workflow-settings-panel";
+import { PartsCatalogSettingsPanel } from "./parts-catalog-settings-panel";
 import styles from "./settings-page.module.css";
 
 export function SettingsPage({ tab }: { tab: SettingsTab }) {
@@ -23,5 +24,6 @@ export function SettingsPage({ tab }: { tab: SettingsTab }) {
   if (tab === "diagnosticTemplates") return <div className={styles.directPage}><DiagnosticTemplatesSettingsPanel/></div>;
   if (tab === "workPrices") return <div className={styles.directPage}><PriceCatalogSettingsPanel/></div>;
   if (tab === "integrations") return <div className={styles.directPage}><SettingsRouteFocusBridge tab={tab}/><IntegrationsSettingsHub/><MetaAccountSelectionPrompt/></div>;
+  if (tab === "partsCatalog") return <div className={styles.directPage}><PartsCatalogSettingsPanel/></div>;
   return <><SettingsRouteFocusBridge tab={tab}/><SettingsOperationsPage tab={tab}/></>;
 }

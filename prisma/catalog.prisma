@@ -52,6 +52,24 @@ enum ProductMediaStatus {
   ARCHIVED
 }
 
+enum PartSoldAs {
+  PIECE
+  PAIR
+  SET
+  KIT
+  ASSEMBLY
+  LITER
+  UNKNOWN
+}
+
+enum PartCatalogReviewStatus {
+  DRAFT
+  PENDING_REVIEW
+  APPROVED
+  REJECTED
+  ARCHIVED
+}
+
 enum CatalogImportStatus {
   PENDING
   RUNNING
@@ -134,6 +152,22 @@ model GenericArticle {
   name         String              @db.VarChar(180)
   slug         String              @unique @db.VarChar(200)
   status       CatalogEntityStatus @default(DRAFT)
+  categoryCode String?             @db.VarChar(80)
+  assembly     String?             @db.VarChar(120)
+  partType     String?             @db.VarChar(120)
+  axis         String?             @db.VarChar(16)
+  side         String?             @db.VarChar(16)
+  position     String?             @db.VarChar(32)
+  subPosition  String?             @db.VarChar(32)
+  quantityPerVehicle Decimal       @default(1) @db.Decimal(10, 3)
+  soldAs       PartSoldAs          @default(UNKNOWN)
+  requiresVin  Boolean             @default(true)
+  confidence   Int                 @default(0)
+  reviewStatus PartCatalogReviewStatus @default(DRAFT)
+  lastVerifiedAt DateTime?
+  lastVerifiedByUserId String?      @db.VarChar(128)
+  successfulMatchCount Int          @default(0)
+  rejectedMatchCount Int            @default(0)
   mergedIntoId String?
   createdAt    DateTime            @default(now())
   updatedAt    DateTime            @updatedAt
@@ -150,8 +184,14 @@ model GenericArticle {
   products     Product[]
   vehicleFitments VehicleFitment[]
   diagnosticPartRecommendations DiagnosticPartRecommendation[]
+  catalogChanges PartCatalogChange[]
+  searchFeedback PartSearchFeedback[]
+  rejectedMatches PartRejectedMatch[]
+  kitItems RepairKitItem[]
 
   @@index([status, name])
+  @@index([reviewStatus, categoryCode])
+  @@index([axis, side, position])
   @@index([mergedIntoId])
 }
 
@@ -191,6 +231,108 @@ model GenericArticleAlias {
   @@index([aliasNormalized, status], map: "generic_article_alias_lookup_idx")
   @@index([genericArticleId, status], map: "generic_article_alias_article_idx")
   @@index([provider, status], map: "generic_article_alias_provider_idx")
+}
+
+model PartCatalogChange {
+  id              String   @id @default(cuid())
+  genericArticleId String?
+  entityType      String   @db.VarChar(64)
+  entityId        String   @db.VarChar(128)
+  action          String   @db.VarChar(64)
+  status          String   @default("PENDING") @db.VarChar(32)
+  beforeData      Json?
+  afterData       Json?
+  reason          String?  @db.Text
+  requestedByUserId String? @db.VarChar(128)
+  requestedByName String?  @db.VarChar(160)
+  reviewedByUserId String? @db.VarChar(128)
+  reviewedAt      DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  genericArticle GenericArticle? @relation(fields: [genericArticleId], references: [id], onDelete: SetNull)
+
+  @@index([status, createdAt])
+  @@index([entityType, entityId])
+  @@index([genericArticleId, createdAt])
+}
+
+model PartSearchFeedback {
+  id              String   @id @default(cuid())
+  genericArticleId String?
+  vehicleId       String?
+  query           String   @db.VarChar(240)
+  provider        String?  @db.VarChar(64)
+  selectedArticle String?  @db.VarChar(180)
+  selectedBrand   String?  @db.VarChar(120)
+  resultStatus    String   @db.VarChar(40)
+  reason          String?  @db.Text
+  metadata        Json?
+  createdByUserId String?
+  createdByName   String?  @db.VarChar(160)
+  createdAt       DateTime @default(now())
+
+  genericArticle GenericArticle? @relation(fields: [genericArticleId], references: [id], onDelete: SetNull)
+  vehicle Vehicle? @relation(fields: [vehicleId], references: [id], onDelete: SetNull)
+
+  @@index([genericArticleId, createdAt])
+  @@index([resultStatus, createdAt])
+  @@index([vehicleId, createdAt])
+}
+
+model PartRejectedMatch {
+  id              String   @id @default(cuid())
+  genericArticleId String?
+  provider        String?  @db.VarChar(64)
+  article         String?  @db.VarChar(180)
+  brand           String?  @db.VarChar(120)
+  name            String   @db.VarChar(320)
+  reason          String?  @db.Text
+  source          String   @db.VarChar(64)
+  active          Boolean  @default(true)
+  createdByUserId String?
+  createdByName   String?  @db.VarChar(160)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  genericArticle GenericArticle? @relation(fields: [genericArticleId], references: [id], onDelete: SetNull)
+
+  @@index([genericArticleId, active])
+  @@index([provider, article])
+}
+
+model RepairKit {
+  id              String   @id @default(cuid())
+  code            String   @unique @db.VarChar(80)
+  name            String   @db.VarChar(180)
+  description     String?  @db.Text
+  status          CatalogEntityStatus @default(DRAFT)
+  reviewStatus    PartCatalogReviewStatus @default(DRAFT)
+  requiresVin     Boolean  @default(true)
+  source          String   @db.VarChar(64)
+  sourceVersion   String?  @db.VarChar(160)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  items RepairKitItem[]
+
+  @@index([status, reviewStatus])
+}
+
+model RepairKitItem {
+  id              String   @id @default(cuid())
+  repairKitId     String
+  genericArticleId String
+  quantity        Decimal  @default(1) @db.Decimal(10, 3)
+  required        Boolean  @default(true)
+  sortOrder       Int      @default(100)
+  note            String?  @db.Text
+
+  repairKit RepairKit @relation(fields: [repairKitId], references: [id], onDelete: Cascade)
+  genericArticle GenericArticle @relation(fields: [genericArticleId], references: [id], onDelete: Cascade)
+
+  @@unique([repairKitId, genericArticleId])
+  @@index([genericArticleId])
 }
 
 model GenericArticleExternalReference {

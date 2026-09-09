@@ -4,6 +4,8 @@ import { PERMISSIONS } from "@/src/security/permissions";
 import { selectDiagnosticPartOffer, PartsSelectionError } from "@/src/services/parts-selection.service";
 import type { PartFitmentStatus } from "@/src/services/parts-fitment.service";
 import { getStructuredDiagnostic, StructuredDiagnosticError } from "@/src/services/structured-diagnostics.service";
+import { recordSearchFeedback, validatePartSelection } from "@/src/services/part-catalog-intelligence.service";
+import { getPrisma } from "@/src/lib/prisma";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -43,6 +45,12 @@ export async function POST(request: Request) {
     const diagnosticId = body?.diagnosticId?.trim() || "";
     if (!diagnosticId) return NextResponse.json({ ok: false, error: "DIAGNOSTIC_REQUIRED", message: "Не передано Діагностичну карту." }, { status: 400 });
 
+    if (body?.genericArticleId) {
+      const article = await getPrisma().genericArticle.findUnique({ where: { id: body.genericArticleId }, select: { axis: true, side: true, position: true, subPosition: true, soldAs: true } });
+      const validation = validatePartSelection({ expected: { axis: body.axis, side: body.side, position: body.position, subPosition: body.subPosition }, selected: article || {}, quantity: body.quantity ?? 1 });
+      if (!validation.ok) return NextResponse.json({ ok: false, error: "PART_LOGIC_MISMATCH", message: validation.errors.join(" "), warnings: validation.warnings }, { status: 400 });
+    }
+
     const view = await getStructuredDiagnostic(diagnosticId);
     if (!access.shadowBypass && access.grantedScope !== "ALL") {
       const locationId = view.diagnostic.assignment?.locationId || null;
@@ -78,7 +86,10 @@ export async function POST(request: Request) {
       manualConfirmation: body?.manualConfirmation === true,
       customerProvidedPart: body?.customerProvidedPart === true,
     });
-    return NextResponse.json({ ok: true, ...result });
+    if (body?.genericArticleId) {
+      await recordSearchFeedback({ genericArticleId: body.genericArticleId, vehicleId: body.vehicleId, query: body.partName || body.canonicalCode || body.article || "", provider: body.supplierId, selectedArticle: body.article, resultStatus: "SELECTED", createdByUserId: access.context.user.id, createdByName: access.context.user.employeeName || access.context.user.name || undefined, metadata: { diagnosticId, fitmentStatus: body.fitmentStatus || null } });
+    }
+    return NextResponse.json({ ok: true, warnings: body?.genericArticleId ? undefined : [], ...result });
   } catch (error) {
     if (error instanceof PartsSelectionError || error instanceof StructuredDiagnosticError) {
       return NextResponse.json({ ok: false, error: error.code, message: error.message }, { status: error.status });

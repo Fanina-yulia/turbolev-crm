@@ -205,6 +205,7 @@ model Vehicle {
   catalogLink              VehicleCatalogLink?
   providerVehicleContexts   ProviderVehicleContext[]
   providerFitmentAudits     ProviderFitmentSearchAudit[]
+  partSearchFeedback        PartSearchFeedback[]
 
   @@index([clientId])
   @@index([brand, model])
