@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { FinancialCenter as FinancialCenterBody } from "./financial-center-legacy";
-import { FinancialGovernancePanel } from "./financial-governance-panel";
+import { FinancialGovernancePanel } from "./financial-center-governance-panel";
 import { readCrmRoute } from "./crm-route";
 import styles from "./financial-center-v2.module.css";
 
