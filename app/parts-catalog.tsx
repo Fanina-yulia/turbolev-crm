@@ -13,13 +13,44 @@ import { TruncatedTextTooltip } from "./truncated-text-tooltip";
 
 type ProviderVehicleSummary = { provider?: string; brand?: string | null; model?: string | null; variant?: string | null; exact?: boolean; source?: string | null; vehicleKey?: string | null };
 type FitmentSummary = { status?: string; confirmed?: boolean; exact?: boolean; confidence?: number; reason?: string; source?: string | null; providerVehicle?: ProviderVehicleSummary | null };
-type Part = { name?: string; slug?: string; category?: string; description?: string; fitment?: FitmentSummary };
+type Part = { id?: string | null; genericArticleId?: string | null; name?: string; slug?: string; category?: string; description?: string; fitment?: FitmentSummary };
 type FitmentPayload = FitmentSummary & { vehicle?: { id?: string | null; vin?: string | null; brand?: string | null; model?: string | null; year?: number | null } | null; catalog?: { source?: string | null; fitmentKey?: string | null; exact?: boolean } | null; genericArticle?: { id?: string | null } | null; normalization?: { displayName?: string; normalizedQuery?: string; canonicalName?: string | null; canonicalSlug?: string | null; confidence?: number; source?: string; axis?: string | null; side?: string | null } | null };
 type VehicleContext = { id?: string; vin?: string; make?: string | null; model?: string | null; year?: number | null; engine?: string | null; engineVolumeL?: number | null; fuelType?: string | null; mileageKm?: number | null; plateNumber?: string | null; confidence?: number; source?: string | null; label?: string | null; generation?: { name?: string } | null };
-type SupplierOffer = { supplierId: string; supplierName: string; externalProductId: string | null; article: string; brand: string | null; name: string; purchasePrice: number | null; currency: string | null; multiplicity: number | null; stock: Array<{ warehouse: string; quantity: string; warehouseId?: string | null }>; available: boolean; sourceUrl: string | null; imageUrl?: string | null; oeNumbers?: string[]; vehicleMatch?: string | null; analogOfArticle?: string | null; markupPercent?: number | null; sellPrice?: number | null; offerClass?: "OEM" | "ANALOG" | "UNKNOWN"; fitmentStatus?: string; fitmentConfidence?: number | null; fitmentExact?: boolean | null; fitmentSource?: string | null; fitmentReason?: string | null; catalogProductId?: string | null; offerReason?: string | null; sourceKind?: "DIRECT" | "OEM" | "ANALOG" | "NAME"; stockTotal?: number | null; quantityMode?: string; fetchedAt?: string | null };
+type SupplierOffer = { supplierId: string; supplierName: string; externalProductId: string | null; article: string; brand: string | null; name: string; purchasePrice: number | null; currency: string | null; multiplicity: number | null; stock: Array<{ warehouse: string; quantity: string; warehouseId?: string | null }>; available: boolean; sourceUrl: string | null; imageUrl?: string | null; oeNumbers?: string[]; vehicleMatch?: string | null; analogOfArticle?: string | null; markupPercent?: number | null; sellPrice?: number | null; offerClass?: "OEM" | "ANALOG" | "UNKNOWN"; fitmentStatus?: string; fitmentConfidence?: number | null; fitmentExact?: boolean | null; fitmentSource?: string | null; fitmentReason?: string | null; catalogProductId?: string | null; offerReason?: string | null; sourceKind?: "DIRECT" | "OEM" | "ANALOG" | "NAME"; stockTotal?: number | null; quantityMode?: string; fetchedAt?: string | null; catalogQuantity?: number | null; catalogPriceBasis?: string | null; catalogQuantityLabel?: string | null; catalogPackageLabel?: string | null; catalogPurchaseTotal?: number | null; catalogSellTotal?: number | null; catalogPackagingNote?: string | null };
 type SupplierProvider = { id: string; ok: boolean; message?: string };
+type RelatedOperation = {
+  id: string;
+  relationId: string | null;
+  operationCode: string;
+  name: string;
+  serviceCatalogItemId: string | null;
+  serviceCode: string | null;
+  basePrice: number | null;
+  adjustedPrice: number | null;
+  currency: string;
+  quantity: number;
+  quantityLabel: string;
+  positionRule: string;
+  positionRuleLabel: string;
+  normMinutes: number | null;
+  mapped: boolean;
+  status: "MAPPED" | "NOT_IN_WORK_CATALOG";
+  confidence: number;
+  source: string;
+  note: string | null;
+  existingLineId: string | null;
+  existingQuantity: number | null;
+  existingTotal: number | null;
+  catalogItem?: { id: string; code: string | null; displayName: string; internalName: string; basePrice: number | null; currency: string; vehicleCoefficientEnabled: boolean; normMinutes: number | null } | null;
+};
+type RelatedOperationsResponse = {
+  ok?: boolean;
+  part?: { genericArticleId?: string | null; canonicalCode?: string | null; canonicalName?: string | null; axis?: string | null; side?: string | null; subPosition?: string | null };
+  packaging?: { packageQuantity?: number | null; priceQuantity?: number | null; unitLabel?: string; packageLabel?: string; priceBasis?: string; note?: string | null };
+  operations?: RelatedOperation[];
+};
 type Recommendation = { findingId: string | null; manualPartId: string | null; genericArticleId?: string | null; catalogCode?: string | null; name: string; article: string | null; position: string; quantity: number; action: string; urgency: string; note: string; mediaCount: number; canonicalCode?: string | null; canonicalName?: string | null; axis?: string | null; side?: string | null; subPosition?: string | null };
-type SelectedLine = { findingId: string; partName: string; supplierName: string; article: string; brand: string | null; warehouse: string | null; purchasePrice: number; sellPrice: number; markupPercent: number; currency: string; quantity: number; externalProductId?: string | null; offerClass?: "OEM" | "ANALOG" | "UNKNOWN"; fitmentReason?: string | null };
+type SelectedLine = { findingId: string; partName: string; supplierName: string; article: string; brand: string | null; warehouse: string | null; purchasePrice: number; sellPrice: number; markupPercent: number; currency: string; quantity: number; quantityLabel?: string | null; priceBasis?: string | null; packagingNote?: string | null; externalProductId?: string | null; offerClass?: "OEM" | "ANALOG" | "UNKNOWN"; fitmentReason?: string | null };
 type ManualPartPayload = { id: string; findingId: string | null; genericArticleId?: string | null; catalogCode?: string | null; name: string; article: string | null; brand: string | null; position: string | null; quantity: string | number; note: string | null };
 type WorkOrderRow = WorkOrderListItemContract;
 type DiagnosticPickerRow = { id: string; number: number | null; status: string; statusLabel: string; updatedAt: string; client: { name: string | null; phone: string }; vehicle: { id: string; brand: string | null; model: string | null; year: number | null; plateNumber: string | null; vin: string | null; mileageKm: number | null; turboLevClass: string | null }; diagnosticRequest: { id: string; status: string } };
@@ -28,7 +59,7 @@ type ContextSummary = { workOrderId: string | null; orderNumber: string; clientN
 type DiagnosticPartsPayload = {
   ok?: boolean;
   diagnostic?: { workOrder?: { id?: string; status?: string } | null; client?: { name?: string | null; phone?: string | null } | null; vehicle?: { id?: string; brand?: string | null; model?: string | null; year?: number | null; label?: string | null; plateNumber?: string | null; vin?: string | null; mileageKm?: number | null } | null };
-  inspections?: Array<{ sections?: Array<{ name?: string; items?: Array<{ code?: string; name?: string; position?: string | null; part?: { code?: string; canonicalName?: string; displayName?: string; axis?: string | null; side?: string | null; subPosition?: string | null; position?: string | null } | null; finding?: { id?: string; action?: string; urgency?: string; findingText?: string | null; suggestedPartName?: string | null; media?: unknown[] } | null }> }> }>;
+  inspections?: Array<{ sections?: Array<{ name?: string; items?: Array<{ code?: string; name?: string; position?: string | null; part?: { id?: string | null; genericArticleId?: string | null; code?: string; canonicalName?: string; displayName?: string; axis?: string | null; side?: string | null; subPosition?: string | null; position?: string | null } | null; finding?: { id?: string; action?: string; urgency?: string; findingText?: string | null; suggestedPartName?: string | null; media?: unknown[] } | null }> }> }>;
   manualParts?: ManualPartPayload[];
 };
 
@@ -88,9 +119,12 @@ export function PartsCatalog() {
   const [resolvedPlate, setResolvedPlate] = useState<string | null>(null);
   const [resolvedVin, setResolvedVin] = useState("");
   const [partsMarkupPercent, setPartsMarkupPercent] = useState(40);
+  const [relatedOperations, setRelatedOperations] = useState<Record<string, RelatedOperationsResponse>>({});
+  const [relatedOperationsLoading, setRelatedOperationsLoading] = useState(false);
   const [message, setMessage] = useState("Оберіть ремонтне замовлення або відкрийте підбір із Діагностичної карти.");
   const searchRequestRef = useRef(0);
   const searchAbortRef = useRef<AbortController | null>(null);
+  const relatedRequestRef = useRef(0);
 
   useEffect(() => { const onRoute = () => setRoute(readCrmRoute()); window.addEventListener("popstate", onRoute); return () => window.removeEventListener("popstate", onRoute); }, []);
   useEffect(() => {
@@ -285,11 +319,51 @@ export function PartsCatalog() {
       }
     }
   }
+
+  async function loadRelatedOperations(items: Recommendation[], contextOverride?: ContextSummary | null) {
+    const usableItems = items.filter((item) => Boolean(recommendationKey(item)));
+    const requestId = ++relatedRequestRef.current;
+    if (!usableItems.length) {
+      setRelatedOperations({});
+      setRelatedOperationsLoading(false);
+      return;
+    }
+    setRelatedOperationsLoading(true);
+    const activeContext = contextOverride || context;
+    try {
+      const entries: Array<[string, RelatedOperationsResponse | null]> = await Promise.all(usableItems.map(async (item) => {
+        const params = new URLSearchParams();
+        if (item.genericArticleId) params.set("genericArticleId", item.genericArticleId);
+        if (item.canonicalCode || item.catalogCode) params.set("canonicalCode", item.canonicalCode || item.catalogCode || "");
+        if (item.name) params.set("partName", item.name);
+        if (item.axis) params.set("axis", item.axis);
+        if (item.side) params.set("side", item.side);
+        if (item.position) params.set("position", item.position);
+        if (item.subPosition) params.set("subPosition", item.subPosition);
+        if (activeContext?.vehicleId) params.set("vehicleId", activeContext.vehicleId);
+        if (activeContext?.workOrderId) params.set("workOrderId", activeContext.workOrderId);
+        if (item.findingId) params.set("findingId", item.findingId);
+        try {
+          const response = await fetch("/api/parts/related-operations?" + params.toString(), { cache: "no-store", credentials: "include" });
+          const payload = await response.json().catch(() => null) as RelatedOperationsResponse | null;
+          return [recommendationKey(item), response.ok && payload?.ok ? payload : null];
+        } catch {
+          return [recommendationKey(item), null];
+        }
+      }));
+      if (requestId !== relatedRequestRef.current) return;
+      const successful = entries.filter((entry): entry is [string, RelatedOperationsResponse] => Boolean(entry[1]));
+      setRelatedOperations((current) => ({ ...current, ...Object.fromEntries(successful) }));
+    } finally {
+      if (requestId === relatedRequestRef.current) setRelatedOperationsLoading(false);
+    }
+  }
+
   useEffect(() => {
     let cancelled = false;
     const loadContext = async () => {
-      if (!route.diagnosticId) { setContext(null); setVehicle(null); setRecommendedParts([]); setSelectedLines([]); setActiveFindingId(""); setOffers([]); setFitment(null); setManualConfirmation(false); setParts([]); void loadWorkOrders(); return; }
-      setContextLoading(true); setContext(null); setRecommendedParts([]); setSelectedLines([]); setOffers([]); setFitment(null); setManualConfirmation(false);
+      if (!route.diagnosticId) { setContext(null); setVehicle(null); setRecommendedParts([]); setSelectedLines([]); setRelatedOperations({}); setRelatedOperationsLoading(false); setActiveFindingId(""); setOffers([]); setFitment(null); setManualConfirmation(false); setParts([]); void loadWorkOrders(); return; }
+      setContextLoading(true); setContext(null); setRecommendedParts([]); setSelectedLines([]); setRelatedOperations({}); setRelatedOperationsLoading(false); setOffers([]); setFitment(null); setManualConfirmation(false);
       try {
         const [response, manualResponse, handoffResponse] = await Promise.all([
           fetch(`/api/diagnostics/${encodeURIComponent(route.diagnosticId)}/structured`, { cache: "no-store", credentials: "include" }),
@@ -312,7 +386,7 @@ export function PartsCatalog() {
               const recommendation: Recommendation = {
                 findingId: finding.id,
                 manualPartId: null,
-                genericArticleId: null,
+                genericArticleId: part?.id || part?.genericArticleId || null,
                 catalogCode: part?.code || null,
                 name: partName,
                 article: null,
@@ -377,7 +451,7 @@ export function PartsCatalog() {
         });
         const nextReference = route.plate || route.vin || diagnosticVehicle?.vin || "";
         const nextContext: ContextSummary = { workOrderId: diagnostic?.workOrder?.id || route.workOrderId || null, orderNumber: route.workOrderNumber || "ЗН-—", clientName: diagnostic?.client?.name || "Клієнт не вказаний", clientPhone: diagnostic?.client?.phone || "—", vehicleId: diagnosticVehicle?.id || route.vehicleId || null, vehicleName: diagnosticVehicle?.label || [diagnosticVehicle?.brand, diagnosticVehicle?.model, diagnosticVehicle?.year].filter(Boolean).join(" ") || "Автомобіль", plateNumber: diagnosticVehicle?.plateNumber || route.plate || null, vin: diagnosticVehicle?.vin || route.vin || null, mileageKm: diagnosticVehicle?.mileageKm ?? null, statusCode: diagnostic?.workOrder?.status || "PARTS_REVIEW", statusLabel: diagnostic?.workOrder?.status || "Підбір деталей", engine: null };
-        setContext(nextContext); setVehicle({ ...diagnosticVehicle, id: diagnosticVehicle?.id || route.vehicleId, vin: diagnosticVehicle?.vin || route.vin, plateNumber: diagnosticVehicle?.plateNumber || route.plate }); setVehicleRef(nextReference.toUpperCase()); setResolvedVin(diagnosticVehicle?.vin || route.vin || ""); setRecommendedParts(allRecommendationRows); setSelectedLines(hydratedSelectedLines); const requestedRecommendation = route.manualPartId || route.findingId; const first = allRecommendationRows.find((item) => recommendationKey(item) === requestedRecommendation) || allRecommendationRows[0]; setActiveFindingId(first ? recommendationKey(first) : ""); setQ((current) => current.trim() || first?.article || first?.name || ""); setOffers([]); setPickerOpen(false); setMessage(allRecommendationRows.length ? `Із Діагностичної карти передано ${allRecommendationRows.length} позицій. Натисніть на деталь, щоб відкрити підбір.` : "У Діагностичній карті немає деталей, позначених до заміни.");
+        setContext(nextContext); setVehicle({ ...diagnosticVehicle, id: diagnosticVehicle?.id || route.vehicleId, vin: diagnosticVehicle?.vin || route.vin, plateNumber: diagnosticVehicle?.plateNumber || route.plate }); setVehicleRef(nextReference.toUpperCase()); setResolvedVin(diagnosticVehicle?.vin || route.vin || ""); setRecommendedParts(allRecommendationRows); setSelectedLines(hydratedSelectedLines); const requestedRecommendation = route.manualPartId || route.findingId; const first = allRecommendationRows.find((item) => recommendationKey(item) === requestedRecommendation) || allRecommendationRows[0]; setActiveFindingId(first ? recommendationKey(first) : ""); setQ((current) => current.trim() || first?.article || first?.name || ""); setOffers([]); setPickerOpen(false); setMessage(allRecommendationRows.length ? `Із Діагностичної карти передано ${allRecommendationRows.length} позицій. Натисніть на деталь, щоб відкрити підбір.` : "У Діагностичній карті немає деталей, позначених до заміни."); void loadRelatedOperations(allRecommendationRows, nextContext);
       } catch (error) { if (!cancelled) setMessage(error instanceof Error ? error.message : "Не вдалося завантажити Діагностичну карту."); } finally { if (!cancelled) setContextLoading(false); }
     };
     void loadContext(); return () => { cancelled = true; };
@@ -409,6 +483,10 @@ export function PartsCatalog() {
   const selectedPurchaseTotal = selectedLines.reduce((sum, line) => sum + line.purchasePrice * line.quantity, 0);
   const selectedSellTotal = selectedLines.reduce((sum, line) => sum + line.sellPrice * line.quantity, 0);
   const selectedProfitTotal = selectedLines.reduce((sum, line) => sum + (line.sellPrice - line.purchasePrice) * line.quantity, 0);
+  const relatedOperationRows = useMemo(() => recommendedParts.flatMap((item) => {
+    const response = relatedOperations[recommendationKey(item)];
+    return (response?.operations || []).map((operation) => ({ item, response, operation }));
+  }), [recommendedParts, relatedOperations]);
   const selectedMarkupValues = [...new Set(selectedLines.map((line) => line.markupPercent))];
   const selectedMarkupLabel = selectedMarkupValues.length === 1 ? `${selectedMarkupValues[0]}%` : selectedMarkupValues.length > 1 ? "різна" : "—";
   const displayedMarkupLabel = selectedMarkupLabel === "—" ? `${partsMarkupPercent}%` : selectedMarkupLabel;
@@ -456,7 +534,7 @@ export function PartsCatalog() {
       <span className={styles.compactAvailability}><b>Наявність <span className={styles.compactInfo} aria-label={`Інформація про склади ${offer.supplierName}`} role="img" tabIndex={0}>ⓘ</span></b><span>{offer.available ? "В наявності" : "Уточнити"}</span><span className={styles.compactStockTooltip} role="tooltip" aria-label="Складські залишки">{stockRows.map((stock, stockIndex) => <span key={`${stock.warehouse}-${stockIndex}`}><b>{stock.warehouse}</b> — {stock.quantity}</span>)}</span></span>
       <span className={styles.compactSupplier}>{offer.supplierName || "—"}</span>
       <span className={styles.compactBrand}><small>{offer.brand || "Бренд не вказаний"}</small><b>{offer.article}</b></span>
-      <span className={styles.compactPrice}>{formatMoney(offer.purchasePrice, offer.currency)}</span>
+      <span className={styles.compactPrice}><b>{formatMoney(offer.catalogPurchaseTotal ?? offer.purchasePrice, offer.currency)}</b>{offer.catalogQuantityLabel ? <small>{offer.catalogQuantityLabel}</small> : null}</span>
     </button>;
   }
 
@@ -472,6 +550,7 @@ export function PartsCatalog() {
     setManualConfirmation(false);
     setActiveTab("originals");
     setPickerOpen(true);
+    void loadRelatedOperations([item], context);
     void searchPart(query, vehicleRef, item);
   }
 
@@ -529,9 +608,9 @@ export function PartsCatalog() {
       }
       const vinSearch = selectionVin.length === 17 && catalogVerified;
       const response = await fetch("/api/parts-selection/select", { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ diagnosticId: route.diagnosticId, findingId: selectionRecommendation.findingId, manualPartId: selectionRecommendation.manualPartId, quantity: selectionRecommendation.quantity, supplierId: offer.supplierId, externalProductId: offer.externalProductId, article: offer.article, searchMode: vinSearch ? "VIN" : "PART_NUMBER", vehicleVin: selectionVin || null, vehicleId: context?.vehicleId || null, partName: selectionRecommendation.name, genericArticleId: selectionRecommendation.genericArticleId || null, canonicalCode: selectionRecommendation.canonicalCode || selectionRecommendation.catalogCode || null, axis: selectionRecommendation.axis, side: selectionRecommendation.side, subPosition: selectionRecommendation.subPosition, position: selectionRecommendation.position, fitmentStatus: offer.fitmentStatus || fitment?.status || null, fitmentExact: offer.fitmentExact ?? fitment?.exact ?? null, fitmentProductId: offer.catalogProductId || null, fitmentSource: offer.fitmentSource || fitment?.source || null, manualConfirmation: !vinSearch }) });
-      const data = await response.json().catch(() => null) as { ok?: boolean; message?: string; error?: string; selected?: { supplierId?: string; supplierName: string; article: string; brand: string | null; purchasePrice: number; markupPercent: number; sellPrice: number; currency: string; externalProductId?: string | null } } | null;
+      const data = await response.json().catch(() => null) as { ok?: boolean; message?: string; error?: string; selected?: { supplierId?: string; supplierName: string; article: string; brand: string | null; purchasePrice: number; markupPercent: number; sellPrice: number; currency: string; quantity?: number; quantityLabel?: string | null; priceBasis?: string | null; packagingNote?: string | null; externalProductId?: string | null } } | null;
       if (!response.ok || !data?.ok || !data.selected) throw new Error(data?.message || data?.error || "Не вдалося зберегти вибрану деталь.");
-      const selected = data.selected; const selectedKey = recommendationKey(selectionRecommendation); const warehouse = offer.stock.find((row) => row.warehouseId && Number(row.quantity.replace(/[^0-9.,-]/g, "").replace(",", ".")) > 0)?.warehouse || offer.stock[0]?.warehouse || null; setSelectedLines((current) => [...current.filter((line) => line.findingId !== selectedKey), { findingId: selectedKey, partName: selectionRecommendation.name, supplierName: selected.supplierName, article: selected.article, brand: selected.brand, warehouse, purchasePrice: selected.purchasePrice, sellPrice: selected.sellPrice, markupPercent: selected.markupPercent, currency: selected.currency, quantity: selectionRecommendation.quantity, externalProductId: selected.externalProductId || offer.externalProductId, offerClass: offer.offerClass, fitmentReason: offer.fitmentReason || offer.offerReason }]); setPickerOpen(false); setMessage(`Позицію збережено: ${selected.supplierName} · ${selected.article}.`); window.dispatchEvent(new CustomEvent("turbolev:data-changed"));
+      const selected = data.selected; const selectedQuantity = Number(selected.quantity) > 0 ? Number(selected.quantity) : offer.catalogQuantity || selectionRecommendation.quantity; const selectedKey = recommendationKey(selectionRecommendation); const warehouse = offer.stock.find((row) => row.warehouseId && Number(row.quantity.replace(/[^0-9.,-]/g, "").replace(",", ".")) > 0)?.warehouse || offer.stock[0]?.warehouse || null; setSelectedLines((current) => [...current.filter((line) => line.findingId !== selectedKey), { findingId: selectedKey, partName: selectionRecommendation.name, supplierName: selected.supplierName, article: selected.article, brand: selected.brand, warehouse, purchasePrice: selected.purchasePrice, sellPrice: selected.sellPrice, markupPercent: selected.markupPercent, currency: selected.currency, quantity: selectedQuantity, quantityLabel: selected.quantityLabel || offer.catalogQuantityLabel || null, priceBasis: selected.priceBasis || offer.catalogPriceBasis || null, packagingNote: selected.packagingNote || offer.catalogPackagingNote || null, externalProductId: selected.externalProductId || offer.externalProductId, offerClass: offer.offerClass, fitmentReason: offer.fitmentReason || offer.offerReason }]); setPickerOpen(false); setMessage(`Позицію збережено: ${selected.supplierName} · ${selected.article}.`); window.dispatchEvent(new CustomEvent("turbolev:data-changed"));
     } catch (error) { setMessage(error instanceof Error ? error.message : "Не вдалося зберегти вибрану деталь."); } finally { setSelectingOffer(""); }
   }
 
@@ -613,7 +692,7 @@ export function PartsCatalog() {
                 const purchaseTotal = line.purchasePrice * line.quantity;
                 const sellTotal = line.sellPrice * line.quantity;
                 const profit = (line.sellPrice - line.purchasePrice) * line.quantity;
-                return <tr key={line.findingId}><td>{index + 1}</td><td>{line.quantity}</td><td>{line.article || "—"}</td><td>{line.brand || "—"}</td><td className={styles.nomenclatureCell}><TruncatedTextTooltip text={line.partName}>{line.partName}</TruncatedTextTooltip></td><td><TruncatedTextTooltip text={line.supplierName}>{line.supplierName}</TruncatedTextTooltip></td><td><TruncatedTextTooltip text={line.warehouse || "—"}>{line.warehouse || "—"}</TruncatedTextTooltip></td><td>{formatMoney(line.purchasePrice, line.currency)}</td><td>{formatMoney(purchaseTotal, line.currency)}</td><td>{formatMoney(line.sellPrice, line.currency)}</td><td className={styles.sellPrice}>{formatMoney(sellTotal, line.currency)}</td><td className={styles.profit}>{formatMoney(profit, line.currency)}</td><td>{line.markupPercent}%</td><td>{recommendation ? <button type="button" className={styles.tableAction} onClick={() => openPickerFor(recommendation)}>Змінити</button> : null}</td></tr>;
+                return <tr key={line.findingId}><td>{index + 1}</td><td>{line.quantity}{line.quantityLabel ? <small className={styles.quantityNote}>{line.quantityLabel}</small> : null}</td><td>{line.article || "—"}</td><td>{line.brand || "—"}</td><td className={styles.nomenclatureCell}><TruncatedTextTooltip text={line.partName}>{line.partName}</TruncatedTextTooltip></td><td><TruncatedTextTooltip text={line.supplierName}>{line.supplierName}</TruncatedTextTooltip></td><td><TruncatedTextTooltip text={line.warehouse || "—"}>{line.warehouse || "—"}</TruncatedTextTooltip></td><td>{formatMoney(line.purchasePrice, line.currency)}</td><td>{formatMoney(purchaseTotal, line.currency)}</td><td>{formatMoney(line.sellPrice, line.currency)}</td><td className={styles.sellPrice}>{formatMoney(sellTotal, line.currency)}</td><td className={styles.profit}>{formatMoney(profit, line.currency)}</td><td>{line.markupPercent}%</td><td>{recommendation ? <button type="button" className={styles.tableAction} onClick={() => openPickerFor(recommendation)}>Змінити</button> : null}</td></tr>;
               }) : <tr><td colSpan={14}><div className={styles.selectedEmpty}><span>+</span><b>Вибраних деталей ще немає</b><small>Натисніть на деталь зліва — popup відкриється автоматично.</small><button type="button" className={styles.secondaryAction} onClick={openNextPicker} disabled={!recommendedParts.length}>Додати першу деталь</button></div></td></tr>}</tbody>
             </table>
           </div>
@@ -642,7 +721,19 @@ export function PartsCatalog() {
         </div>
         <div className={styles.servicesTable}>
           <div className={styles.servicesHead}><span>Послуга</span><span>Назва послуги</span><span>Кількість</span><span>Вартість послуги</span><span>Сума</span></div>
-          <div className={styles.servicesEmpty}><span>✓</span><b>Послуги ще не додані</b><small>Додайте роботи після узгодження переліку ремонту.</small></div>
+          {relatedOperationsLoading ? <div className={styles.servicesLoading}>Завантажую пов’язані роботи з каталогу…</div>
+            : relatedOperationRows.length ? <div className={styles.servicesRows}>{relatedOperationRows.map(({ item, response, operation }) => {
+              const operationPrice = operation.adjustedPrice ?? operation.basePrice;
+              const operationStatus = operation.existingLineId ? "Додано до ЗН" : operation.mapped ? "Доступна в каталозі" : "Потрібно додати в каталог робіт";
+              return <div className={styles.serviceRow} key={operation.id + "-" + recommendationKey(item)}>
+                <span className={styles.servicePart}><b>{item.name}</b><small>{item.position}{response.packaging?.packageLabel ? " · " + response.packaging.packageLabel : ""}</small></span>
+                <span className={styles.serviceName}><b>{operation.name}</b><small>{operation.serviceCode || operation.operationCode}{operation.normMinutes ? " · " + operation.normMinutes + " хв" : ""}</small></span>
+                <span><b>{operation.quantityLabel}</b></span>
+                <span className={styles.servicePrice}><b>{formatMoney(operationPrice, operation.currency)}</b><small>{operation.existingTotal != null ? "У ЗН: " + formatMoney(operation.existingTotal, operation.currency) : "за " + operation.positionRuleLabel}</small></span>
+                <span className={operation.existingLineId || operation.mapped ? styles.serviceMapped : styles.serviceUnmapped}>{operationStatus}</span>
+              </div>;
+            })}</div>
+            : <div className={styles.servicesEmpty}><span>✓</span><b>Пов’язані роботи ще не завантажені</b><small>Після вибору деталі система покаже роботи з каталогу робіт.</small></div>
         </div>
       </section>
 
