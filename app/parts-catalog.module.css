@@ -394,3 +394,124 @@
 @keyframes partsSearchScanner{0%,100%{transform:translateX(-34px);opacity:.15}50%{transform:translateX(34px);opacity:.95}}
 @keyframes partsSearchMascot{0%,100%{transform:translate3d(0,1px,0) rotate(-1deg) scale(.98)}50%{transform:translate3d(1px,-2px,0) rotate(1deg) scale(1)}}
 @media(prefers-reduced-motion:reduce){.searchAnimationVisual:before,.searchAnimationVisual:after,.searchAnimationLoaderRing,.searchAnimationLoaderRing:after,.searchAnimationLoaderDots,.searchAnimationLoaderDots i,.searchAnimationScanner,.searchAnimationMascot img{animation:none}.searchAnimationVisual:after{opacity:.35}}
+
+/* Search loader refinement: transparent mascot, one large circular loading system. */
+.searchAnimation{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:22px;
+  width:min(100%,520px);
+  min-height:190px;
+  padding:12px 0;
+  border:0;
+  border-radius:0;
+  background:transparent;
+  box-shadow:none;
+  text-align:left;
+}
+.searchAnimationVisual{
+  position:relative;
+  display:grid;
+  place-items:center;
+  width:148px;
+  height:148px;
+  flex:0 0 148px;
+  border:0;
+  border-radius:50%;
+  background:transparent;
+  overflow:visible;
+}
+.searchAnimationVisual:before{
+  content:"";
+  position:absolute;
+  z-index:1;
+  inset:-8px;
+  border:2px dashed color-mix(in srgb,var(--orange) 50%,transparent);
+  border-radius:50%;
+  opacity:.8;
+  animation:partsSearchOrbitReverse 8.5s linear infinite;
+}
+.searchAnimationVisual:after{
+  content:"";
+  position:absolute;
+  z-index:1;
+  inset:-14px;
+  border-radius:50%;
+  background:conic-gradient(from 0deg,transparent 0deg,transparent 246deg,color-mix(in srgb,var(--orange) 16%,transparent) 286deg,var(--orange) 329deg,transparent 350deg);
+  -webkit-mask:radial-gradient(farthest-side,transparent calc(100% - 4px),#000 0);
+  mask:radial-gradient(farthest-side,transparent calc(100% - 4px),#000 0);
+  animation:partsSearchSweep 4s linear infinite;
+}
+.searchAnimationLoaderRing{
+  position:absolute;
+  z-index:1;
+  inset:-18px;
+  border:3px solid transparent;
+  border-top-color:var(--orange);
+  border-right-color:color-mix(in srgb,var(--orange) 55%,transparent);
+  border-radius:50%;
+  box-shadow:0 0 18px color-mix(in srgb,var(--orange) 24%,transparent);
+  animation:partsSearchLoaderSpin 4.8s linear infinite;
+}
+.searchAnimationLoaderRing:after{display:none}
+.searchAnimationLoaderDots{
+  position:absolute;
+  z-index:1;
+  inset:-18px;
+  animation:partsSearchLoaderSpin 5.6s linear infinite;
+}
+.searchAnimationLoaderDots i{
+  position:absolute;
+  top:50%;
+  left:50%;
+  display:block;
+  width:7px;
+  height:7px;
+  border-radius:50%;
+  background:var(--orange);
+  box-shadow:0 0 10px color-mix(in srgb,var(--orange) 82%,transparent);
+  transform:translate(-50%,-50%) rotate(0deg) translateX(86px);
+  animation:partsSearchLoaderDot 1.9s ease-in-out infinite;
+}
+.searchAnimationLoaderDots i:nth-child(2){transform:translate(-50%,-50%) rotate(120deg) translateX(86px);animation-delay:.28s}
+.searchAnimationLoaderDots i:nth-child(3){transform:translate(-50%,-50%) rotate(240deg) translateX(86px);animation-delay:.56s}
+.searchAnimationScanner{
+  position:absolute;
+  z-index:2;
+  top:22px;
+  bottom:22px;
+  left:50%;
+  width:2px;
+  background:linear-gradient(to bottom,transparent,color-mix(in srgb,var(--orange) 88%,transparent),transparent);
+  box-shadow:0 0 10px color-mix(in srgb,var(--orange) 76%,transparent);
+  opacity:.7;
+  transform:translateX(-50%);
+  animation:partsSearchScanner 4.2s ease-in-out infinite;
+}
+.searchAnimationMascot{
+  position:relative;
+  z-index:3;
+  display:block;
+  width:124px;
+  height:124px;
+}
+.searchAnimationMascot img{
+  display:block;
+  width:100%;
+  height:100%;
+  object-fit:contain;
+  animation:partsSearchMascot 3.8s ease-in-out infinite;
+}
+@media(max-width:560px){
+  .searchAnimation{gap:10px;min-height:176px}
+  .searchAnimationVisual{width:126px;height:126px;flex-basis:126px}
+  .searchAnimationMascot{width:106px;height:106px}
+  .searchAnimationLoaderDots i{transform:translate(-50%,-50%) rotate(0deg) translateX(75px)}
+  .searchAnimationLoaderDots i:nth-child(2){transform:translate(-50%,-50%) rotate(120deg) translateX(75px)}
+  .searchAnimationLoaderDots i:nth-child(3){transform:translate(-50%,-50%) rotate(240deg) translateX(75px)}
+}
+@media(prefers-reduced-motion:reduce){
+  .searchAnimationVisual:before,.searchAnimationVisual:after,.searchAnimationLoaderRing,.searchAnimationLoaderDots,.searchAnimationLoaderDots i,.searchAnimationScanner,.searchAnimationMascot img{animation:none}
+  .searchAnimationVisual:after{opacity:.45}
+}
