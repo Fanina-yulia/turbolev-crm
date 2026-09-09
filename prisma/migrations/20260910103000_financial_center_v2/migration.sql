@@ -19,7 +19,7 @@ CREATE TABLE "FinancialBudget" (
   "approvedById" VARCHAR(64),
   "approvedAt" TIMESTAMP(3),
   "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "updatedAt" TIMESTAMP(3) NOT NULL,
   CONSTRAINT "FinancialBudget_pkey" PRIMARY KEY ("id")
 );
 
@@ -46,7 +46,7 @@ CREATE TABLE "RecurringFinancialRule" (
   "autoPost" BOOLEAN NOT NULL DEFAULT false,
   "createdById" VARCHAR(64),
   "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "updatedAt" TIMESTAMP(3) NOT NULL,
   CONSTRAINT "RecurringFinancialRule_pkey" PRIMARY KEY ("id")
 );
 
@@ -69,7 +69,7 @@ CREATE TABLE "FinancialForecastItem" (
   "description" TEXT,
   "createdById" VARCHAR(64),
   "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "updatedAt" TIMESTAMP(3) NOT NULL,
   CONSTRAINT "FinancialForecastItem_pkey" PRIMARY KEY ("id")
 );
 
@@ -85,7 +85,7 @@ CREATE TABLE "FinancialApprovalRule" (
   "isActive" BOOLEAN NOT NULL DEFAULT true,
   "sortOrder" INTEGER NOT NULL DEFAULT 100,
   "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "updatedAt" TIMESTAMP(3) NOT NULL,
   CONSTRAINT "FinancialApprovalRule_pkey" PRIMARY KEY ("id")
 );
 
@@ -101,7 +101,7 @@ CREATE TABLE "FinancialSettings" (
   "forecastHorizonDays" INTEGER NOT NULL DEFAULT 90,
   "updatedById" VARCHAR(64),
   "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "updatedAt" TIMESTAMP(3) NOT NULL,
   CONSTRAINT "FinancialSettings_pkey" PRIMARY KEY ("id")
 );
 
@@ -132,7 +132,7 @@ CREATE TABLE "CustomerAdvance" (
   "description" TEXT,
   "createdById" VARCHAR(64),
   "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "updatedAt" TIMESTAMP(3) NOT NULL,
   CONSTRAINT "CustomerAdvance_pkey" PRIMARY KEY ("id")
 );
 
