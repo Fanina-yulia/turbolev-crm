@@ -97,11 +97,13 @@ export async function postExpenseV2(id: string, input: ExpensePostingInput, acto
     }
 
     const now = new Date();
+    const finalStatus = finalPaymentStatus(current.amount, paidAmount, dueAt, now);
+    const payableStatus = finalStatus === "UNPAID" ? "OPEN" as const : finalStatus;
     const obligationNeeded = Boolean(current.counterpartyName || current.supplierId || dueAt || paidAmount.greaterThan(0));
     const obligation = obligationNeeded ? await tx.financialObligation.create({
       data: {
         direction: "PAYABLE",
-        status: finalPaymentStatus(current.amount, paidAmount, dueAt, now) === "UNPAID" ? "OPEN" : finalPaymentStatus(current.amount, paidAmount, dueAt, now),
+        status: payableStatus,
         amount: current.amount,
         settledAmount: paidAmount,
         currency: current.currency,
@@ -196,7 +198,6 @@ export async function postExpenseV2(id: string, input: ExpensePostingInput, acto
       },
     }) : null;
 
-    const finalStatus = finalPaymentStatus(current.amount, paidAmount, dueAt, now);
     const expense = await tx.expenseDocument.update({
       where: { id },
       data: { status: "POSTED", paymentStatus: finalStatus, paidAmount, moneyAccountId, paymentDate: paidAmount.greaterThan(0) ? paymentDate : null, dueAt, postedAt: now },
