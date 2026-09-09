@@ -529,7 +529,7 @@
 
 .quantityNote{display:block;color:var(--muted);font-size:11px;line-height:1.25}
 .compactPrice{display:grid;justify-items:end;gap:2px}
-.compactPrice small{color:var(--muted);font-size:10px;font-weight:500}
+.compactPrice small{color:var(--muted);font-size:11px;font-weight:500}
 .servicesRows{display:grid;min-width:0}
 .serviceRow{display:grid;grid-template-columns:1.3fr 2fr 120px 170px 150px;gap:10px;align-items:center;padding:9px 11px;border-top:1px solid var(--parts-border);color:var(--text);font-size:12px}
 .serviceRow>span{min-width:0}
