@@ -217,23 +217,6 @@ export function PartsCatalog() {
       setFitment(resolvedFitment);
       if (referenceData?.vehicle) setVehicle(referenceData.vehicle);
 
-      const vehicleScoped = Boolean(
-        vehicleReferenceProvided
-        || referenceData?.vehicle?.id
-        || resolvedFitment?.vehicle?.id
-        || resolvedFitment?.vehicle?.vin
-      );
-      if (vehicleScoped && resolvedFitment?.status !== "VERIFIED") {
-        const blockedMessage = "Запит до постачальників не відправлено: для цього автомобіля немає підтвердженого зв’язку з OE-каталогом.";
-        setOffers([]);
-        setSupplierProviders([]);
-        setConfiguredSuppliers([]);
-        setSupplierSearchBlocked(true);
-        setManualConfirmation(false);
-        setMessage(blockedMessage);
-        return;
-      }
-
       const supplierParams = new URLSearchParams({ q: query });
       if (resolvedVin) supplierParams.set("vin", resolvedVin);
       if (contextVehicleId) supplierParams.set("vehicleId", contextVehicleId);
@@ -268,9 +251,11 @@ export function PartsCatalog() {
       setFitment(supplierData?.fitment || referenceData?.fitment || null);
       setSupplierSearchBlocked(supplierBlocked);
       setManualConfirmation(false);
-      setMessage(supplierData?.fitment?.reason || referenceData?.fitmentPolicy?.message || (resolvedVin
-        ? "VIN і позицію передано в каталог. Перевірте статус сумісності кожної пропозиції."
-        : "Пошук виконано без VIN. Перед додаванням потрібне ручне підтвердження сумісності."));
+      setMessage(supplierData?.fitment?.reason || referenceData?.fitmentPolicy?.message || (resolvedFitment?.status !== "VERIFIED"
+        ? "Пошук у постачальників виконано без підтвердженого OE-зв’язку. Перед додаванням потрібно вручну перевірити сумісність."
+        : resolvedVin
+          ? "VIN і позицію передано в каталог. Перевірте статус сумісності кожної пропозиції."
+          : "Пошук виконано без VIN. Перед додаванням потрібне ручне підтвердження сумісності."));
     } catch (error) {
       if (requestId !== searchRequestRef.current) return;
       setParts([]);
@@ -597,7 +582,7 @@ export function PartsCatalog() {
           {fitment?.normalization?.canonicalName ? <span className={styles.normalizationBadge}>Каталог: {fitment.normalization.canonicalName} · {fitment.normalization.confidence || 0}%</span> : null}
         </div>
         {!supplierSearchBlocked && (manualOffers.length > 0 || fitment?.status !== "VERIFIED") && <label className={styles.policyNote}><input type="checkbox" checked={manualConfirmation} onChange={(event) => setManualConfirmation(event.target.checked)} /> Я вручну перевірив сумісність цієї деталі з автомобілем</label>}
-        {busy ? <div className={styles.pickerEmptyState}><b>Шукаю пропозиції…</b><span>Передаю VIN, позицію, OE-номери та запит до постачальників.</span></div> : !pickerOffers.length ? <div className={styles.pickerEmptyState}><b>Пропозицій у цій категорії поки немає</b><span>{supplierSearchBlocked ? "Запит до постачальників не відправлено: для цього автомобіля немає підтвердженого зв’язку з OE-каталогом." : fitment?.status === "CATALOG_NOT_CONNECTED" ? "Канонічний каталог OE ще не підключений для цього автомобіля." : configuredSuppliers.length ? "Змініть пошуковий запит або перевірте відповідь постачальників." : "Перевірте підключення BM Parts та Юнік Трейд у налаштуваннях CRM."}</span></div> : <div className={styles.pickerOfferList}>
+        {busy ? <div className={styles.pickerEmptyState}><b>Шукаю пропозиції…</b><span>Передаю VIN, позицію, OE-номери та запит до постачальників.</span></div> : !pickerOffers.length ? <div className={styles.pickerEmptyState}><b>Пропозицій у цій категорії поки немає</b><span>{supplierSearchBlocked ? "Запит до постачальників тимчасово заблокований." : configuredSuppliers.length ? fitment?.status === "VERIFIED" ? "Змініть пошуковий запит або перевірте відповідь постачальників." : "Запит до постачальників відправлено без OE-підтвердження, але збігів не знайдено. Перевірте назву або номер деталі." : "Перевірте підключення BM Parts та Юнік Трейд у налаштуваннях CRM."}</span></div> : <div className={styles.pickerOfferList}>
           {activeTab !== "review" && !categoryOffers.length && manualOffers.length > 0 && <div className={styles.policyNote}>У цій вкладці немає підтверджених результатів. Непідтверджені пропозиції винесені у вкладку «Перевірка».</div>}
           {pickerOffers.map((offer, index) => {
             const key = offer.supplierId + ":" + (offer.externalProductId || offer.article);

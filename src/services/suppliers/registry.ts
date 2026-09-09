@@ -227,16 +227,11 @@ export async function searchConfiguredSuppliers(query: string, limitPerSupplier 
   const statuses = await listSupplierStatuses();
   const configuredIds = new Set(statuses.filter((supplier) => supplier.configured).map((supplier) => supplier.id));
   const vehicleScoped = Boolean(context.vehicleId?.trim() || context.vin?.trim() || context.plate?.trim());
-  if (vehicleScoped && context.fitmentStatus !== "VERIFIED") {
-    return {
-      offers: [] as SupplierOffer[],
-      providers: [] as Array<{ id: SupplierId; ok: boolean; message?: string }>,
-      configuredSuppliers: [...configuredIds],
-      supplierStatuses: statuses,
-      blocked: true,
-      blockReason: context.fitmentReason || "Запит до постачальників не відправлено: для автомобіля немає підтвердженого зв’язку з OE-каталогом.",
-    };
-  }
+  // A vehicle context must not suppress the supplier request. Use the VIN/OE
+  // scoped adapter search only after fitment is verified; otherwise run the
+  // ordinary article/name search and mark every returned offer for manual
+  // compatibility confirmation in annotateOffer().
+  const useVehicleScopedSearch = vehicleScoped && context.fitmentStatus === "VERIFIED";
 
   const searchable = supplierAdapters
     .filter((adapter) => adapter.id !== "autonova-d" && adapter.id !== "atl" && configuredIds.has(adapter.id));
@@ -251,7 +246,7 @@ export async function searchConfiguredSuppliers(query: string, limitPerSupplier 
   const perQueryLimit = Math.max(3, Math.ceil(limitPerSupplier / searchQueries.length));
 
   const settled = await Promise.allSettled(searchable.map(async (adapter) => {
-    if (vehicleScoped) return vehicleScopedSearch(adapter, query, limitPerSupplier, context);
+    if (useVehicleScopedSearch) return vehicleScopedSearch(adapter, query, limitPerSupplier, context);
     const providerQueries = await providerKnowledgeQueries(adapter, query, context);
     const adapterSearchQueries = [...new Set([...providerQueries, ...searchQueries])].slice(0, 10);
     const adapterPerQueryLimit = Math.max(2, Math.ceil(limitPerSupplier / adapterSearchQueries.length));

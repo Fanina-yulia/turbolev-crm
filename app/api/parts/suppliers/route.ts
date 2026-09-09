@@ -62,46 +62,6 @@ export async function GET(request: Request) {
     genericArticle: fitment.genericArticle,
     normalization,
   };
-  const vehicleScoped = Boolean(vehicleId || vin || plate || fitment.vehicle?.id || fitment.vehicle?.vin);
-  if (vehicleScoped && fitment.status !== "VERIFIED") {
-    const message = "Запит до постачальників не відправлено: для цього автомобіля немає підтвердженого зв’язку з OE-каталогом.";
-    return NextResponse.json({
-      status: "CATALOG_REQUIRED",
-      query: q,
-      context: { vehicleId, vin, plate, partName, canonicalCode, axis, side, subPosition, position },
-      fitment: fitmentPayload,
-      catalogMatches: fitment.matches,
-      oeNumbers: fitment.oeNumbers,
-      catalogArticles: fitment.catalogArticles,
-      analogArticles: fitment.analogArticles,
-      normalization,
-      offers: [],
-      providers: [],
-      configuredSuppliers: [],
-      supplierStatuses: [],
-      suppliers: [],
-      supplierSummary: {
-        added: 0,
-        configured: 0,
-        responded: 0,
-        blocked: true,
-        message,
-      },
-      supplierSearchBlocked: true,
-      supplierSearchBlockReason: message,
-      pricing: {
-        basis: "SUPPLIER_DEFAULT_MARKUP",
-        defaultMarkupPercent: 40,
-        message: "Пошук постачальників заблокований до підтвердження сумісності через OE-каталог.",
-      },
-      policy: {
-        priceType: "PURCHASE_PRICE",
-        fitmentConfirmed: false,
-        supplierSearchAllowed: false,
-        message,
-      },
-    }, { headers: { "Cache-Control": "no-store" } });
-  }
   const [result, suppliers] = await Promise.all([
     searchConfiguredSuppliers(q, 20, {
       vehicleId,

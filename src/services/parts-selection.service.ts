@@ -213,19 +213,6 @@ export async function selectDiagnosticPartOffer(input: {
     vehicleId: clean(input.vehicleId, 160) || null,
     vin: input.vehicleVin || null,
   });
-  const vehicleScoped = Boolean(
-    clean(input.vehicleId, 160)
-    || clean(input.vehicleVin, 24)
-    || fitment.vehicle?.id
-    || fitment.vehicle?.vin
-  );
-  if (vehicleScoped && fitment.status !== "VERIFIED") {
-    throw new PartsSelectionError(
-      "CATALOG_FITMENT_REQUIRED",
-      "Підбір постачальника заблоковано: спочатку підключіть і підтвердьте OE-каталог для цього автомобіля.",
-      409,
-    );
-  }
   const wantedExternalId = clean(input.externalProductId, 200);
   const wantedArticle = clean(input.article, 120).toUpperCase();
   const normalizedWantedArticle = normalizeCatalogNumber(wantedArticle);
