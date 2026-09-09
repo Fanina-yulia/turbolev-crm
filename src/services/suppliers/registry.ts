@@ -1,7 +1,7 @@
 import { getIntegrationCredential } from "@/src/services/integration-credentials.service";
 import { bmPartsAdapter } from "./bm-parts.adapter";
 import { uniqueTradeAdapter } from "./unique-trade.adapter";
-import type { PartFitmentStatus } from "@/src/services/parts-fitment.service";
+import type { PartFitmentStatus, PartOfferClass } from "@/src/services/parts-fitment.service";
 import { normalizeCatalogNumber } from "@/src/services/parts-fitment.service";
 import { buildKnowledgeProviderPartQueryCandidates } from "@/src/services/parts-knowledge.service";
 import type {
@@ -109,6 +109,12 @@ export type SupplierSearchContext = {
   fitmentSource?: string | null;
   fitmentReason?: string | null;
   providerVehicle?: SupplierVehicleContext | null;
+  catalogMatches?: Array<{
+    article: string;
+    offerClass: PartOfferClass;
+    oeNumbers?: string[];
+    analogOfArticle?: string | null;
+  }>;
   catalogArticles?: string[];
   analogArticles?: string[];
   analogReferences?: Array<{ brand: string | null; article: string }>;
@@ -127,32 +133,39 @@ function looksLikePartNumber(value: string) {
   return /^[a-z0-9][a-z0-9._/\\-]{2,}$/iu.test(value.trim()) && /[0-9]/u.test(value);
 }
 
-function annotateOffer(offer: SupplierOffer, context: SupplierSearchContext): SupplierOffer {
+export function annotateOffer(offer: SupplierOffer, context: SupplierSearchContext): SupplierOffer {
   const article = normalizeCatalogNumber(offer.article);
   const catalogArticles = new Set((context.catalogArticles || []).map(normalizeCatalogNumber).filter(Boolean));
   const analogArticles = new Set((context.analogArticles || []).map(normalizeCatalogNumber).filter(Boolean));
   const oeNumbers = new Set((context.oeNumbers || []).map(normalizeCatalogNumber).filter(Boolean));
-  const hasCatalogMatch = Boolean(article && (catalogArticles.has(article) || oeNumbers.has(article)));
-  const isAnalog = Boolean(article && analogArticles.has(article));
+  const matchedCatalog = article
+    ? (context.catalogMatches || []).find((match) =>
+        normalizeCatalogNumber(match.article) === article
+        || (match.oeNumbers || []).some((oeNumber) => normalizeCatalogNumber(oeNumber) === article))
+    : null;
+  const hasCatalogMatch = Boolean(article && (matchedCatalog || catalogArticles.has(article) || oeNumbers.has(article)));
+  const isAnalog = Boolean(article && (matchedCatalog?.offerClass === "ANALOG" || (!matchedCatalog && analogArticles.has(article))));
   const isOeNumber = Boolean(article && oeNumbers.has(article));
   const vehicleScoped = Boolean(context.vehicleId?.trim() || context.vin?.trim() || context.plate?.trim());
   const offerClass = hasCatalogMatch
-    ? isAnalog ? "ANALOG" as const : "OEM" as const
-    : offer.sourceKind === "ANALOG" ? "ANALOG" as const
-      : offer.offerClass || "UNKNOWN";
-  const verified = context.fitmentStatus === "VERIFIED" && hasCatalogMatch;
+    ? isAnalog
+      ? "ANALOG" as const
+      : matchedCatalog?.offerClass === "OEM" || (!matchedCatalog && isOeNumber)
+        ? "OEM" as const
+        : "UNKNOWN" as const
+    : "UNKNOWN" as const;
+  const verified = context.fitmentStatus === "VERIFIED" && hasCatalogMatch && offerClass !== "UNKNOWN";
   const offerReason = verified && isAnalog
     ? "Аналог підтверджений крос-номером у VIN-каталозі."
     : verified
       ? "Артикул знайдено у підтвердженому VIN-каталозі OE."
       : isOeNumber
         ? "Артикул збігається з OE-номером, але його застосовність ще потрібно перевірити."
-        : offer.sourceKind === "ANALOG"
-          ? "Постачальник повернув аналог; застосовність підтверджується вручну."
-          : "Знайдено за запитом постачальника; потрібна ручна перевірка застосовності.";
+        : "Артикул повернув постачальник, але канонічний каталог не підтвердив його як OEM або аналог.";
   return {
     ...offer,
     offerClass,
+    analogOfArticle: offer.analogOfArticle || matchedCatalog?.analogOfArticle || null,
     fitmentStatus: verified ? "VERIFIED" : vehicleScoped ? "MANUAL_REQUIRED" : context.fitmentStatus || "MANUAL_REQUIRED",
     fitmentConfidence: verified ? context.fitmentConfidence ?? null : 0,
     fitmentExact: verified ? context.fitmentExact ?? offer.fitmentExact ?? null : false,
@@ -177,6 +190,24 @@ function knowledgeProviderFor(adapter: SupplierAdapter) {
   if (adapter.id === "bm-parts") return "BM_PARTS" as const;
   if (adapter.id === "unique-trade") return "UNITRADE" as const;
   return null;
+}
+
+export type SupplierSearchPolicy = {
+  vehicleScoped: boolean;
+  allowed: boolean;
+  reason: string | null;
+};
+
+export function evaluateSupplierSearchPolicy(context: SupplierSearchContext): SupplierSearchPolicy {
+  const vehicleScoped = Boolean(context.vehicleId?.trim() || context.vin?.trim() || context.plate?.trim());
+  if (vehicleScoped && context.fitmentStatus !== "VERIFIED") {
+    return {
+      vehicleScoped,
+      allowed: false,
+      reason: context.fitmentReason || "Запит до постачальників не відправлено: для автомобіля немає підтвердженого зв’язку з OE-каталогом.",
+    };
+  }
+  return { vehicleScoped, allowed: true, reason: null };
 }
 
 async function providerKnowledgeQueries(adapter: SupplierAdapter, query: string, context: SupplierSearchContext) {
@@ -226,17 +257,18 @@ async function vehicleScopedSearch(adapter: SupplierAdapter, query: string, limi
 export async function searchConfiguredSuppliers(query: string, limitPerSupplier = 20, context: SupplierSearchContext = {}) {
   const statuses = await listSupplierStatuses();
   const configuredIds = new Set(statuses.filter((supplier) => supplier.configured).map((supplier) => supplier.id));
-  const vehicleScoped = Boolean(context.vehicleId?.trim() || context.vin?.trim() || context.plate?.trim());
-  if (vehicleScoped && context.fitmentStatus !== "VERIFIED") {
+  const policy = evaluateSupplierSearchPolicy(context);
+  if (!policy.allowed) {
     return {
       offers: [] as SupplierOffer[],
       providers: [] as Array<{ id: SupplierId; ok: boolean; message?: string }>,
       configuredSuppliers: [...configuredIds],
       supplierStatuses: statuses,
       blocked: true,
-      blockReason: context.fitmentReason || "Запит до постачальників не відправлено: для автомобіля немає підтвердженого зв’язку з OE-каталогом.",
+      blockReason: policy.reason,
     };
   }
+  const vehicleScoped = policy.vehicleScoped;
 
   const searchable = supplierAdapters
     .filter((adapter) => adapter.id !== "autonova-d" && adapter.id !== "atl" && configuredIds.has(adapter.id));

@@ -6,6 +6,8 @@ import { resolveLaborPricing } from "@/src/services/labor-pricing.service";
 import { resolvePartFitment } from "@/src/services/parts-fitment.service";
 import { normalizePartNeed } from "@/src/services/part-normalization.service";
 import { resolvePartKnowledge } from "@/src/services/parts-knowledge.service";
+import { PERMISSIONS } from "@/src/security/permissions";
+import { authorizeScopedLocation } from "@/src/security/scoped-location-access";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -25,6 +27,10 @@ export async function GET(request: Request) {
   const subPosition = searchParams.get("subPosition")?.trim() || null;
   const position = searchParams.get("position")?.trim() || null;
   const genericArticleId = searchParams.get("genericArticleId")?.trim() || null;
+  const locationId = searchParams.get("locationId")?.trim() || null;
+
+  const access = await authorizeScopedLocation(PERMISSIONS.PARTS_READ, request, locationId);
+  if (!access.ok) return access.response;
 
   if (q.length < 2) {
     return NextResponse.json({ status: "INVALID_QUERY", message: "Введіть щонайменше 2 символи назви деталі." }, { status: 400 });

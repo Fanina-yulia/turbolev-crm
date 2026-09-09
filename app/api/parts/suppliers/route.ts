@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { PERMISSIONS } from "@/src/security/permissions";
 import { authorizeScopedLocation } from "@/src/security/scoped-location-access";
 import { enrichOffersWithSellPrice } from "@/src/services/suppliers/order.service";
-import { listSupplierStatuses, searchConfiguredSuppliers } from "@/src/services/suppliers/registry";
+import { evaluateSupplierSearchPolicy, listSupplierStatuses, searchConfiguredSuppliers } from "@/src/services/suppliers/registry";
 import { resolvePartFitment } from "@/src/services/parts-fitment.service";
 import { normalizePartNeed } from "@/src/services/part-normalization.service";
 
@@ -62,9 +62,15 @@ export async function GET(request: Request) {
     genericArticle: fitment.genericArticle,
     normalization,
   };
-  const vehicleScoped = Boolean(vehicleId || vin || plate || fitment.vehicle?.id || fitment.vehicle?.vin);
-  if (vehicleScoped && fitment.status !== "VERIFIED") {
-    const message = "Запит до постачальників не відправлено: для цього автомобіля немає підтвердженого зв’язку з OE-каталогом.";
+  const supplierPolicy = evaluateSupplierSearchPolicy({
+    vehicleId: vehicleId || fitment.vehicle?.id || null,
+    vin: vin || fitment.vehicle?.vin || null,
+    plate,
+    fitmentStatus: fitment.status,
+    fitmentReason: fitment.reason,
+  });
+  if (!supplierPolicy.allowed) {
+    const message = supplierPolicy.reason || "Запит до постачальників не відправлено: для цього автомобіля немає підтвердженого зв’язку з OE-каталогом.";
     return NextResponse.json({
       status: "CATALOG_REQUIRED",
       query: q,
@@ -113,6 +119,12 @@ export async function GET(request: Request) {
       fitmentSource: fitment.catalog?.source || null,
       fitmentReason: fitment.reason,
       providerVehicle: fitment.providerVehicle,
+      catalogMatches: fitment.matches.map((match) => ({
+        article: match.article,
+        offerClass: match.offerClass,
+        oeNumbers: match.oeNumbers,
+        analogOfArticle: match.analogOfArticle || null,
+      })),
       partName,
       canonicalCode,
       axis,
@@ -124,7 +136,10 @@ export async function GET(request: Request) {
       analogArticles: fitment.analogArticles,
       oeNumbers: [...new Set([...fitment.oeNumbers, ...oeNumbers])],
       normalizedQuery: normalization.normalizedQuery,
-      analogReferences: fitment.matches.map((match) => ({ brand: match.brand, article: match.article })).slice(0, 8),
+      analogReferences: fitment.matches
+        .filter((match) => match.offerClass === "OEM")
+        .map((match) => ({ brand: match.brand, article: match.article }))
+        .slice(0, 8),
     }),
     listSupplierStatuses(),
   ]);

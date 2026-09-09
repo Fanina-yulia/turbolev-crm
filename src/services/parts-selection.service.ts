@@ -7,6 +7,7 @@ import { ensurePartsRequestTx } from "@/src/services/work-order-commercial.servi
 import { enrichOffersWithSellPrice, ensureSupplierRecord } from "@/src/services/suppliers/order.service";
 import { searchConfiguredSuppliers } from "@/src/services/suppliers/registry";
 import { normalizeCatalogNumber, resolvePartFitment, type PartFitmentStatus } from "@/src/services/parts-fitment.service";
+import { normalizeVin, validateVin } from "@/src/domain/vin";
 import { calculateCatalogLaborPrice, isReplacementLabor } from "@/src/services/labor-pricing.service";
 import type { SupplierId } from "@/src/services/suppliers/types";
 
@@ -187,7 +188,11 @@ export async function selectDiagnosticPartOffer(input: {
     throw new PartsSelectionError("QUANTITY_INVALID", "Кількість деталі має бути від 1 до 100.");
   }
   if (!diagnosticRequestId || (!findingId && !manualPartId)) throw new PartsSelectionError("CONTEXT_REQUIRED", "Не передано діагностику або позицію до заміни.");
-  const searchMode = input.searchMode === "VIN" && clean(input.vehicleVin, 24).length === 17
+  const requestedVin = clean(input.vehicleVin, 24);
+  const vinValidation = validateVin(requestedVin);
+  const validVin = vinValidation.formatValid
+    && !(vinValidation.northAmerican && vinValidation.checkDigit.status === "INVALID");
+  const searchMode = input.searchMode === "VIN" && validVin
     ? "VIN"
     : input.searchMode === "PART_NUMBER" ? "PART_NUMBER" : "TEXT";
   if (searchMode !== "VIN" && input.manualConfirmation !== true) {
@@ -209,13 +214,20 @@ export async function selectDiagnosticPartOffer(input: {
     side: input.side || null,
     subPosition: input.subPosition || null,
     genericArticleId: clean(input.genericArticleId, 160) || suggestion.genericArticleId || null,
-    position: input.position || null,
+    position: input.position || input.side || null,
     vehicleId: clean(input.vehicleId, 160) || null,
-    vin: input.vehicleVin || null,
+    vin: requestedVin || null,
   });
+  if (searchMode === "VIN" && normalizeVin(fitment.vehicle?.vin || "") !== normalizeVin(requestedVin)) {
+    throw new PartsSelectionError(
+      "VEHICLE_CONTEXT_MISMATCH",
+      "VIN не збігається з автомобілем у CRM. Оновіть контекст автомобіля та повторіть пошук.",
+      409,
+    );
+  }
   const vehicleScoped = Boolean(
     clean(input.vehicleId, 160)
-    || clean(input.vehicleVin, 24)
+    || requestedVin
     || fitment.vehicle?.id
     || fitment.vehicle?.vin
   );
@@ -229,10 +241,14 @@ export async function selectDiagnosticPartOffer(input: {
   const wantedExternalId = clean(input.externalProductId, 200);
   const wantedArticle = clean(input.article, 120).toUpperCase();
   const normalizedWantedArticle = normalizeCatalogNumber(wantedArticle);
-  const selectedArticleIsCatalogued = Boolean(
-    normalizedWantedArticle
-    && [...fitment.catalogArticles, ...fitment.oeNumbers].some((article) => normalizeCatalogNumber(article) === normalizedWantedArticle),
-  );
+  const requestedFitmentProductId = clean(input.fitmentProductId, 180);
+  const selectedCatalogMatch = fitment.matches.find((match) => {
+    if (requestedFitmentProductId && match.productId === requestedFitmentProductId) return true;
+    if (!normalizedWantedArticle) return false;
+    return normalizeCatalogNumber(match.article) === normalizedWantedArticle
+      || match.oeNumbers.some((article) => normalizeCatalogNumber(article) === normalizedWantedArticle);
+  }) || null;
+  const selectedArticleIsCatalogued = Boolean(selectedCatalogMatch);
   const catalogFitmentConfirmed = fitment.status === "VERIFIED"
     && fitment.exact
     && selectedArticleIsCatalogued;
@@ -249,11 +265,11 @@ export async function selectDiagnosticPartOffer(input: {
   // rejected as stale during the second server-side verification.
   const search = await searchConfiguredSuppliers(wantedArticle || suggestion.description, 50, {
     vehicleId: clean(input.vehicleId, 160) || null,
-    vin: clean(input.vehicleVin, 24) || null,
+    vin: requestedVin || null,
     fitmentStatus: fitment.status,
     fitmentConfidence: fitment.confidence,
     fitmentExact: fitment.exact,
-    fitmentSource: fitment.catalog?.source || input.fitmentSource || null,
+    fitmentSource: fitment.catalog?.source || null,
     fitmentReason: fitment.reason,
     providerVehicle: fitment.providerVehicle,
     canonicalCode: input.canonicalCode || null,
@@ -261,16 +277,22 @@ export async function selectDiagnosticPartOffer(input: {
     side: input.side || null,
     subPosition: input.subPosition || null,
     partName: input.partName || suggestion.description,
-    position: input.position || null,
+    position: input.position || input.side || null,
     genericArticleId: fitment.genericArticle?.id || clean(input.genericArticleId, 160) || suggestion.genericArticleId || null,
     catalogArticles: fitment.catalogArticles,
     analogArticles: fitment.analogArticles,
     oeNumbers: fitment.oeNumbers,
+    catalogMatches: fitment.matches.map((match) => ({
+      article: match.article,
+      offerClass: match.offerClass,
+      oeNumbers: match.oeNumbers,
+      analogOfArticle: match.analogOfArticle || null,
+    })),
   });
   const liveOffer = search.offers.find((offer) => {
     if (offer.supplierId !== supplierId) return false;
     if (wantedExternalId && offer.externalProductId === wantedExternalId) return true;
-    return Boolean(wantedArticle && offer.article.trim().toUpperCase() === wantedArticle);
+    return Boolean(wantedArticle && normalizeCatalogNumber(offer.article) === normalizedWantedArticle);
   });
   if (!liveOffer) throw new PartsSelectionError("OFFER_STALE", "Пропозиція постачальника вже недоступна. Оновіть пошук.", 409);
   if (searchMode === "VIN" && (liveOffer.fitmentStatus !== "VERIFIED" || liveOffer.fitmentExact === false)) {
@@ -280,6 +302,26 @@ export async function selectDiagnosticPartOffer(input: {
 
   const [priced] = await enrichOffersWithSellPrice([liveOffer]);
   if (!priced || priced.sellPrice == null) throw new PartsSelectionError("PRICE_UNAVAILABLE", "Постачальник не повернув коректну ціну.", 409);
+  const fitmentEvidence = {
+    vehicleId: fitment.vehicle?.id || clean(input.vehicleId, 160) || null,
+    vin: fitment.vehicle?.vin || requestedVin || null,
+    vehicleReferenceId: fitment.catalog?.vehicleReferenceId || null,
+    source: selectedCatalogMatch?.fitment.source || fitment.catalog?.source || null,
+    sourceVersion: selectedCatalogMatch?.fitment.sourceVersion || fitment.catalog?.sourceVersion || null,
+    sourceFitmentId: selectedCatalogMatch?.fitment.sourceFitmentId || null,
+    productId: selectedCatalogMatch?.productId || null,
+    article: priced.article,
+    offerClass: selectedCatalogMatch?.offerClass || null,
+    analogOfArticle: selectedCatalogMatch?.analogOfArticle || null,
+    oeNumbers: selectedCatalogMatch?.oeNumbers || fitment.oeNumbers,
+    status: fitment.status,
+    exact: fitment.exact,
+    confidence: fitment.confidence,
+    reason: selectedCatalogMatch?.fitment.reason || fitment.reason,
+    selectedOfferFitmentStatus: liveOffer.fitmentStatus || null,
+    selectedOfferFitmentExact: liveOffer.fitmentExact ?? null,
+    selectedOfferReason: liveOffer.fitmentReason || liveOffer.offerReason || null,
+  };
   const supplier = await ensureSupplierRecord(supplierId);
   const prisma = getPrisma();
   const workOrderVehicle = await prisma.workOrder.findUnique({
@@ -340,8 +382,9 @@ export async function selectDiagnosticPartOffer(input: {
       fitmentExact: fitment.exact,
       fitmentConfirmed: catalogFitmentConfirmed,
       fitmentConfidence: fitment.confidence,
-      fitmentSource: fitment.catalog?.source || input.fitmentSource || null,
+      fitmentSource: fitment.catalog?.source || null,
       fitmentReason: fitment.reason,
+      fitmentEvidence,
       partsPricingSnapshot: {
         purchasePrice: priced.purchasePrice,
         markupPercent: priced.markupPercent,
@@ -401,8 +444,9 @@ export async function selectDiagnosticPartOffer(input: {
           fitmentExact: fitment.exact,
           fitmentConfirmed: catalogFitmentConfirmed,
           fitmentConfidence: fitment.confidence,
-          fitmentSource: fitment.catalog?.source || input.fitmentSource || null,
+          fitmentSource: fitment.catalog?.source || null,
           fitmentReason: fitment.reason,
+          fitmentEvidence,
           labor,
         }),
       },

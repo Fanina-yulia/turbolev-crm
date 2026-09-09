@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import { bmSearchMode, buildBmVehicleFilter, buildBmVehicleFilterCandidates, encodeBmCarFilter, rankBmModelNames } from "@/src/services/suppliers/bm-parts.adapter";
-import { buildModelScopedProviderVehicle, normalizeCatalogNumber, normalizePartPosition } from "@/src/services/parts-fitment.service";
+import { buildModelScopedProviderVehicle, fitmentPositionMatches, normalizeCatalogNumber, normalizePartPosition } from "@/src/services/parts-fitment.service";
 import { buildProviderPartQueryCandidates, resolvePartTerminology } from "@/src/services/parts-terminology.service";
+import { annotateOffer, evaluateSupplierSearchPolicy } from "@/src/services/suppliers/registry";
+import type { SupplierOffer } from "@/src/services/suppliers/types";
 
 const filter = buildBmVehicleFilter({
   brand: "GEELY",
@@ -22,6 +24,44 @@ assert.equal(buildBmVehicleFilter({ brand: null, model: "EMGRAND X7" }), "");
 assert.equal(normalizeCatalogNumber("  SOLGY-211125 "), "SOLGY211125");
 assert.equal(normalizePartPosition("Амортизатор передній лівий"), "FRONT_LEFT");
 assert.equal(normalizePartPosition("rear right"), "REAR_RIGHT");
+assert.equal(fitmentPositionMatches(null, "FRONT_RIGHT"), false);
+assert.equal(fitmentPositionMatches("front right", "FRONT_RIGHT"), true);
+assert.equal(fitmentPositionMatches("front left", "FRONT_RIGHT"), false);
+assert.equal(fitmentPositionMatches("front left", "FRONT"), true);
+assert.equal(evaluateSupplierSearchPolicy({ vehicleId: "vehicle-1", fitmentStatus: "CATALOG_NOT_CONNECTED" }).allowed, false);
+assert.equal(evaluateSupplierSearchPolicy({ vehicleId: "vehicle-1", fitmentStatus: "VERIFIED" }).allowed, true);
+
+const supplierOffer: SupplierOffer = {
+  supplierId: "bm-parts",
+  supplierName: "BM Parts",
+  externalProductId: "external-1",
+  article: "SUPPLIER-UNKNOWN-1",
+  brand: "Supplier Brand",
+  name: "Supplier result",
+  purchasePrice: 100,
+  currency: "UAH",
+  multiplicity: 1,
+  stock: [],
+  available: true,
+  sourceUrl: null,
+};
+const unknownSupplierOffer = annotateOffer(supplierOffer, {
+  vehicleId: "vehicle-1",
+  fitmentStatus: "VERIFIED",
+  catalogArticles: ["OEM-1"],
+  catalogMatches: [{ article: "OEM-1", offerClass: "OEM" }],
+});
+assert.equal(unknownSupplierOffer.offerClass, "UNKNOWN");
+assert.equal(unknownSupplierOffer.fitmentStatus, "MANUAL_REQUIRED");
+
+const catalogAnalogOffer = annotateOffer({ ...supplierOffer, article: "CATALOG-ANALOG-1" }, {
+  vehicleId: "vehicle-1",
+  fitmentStatus: "VERIFIED",
+  catalogMatches: [{ article: "CATALOG-ANALOG-1", offerClass: "ANALOG", analogOfArticle: "OEM-1" }],
+});
+assert.equal(catalogAnalogOffer.offerClass, "ANALOG");
+assert.equal(catalogAnalogOffer.fitmentStatus, "VERIFIED");
+assert.equal(catalogAnalogOffer.analogOfArticle, "OEM-1");
 
 const wheelBearing = resolvePartTerminology({ query: "Підшипник ступиці передній", position: "FRONT" });
 assert.equal(wheelBearing.definition?.code, "WHEEL_HUB_BEARING");

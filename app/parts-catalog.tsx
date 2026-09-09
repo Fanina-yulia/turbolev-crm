@@ -262,12 +262,16 @@ export function PartsCatalog() {
       if (requestId !== searchRequestRef.current) return;
       if (!supplierResponse.ok) throw new Error(supplierData?.error || "Постачальники тимчасово недоступні.");
       const supplierBlocked = Boolean(supplierData?.supplierSearchBlocked);
-      setOffers(supplierBlocked ? [] : Array.isArray(supplierData?.offers) ? supplierData.offers : []);
+      const returnedOffers = supplierBlocked ? [] : Array.isArray(supplierData?.offers) ? supplierData.offers : [];
+      setOffers(returnedOffers);
       setSupplierProviders(supplierBlocked ? [] : Array.isArray(supplierData?.providers) ? supplierData.providers : []);
       setConfiguredSuppliers(supplierBlocked ? [] : Array.isArray(supplierData?.configuredSuppliers) ? supplierData.configuredSuppliers : []);
       setFitment(supplierData?.fitment || referenceData?.fitment || null);
       setSupplierSearchBlocked(supplierBlocked);
       setManualConfirmation(false);
+      const returnedOriginals = returnedOffers.filter((offer) => offer.offerClass === "OEM");
+      const returnedAnalogs = returnedOffers.filter((offer) => offer.offerClass === "ANALOG");
+      setActiveTab(returnedOriginals.length ? "originals" : returnedAnalogs.length ? "analogs" : returnedOffers.length ? "review" : "originals");
       setMessage(supplierData?.fitment?.reason || referenceData?.fitmentPolicy?.message || (resolvedVin
         ? "VIN і позицію передано в каталог. Перевірте статус сумісності кожної пропозиції."
         : "Пошук виконано без VIN. Перед додаванням потрібне ручне підтвердження сумісності."));
@@ -466,9 +470,7 @@ export function PartsCatalog() {
     if (!route.diagnosticId || !activeRecommendation) { setMessage("Спочатку оберіть позицію з Діагностичної карти."); return; }
     const key = `${offer.supplierId}:${offer.externalProductId || offer.article}`; setSelectingOffer(key);
     try {
-      const selectionVin = looksLikeVin(vehicleRef)
-        ? normalizeVin(vehicleRef)
-        : resolvedPlate && normalizePlate(vehicleRef) === normalizePlate(resolvedPlate) ? resolvedVin : "";
+      const selectionVin = normalizeVin(context?.vin || resolvedVin || (looksLikeVin(vehicleRef) ? vehicleRef : ""));
       const catalogVerified = offer.fitmentStatus === "VERIFIED"
         && offer.fitmentExact !== false
         && fitment?.exact !== false;

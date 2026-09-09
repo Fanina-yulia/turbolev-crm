@@ -2,10 +2,8 @@ import { normalizeVin, validateVin } from "@/src/domain/vin";
 import { normalizeRegistrationPlate } from "@/src/domain/registration-plate";
 import { getPrisma } from "@/src/lib/prisma";
 import { normalizePartNeed } from "@/src/services/part-normalization.service";
-import { toPrismaJson } from "@/src/lib/prisma-json";
-import { BM_PARTS_VEHICLE_CONTEXT_VERSION, bmPartsAdapter } from "@/src/services/suppliers/bm-parts.adapter";
 import { resolvePartKnowledge } from "@/src/services/parts-knowledge.service";
-import type { SupplierVehicleContext, SupplierVehiclePart } from "@/src/services/suppliers/types";
+import type { SupplierVehicleContext } from "@/src/services/suppliers/types";
 
 export type PartFitmentStatus =
   | "VERIFIED"
@@ -55,8 +53,8 @@ export type PartFitmentContext = {
   status: PartFitmentStatus;
   /**
    * True means the selected part can be auto-approved for the vehicle.
-   * A BM Parts model-filter result is VERIFIED for the scoped search but not exact,
-   * so it remains false and requires an operator confirmation before selection.
+   * Supplier search results never set this value; only a canonical
+   * VehicleCatalogLink + VehicleFitment match can do so.
    */
   confirmed: boolean;
   exact: boolean;
@@ -115,6 +113,12 @@ export function normalizePartPosition(value: unknown) {
   return [axis, side, vertical].filter(Boolean).join("_") || source;
 }
 
+function intentPosition(intent: PartSearchIntent) {
+  return [intent.position, intent.side]
+    .filter((value): value is string => Boolean(value?.trim()))
+    .join(" ");
+}
+
 async function findGenericArticle(intent: PartSearchIntent) {
   const prisma = getPrisma();
   const genericArticleId = clean(intent.genericArticleId, 160);
@@ -130,7 +134,7 @@ async function findGenericArticle(intent: PartSearchIntent) {
     partName: intent.partName,
     canonicalCode: intent.canonicalCode,
     genericArticleId: null,
-    position: intent.position || intent.side,
+    position: intentPosition(intent),
     axis: intent.axis,
     side: intent.side,
     subPosition: intent.subPosition,
@@ -141,7 +145,7 @@ async function findGenericArticle(intent: PartSearchIntent) {
     query: intent.query,
     partName: intent.partName,
     canonicalCode: intent.canonicalCode,
-    position: intent.position,
+    position: intentPosition(intent),
     side: intent.side,
     subPosition: intent.subPosition,
   });
@@ -169,9 +173,16 @@ async function findGenericArticle(intent: PartSearchIntent) {
   });
 }
 
-function fitmentPositionMatches(storedPosition: string | null, requestedPosition: string | null) {
-  if (!requestedPosition || !storedPosition) return true;
-  return normalizePartPosition(storedPosition) === requestedPosition;
+export function fitmentPositionMatches(storedPosition: string | null, requestedPosition: string | null) {
+  if (!requestedPosition) return true;
+  if (!storedPosition) return false;
+  const stored = normalizePartPosition(storedPosition);
+  if (stored === requestedPosition) return true;
+
+  const knownTokens = new Set(["FRONT", "REAR", "LEFT", "RIGHT", "UPPER", "LOWER"]);
+  const requestedTokens = requestedPosition.split("_").filter((token) => knownTokens.has(token));
+  const storedTokens = new Set(stored?.split("_") || []);
+  return requestedTokens.length > 0 && requestedTokens.every((token) => storedTokens.has(token));
 }
 
 function classifyProduct(oeReferences: Array<{ relationType: string | null }>): PartOfferClass {
@@ -199,42 +210,6 @@ function emptyContext(status: PartFitmentStatus, reason: string, vehicle: PartFi
     oeNumbers: [],
     catalogArticles: [],
     analogArticles: [],
-  };
-}
-
-type ProviderVehicleRow = {
-  vehicleId: string;
-  provider: string;
-  externalVehicleId: string | null;
-  externalSecurityKey: string | null;
-  catalogCode: string | null;
-  brand: string | null;
-  model: string | null;
-  variant: string | null;
-  source: string;
-  sourceVersion: string | null;
-  confidence: number;
-  exact: boolean;
-  rawEvidence: unknown;
-  expiresAt: Date | null;
-};
-
-function providerVehicleFromRow(row: ProviderVehicleRow): SupplierVehicleContext | null {
-  if (row.provider !== "bm-parts" || !row.brand || !row.model) return null;
-  return {
-    provider: "bm-parts",
-    vehicleKey: [row.catalogCode, row.externalVehicleId, row.externalSecurityKey].filter(Boolean).join(":") || row.vehicleId,
-    externalVehicleId: row.externalVehicleId,
-    externalSecurityKey: row.externalSecurityKey,
-    catalogCode: row.catalogCode,
-    brand: row.brand,
-    model: row.model,
-    variant: row.variant,
-    confidence: row.confidence,
-    exact: row.exact,
-    source: row.source,
-    sourceVersion: row.sourceVersion,
-    rawEvidence: row.rawEvidence,
   };
 }
 
@@ -267,258 +242,6 @@ export function buildModelScopedProviderVehicle(input: {
       year: input.year,
       vin: clean(input.vin, 40) || null,
     },
-  };
-}
-
-async function resolveBmVehicleContext(
-  vehicleId: string,
-  identityVin: string,
-  vehicleSummary: NonNullable<PartFitmentContext["vehicle"]>,
-): Promise<SupplierVehicleContext | null> {
-  if (!vehicleId) return null;
-  const modelFallback = buildModelScopedProviderVehicle({
-    vehicleId,
-    brand: vehicleSummary.brand,
-    model: vehicleSummary.model,
-    year: vehicleSummary.year,
-    vin: vehicleSummary.vin,
-  });
-
-  try {
-    const prisma = getPrisma();
-    let cached: ProviderVehicleRow | null = null;
-    try {
-      cached = await prisma.providerVehicleContext.findUnique({
-        where: { vehicleId_provider: { vehicleId, provider: "bm-parts" } },
-      }) as ProviderVehicleRow | null;
-    } catch (error) {
-      console.warn("BM Parts vehicle context cache unavailable", error instanceof Error ? error.message : "unknown error");
-    }
-    if (cached && cached.sourceVersion === BM_PARTS_VEHICLE_CONTEXT_VERSION && (!cached.expiresAt || cached.expiresAt.getTime() > Date.now())) {
-      const context = providerVehicleFromRow(cached);
-      if (context) return context;
-    }
-
-    if (!(await bmPartsAdapter.isConfigured())) return null;
-
-    if (identityVin.length === 17 && bmPartsAdapter.resolveVehicle) {
-      try {
-        const resolved = await bmPartsAdapter.resolveVehicle(identityVin);
-        if (resolved) {
-          try {
-            const rawEvidence = resolved.rawEvidence == null ? undefined : toPrismaJson(resolved.rawEvidence);
-            await prisma.providerVehicleContext.upsert({
-              where: { vehicleId_provider: { vehicleId, provider: "bm-parts" } },
-              create: {
-                vehicleId,
-                provider: "bm-parts",
-                externalVehicleId: resolved.externalVehicleId,
-                externalSecurityKey: resolved.externalSecurityKey,
-                catalogCode: resolved.catalogCode,
-                brand: resolved.brand,
-                model: resolved.model,
-                variant: resolved.variant,
-                source: resolved.source,
-                sourceVersion: resolved.sourceVersion,
-                confidence: resolved.confidence,
-                exact: resolved.exact,
-                rawEvidence,
-                resolvedAt: new Date(),
-                expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
-              },
-              update: {
-                externalVehicleId: resolved.externalVehicleId,
-                externalSecurityKey: resolved.externalSecurityKey,
-                catalogCode: resolved.catalogCode,
-                brand: resolved.brand,
-                model: resolved.model,
-                variant: resolved.variant,
-                source: resolved.source,
-                sourceVersion: resolved.sourceVersion,
-                confidence: resolved.confidence,
-                exact: resolved.exact,
-                rawEvidence,
-                resolvedAt: new Date(),
-                expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
-              },
-            });
-          } catch (error) {
-            console.warn("BM Parts vehicle context cache write unavailable", error instanceof Error ? error.message : "unknown error");
-          }
-          return resolved;
-        }
-      } catch (error) {
-        console.warn("BM Parts VIN vehicle resolve unavailable", error instanceof Error ? error.message : "unknown error");
-      }
-    }
-
-    return modelFallback;
-  } catch (error) {
-    console.warn("BM Parts vehicle context unavailable", error instanceof Error ? error.message : "unknown error");
-    try {
-      return (await bmPartsAdapter.isConfigured()) ? modelFallback : null;
-    } catch {
-      return null;
-    }
-  }
-}
-
-async function auditProviderSearch(input: {
-  vehicleId: string;
-  query: string;
-  position: string | null;
-  status: string;
-  resultCount: number;
-  fitmentExact: boolean;
-  sourceVersion: string | null;
-  errorCode?: string | null;
-  metadata?: unknown;
-}) {
-  try {
-    const prisma = getPrisma();
-    await prisma.providerFitmentSearchAudit.create({
-      data: {
-        vehicleId: input.vehicleId,
-        provider: "bm-parts",
-        query: clean(input.query, 180) || "—",
-        position: clean(input.position, 120) || null,
-        status: input.status,
-        resultCount: input.resultCount,
-        fitmentExact: input.fitmentExact,
-        sourceVersion: input.sourceVersion,
-        errorCode: input.errorCode || null,
-        metadata: input.metadata == null ? undefined : toPrismaJson(input.metadata),
-      },
-    });
-  } catch (error) {
-    console.warn("Provider fitment audit could not be written", error instanceof Error ? error.message : "unknown error");
-  }
-}
-
-async function resolveBmProviderFitment(
-  intent: PartSearchIntent,
-  vehicleSummary: NonNullable<PartFitmentContext["vehicle"]>,
-  providerVehicle: SupplierVehicleContext,
-  genericArticle: PartFitmentContext["genericArticle"],
-): Promise<PartFitmentContext | null> {
-  const query = clean(intent.partName || intent.query || genericArticle?.name, 180);
-  const requestedPosition = normalizePartPosition(intent.position || intent.side);
-  if (query.length < 2 || !bmPartsAdapter.searchVehicleParts) return null;
-
-  let providerParts: SupplierVehiclePart[] = [];
-  try {
-    providerParts = await bmPartsAdapter.searchVehicleParts({
-      query,
-      vehicle: providerVehicle,
-      limit: 20,
-      position: requestedPosition,
-      canonicalPart: genericArticle
-        ? { code: genericArticle.code, slug: genericArticle.slug, name: genericArticle.name, genericArticleId: genericArticle.id }
-        : intent.canonicalCode || intent.partName
-          ? { code: intent.canonicalCode || null, slug: null, name: intent.partName || intent.query || null, genericArticleId: null }
-          : null,
-    });
-  } catch (error) {
-    await auditProviderSearch({
-      vehicleId: vehicleSummary.id || "",
-      query,
-      position: requestedPosition,
-      status: "ERROR",
-      resultCount: 0,
-      fitmentExact: providerVehicle.exact,
-      sourceVersion: providerVehicle.sourceVersion,
-      errorCode: "BM_PARTS_SEARCH_FAILED",
-      metadata: { message: error instanceof Error ? error.message : "unknown error" },
-    });
-    return null;
-  }
-
-  if (!providerParts.length) {
-    await auditProviderSearch({
-      vehicleId: vehicleSummary.id || "",
-      query,
-      position: requestedPosition,
-      status: "NO_MATCH",
-      resultCount: 0,
-      fitmentExact: providerVehicle.exact,
-      sourceVersion: providerVehicle.sourceVersion,
-    });
-    return null;
-  }
-
-  const matches: CatalogFitmentMatch[] = [];
-  const seen = new Set<string>();
-  const reason = "BM Parts звузив пошук до автомобіля " + providerVehicle.brand + " " + providerVehicle.model + ". Точний двигун/комплектацію потрібно перевірити вручну.";
-  for (const item of providerParts) {
-    const offer = item.offer;
-    const productId = clean(offer.catalogProductId || offer.externalProductId || offer.article, 180);
-    const article = clean(offer.article, 160);
-    if (!productId || !article) continue;
-    const key = (offer.offerClass || "UNKNOWN") + ":" + normalizeCatalogNumber(article);
-    if (seen.has(key)) continue;
-    seen.add(key);
-    matches.push({
-      productId,
-      article,
-      brand: offer.brand,
-      name: offer.name,
-      offerClass: offer.offerClass || "UNKNOWN",
-      oeNumbers: item.oeNumbers.map((reference) => reference.number).filter(Boolean),
-      position: requestedPosition,
-      imageUrl: offer.imageUrl || null,
-      analogOfArticle: item.analogOfArticle || offer.analogOfArticle || null,
-      vehicleMatch: item.vehicleEvidence?.car || offer.vehicleMatch || null,
-      fitment: {
-        status: "VERIFIED",
-        confidence: offer.fitmentConfidence ?? providerVehicle.confidence,
-        source: offer.fitmentSource || providerVehicle.source,
-        sourceVersion: providerVehicle.sourceVersion,
-        sourceFitmentId: "BM_PARTS:" + providerVehicle.vehicleKey + ":" + productId,
-        reason,
-      },
-    });
-  }
-
-  if (!matches.length) return null;
-  await auditProviderSearch({
-    vehicleId: vehicleSummary.id || "",
-    query,
-    position: requestedPosition,
-    status: "MODEL_FILTERED",
-    resultCount: matches.length,
-    fitmentExact: providerVehicle.exact,
-    sourceVersion: providerVehicle.sourceVersion,
-    metadata: { vehicleKey: providerVehicle.vehicleKey, carFilter: providerVehicle.brand + ">" + providerVehicle.model },
-  });
-
-  const catalogArticles = [...new Set(matches.map((match) => normalizeCatalogNumber(match.article)).filter(Boolean))];
-  const oeNumbers = [...new Set(matches.flatMap((match) => match.oeNumbers.map(normalizeCatalogNumber)).filter(Boolean))];
-  const analogArticles = [...new Set(matches
-    .filter((match) => match.offerClass === "ANALOG")
-    .map((match) => normalizeCatalogNumber(match.article))
-    .filter(Boolean))];
-
-  return {
-    status: "VERIFIED",
-    confirmed: providerVehicle.exact,
-    exact: providerVehicle.exact,
-    confidence: Math.min(100, Math.max(...matches.map((match) => match.fitment.confidence))),
-    reason,
-    vehicle: vehicleSummary,
-    providerVehicle,
-    catalog: {
-      vehicleReferenceId: null,
-      fitmentKey: "BM_PARTS:" + providerVehicle.vehicleKey,
-      source: providerVehicle.source,
-      sourceVersion: providerVehicle.sourceVersion,
-      status: "MODEL_FILTERED",
-      exact: providerVehicle.exact,
-    },
-    genericArticle,
-    matches,
-    oeNumbers,
-    catalogArticles,
-    analogArticles,
   };
 }
 
@@ -665,7 +388,9 @@ export async function resolvePartFitment(intent: PartSearchIntent): Promise<Part
     console.warn("Generic article lookup failed", error);
   }
 
-  const providerVehicle = await resolveBmVehicleContext(vehicle.id, hasValidVin ? identityVin : "", vehicleSummary);
+  // Supplier adapters never establish fitment. They may provide price/stock only
+  // after the canonical CRM catalog has verified this vehicle and article.
+  const providerVehicle: SupplierVehicleContext | null = null;
   const link = vehicle.catalogLink;
   const hasVerifiedCatalogLink = Boolean(
     link
@@ -676,27 +401,20 @@ export async function resolvePartFitment(intent: PartSearchIntent): Promise<Part
   if (!hasValidVin && !providerVehicle && !hasVerifiedCatalogLink) {
     return emptyContext(
       "MANUAL_REQUIRED",
-      "У картці автомобіля немає коректного VIN, а BM Parts не налаштований для пошуку за маркою/моделлю.",
+      "У картці автомобіля немає коректного VIN і немає підтвердженого зв’язку з OE-каталогом.",
       vehicleSummary,
     );
   }
 
   if (!link || link.status !== "VERIFIED" || link.vehicleReference.status !== "ACTIVE") {
-    const providerFitment = providerVehicle
-      ? await resolveBmProviderFitment(intent, vehicleSummary, providerVehicle, genericArticle)
-      : null;
-    if (providerFitment) return providerFitment;
-
     return {
       ...emptyContext(
         "CATALOG_NOT_CONNECTED",
-        providerVehicle
-          ? "BM Parts визначив автомобіль, але не знайшов підтвердженої позиції за цією назвою/позицією."
-          : "VIN визначив автомобіль, але для нього немає підтвердженого зв’язку з OE-каталогом або BM Parts.",
+        "VIN визначив автомобіль, але для нього немає підтвердженого зв’язку з OE-каталогом.",
         vehicleSummary,
       ),
       providerVehicle,
-      confidence: link?.confidence || providerVehicle?.confidence || 0,
+      confidence: link?.confidence || 0,
       catalog: link
         ? {
             vehicleReferenceId: link.vehicleReferenceId,
@@ -706,16 +424,7 @@ export async function resolvePartFitment(intent: PartSearchIntent): Promise<Part
             status: link.status,
             exact: false,
           }
-        : providerVehicle
-          ? {
-              vehicleReferenceId: null,
-              fitmentKey: "BM_PARTS:" + providerVehicle.vehicleKey,
-              source: providerVehicle.source,
-              sourceVersion: providerVehicle.sourceVersion,
-              status: "NO_MATCH",
-              exact: providerVehicle.exact,
-            }
-          : null,
+        : null,
     };
   }
 
@@ -729,10 +438,6 @@ export async function resolvePartFitment(intent: PartSearchIntent): Promise<Part
   };
 
   if (!genericArticle) {
-    const providerFitment = providerVehicle
-      ? await resolveBmProviderFitment(intent, vehicleSummary, providerVehicle, null)
-      : null;
-    if (providerFitment) return providerFitment;
     return {
       ...emptyContext(
         "NO_MATCH",
@@ -751,8 +456,15 @@ export async function resolvePartFitment(intent: PartSearchIntent): Promise<Part
     const fitments = await prisma.vehicleFitment.findMany({
       where: {
         vehicleReferenceId: link.vehicleReferenceId,
-        genericArticleId: genericArticle.id,
         status: "ACTIVE",
+        OR: [
+          { genericArticleId: genericArticle.id },
+          { genericArticleId: null, product: { genericArticleId: genericArticle.id } },
+        ],
+        product: {
+          status: "ACTIVE",
+          brand: { status: "ACTIVE" },
+        },
       },
       select: {
         productId: true,
@@ -764,9 +476,10 @@ export async function resolvePartFitment(intent: PartSearchIntent): Promise<Part
         product: {
           select: {
             id: true,
+            status: true,
             mpnRaw: true,
             title: true,
-            brand: { select: { canonicalName: true } },
+            brand: { select: { canonicalName: true, status: true } },
             oeReferences: {
               select: {
                 oeNumberRaw: true,
@@ -781,9 +494,10 @@ export async function resolvePartFitment(intent: PartSearchIntent): Promise<Part
                 toProduct: {
                   select: {
                     id: true,
+                    status: true,
                     mpnRaw: true,
                     title: true,
-                    brand: { select: { canonicalName: true } },
+                    brand: { select: { canonicalName: true, status: true } },
                     oeReferences: {
                       select: {
                         oeNumberRaw: true,
@@ -801,13 +515,14 @@ export async function resolvePartFitment(intent: PartSearchIntent): Promise<Part
       take: 200,
     });
 
-    const requestedPosition = normalizePartPosition(intent.position || intent.side);
+    const requestedPosition = normalizePartPosition(intentPosition(intent));
     const matches: CatalogFitmentMatch[] = [];
     const seen = new Set<string>();
 
     for (const fitment of fitments) {
       if (!fitmentPositionMatches(fitment.position, requestedPosition)) continue;
       const primary = fitment.product;
+      if (primary.status !== "ACTIVE" || primary.brand.status !== "ACTIVE") continue;
       const primaryKey = "OEM:" + primary.id;
       if (!seen.has(primaryKey)) {
         seen.add(primaryKey);
@@ -834,6 +549,7 @@ export async function resolvePartFitment(intent: PartSearchIntent): Promise<Part
       for (const cross of primary.crossFrom) {
         if (!["EQUIVALENT", "REPLACEMENT", "SUPERSEDES", "ALTERNATIVE"].includes(cross.type)) continue;
         const analog = cross.toProduct;
+        if (analog.status !== "ACTIVE" || analog.brand.status !== "ACTIVE") continue;
         const analogKey = "ANALOG:" + analog.id;
         if (seen.has(analogKey)) continue;
         seen.add(analogKey);
@@ -846,6 +562,7 @@ export async function resolvePartFitment(intent: PartSearchIntent): Promise<Part
           offerClass: "ANALOG",
           oeNumbers,
           position: fitment.position,
+          analogOfArticle: primary.mpnRaw,
           fitment: {
             status: "VERIFIED",
             confidence: confidenceValue(link.confidence, fitment.confidence, cross.confidence, ...analog.oeReferences.map((reference) => reference.confidence)),
@@ -859,10 +576,6 @@ export async function resolvePartFitment(intent: PartSearchIntent): Promise<Part
     }
 
     if (!matches.length) {
-      const providerFitment = providerVehicle
-        ? await resolveBmProviderFitment(intent, vehicleSummary, providerVehicle, genericArticle)
-        : null;
-      if (providerFitment) return providerFitment;
       return {
         ...emptyContext(
           "NO_MATCH",
@@ -897,10 +610,6 @@ export async function resolvePartFitment(intent: PartSearchIntent): Promise<Part
     };
   } catch (error) {
     console.warn("Vehicle fitment lookup failed", error);
-    const providerFitment = providerVehicle
-      ? await resolveBmProviderFitment(intent, vehicleSummary, providerVehicle, genericArticle)
-      : null;
-    if (providerFitment) return providerFitment;
     return {
       ...emptyContext("CATALOG_NOT_CONNECTED", "Каталог OE/сумісності не відповів або ще не має імпортованих даних.", vehicleSummary),
       confidence: link.confidence,
