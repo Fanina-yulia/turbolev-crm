@@ -319,46 +319,50 @@ class PdfLayout {
   }
 
   async header(snapshot: DiagnosticCardSnapshot, title: string, description: string, logo: PdfAsset | null, car: PdfAsset | null) {
-    this.ensure(195);
+    // Compact approved-document header: brand, title and vehicle image share
+    // one row, followed by a dense metadata grid.
+    this.ensure(151);
     const top = this.y;
-    await this.drawAsset(logo, { x: MARGIN, top: top - 2, width: 168, maxHeight: 78 });
-    await this.drawAsset(car, { x: PAGE_WIDTH - MARGIN - 198, top: top - 2, width: 198, maxHeight: 94 });
+    await this.drawAsset(logo, { x: MARGIN, top: top - 2, width: 92, maxHeight: 48 });
+    await this.drawAsset(car, { x: PAGE_WIDTH - MARGIN - 132, top: top - 2, width: 132, maxHeight: 62 });
 
+    const centerX = PAGE_WIDTH / 2;
+    const eyebrow = "TURBO LEV · АВТОСЕРВІС";
     const titleText = title.toUpperCase();
     const titleSize = 17;
     const titleWidth = this.bold.widthOfTextAtSize(titleText, titleSize);
-    this.page.drawText(titleText, { x: (PAGE_WIDTH - titleWidth) / 2, y: top - 101, size: titleSize, font: this.bold, color: this.textColor });
+    this.page.drawText(eyebrow, { x: centerX - this.bold.widthOfTextAtSize(eyebrow, 7.4) / 2, y: top - 13, size: 7.4, font: this.bold, color: this.accent });
+    this.page.drawText(titleText, { x: centerX - titleWidth / 2, y: top - 35, size: titleSize, font: this.bold, color: this.textColor });
     const subtitle = description || "Результати проведеної діагностики автомобіля.";
-    const subtitleWidth = this.regular.widthOfTextAtSize(subtitle, 7.7);
-    this.page.drawText(subtitle, { x: (PAGE_WIDTH - subtitleWidth) / 2, y: top - 117, size: 7.7, font: this.regular, color: this.accent });
-    this.page.drawRectangle({ x: MARGIN, y: top - 128, width: CONTENT_WIDTH, height: 2, color: this.accent });
-    this.y = top - 139;
+    const subtitleWidth = this.regular.widthOfTextAtSize(subtitle, 7.2);
+    this.page.drawText(subtitle, { x: centerX - subtitleWidth / 2, y: top - 49, size: 7.2, font: this.regular, color: this.mutedColor });
+    this.page.drawRectangle({ x: MARGIN, y: top - 61, width: CONTENT_WIDTH, height: 2, color: this.accent });
+    this.y = top - 71;
 
     const status = cardStatus(snapshot);
     this.infoRow([
-      ["Автомобіль", `${snapshot.vehicle.label}${snapshot.vehicle.plateNumber ? ` · ${snapshot.vehicle.plateNumber}` : ""}`],
+      ["Дата", dateText(snapshot.visit?.actualEndAt || snapshot.visit?.actualStartAt || snapshot.generatedAt)],
+      ["Автомобіль", snapshot.vehicle.label],
+      ["Держ. номер", snapshot.vehicle.plateNumber],
+    ], 25);
+    this.infoRow([
       ["VIN", snapshot.vehicle.vin],
-      ["Дата формування", dateText(snapshot.visit?.actualEndAt || snapshot.visit?.actualStartAt || snapshot.generatedAt)],
-    ], 30);
-    this.infoRow([
       ["Клієнт", snapshot.client.name],
-      ["Телефон", snapshot.client.phone],
       ["Механік", snapshot.mechanic.name],
-      ["Пробіг", mileageText(snapshot.vehicle.mileageKm)],
-    ], 30);
+    ], 25);
     this.infoRow([
+      ["Пробіг", mileageText(snapshot.vehicle.mileageKm)],
       ["Статус карти", status.label, status.color],
       ["Ревізія", snapshot.revisionKind === "FINAL" ? "Підтверджена" : "На перевірці"],
-      ["Станція", snapshot.station.name],
-    ], 30);
-    this.y -= 7;
+    ], 25);
+    this.y -= 4;
   }
 
   metrics(snapshot: DiagnosticCardSnapshot) {
-    this.ensure(47);
+    this.ensure(40);
     const gap = 7;
     const width = (CONTENT_WIDTH - gap * 3) / 4;
-    const height = 38;
+    const height = 32;
     const top = this.y;
     const values: Array<[string, string, PdfColor]> = [
       ["Перевірено", `${snapshot.counts.checked}/${snapshot.counts.total}`, this.textColor],
@@ -369,8 +373,8 @@ class PdfLayout {
     values.forEach(([label, value, color], index) => {
       const x = MARGIN + index * (width + gap);
       this.page.drawRectangle({ x, y: top - height, width, height, color: index === 3 ? rgb(1, 0.96, 0.95) : ROW_LIGHT, borderColor: LIGHT, borderWidth: 0.6 });
-      this.page.drawText(label, { x: x + 8, y: top - 12, size: 6.8, font: this.regular, color: this.mutedColor });
-      this.page.drawText(value, { x: x + 8, y: top - 29, size: 10.5, font: this.bold, color });
+      this.page.drawText(label, { x: x + 7, y: top - 11, size: 6.4, font: this.regular, color: this.mutedColor });
+      this.page.drawText(value, { x: x + 7, y: top - 25, size: 9.6, font: this.bold, color });
     });
     this.y = top - height - 8;
   }
@@ -521,7 +525,7 @@ class PdfLayout {
       const station = footerText || "Turbo Lev · Автосервіс";
       const stationWidth = this.bold.widthOfTextAtSize(station, 6.8);
       page.drawText(station, { x: (PAGE_WIDTH - stationWidth) / 2, y: 11, size: 6.8, font: this.bold, color: WHITE });
-      const right = `ДК ${cardNumber} · ${index + 1}/${this.pages.length}`;
+      const right = `${cardNumber} · ${index + 1}/${this.pages.length}`;
       const rightWidth = this.regular.widthOfTextAtSize(right, 6.4);
       page.drawText(right, { x: PAGE_WIDTH - MARGIN - 22 - rightWidth, y: 11, size: 6.4, font: this.regular, color: WHITE });
     });
@@ -577,65 +581,89 @@ export async function renderDiagnosticCardPdf(snapshot: DiagnosticCardSnapshot, 
 
   await layout.header(snapshot, template?.title || "Діагностична карта", template?.description || "Результати проведеної діагностики автомобіля.", logo, car);
 
-  if (visible(template, "summary")) {
-    layout.section("СТАН АВТОМОБІЛЯ", 31 + 47);
-    layout.metrics(snapshot);
-    if (snapshot.problem) layout.callout("Заявлена проблема", snapshot.problem);
-  }
+  const defaultBlockOrder = ["identity", "summary", "inspections", "findings", "parts", "media", "conclusion", "signature", "contacts"];
+  const blockOrder = template?.blocks?.length
+    ? template.blocks.map((block) => block.id).filter((id, index, ids) => ids.indexOf(id) === index)
+    : defaultBlockOrder;
 
-  if (visible(template, "findings")) {
-    const findings = snapshot.inspections.flatMap((inspection) => inspection.sections.flatMap((section) => section.items.filter((item) => item.state !== "OK").map((item) => ({ item, section }))));
-    layout.section("ВИЯВЛЕНІ НЕСПРАВНОСТІ", 31 + 27 + 32);
-    layout.list("Вузол / елемент", findings.map(({ item, section }) => ({
-      name: item.name,
-      detail: [section.name, stateLabels[item.state] || item.state, item.finding?.text, item.note].filter(Boolean).join(" · "),
-      tone: stateColor(item.state),
-    })));
-  }
+  const renderBlock = async (id: string) => {
+    if (id === "identity") return;
+    if (!visible(template, id)) return;
 
-  if (visible(template, "inspections")) {
-    layout.section("РЕЗУЛЬТАТИ ПЕРЕВІРКИ", 31 + 22 + 22 + 27 + 32);
-    for (const inspection of snapshot.inspections) {
-      layout.subsection(inspection.name);
-      for (const section of inspection.sections) {
-        layout.subsection(section.name);
-        const rows = section.items.map((item, index) => {
-          const details = [item.position, measurementText(item), item.finding?.text, item.finding?.action && item.finding.action !== "NONE" ? actionLabels[item.finding.action] || item.finding.action : "", item.note].filter(Boolean).join(" · ");
-          return [String(index + 1), item.name, stateLabels[item.state] || item.state, details || "—"];
-        });
-        layout.table(["№", "Вузол / елемент", "Стан", "Результат / примітки"], rows, [27, 158, 62, CONTENT_WIDTH - 247], section.items.map((item) => stateColor(item.state)), 2);
-      }
+    if (id === "summary") {
+      layout.section("ПІДСУМОК ДІАГНОСТИКИ", 31 + 40);
+      layout.metrics(snapshot);
+      if (snapshot.problem) layout.callout("Заявлена проблема", snapshot.problem);
+      return;
     }
-  }
 
-  if (visible(template, "parts")) {
-    layout.section("ДЕТАЛІ ДО ЗАМІНИ", 31 + 27 + 32);
-    layout.list("Деталь", snapshot.recommendations.parts.map((item) => ({
-      name: item.name,
-      detail: [item.section, item.checkName, actionLabels[item.action] || item.action].filter(Boolean).join(" · "),
-      tone: item.urgency === "CRITICAL" ? RED : item.urgency === "ATTENTION" ? YELLOW : MUTED,
-    })));
-  }
+    if (id === "findings") {
+      const findings = snapshot.inspections.flatMap((inspection) => inspection.sections.flatMap((section) => section.items.filter((item) => item.state !== "OK").map((item) => ({ item, section }))));
+      layout.section("ВИЯВЛЕНІ НЕСПРАВНОСТІ", 31 + 27 + 32);
+      layout.list("Вузол / елемент", findings.map(({ item, section }) => ({
+        name: item.name,
+        detail: [section.name, stateLabels[item.state] || item.state, item.finding?.text, item.note].filter(Boolean).join(" · "),
+        tone: stateColor(item.state),
+      })));
+      return;
+    }
 
-  if (visible(template, "conclusion")) {
-    layout.section("РЕКОМЕНДОВАНІ РОБОТИ", 31 + 27 + 32);
-    layout.list("Робота", snapshot.recommendations.works.map((item) => ({
-      name: item.name,
-      detail: [item.section, item.checkName, actionLabels[item.action] || item.action].filter(Boolean).join(" · "),
-      tone: item.urgency === "CRITICAL" ? RED : item.urgency === "ATTENTION" ? YELLOW : MUTED,
-    })));
-    if (snapshot.technicalConclusion) layout.callout("Технічний висновок", snapshot.technicalConclusion);
-    if (snapshot.mechanicComment) layout.callout("Коментар механіка", snapshot.mechanicComment, muted);
-    if (snapshot.managerComment) layout.callout("Коментар сервіс-менеджера", snapshot.managerComment, muted);
-  }
+    if (id === "inspections") {
+      layout.section("РЕЗУЛЬТАТИ ПЕРЕВІРКИ", 31 + 22 + 22 + 27 + 32);
+      for (const inspection of snapshot.inspections) {
+        layout.subsection(inspection.name);
+        for (const section of inspection.sections) {
+          layout.subsection(section.name);
+          const rows = section.items.map((item, index) => {
+            const details = [item.position, measurementText(item), item.finding?.text, item.finding?.action && item.finding.action !== "NONE" ? actionLabels[item.finding.action] || item.finding.action : "", item.note].filter(Boolean).join(" · ");
+            return [String(index + 1), item.name, stateLabels[item.state] || item.state, details || "—"];
+          });
+          layout.table(["№", "Вузол / елемент", "Стан", "Результат / примітки"], rows, [27, 158, 62, CONTENT_WIDTH - 247], section.items.map((item) => stateColor(item.state)), 2);
+        }
+      }
+      return;
+    }
 
-  if (visible(template, "media")) {
-    layout.section("ФОТО ТА ДОКАЗИ", 31 + 125 + 5);
-    await layout.photos(snapshot);
-  }
+    if (id === "parts") {
+      layout.section("ДЕТАЛІ ДО ЗАМІНИ", 31 + 27 + 32);
+      layout.list("Деталь", snapshot.recommendations.parts.map((item) => ({
+        name: item.name,
+        detail: [item.section, item.checkName, actionLabels[item.action] || item.action].filter(Boolean).join(" · "),
+        tone: item.urgency === "CRITICAL" ? RED : item.urgency === "ATTENTION" ? YELLOW : MUTED,
+      })));
+      return;
+    }
 
-  if (visible(template, "signature")) layout.signature(snapshot);
-  if (visible(template, "contacts")) await layout.contacts(snapshot, qr, template?.style.footerText || "Turbo Lev · Автосервіс");
+    if (id === "conclusion") {
+      layout.section("РЕКОМЕНДОВАНІ РОБОТИ", 31 + 27 + 32);
+      layout.list("Робота", snapshot.recommendations.works.map((item) => ({
+        name: item.name,
+        detail: [item.section, item.checkName, actionLabels[item.action] || item.action].filter(Boolean).join(" · "),
+        tone: item.urgency === "CRITICAL" ? RED : item.urgency === "ATTENTION" ? YELLOW : MUTED,
+      })));
+      if (snapshot.technicalConclusion) layout.callout("Технічний висновок", snapshot.technicalConclusion);
+      if (snapshot.mechanicComment) layout.callout("Коментар механіка", snapshot.mechanicComment, muted);
+      if (snapshot.managerComment) layout.callout("Коментар сервіс-менеджера", snapshot.managerComment, muted);
+      return;
+    }
+
+    if (id === "media") {
+      layout.section("ФОТО ТА ДОКАЗИ", 31 + 125 + 5);
+      await layout.photos(snapshot);
+      return;
+    }
+
+    if (id === "signature") {
+      layout.signature(snapshot);
+      return;
+    }
+
+    if (id === "contacts") {
+      await layout.contacts(snapshot, qr, template?.style.footerText || "Turbo Lev · Автосервіс");
+    }
+  };
+
+  for (const id of blockOrder) await renderBlock(id);
   layout.footer(snapshot.cardNumber, template?.style.footerText || "Turbo Lev · Автосервіс");
   return Buffer.from(await pdf.save());
 }
