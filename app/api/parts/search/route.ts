@@ -30,6 +30,7 @@ export async function GET(request: Request) {
   const axis = searchParams.get("axis")?.trim() || null;
   const side = searchParams.get("side")?.trim() || null;
   const subPosition = searchParams.get("subPosition")?.trim() || null;
+  const quantityHint = Number(searchParams.get("quantity") || 0);
   const position = searchParams.get("position")?.trim() || null;
   const genericArticleId = searchParams.get("genericArticleId")?.trim() || null;
 
@@ -186,6 +187,7 @@ export async function GET(request: Request) {
         side: resolvedSide,
         position: resolvedPosition,
         subPosition: resolvedSubPosition,
+        quantityHint,
       })
     : null;
   const packaging = getPartPackageRule({
@@ -196,6 +198,7 @@ export async function GET(request: Request) {
     side: resolvedSide,
     position: resolvedPosition,
     subPosition: resolvedSubPosition,
+    quantityHint,
   });
   const parts = reference.parts.map((part) => ({
     ...part,
