@@ -15,7 +15,7 @@ function clean(value: string | null, max = 240) {
 export async function GET(request: NextRequest) {
   const params = request.nextUrl.searchParams;
   const locationId = clean(params.get("locationId"), 160) || null;
-  const access = await authorizeScopedLocation(PERMISSIONS.PARTS_READ, request, locationId);
+  const access = await authorizeScopedLocation(PERMISSIONS.PROCUREMENT_READ, request, locationId);
   if (!access.ok) return access.response;
 
   const genericArticleId = clean(params.get("genericArticleId"), 160) || null;
