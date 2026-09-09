@@ -39,7 +39,7 @@
 @media(max-width:700px){.pickerFilters{align-items:flex-start;flex-direction:column}.pickerFilters select{max-width:none;width:100%}.normalizationBadge{width:100%}}
 
 /* Parts picker: compact results table aligned with the approved reference. */
-.pickerModal{width:min(1320px,calc(100vw - 32px));height:min(900px,calc(100vh - 32px));max-height:none;border-radius:12px;background:var(--panel);border-color:var(--line);box-shadow:0 28px 90px rgba(0,0,0,.42)}
+.pickerModal{width:calc(100vw - 32px);height:calc(100vh - 32px);max-width:none;max-height:none;border-radius:12px;background:var(--panel);border-color:var(--line);box-shadow:0 28px 90px rgba(0,0,0,.42)}
 .pickerHeaderBar{padding:18px 26px 14px;background:var(--panel);border-bottom:1px solid var(--line)}
 .pickerHeaderBar p{font-size:13px;letter-spacing:.16em}
 .pickerHeaderBar h2{font-size:28px;letter-spacing:-.025em;color:var(--text)}
@@ -57,7 +57,7 @@
 .pickerFilters{padding:11px 26px;border-bottom:1px solid var(--line);background:var(--panel)}
 .pickerFilters select{min-height:38px;border-radius:8px;font-size:14px;background:var(--panel)}
 .normalizationBadge{padding:8px 11px;border-radius:8px;font-size:13px}
-.pickerOfferList{flex:1;min-height:0;gap:10px;padding:12px 26px;overflow:auto;background:var(--panel)}
+.pickerOfferList{flex:1;min-height:0;gap:8px;padding:12px 26px;overflow:auto;background:var(--panel)}
 .pickerOffer{display:grid;grid-template-columns:minmax(270px,2.2fr) minmax(125px,.8fr) minmax(155px,1.1fr) minmax(105px,.75fr) minmax(105px,.75fr) minmax(145px,1fr) 150px;align-items:center;gap:18px;min-height:106px;padding:14px 16px;border:1px solid var(--line);border-radius:9px;background:var(--panel)}
 .pickerOffer:hover{border-color:color-mix(in srgb,var(--orange) 65%,var(--line));background:color-mix(in srgb,var(--orange) 5%,var(--panel))}
 .pickerOfferName,.pickerOfferCell{display:grid;gap:4px;min-width:0}
