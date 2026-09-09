@@ -2,6 +2,8 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import fontkit from "@pdf-lib/fontkit";
 import { PDFDocument, rgb, type PDFFont, type PDFPage } from "pdf-lib";
+import { drawNeutralVehicle } from "@/src/services/vehicle-document-art";
+import { getVehicleDocumentImage } from "@/src/services/vehicle-images/vehicle-document-asset.service";
 
 const PAGE_WIDTH = 595.28;
 const PAGE_HEIGHT = 841.89;
@@ -34,6 +36,7 @@ export type WorkOrderInvoicePdfLine = {
 };
 
 export type WorkOrderInvoicePdfData = {
+  vehicleId?: string | null;
   vehicleLabel: string;
   vin: string | null;
   date: string;
@@ -203,24 +206,28 @@ class InvoicePdfLayout {
   }
 
   async header(data: WorkOrderInvoicePdfData) {
-    // Variant 3: one panoramic brand composition. The logo and the vehicle
-    // image share one visual band; the panorama asset carries the smooth
-    // white fade and orange motion lines visually connect both assets.
+    // Variant 3: compact diagonal brand composition. The car is resolved from
+    // the CRM vehicle card; when it is not ready, a neutral badge-free car is
+    // drawn instead of showing the wrong model or a large white image edge.
     if (this.car) {
-      const width = 225;
-      const height = 122.7273;
-      const x = PAGE_WIDTH - 15 - width;
-      this.page.drawImage(this.car, { x, y: 696, width, height });
+      const maxWidth = 206;
+      const maxHeight = 104;
+      const scale = Math.min(maxWidth / this.car.width, maxHeight / this.car.height);
+      const width = this.car.width * scale;
+      const height = this.car.height * scale;
+      this.page.drawImage(this.car, { x: PAGE_WIDTH - 15 - width, y: 707, width, height });
+    } else {
+      drawNeutralVehicle(this.page, PAGE_WIDTH - 15 - 206, 709, 206, 86);
     }
     if (this.logo) {
-      const width = 155;
-      const height = 77.5;
-      this.page.drawImage(this.logo, { x: 26.5, y: 722, width, height });
+      const width = 145;
+      const height = 72.5;
+      this.page.drawImage(this.logo, { x: 26.5, y: 728, width, height });
     }
     [
-      { start: { x: 145, y: 753 }, end: { x: 288, y: 753 }, thickness: 2.2, opacity: 0.34 },
-      { start: { x: 168, y: 746 }, end: { x: 311, y: 741 }, thickness: 1.5, opacity: 0.22 },
-      { start: { x: 202, y: 737 }, end: { x: 332, y: 730 }, thickness: 0.9, opacity: 0.16 },
+      { start: { x: 246, y: 805 }, end: { x: 337, y: 704 }, thickness: 10, opacity: 0.92 },
+      { start: { x: 258, y: 807 }, end: { x: 349, y: 706 }, thickness: 3.5, opacity: 0.32 },
+      { start: { x: 154, y: 756 }, end: { x: 252, y: 751 }, thickness: 1.6, opacity: 0.32 },
     ].forEach((line) => this.page.drawLine({ ...line, color: ORANGE }));
 
     this.centered("НАКЛАДНА", PAGE_WIDTH / 2, 674, 22, this.bold, TEXT);
@@ -408,11 +415,12 @@ export async function renderWorkOrderInvoicePdf(data: WorkOrderInvoicePdfData) {
   const root = process.cwd();
   const regularBytes = await readFile(path.join(root, "public", "fonts", "DejaVuSans.ttf"));
   const boldBytes = await readFile(path.join(root, "public", "fonts", "DejaVuSans-Bold.ttf"));
-  const [logo, car, qr] = await Promise.all([
+  const [logo, vehicleImage, qr] = await Promise.all([
     readAsset(pdf, root, "turbo-lev-document-logo.png", "image/png"),
-    readAsset(pdf, root, "turbo-lev-document-car-panorama.png", "image/png"),
+    data.vehicleId ? getVehicleDocumentImage(data.vehicleId) : Promise.resolve(null),
     readAsset(pdf, root, "turbo-lev-contact-qr.png", "image/png"),
   ]);
+  const car = vehicleImage ? await pdf.embedPng(vehicleImage.bytes) : null;
   const regular = await pdf.embedFont(regularBytes, { subset: true });
   const bold = await pdf.embedFont(boldBytes, { subset: true });
   const layout = new InvoicePdfLayout(pdf, regular, bold, { logo, car, qr });

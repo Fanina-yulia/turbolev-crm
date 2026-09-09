@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState, type CSSProperties, type ChangeEvent } from "react";
 import styles from "./document-template-builder.module.css";
+import compactStyles from "./document-template-builder-compact.module.css";
 
 type TemplateType = "DIAGNOSTIC_CARD" | "COMMERCIAL_PROPOSAL";
 type TemplateStatus = "DRAFT" | "PUBLISHED";
@@ -238,13 +239,15 @@ function InvoiceReferencePreview() {
   ];
   return <article className={styles.referenceDocument}>
     <div className={styles.referenceCorner}/>
-    <header className={styles.referenceHeader}>
-      <div className={styles.referencePanorama}>
-        <img className={styles.referenceBrandLogo} src="/brand/turbo-lev-document-logo.png" alt="Турбо Лев"/>
-        <img className={styles.referenceCar} src="/brand/turbo-lev-document-car-panorama.png" alt="Автомобіль"/>
-        <div className={styles.referenceMotion} aria-hidden="true"><i/><i/><i/></div>
+    <header className={`${styles.referenceHeader} ${compactStyles.compactReferenceHeader}`}>
+      <div className={`${styles.referencePanorama} ${compactStyles.compactReferencePanorama}`}>
+        <img className={`${styles.referenceBrandLogo} ${compactStyles.compactBrandLogo}`} src="/brand/turbo-lev-document-logo.png" alt="Турбо Лев"/>
+        <span className={compactStyles.referenceCarFallback} aria-label="Резервне зображення автомобіля">
+          <svg viewBox="0 0 180 82" aria-hidden="true"><path d="M19 53c3-9 9-15 18-17l20-5 14-15c4-4 9-6 15-6h33c7 0 12 2 17 7l13 14 15 4c8 2 13 8 14 16l1 8h-14a16 16 0 0 1-31 0H57a16 16 0 0 1-31 0H15l4-6Z"/><path className={compactStyles.referenceGlass} d="M65 31l12-13c2-2 5-3 9-3h13v16H65Zm40 0V15h14c4 0 7 1 10 4l11 12h-35Z"/><circle cx="42" cy="59" r="10"/><circle cx="149" cy="59" r="10"/></svg>
+        </span>
+        <div className={`${styles.referenceMotion} ${compactStyles.compactMotion}`} aria-hidden="true"><i/><i/><i/></div>
       </div>
-      <div className={styles.referenceHeading}><h1>НАКЛАДНА</h1><strong>ЗАПЧАСТИНИ ТА РОБОТИ</strong></div>
+      <div className={`${styles.referenceHeading} ${compactStyles.compactHeading}`}><h1>НАКЛАДНА</h1><strong>ЗАПЧАСТИНИ ТА РОБОТИ</strong></div>
     </header>
     <div className={styles.referenceMeta}><span>Автомобіль: <b>Citroen C3</b></span><span>VIN: <b>VF7SXHNVTKT682038</b></span><span>Дата: <b>05.08.2026</b></span></div>
     <ReferenceTable title="ЗАПЧАСТИНИ" columns={["Артикул", "Бренд", "Найменування", "Ціна/шт.", "Кільк.", "Сума"]} rows={parts} total={"10 787.00"}/>

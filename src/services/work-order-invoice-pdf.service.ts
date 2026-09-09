@@ -23,6 +23,7 @@ export async function renderWorkOrderInvoicePdfForWorkOrder(workOrderId: string)
 export function buildWorkOrderInvoicePdfData(packageData: Awaited<ReturnType<typeof getWorkOrderDocumentPackage>>) {
   const lines = packageData.documents.invoice.lines;
   return {
+    vehicleId: packageData.workOrder.vehicle.id,
     vehicleLabel: vehicleLabel(packageData.workOrder.vehicle),
     vin: packageData.workOrder.vehicle.vin,
     date: packageData.generatedAt,

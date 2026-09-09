@@ -4,6 +4,8 @@ import fontkit from "@pdf-lib/fontkit";
 import { PDFDocument, rgb, type PDFFont, type PDFPage } from "pdf-lib";
 import type { DiagnosticCardSnapshot } from "@/src/services/diagnostic-card.service";
 import type { DocumentTemplate } from "@/src/services/document-template.service";
+import { drawNeutralVehicle } from "@/src/services/vehicle-document-art";
+import { getVehicleDocumentImage } from "@/src/services/vehicle-images/vehicle-document-asset.service";
 
 const PAGE_WIDTH = 595.28;
 const PAGE_HEIGHT = 841.89;
@@ -319,24 +321,29 @@ class PdfLayout {
   }
 
   async header(snapshot: DiagnosticCardSnapshot, title: string, description: string, logo: PdfAsset | null, car: PdfAsset | null) {
-    // Variant 3: one panoramic brand composition. The logo and the vehicle
-    // image share one visual band; the panorama asset carries the smooth
-    // white fade and the orange motion lines connect both assets.
-    this.ensure(200);
+    // Variant 3: compact diagonal brand composition. The car is resolved from
+    // the CRM vehicle card; the neutral vector is only a deterministic fallback
+    // while the model-specific image is missing or still being generated.
+    this.ensure(158);
     const top = this.y;
     const logoImage = logo ? await this.embedImage(logo.bytes, logo.mimeType) : null;
     const carImage = car ? await this.embedImage(car.bytes, car.mimeType) : null;
     if (carImage) {
-      const carWidth = 270;
-      const carHeight = 147.2727;
+      const maxWidth = 220;
+      const maxHeight = 101;
+      const scale = Math.min(maxWidth / carImage.width, maxHeight / carImage.height);
+      const carWidth = carImage.width * scale;
+      const carHeight = carImage.height * scale;
       const carX = PAGE_WIDTH - MARGIN - carWidth;
-      this.page.drawImage(carImage, { x: carX, y: top - 147, width: carWidth, height: carHeight });
+      this.page.drawImage(carImage, { x: carX, y: top - carHeight - 2, width: carWidth, height: carHeight });
+    } else {
+      drawNeutralVehicle(this.page, PAGE_WIDTH - MARGIN - 220, top - 97, 220, 88);
     }
-    if (logoImage) this.page.drawImage(logoImage, { x: MARGIN, y: top - 79, width: 155, height: 77.5 });
+    if (logoImage) this.page.drawImage(logoImage, { x: MARGIN, y: top - 76, width: 148, height: 74 });
     [
-      { start: { x: 145, y: top - 60 }, end: { x: 288, y: top - 60 }, thickness: 2.2, opacity: 0.34 },
-      { start: { x: 168, y: top - 67 }, end: { x: 311, y: top - 72 }, thickness: 1.5, opacity: 0.22 },
-      { start: { x: 202, y: top - 76 }, end: { x: 332, y: top - 83 }, thickness: 0.9, opacity: 0.16 },
+      { start: { x: 246, y: top - 5 }, end: { x: 337, y: top - 100 }, thickness: 10, opacity: 0.92 },
+      { start: { x: 258, y: top - 7 }, end: { x: 349, y: top - 102 }, thickness: 3.5, opacity: 0.32 },
+      { start: { x: 154, y: top - 52 }, end: { x: 244, y: top - 56 }, thickness: 1.6, opacity: 0.32 },
     ].forEach((line) => this.page.drawLine({ ...line, color: this.accent }));
 
     const centerX = PAGE_WIDTH / 2;
@@ -344,13 +351,13 @@ class PdfLayout {
     const titleText = title.toUpperCase();
     const titleSize = 17;
     const titleWidth = this.bold.widthOfTextAtSize(titleText, titleSize);
-    this.page.drawText(eyebrow, { x: centerX - this.bold.widthOfTextAtSize(eyebrow, 7.4) / 2, y: top - 137, size: 7.4, font: this.bold, color: this.accent });
-    this.page.drawText(titleText, { x: centerX - titleWidth / 2, y: top - 158, size: titleSize, font: this.bold, color: this.textColor });
+    this.page.drawText(eyebrow, { x: centerX - this.bold.widthOfTextAtSize(eyebrow, 7.4) / 2, y: top - 108, size: 7.4, font: this.bold, color: this.accent });
+    this.page.drawText(titleText, { x: centerX - titleWidth / 2, y: top - 128, size: titleSize, font: this.bold, color: this.textColor });
     const subtitle = description || "Результати проведеної діагностики автомобіля.";
     const subtitleWidth = this.regular.widthOfTextAtSize(subtitle, 7.2);
-    this.page.drawText(subtitle, { x: centerX - subtitleWidth / 2, y: top - 172, size: 7.2, font: this.regular, color: this.mutedColor });
-    this.page.drawRectangle({ x: MARGIN, y: top - 184, width: CONTENT_WIDTH, height: 2, color: this.accent });
-    this.y = top - 194;
+    this.page.drawText(subtitle, { x: centerX - subtitleWidth / 2, y: top - 141, size: 7.2, font: this.regular, color: this.mutedColor });
+    this.page.drawRectangle({ x: MARGIN, y: top - 151, width: CONTENT_WIDTH, height: 2, color: this.accent });
+    this.y = top - 160;
 
     const status = cardStatus(snapshot);
     this.infoRow([
@@ -565,15 +572,16 @@ export async function renderDiagnosticCardPdf(snapshot: DiagnosticCardSnapshot, 
   const pdf = await PDFDocument.create();
   pdf.registerFontkit(fontkit);
   const root = process.cwd();
-  const [regularBytes, boldBytes, defaultLogo, car, qr] = await Promise.all([
+  const [regularBytes, boldBytes, defaultLogo, vehicleImage, qr] = await Promise.all([
     readFile(path.join(root, "public", "fonts", "DejaVuSans.ttf")),
     readFile(path.join(root, "public", "fonts", "DejaVuSans-Bold.ttf")),
     readOptionalAsset(root, "turbo-lev-document-logo.png", "image/png"),
-    readOptionalAsset(root, "turbo-lev-document-car-panorama.png", "image/png"),
+    getVehicleDocumentImage(snapshot.vehicle.id),
     readOptionalAsset(root, "turbo-lev-document-qr.png", "image/png"),
   ]);
   const regular = await pdf.embedFont(regularBytes, { subset: true });
   const bold = await pdf.embedFont(boldBytes, { subset: true });
+  const car = vehicleImage ? { bytes: vehicleImage.bytes, mimeType: vehicleImage.mimeType } : null;
   // CRM uses a dark interface, but the PDF is printed on light paper. Prevent
   // a dark/low-contrast CRM palette from producing an unreadable document.
   const requestedBackground = template?.style.background === "brand" ? "#FFF7F0" : template?.style.backgroundColor;
