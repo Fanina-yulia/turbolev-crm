@@ -733,7 +733,7 @@ export function PartsCatalog() {
                 <span className={operation.existingLineId || operation.mapped ? styles.serviceMapped : styles.serviceUnmapped}>{operationStatus}</span>
               </div>;
             })}</div>
-            : <div className={styles.servicesEmpty}><span>✓</span><b>Пов’язані роботи ще не завантажені</b><small>Після вибору деталі система покаже роботи з каталогу робіт.</small></div>
+            : <div className={styles.servicesEmpty}><span>✓</span><b>Пов’язані роботи ще не завантажені</b><small>Після вибору деталі система покаже роботи з каталогу робіт.</small></div>}
         </div>
       </section>
 
