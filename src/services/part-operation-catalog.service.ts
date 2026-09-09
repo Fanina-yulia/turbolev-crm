@@ -353,10 +353,6 @@ export function getPartPackageRule(input: PartOperationInput = {}): PartPackageR
     packageQuantity = quantityHint;
     priceQuantity = quantityHint;
     current.packageLabel = quantityHint + " л";
-  } else if (quantityHint > 0 && current.soldAs !== "LITER") {
-    packageQuantity = quantityHint;
-    if (current.priceBasis === "PER_PIECE") priceQuantity = quantityHint;
-  }
   const packageLabel = code === "BRAKE_PAD" ? "1 комплект на вісь · 2 колеса" : current.packageLabel;
   const requiresQuantityInput = current.requiresQuantityInput || current.soldAs === "LITER";
   return { ...current, canonicalCode: code, packageQuantity, priceQuantity, packageLabel, requiresQuantityInput };
