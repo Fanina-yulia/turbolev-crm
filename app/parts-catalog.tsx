@@ -75,6 +75,7 @@ export function PartsCatalog() {
   const [orderSearch, setOrderSearch] = useState("");
   const [activeFindingId, setActiveFindingId] = useState("");
   const [partFilter, setPartFilter] = useState("");
+  const [cartSearchQuery, setCartSearchQuery] = useState("");
   const [activeTab, setActiveTab] = useState<"all" | "originals" | "analogs" | "review" | "manual">("all");
   const [supplierFilter, setSupplierFilter] = useState("ALL");
   const [busy, setBusy] = useState(false);
@@ -458,6 +459,27 @@ export function PartsCatalog() {
     setMessage("Усі деталі з Діагностичної карти вже підібрані.");
   }
 
+  function startCartSearch() {
+    const query = cartSearchQuery.trim();
+    const next = recommendedParts.find((item) => !selectedLines.some((line) => line.findingId === recommendationKey(item)));
+    if (!next) {
+      setMessage("Усі деталі з Діагностичної карти вже підібрані.");
+      return;
+    }
+    if (query.length < 2) {
+      setMessage("Введіть щонайменше 2 символи номера або назви деталі.");
+      return;
+    }
+    setActiveFindingId(recommendationKey(next));
+    setQ(query);
+    setOffers([]);
+    setFitment(null);
+    setSupplierSearchBlocked(false);
+    setManualConfirmation(false);
+    setPickerOpen(true);
+    void searchPart(query, vehicleRef, next);
+  }
+
   function selectedLineFor(item: Recommendation) {
     return selectedLines.find((line) => line.findingId === recommendationKey(item)) || null;
   }
@@ -546,7 +568,12 @@ export function PartsCatalog() {
       <section className={`${styles.column} ${styles.selectedColumn}`} aria-labelledby="selected-parts-title">
         <div className={styles.columnTitle}>
           <div><p>КОШИК · {selectedLines.length}</p><b id="selected-parts-title">Вибрані деталі</b><small>Позиції, які увійдуть до Комерційної пропозиції</small></div>
-          <button type="button" className={styles.inlineAdd} onClick={openNextPicker} disabled={!recommendedParts.some((item) => !selectedLineFor(item))}>+ Додати</button>
+          <form className={styles.cartPartSearch} onSubmit={(event) => { event.preventDefault(); startCartSearch(); }}>
+            <label className={styles.srOnly} htmlFor="cart-part-search">Пошук деталі за номером або OEM-кодом</label>
+            <span aria-hidden="true">⌕</span>
+            <input id="cart-part-search" value={cartSearchQuery} onChange={(event) => setCartSearchQuery(event.target.value)} placeholder="Пошук за номером деталі / OEM" disabled={!recommendedParts.some((item) => !selectedLineFor(item))}/>
+            <button type="submit" aria-label="Знайти деталь" disabled={!recommendedParts.some((item) => !selectedLineFor(item))}>↵</button>
+          </form>
         </div>
         <div className={styles.selectedTableArea}>
           <div className={styles.selectedTableScroll}>
@@ -616,6 +643,9 @@ export function PartsCatalog() {
           {pickerOffers.map((offer, index) => {
             const key = offer.supplierId + ":" + (offer.externalProductId || offer.article);
             const offerClassLabel = offer.offerClass === "OEM" ? "Оригінал / OEM" : offer.offerClass === "ANALOG" ? "Аналог / крос" : "Ручна перевірка";
+            const stockDetails = offer.stock.length
+              ? offer.stock.map((stock) => `${stock.warehouse}: ${stock.quantity}`).join(" · ")
+              : "Склад не вказаний";
             const fitmentLabel = offer.fitmentStatus !== "VERIFIED"
               ? "Потрібна ручна перевірка"
               : offer.fitmentExact === false || fitment?.exact === false
@@ -624,7 +654,7 @@ export function PartsCatalog() {
             return <article className={styles.pickerOffer} key={key + "-" + index}>
               <div className={styles.pickerOfferName}><b>{offer.name}</b><small>{offer.brand || "Бренд не вказаний"} · {offer.article} · {offerClassLabel}</small><span>{offer.offerReason || offer.fitmentReason || "Знайдено за запитом постачальника"}</span>{offer.oeNumbers?.length ? <small>OE: {offer.oeNumbers.slice(0, 3).join(", ")}</small> : null}</div>
               <div className={styles.pickerOfferCell}><small>Постачальник</small><b>{offer.supplierName}</b></div>
-              <div className={styles.pickerOfferCell}><small>Склади / залишок</small><b>{offer.stock.length ? offer.stock.map((stock) => `${stock.warehouse}: ${stock.quantity}`).join(" · ") : "Не вказаний"}</b><em className={offer.available ? styles.available : styles.unavailable}>{offer.available ? "В наявності" : "Уточнити"}</em></div>
+              <div className={styles.pickerOfferCell}><small className={styles.offerStockLabel}>Наявність <button type="button" className={styles.offerInfo} aria-label={`Деталі пропозиції ${offer.article}`}>i</button></small><b>{offer.available ? "В наявності" : "Уточнити"}</b><em className={offer.available ? styles.available : styles.unavailable}>{stockDetails}</em><div className={styles.offerInfoPopover} role="tooltip"><strong>Деталі пропозиції</strong><span>Постачальник: {offer.supplierName}</span><span>Артикул: {offer.article}</span><span>Склад: {stockDetails}</span><span>Ціна закупки: {formatMoney(offer.purchasePrice, offer.currency)}</span></div></div>
               <div className={styles.pickerOfferCell}><small>Ціна закупки</small><b>{formatMoney(offer.purchasePrice, offer.currency)}</b></div>
               <div className={styles.pickerOfferCell}><small>Ціна продажу</small><b className={styles.sellPrice}>{formatMoney(offer.sellPrice, offer.currency)}</b></div>
               <div className={styles.pickerOfferCell}><small>Сумісність</small><b className={offer.fitmentStatus === "VERIFIED" ? styles.available : styles.unavailable}>{fitmentLabel}</b></div>
