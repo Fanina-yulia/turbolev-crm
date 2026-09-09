@@ -92,6 +92,8 @@ export type SupplierOffer = {
   brand: string | null;
   name: string;
   purchasePrice: number | null;
+  /** Optional customer-facing price for offer decorators that already know it. Raw supplier adapters may omit it. */
+  sellPrice?: number | null;
   currency: string | null;
   multiplicity: number | null;
   stock: SupplierStock[];
