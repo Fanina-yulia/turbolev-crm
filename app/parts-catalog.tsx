@@ -87,11 +87,23 @@ export function PartsCatalog() {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [resolvedPlate, setResolvedPlate] = useState<string | null>(null);
   const [resolvedVin, setResolvedVin] = useState("");
+  const [partsMarkupPercent, setPartsMarkupPercent] = useState(40);
   const [message, setMessage] = useState("Оберіть ремонтне замовлення або відкрийте підбір із Діагностичної карти.");
   const searchRequestRef = useRef(0);
   const searchAbortRef = useRef<AbortController | null>(null);
 
   useEffect(() => { const onRoute = () => setRoute(readCrmRoute()); window.addEventListener("popstate", onRoute); return () => window.removeEventListener("popstate", onRoute); }, []);
+  useEffect(() => {
+    let cancelled = false;
+    void fetch("/api/settings/operations", { cache: "no-store", credentials: "include" })
+      .then((response) => response.ok ? response.json() : null)
+      .then((payload) => {
+        const configured = Number(payload?.settings?.markup?.defaultPartsPercent);
+        if (!cancelled && Number.isFinite(configured) && configured >= 0 && configured <= 1000) setPartsMarkupPercent(configured);
+      })
+      .catch(() => undefined);
+    return () => { cancelled = true; };
+  }, []);
   useEffect(() => {
     if (!pickerOpen) return;
     const closeOnEscape = (event: KeyboardEvent) => { if (event.key === "Escape") setPickerOpen(false); };
@@ -399,7 +411,7 @@ export function PartsCatalog() {
   const selectedProfitTotal = selectedLines.reduce((sum, line) => sum + (line.sellPrice - line.purchasePrice) * line.quantity, 0);
   const selectedMarkupValues = [...new Set(selectedLines.map((line) => line.markupPercent))];
   const selectedMarkupLabel = selectedMarkupValues.length === 1 ? `${selectedMarkupValues[0]}%` : selectedMarkupValues.length > 1 ? "різна" : "—";
-  const displayedMarkupLabel = selectedMarkupLabel === "—" ? "з налаштувань" : selectedMarkupLabel;
+  const displayedMarkupLabel = selectedMarkupLabel === "—" ? `${partsMarkupPercent}%` : selectedMarkupLabel;
   const providerErrors = supplierProviders.filter((provider) => !provider.ok);
   const respondingSuppliers = supplierProviders.filter((provider) => provider.ok).length;
   const supplierStatusLabel = busy
