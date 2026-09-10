@@ -32,12 +32,12 @@
 .referenceHeader .referencePanorama:before{inset:0 0 0 120px}
 .referenceHeader .referenceMotion{left:145px;top:48px;width:205px}
 .referenceHeading h1{margin:0;font-size:19px;line-height:1.05;font-weight:900;white-space:nowrap}
-.referenceHeading strong{margin-top:5px;font-size:10px;line-height:1;font-weight:900}
+.referenceHeading strong{margin-top:5px;font-size:11px;line-height:1;font-weight:900}
 .referenceMeta{margin-top:0}
 .referenceMeta>span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .referencePartsTable .referenceTableHead,.referencePartsTable .referenceTableRow,.referencePartsTable .referenceTableTotal{grid-template-columns:30px 104px 82px minmax(0,1fr) 48px}
 .referencePartsTable .referenceTableHead span,.referencePartsTable .referenceTableRow span{min-width:0;overflow:hidden}
-.referencePartsTable .referenceTableHead span{white-space:nowrap;font-size:10px}
+.referencePartsTable .referenceTableHead span{white-space:nowrap;font-size:11px}
 .referencePartsTable .referenceTableRow span:nth-child(1),.referencePartsTable .referenceTableRow span:nth-child(2),.referencePartsTable .referenceTableRow span:nth-child(3),.referencePartsTable .referenceTableRow span:nth-child(5){white-space:nowrap}
 .referencePartsTable .referenceTableRow span:nth-child(4){display:block;overflow:visible;padding:4px 5px;line-height:1.2;white-space:normal;overflow-wrap:anywhere}
-@media(max-width:760px){.referenceHeader{grid-template-rows:67px 39px;height:114px;min-height:114px;padding-left:12px;padding-right:12px}.referenceHeader>.referencePanorama{height:67px}.referenceHeader .referenceBrandLogo{width:128px!important;height:64px!important}.referenceHeader .referenceCar{width:178px!important;height:67px!important}.referenceHeader .referencePanorama:before{inset:0 0 0 96px}.referenceHeader .referenceMotion{left:108px;top:41px;transform:scale(.78);transform-origin:left top}.referenceHeading h1{font-size:16px}.referenceHeading strong{font-size:9px}.referencePartsTable .referenceTableHead,.referencePartsTable .referenceTableRow,.referencePartsTable .referenceTableTotal{grid-template-columns:26px 86px 66px minmax(0,1fr) 42px}}
+@media(max-width:760px){.referenceHeader{grid-template-rows:67px 39px;height:114px;min-height:114px;padding-left:12px;padding-right:12px}.referenceHeader>.referencePanorama{height:67px}.referenceHeader .referenceBrandLogo{width:128px!important;height:64px!important}.referenceHeader .referenceCar{width:178px!important;height:67px!important}.referenceHeader .referencePanorama:before{inset:0 0 0 96px}.referenceHeader .referenceMotion{left:108px;top:41px;transform:scale(.78);transform-origin:left top}.referenceHeading h1{font-size:16px}.referenceHeading strong{font-size:11px}.referencePartsTable .referenceTableHead,.referencePartsTable .referenceTableRow,.referencePartsTable .referenceTableTotal{grid-template-columns:26px 86px 66px minmax(0,1fr) 42px}}
