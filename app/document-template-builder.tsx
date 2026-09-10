@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, type CSSProperties, type ChangeEvent } from "react";
+import { useEffect, useMemo, useState, type ChangeEvent } from "react";
 import { maskDocumentArticle } from "@/src/services/document-article-masking";
 import styles from "./document-template-builder.module.css";
 import compactStyles from "./document-template-builder-compact.module.css";
@@ -192,15 +192,7 @@ export function DocumentTemplateBuilder() {
   if (loading) return <section className={styles.panel}><div className={styles.loading}>Завантажуємо конструктор документів…</div></section>;
   if (!selected) return <section className={styles.panel}><div className={styles.error}>Шаблони документів недоступні.</div></section>;
 
-  const previewStyle = {
-    "--doc-accent": selected.style.accentColor,
-    "--doc-text": selected.style.textColor,
-    "--doc-muted": selected.style.mutedColor,
-    backgroundColor: selected.style.background === "brand" ? `${selected.style.accentColor}12` : selected.style.backgroundColor,
-    backgroundImage: selected.style.background === "image" && selected.style.backgroundImageDataUrl ? `url(${selected.style.backgroundImageDataUrl})` : undefined,
-  } as CSSProperties;
   const visibleBlocks = selected.blocks.filter((block) => block.visible);
-  const logo = selected.style.logo === "custom" ? selected.style.logoDataUrl : null;
   const isReferenceDocument = selectedType === "DIAGNOSTIC_CARD";
 
   return <section className={styles.panel} data-document-template-builder="true">
@@ -227,7 +219,7 @@ export function DocumentTemplateBuilder() {
         <button type="button" className={styles.saveDraft} disabled={!dirty || saving} onClick={() => void save("DRAFT")}>Зберегти як чернетку</button>
       </div>
 
-      <div className={styles.previewColumn}><div className={styles.previewToolbar}><strong>Попередній перегляд</strong><span>A4 · HTML preview</span></div>{isReferenceDocument ? <DiagnosticCardReferencePreview/> : <article className={`${styles.document} ${styles[`font_${selected.style.font}`]}`} style={previewStyle}><header className={styles.documentHeader}>{selected.style.logo !== "none" && (logo ? <img src={logo} alt="Логотип шаблону"/> : <div className={styles.logoPlaceholder}>ТУРБО<br/><b>ЛЕВ</b></div>)}<div className={styles.documentHeading}><p>TURBO LEV · СЕРВІС</p><h1>{selected.title}</h1><span>{selected.description}</span></div><img className={styles.headerCar} src="/brand/turbo-lev-document-car.png" alt="Автомобіль"/></header><div className={styles.documentMeta}><span>ДАТА <b>05.09.2026</b></span><span>АВТОМОБІЛЬ <b>Peugeot Partner 2005</b></span><span>ДЕРЖ. НОМЕР <b>АЕ0914МН</b></span><span>VIN <b>Тестовий VIN</b></span><span>КЛІЄНТ <b>Юрій</b></span><span>МЕХАНІК <b>Микола Карабан</b></span></div><div className={styles.previewBlocks}>{visibleBlocks.map((block) => <PreviewBlock key={block.id} block={block} type={selectedType} accent={selected.style.accentColor}/>)}</div><footer className={styles.documentFooter}>{selected.style.footerText}<span>098 341 56 46 · turbolev.net</span></footer></article>}<p className={styles.previewHint}>{isReferenceDocument ? "Діагностична карта показує лише перелік деталей без вартості послуг, закупівельних цін і підсумків." : "Комерційна пропозиція містить деталі та окремий перелік послуг із ціною. Артикули для клієнта показуються з маскуванням."}</p></div>
+      <div className={styles.previewColumn}><div className={styles.previewToolbar}><strong>Попередній перегляд</strong><span>A4 · HTML preview</span></div>{isReferenceDocument ? <DiagnosticCardReferencePreview/> : <CommercialProposalReferencePreview/>}<p className={styles.previewHint}>{isReferenceDocument ? "Діагностична карта показує лише перелік деталей без вартості послуг, закупівельних цін і підсумків." : "Комерційна пропозиція містить деталі, послуги, підсумок, QR-код і попередження для клієнта. Артикули показуються з маскуванням."}</p></div>
     </div>
   </section>;
 }
@@ -297,19 +289,4 @@ function CommercialProposalReferencePreview() {
 
 function ReferenceTable({ title, columns, rows, total, variant = "parts" }: { title: string; columns: string[]; rows: string[][]; total?: string; variant?: "parts" | "works" }) {
   return <section className={styles.referenceTableSection}><h2>{title}</h2><div className={`${styles.referenceTable} ${variant === "works" ? styles.referenceWorkTable : variant === "parts" && columns.length === 5 ? styles.referencePartsTable : ""}`}><div className={styles.referenceTableHead}>{columns.map((column) => <span key={column}>{column}</span>)}</div>{rows.map((row, rowIndex) => <div className={styles.referenceTableRow} key={`${title}-${rowIndex}`}>{row.map((cell, cellIndex) => <span key={`${rowIndex}-${cellIndex}`}>{cell}</span>)}</div>)}{total ? <div className={styles.referenceTableTotal}><span>Всього {title.toLowerCase()}:</span><b>{columns.length === 6 ? "8" : ""}</b><strong>{total}</strong></div> : null}</div></section>;
-}
-
-function PreviewBlock({ block, type, accent }: { block: Block; type: TemplateType; accent: string }) {
-  const copy: Record<string, { title: string; body: string }> = {
-    identity: { title: "Клієнт та автомобіль", body: "Peugeot Partner 2005 · АЕ0914МН · VIN · пробіг · контакт клієнта" },
-    intro: { title: "Вступний текст", body: "Підготували перелік запчастин і послуг для вашого автомобіля." },
-    works: { title: "Послуги", body: "Заміна сайлентблока · 1 шт. · 600,00 грн" },
-    parts: { title: "Запчастини", body: `Сайлентблок переднього важеля · Артикул ${maskDocumentArticle("181513")} · 1 шт. · 786,00 грн` },
-    totals: { title: "Підсумок та сума", body: "Послуги: 600,00 грн · Запчастини: 786,00 грн · Разом: 1 386,00 грн" },
-    terms: { title: "Умови та гарантія", body: "Термін дії пропозиції та гарантійні умови станції." },
-    signature: { title: "Підтвердження клієнта", body: "Погодження комерційної пропозиції" },
-    contacts: { title: "Контакти станції", body: "098 341 56 46 · turbolev.net · Глеваха / Одеська траса" },
-  };
-  const value = copy[block.id] || { title: block.label, body: "Дані цього блока будуть підставлені з CRM." };
-  return <section className={styles.previewBlock} style={{ borderLeftColor: accent }}><h3>{value.title}</h3><p>{value.body}</p></section>;
 }
