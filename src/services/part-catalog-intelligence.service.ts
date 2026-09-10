@@ -2,7 +2,6 @@ import { createHash } from "node:crypto";
 import { CatalogEntityStatus, PartCatalogReviewStatus, PartSoldAs } from "@/src/generated/prisma/client";
 import { getPrisma } from "@/src/lib/prisma";
 import { normalizePartTerminology, resolvePartTerminology } from "@/src/services/parts-terminology.service";
-import { getPartPackageRule } from "@/src/services/part-operation-catalog.service";
 
 export type CatalogPartAttributes = {
   axis?: string | null;
@@ -87,7 +86,6 @@ export function buildPartQueryPlan(input: {
 export function validatePartSelection(input: {
   expected?: CatalogPartAttributes;
   selected?: CatalogPartAttributes;
-  canonicalCode?: string | null;
   quantity?: number;
   available?: number | null;
 }) {
@@ -107,11 +105,6 @@ export function validatePartSelection(input: {
   }
   if (selected.soldAs === "PAIR" && quantity === 1) warnings.push("Позиція продається парою. Перевірте кількість.");
   if (selected.soldAs === "SET" || selected.soldAs === "KIT") warnings.push("Позиція продається комплектом.");
-  const packageRule = getPartPackageRule({ canonicalCode: input.canonicalCode, axis: expected.axis, side: expected.side, position: expected.position, subPosition: expected.subPosition, soldAs: selected.soldAs });
-  if (packageRule.soldAs === "SET" && packageRule.coverage === "AXLE" && packageRule.priceBasis === "PER_WHEEL") {
-    warnings.push("Це комплект на вісь: ціна постачальника за одне колесо буде помножена на 2.");
-  }
-  if (packageRule.soldAs === "LITER") warnings.push("Для рідини потрібно окремо підтвердити обсяг у літрах.");
   return { ok: errors.length === 0, errors, warnings };
 }
 

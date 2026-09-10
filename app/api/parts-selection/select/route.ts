@@ -47,7 +47,7 @@ export async function POST(request: Request) {
 
     if (body?.genericArticleId) {
       const article = await getPrisma().genericArticle.findUnique({ where: { id: body.genericArticleId }, select: { axis: true, side: true, position: true, subPosition: true, soldAs: true } });
-      const validation = validatePartSelection({ canonicalCode: body.canonicalCode, expected: { axis: body.axis, side: body.side, position: body.position, subPosition: body.subPosition }, selected: article || {}, quantity: body.quantity ?? 1 });
+      const validation = validatePartSelection({ expected: { axis: body.axis, side: body.side, position: body.position, subPosition: body.subPosition }, selected: article || {}, quantity: body.quantity ?? 1 });
       if (!validation.ok) return NextResponse.json({ ok: false, error: "PART_LOGIC_MISMATCH", message: validation.errors.join(" "), warnings: validation.warnings }, { status: 400 });
     }
 

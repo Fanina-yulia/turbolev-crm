@@ -4,8 +4,6 @@ import { getPrisma } from "@/src/lib/prisma";
 import { authorize } from "@/src/security/authorize";
 import { PERMISSIONS } from "@/src/security/permissions";
 import { createCatalogChange, listCatalogParts, normalizeCatalogArticleInput, recordSearchFeedback, seedRepairKits } from "@/src/services/part-catalog-intelligence.service";
-import { seedStaticPartKnowledge } from "@/src/services/parts-knowledge.service";
-import { seedPartOperationCatalog } from "@/src/services/part-operation-catalog.service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -70,13 +68,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ ok: true, match }, { status: 201 });
     }
     if (action === "SEED_REPAIR_KITS") return NextResponse.json({ ok: true, result: await seedRepairKits() });
-    if (action === "SEED_PART_OPERATION_CATALOG") return NextResponse.json({ ok: true, result: await seedPartOperationCatalog() });
-    if (action === "SEED_FULL_PART_CATALOG") {
-      const terminology = await seedStaticPartKnowledge();
-      const operations = await seedPartOperationCatalog();
-      const kits = await seedRepairKits();
-      return NextResponse.json({ ok: true, result: { terminology, operations, kits } });
-    }
     return NextResponse.json({ ok: false, error: "UNKNOWN_PART_CATALOG_ACTION" }, { status: 400 });
   } catch (error) {
     console.error("POST /api/settings/parts-catalog failed", error);
