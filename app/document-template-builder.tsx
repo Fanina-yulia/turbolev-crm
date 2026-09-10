@@ -234,12 +234,12 @@ export function DocumentTemplateBuilder() {
 
 function DiagnosticCardReferencePreview() {
   const parts = [
-    [maskDocumentArticle("113-1451X"), "QUICK BRAKE", "Направляюча переднього супорта Opel Astra J/Chevrolet Aveo 09-", "1"],
-    [maskDocumentArticle("181513"), "ICER", "Колодки гальмівні передні Toyota Corolla 2001-2014", "1"],
-    [maskDocumentArticle("818 0243 10"), "FAG", "Тяга переднього стабілізатора Citroen C4/C5/Berlingo/Peugeot 307", "1"],
-    [maskDocumentArticle("181233-701"), "ICER", "Колодки гальмівні передні Mercedes-Benz A-Class W168", "1"],
-    [maskDocumentArticle("738128"), "FRENKIT", "Ремкомплект заднього супорта Mercedes-Benz Vito W639", "2"],
-    [maskDocumentArticle("208024"), "SOLGY", "Диск гальмівний задній Citroen Berlingo/Peugeot Partner", "2"],
+    ["1", maskDocumentArticle("113-1451X"), "QUICK BRAKE", "Направляюча переднього супорта Opel Astra J/Chevrolet Aveo 09-", "1"],
+    ["2", maskDocumentArticle("181513"), "ICER", "Колодки гальмівні передні Toyota Corolla 2001-2014", "1"],
+    ["3", maskDocumentArticle("818 0243 10"), "FAG", "Тяга переднього стабілізатора Citroen C4/C5/Berlingo/Peugeot 307", "1"],
+    ["4", maskDocumentArticle("181233-701"), "ICER", "Колодки гальмівні передні Mercedes-Benz A-Class W168", "1"],
+    ["5", maskDocumentArticle("738128"), "FRENKIT", "Ремкомплект заднього супорта Mercedes-Benz Vito W639", "2"],
+    ["6", maskDocumentArticle("208024"), "SOLGY", "Диск гальмівний задній Citroen Berlingo/Peugeot Partner", "2"],
   ];
   return <article className={styles.referenceDocument}>
     <div className={styles.referenceCorner}/>
