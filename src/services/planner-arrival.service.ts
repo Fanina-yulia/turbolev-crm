@@ -127,6 +127,7 @@ export async function arrivePlannerAppointment(id: string, body: Record<string, 
     let leadUpdated = false;
     let reusedDiagnostic = false;
     let followupWorkVisit = false;
+    let directRepairVisit = false;
 
     const requiresDiagnosticFirst = fresh.requiresDiagnosticFirst || input.requiresDiagnosticFirst === true;
     const isRepairVisit = fresh.purpose === "REPAIR" || input.purpose === "REPAIR";
@@ -143,7 +144,7 @@ export async function arrivePlannerAppointment(id: string, body: Record<string, 
     if ((isRepairVisit && !requiresDiagnosticFirst) || (fresh.workOrderId && clientId && vehicleId)) {
       const workOrder = await tx.workOrder.findUnique({
         where: { id: fresh.workOrderId! },
-        select: { id: true, clientId: true, vehicleId: true, diagnosticRequestId: true },
+        select: { id: true, clientId: true, vehicleId: true, diagnosticRequestId: true, origin: true },
       });
       if (!workOrder || (clientId && workOrder.clientId !== clientId) || (vehicleId && workOrder.vehicleId !== vehicleId)) {
         return {
@@ -157,9 +158,12 @@ export async function arrivePlannerAppointment(id: string, body: Record<string, 
       clientId = workOrder.clientId;
       vehicleId = workOrder.vehicleId;
       diagnosticRequestId = workOrder.diagnosticRequestId;
-      const diagnostic = await tx.diagnosticRequest.findUnique({ where: { id: workOrder.diagnosticRequestId }, select: { status: true } });
+      directRepairVisit = workOrder.origin === "DIRECT_REPAIR";
+      const diagnostic = workOrder.diagnosticRequestId
+        ? await tx.diagnosticRequest.findUnique({ where: { id: workOrder.diagnosticRequestId }, select: { status: true } })
+        : null;
       diagnosticStatus = diagnostic?.status || null;
-      reusedDiagnostic = true;
+      reusedDiagnostic = Boolean(diagnostic);
       followupWorkVisit = true;
       if (fresh.leadId) {
         await tx.lead.update({
@@ -259,6 +263,7 @@ export async function arrivePlannerAppointment(id: string, body: Record<string, 
             leadUpdated,
             reusedDiagnostic,
             followupWorkVisit,
+            directRepairVisit,
             diagnosticLocationId: followupWorkVisit ? null : input.locationId,
             diagnosticMechanicId: followupWorkVisit ? null : input.mechanicId,
             vehicleLocation: "RECEPTION",
@@ -285,6 +290,7 @@ export async function arrivePlannerAppointment(id: string, body: Record<string, 
         vehicleLocation: "RECEPTION" as const,
         reusedDiagnostic,
         followupWorkVisit,
+        directRepairVisit,
       },
     };
   });

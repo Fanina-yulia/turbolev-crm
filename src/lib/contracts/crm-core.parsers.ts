@@ -131,9 +131,22 @@ export function parseWorkOrderReference(value: unknown): WorkOrderReference | nu
   return {
     id,
     status,
+    origin: typeof value.origin === "string" ? value.origin : undefined,
     createdAt,
     updatedAt,
     closedAt: dateString(value.closedAt),
+    estimates: Array.isArray(value.estimates)
+      ? value.estimates.flatMap((estimate) => {
+          if (!isRecord(estimate)) return [];
+          const estimateId = requiredString(estimate.id);
+          const estimateStatus = requiredString(estimate.status);
+          const revision = Number(estimate.revision);
+          return estimateId && estimateStatus && Number.isFinite(revision) ? [{ id: estimateId, status: estimateStatus, revision }] : [];
+        })
+      : undefined,
+    completionAct: isRecord(value.completionAct) && requiredString(value.completionAct.id) && requiredString(value.completionAct.actNumber) && dateString(value.completionAct.issuedAt)
+      ? { id: requiredString(value.completionAct.id)!, actNumber: requiredString(value.completionAct.actNumber)!, status: requiredString(value.completionAct.status) || "ISSUED", issuedAt: dateString(value.completionAct.issuedAt)! }
+      : null,
   };
 }
 
@@ -457,7 +470,7 @@ export function parseWorkOrderListItem(value: unknown, number: number | null = n
   const diagnostic = parseDiagnosticRequestReference(value.diagnosticRequest);
   const statusLabel = requiredString(value.statusLabel);
   const statusTone = requiredString(value.statusTone);
-  if (!core || !client || !vehicle || !diagnostic || !statusLabel || !statusTone) return null;
+  if (!core || !client || !vehicle || !statusLabel || !statusTone) return null;
   return {
     ...core,
     number,
@@ -470,10 +483,10 @@ export function parseWorkOrderListItem(value: unknown, number: number | null = n
       mileageKm: isRecord(value.vehicle) ? nullableNumber(value.vehicle.mileageKm) : null,
       turboLevClass: isRecord(value.vehicle) ? nullableString(value.vehicle.turboLevClass) : null,
     },
-    diagnosticRequest: {
+    diagnosticRequest: diagnostic ? {
       ...diagnostic,
       leadId: isRecord(value.diagnosticRequest) ? nullableString(value.diagnosticRequest.leadId) : null,
-    },
+    } : null,
     transitions: Array.isArray(value.transitions)
       ? value.transitions.map(parseTransition).filter((item): item is WorkOrderTransitionContract => item !== null)
       : [],

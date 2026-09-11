@@ -4,6 +4,7 @@ import { getPrisma } from "@/src/lib/prisma";
 import { zonedDateTimeToDate } from "@/src/lib/zoned-time";
 import { lookupVehicleByPlate } from "@/src/services/vehicle-lookup.service";
 import { decodeVinIntelligence } from "@/src/services/vin-intelligence.service";
+import { createDirectRepairWorkOrderTx } from "@/src/services/work-orders.service";
 
 export class IntakeValidationError extends Error {
   readonly code: string | null;
@@ -481,6 +482,21 @@ export async function createIntake(input: IntakeInput) {
       },
     });
 
+    let directWorkOrder: { id: string } | null = null;
+    if (appointmentStart && appointmentEnd && location && post && purpose === "REPAIR" && !visitProcess.requiresDiagnosticFirst) {
+      if (!visitProcess.hasNonDiagnosticWork) {
+        throw new IntakeValidationError("Для прямого ремонту додайте хоча б одну роботу, окрім діагностики.", "DIRECT_REPAIR_WORK_REQUIRED");
+      }
+      directWorkOrder = await createDirectRepairWorkOrderTx(tx, {
+        clientId: client.id,
+        vehicleId: vehicle.id,
+        mechanicId: mechanic?.id || null,
+        works: preliminaryWorks
+          .filter((work) => !isDiagnosticWork(work))
+          .map((work) => ({ name: work.name, quantity: work.quantity, total: work.total })),
+      });
+    }
+
     let appointment = null;
     if (appointmentStart && appointmentEnd && location && post) {
       appointment = await tx.serviceAppointment.create({
@@ -491,6 +507,7 @@ export async function createIntake(input: IntakeInput) {
           leadId: lead.id,
           clientId: client.id,
           vehicleId: vehicle.id,
+          workOrderId: directWorkOrder?.id || null,
           purpose,
           requiresDiagnosticFirst: visitProcess.requiresDiagnosticFirst,
           status: PlannerAppointmentStatus.BOOKED,
@@ -515,7 +532,7 @@ export async function createIntake(input: IntakeInput) {
         entityId: lead.id,
         action: "CREATE_FROM_INTAKE",
         after: json(lead),
-        metadata: json({ clientId: client.id, vehicleId: vehicle.id, appointmentId: appointment?.id || null, vehicleReassigned: needsReassign, previousClientId, contactPhone: displayPhone(phoneNormalized), preliminaryWorksCount: preliminaryWorks.length, postId: post?.id || null, mechanicId: mechanic?.id || null, parallelMechanicLoadConfirmed: Boolean(mechanic && input.confirmMechanicParallel === true), appointmentDurationMinutes, visitProcess }),
+        metadata: json({ clientId: client.id, vehicleId: vehicle.id, appointmentId: appointment?.id || null, workOrderId: directWorkOrder?.id || null, vehicleReassigned: needsReassign, previousClientId, contactPhone: displayPhone(phoneNormalized), preliminaryWorksCount: preliminaryWorks.length, postId: post?.id || null, mechanicId: mechanic?.id || null, parallelMechanicLoadConfirmed: Boolean(mechanic && input.confirmMechanicParallel === true), appointmentDurationMinutes, visitProcess }),
       },
     });
     if (needsReassign) {
@@ -537,12 +554,12 @@ export async function createIntake(input: IntakeInput) {
           entityId: appointment.id,
           action: "CREATE_FROM_INTAKE",
           after: json(appointment),
-          metadata: json({ leadId: lead.id, clientId: client.id, vehicleId: vehicle.id, postId: post?.id || null, mechanicId: mechanic?.id || null, parallelMechanicLoadConfirmed: Boolean(mechanic && input.confirmMechanicParallel === true), appointmentDurationMinutes, visitProcess }),
+        metadata: json({ leadId: lead.id, clientId: client.id, vehicleId: vehicle.id, workOrderId: directWorkOrder?.id || null, postId: post?.id || null, mechanicId: mechanic?.id || null, parallelMechanicLoadConfirmed: Boolean(mechanic && input.confirmMechanicParallel === true), appointmentDurationMinutes, visitProcess }),
         },
       });
     }
 
-    return { client, vehicle, lead, appointment, vehicleReassigned: needsReassign, preliminaryWorks, visitProcess };
+    return { client, vehicle, lead, appointment, workOrder: directWorkOrder, vehicleReassigned: needsReassign, preliminaryWorks, visitProcess };
   });
 }
 

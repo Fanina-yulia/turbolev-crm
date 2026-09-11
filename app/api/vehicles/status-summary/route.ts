@@ -36,7 +36,8 @@ function proposalStatus(row: {
   sentAt: Date | null;
   approvedAt: Date | null;
   rejectedAt: Date | null;
-} | null, workOrderId: string | null): VehicleStatusItem {
+} | null, workOrderId: string | null, applicable = true): VehicleStatusItem {
+  if (!applicable) return item("not_applicable", "Не застосовується", "neutral", null, null);
   if (!row || row.status === "DRAFT" || row.status === "SUPERSEDED" || row.status === "CANCELLED") {
     return item("not_sent", "Не відправлена", "danger", workOrderId, row?.updatedAt);
   }
@@ -55,7 +56,9 @@ function proposalStatus(row: {
 function workStatus(
   row: { id: string; status: string; closedAt: Date | null; updatedAt: Date } | null,
   obligation: { status: string; amount: unknown; settledAmount: unknown; updatedAt: Date } | null,
+  applicable = true,
 ): VehicleStatusItem {
+  if (!applicable) return item("not_applicable", "Не застосовується", "neutral", null, null);
   if (!row || row.status === "CANCELLED") {
     return item("not_started", "Не розпочато", "danger", row?.id || null, row?.updatedAt);
   }
@@ -100,6 +103,7 @@ export async function GET(request: NextRequest) {
               status: true,
               closedAt: true,
               updatedAt: true,
+              origin: true,
               estimates: {
                 orderBy: [{ revision: "desc" }, { updatedAt: "desc" }],
                 take: 1,
@@ -111,6 +115,14 @@ export async function GET(request: NextRequest) {
       }),
       getDiagnosticVehicleStatuses(ids),
     ]);
+
+    const appointments = await prisma.serviceAppointment.findMany({
+      where: { vehicleId: { in: ids } },
+      orderBy: [{ plannedStartAt: "desc" }, { createdAt: "desc" }],
+      distinct: ["vehicleId"],
+      select: { vehicleId: true, purpose: true, requiresDiagnosticFirst: true },
+    });
+    const appointmentByVehicle = new Map(appointments.filter((row) => row.vehicleId).map((row) => [row.vehicleId!, row]));
 
     const workOrderIds = vehicles
       .map((vehicle) => vehicle.workOrders[0]?.id)
@@ -134,10 +146,15 @@ export async function GET(request: NextRequest) {
       const workOrder = vehicle.workOrders[0] || null;
       const estimate = workOrder?.estimates[0] || null;
       const obligation = workOrder ? obligationsByWorkOrder.get(workOrder.id) || null : null;
+      const appointment = appointmentByVehicle.get(vehicle.id) || null;
+      const diagnosticOnly = !workOrder && appointment?.purpose === "DIAGNOSTICS" && !appointment.requiresDiagnosticFirst;
+      const directRepair = workOrder?.origin === "DIRECT_REPAIR";
       const statuses: VehicleStatusSummary = {
-        diagnostics: diagnosticStatuses.get(vehicle.id) || item("not_started", "Не було", "danger", null, null),
-        proposal: proposalStatus(estimate, workOrder?.id || null),
-        work: workStatus(workOrder, obligation),
+        diagnostics: directRepair
+          ? item("not_applicable", "Не застосовується", "neutral", null, null)
+          : diagnosticStatuses.get(vehicle.id) || item("not_started", "Не було", "danger", null, null),
+        proposal: proposalStatus(estimate, workOrder?.id || null, !diagnosticOnly && !directRepair),
+        work: workStatus(workOrder, obligation, !diagnosticOnly),
       };
       return { vehicleId: vehicle.id, statusSummary: statuses };
     });

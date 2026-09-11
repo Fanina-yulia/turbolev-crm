@@ -27,23 +27,25 @@ async function financeGateStateTx(tx: Tx, workOrderId: string) {
   return { actualFinalized: true, receivable, outstanding, zeroBalance: outstanding.isZero() };
 }
 
-function applyStableApprovalGates(gates: WorkflowGateState, approved: boolean): WorkflowGateState {
+function applyStableApprovalGates(gates: WorkflowGateState, approved: boolean, directRepairApproved = false): WorkflowGateState {
+  const effectiveApproval = approved || directRepairApproved;
   return {
     ...gates,
-    ESTIMATE_APPROVED_BEFORE_REPAIR: approved,
-    ADDITIONAL_WORK_REQUIRES_APPROVAL: approved,
+    ESTIMATE_APPROVED_BEFORE_REPAIR: effectiveApproval,
+    ADDITIONAL_WORK_REQUIRES_APPROVAL: effectiveApproval,
   };
 }
 
 export async function getWorkOrderCycleGateStateTx(tx: Tx, workOrderId: string): Promise<WorkflowGateState> {
-  const [commercial, approval, qc, finance] = await Promise.all([
+  const [commercial, approval, qc, finance, workOrder] = await Promise.all([
     getWorkOrderGateStateTx(tx, workOrderId),
     getWorkOrderEstimateApprovalStateTx(tx, workOrderId),
     getQualityControlStateTx(tx, workOrderId),
     financeGateStateTx(tx, workOrderId),
+    tx.workOrder.findUnique({ where: { id: workOrderId }, select: { origin: true, directPriceConfirmedAt: true } }),
   ]);
   return {
-    ...applyStableApprovalGates(commercial, approval.approved),
+    ...applyStableApprovalGates(commercial, approval.approved, workOrder?.origin === "DIRECT_REPAIR" && Boolean(workOrder.directPriceConfirmedAt)),
     QC_PASSED_BEFORE_READY: qc.passed,
     ZERO_BALANCE_BEFORE_DELIVERY: finance.zeroBalance,
   };
@@ -58,7 +60,7 @@ export async function getWorkOrderCycleState(workOrderId: string) {
     financeGateStateTx(prisma, workOrderId),
   ]);
 
-  const commercialGates = applyStableApprovalGates(commercial.gates, approval.approved);
+  const commercialGates = applyStableApprovalGates(commercial.gates, approval.approved, commercial.directRepairPriceConfirmed);
   const normalizedCommercial = {
     ...commercial,
     currentApprovalFingerprint: approval.currentFingerprint,

@@ -63,7 +63,7 @@ async function resolveWorkOrderContext(tx: Prisma.TransactionClient, workOrderId
     where: {
       OR: [
         { workOrderId },
-        ...(workOrder.diagnosticRequest.leadId ? [{ leadId: workOrder.diagnosticRequest.leadId }] : []),
+        ...(workOrder.diagnosticRequest?.leadId ? [{ leadId: workOrder.diagnosticRequest.leadId }] : []),
         { clientId: workOrder.clientId, vehicleId: workOrder.vehicleId, actualArrivalAt: { not: null } },
       ],
     },

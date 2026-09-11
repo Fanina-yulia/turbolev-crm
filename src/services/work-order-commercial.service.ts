@@ -82,7 +82,7 @@ function fingerprint(snapshot: unknown) {
 async function ensureWorkOrder(tx: Tx, workOrderId: string) {
   const workOrder = await tx.workOrder.findUnique({
     where: { id: workOrderId },
-    select: { id: true, status: true, clientId: true, vehicleId: true, diagnosticRequestId: true },
+    select: { id: true, status: true, clientId: true, vehicleId: true, diagnosticRequestId: true, origin: true, directPriceConfirmedAt: true },
   });
   if (!workOrder) throw new WorkOrderCommercialError("WORK_ORDER_NOT_FOUND", "WorkOrder not found");
   return workOrder;
@@ -280,7 +280,8 @@ async function commercialStateTx(tx: Tx, workOrderId: string) {
   const currentBuilt = lines.length ? buildSnapshot(lines) : null;
   const estimate = await latestEstimate(tx, workOrderId);
   const estimateIsCurrent = Boolean(currentBuilt && estimate && currentBuilt.fingerprint === estimate.lineFingerprint);
-  const estimateApproved = Boolean(estimateIsCurrent && estimate?.status === "APPROVED" && estimate.approvedAt);
+  const directRepairPriceConfirmed = workOrder.origin === "DIRECT_REPAIR" && Boolean(workOrder.directPriceConfirmedAt);
+  const estimateApproved = directRepairPriceConfirmed || Boolean(estimateIsCurrent && estimate?.status === "APPROVED" && estimate.approvedAt);
   const request = estimate?.partsRequests?.[0] ?? null;
   const requiredParts = lines.filter((line) => line.type === "PART" && line.requiredForRepair);
   const requestItems = request?.items ?? [];
@@ -314,6 +315,7 @@ async function commercialStateTx(tx: Tx, workOrderId: string) {
     currentFingerprint: currentBuilt?.fingerprint ?? null,
     estimateIsCurrent,
     estimateApproved,
+    directRepairPriceConfirmed,
     requiredPartsCount: requiredParts.length,
     partsReady,
     mechanicAssigned,

@@ -112,7 +112,7 @@ export async function getServiceTimeline(scope: TimelineScope, options: Timeline
   }
 
   const diagnosticWhere = scope.workOrderId
-    ? { id: { in: workOrders.map((row) => row.diagnosticRequestId) } }
+    ? { id: { in: workOrders.map((row) => row.diagnosticRequestId).filter((id): id is string => Boolean(id)) } }
     : scope.vehicleId
       ? { vehicleId: scope.vehicleId }
       : scope.clientId
@@ -122,13 +122,13 @@ export async function getServiceTimeline(scope: TimelineScope, options: Timeline
     where: diagnosticWhere,
     orderBy: { createdAt: "desc" },
     take: 100,
-    select: { id: true, clientId: true, vehicleId: true, status: true, technicalConclusion: true, confirmedAt: true, createdAt: true, diagnosticCard: { select: { number: true } } },
+    select: { id: true, clientId: true, vehicleId: true, status: true, technicalConclusion: true, confirmedAt: true, createdAt: true },
   });
   const woByDiagnostic = new Map(workOrders.map((row) => [row.diagnosticRequestId, row.id]));
   for (const diagnostic of diagnostics) {
     const linkedWorkOrderId = woByDiagnostic.get(diagnostic.id) || null;
     const ctx = linkedWorkOrderId ? contextFor(linkedWorkOrderId) : { workOrderId: null, workOrderNumber: null, vehicleId: diagnostic.vehicleId, clientId: diagnostic.clientId, plateNumber: null, diagnosticId: diagnostic.id };
-    const diagnosticContext = { ...ctx, diagnosticId: diagnostic.id, diagnosticCardNumber: diagnostic.diagnosticCard?.number ?? null };
+    const diagnosticContext = { ...ctx, diagnosticId: diagnostic.id, diagnosticCardNumber: null };
     push({ id: `diag-created-${diagnostic.id}`, occurredAt: diagnostic.createdAt, kind: "DIAGNOSTIC", title: "Діагностику створено", detail: null, ...diagnosticContext });
     if (diagnostic.confirmedAt) push({ id: `diag-confirmed-${diagnostic.id}`, occurredAt: diagnostic.confirmedAt, kind: "DIAGNOSTIC", title: "Діагностику підтверджено", detail: diagnostic.technicalConclusion ? diagnostic.technicalConclusion.slice(0, 220) : null, ...diagnosticContext });
   }

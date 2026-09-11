@@ -26,6 +26,7 @@ import {
 } from "@/src/services/work-order-cycle.service";
 import { ensureQualityControlTaskTx } from "@/src/services/work-order-qc.service";
 import { finalizeWorkOrderFinanceFromLines } from "@/src/services/work-order-lines.service";
+import { ensureCompletionActTx } from "@/src/services/service-completion-act.service";
 import type { PlannerStatus } from "@/src/services/planner.service";
 
 export class DiagnosticRequestNotFoundError extends Error {
@@ -141,13 +142,23 @@ export async function createWorkOrderFromConfirmedDiagnostic(diagnosticRequestId
       throw new WorkOrderHardGateError();
     }
 
+    const linkedAppointment = await tx.$queryRaw<Array<{ requiresDiagnosticFirst: boolean }>>`
+      SELECT a."requiresDiagnosticFirst"
+      FROM "DiagnosticVisitLink" l
+      JOIN "ServiceAppointment" a ON a."id" = l."appointmentId"
+      WHERE l."diagnosticRequestId" = ${diagnosticRequest.id}
+      ORDER BY l."createdAt" DESC
+      LIMIT 1
+    `;
+    const origin = linkedAppointment[0]?.requiresDiagnosticFirst ? "DIAGNOSTIC_THEN_REPAIR" : "AFTER_DIAGNOSTICS";
     const workOrder = diagnosticRequest.workOrder ?? await tx.workOrder.upsert({
       where: { diagnosticRequestId: diagnosticRequest.id },
-      update: {},
+      update: { origin },
       create: {
         clientId: diagnosticRequest.clientId,
         vehicleId: diagnosticRequest.vehicleId,
         diagnosticRequestId: diagnosticRequest.id,
+        origin,
         status: WORK_ORDER_INITIAL_STATUS,
       },
     });
@@ -155,6 +166,50 @@ export async function createWorkOrderFromConfirmedDiagnostic(diagnosticRequestId
     // Only an explicitly scheduled REPAIR appointment may receive this WorkOrder.
     return workOrder;
   });
+}
+
+/**
+ * Creates a repair case for a planned direct-repair visit. This path deliberately
+ * has no DiagnosticRequest and no commercial proposal: the intake amount/price
+ * is the confirmed starting scope, while additional work follows the normal
+ * approval flow later.
+ */
+export async function createDirectRepairWorkOrderTx(
+  tx: Prisma.TransactionClient,
+  input: {
+    clientId: string;
+    vehicleId: string;
+    mechanicId?: string | null;
+    works: Array<{ name: string; quantity: number; total: number }>;
+  },
+) {
+  if (!input.works.length) throw new Error("DIRECT_REPAIR_WORK_REQUIRED");
+  const workOrder = await tx.workOrder.create({
+    data: {
+      clientId: input.clientId,
+      vehicleId: input.vehicleId,
+      origin: "DIRECT_REPAIR",
+      directPriceConfirmedAt: new Date(),
+      status: "READY_FOR_REPAIR",
+      lines: {
+        create: input.works.map((work, index) => ({
+          type: "LABOR",
+          status: "APPROVED",
+          description: work.name,
+          unit: "шт",
+          currency: "UAH",
+          plannedQuantity: new Prisma.Decimal(work.quantity),
+          plannedUnitPrice: new Prisma.Decimal(work.quantity > 0 ? work.total / work.quantity : 0).toDecimalPlaces(2),
+          requiredForRepair: true,
+          mechanicId: input.mechanicId || null,
+          sortOrder: index + 1,
+          approvedAt: new Date(),
+        })),
+      },
+    },
+    include: { lines: true },
+  });
+  return workOrder;
 }
 
 const workOrderInclude = {
@@ -320,6 +375,10 @@ export async function transitionWorkOrder(id: string, toStatus: string, actorNam
       include: workOrderInclude,
     });
 
+    const completionAct = decision.normalizedTo === "READY_FOR_PICKUP"
+      ? await ensureCompletionActTx(tx, id, actorName)
+      : null;
+
     const plannerStatus = plannerStatusForWorkOrder(decision.normalizedTo);
     if (plannerStatus) {
       const now = new Date();
@@ -347,6 +406,7 @@ export async function transitionWorkOrder(id: string, toStatus: string, actorNam
           satisfiedGates: decision.satisfiedGates,
           actions: decision.actions,
           actionResults,
+          completionActId: completionAct?.id || null,
         }),
       },
     });

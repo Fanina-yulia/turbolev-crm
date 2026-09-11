@@ -70,6 +70,12 @@ enum DiagnosticRequestStatus {
   CANCELLED
 }
 
+enum WorkOrderOrigin {
+  AFTER_DIAGNOSTICS
+  DIRECT_REPAIR
+  DIAGNOSTIC_THEN_REPAIR
+}
+
 enum CommunicationChannel {
   FACEBOOK
   INSTAGRAM
@@ -325,7 +331,9 @@ model WorkOrder {
   id                  String   @id @default(cuid())
   clientId            String
   vehicleId           String
-  diagnosticRequestId String   @unique
+  diagnosticRequestId String?  @unique
+  origin              WorkOrderOrigin @default(AFTER_DIAGNOSTICS)
+  directPriceConfirmedAt DateTime?
   status              String   @default("PARTS_REVIEW")
   closedAt            DateTime?
   createdAt           DateTime @default(now())
@@ -333,13 +341,14 @@ model WorkOrder {
 
   client            Client            @relation(fields: [clientId], references: [id], onDelete: Restrict)
   vehicle           Vehicle           @relation(fields: [vehicleId], references: [id], onDelete: Restrict)
-  diagnosticRequest DiagnosticRequest @relation(fields: [diagnosticRequestId], references: [id], onDelete: Restrict)
+  diagnosticRequest DiagnosticRequest? @relation(fields: [diagnosticRequestId], references: [id], onDelete: Restrict)
   calls             CallHistory[]
   lines             WorkOrderLine[]
   completionPhotos  WorkOrderCompletionPhoto[]
   estimates         WorkOrderEstimate[]
   partsRequests     PartsRequest[]
   qualityControls   WorkOrderQualityControl[]
+  completionAct     ServiceCompletionAct?
 
   @@index([clientId, closedAt])
   @@index([vehicleId, closedAt])

@@ -57,7 +57,11 @@ export async function GET(request: NextRequest) {
           workOrders: {
             orderBy: { createdAt: "desc" },
             take: 10,
-            select: { id: true, status: true, createdAt: true, updatedAt: true, closedAt: true },
+            select: {
+              id: true, status: true, origin: true, createdAt: true, updatedAt: true, closedAt: true,
+              estimates: { orderBy: [{ revision: "desc" }, { createdAt: "desc" }], take: 1, select: { id: true, status: true, revision: true } },
+              completionAct: { select: { id: true, actNumber: true, status: true, issuedAt: true } },
+            },
           },
         }),
         _count: { select: { workOrders: true, diagnosticRequests: true } },

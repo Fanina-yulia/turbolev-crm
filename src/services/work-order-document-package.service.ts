@@ -56,7 +56,7 @@ export async function getWorkOrderDocumentPackage(workOrderId: string) {
   const workOrder = await getWorkOrder(workOrderId);
   if (!workOrder) throw new WorkOrderDocumentPackageError("WORK_ORDER_NOT_FOUND", "Комерційна пропозиція не знайдено.", 404);
 
-  const [numberRow, lines, estimates, cardState, finance, timeline] = await Promise.all([
+  const [numberRow, lines, estimates, cardState, finance, timeline, completionAct] = await Promise.all([
     prisma.workOrderNumber.findUnique({ where: { workOrderId }, select: { number: true } }),
     prisma.workOrderLine.findMany({
       where: { workOrderId },
@@ -89,12 +89,13 @@ export async function getWorkOrderDocumentPackage(workOrderId: string) {
         createdAt: true,
       },
     }),
-    getDiagnosticCard(workOrder.diagnosticRequest.id),
+    workOrder.diagnosticRequest?.id ? getDiagnosticCard(workOrder.diagnosticRequest.id) : Promise.resolve(null),
     getWorkOrderFinance(workOrderId),
     getServiceTimeline(
       { workOrderId },
       { includeCommercial: true, includePayments: true, includeFinance: true, includeActors: true, take: 220 },
     ),
+    prisma.serviceCompletionAct.findUnique({ where: { workOrderId }, select: { id: true, actNumber: true, status: true, currency: true, lineSnapshot: true, totalAmount: true, issuedAt: true } }),
   ]);
 
   const latestEstimate = estimates[0] ?? null;
@@ -218,12 +219,14 @@ export async function getWorkOrderDocumentPackage(workOrderId: string) {
         lines: customerLines,
       },
       act: {
-        available: completedLines.length > 0,
-        state: workOrder.closedAt ? "FINAL" : "DRAFT",
-        currency: completedLines[0]?.currency ?? "UAH",
-        totalAmount: money(actTotal),
-        completedAt: iso(workOrder.closedAt) ?? completedLines.map((line) => line.completedAt).filter(Boolean).sort().at(-1) ?? null,
-        lines: completedLines,
+        available: Boolean(completionAct || completedLines.length),
+        state: completionAct?.status === "ISSUED" ? "FINAL" : workOrder.closedAt ? "FINAL" : "DRAFT",
+        id: completionAct?.id ?? null,
+        number: completionAct?.actNumber ?? null,
+        currency: completionAct?.currency ?? completedLines[0]?.currency ?? "UAH",
+        totalAmount: completionAct ? money(completionAct.totalAmount) : money(actTotal),
+        completedAt: iso(completionAct?.issuedAt) ?? iso(workOrder.closedAt) ?? completedLines.map((line) => line.completedAt).filter(Boolean).sort().at(-1) ?? null,
+        lines: completionAct?.lineSnapshot ?? completedLines,
       },
       warranty: {
         available: warranties.length > 0,

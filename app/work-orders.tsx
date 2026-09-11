@@ -361,7 +361,7 @@ export function WorkOrders() {
                 <div className={styles.field}><span>Пробіг</span><strong>{detail.vehicle.mileageKm ? `${detail.vehicle.mileageKm.toLocaleString("uk-UA")} км` : "—"}</strong></div>
                 <div className={styles.field}><span>Планувальник</span><strong>{detail.appointment ? `${formatDate(detail.appointment.plannedStartAt)} · ${detail.appointment.post?.name || "Без поста"}` : "Не зв'язано"}</strong></div>
               </div>
-              {commercialView && <section className={styles.sectionCard}><h3>Стан комерційної пропозиції</h3><WorkOrderCommercialPanel key={detail.id} workOrderId={detail.id} view="overview" onChanged={handleCommercialChanged} onSummary={handleCommercialSummary}/></section>}
+              {commercialView && <section className={styles.sectionCard}><h3>{detail.diagnosticRequest ? "Стан комерційної пропозиції" : "Прямий ремонт без КП"}</h3><WorkOrderCommercialPanel key={detail.id} workOrderId={detail.id} view="overview" onChanged={handleCommercialChanged} onSummary={handleCommercialSummary}/></section>}
               <section className={styles.sectionCard}>
                 <h3>Наступний крок</h3>
                 {!detail.transitions.length ? <div className={styles.emptyInline}>Комерційна пропозиція завершена — наступних переходів немає.</div> : <div className={styles.transitions}>{detail.transitions.map((transition) => <div className={styles.transition} key={transition.to}><div><strong>→ {transition.label}</strong><small>{transitionReason(transition)}</small></div><button type="button" disabled={!transition.allowed || Boolean(busyTransition)} onClick={() => void runTransition(transition)}>{busyTransition === transition.to ? (transition.to === "CLOSED" ? "Закриваю…" : "Змінюю…") : transitionActionLabel(transition)}</button></div>)}</div>}
@@ -369,13 +369,13 @@ export function WorkOrders() {
             </div>}
 
             {activeTab === "diagnostic" && <div className={styles.tabContent}>
-              <section className={styles.sectionCard}><div className={styles.sectionHead}><div><h3>Технічний висновок</h3><p>Результат підтвердженої діагностики, з якої створено цю комерційну пропозицію.</p></div><span>{detail.diagnosticRequest.status}</span></div><div className={styles.conclusion}>{detail.diagnosticRequest.technicalConclusion || "Технічний висновок відсутній."}</div></section>
+              {!detail.diagnosticRequest ? <section className={styles.sectionCard}><h3>Діагностична карта не застосовується</h3><p>Це прямий ремонт: автомобіль заїхав одразу на погоджені роботи.</p></section> : <><section className={styles.sectionCard}><div className={styles.sectionHead}><div><h3>Технічний висновок</h3><p>Результат підтвердженої діагностики, з якої створено цю комерційну пропозицію.</p></div><span>{detail.diagnosticRequest.status}</span></div><div className={styles.conclusion}>{detail.diagnosticRequest.technicalConclusion || "Технічний висновок відсутній."}</div></section>
               <div className={styles.grid}>
                 <div className={styles.field}><span>Підтверджено</span><strong>{formatDate(detail.diagnosticRequest.confirmedAt)}</strong></div>
                 <div className={styles.field}><span>Створено діагностику</span><strong>{formatDate(detail.diagnosticRequest.createdAt)}</strong></div>
                 <div className={styles.field}><span>Пробіг</span><strong>{detail.vehicle.mileageKm ? `${detail.vehicle.mileageKm.toLocaleString("uk-UA")} км` : "—"}</strong></div>
                 <div className={styles.field}><span>Клас Turbo LEV</span><strong>{detail.vehicle.turboLevClass || "—"}</strong></div>
-              </div>
+              </div></>}
             </div>}
 
             {commercialView && activeTab !== "overview" && <div className={styles.tabContent}><WorkOrderCommercialPanel key={detail.id} workOrderId={detail.id} view={commercialView} onChanged={handleCommercialChanged} onSummary={handleCommercialSummary}/></div>}
@@ -385,7 +385,7 @@ export function WorkOrders() {
                 <div><span>Номер КП</span><strong>{formatWorkOrderNumber(selectedNumber)}</strong></div>
                 <div><span>Пропозицію створено</span><strong>{formatDate(detail.createdAt)}</strong></div>
                 <div><span>Остання зміна</span><strong>{formatDate(detail.updatedAt)}</strong></div>
-                <div><span>Діагностику підтверджено</span><strong>{formatDate(detail.diagnosticRequest.confirmedAt)}</strong></div>
+                <div><span>Діагностику підтверджено</span><strong>{formatDate(detail.diagnosticRequest?.confirmedAt)}</strong></div>
                 <div><span>Запис на СТО</span><strong>{formatDate(detail.appointment?.plannedStartAt)}</strong></div>
                 <div><span>Фактичний приїзд</span><strong>{formatDate(detail.appointment?.actualArrivalAt)}</strong></div>
                 <div><span>Пропозицію закрито</span><strong>{formatDate(detail.closedAt)}</strong></div>

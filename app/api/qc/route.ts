@@ -152,7 +152,7 @@ export async function GET(request: Request) {
         plate: workOrder.vehicle.plateNumber || "—",
         vehicle: vehicleLabel(workOrder.vehicle),
         vehicleId: workOrder.vehicle.id,
-        problem: workOrder.diagnosticRequest.technicalConclusion,
+        problem: workOrder.diagnosticRequest?.technicalConclusion || [workOrder.vehicle.brand, workOrder.vehicle.model].filter(Boolean).join(" ") || null,
         post: appointment?.post ?? null,
         mechanic: appointment?.mechanic ?? null,
         plannedStartAt: appointment?.plannedStartAt ?? null,

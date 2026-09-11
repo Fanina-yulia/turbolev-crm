@@ -40,9 +40,12 @@ export type VehicleReference = {
 export type WorkOrderReference = {
   id: string;
   status: string;
+  origin?: "AFTER_DIAGNOSTICS" | "DIRECT_REPAIR" | "DIAGNOSTIC_THEN_REPAIR" | string;
   createdAt: CrmDateTime;
   updatedAt: CrmDateTime;
   closedAt: CrmDateTime | null;
+  estimates?: Array<{ id: string; status: string; revision: number }>;
+  completionAct?: { id: string; actNumber: string; status: string; issuedAt: CrmDateTime } | null;
 };
 
 export type DiagnosticRequestReference = {
@@ -230,7 +233,7 @@ export type WorkOrderListItemContract = CrmWorkOrderCore & {
     mileageKm: number | null;
     turboLevClass: string | null;
   };
-  diagnosticRequest: DiagnosticRequestReference & { leadId: string | null };
+  diagnosticRequest: (DiagnosticRequestReference & { leadId: string | null }) | null;
   transitions: WorkOrderTransitionContract[];
 };
 
