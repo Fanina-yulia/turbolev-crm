@@ -46,6 +46,10 @@ export type WorkOrderInvoicePdfData = {
   warning?: string | null;
   documentTitle?: string | null;
   documentSubtitle?: string | null;
+  /** Compatibility options used by the commercial-proposal document adapter. */
+  documentKind?: string | null;
+  maskArticles?: boolean;
+  template?: unknown;
 };
 
 function text(value: string | number | null | undefined) {
