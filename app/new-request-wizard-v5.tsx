@@ -159,6 +159,10 @@ export function NewRequestWizardV5({showButton=true,onOpenChange}:NewRequestWiza
   const selectedMechanicLoad=mechanicLoads.find(item=>item.id===form.mechanicId)||null;
   const parallelMechanicName=activeLocation?.mechanics.find(item=>item.id===form.mechanicId)?.name||"Обраний механік";
   const requiresParallelConfirmation=Boolean(parallelConfirmationRequired||selectedMechanicLoad?.count===1);
+  const hasDiagnosticPreliminaryWork=preliminaryWorks.some((work)=>/діагност|diagnos/iu.test(`${work.category||""} ${work.name}`));
+  const hasRepairPreliminaryWork=preliminaryWorks.some((work)=>!(/діагност|diagnos/iu.test(`${work.category||""} ${work.name}`)));
+  const derivedPurpose=hasRepairPreliminaryWork?"REPAIR":hasDiagnosticPreliminaryWork?"DIAGNOSTICS":form.purpose;
+  const requiresDiagnosticFirst=derivedPurpose==="REPAIR"&&hasDiagnosticPreliminaryWork;
 
   useEffect(()=>{
     setParallelMechanicConfirmed(false);
@@ -656,6 +660,7 @@ export function NewRequestWizardV5({showButton=true,onOpenChange}:NewRequestWiza
     try{
       const payload={
         ...form,
+        purpose:derivedPurpose,
         customerName:form.customerName.trim(),
         phone:formatPhone(form.phone),
         plate:normalizePlate(form.plate),
@@ -938,14 +943,14 @@ export function NewRequestWizardV5({showButton=true,onOpenChange}:NewRequestWiza
             {step===3&&<section className="requestStep requestFastStep">
               <div className="requestStepTitle">
                 <div><small>КРОК 3</small><h3>Мета заїзду</h3></div>
-                <span className="requestHint">Діагностика і ремонт мають окремі робочі процеси</span>
+                <span className="requestHint">{requiresDiagnosticFirst?"Ремонт: спочатку Діагностична карта":"Діагностика і ремонт мають окремі робочі процеси"}</span>
               </div>
               <div className="requestTags fastCategoryTags" aria-label="Тип візиту">
-                <button type="button" className={form.purpose==="DIAGNOSTICS"?"selected":""} onClick={()=>update("purpose","DIAGNOSTICS")}>Діагностика</button>
-                <button type="button" className={form.purpose==="REPAIR"?"selected":""} onClick={()=>update("purpose","REPAIR")}>Ремонт / сервіс</button>
+                <button type="button" className={derivedPurpose==="DIAGNOSTICS"?"selected":""} onClick={()=>update("purpose","DIAGNOSTICS")}>Діагностика</button>
+                <button type="button" className={derivedPurpose==="REPAIR"?"selected":""} onClick={()=>update("purpose","REPAIR")}>Ремонт / сервіс</button>
               </div>
               <label className="requestFullField fastComplaint">
-                <span>{form.purpose==="DIAGNOSTICS"?"Що потрібно перевірити?":"Які роботи потрібно виконати?"}</span>
+                <span>{derivedPurpose==="DIAGNOSTICS"?"Що потрібно перевірити?":"Які роботи потрібно виконати?"}</span>
                 <textarea value={form.complaint} onChange={event=>update("complaint",event.target.value)} placeholder="Напр.: щось стукає спереду, перевірити ходову…"/>
               </label>
               <div className="requestTags fastCategoryTags">
@@ -1065,7 +1070,7 @@ export function NewRequestWizardV5({showButton=true,onOpenChange}:NewRequestWiza
               ?<button type="button" className="primary" onClick={goNext}>{step===1&&!hasVehicleIdentifier?"Вкажіть номер авто":step===1&&!hasVehicleIdentity?"Уточніть марку і модель":step===2&&!canLeaveClient?"Заповніть клієнта":"Далі →"}</button>
               :plannerEntry
                 ?<button type="button" className="primary fastBookButton" disabled={saving} onClick={goNext}>{saving?"Створюю…":"Створити запис"}</button>
-                :<button type="submit" className="primary fastBookButton" disabled={saving}>{saving?"Записую…":form.purpose==="DIAGNOSTICS"?"Записати на діагностику":"Записати на ремонт / сервіс"}</button>}
+                :<button type="submit" className="primary fastBookButton" disabled={saving}>{saving?"Записую…":derivedPurpose==="DIAGNOSTICS"?"Записати на діагностику":requiresDiagnosticFirst?"Записати: діагностика → ремонт":"Записати на ремонт / сервіс"}</button>}
           </div>
         </div>
       </form>}

@@ -57,6 +57,7 @@ export type PlannerAppointmentContract = {
   status: PlannerStatusContract;
   workOrderId: string | null;
   purpose: PlannerPurposeContract | null;
+  requiresDiagnosticFirst: boolean;
   processStatus: string | null;
   processLabel: string | null;
   payment: {

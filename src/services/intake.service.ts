@@ -53,6 +53,7 @@ export class IntakeParallelLoadError extends IntakeConflictError {
 export type IntakePreliminaryWork = {
   id?: string;
   name?: string;
+  category?: string;
   quantity?: number;
   total?: number;
   manual?: boolean;
@@ -159,16 +160,37 @@ function zonedAppointmentStart(dateValue: string | null, timeValue: string | nul
 }
 
 function normalizePreliminaryWorks(value: unknown) {
-  if (!Array.isArray(value)) return [] as Array<{ name:string; quantity:number; total:number; manual:boolean }>;
+  if (!Array.isArray(value)) return [] as Array<{ name:string; category:string|null; quantity:number; total:number; manual:boolean }>;
   return value.slice(0, 40).flatMap((item) => {
     if (!item || typeof item !== "object") return [];
     const record = item as Record<string, unknown>;
     const name = clean(record.name, 240);
     if (!name) return [];
+    const category = clean(record.category, 120);
     const quantity = Math.max(1, Math.min(99, toInt(record.quantity) ?? 1));
     const total = Math.max(0, toDecimal(record.total) ?? 0);
-    return [{ name, quantity, total, manual: Boolean(record.manual) }];
+    return [{ name, category, quantity, total, manual: Boolean(record.manual) }];
   });
+}
+
+function isDiagnosticWork(work: { name: string; category?: string | null }) {
+  return /діагност|diagnos/iu.test(`${work.category || ""} ${work.name}`);
+}
+
+function deriveVisitProcess(inputPurpose: IntakeInput["purpose"], works: Array<{ name: string; category?: string | null }>) {
+  const hasDiagnosticWork = works.some(isDiagnosticWork);
+  const hasNonDiagnosticWork = works.some((work) => !isDiagnosticWork(work));
+  const purpose = hasNonDiagnosticWork
+    ? "REPAIR" as const
+    : hasDiagnosticWork
+      ? "DIAGNOSTICS" as const
+      : inputPurpose === "DIAGNOSTICS" ? "DIAGNOSTICS" as const : "REPAIR" as const;
+  return {
+    purpose,
+    hasDiagnosticWork,
+    hasNonDiagnosticWork,
+    requiresDiagnosticFirst: purpose === "REPAIR" && hasDiagnosticWork,
+  };
 }
 
 function worksSummary(works: Array<{ name:string; quantity:number; total:number; manual:boolean }>) {
@@ -265,6 +287,7 @@ export async function createIntake(input: IntakeInput) {
     throw new IntakeValidationError("Тривалість запису має бути кратною 30 хвилинам і не перевищувати 24 години.");
   }
   const preliminaryWorks = normalizePreliminaryWorks(input.preliminaryWorks);
+  const visitProcess = deriveVisitProcess(input.purpose, preliminaryWorks);
   const preliminaryWorksText = worksSummary(preliminaryWorks);
   const userComment = clean(input.comment, 5000);
   const combinedComment = [userComment, preliminaryWorksText].filter(Boolean).join("\n\n") || null;
@@ -355,13 +378,7 @@ export async function createIntake(input: IntakeInput) {
       ? await tx.user.findFirst({ where: { isActive: true, name: { equals: clean(input.responsible, 160)!, mode: "insensitive" } } })
       : null;
     const need = [clean(input.category, 100), clean(input.complaint, 4000)].filter(Boolean).join(" · ") || preliminaryWorks[0]?.name || null;
-    const purpose = input.purpose === "REPAIR"
-      ? "REPAIR"
-      : input.purpose === "DIAGNOSTICS"
-        ? "DIAGNOSTICS"
-        : /діагност/iu.test(need || "")
-          ? "DIAGNOSTICS"
-          : "REPAIR";
+    const purpose = visitProcess.purpose;
 
     let location = null;
     let post = null;
@@ -475,6 +492,7 @@ export async function createIntake(input: IntakeInput) {
           clientId: client.id,
           vehicleId: vehicle.id,
           purpose,
+          requiresDiagnosticFirst: visitProcess.requiresDiagnosticFirst,
           status: PlannerAppointmentStatus.BOOKED,
           customerName: client.name,
           phone: client.phone,
@@ -497,7 +515,7 @@ export async function createIntake(input: IntakeInput) {
         entityId: lead.id,
         action: "CREATE_FROM_INTAKE",
         after: json(lead),
-        metadata: json({ clientId: client.id, vehicleId: vehicle.id, appointmentId: appointment?.id || null, vehicleReassigned: needsReassign, previousClientId, contactPhone: displayPhone(phoneNormalized), preliminaryWorksCount: preliminaryWorks.length, postId: post?.id || null, mechanicId: mechanic?.id || null, parallelMechanicLoadConfirmed: Boolean(mechanic && input.confirmMechanicParallel === true), appointmentDurationMinutes }),
+        metadata: json({ clientId: client.id, vehicleId: vehicle.id, appointmentId: appointment?.id || null, vehicleReassigned: needsReassign, previousClientId, contactPhone: displayPhone(phoneNormalized), preliminaryWorksCount: preliminaryWorks.length, postId: post?.id || null, mechanicId: mechanic?.id || null, parallelMechanicLoadConfirmed: Boolean(mechanic && input.confirmMechanicParallel === true), appointmentDurationMinutes, visitProcess }),
       },
     });
     if (needsReassign) {
@@ -519,12 +537,12 @@ export async function createIntake(input: IntakeInput) {
           entityId: appointment.id,
           action: "CREATE_FROM_INTAKE",
           after: json(appointment),
-          metadata: json({ leadId: lead.id, clientId: client.id, vehicleId: vehicle.id, postId: post?.id || null, mechanicId: mechanic?.id || null, parallelMechanicLoadConfirmed: Boolean(mechanic && input.confirmMechanicParallel === true), appointmentDurationMinutes }),
+          metadata: json({ leadId: lead.id, clientId: client.id, vehicleId: vehicle.id, postId: post?.id || null, mechanicId: mechanic?.id || null, parallelMechanicLoadConfirmed: Boolean(mechanic && input.confirmMechanicParallel === true), appointmentDurationMinutes, visitProcess }),
         },
       });
     }
 
-    return { client, vehicle, lead, appointment, vehicleReassigned: needsReassign, preliminaryWorks };
+    return { client, vehicle, lead, appointment, vehicleReassigned: needsReassign, preliminaryWorks, visitProcess };
   });
 }
 

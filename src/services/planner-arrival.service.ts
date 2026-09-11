@@ -25,6 +25,7 @@ function toAppointmentWrite(existing: {
   vehicleId: string | null;
   workOrderId: string | null;
   purpose: "DIAGNOSTICS" | "REPAIR" | null;
+  requiresDiagnosticFirst: boolean;
   status: string;
   customerName: string | null;
   phone: string | null;
@@ -55,6 +56,7 @@ function toAppointmentWrite(existing: {
     vehicleId: existing.vehicleId,
     workOrderId: existing.workOrderId,
     purpose: existing.purpose,
+    requiresDiagnosticFirst: existing.requiresDiagnosticFirst,
     status,
     customerName: existing.customerName,
     phone: existing.phone,
@@ -126,8 +128,9 @@ export async function arrivePlannerAppointment(id: string, body: Record<string, 
     let reusedDiagnostic = false;
     let followupWorkVisit = false;
 
+    const requiresDiagnosticFirst = fresh.requiresDiagnosticFirst || input.requiresDiagnosticFirst === true;
     const isRepairVisit = fresh.purpose === "REPAIR" || input.purpose === "REPAIR";
-    if (isRepairVisit && !fresh.workOrderId) {
+    if (isRepairVisit && !requiresDiagnosticFirst && !fresh.workOrderId) {
       return {
         ok: false as const,
         arrivalBlocked: true as const,
@@ -137,7 +140,7 @@ export async function arrivePlannerAppointment(id: string, body: Record<string, 
       };
     }
 
-    if (isRepairVisit || (fresh.workOrderId && clientId && vehicleId)) {
+    if ((isRepairVisit && !requiresDiagnosticFirst) || (fresh.workOrderId && clientId && vehicleId)) {
       const workOrder = await tx.workOrder.findUnique({
         where: { id: fresh.workOrderId! },
         select: { id: true, clientId: true, vehicleId: true, diagnosticRequestId: true },

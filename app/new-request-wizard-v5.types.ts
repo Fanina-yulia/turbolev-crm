@@ -10,6 +10,7 @@ export type VehicleDataStatus = "UNKNOWN" | "AUTO" | "MANUAL" | "CONFIRMED";
 export type PreliminaryWork = {
   id?: string;
   name: string;
+  category?: string;
   quantity?: number;
   total?: number;
   manual?: boolean;

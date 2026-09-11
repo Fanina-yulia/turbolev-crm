@@ -97,6 +97,7 @@ model ServiceAppointment {
   workOrderId     String?                  @db.VarChar(64)
   // Nullable during the legacy-data transition. New appointments must set it.
   purpose         AppointmentPurpose?
+  requiresDiagnosticFirst Boolean @default(false)
   status          PlannerAppointmentStatus @default(BOOKED)
   customerName    String?
   phone           String?                  @db.VarChar(32)

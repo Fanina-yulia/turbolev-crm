@@ -109,6 +109,7 @@ export async function listMechanicDiagnosticsReadOnly(userId: string) {
     select: {
       id: true,
       purpose: true,
+      requiresDiagnosticFirst: true,
       leadId: true,
       vehicleId: true,
       plannedStartAt: true,
@@ -187,6 +188,7 @@ export async function listMechanicDiagnosticsReadOnly(userId: string) {
       plannedEndAt: appointment.plannedEndAt,
       post: appointment.post?.name || null,
       problem: appointment.problem || row.lead?.need || null,
+      requiresDiagnosticFirst: appointment.requiresDiagnosticFirst,
       vehicle: { ...row.vehicle, label: vehicleLabel(row.vehicle) },
       client: row.client,
     }];

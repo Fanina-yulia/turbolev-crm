@@ -254,6 +254,20 @@ export async function PATCH(request: Request, context: { params: Promise<{ lineI
       } else if (action === "COMPLETE") {
         if (line.status !== "IN_PROGRESS") throw new Error("INVALID_COMPLETE_STATE");
         if (isStopped) throw new Error("STOPPED_REQUIRES_RESUME");
+        const remaining = await tx.workOrderLine.count({
+          where: {
+            workOrderId: line.workOrderId,
+            type: { not: "PART" },
+            id: { not: line.id },
+            status: { notIn: ["COMPLETED", "CANCELLED"] },
+          },
+        });
+        if (remaining === 0) {
+          const completionPhotoCount = await tx.workOrderCompletionPhoto.count({
+            where: { workOrderLineId: line.id, kind: { in: ["TOOL_FIRST", "TOOL_SECOND", "WORKSPACE_CLEAN"] } },
+          });
+          if (completionPhotoCount !== 3) throw new Error("COMPLETION_PHOTOS_REQUIRED");
+        }
         if (isPaused && current.pausedAt) {
           const elapsed = Math.max(0, Math.round((now.getTime() - new Date(current.pausedAt).getTime()) / 1000));
           nextWorkflow = { ...nextWorkflow, pausedAt: null, pauseReason: null, pauseNote: null, stopAt: null, stopReason: null, stopNote: null, stopIssueId: null, stopStatus: null, totalPausedSeconds: current.totalPausedSeconds + elapsed };
@@ -380,6 +394,7 @@ export async function PATCH(request: Request, context: { params: Promise<{ lineI
       INVALID_RESUME_STATE: ["Продовжити можна лише роботу, що перебуває на паузі.", 409],
       INVALID_WAITING_PARTS_STATE: ["Очікувати запчастину можна лише для розпочатої роботи.", 409],
       INVALID_COMPLETE_STATE: ["Завершити можна лише розпочату роботу.", 409],
+      COMPLETION_PHOTOS_REQUIRED: ["Перед завершенням ремонту додайте 3 фото: два фото складеного інструменту та фото прибраної зони поста.", 409],
       PLATE_VERIFICATION_REQUIRED: ["Перед початком підтвердіть номер саме цього автомобіля.", 409],
     };
     if (known[code]) return error(known[code][0], code, known[code][1]);

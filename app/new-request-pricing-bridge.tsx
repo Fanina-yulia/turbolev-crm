@@ -55,7 +55,7 @@ type CalculatedLine = DraftLine & {
 type Calculation = { pricing:PricingMeta; total:number; lines:CalculatedLine[] };
 type WorkPriceResponse = { ok:boolean; pricing:PricingMeta; items:WorkPriceItem[]; error?:string };
 type CalculationResponse = { ok:boolean; pricing:PricingMeta; total:number; lines:CalculatedLine[]; error?:string };
-type ManualWork = { id:string; name:string };
+type ManualWork = { id:string; name:string; category?:string };
 
 const EMPTY_VEHICLE:VehicleSnapshot={make:"",model:"",year:"",engine:"",engineVolume:"",fuelType:"",bodyType:"",grossWeight:"",driveType:"",vehicleType:""};
 
@@ -148,8 +148,8 @@ export function NewRequestPricingBridge(){
 
   useEffect(()=>{
     if(step!==3)return;
-    const priced=selected.map(line=>{const calculated=calculation?.lines.find(item=>item.id===line.id);return{id:line.id,name:line.name,quantity:line.quantity,total:calculated?.total??0,manual:false}});
-    const manual=manualWorks.map(item=>({id:item.id,name:item.name,quantity:1,total:0,manual:true}));
+    const priced=selected.map(line=>{const calculated=calculation?.lines.find(item=>item.id===line.id);return{id:line.id,name:line.name,category:line.category,quantity:line.quantity,total:calculated?.total??0,manual:false}});
+    const manual=manualWorks.map(item=>({id:item.id,name:item.name,category:item.category,quantity:1,total:0,manual:true}));
     window.dispatchEvent(new CustomEvent("turbolev:preliminary-works-change",{detail:{works:[...priced,...manual],total:calculation?.total??0}}));
   },[step,selected,manualWorks,calculation]);
 

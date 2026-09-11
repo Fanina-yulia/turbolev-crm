@@ -132,6 +132,7 @@ function parseAppointment(value: unknown): PlannerAppointmentContract | null {
   const postId = nullableString(value.postId);
   const mechanicId = nullableString(value.mechanicId);
   const workOrderId = nullableString(value.workOrderId);
+  const requiresDiagnosticFirst = value.requiresDiagnosticFirst === true;
   const purpose = value.purpose == null ? null : typeof value.purpose === "string" && PLANNER_PURPOSES.has(value.purpose) ? value.purpose as PlannerPurposeContract : undefined;
   const processStatus = nullableString(value.processStatus);
   const processLabel = nullableString(value.processLabel);
@@ -171,6 +172,7 @@ function parseAppointment(value: unknown): PlannerAppointmentContract | null {
     status,
     workOrderId,
     purpose,
+    requiresDiagnosticFirst,
     processStatus,
     processLabel,
     payment,

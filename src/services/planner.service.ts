@@ -53,6 +53,7 @@ export type AppointmentWrite = {
   vehicleId?: string | null;
   workOrderId?: string | null;
   purpose?: PlannerPurpose | null;
+  requiresDiagnosticFirst?: boolean;
   status?: PlannerStatus;
   customerName?: string | null;
   phone?: string | null;
@@ -201,6 +202,9 @@ export function normalizeAppointmentPayload(body: Record<string, unknown>, curre
     vehicleId: Object.prototype.hasOwnProperty.call(body, "vehicleId") ? clean(body.vehicleId, 80) : current?.vehicleId ?? null,
     workOrderId: Object.prototype.hasOwnProperty.call(body, "workOrderId") ? clean(body.workOrderId, 80) : current?.workOrderId ?? null,
     purpose: inferPlannerPurpose(body, current),
+    requiresDiagnosticFirst: Object.prototype.hasOwnProperty.call(body, "requiresDiagnosticFirst")
+      ? body.requiresDiagnosticFirst === true
+      : current?.requiresDiagnosticFirst ?? false,
     status,
     customerName: Object.prototype.hasOwnProperty.call(body, "customerName") ? clean(body.customerName, 160) : current?.customerName ?? null,
     phone: Object.prototype.hasOwnProperty.call(body, "phone") ? clean(body.phone, 32) : current?.phone ?? null,
@@ -287,7 +291,9 @@ export async function getPlannerBoard(from: Date, to: Date, locationId?: string 
       ...row,
       purpose,
       processStatus,
-      processLabel: PROCESS_LABELS[processStatus] || (purpose === "DIAGNOSTICS" ? "Діагностика" : "Ремонт / сервіс"),
+      processLabel: row.requiresDiagnosticFirst && !row.workOrderId
+        ? "Діагностика → ремонт"
+        : PROCESS_LABELS[processStatus] || (purpose === "DIAGNOSTICS" ? "Діагностика" : "Ремонт / сервіс"),
       payment: {
         status: paymentStatus,
         amount: row.workOrderId ? amountValue || null : row.estimatedAmount,
@@ -409,6 +415,7 @@ export async function updatePlannerAppointment(id: string, body: Record<string, 
     vehicleId: existing.vehicleId,
     workOrderId: existing.workOrderId,
     purpose: (existing as typeof existing & { purpose?: PlannerPurpose | null }).purpose ?? null,
+    requiresDiagnosticFirst: existing.requiresDiagnosticFirst,
     status: existing.status as PlannerStatus,
     customerName: existing.customerName,
     phone: existing.phone,

@@ -242,6 +242,7 @@ export async function GET(request: Request) {
           id: item.id,
           workOrderId: item.workOrderId,
           purpose: item.purpose || (item.workOrderId ? "REPAIR" : "DIAGNOSTICS"),
+          requiresDiagnosticFirst: item.requiresDiagnosticFirst,
           status: item.appointmentStatus,
           workOrderStatus: item.workOrderStatus,
           plannedStartAt: item.plannedStartAt,

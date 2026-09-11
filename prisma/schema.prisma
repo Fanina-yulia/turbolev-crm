@@ -336,6 +336,7 @@ model WorkOrder {
   diagnosticRequest DiagnosticRequest @relation(fields: [diagnosticRequestId], references: [id], onDelete: Restrict)
   calls             CallHistory[]
   lines             WorkOrderLine[]
+  completionPhotos  WorkOrderCompletionPhoto[]
   estimates         WorkOrderEstimate[]
   partsRequests     PartsRequest[]
   qualityControls   WorkOrderQualityControl[]
