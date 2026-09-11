@@ -34,6 +34,7 @@ export type WorkOrderInvoicePdfLine = {
 };
 
 export type WorkOrderInvoicePdfData = {
+  vehicleId?: string | null;
   vehicleLabel: string;
   vin: string | null;
   date: string;
