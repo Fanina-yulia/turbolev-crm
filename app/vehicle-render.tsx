@@ -160,6 +160,7 @@ export function VehicleRender(props: VehicleRenderProps) {
       if (pollTimer) clearTimeout(pollTimer);
     };
   }, [props.id, themePaint, manualResolveEpoch]);
+
   async function resolveMissingImage() {
     if (!clickToResolve || resolving || libraryState === "GENERATING") return;
     const requestedVehicleId = props.id;
@@ -217,49 +218,52 @@ export function VehicleRender(props: VehicleRenderProps) {
     data-vehicle-image-state={failed ? (libraryState || "missing").toLowerCase() : "ready"}
     aria-label={vehicleTitle(props)}
   >
-    {!failed ? <img
-      src={src}
-      alt={vehicleTitle(props)}
-      loading={props.eager ? "eager" : "lazy"}
-      decoding="async"
-      onLoad={() => {
-        setFailed(false);
-        setLibraryState("READY");
-        setLibraryError(null);
-        setResolving(false);
-      }}
-      onError={() => {
-        setFailed(true);
-        setManualResolveEpoch((value) => value || 1);
-      }}
-    /> : <span
-      className={`${styles.localFallback} ${interactiveFallback ? styles.localFallbackInteractive : ""}`}
-      role={interactiveFallback ? "button" : undefined}
-      tabIndex={interactiveFallback ? 0 : undefined}
-      aria-label={interactiveFallback ? `${fallbackText}. ${vehicleTitle(props)}` : undefined}
-      title={libraryError || (interactiveFallback ? "CRM спочатку перевірить бібліотеку, а якщо зображення немає — запустить генерацію." : undefined)}
-      onClick={(event) => {
-        if (!interactiveFallback) return;
-        event.preventDefault();
-        event.stopPropagation();
-        void resolveMissingImage();
-      }}
-      onKeyDown={(event) => {
-        if (!interactiveFallback || (event.key !== "Enter" && event.key !== " ")) return;
-        event.preventDefault();
-        event.stopPropagation();
-        void resolveMissingImage();
-      }}
-    >
-      <svg className={styles.carSilhouette} viewBox="0 0 180 82" aria-hidden="true">
-        <path d="M19 53c3-9 9-15 18-17l20-5 14-15c4-4 9-6 15-6h33c7 0 12 2 17 7l13 14 15 4c8 2 13 8 14 16l1 8h-14a16 16 0 0 1-31 0H57a16 16 0 0 1-31 0H15l4-6Z"/>
-        <path d="M65 31l12-13c2-2 5-3 9-3h13v16H65Zm40 0V15h14c4 0 7 1 10 4l11 12h-35Z"/>
-        <circle cx="42" cy="59" r="10"/>
-        <circle cx="149" cy="59" r="10"/>
-      </svg>
-      <strong>{fallbackText}</strong>
-      <small>{libraryError || vehicleTitle(props)}</small>
-    </span>}
+    <span className={styles.mediaFrame}>
+      {!failed ? <img
+        className={styles.vehicleImage}
+        src={src}
+        alt={vehicleTitle(props)}
+        loading={props.eager ? "eager" : "lazy"}
+        decoding="async"
+        onLoad={() => {
+          setFailed(false);
+          setLibraryState("READY");
+          setLibraryError(null);
+          setResolving(false);
+        }}
+        onError={() => {
+          setFailed(true);
+          setManualResolveEpoch((value) => value || 1);
+        }}
+      /> : <span
+        className={`${styles.localFallback} ${interactiveFallback ? styles.localFallbackInteractive : ""}`}
+        role={interactiveFallback ? "button" : undefined}
+        tabIndex={interactiveFallback ? 0 : undefined}
+        aria-label={interactiveFallback ? `${fallbackText}. ${vehicleTitle(props)}` : undefined}
+        title={libraryError || (interactiveFallback ? "CRM спочатку перевірить бібліотеку, а якщо зображення немає — запустить генерацію." : undefined)}
+        onClick={(event) => {
+          if (!interactiveFallback) return;
+          event.preventDefault();
+          event.stopPropagation();
+          void resolveMissingImage();
+        }}
+        onKeyDown={(event) => {
+          if (!interactiveFallback || (event.key !== "Enter" && event.key !== " ")) return;
+          event.preventDefault();
+          event.stopPropagation();
+          void resolveMissingImage();
+        }}
+      >
+        <svg className={styles.carSilhouette} viewBox="0 0 180 82" aria-hidden="true">
+          <path d="M19 53c3-9 9-15 18-17l20-5 14-15c4-4 9-6 15-6h33c7 0 12 2 17 7l13 14 15 4c8 2 13 8 14 16l1 8h-14a16 16 0 0 1-31 0H57a16 16 0 0 1-31 0H15l4-6Z"/>
+          <path d="M65 31l12-13c2-2 5-3 9-3h13v16H65Zm40 0V15h14c4 0 7 1 10 4l11 12h-35Z"/>
+          <circle cx="42" cy="59" r="10"/>
+          <circle cx="149" cy="59" r="10"/>
+        </svg>
+        <strong>{fallbackText}</strong>
+        <small>{libraryError || vehicleTitle(props)}</small>
+      </span>}
+    </span>
     {props.exteriorColorConfirmed && props.exteriorColorName ? <span className={styles.realColor} title={`Підтверджений колір: ${props.exteriorColorName}`}><i className={styles.colorDot} style={props.exteriorColorHex ? { backgroundColor: props.exteriorColorHex } : undefined}/></span> : null}
   </span>;
 }
