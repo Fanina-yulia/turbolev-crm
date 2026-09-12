@@ -22,7 +22,7 @@ CREATE TABLE "VehicleLocation" (
   "updatedByUserId" VARCHAR(64),
   "updatedByName" VARCHAR(160),
   "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "updatedAt" TIMESTAMP(3) NOT NULL,
   CONSTRAINT "VehicleLocation_pkey" PRIMARY KEY ("id")
 );
 
