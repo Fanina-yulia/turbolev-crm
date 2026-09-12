@@ -109,6 +109,7 @@ export function PriceCatalogSettingsPanel() {
   const [query, setQuery] = useState("");
   const [source, setSource] = useState("");
   const [status, setStatus] = useState("");
+  const [serviceType, setServiceType] = useState("");
   const [categoryId, setCategoryId] = useState("");
   const [active, setActive] = useState("");
   const [page, setPage] = useState(1);
@@ -130,6 +131,7 @@ export function PriceCatalogSettingsPanel() {
       if (query.trim()) params.set("q", query.trim());
       if (source) params.set("source", source);
       if (status) params.set("status", status);
+      if (serviceType) params.set("serviceType", serviceType);
       if (categoryId) params.set("categoryId", categoryId);
       if (active) params.set("active", active);
       const response = await fetch(`/api/settings/work-prices/catalog?${params}`, { cache: "no-store" });
@@ -138,10 +140,10 @@ export function PriceCatalogSettingsPanel() {
       setData(payload);
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Помилка каталогу"); }
     finally { setLoading(false); }
-  }, [page, query, source, status, categoryId, active, refreshKey]);
+  }, [page, query, source, status, serviceType, categoryId, active, refreshKey]);
 
   useEffect(() => { const timer = window.setTimeout(() => void load(), query.trim() ? 220 : 0); return () => window.clearTimeout(timer); }, [load, query]);
-  useEffect(() => { setPage(1); }, [source, status, categoryId, active]);
+  useEffect(() => { setPage(1); }, [source, status, serviceType, categoryId, active]);
 
   const counts = data?.counts || { total: 0, active: 0, ready: 0, review: 0, quarantine: 0, msMaster: 0 };
   const canActivateReady = counts.ready > counts.active && counts.msMaster > 0;
@@ -227,6 +229,7 @@ export function PriceCatalogSettingsPanel() {
       <label className={styles.search}><span>⌕</span><input value={query} onChange={(event) => { setQuery(event.target.value); setPage(1); }} placeholder="ID, код, назва, деталь, сторона, операція…"/></label>
       <select value={source} onChange={(event) => setSource(event.target.value)}><option value="">Усі джерела</option><option value="TURBO_LEV_LEGACY">Turbo LEV</option><option value="MS_MASTER">МС Мастер</option><option value="MANUAL">Ручні</option></select>
       <select value={status} onChange={(event) => setStatus(event.target.value)}><option value="">Усі статуси</option><option value="READY">READY</option><option value="NEEDS_REVIEW">Перевірити</option><option value="QUARANTINED">Карантин</option></select>
+      <select value={serviceType} onChange={(event) => setServiceType(event.target.value)}><option value="">Усі процеси</option><option value="DIAGNOSTIC">Діагностика</option><option value="REPAIR">Ремонт</option><option value="BOTH">Діагностика + ремонт</option></select>
       <select value={active} onChange={(event) => setActive(event.target.value)}><option value="">Активні + staging</option><option value="true">Тільки активні</option><option value="false">Тільки неактивні</option></select>
       <select value={categoryId} onChange={(event) => setCategoryId(event.target.value)}><option value="">Усі категорії</option>{(data?.categories || []).map((category) => <option value={category.id} key={category.id}>{category.name}</option>)}</select>
       <button type="button" className={styles.activate} disabled={!canActivateReady || saving} onClick={() => void activateReady()}>Активувати READY · МС Мастер</button>
