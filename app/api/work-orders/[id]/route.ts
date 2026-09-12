@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { VehicleIssueStatus } from "@/src/generated/prisma/client";
+import { getPrisma } from "@/src/lib/prisma";
 import { authorize } from "@/src/security/authorize";
 import { PERMISSIONS } from "@/src/security/permissions";
 import { canAccessWorkOrder } from "@/src/security/work-order-scope";
@@ -10,6 +11,7 @@ import {
   WorkOrderTransitionError,
 } from "@/src/services/work-orders.service";
 import { markWorkOrderIssues } from "@/src/services/vehicle-issues.service";
+import { syncVehicleLocationFromAppointment } from "@/src/services/vehicle-location.service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -69,7 +71,35 @@ export async function PATCH(request: Request, context: RouteContext) {
       }
     }
 
-    return NextResponse.json({ ok: true, workOrder, issueSyncWarning });
+    let vehicleLocation = null;
+    let vehicleLocationSyncWarning: string | null = null;
+    if (workOrder.vehicleId) {
+      try {
+        const appointment = await getPrisma().serviceAppointment.findFirst({
+          where: { workOrderId: id },
+          orderBy: { createdAt: "desc" },
+          select: { id: true, locationId: true, postId: true },
+        });
+        const locationSync = await syncVehicleLocationFromAppointment({
+          vehicleId: workOrder.vehicleId,
+          locationId: appointment?.locationId || null,
+          postId: appointment?.postId || null,
+          status: workOrder.status,
+          sourceType: "WORK_ORDER",
+          sourceId: id,
+          reason: "Синхронізація з Work Order: " + workOrder.status,
+          actorUserId: access.context.user?.id || null,
+          actorName,
+          idempotencyKey: "work-order:" + id + ":" + workOrder.status + ":" + workOrder.updatedAt.toISOString(),
+        });
+        vehicleLocation = locationSync?.location || null;
+      } catch (locationError) {
+        vehicleLocationSyncWarning = locationError instanceof Error ? locationError.message : "Не вдалося синхронізувати локацію автомобіля.";
+        console.error("work-order vehicle location sync failed", { workOrderId: id, locationError });
+      }
+    }
+
+    return NextResponse.json({ ok: true, workOrder, issueSyncWarning, vehicleLocation, vehicleLocationSyncWarning });
   } catch (error) {
     if (error instanceof WorkOrderNotFoundError) {
       return NextResponse.json({ ok: false, error: "Замовлення-наряд не знайдено." }, { status: 404 });

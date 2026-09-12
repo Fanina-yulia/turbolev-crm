@@ -10,6 +10,7 @@ import {
 import { arrivePlannerAppointment } from "@/src/services/planner-arrival.service";
 import { parsePlannerStatus, updatePlannerAppointment } from "@/src/services/planner.service";
 import { autoGenerateVehicleImage } from "@/src/services/vehicle-images/vehicle-image-auto.service";
+import { syncVehicleLocationFromAppointment } from "@/src/services/vehicle-location.service";
 
 export const runtime = "nodejs";
 export const maxDuration = 100;
@@ -122,6 +123,29 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
       }, { status: 409 });
     }
 
+    let vehicleLocation = null;
+    let vehicleLocationSyncWarning: string | null = null;
+    if (result.ok && result.appointment.vehicleId) {
+      try {
+        const locationSync = await syncVehicleLocationFromAppointment({
+          vehicleId: result.appointment.vehicleId,
+          locationId: result.appointment.locationId,
+          postId: result.appointment.postId,
+          status: result.appointment.status,
+          sourceType: "APPOINTMENT",
+          sourceId: id,
+          reason: "Синхронізація з Планувальником: " + result.appointment.status,
+          actorUserId: security.access.context.user?.id || null,
+          actorName: security.access.context.user?.employeeName || security.access.context.user?.name || "CRM",
+          idempotencyKey: "appointment:" + id + ":" + result.appointment.status + ":" + result.appointment.updatedAt.toISOString(),
+        });
+        vehicleLocation = locationSync?.location || null;
+      } catch (locationError) {
+        vehicleLocationSyncWarning = locationError instanceof Error ? locationError.message : "Не вдалося синхронізувати локацію автомобіля.";
+        console.error("planner vehicle location sync failed", { appointmentId: id, locationError });
+      }
+    }
+
     if (result.ok && requestedStatus === "ARRIVED" && "workflowAction" in result && result.workflowAction?.vehicleId) {
       const vehicleId = result.workflowAction.vehicleId;
       after(async () => {
@@ -142,6 +166,8 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
       warning: result.warning ?? null,
       workflowObservation: "workflowDecision" in result ? result.workflowDecision : workflowObservation,
       workflowAction: "workflowAction" in result ? result.workflowAction : null,
+      vehicleLocation,
+      vehicleLocationSyncWarning,
     });
   } catch (error) {
     if (error instanceof LeadArrivalNotFoundError) {
@@ -191,5 +217,32 @@ export async function DELETE(request: Request, context: { params: Promise<{ id: 
   if (!result.ok && "notFound" in result) {
     return NextResponse.json({ status: "NOT_FOUND", message: "Запис не знайдено." }, { status: 404 });
   }
-  return NextResponse.json({ status: "CANCELLED", appointment: result.ok ? result.appointment : null, workflowObservation });
+  let vehicleLocation = null;
+  let vehicleLocationSyncWarning: string | null = null;
+  if (result.ok && result.appointment.vehicleId) {
+    try {
+      const locationSync = await syncVehicleLocationFromAppointment({
+        vehicleId: result.appointment.vehicleId,
+        locationId: result.appointment.locationId,
+        postId: result.appointment.postId,
+        status: "CANCELLED",
+        sourceType: "APPOINTMENT",
+        sourceId: id,
+        reason: "Запис скасовано в Планувальнику.",
+        actorUserId: security.access.context.user?.id || null,
+        actorName: security.access.context.user?.employeeName || security.access.context.user?.name || "CRM",
+      });
+      vehicleLocation = locationSync?.location || null;
+    } catch (locationError) {
+      vehicleLocationSyncWarning = locationError instanceof Error ? locationError.message : "Не вдалося синхронізувати локацію автомобіля.";
+      console.error("planner cancellation vehicle location sync failed", { appointmentId: id, locationError });
+    }
+  }
+  return NextResponse.json({
+    status: "CANCELLED",
+    appointment: result.ok ? result.appointment : null,
+    workflowObservation,
+    vehicleLocation,
+    vehicleLocationSyncWarning,
+  });
 }
