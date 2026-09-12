@@ -59,7 +59,7 @@ try {
   const roles = await client.query(`SELECT code FROM "AccessRole" WHERE "isActive"=true ORDER BY code`);
   assert.deepEqual(
     roles.rows.map((row) => row.code).sort(),
-    [...canonicalRoleCodes].sort(),
+    [...CANONICAL_ROLE_CODES].sort(),
     "active RBAC roles must match the canonical personnel structure",
   );
 
@@ -83,7 +83,7 @@ try {
     scopes.set(`${row.role_code}:${row.permission_code}`, row.scope);
   }
 
-  for (const role of canonicalRoleCodes) {
+  for (const role of CANONICAL_ROLE_CODES) {
     assert.ok(matrix.get(role)?.has("PAYROLL.SELF_READ"), `${role} must be able to read own salary`);
   }
 
@@ -155,7 +155,7 @@ try {
   }
 
   assert.ok(matrix.get("OWNER")?.has("OWNER.EMPLOYEE_VIEW_AS"), "OWNER must be able to preview employee cabinets");
-  for (const role of canonicalRoleCodes.filter((role) => role !== "OWNER")) {
+  for (const role of CANONICAL_ROLE_CODES.filter((role) => role !== "OWNER")) {
     assert.ok(!matrix.get(role)?.has("OWNER.EMPLOYEE_VIEW_AS"), `${role} must not preview employee cabinets`);
   }
 
