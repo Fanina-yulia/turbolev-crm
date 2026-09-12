@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { promises as fs } from "node:fs";
 import pg from "pg";
 import { computeEffectivePermissions } from "../src/security/rbac-engine";
+import { CANONICAL_ROLE_CODES } from "../src/security/role-contract";
 
 const authorizeSource = await fs.readFile("src/security/authorize.ts", "utf8");
 assert.doesNotMatch(
@@ -44,23 +45,7 @@ assert.deepEqual(denied.deniedPermissions, ["FINANCE.READ"]);
 const databaseUrl = process.env.DATABASE_URL_UNPOOLED || process.env.DATABASE_URL;
 assert.ok(databaseUrl, "DATABASE_URL is required for the RBAC database smoke test");
 
-const canonicalRoleCodes = [
-  "OWNER",
-  "EXECUTIVE_DIRECTOR",
-  "STATION_MANAGER",
-  "SERVICE_ADVISOR",
-  "MECHANIC",
-  "PARTS_SPECIALIST",
-  "WAREHOUSE_KEEPER",
-  "HEAD_OF_SALES",
-  "SALES",
-  "ACCOUNTANT",
-  "MARKETING_DIRECTOR",
-  "MARKETER",
-  "HR_MANAGER",
-  "ADMINISTRATOR",
-  "CRM_ADMIN",
-] as const;
+
 
 const client = new pg.Client({ connectionString: databaseUrl });
 await client.connect();
