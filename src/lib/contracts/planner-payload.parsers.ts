@@ -136,6 +136,15 @@ function parseAppointment(value: unknown): PlannerAppointmentContract | null {
   const purpose = value.purpose == null ? null : typeof value.purpose === "string" && PLANNER_PURPOSES.has(value.purpose) ? value.purpose as PlannerPurposeContract : undefined;
   const processStatus = nullableString(value.processStatus);
   const processLabel = nullableString(value.processLabel);
+  const processSource = value.processSource == null
+    ? undefined
+    : typeof value.processSource === "string" && ["APPOINTMENT", "DIAGNOSTIC", "WORK_ORDER", "NONE"].includes(value.processSource)
+      ? value.processSource as "APPOINTMENT" | "DIAGNOSTIC" | "WORK_ORDER" | "NONE"
+      : undefined;
+  const processSourceStatus = nullableString(value.processSourceStatus);
+  const processCompatibilityOnly = value.processCompatibilityOnly == null
+    ? undefined
+    : typeof value.processCompatibilityOnly === "boolean" ? value.processCompatibilityOnly : undefined;
   const payment = parsePayment(value.payment);
   const vehicleId = nullableString(value.vehicleId);
   const customerName = nullableString(value.customerName);
@@ -175,6 +184,9 @@ function parseAppointment(value: unknown): PlannerAppointmentContract | null {
     requiresDiagnosticFirst,
     processStatus,
     processLabel,
+    processSource,
+    processSourceStatus,
+    processCompatibilityOnly,
     payment,
     vehicleId,
     customerName,

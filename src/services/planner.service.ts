@@ -1,43 +1,12 @@
+import {
+  PLANNER_BLOCKING_STATUS_VALUES,
+  PLANNER_STATUS_VALUES,
+  deriveOperationalServiceState,
+} from "@/src/domain/workflow";
 import { getPrisma } from "@/src/lib/prisma";
 
-export const PLANNER_BLOCKING_STATUSES = [
-  "BOOKED",
-  "ARRIVED",
-  "DIAGNOSTICS",
-  "WAITING_PARTS_SELECTION",
-  "WAITING_CALCULATION",
-  "WAITING_APPROVAL",
-  "WAITING_PARTS",
-  "READY_FOR_REPAIR",
-  "IN_REPAIR",
-  "WAITING_QC",
-  "WAITING_PAYMENT",
-  "READY_FOR_PICKUP",
-  "WARRANTY",
-  "PAUSED",
-  "RESERVE",
-] as const;
-
-export const PLANNER_STATUSES = [
-  "BOOKED",
-  "ARRIVED",
-  "DIAGNOSTICS",
-  "WAITING_PARTS_SELECTION",
-  "WAITING_CALCULATION",
-  "WAITING_APPROVAL",
-  "WAITING_PARTS",
-  "READY_FOR_REPAIR",
-  "IN_REPAIR",
-  "WAITING_QC",
-  "WAITING_PAYMENT",
-  "READY_FOR_PICKUP",
-  "COMPLETED",
-  "WARRANTY",
-  "PAUSED",
-  "NO_SHOW",
-  "CANCELLED",
-  "RESERVE",
-] as const;
+export const PLANNER_BLOCKING_STATUSES = PLANNER_BLOCKING_STATUS_VALUES;
+export const PLANNER_STATUSES = PLANNER_STATUS_VALUES;
 
 export type PlannerStatus = (typeof PLANNER_STATUSES)[number];
 export const PLANNER_PURPOSES = ["DIAGNOSTICS", "REPAIR"] as const;
@@ -150,22 +119,6 @@ function inferPlannerPurpose(body: Record<string, unknown>, current?: Appointmen
     : "DIAGNOSTICS";
 }
 
-const PROCESS_LABELS: Record<string, string> = {
-  BOOKED: "Записаний",
-  ARRIVED: "Автомобіль прийнято",
-  DIAGNOSTICS: "Діагностика",
-  WAITING_PARTS_SELECTION: "Підбір запчастин",
-  WAITING_CALCULATION: "Калькуляція",
-  WAITING_APPROVAL: "Погодження",
-  WAITING_PARTS: "Очікує запчастини",
-  READY_FOR_REPAIR: "Готовий до ремонту",
-  IN_REPAIR: "У ремонті",
-  WAITING_QC: "Контроль якості",
-  READY_FOR_PICKUP: "Готовий до видачі",
-  COMPLETED: "Завершено",
-  CANCELLED: "Скасований",
-  NO_SHOW: "Не приїхав",
-};
 
 export function parseDateValue(value: unknown, required = false): Date | null {
   if (value == null || value === "") return required ? null : null;
@@ -279,7 +232,13 @@ export async function getPlannerBoard(from: Date, to: Date, locationId?: string 
     const diagnosticId = diagnosticByAppointment.get(row.id);
     const diagnostic = diagnosticId ? diagnosticById.get(diagnosticId) : null;
     const workOrder = row.workOrderId ? workOrderById.get(row.workOrderId) : null;
-    const processStatus = purpose === "REPAIR" ? workOrder?.status || row.status : diagnostic?.status || (row.status === "DIAGNOSTICS" ? row.status : "PENDING");
+    const processProjection = deriveOperationalServiceState({
+      appointmentStatus: row.status,
+      diagnosticStatus: diagnostic?.status || null,
+      workOrderStatus: workOrder?.status || null,
+      purpose,
+    });
+    const processStatus = processProjection.code;
     const workOrderObligations = row.workOrderId ? obligationsByWorkOrder.get(row.workOrderId) || [] : [];
     const amountValue = workOrderObligations.reduce((sum, item) => sum + Number(item.amount), 0);
     const paidValue = workOrderObligations.reduce((sum, item) => sum + Number(item.settledAmount), 0);
@@ -293,7 +252,10 @@ export async function getPlannerBoard(from: Date, to: Date, locationId?: string 
       processStatus,
       processLabel: row.requiresDiagnosticFirst && !row.workOrderId
         ? "Діагностика → ремонт"
-        : PROCESS_LABELS[processStatus] || (purpose === "DIAGNOSTICS" ? "Діагностика" : "Ремонт / сервіс"),
+        : processProjection.label,
+      processSource: processProjection.source,
+      processSourceStatus: processProjection.sourceStatus,
+      processCompatibilityOnly: processProjection.compatibilityOnly,
       payment: {
         status: paymentStatus,
         amount: row.workOrderId ? amountValue || null : row.estimatedAmount,

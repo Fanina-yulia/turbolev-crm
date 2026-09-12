@@ -1,4 +1,24 @@
 import type { WorkflowDefinition, WorkflowStatusDefinition, WorkflowTransitionDefinition } from "./types";
+import {
+  APPOINTMENT_BLOCKING_STATUS_CODES,
+  APPOINTMENT_STATUS_CODES,
+  LEAD_CANONICAL_STATUS_CODES,
+  WORK_ORDER_INITIAL_STATUS,
+  WORK_ORDER_LEGACY_PRE_CREATION_CODES,
+  WORK_ORDER_STATUS_CODES,
+} from "./status-codes";
+export {
+  APPOINTMENT_BLOCKING_STATUS_CODES,
+  APPOINTMENT_STATUS_CODES,
+  LEAD_CANONICAL_STATUS_CODES,
+  WORK_ORDER_INITIAL_STATUS,
+  WORK_ORDER_LEGACY_PRE_CREATION_CODES,
+  WORK_ORDER_STATUS_CODES,
+} from "./status-codes";
+
+export type AppointmentStatusCode = (typeof APPOINTMENT_STATUS_CODES)[number];
+export type WorkOrderStatusCode = (typeof WORK_ORDER_STATUS_CODES)[number];
+
 
 const SALES = ["SALES"] as const;
 const SERVICE = ["SERVICE_MANAGER"] as const;
@@ -11,34 +31,6 @@ function transition(from: string, to: string, extra: Omit<WorkflowTransitionDefi
   return { from, to, ...extra };
 }
 
-export const LEAD_CANONICAL_STATUS_CODES = [
-  "NEW", "CONTACTED", "QUALIFIED", "ESTIMATE", "WAITING", "NO_ANSWER", "BOOKED", "ARRIVED", "LOST",
-] as const;
-
-export const APPOINTMENT_STATUS_CODES = [
-  "BOOKED", "ARRIVED", "DIAGNOSTICS", "WAITING_PARTS_SELECTION", "WAITING_CALCULATION", "WAITING_APPROVAL",
-  "WAITING_PARTS", "READY_FOR_REPAIR", "IN_REPAIR", "WAITING_QC", "READY_FOR_PICKUP", "COMPLETED",
-  "WARRANTY", "PAUSED", "NO_SHOW", "CANCELLED", "RESERVE",
-] as const;
-
-export type AppointmentStatusCode = (typeof APPOINTMENT_STATUS_CODES)[number];
-
-export const APPOINTMENT_BLOCKING_STATUS_CODES = [
-  "BOOKED", "ARRIVED", "DIAGNOSTICS", "WAITING_PARTS_SELECTION", "WAITING_CALCULATION", "WAITING_APPROVAL",
-  "WAITING_PARTS", "READY_FOR_REPAIR", "IN_REPAIR", "WAITING_QC", "READY_FOR_PICKUP", "WARRANTY", "PAUSED", "RESERVE",
-] as const satisfies readonly AppointmentStatusCode[];
-
-export const WORK_ORDER_STATUS_CODES = [
-  "PARTS_REVIEW", "WAITING_APPROVAL", "WAITING_PARTS", "READY_FOR_REPAIR", "IN_REPAIR", "PAUSED",
-  "WAITING_QC", "REWORK", "READY_FOR_PICKUP", "WAITING_PAYMENT", "CLOSED", "CANCELLED",
-] as const;
-
-export type WorkOrderStatusCode = (typeof WORK_ORDER_STATUS_CODES)[number];
-export const WORK_ORDER_INITIAL_STATUS: WorkOrderStatusCode = "PARTS_REVIEW";
-
-export const WORK_ORDER_LEGACY_PRE_CREATION_CODES = [
-  "LEAD", "QUALIFICATION", "PREQUOTE", "BOOKED", "ARRIVED", "DIAGNOSTIC_REQUEST", "DIAGNOSTICS",
-] as const;
 
 const inquiryStatuses: readonly WorkflowStatusDefinition[] = [
   { code: "NEW", label: "Нове", stage: "INQUIRY", tone: "accent", sortOrder: 10, system: true, responsibleRoles: SALES },
@@ -102,7 +94,7 @@ const workOrderStatuses: readonly WorkflowStatusDefinition[] = [
   { code: "WAITING_QC", label: "Очікує контроль якості", stage: "QUALITY_CONTROL", tone: "warning", sortOrder: 70, system: true, responsibleRoles: QC },
   { code: "REWORK", label: "Повернено на доопрацювання", stage: "REPAIR", tone: "danger", sortOrder: 80, system: true, responsibleRoles: ["SERVICE_MANAGER", "MECHANIC", "QUALITY_CONTROLLER"] },
   { code: "READY_FOR_PICKUP", label: "Готовий до видачі", stage: "DELIVERY", tone: "success", sortOrder: 90, system: true, responsibleRoles: SERVICE },
-  { code: "WAITING_PAYMENT", label: "Очікує оплату (legacy)", stage: "PAYMENT", tone: "warning", sortOrder: 100, system: true, legacy: true, compatibilityOnly: true, responsibleRoles: FINANCE, description: "Залишено для старих КП. Поточний стан оплати зберігається у фінансовому контурі; фізично готове авто має статус READY_FOR_PICKUP." },
+  { code: "WAITING_PAYMENT", label: "Очікує повну оплату", stage: "PAYMENT", tone: "warning", sortOrder: 90, system: true, responsibleRoles: FINANCE, description: "Канонічний стан фінансового завершення WorkOrder; джерело правди — фінансове зобов'язання." },
   { code: "CLOSED", label: "Закритий / виданий", stage: "CLOSED", tone: "success", sortOrder: 110, system: true, terminal: true, responsibleRoles: SERVICE },
   { code: "CANCELLED", label: "Скасований", stage: "CLOSED", tone: "neutral", sortOrder: 120, system: true, terminal: true, responsibleRoles: SERVICE },
 ];

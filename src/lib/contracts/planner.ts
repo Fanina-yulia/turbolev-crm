@@ -1,25 +1,7 @@
+import { PLANNER_STATUS_VALUES } from "@/src/domain/workflow/status-codes";
 import type { CrmDateTime, CrmDecimal } from "./crm-core";
 
-export const PLANNER_STATUS_VALUES = [
-  "BOOKED",
-  "ARRIVED",
-  "DIAGNOSTICS",
-  "WAITING_PARTS_SELECTION",
-  "WAITING_CALCULATION",
-  "WAITING_APPROVAL",
-  "WAITING_PARTS",
-  "READY_FOR_REPAIR",
-  "IN_REPAIR",
-  "WAITING_QC",
-  "WAITING_PAYMENT",
-  "READY_FOR_PICKUP",
-  "COMPLETED",
-  "WARRANTY",
-  "PAUSED",
-  "NO_SHOW",
-  "CANCELLED",
-  "RESERVE",
-] as const;
+export { PLANNER_STATUS_VALUES };
 
 export type PlannerStatusContract = (typeof PLANNER_STATUS_VALUES)[number];
 export const PLANNER_PURPOSE_VALUES = ["DIAGNOSTICS", "REPAIR"] as const;
@@ -60,6 +42,10 @@ export type PlannerAppointmentContract = {
   requiresDiagnosticFirst: boolean;
   processStatus: string | null;
   processLabel: string | null;
+  /** Canonical operational projection; the source entity owns the persisted status. */
+  processSource?: "APPOINTMENT" | "DIAGNOSTIC" | "WORK_ORDER" | "NONE";
+  processSourceStatus?: string | null;
+  processCompatibilityOnly?: boolean;
   payment: {
     status: PlannerPaymentStatusContract;
     amount: CrmDecimal | null;

@@ -9,6 +9,7 @@ import {
   getWorkflowStatus,
   getWorkflowStatusLabel,
   normalizeWorkflowStatus,
+  appointmentLifecycleStatusAfterWorkOrder,
   type HardGateCode,
   type WorkflowActionCode,
   type WorkflowGateState,
@@ -27,7 +28,6 @@ import {
 import { ensureQualityControlTaskTx } from "@/src/services/work-order-qc.service";
 import { finalizeWorkOrderFinanceFromLines } from "@/src/services/work-order-lines.service";
 import { ensureCompletionActTx } from "@/src/services/service-completion-act.service";
-import type { PlannerStatus } from "@/src/services/planner.service";
 
 export class DiagnosticRequestNotFoundError extends Error {
   constructor(id: string) {
@@ -315,22 +315,8 @@ async function executeWorkOrderActions(
   return results;
 }
 
-function plannerStatusForWorkOrder(status: string): PlannerStatus | null {
-  const mapping: Record<string, PlannerStatus> = {
-    PARTS_REVIEW: "WAITING_CALCULATION",
-    WAITING_APPROVAL: "WAITING_APPROVAL",
-    WAITING_PARTS: "WAITING_PARTS",
-    READY_FOR_REPAIR: "READY_FOR_REPAIR",
-    IN_REPAIR: "IN_REPAIR",
-    REWORK: "IN_REPAIR",
-    PAUSED: "PAUSED",
-    WAITING_QC: "WAITING_QC",
-    WAITING_PAYMENT: "WAITING_PAYMENT" as PlannerStatus,
-    READY_FOR_PICKUP: "READY_FOR_PICKUP",
-    CLOSED: "COMPLETED",
-    CANCELLED: "CANCELLED",
-  };
-  return mapping[status] ?? null;
+function plannerLifecycleStatusForWorkOrder(status: string): "COMPLETED" | "CANCELLED" | null {
+  return appointmentLifecycleStatusAfterWorkOrder(status);
 }
 
 export async function transitionWorkOrder(id: string, toStatus: string, actorName = "CRM") {
@@ -379,15 +365,17 @@ export async function transitionWorkOrder(id: string, toStatus: string, actorNam
       ? await ensureCompletionActTx(tx, id, actorName)
       : null;
 
-    const plannerStatus = plannerStatusForWorkOrder(decision.normalizedTo);
-    if (plannerStatus) {
+    const plannerLifecycleStatus = plannerLifecycleStatusForWorkOrder(decision.normalizedTo);
+    const shouldStampStart = decision.normalizedTo === "IN_REPAIR";
+    const shouldStampEnd = decision.normalizedTo === "CLOSED";
+    if (plannerLifecycleStatus || shouldStampStart || shouldStampEnd) {
       const now = new Date();
       await tx.serviceAppointment.updateMany({
         where: { workOrderId: id },
         data: {
-          status: plannerStatus,
-          actualStartAt: decision.normalizedTo === "IN_REPAIR" ? now : undefined,
-          actualEndAt: decision.normalizedTo === "CLOSED" ? now : undefined,
+          ...(plannerLifecycleStatus ? { status: plannerLifecycleStatus } : {}),
+          ...(shouldStampStart ? { actualStartAt: now } : {}),
+          ...(shouldStampEnd ? { actualEndAt: now } : {}),
         },
       });
     }

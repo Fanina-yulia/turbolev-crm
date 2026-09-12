@@ -1,6 +1,6 @@
 import type { BlockerCode, HardGateCode, VehicleLocationCode, WorkflowActionCode, WorkflowRole, WorkflowStage } from "./types";
 
-export const STATUS_ARCHITECTURE_VERSION = "1.1.0" as const;
+export const STATUS_ARCHITECTURE_VERSION = "2.0.0" as const;
 
 export const MASTER_SERVICE_STAGES: ReadonlyArray<{ code: WorkflowStage; label: string; order: number }> = [
   { code: "INQUIRY", label: "Звернення", order: 10 },
