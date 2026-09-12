@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { navigateCrm } from "./crm-route";
+import { WARRANTY_CLAIM_STATUS_CODES, WARRANTY_CLAIM_STATUS_LABELS, type WarrantyClaimStatusCode } from "@/src/domain/warranty/contract";
+import { navigateCrm, readCrmRoute } from "./crm-route";
 import styles from "./warranty-center.module.css";
 
-type ClaimStatus = "OPEN" | "REVIEW" | "APPROVED" | "REJECTED" | "CLOSED";
+type ClaimStatus = WarrantyClaimStatusCode;
 type WarrantyStatus = "PENDING_START" | "ACTIVE" | "EXPIRING" | "EXPIRED";
 type WarrantyClaim = {
   id: string;
@@ -58,20 +59,11 @@ const TABS: Array<{ id: TabId; label: string }> = [
   { id: "claims", label: "Звернення" },
   { id: "expired", label: "Завершені" },
 ];
-const CLAIM_LABELS: Record<ClaimStatus, string> = {
-  OPEN: "Нове",
-  REVIEW: "На перевірці",
-  APPROVED: "Погоджено",
-  REJECTED: "Відхилено",
-  CLOSED: "Закрито",
-};
-const CLAIM_OPTIONS: Array<{ value: ClaimStatus; label: string }> = [
-  { value: "OPEN", label: "Нове" },
-  { value: "REVIEW", label: "На перевірці" },
-  { value: "APPROVED", label: "Погоджено" },
-  { value: "REJECTED", label: "Відхилено" },
-  { value: "CLOSED", label: "Закрито" },
-];
+const CLAIM_LABELS = WARRANTY_CLAIM_STATUS_LABELS;
+const CLAIM_OPTIONS: Array<{ value: ClaimStatus; label: string }> = WARRANTY_CLAIM_STATUS_CODES.map((value) => ({
+  value,
+  label: WARRANTY_CLAIM_STATUS_LABELS[value],
+}));
 
 function dateText(value: string | null) {
   if (!value) return "—";
@@ -110,7 +102,8 @@ function warrantyClass(row: WarrantyRow) {
 
 export function WarrantyCenter() {
   const [tab, setTab] = useState<TabId>("active");
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState(() => readCrmRoute().filter || "");
+  const [focusedWorkOrderId] = useState(() => readCrmRoute().workOrderId || "");
   const [data, setData] = useState<WarrantyResponse>({ ok: true, rows: [], counts: { active: 0, expiring: 0, claims: 0, expired: 0 }, canWrite: false });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -134,6 +127,7 @@ export function WarrantyCenter() {
       try {
         const params = new URLSearchParams();
         if (query.trim()) params.set("q", query.trim());
+        if (focusedWorkOrderId) params.set("workOrderId", focusedWorkOrderId);
         const response = await fetch(`/api/warranties${params.size ? `?${params}` : ""}`, { cache: "no-store", signal: controller.signal });
         const payload = await response.json() as WarrantyResponse;
         if (!response.ok || !payload.ok) throw new Error(payload.error || "Не вдалося завантажити гарантії");
@@ -145,7 +139,7 @@ export function WarrantyCenter() {
       }
     }, query.trim() ? 220 : 0);
     return () => { controller.abort(); window.clearTimeout(timer); };
-  }, [query, refreshKey]);
+  }, [focusedWorkOrderId, query, refreshKey]);
 
   const rows = data.rows || [];
   const counts = data.counts || { active: 0, expiring: 0, claims: 0, expired: 0 };
@@ -240,7 +234,7 @@ export function WarrantyCenter() {
     </section>
 
     <div className={styles.toolbar}>
-      <label className={styles.search}><span>⌕</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Клієнт, телефон, номер авто, VIN, КП або робота..." />{query && <button type="button" onClick={() => setQuery("")}>×</button>}</label>
+      <label className={styles.search}><span>⌕</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Клієнт, телефон, номер авто, VIN, наряд або робота..." />{query && <button type="button" onClick={() => setQuery("")}>×</button>}</label>
     </div>
 
     <nav className={styles.tabs} aria-label="Гарантійні черги">
@@ -283,7 +277,7 @@ export function WarrantyCenter() {
         </div>}
 
         <div className={styles.actions}>
-          <button type="button" onClick={() => navigateCrm("Комерційна пропозиція", { workOrderId: row.workOrderId, workOrderTab: "overview" })}>Відкрити КП</button>
+          <button type="button" onClick={() => navigateCrm("Комерційна пропозиція", { workOrderId: row.workOrderId, workOrderTab: "overview" })}>Відкрити наряд</button>
           {canWrite && row.openClaim && <button className={styles.primary} type="button" onClick={() => openClaimEdit(row)}>Опрацювати звернення</button>}
           {canWrite && !row.openClaim && <button className={styles.primary} type="button" onClick={() => openNewClaim(row)}>Зареєструвати звернення</button>}
         </div>
