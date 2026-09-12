@@ -116,7 +116,7 @@ function legacyRoute(section:CrmSectionLabel,filter:string):LegacyRoute|null{
     return value?{section,params:{workOrderId:value}}:null;
   }
 
-  if(section==="Комерційна пропозиція"){
+  if(section==="Комерційна пропозиція"||section==="Наряди та ремонт"){
     if(!value)return null;
     const statuses:Record<string,string>={
       approval:"WAITING_APPROVAL",
