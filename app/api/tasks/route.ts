@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { buildRoleWorkQueues } from "@/src/domain/role-work-queues";
 import { getAccessContext, hasPermission } from "@/src/security/access-context";
 import { PERMISSIONS, type AccessScopeCode, type PermissionCode } from "@/src/security/permissions";
 import { appendOperationalStallAttention } from "@/src/services/attention-center-operational-stalls.service";
@@ -72,11 +73,17 @@ export async function GET(request: NextRequest) {
     const attention = canPlanner
       ? await appendWalkInAttention(operationalAttention, { plannerLocationIds, canSeeAmounts: canFinance })
       : operationalAttention;
+    const roleQueues = buildRoleWorkQueues({
+      roles: context.roles,
+      signals: attention.signals,
+      userId: auth.userId,
+    });
 
     return NextResponse.json({
       ok: true,
       tasks,
       attention,
+      roleQueues,
       serverTime: new Date().toISOString(),
     }, { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) {
