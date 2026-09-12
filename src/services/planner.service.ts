@@ -1,7 +1,9 @@
 import {
   PLANNER_BLOCKING_STATUS_VALUES,
   PLANNER_STATUS_VALUES,
+  VEHICLE_LOCATION_LABELS,
   deriveOperationalServiceState,
+  type VehicleLocationCode,
 } from "@/src/domain/workflow";
 import { getPrisma } from "@/src/lib/prisma";
 
@@ -207,15 +209,17 @@ export async function getPlannerBoard(from: Date, to: Date, locationId?: string 
     : [];
 
   const appointmentIds = appointments.map((row) => row.id);
+  const vehicleIds = Array.from(new Set(appointments.flatMap((row) => row.vehicleId ? [row.vehicleId] : [])));
   const workOrderIds = Array.from(new Set(appointments.flatMap((row) => row.workOrderId ? [row.workOrderId] : [])));
   const visitLinks = appointmentIds.length
     ? await prisma.diagnosticVisitLink.findMany({ where: { appointmentId: { in: appointmentIds } }, select: { appointmentId: true, diagnosticRequestId: true } })
     : [];
   const diagnosticIds = Array.from(new Set(visitLinks.map((row) => row.diagnosticRequestId)));
-  const [workOrderRows, obligations, diagnosticPayments] = await Promise.all([
+  const [workOrderRows, obligations, diagnosticPayments, vehicleLocationRows] = await Promise.all([
     workOrderIds.length ? prisma.workOrder.findMany({ where: { id: { in: workOrderIds } }, select: { id: true, status: true } }) : [],
     workOrderIds.length ? prisma.financialObligation.findMany({ where: { workOrderId: { in: workOrderIds }, direction: "RECEIVABLE", status: { not: "CANCELLED" } }, select: { workOrderId: true, status: true, amount: true, settledAmount: true } }) : [],
-    diagnosticIds.length ? prisma.cashTransaction.findMany({ where: { sourceEntity: "WALK_IN_DIAGNOSTIC_PAYMENT", sourceEntityId: { in: diagnosticIds.map((id) => `${id}:payment`) }, status: "POSTED" }, select: { sourceEntityId: true, amount: true } }) : [],
+    diagnosticIds.length ? prisma.cashTransaction.findMany({ where: { sourceEntity: "WALK_IN_DIAGNOSTIC_PAYMENT", sourceEntityId: { in: diagnosticIds.map((id) => id + ":payment") }, status: "POSTED" }, select: { sourceEntityId: true, amount: true } }) : [],
+    vehicleIds.length ? prisma.vehicleLocation.findMany({ where: { vehicleId: { in: vehicleIds } }, select: { vehicleId: true, code: true, serviceLocationId: true, servicePostId: true, updatedAt: true } }) : [],
   ]);
   const diagnosticRows = diagnosticIds.length
     ? await prisma.diagnosticRequest.findMany({ where: { id: { in: diagnosticIds } }, select: { id: true, status: true } })
@@ -226,6 +230,7 @@ export async function getPlannerBoard(from: Date, to: Date, locationId?: string 
   const obligationsByWorkOrder = new Map<string, typeof obligations>();
   for (const row of obligations) if (row.workOrderId) obligationsByWorkOrder.set(row.workOrderId, [...(obligationsByWorkOrder.get(row.workOrderId) || []), row]);
   const paymentByDiagnostic = new Map(diagnosticPayments.map((row) => [row.sourceEntityId?.split(":")[0] || "", row]));
+  const vehicleLocationByVehicleId = new Map(vehicleLocationRows.map((row) => [row.vehicleId, row]));
 
   const decoratedAppointments = appointments.map((row) => {
     const purpose = (row.purpose as PlannerPurpose | null) || (row.workOrderId ? "REPAIR" : diagnosticByAppointment.has(row.id) || row.status === "DIAGNOSTICS" ? "DIAGNOSTICS" : inferPlannerPurpose({ status: row.status }));
@@ -239,6 +244,7 @@ export async function getPlannerBoard(from: Date, to: Date, locationId?: string 
       purpose,
     });
     const processStatus = processProjection.code;
+    const currentVehicleLocation = row.vehicleId ? vehicleLocationByVehicleId.get(row.vehicleId) || null : null;
     const workOrderObligations = row.workOrderId ? obligationsByWorkOrder.get(row.workOrderId) || [] : [];
     const amountValue = workOrderObligations.reduce((sum, item) => sum + Number(item.amount), 0);
     const paidValue = workOrderObligations.reduce((sum, item) => sum + Number(item.settledAmount), 0);
@@ -256,6 +262,12 @@ export async function getPlannerBoard(from: Date, to: Date, locationId?: string 
       processSource: processProjection.source,
       processSourceStatus: processProjection.sourceStatus,
       processCompatibilityOnly: processProjection.compatibilityOnly,
+      vehicleLocation: currentVehicleLocation
+        ? {
+            ...currentVehicleLocation,
+            label: VEHICLE_LOCATION_LABELS[currentVehicleLocation.code as VehicleLocationCode] || currentVehicleLocation.code,
+          }
+        : null,
       payment: {
         status: paymentStatus,
         amount: row.workOrderId ? amountValue || null : row.estimatedAmount,
