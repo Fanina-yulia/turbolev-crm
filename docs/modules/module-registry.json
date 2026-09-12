@@ -139,7 +139,8 @@
         "app/api/clients*/**",
         "app/api/vehicles/**",
         "src/services/vehicle-lookup*",
-        "src/services/vehicle-registry-color*"
+        "src/services/vehicle-registry-color*",
+        "src/services/vehicle-location.service.ts"
       ],
       "dependencies": [
         "leads-intake",
@@ -152,7 +153,8 @@
         "client-card-load",
         "vehicle-card-load",
         "plate-search",
-        "vehicle-owner-consistency"
+        "vehicle-owner-consistency",
+        "vehicle-location"
       ]
     },
     {
