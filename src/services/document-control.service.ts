@@ -297,7 +297,11 @@ export async function captureWorkOrderDocumentRevision(
 
   if (normalizedType === "COMMERCIAL_PROPOSAL") {
     const estimate = packageData.documents.estimate;
-    if (!estimate.available || !["SENT", "APPROVED"].includes(estimate.status)) {
+    const estimateId = "id" in estimate && typeof estimate.id === "string" ? estimate.id : null;
+    const estimateStatus = "status" in estimate && typeof estimate.status === "string" ? estimate.status : null;
+    const estimateRevision = "revision" in estimate && typeof estimate.revision === "number" ? estimate.revision : null;
+    const estimateLineSnapshot = "lineSnapshot" in estimate ? estimate.lineSnapshot : null;
+    if (!estimate.available || !estimateId || !estimateStatus || !["SENT", "APPROVED"].includes(estimateStatus)) {
       throw new ControlledDocumentError("DOCUMENT_SOURCE_NOT_READY", "Комерційна пропозиція ще не надіслана клієнту.", 409);
     }
     return issueControlledDocumentRevision({
@@ -305,9 +309,9 @@ export async function captureWorkOrderDocumentRevision(
       type: normalizedType,
       workOrderId,
       sourceEntityType: "WorkOrderEstimate",
-      sourceEntityId: estimate.id,
-      sourceRevision: estimate.revision,
-      sourceFingerprint: hash(estimate.lineSnapshot),
+      sourceEntityId: estimateId,
+      sourceRevision: estimateRevision,
+      sourceFingerprint: hash(estimateLineSnapshot),
       templateVersion: templateMeta.templateVersion,
       templateFingerprint: templateMeta.templateFingerprint,
       snapshot: estimate,
