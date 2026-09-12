@@ -6,6 +6,7 @@ import {
   getWorkOrderDocumentPackage,
   WorkOrderDocumentPackageError,
 } from "@/src/services/work-order-document-package.service";
+import { listControlledDocumentRevisions } from "@/src/services/document-control.service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -26,9 +27,12 @@ export async function GET(request: Request, context: RouteContext) {
     if (!(await canAccessWorkOrder(access.context, access.grantedScope, id))) {
       return NextResponse.json({ ok: false, error: "Замовлення-наряд не знайдено." }, { status: 404 });
     }
-    const packageData = await getWorkOrderDocumentPackage(id);
+    const [packageData, controlledRevisions] = await Promise.all([
+      getWorkOrderDocumentPackage(id),
+      listControlledDocumentRevisions(id),
+    ]);
     return NextResponse.json(
-      { ok: true, package: packageData },
+      { ok: true, package: { ...packageData, documents: { ...packageData.documents, controlledRevisions } } },
       { headers: { "Cache-Control": "private, no-store" } },
     );
   } catch (error) {
