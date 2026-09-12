@@ -5,7 +5,6 @@ import { authorizeScopedLocation } from "@/src/security/scoped-location-access";
 import {
   FinancialCenterV2Error,
   addExpenseAttachment,
-  createCustomerAdvance,
   createFinancialCategory,
   createManualIncome,
   createTransfer,
