@@ -469,7 +469,10 @@
         "app/api/inventory/**",
         "src/services/parts*",
         "src/services/*supplier*",
-        "src/services/*inventory*"
+        "src/services/*inventory*",
+        "prisma/inventory-ledger.prisma",
+        "app/api/inventory/**",
+        "src/services/inventory-ledger.service.ts"
       ],
       "dependencies": [
         "clients-vehicles",
@@ -481,7 +484,9 @@
         "parts-search-vin",
         "parts-search-plate",
         "supplier-offers",
-        "work-order-parts-link"
+        "work-order-parts-link",
+        "inventory-ledger",
+        "inventory-reservation"
       ]
     },
     {

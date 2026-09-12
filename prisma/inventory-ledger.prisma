@@ -1,0 +1,125 @@
+enum InventoryLedgerDirection {
+  IN
+  OUT
+}
+
+enum InventoryLedgerReason {
+  RECEIPT
+  ISSUE
+  RETURN
+  ADJUSTMENT
+  TRANSFER
+  RESERVATION_CONSUME
+}
+
+enum InventoryReservationStatus {
+  ACTIVE
+  RELEASED
+  CONSUMED
+  CANCELLED
+}
+
+/**
+ * Current inventory projection. warehouseKey is deliberately an operational
+ * key rather than a hard FK so multiple station/warehouse implementations can
+ * coexist during the migration from supplier JSON to factual stock data.
+ */
+model InventoryBalance {
+  id                String   @id @default(cuid())
+  warehouseKey      String   @default("MAIN") @db.VarChar(64)
+  serviceLocationId String?  @db.VarChar(64)
+  stockKey          String   @db.VarChar(180)
+  productId         String?  @db.VarChar(64)
+  article           String?  @db.VarChar(120)
+  brand             String?  @db.VarChar(120)
+  description       String?  @db.VarChar(320)
+  unit              String   @default("шт") @db.VarChar(32)
+  currency          String   @default("UAH") @db.VarChar(3)
+  onHand            Decimal  @default(0) @db.Decimal(16, 3)
+  reserved          Decimal  @default(0) @db.Decimal(16, 3)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@unique([warehouseKey, stockKey])
+  @@index([serviceLocationId, updatedAt])
+  @@index([productId, warehouseKey])
+  @@index([article, brand])
+  @@index([onHand, reserved])
+}
+
+/**
+ * Immutable warehouse fact. Quantity is always positive; direction determines
+ * whether the balance increases or decreases.
+ */
+model InventoryLedgerEntry {
+  id                String                  @id @default(cuid())
+  warehouseKey      String                  @default("MAIN") @db.VarChar(64)
+  serviceLocationId String?                 @db.VarChar(64)
+  stockKey          String                  @db.VarChar(180)
+  productId         String?                 @db.VarChar(64)
+  article           String?                 @db.VarChar(120)
+  brand             String?                 @db.VarChar(120)
+  description       String?                 @db.VarChar(320)
+  unit              String                  @default("шт") @db.VarChar(32)
+  currency          String                  @default("UAH") @db.VarChar(3)
+  direction         InventoryLedgerDirection
+  reason            InventoryLedgerReason
+  quantity          Decimal                 @db.Decimal(16, 3)
+  unitCost          Decimal?                @db.Decimal(16, 4)
+  balanceAfter      Decimal                 @db.Decimal(16, 3)
+  referenceType     String?                 @db.VarChar(48)
+  referenceId       String?                 @db.VarChar(96)
+  workOrderId       String?                 @db.VarChar(64)
+  workOrderLineId   String?                 @db.VarChar(64)
+  supplierOrderId   String?                 @db.VarChar(64)
+  supplierId        String?                 @db.VarChar(64)
+  reasonNote        String?                 @db.Text
+  actorUserId       String?                 @db.VarChar(64)
+  actorName         String?                 @db.VarChar(160)
+  idempotencyKey    String?                 @unique @db.VarChar(160)
+  occurredAt        DateTime                @default(now())
+  createdAt         DateTime                @default(now())
+  metadata          Json?
+
+  @@index([warehouseKey, stockKey, occurredAt])
+  @@index([serviceLocationId, occurredAt])
+  @@index([workOrderId, occurredAt])
+  @@index([workOrderLineId, occurredAt])
+  @@index([supplierOrderId, occurredAt])
+  @@index([direction, reason, occurredAt])
+}
+
+/**
+ * Current reservation projection. Reservation does not change onHand; it
+ * changes reserved. Consumption creates a factual OUT ledger entry.
+ */
+model InventoryReservation {
+  id                String                    @id @default(cuid())
+  warehouseKey      String                    @default("MAIN") @db.VarChar(64)
+  serviceLocationId String?                   @db.VarChar(64)
+  stockKey          String                    @db.VarChar(180)
+  productId         String?                   @db.VarChar(64)
+  article           String?                   @db.VarChar(120)
+  brand             String?                   @db.VarChar(120)
+  workOrderId       String?                   @db.VarChar(64)
+  workOrderLineId   String?                   @db.VarChar(64)
+  quantity          Decimal                   @db.Decimal(16, 3)
+  status            InventoryReservationStatus @default(ACTIVE)
+  sourceType        String                    @db.VarChar(40)
+  sourceId          String                    @db.VarChar(96)
+  reservedAt        DateTime                  @default(now())
+  releasedAt        DateTime?
+  consumedAt        DateTime?
+  actorUserId       String?                   @db.VarChar(64)
+  actorName         String?                   @db.VarChar(160)
+  idempotencyKey    String?                   @unique @db.VarChar(160)
+  createdAt         DateTime                  @default(now())
+  updatedAt         DateTime                  @updatedAt
+  metadata          Json?
+
+  @@index([warehouseKey, stockKey, status])
+  @@index([serviceLocationId, status])
+  @@index([workOrderId, status])
+  @@index([workOrderLineId, status])
+  @@index([status, updatedAt])
+}
