@@ -10,7 +10,7 @@ import { resolveVehicleGeneration } from "./vehicle-generation-catalog.service";
 const OPENAI_IMAGES_URL = "https://api.openai.com/v1/images/generations";
 const OPENAI_EDITS_URL = "https://api.openai.com/v1/images/edits";
 const OPENAI_MODELS_URL = "https://api.openai.com/v1/models";
-const PROMPT_VERSION = "vehicle-card-v5-shared-template-color-variant";
+const PROMPT_VERSION = "vehicle-card-v6-safe-frame";
 const TEMPLATE_VERSION = "vehicle-template-v3-generation-catalog";
 const GENERATION_LOCK_MS = 10 * 60 * 1000;
 const ERROR_RETRY_MS = 30 * 60 * 1000;
@@ -278,6 +278,8 @@ function masterPrompt(vehicle: VehicleDescriptor, paint: OpenAIVehiclePaintSpec,
     "This image will be reused by CRM vehicles in the same confirmed production generation when the catalog resolution is unambiguous. Match the real production generation for the supplied model-year as closely as possible.",
     "Preserve the generation-specific silhouette, body proportions, roofline, glazing, lights, grille, bumpers, wheel arches and door layout. Do not substitute a generic car, a different generation, a different body style or a visually similar model.",
     "Composition standard for the whole library: full vehicle visible, facing right, clean front three-quarter side view, camera near belt-line height, natural realistic proportions, centered horizontally, tires fully visible, no cropping.",
+    "Keep at least 10% empty transparent safe margin on the left and right sides of the vehicle and at least 8% empty transparent safe margin above the roof and below the tires.",
+    "Front bumper, rear bumper, roof, mirrors and all visible tire boundaries must remain fully inside the canvas. Do not zoom or crop the vehicle to fill the canvas.",
     paint.instruction,
     "The background must be fully transparent alpha. Every pixel outside the vehicle must remain transparent: no white, grey or colored backdrop, no road, no scenery, no studio wall, no floor, no gradient panel and no environmental reflections that imply a background.",
     "No people, no text, no captions, no watermark and no readable license-plate text. Use a blank neutral plate area if a plate holder is visible.",
@@ -293,12 +295,13 @@ function recolorPrompt(vehicle: VehicleDescriptor, paint: OpenAIVehiclePaintSpec
     : "";
   return [
     "Edit the supplied automotive CRM reference image.",
-    "Preserve the exact same vehicle identity, production generation, body shape, camera angle, crop, wheels, glazing, lights, grille, bumpers and proportions.",
+    "Preserve the exact same vehicle identity, production generation, body shape, camera angle, wheels, glazing, lights, grille, bumpers and proportions. Reframe only as needed to keep the complete vehicle safely inside the canvas.",
     `The target vehicle is ${vehicle.make} ${vehicle.model}${vehicle.year ? ` model-year ${vehicle.year}` : ""}${vehicle.bodyType ? `, ${vehicle.bodyType}` : ""}.${generation}`,
+    "Keep at least 10% empty transparent safe margin on the left and right sides and at least 8% empty transparent safe margin above the roof and below the tires. Never crop a bumper, mirror, roof edge or visible tire.",
     "Change only the factory-painted exterior body panels to the requested body color. Do not recolor glass, tires, wheels, lights, grille, chrome, black trim, badges or the plate area.",
     paint.instruction,
     "Keep neutral catalog lighting and physically realistic paint reflections. Preserve a fully transparent alpha background with no road, floor, scenery, text, people or watermark.",
-    "Return exactly one complete vehicle cutout, facing right, with the same front three-quarter view as the reference.",
+    "Return exactly one complete vehicle cutout, facing right, with the same front three-quarter view as the reference. Do not zoom the vehicle to fill the canvas.",
   ].join(" ");
 }
 
