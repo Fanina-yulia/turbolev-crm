@@ -1,5 +1,6 @@
 import { LeadStatus, PlannerAppointmentStatus, Prisma } from "@/src/generated/prisma/client";
 import { mapUiSourceToLeadSource } from "@/src/domain/workflow/lead";
+import { deriveServiceRouteFromServiceTypes, normalizeServiceType, type ServiceTypeCode } from "@/src/domain/workflow/service-routes";
 import { getPrisma } from "@/src/lib/prisma";
 import { zonedDateTimeToDate } from "@/src/lib/zoned-time";
 import { lookupVehicleByPlate } from "@/src/services/vehicle-lookup.service";
@@ -58,6 +59,7 @@ export type IntakePreliminaryWork = {
   quantity?: number;
   total?: number;
   manual?: boolean;
+  serviceType?: ServiceTypeCode;
 };
 
 export type IntakeInput = {
@@ -161,7 +163,7 @@ function zonedAppointmentStart(dateValue: string | null, timeValue: string | nul
 }
 
 function normalizePreliminaryWorks(value: unknown) {
-  if (!Array.isArray(value)) return [] as Array<{ name:string; category:string|null; quantity:number; total:number; manual:boolean }>;
+  if (!Array.isArray(value)) return [] as Array<{ id?: string; name:string; category:string|null; quantity:number; total:number; manual:boolean; serviceType: ServiceTypeCode }>;
   return value.slice(0, 40).flatMap((item) => {
     if (!item || typeof item !== "object") return [];
     const record = item as Record<string, unknown>;
@@ -170,30 +172,34 @@ function normalizePreliminaryWorks(value: unknown) {
     const category = clean(record.category, 120);
     const quantity = Math.max(1, Math.min(99, toInt(record.quantity) ?? 1));
     const total = Math.max(0, toDecimal(record.total) ?? 0);
-    return [{ name, category, quantity, total, manual: Boolean(record.manual) }];
+    return [{ id: clean(record.id, 128) || undefined, name, category, quantity, total, manual: Boolean(record.manual), serviceType: normalizeServiceType(record.serviceType) }];
   });
 }
 
-function isDiagnosticWork(work: { name: string; category?: string | null }) {
-  return /діагност|diagnos/iu.test(`${work.category || ""} ${work.name}`);
+function isDiagnosticWork(work: { serviceType?: ServiceTypeCode }) {
+  const serviceType = normalizeServiceType(work.serviceType);
+  return serviceType === "DIAGNOSTIC" || serviceType === "BOTH";
+}
+function isRepairWork(work: { serviceType?: ServiceTypeCode }) {
+  const serviceType = normalizeServiceType(work.serviceType);
+  return serviceType === "REPAIR" || serviceType === "BOTH";
 }
 
-function deriveVisitProcess(inputPurpose: IntakeInput["purpose"], works: Array<{ name: string; category?: string | null }>) {
-  const hasDiagnosticWork = works.some(isDiagnosticWork);
-  const hasNonDiagnosticWork = works.some((work) => !isDiagnosticWork(work));
-  const purpose = hasNonDiagnosticWork
-    ? "REPAIR" as const
-    : hasDiagnosticWork
-      ? "DIAGNOSTICS" as const
-      : inputPurpose === "DIAGNOSTICS" ? "DIAGNOSTICS" as const : "REPAIR" as const;
+function deriveVisitProcess(inputPurpose: IntakeInput["purpose"], works: Array<{ serviceType?: ServiceTypeCode }>) {
+  const serviceTypes = works.map((work) => normalizeServiceType(work.serviceType));
+  const routeKind = deriveServiceRouteFromServiceTypes(serviceTypes, inputPurpose);
+  const hasDiagnosticWork = serviceTypes.some((serviceType) => serviceType === "DIAGNOSTIC" || serviceType === "BOTH");
+  const hasNonDiagnosticWork = serviceTypes.some((serviceType) => serviceType === "REPAIR" || serviceType === "BOTH");
+  const purpose = routeKind === "DIAGNOSTICS_ONLY" ? "DIAGNOSTICS" as const : "REPAIR" as const;
   return {
     purpose,
+    routeKind,
+    serviceTypes,
     hasDiagnosticWork,
     hasNonDiagnosticWork,
-    requiresDiagnosticFirst: purpose === "REPAIR" && hasDiagnosticWork,
+    requiresDiagnosticFirst: routeKind === "DIAGNOSTICS_TO_REPAIR",
   };
 }
-
 function worksSummary(works: Array<{ name:string; quantity:number; total:number; manual:boolean }>) {
   if (!works.length) return null;
   const lines = works.map((work) => {
@@ -492,7 +498,7 @@ export async function createIntake(input: IntakeInput) {
         vehicleId: vehicle.id,
         mechanicId: mechanic?.id || null,
         works: preliminaryWorks
-          .filter((work) => !isDiagnosticWork(work))
+          .filter(isRepairWork)
           .map((work) => ({ name: work.name, quantity: work.quantity, total: work.total })),
       });
     }
