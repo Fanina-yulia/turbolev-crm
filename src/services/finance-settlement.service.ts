@@ -665,7 +665,7 @@ export async function refundCustomerAdvanceSettlement(advanceId: string, actor: 
           postedAt: now,
         },
       });
-    } else if (new Prisma.Decimal(cash.amount).notEqualTo(remaining)) {
+    } else if (!new Prisma.Decimal(cash.amount).equals(remaining)) {
       throw new FinanceSettlementError("ADVANCE_REFUND_CONFLICT", "Існуюче повернення авансу має іншу суму.", 409);
     }
 
