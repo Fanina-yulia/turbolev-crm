@@ -17,7 +17,7 @@ assert.match(schema, /model ControlledDocumentRevision/);
 assert.match(schema, /ControlledDocumentRevisionStatus/);
 assert.match(schema, /contentHash/);
 assert.match(migration, /CREATE TABLE "ControlledDocumentRevision"/);
-assert.match(migration, /ControlledDocumentRevision_documentKey_revision_key/);
+assert.match(migration, /cdr_document_key_revision_key/);
 assert.match(service, /issueControlledDocumentRevision/);
 assert.match(service, /voidControlledDocumentRevision/);
 assert.match(service, /captureWorkOrderDocumentRevision/);
