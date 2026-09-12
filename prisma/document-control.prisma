@@ -43,11 +43,11 @@ model ControlledDocumentRevision {
   workOrder         WorkOrder?                        @relation(fields: [workOrderId], references: [id], onDelete: Restrict, onUpdate: Cascade)
   diagnosticRequest DiagnosticRequest?                @relation(fields: [diagnosticRequestId], references: [id], onDelete: Restrict, onUpdate: Cascade)
 
-  @@unique([documentKey, revision])
-  @@unique([documentKey, contentHash])
-  @@index([documentKey, status, revision])
-  @@index([type, status, issuedAt])
-  @@index([workOrderId, type, status, revision])
-  @@index([diagnosticRequestId, type, status, revision])
-  @@index([sourceEntityType, sourceEntityId])
+  @@unique([documentKey, revision], map: "cdr_document_key_revision_key")
+  @@unique([documentKey, contentHash], map: "cdr_document_key_hash_key")
+  @@index([documentKey, status, revision], map: "cdr_document_status_revision_idx")
+  @@index([type, status, issuedAt], map: "cdr_type_status_issued_idx")
+  @@index([workOrderId, type, status, revision], map: "cdr_work_order_type_status_idx")
+  @@index([diagnosticRequestId, type, status, revision], map: "cdr_diagnostic_type_status_idx")
+  @@index([sourceEntityType, sourceEntityId], map: "cdr_source_entity_idx")
 }
