@@ -1,0 +1,53 @@
+enum ControlledDocumentType {
+  DIAGNOSTIC_CARD
+  COMMERCIAL_PROPOSAL
+  INVOICE
+  COMPLETION_ACT
+}
+
+enum ControlledDocumentRevisionStatus {
+  ISSUED
+  SUPERSEDED
+  VOIDED
+}
+
+// Canonical immutable registry for customer-facing document revisions.
+// DiagnosticCardPdf remains the binary PDF store for diagnostic cards; this
+// registry keeps one audit-friendly revision stream for every document kind.
+model ControlledDocumentRevision {
+  id                String                            @id @default(cuid())
+  documentKey       String                            @db.VarChar(180)
+  type              ControlledDocumentType
+  revision          Int                               @default(1)
+  status            ControlledDocumentRevisionStatus  @default(ISSUED)
+  workOrderId       String?
+  diagnosticRequestId String?
+  sourceEntityType  String                            @db.VarChar(64)
+  sourceEntityId    String                            @db.VarChar(96)
+  sourceRevision    Int?
+  sourceFingerprint String                            @db.VarChar(64)
+  templateVersion   Int?
+  templateFingerprint String                          @db.VarChar(64)
+  contentHash       String                            @db.VarChar(64)
+  fileName          String?                           @db.VarChar(180)
+  mimeType          String                            @default("application/pdf") @db.VarChar(80)
+  snapshot          Json
+  issuedAt          DateTime                          @default(now())
+  issuedByName      String?                           @db.VarChar(160)
+  supersededAt      DateTime?
+  voidedAt          DateTime?
+  voidedReason      String?                           @db.Text
+  createdAt         DateTime                          @default(now())
+  updatedAt         DateTime                          @updatedAt
+
+  workOrder         WorkOrder?                        @relation(fields: [workOrderId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  diagnosticRequest DiagnosticRequest?                @relation(fields: [diagnosticRequestId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  @@unique([documentKey, revision])
+  @@unique([documentKey, contentHash])
+  @@index([documentKey, status, revision])
+  @@index([type, status, issuedAt])
+  @@index([workOrderId, type, status, revision])
+  @@index([diagnosticRequestId, type, status, revision])
+  @@index([sourceEntityType, sourceEntityId])
+}
