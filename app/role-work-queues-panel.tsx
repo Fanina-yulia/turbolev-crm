@@ -150,6 +150,8 @@ export function RoleWorkQueuesPanel() {
     return <section className={styles.error} aria-label="Рольові задачі"><strong>Рольові блоки тимчасово недоступні</strong><span>{error}</span><button type="button" onClick={() => void load(true)}>Повторити</button></section>;
   }
 
+  if (queues.primaryRole === "OWNER") return null;
+
   const actions = queues.actionRequired.slice(0, 8);
   const attention = queues.attentionCenter.slice(0, 8);
   const roleLabel = queues.primaryRole ? ROLE_LABELS[queues.primaryRole] || queues.primaryRole : "Поточна роль";
