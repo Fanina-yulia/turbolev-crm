@@ -11,12 +11,43 @@ export const maxDuration = 60;
 const TOKEN_SHA256 = "e5894f995b543180e7e8695a5ec0125c9ea60b01f39cc56ab5be77423bec73ec";
 const EXPIRES_AT = Date.parse("2026-09-12T16:00:00Z");
 const PBX = ["0983415646", "380983415646"];
+const REPOSITORY = "Fanina-yulia/turbolev-crm";
 
-function authorized(token: string | null) {
+function authorizedOneTimeToken(token: string | null) {
   if (!token || Date.now() > EXPIRES_AT) return false;
   const digest = createHash("sha256").update(token, "utf8").digest();
   const expected = Buffer.from(TOKEN_SHA256, "hex");
   return digest.length === expected.length && timingSafeEqual(digest, expected);
+}
+
+async function authorizedGitHubActionsToken(request: NextRequest) {
+  const authorization = request.headers.get("authorization") || "";
+  if (!authorization.startsWith("Bearer ")) return false;
+  const token = authorization.slice("Bearer ".length).trim();
+  if (!token) return false;
+
+  try {
+    const response = await fetch("https://api.github.com/installation/repositories?per_page=100", {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28",
+        "User-Agent": "TurboLEV-Binotel-Export",
+      },
+      cache: "no-store",
+    });
+    if (!response.ok) return false;
+    const data = await response.json() as { repositories?: Array<{ full_name?: string }> };
+    return Array.isArray(data.repositories) && data.repositories.some((repo) => repo.full_name === REPOSITORY);
+  } catch {
+    return false;
+  }
+}
+
+async function authorized(request: NextRequest) {
+  if (authorizedOneTimeToken(request.nextUrl.searchParams.get("token"))) return true;
+  return authorizedGitHubActionsToken(request);
 }
 
 function fileName(row: any) {
@@ -26,7 +57,7 @@ function fileName(row: any) {
 }
 
 export async function GET(request: NextRequest) {
-  if (!authorized(request.nextUrl.searchParams.get("token"))) {
+  if (!(await authorized(request))) {
     return new Response("NOT_FOUND", { status: 404 });
   }
 
