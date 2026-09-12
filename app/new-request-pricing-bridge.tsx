@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import styles from "./new-request-pricing-bridge.module.css";
+import type { ServiceTypeCode } from "@/src/domain/workflow/service-routes";
 
 type VehicleSnapshot = {
   make:string;
@@ -34,6 +35,7 @@ type WorkPriceItem = {
   basePrice:number;
   coefficient:number;
   adjustedPrice:number;
+  serviceType:ServiceTypeCode;
 };
 type DraftLine = {
   id:string;
@@ -43,6 +45,7 @@ type DraftLine = {
   unit:string;
   basePrice:number;
   quantity:number;
+  serviceType:ServiceTypeCode;
 };
 type CalculatedLine = DraftLine & {
   coefficient:number;
@@ -55,7 +58,7 @@ type CalculatedLine = DraftLine & {
 type Calculation = { pricing:PricingMeta; total:number; lines:CalculatedLine[] };
 type WorkPriceResponse = { ok:boolean; pricing:PricingMeta; items:WorkPriceItem[]; error?:string };
 type CalculationResponse = { ok:boolean; pricing:PricingMeta; total:number; lines:CalculatedLine[]; error?:string };
-type ManualWork = { id:string; name:string; category?:string };
+type ManualWork = { id:string; name:string; category?:string; serviceType:ServiceTypeCode };
 
 const EMPTY_VEHICLE:VehicleSnapshot={make:"",model:"",year:"",engine:"",engineVolume:"",fuelType:"",bodyType:"",grossWeight:"",driveType:"",vehicleType:""};
 
@@ -148,8 +151,8 @@ export function NewRequestPricingBridge(){
 
   useEffect(()=>{
     if(step!==3)return;
-    const priced=selected.map(line=>{const calculated=calculation?.lines.find(item=>item.id===line.id);return{id:line.id,name:line.name,category:line.category,quantity:line.quantity,total:calculated?.total??0,manual:false}});
-    const manual=manualWorks.map(item=>({id:item.id,name:item.name,category:item.category,quantity:1,total:0,manual:true}));
+    const priced=selected.map(line=>{const calculated=calculation?.lines.find(item=>item.id===line.id);return{id:line.id,name:line.name,category:line.category,quantity:line.quantity,total:calculated?.total??0,manual:false,serviceType:line.serviceType}});
+    const manual=manualWorks.map(item=>({id:item.id,name:item.name,category:item.category,quantity:1,total:0,manual:true,serviceType:item.serviceType}));
     window.dispatchEvent(new CustomEvent("turbolev:preliminary-works-change",{detail:{works:[...priced,...manual],total:calculation?.total??0}}));
   },[step,selected,manualWorks,calculation]);
 
@@ -158,10 +161,10 @@ export function NewRequestPricingBridge(){
   const selectedIds=useMemo(()=>new Set(selected.map(line=>line.id)),[selected]);
   const effectivePricing=calculation?.pricing||pricing;
 
-  function add(item:WorkPriceItem){setSelected(current=>current.some(line=>line.id===item.id)?current:[...current,{id:item.id,code:item.code,category:item.category,name:item.name,unit:item.unit,basePrice:item.basePrice,quantity:1}])}
+  function add(item:WorkPriceItem){setSelected(current=>current.some(line=>line.id===item.id)?current:[...current,{id:item.id,code:item.code,category:item.category,name:item.name,unit:item.unit,basePrice:item.basePrice,quantity:1,serviceType:item.serviceType}])}
   function quantity(id:string,value:number){const safe=Number.isFinite(value)&&value>0?Math.min(99,value):1;setSelected(current=>current.map(line=>line.id===id?{...line,quantity:safe}:line))}
   function remove(id:string){setSelected(current=>current.filter(line=>line.id!==id))}
-  function addManual(){const name=manualInput.trim();if(!name)return;setManualWorks(current=>[...current,{id:`manual-${Date.now()}-${current.length}`,name}]);setManualInput("")}
+  function addManual(){const name=manualInput.trim();if(!name)return;setManualWorks(current=>[...current,{id:`manual-${Date.now()}-${current.length}`,name,serviceType:"REPAIR"}]);setManualInput("")}
   function removeManual(id:string){setManualWorks(current=>current.filter(item=>item.id!==id))}
 
   if(!host||step!==3)return null;
