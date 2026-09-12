@@ -499,7 +499,7 @@ export async function createIntake(input: IntakeInput) {
         mechanicId: mechanic?.id || null,
         works: preliminaryWorks
           .filter(isRepairWork)
-          .map((work) => ({ name: work.name, quantity: work.quantity, total: work.total })),
+          .map((work) => ({ name: work.name, quantity: work.quantity, total: work.total, serviceType: work.serviceType, catalogItemId: work.id && !work.id.startsWith("manual-") ? work.id : null })),
       });
     }
 
