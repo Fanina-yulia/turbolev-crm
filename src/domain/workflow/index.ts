@@ -3,3 +3,4 @@ export * from "./catalog";
 export * from "./registry";
 export * from "./engine";
 export * from "./runtime";
+export * from "./status-contract";
