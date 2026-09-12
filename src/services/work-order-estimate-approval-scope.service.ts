@@ -70,6 +70,7 @@ async function currentApprovalFingerprintTx(tx: Tx, workOrderId: string) {
     where: { workOrderId, status: { in: [...ACTIVE_LINE_STATUSES] } },
     orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }, { id: "asc" }],
     select: {
+      id: true,
       type: true,
       description: true,
       code: true,
@@ -85,6 +86,7 @@ async function currentApprovalFingerprintTx(tx: Tx, workOrderId: string) {
   const scope = canonicalizeScope(lines.map((line) => approvalScopeLine(line as unknown as Record<string, unknown>)));
   return {
     lineCount: lines.length,
+    lineIds: lines.map((line) => line.id),
     fingerprint: createHash("sha256").update(JSON.stringify(scope)).digest("hex"),
   };
 }
@@ -106,9 +108,25 @@ export async function getWorkOrderEstimateApprovalStateTx(tx: Tx, workOrderId: s
     }),
   ]);
 
+  const decisions = estimate
+    ? await tx.clientEstimateLineDecision.findMany({
+        where: { estimateId: estimate.id },
+        orderBy: { decidedAt: "asc" },
+        select: { lineId: true, decision: true, estimateFingerprint: true },
+      })
+    : [];
+  const scopedDecisions = decisions.filter((item) => current.lineIds.includes(item.lineId) && item.estimateFingerprint === estimate?.lineFingerprint);
+  const approvedDecisionCount = scopedDecisions.filter((item) => item.decision === "APPROVE").length;
+  const rejectedDecisionCount = scopedDecisions.filter((item) => item.decision === "REJECT").length;
+  const completeDecisionSet = scopedDecisions.length === current.lineCount && current.lineCount > 0;
+  const selectionMode = !completeDecisionSet
+    ? null
+    : rejectedDecisionCount === 0 ? "ALL_APPROVED" as const : approvedDecisionCount === 0 ? "ALL_REJECTED" as const : "MIXED" as const;
+
   const estimateFingerprint = estimateApprovalFingerprintFromSnapshot(estimate?.lineSnapshot ?? null);
   const isCurrent = Boolean(estimate && current.lineCount > 0 && estimateFingerprint && estimateFingerprint === current.fingerprint);
   const approved = Boolean(isCurrent && estimate?.status === "APPROVED" && estimate.approvedAt);
+  const mixedPending = Boolean(isCurrent && estimate?.status === "SENT" && completeDecisionSet && selectionMode === "MIXED");
 
   return {
     estimate,
@@ -117,6 +135,11 @@ export async function getWorkOrderEstimateApprovalStateTx(tx: Tx, workOrderId: s
     estimateFingerprint,
     isCurrent,
     approved,
+    decisionCount: scopedDecisions.length,
+    approvedDecisionCount,
+    rejectedDecisionCount,
+    selectionMode,
+    mixedPending,
   };
 }
 
