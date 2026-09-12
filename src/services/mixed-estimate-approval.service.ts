@@ -190,6 +190,7 @@ export async function requestMixedEstimateRevision(
   return prisma.$transaction(async (tx) => {
     await tx.$queryRawUnsafe("SELECT pg_advisory_xact_lock(hashtext($1))", "mixed-estimate-revision:" + workOrderId);
     const state = await assertMixedPending(tx, workOrderId);
+    if (!state.estimate) throw new MixedEstimateApprovalError("ESTIMATE_NOT_FOUND", "Кошторис не знайдено.", 404);
     const estimate = state.estimate;
     const now = new Date();
     const updated = await tx.workOrderEstimate.update({
