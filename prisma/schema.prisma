@@ -320,6 +320,7 @@ model DiagnosticRequest {
   workOrder      WorkOrder?
   diagnosticCard DiagnosticCard?
   manualPartRecommendations DiagnosticPartRecommendation[]
+  controlledDocumentRevisions ControlledDocumentRevision[]
 
   @@index([clientId, status])
   @@index([vehicleId, status])
@@ -349,6 +350,7 @@ model WorkOrder {
   partsRequests     PartsRequest[]
   qualityControls   WorkOrderQualityControl[]
   completionAct     ServiceCompletionAct?
+  controlledDocumentRevisions ControlledDocumentRevision[]
 
   @@index([clientId, closedAt])
   @@index([vehicleId, closedAt])
