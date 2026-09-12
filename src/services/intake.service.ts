@@ -187,7 +187,7 @@ function isRepairWork(work: { serviceType?: ServiceTypeCode }) {
 
 function deriveVisitProcess(inputPurpose: IntakeInput["purpose"], works: Array<{ serviceType?: ServiceTypeCode }>) {
   const serviceTypes = works.map((work) => normalizeServiceType(work.serviceType));
-  const routeKind = deriveServiceRouteFromServiceTypes(serviceTypes, inputPurpose);
+  const routeKind = deriveServiceRouteFromServiceTypes(serviceTypes, inputPurpose || "REPAIR");
   const hasDiagnosticWork = serviceTypes.some((serviceType) => serviceType === "DIAGNOSTIC" || serviceType === "BOTH");
   const hasNonDiagnosticWork = serviceTypes.some((serviceType) => serviceType === "REPAIR" || serviceType === "BOTH");
   const purpose = routeKind === "DIAGNOSTICS_ONLY" ? "DIAGNOSTICS" as const : "REPAIR" as const;
