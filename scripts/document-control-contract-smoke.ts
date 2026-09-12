@@ -23,7 +23,7 @@ assert.match(service, /voidControlledDocumentRevision/);
 assert.match(service, /captureWorkOrderDocumentRevision/);
 assert.match(service, /pg_advisory_xact_lock/);
 assert.match(service, /SUPERSEDED/);
-assert.match(service, /DIRECT_REPAIR/);
+assert.match(service, /Для прямого ремонту діагностична карта не створюється/);
 assert.match(route, /action === "VOID"/);
 assert.match(route, /PERMISSIONS\.WORK_ORDERS_WRITE/);
 assert.match(packageRoute, /controlledRevisions/);
