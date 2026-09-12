@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import {
   ServiceCatalogItemType,
   ServiceCatalogReviewStatus,
+  ServiceCatalogServiceType,
   ServiceCatalogSource,
 } from "@/src/generated/prisma/client";
 import { getPrisma } from "@/src/lib/prisma";
@@ -15,6 +16,7 @@ export const maxDuration = 30;
 const SOURCES = new Set(Object.values(ServiceCatalogSource));
 const STATUSES = new Set(Object.values(ServiceCatalogReviewStatus));
 const TYPES = new Set(Object.values(ServiceCatalogItemType));
+const SERVICE_TYPES = new Set(Object.values(ServiceCatalogServiceType));
 const NAME_FIELDS = ["namePart", "namePosition", "nameSide", "nameOperation"] as const;
 
 function text(value: unknown, max = 2000) { return typeof value === "string" ? value.trim().slice(0, max) : ""; }
@@ -38,6 +40,7 @@ export async function GET(request: NextRequest) {
   const sourceRaw = params.get("source") || "";
   const statusRaw = params.get("status") || "";
   const typeRaw = params.get("itemType") || "";
+  const serviceTypeRaw = params.get("serviceType") || "";
   const categoryId = text(params.get("categoryId"), 80);
   const active = booleanParam(params.get("active"));
   const page = pageInt(params.get("page"), 1, 100000);
@@ -45,11 +48,13 @@ export async function GET(request: NextRequest) {
   const source = SOURCES.has(sourceRaw as ServiceCatalogSource) ? sourceRaw as ServiceCatalogSource : null;
   const reviewStatus = STATUSES.has(statusRaw as ServiceCatalogReviewStatus) ? statusRaw as ServiceCatalogReviewStatus : null;
   const itemType = TYPES.has(typeRaw as ServiceCatalogItemType) ? typeRaw as ServiceCatalogItemType : null;
+  const serviceType = SERVICE_TYPES.has(serviceTypeRaw as ServiceCatalogServiceType) ? serviceTypeRaw as ServiceCatalogServiceType : null;
 
   const where = {
     ...(source ? { source } : {}),
     ...(reviewStatus ? { reviewStatus } : {}),
     ...(itemType ? { itemType } : {}),
+    ...(serviceType ? { serviceType } : {}),
     ...(categoryId ? { categoryId } : {}),
     ...(active != null ? { isActive: active } : {}),
     ...(q ? {
@@ -124,8 +129,10 @@ export async function PATCH(request: NextRequest) {
     if (!before) return NextResponse.json({ ok: false, error: "Позицію каталогу не знайдено." }, { status: 404 });
 
     const nextTypeRaw = text(body.itemType, 40);
+    const nextServiceTypeRaw = text(body.serviceType, 40).toUpperCase();
     const nextStatusRaw = text(body.reviewStatus, 40);
     const nextType = nextTypeRaw && TYPES.has(nextTypeRaw as ServiceCatalogItemType) ? nextTypeRaw as ServiceCatalogItemType : before.itemType;
+    const nextServiceType = nextServiceTypeRaw && SERVICE_TYPES.has(nextServiceTypeRaw as ServiceCatalogServiceType) ? nextServiceTypeRaw as ServiceCatalogServiceType : before.serviceType;
     const nextStatus = nextStatusRaw && STATUSES.has(nextStatusRaw as ServiceCatalogReviewStatus) ? nextStatusRaw as ServiceCatalogReviewStatus : before.reviewStatus;
     const nextInternalName = has(body, "internalName") ? text(body.internalName, 1000) : before.internalName;
     const namePart = optionalText(body, "namePart", before.namePart, 180);
@@ -167,6 +174,7 @@ export async function PATCH(request: NextRequest) {
       ...(has(body, "normMinutes") ? { normMinutes: integerOrNull(body.normMinutes) } : {}),
       ...(has(body, "categoryId") ? { categoryId: nextCategoryId } : {}),
       ...(has(body, "itemType") ? { itemType: nextType } : {}),
+      ...(has(body, "serviceType") ? { serviceType: nextServiceType } : {}),
       ...(has(body, "warrantyKm") ? { warrantyKm: integerOrNull(body.warrantyKm) } : {}),
       ...(has(body, "warrantyDays") ? { warrantyDays: integerOrNull(body.warrantyDays) } : {}),
       ...(has(body, "reviewStatus") ? { reviewStatus: nextStatus } : {}),

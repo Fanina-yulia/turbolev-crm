@@ -2,6 +2,7 @@
 
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import type { PlannerAppointmentContract, PlannerLocationContract } from "@/src/lib/contracts/planner";
+import { deriveServiceRouteFromServiceTypes, normalizeServiceType } from "@/src/domain/workflow/service-routes";
 import { parsePlannerBoardPayload, plannerPayloadMessage } from "@/src/lib/contracts/planner-payload.parsers";
 import { addDateKey, zonedDateTimeToDate } from "@/src/lib/zoned-time";
 import { PlannerDayView, type PlannerTimeSelection } from "./planner-day-view";
@@ -159,10 +160,12 @@ export function NewRequestWizardV5({showButton=true,onOpenChange}:NewRequestWiza
   const selectedMechanicLoad=mechanicLoads.find(item=>item.id===form.mechanicId)||null;
   const parallelMechanicName=activeLocation?.mechanics.find(item=>item.id===form.mechanicId)?.name||"Обраний механік";
   const requiresParallelConfirmation=Boolean(parallelConfirmationRequired||selectedMechanicLoad?.count===1);
-  const hasDiagnosticPreliminaryWork=preliminaryWorks.some((work)=>/діагност|diagnos/iu.test(`${work.category||""} ${work.name}`));
-  const hasRepairPreliminaryWork=preliminaryWorks.some((work)=>!(/діагност|diagnos/iu.test(`${work.category||""} ${work.name}`)));
-  const derivedPurpose=hasRepairPreliminaryWork?"REPAIR":hasDiagnosticPreliminaryWork?"DIAGNOSTICS":form.purpose;
-  const requiresDiagnosticFirst=derivedPurpose==="REPAIR"&&hasDiagnosticPreliminaryWork;
+  const preliminaryServiceTypes=preliminaryWorks.map((work)=>normalizeServiceType(work.serviceType));
+  const derivedRoute=deriveServiceRouteFromServiceTypes(preliminaryServiceTypes,form.purpose);
+  const hasDiagnosticPreliminaryWork=preliminaryServiceTypes.some((type)=>type==="DIAGNOSTIC"||type==="BOTH");
+  const hasRepairPreliminaryWork=preliminaryServiceTypes.some((type)=>type==="REPAIR"||type==="BOTH");
+  const derivedPurpose=derivedRoute==="DIAGNOSTICS_ONLY"?"DIAGNOSTICS":"REPAIR";
+  const requiresDiagnosticFirst=derivedRoute==="DIAGNOSTICS_TO_REPAIR";
 
   useEffect(()=>{
     setParallelMechanicConfirmed(false);

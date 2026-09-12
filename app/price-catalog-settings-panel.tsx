@@ -7,6 +7,7 @@ import styles from "./price-catalog-settings-panel.module.css";
 type Source = "TURBO_LEV_LEGACY" | "MS_MASTER" | "MANUAL";
 type ReviewStatus = "READY" | "NEEDS_REVIEW" | "QUARANTINED";
 type ItemType = "LABOR" | "DIAGNOSTIC" | "MATERIAL" | "INFORMATION" | "CHECKLIST" | "RENT" | "PARKING" | "WASH" | "OTHER";
+type ServiceType = "DIAGNOSTIC" | "REPAIR" | "BOTH";
 type Category = { id: string; name: string; slug: string };
 type CatalogItem = {
   id: string;
@@ -23,6 +24,7 @@ type CatalogItem = {
   category: Category | null;
   sourceCategory: string | null;
   itemType: ItemType;
+  serviceType: ServiceType;
   basePrice: string | null;
   unit: string;
   defaultQuantity: string;
@@ -81,6 +83,7 @@ type EditDraft = {
   normMinutes: string;
   categoryId: string;
   itemType: ItemType;
+  serviceType: ServiceType;
   warrantyKm: string;
   warrantyDays: string;
   reviewStatus: ReviewStatus;
@@ -94,10 +97,11 @@ type NameDraftPatch = Partial<Pick<EditDraft, "namePart" | "namePosition" | "nam
 const SOURCE_LABEL: Record<Source, string> = { TURBO_LEV_LEGACY: "Turbo LEV", MS_MASTER: "МС Мастер", MANUAL: "Ручний" };
 const STATUS_LABEL: Record<ReviewStatus, string> = { READY: "READY", NEEDS_REVIEW: "Перевірити", QUARANTINED: "Карантин" };
 const TYPE_LABEL: Record<ItemType, string> = { LABOR: "Робота", DIAGNOSTIC: "Діагностика", MATERIAL: "Матеріал", INFORMATION: "Інформація", CHECKLIST: "Чек-лист", RENT: "Оренда", PARKING: "Стоянка", WASH: "Мийка", OTHER: "Інше" };
+const SERVICE_TYPE_LABEL: Record<ServiceType, string> = { DIAGNOSTIC: "Діагностика", REPAIR: "Ремонт", BOTH: "Діагностика + ремонт" };
 
 function money(value: string | null) { const n = Number(value); return value == null || !Number.isFinite(n) ? "—" : `${new Intl.NumberFormat("uk-UA", { maximumFractionDigits: 2 }).format(n)} грн`; }
 function dateText(value: string) { const d = new Date(value); return Number.isNaN(d.getTime()) ? "—" : new Intl.DateTimeFormat("uk-UA", { timeZone: "Europe/Kyiv", day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }).format(d); }
-function draftFrom(item: CatalogItem): EditDraft { return { displayName: item.displayName, internalName: item.internalName, namePart: item.namePart ?? "", namePosition: item.namePosition ?? "", nameSide: item.nameSide ?? "", nameOperation: item.nameOperation ?? "", basePrice: item.basePrice ?? "", normMinutes: item.normMinutes == null ? "" : String(item.normMinutes), categoryId: item.categoryId ?? "", itemType: item.itemType, warrantyKm: item.warrantyKm == null ? "" : String(item.warrantyKm), warrantyDays: item.warrantyDays == null ? "" : String(item.warrantyDays), reviewStatus: item.reviewStatus, reviewReason: item.reviewReason ?? "", vehicleCoefficientEnabled: item.vehicleCoefficientEnabled, isActive: item.isActive, showToClient: item.showToClient }; }
+function draftFrom(item: CatalogItem): EditDraft { return { displayName: item.displayName, internalName: item.internalName, namePart: item.namePart ?? "", namePosition: item.namePosition ?? "", nameSide: item.nameSide ?? "", nameOperation: item.nameOperation ?? "", basePrice: item.basePrice ?? "", normMinutes: item.normMinutes == null ? "" : String(item.normMinutes), categoryId: item.categoryId ?? "", itemType: item.itemType, serviceType: item.serviceType, warrantyKm: item.warrantyKm == null ? "" : String(item.warrantyKm), warrantyDays: item.warrantyDays == null ? "" : String(item.warrantyDays), reviewStatus: item.reviewStatus, reviewReason: item.reviewReason ?? "", vehicleCoefficientEnabled: item.vehicleCoefficientEnabled, isActive: item.isActive, showToClient: item.showToClient }; }
 function generatedName(draft: EditDraft | null) { return draft ? buildServiceDisplayName({ part: draft.namePart, position: draft.namePosition, side: draft.nameSide, operation: draft.nameOperation }) : ""; }
 
 export function PriceCatalogSettingsPanel() {
@@ -105,6 +109,7 @@ export function PriceCatalogSettingsPanel() {
   const [query, setQuery] = useState("");
   const [source, setSource] = useState("");
   const [status, setStatus] = useState("");
+  const [serviceType, setServiceType] = useState("");
   const [categoryId, setCategoryId] = useState("");
   const [active, setActive] = useState("");
   const [page, setPage] = useState(1);
@@ -126,6 +131,7 @@ export function PriceCatalogSettingsPanel() {
       if (query.trim()) params.set("q", query.trim());
       if (source) params.set("source", source);
       if (status) params.set("status", status);
+      if (serviceType) params.set("serviceType", serviceType);
       if (categoryId) params.set("categoryId", categoryId);
       if (active) params.set("active", active);
       const response = await fetch(`/api/settings/work-prices/catalog?${params}`, { cache: "no-store" });
@@ -134,10 +140,10 @@ export function PriceCatalogSettingsPanel() {
       setData(payload);
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Помилка каталогу"); }
     finally { setLoading(false); }
-  }, [page, query, source, status, categoryId, active, refreshKey]);
+  }, [page, query, source, status, serviceType, categoryId, active, refreshKey]);
 
   useEffect(() => { const timer = window.setTimeout(() => void load(), query.trim() ? 220 : 0); return () => window.clearTimeout(timer); }, [load, query]);
-  useEffect(() => { setPage(1); }, [source, status, categoryId, active]);
+  useEffect(() => { setPage(1); }, [source, status, serviceType, categoryId, active]);
 
   const counts = data?.counts || { total: 0, active: 0, ready: 0, review: 0, quarantine: 0, msMaster: 0 };
   const canActivateReady = counts.ready > counts.active && counts.msMaster > 0;
@@ -223,6 +229,7 @@ export function PriceCatalogSettingsPanel() {
       <label className={styles.search}><span>⌕</span><input value={query} onChange={(event) => { setQuery(event.target.value); setPage(1); }} placeholder="ID, код, назва, деталь, сторона, операція…"/></label>
       <select value={source} onChange={(event) => setSource(event.target.value)}><option value="">Усі джерела</option><option value="TURBO_LEV_LEGACY">Turbo LEV</option><option value="MS_MASTER">МС Мастер</option><option value="MANUAL">Ручні</option></select>
       <select value={status} onChange={(event) => setStatus(event.target.value)}><option value="">Усі статуси</option><option value="READY">READY</option><option value="NEEDS_REVIEW">Перевірити</option><option value="QUARANTINED">Карантин</option></select>
+      <select value={serviceType} onChange={(event) => setServiceType(event.target.value)}><option value="">Усі процеси</option><option value="DIAGNOSTIC">Діагностика</option><option value="REPAIR">Ремонт</option><option value="BOTH">Діагностика + ремонт</option></select>
       <select value={active} onChange={(event) => setActive(event.target.value)}><option value="">Активні + staging</option><option value="true">Тільки активні</option><option value="false">Тільки неактивні</option></select>
       <select value={categoryId} onChange={(event) => setCategoryId(event.target.value)}><option value="">Усі категорії</option>{(data?.categories || []).map((category) => <option value={category.id} key={category.id}>{category.name}</option>)}</select>
       <button type="button" className={styles.activate} disabled={!canActivateReady || saving} onClick={() => void activateReady()}>Активувати READY · МС Мастер</button>
@@ -232,7 +239,7 @@ export function PriceCatalogSettingsPanel() {
       <div className={styles.tableHead}><span>Послуга</span><span>Категорія / тип</span><span>Ціна / норма</span><span>Метадані</span><span>Стан</span><span/></div>
       {items.map((item) => <article key={item.id} className={`${styles.row} ${item.reviewStatus === "QUARANTINED" ? styles.quarantineRow : ""}`}>
         <div className={styles.service}><strong>{item.displayName}</strong>{item.internalName !== item.displayName && <small>Внутрішня: {item.internalName}</small>}<small>{SOURCE_LABEL[item.source]} · ID {item.externalServiceId || "—"}{item.sourceRow ? ` · рядок ${item.sourceRow}` : ""}</small></div>
-        <div><strong>{item.category?.name || "Без категорії"}</strong><small>{TYPE_LABEL[item.itemType]}{item.sourceCategory && item.sourceCategory !== item.category?.name ? ` · джерело: ${item.sourceCategory}` : ""}</small></div>
+        <div><strong>{item.category?.name || "Без категорії"}</strong><small>{TYPE_LABEL[item.itemType]} · процес: {SERVICE_TYPE_LABEL[item.serviceType]}{item.sourceCategory && item.sourceCategory !== item.category?.name ? ` · джерело: ${item.sourceCategory}` : ""}</small></div>
         <div><strong>{money(item.basePrice)}</strong><small>{item.normMinutes == null ? "Норма не вказана" : `${item.normMinutes} хв`}{item.vehicleCoefficientEnabled ? " · коеф. авто ✓" : " · без коеф. авто"}</small></div>
         <div className={styles.meta}>{(item.namePart || item.nameOperation) && <small>Назва: {[item.namePart, item.namePosition, item.nameSide].filter(Boolean).join(" ")}{item.nameOperation ? ` → ${item.nameOperation}` : ""}</small>}{(item.warrantyKm != null || item.warrantyDays != null) && <small>Гарантія: {item.warrantyKm != null ? `${item.warrantyKm} км` : "—"} / {item.warrantyDays != null ? `${item.warrantyDays} дн` : "—"}</small>}{item.payrollType !== "NONE" && <small>ЗП: {item.payrollType}</small>}{item.bodyPart && <small>Кузов: {item.bodyPart}{item.bodySide ? ` · ${item.bodySide}` : ""}{item.calculatorOperation ? ` · ${item.calculatorOperation}` : ""}</small>}{!item.namePart && !item.nameOperation && !item.warrantyKm && !item.warrantyDays && item.payrollType === "NONE" && !item.bodyPart && <small>—</small>}</div>
         <div className={styles.stateCell}><Status value={item.reviewStatus}/><span className={item.isActive ? styles.live : styles.staging}>{item.isActive ? "Активна" : "Staging"}</span>{item.reviewReason && <small title={item.reviewReason}>{item.reviewReason}</small>}</div>
@@ -261,6 +268,7 @@ export function PriceCatalogSettingsPanel() {
         <label><span>Норма, хв</span><input inputMode="numeric" value={draft.normMinutes} onChange={(event) => setDraft({ ...draft, normMinutes: event.target.value })}/></label>
         <label><span>Категорія</span><select value={draft.categoryId} onChange={(event) => setDraft({ ...draft, categoryId: event.target.value })}><option value="">Не вибрана</option>{(data?.categories || []).map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select></label>
         <label><span>Тип позиції</span><select value={draft.itemType} onChange={(event) => setDraft({ ...draft, itemType: event.target.value as ItemType })}>{Object.entries(TYPE_LABEL).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+        <label><span>Тип процесу</span><select value={draft.serviceType} onChange={(event) => setDraft({ ...draft, serviceType: event.target.value as ServiceType })}>{Object.entries(SERVICE_TYPE_LABEL).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select><small>Визначає маршрут: діагностика, ремонт або обидва етапи.</small></label>
         <label><span>Гарантія, км</span><input inputMode="numeric" value={draft.warrantyKm} onChange={(event) => setDraft({ ...draft, warrantyKm: event.target.value })}/></label>
         <label><span>Гарантія, днів</span><input inputMode="numeric" value={draft.warrantyDays} onChange={(event) => setDraft({ ...draft, warrantyDays: event.target.value })}/></label>
         <label><span>Статус перевірки</span><select value={draft.reviewStatus} onChange={(event) => setDraft({ ...draft, reviewStatus: event.target.value as ReviewStatus })}><option value="READY">READY</option><option value="NEEDS_REVIEW">Потрібна перевірка</option><option value="QUARANTINED">Карантин</option></select></label>

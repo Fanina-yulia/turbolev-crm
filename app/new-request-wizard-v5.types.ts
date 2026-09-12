@@ -1,4 +1,5 @@
 import type { TurboLevClass, VehicleType } from "@/src/domain/vehicle-intelligence";
+import type { ServiceTypeCode } from "@/src/domain/workflow/service-routes";
 import type {
   NewRequestClientLookupContract,
   NewRequestClientVehicleContract,
@@ -14,6 +15,7 @@ export type PreliminaryWork = {
   quantity?: number;
   total?: number;
   manual?: boolean;
+  serviceType?: ServiceTypeCode;
 };
 
 export type RequestForm = {

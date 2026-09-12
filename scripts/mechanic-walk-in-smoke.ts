@@ -160,6 +160,7 @@ export async function runMechanicWalkInSmoke() {
         internalName: `CI walk-in diagnostic ${suffix}`,
         displayName: "Позапланова діагностика",
         itemType: "DIAGNOSTIC",
+        serviceType: "DIAGNOSTIC",
         basePrice: 600,
         currency: "UAH",
         isActive: true,

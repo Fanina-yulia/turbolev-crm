@@ -3,6 +3,7 @@ import { inflateRawSync } from "node:zlib";
 
 export type CatalogSource = "MS_MASTER" | "MANUAL";
 export type CatalogItemType = "LABOR" | "DIAGNOSTIC" | "MATERIAL" | "INFORMATION" | "CHECKLIST" | "RENT" | "PARKING" | "WASH" | "OTHER";
+export type CatalogServiceType = "DIAGNOSTIC" | "REPAIR" | "BOTH";
 export type CatalogReviewStatus = "READY" | "NEEDS_REVIEW" | "QUARANTINED";
 export type CatalogBodySide = "LEFT" | "RIGHT" | null;
 export type CatalogCalculatorOperation = "REPLACE_NO_PAINT" | "REPLACE_WITH_PAINT" | "PAINT_NO_REPAIR" | "LIGHT_REPAIR" | "LIGHT_REPAIR_PAINT" | "COMPLEX_REPAIR" | "COMPLEX_REPAIR_PAINT" | null;
@@ -18,6 +19,7 @@ export type ParsedCatalogRow = {
   normalizedCategory: string;
   sourceCategory: string;
   itemType: CatalogItemType;
+  serviceType: CatalogServiceType;
   basePrice: number | null;
   unit: string;
   defaultQuantity: number;
@@ -219,6 +221,13 @@ function itemType(name: string, category: string, price: number | null): Catalog
   if (/інформац|информац|топливо|паливо/.test(value) && (price == null || price <= 50)) return "INFORMATION";
   return "LABOR";
 }
+function serviceType(value: string, itemTypeValue: CatalogItemType): CatalogServiceType {
+  const normalized = key(value);
+  if (/both|діагност.*ремонт|ремонт.*діагност|diagnos.*repair|repair.*diagnos/.test(normalized)) return "BOTH";
+  if (/діагност|diagnos/.test(normalized)) return "DIAGNOSTIC";
+  if (/ремонт|repair/.test(normalized)) return "REPAIR";
+  return itemTypeValue === "DIAGNOSTIC" ? "DIAGNOSTIC" : "REPAIR";
+}
 function reviewFor(row: {
   internalName: string; displayName: string; sourceCategory: string; basePrice: number | null; bodyPart: string | null;
   calculatorOperation: CatalogCalculatorOperation; nameOperation: CatalogCalculatorOperation;
@@ -241,6 +250,7 @@ function rowObject(headers: string[], row: Array<string | number | boolean | nul
   return Object.fromEntries(headers.map((header, index) => [header || `col_${index + 1}`, row[index] ?? null]));
 }
 function col(headers: string[], name: string) { return headers.findIndex((header) => clean(header) === name); }
+function colAny(headers: string[], names: string[]) { return names.map((name) => col(headers, name)).find((index) => index >= 0) ?? -1; }
 
 function parseMsMaster(sheetRows: Array<Array<string | number | boolean | null>>) {
   const headerIndex = sheetRows.findIndex((row) => row.some((v) => clean(v) === "Послуга") && row.some((v) => clean(v) === "Назва") && row.some((v) => clean(v) === "Ціна"));
@@ -250,7 +260,7 @@ function parseMsMaster(sheetRows: Array<Array<string | number | boolean | null>>
     id: col(headers, "Послуга"), internal: col(headers, "Назва"), print: col(headers, "Назва (друк)"), category: col(headers, "Категорія послуг"),
     price: col(headers, "Ціна"), minutes: col(headers, "Тривалість роботи механіка (хв.)"), qty: col(headers, "Кількість по замовчуванню при додаванні в Н/З"),
     warrantyKm: col(headers, "Гарантійний пробіг (км)"), warrantyDays: col(headers, "Гарантійний термін (днів)"), payrollCategory: col(headers, "Категорія для зарплат"),
-    payrollType: col(headers, "Тип нарахування зарплат"), bodyPart: col(headers, "Назва частина авто"), side: col(headers, "Сторона"), calc: col(headers, "Послуги калькулятора"),
+    payrollType: col(headers, "Тип нарахування зарплат"), bodyPart: col(headers, "Назва частина авто"), side: col(headers, "Сторона"), calc: col(headers, "Послуги калькулятора"), serviceType: colAny(headers, ["Тип процесу", "Тип роботи", "Тип послуги", "Service type"]),
     active: col(headers, "Активний"), landing: col(headers, "Показувати на Landing"),
   };
   const result: ParsedCatalogRow[] = [];
@@ -268,6 +278,8 @@ function parseMsMaster(sheetRows: Array<Array<string | number | boolean | null>>
     const bodyPart = clean(row[indexes.bodyPart]) || null;
     const calculatorOperation = operation(clean(row[indexes.calc]));
     const nameOperation = inferOperationFromName(internalName);
+    const inferredItemType = itemType(internalName, sourceCategory, basePrice);
+    const processType = serviceType(indexes.serviceType >= 0 ? clean(row[indexes.serviceType]) : "", inferredItemType);
     const review = reviewFor({ internalName, displayName, sourceCategory, basePrice, bodyPart, calculatorOperation, nameOperation });
     result.push({
       externalServiceId,
@@ -278,7 +290,8 @@ function parseMsMaster(sheetRows: Array<Array<string | number | boolean | null>>
       categoryId: category.id,
       normalizedCategory: category.name,
       sourceCategory,
-      itemType: itemType(internalName, sourceCategory, basePrice),
+      itemType: inferredItemType,
+      serviceType: processType,
       basePrice,
       unit: "роб",
       defaultQuantity: numberOrNull(row[indexes.qty]) ?? 1,
@@ -334,10 +347,12 @@ function parseTurboLevTemplate(sheetRows: Array<Array<string | number | boolean 
     const sourceCategory = indexes.category >= 0 ? clean(row[indexes.category]) : "";
     const category = normalizeCategory(sourceCategory);
     const basePrice = numberOrNull(row[indexes.price]);
+    const inferredItemType = itemType(internalName, sourceCategory, basePrice);
+    const processType = serviceType("", inferredItemType);
     const review = reviewFor({ internalName, displayName: internalName, sourceCategory, basePrice, bodyPart: null, calculatorOperation: null, nameOperation: null });
     result.push({
       externalServiceId: code, code, internalName, displayName: internalName, searchAliases: aliases(code, internalName), categoryId: category.id, normalizedCategory: category.name, sourceCategory,
-      itemType: itemType(internalName, sourceCategory, basePrice), basePrice, unit: indexes.unit >= 0 ? clean(row[indexes.unit]) || "роб" : "роб", defaultQuantity: 1,
+      itemType: inferredItemType, serviceType: processType, basePrice, unit: indexes.unit >= 0 ? clean(row[indexes.unit]) || "роб" : "роб", defaultQuantity: 1,
       normMinutes: indexes.hours >= 0 && numberOrNull(row[indexes.hours]) != null ? Math.round((numberOrNull(row[indexes.hours]) as number) * 60) : null,
       complexSurcharge: indexes.surcharge >= 0 ? numberOrNull(row[indexes.surcharge]) : null, vehicleCoefficientEnabled: true,
       warrantyKm: null, warrantyDays: null, payrollCategory: null, payrollType: "NONE", mechanicPercent: null, mechanicFixedAmount: null, bodyPart: null, bodySide: null, calculatorOperation: null,

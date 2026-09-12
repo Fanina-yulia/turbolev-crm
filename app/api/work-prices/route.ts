@@ -79,6 +79,7 @@ export async function GET(request: NextRequest) {
         nameOperation: row.nameOperation,
         searchAliases: row.searchAliases,
         itemType: row.itemType,
+        serviceType: row.serviceType,
         unit: row.unit,
         normHours: row.normMinutes == null ? null : Math.round((row.normMinutes / 60) * 100) / 100,
         normMinutes: row.normMinutes,

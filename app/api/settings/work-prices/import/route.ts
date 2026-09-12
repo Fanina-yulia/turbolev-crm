@@ -5,6 +5,7 @@ import {
   ServiceCatalogItemType,
   ServiceCatalogPayrollType,
   ServiceCatalogReviewStatus,
+  ServiceCatalogServiceType,
   ServiceCatalogSource,
 } from "@/src/generated/prisma/client";
 import { getPrisma } from "@/src/lib/prisma";
@@ -21,6 +22,7 @@ function sourceEnum(value: "MS_MASTER" | "MANUAL") {
   return value === "MS_MASTER" ? ServiceCatalogSource.MS_MASTER : ServiceCatalogSource.MANUAL;
 }
 function itemTypeEnum(value: ParsedCatalogRow["itemType"]) { return ServiceCatalogItemType[value]; }
+function serviceTypeEnum(value: ParsedCatalogRow["serviceType"]) { return ServiceCatalogServiceType[value]; }
 function reviewEnum(value: ParsedCatalogRow["reviewStatus"]) { return ServiceCatalogReviewStatus[value]; }
 function payrollEnum(value: ParsedCatalogRow["payrollType"]) { return ServiceCatalogPayrollType[value]; }
 function sideEnum(value: ParsedCatalogRow["bodySide"]) { return value ? ServiceCatalogBodySide[value] : null; }
@@ -54,6 +56,7 @@ function sampleRow(row: ParsedCatalogRow) {
     category: row.normalizedCategory,
     sourceCategory: row.sourceCategory,
     itemType: row.itemType,
+    serviceType: row.serviceType,
     basePrice: row.basePrice,
     normMinutes: row.normMinutes,
     warrantyKm: row.warrantyKm,
@@ -138,6 +141,7 @@ export async function POST(request: Request) {
             categoryId: row.categoryId,
             sourceCategory: row.sourceCategory || null,
             itemType: itemTypeEnum(row.itemType),
+            serviceType: serviceTypeEnum(row.serviceType),
             basePrice: row.basePrice,
             currency: "UAH",
             unit: row.unit,
@@ -190,6 +194,7 @@ export async function POST(request: Request) {
             categoryId: row.categoryId,
             sourceCategory: row.sourceCategory || null,
             itemType: itemTypeEnum(row.itemType),
+            serviceType: serviceTypeEnum(row.serviceType),
             basePrice: row.basePrice,
             unit: row.unit,
             defaultQuantity: row.defaultQuantity,
