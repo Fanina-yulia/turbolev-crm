@@ -1,4 +1,4 @@
-# Turbo LEV CRM — Status Architecture v1
+# Turbo LEV CRM — Status Architecture v2
 
 ## Мета
 
@@ -116,3 +116,49 @@ API зараз read-only. Це навмисно: спочатку стабілі
 5. Додати `Blocker` і `VehicleLocation` до операційного контуру.
 6. Реалізувати `Налаштування → Процеси та статуси` поверх цього API.
 7. Підключити workflow automation engine та аудит кожного автоматичного переходу.
+
+## Реалізовано у v2.0.0
+
+### Єдиний контракт кодів
+
+Коди, які використовуються одночасно доменом, Планувальником і API-контрактами, тепер оголошені в одному data-only модулі:
+
+- `src/domain/workflow/status-codes.ts`;
+- `APPOINTMENT_CANONICAL_STATUS_CODES` — тільки `RESERVE / BOOKED / ARRIVED / NO_SHOW / CANCELLED`;
+- `APPOINTMENT_COMPATIBILITY_STATUS_CODES` — історичні downstream-коди, які читаються для сумісності, але не є джерелом правди;
+- `WORK_ORDER_STATUS_CODES` — повний канонічний життєвий цикл наряду;
+- `PLANNER_STATUS_VALUES` і `PLANNER_BLOCKING_STATUS_VALUES` походять із того самого набору, а не дублюються в сервісному шарі та API-контракті.
+
+`WAITING_PAYMENT` у WorkOrder є канонічним станом фінансового завершення. У Planner `WAITING_PAYMENT` залишається лише compatibility bridge, оскільки Planner не володіє фінансовим станом.
+
+### Єдина проєкція операційного стану
+
+`src/domain/workflow/status-contract.ts` містить `deriveOperationalServiceState()`. Функція повертає read-model, яка не зберігається в БД:
+
+1. якщо є WorkOrder — джерело стану WorkOrder;
+2. інакше якщо є DiagnosticRequest — джерело DiagnosticRequest;
+3. інакше — Appointment;
+4. старий downstream-статус Appointment позначається `compatibilityOnly`.
+
+Поточний стан автомобіля в Планувальнику формується через цю функцію. В API також повертаються `processSource`, `processSourceStatus` і `processCompatibilityOnly`, щоб оператор бачив, звідки походить відображений стан.
+
+### Правила синхронізації
+
+Проміжні переходи WorkOrder більше не переписують `ServiceAppointment.status` у `IN_REPAIR`, `WAITING_QC`, `WAITING_PARTS` тощо. Вони лише:
+
+- залишають Appointment у його канонічному життєвому стані;
+- записують фактичний час початку/завершення;
+- переводять Appointment у `COMPLETED` або `CANCELLED` тільки на фінальному результаті.
+
+Це усуває дублювання статусів між Планувальником і WorkOrder, не ламаючи читання старих рядків.
+
+### Перевірки
+
+Для контракту додано smoke-тести, які перевіряють:
+
+- канонічний набір Planner;
+- compatibility-маркування старих Planner-станів;
+- канонічність WorkOrder `WAITING_PAYMENT`;
+- пріоритет WorkOrder над DiagnosticRequest і Appointment;
+- завершення/скасування Appointment тільки на фінальному WorkOrder-переході.
+
