@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
 import pg from "pg";
+import { CANONICAL_ROLE_CODES } from "../src/security/role-contract";
 
 const databaseUrl = process.env.DATABASE_URL_UNPOOLED || process.env.DATABASE_URL;
 assert.ok(databaseUrl, "DATABASE_URL_UNPOOLED or DATABASE_URL is required");
+const requireEnforced = process.argv.includes("--require-enforced") || process.env.RBAC_REQUIRE_ENFORCED === "1";
 
 const client = new pg.Client({ connectionString: databaseUrl });
 await client.connect();
@@ -15,6 +17,17 @@ try {
   `);
   assert.equal(config.rowCount, 1, "SecurityConfig/default must exist");
   assert.equal(config.rows[0].allowSelfRegistration, false, "self-registration must stay disabled");
+  if (requireEnforced) {
+    assert.equal(config.rows[0].enforcementMode, "ENFORCED", "production RBAC must be ENFORCED");
+    assert.equal(config.rows[0].bootstrapCompleted, true, "ENFORCED requires completed security bootstrap");
+  }
+
+  const activeRoles = await client.query(`SELECT code FROM "AccessRole" WHERE "isActive"=true ORDER BY code`);
+  assert.deepEqual(
+    activeRoles.rows.map((row) => row.code).sort(),
+    [...CANONICAL_ROLE_CODES].sort(),
+    "active roles must match the canonical role contract",
+  );
 
   const activeUsers = await client.query(`
     SELECT
@@ -147,6 +160,7 @@ try {
   console.log("RBAC production readiness passed", {
     enforcementMode: config.rows[0].enforcementMode,
     bootstrapCompleted: config.rows[0].bootstrapCompleted,
+    requireEnforced,
     activeUsers: activeUsers.rowCount,
     activeOverrides: activeOverrides.rows[0].count,
     recentOwner: recentOwner.rows[0]?.name ?? null,

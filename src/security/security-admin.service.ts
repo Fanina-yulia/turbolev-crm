@@ -308,6 +308,34 @@ export async function replaceUserAccessRoles(args: { userId: string; roles: Role
 export async function setSecurityEnforcementMode(mode: "SHADOW" | "ENFORCED") {
   const prisma = getPrisma();
   if (mode === "ENFORCED") {
+    const now = new Date();
+    const activeUsers = await prisma.user.findMany({
+      where: { isActive: true },
+      select: {
+        id: true,
+        name: true,
+        accessRoles: {
+          where: {
+            isActive: true,
+            startsAt: { lte: now },
+            OR: [{ endsAt: null }, { endsAt: { gt: now } }],
+          },
+          select: { isPrimary: true },
+        },
+      },
+    });
+    const incompleteUsers = activeUsers.filter((user) => {
+      const primaryCount = user.accessRoles.filter((assignment) => assignment.isPrimary).length;
+      return user.accessRoles.length === 0 || primaryCount !== 1;
+    });
+    if (incompleteUsers.length) {
+      throw new SecurityAdminError(
+        "RBAC_PROVISIONING_INCOMPLETE",
+        `Перед ENFORCED кожен активний користувач повинен мати рівно одну primary-роль: ${incompleteUsers.map((user) => user.name).join(", ")}.`,
+        409,
+      );
+    }
+
     const recentCutoff = new Date(Date.now() - OWNER_RECENT_LOGIN_WINDOW_MS);
     const owner = await prisma.user.findFirst({
       where: {
