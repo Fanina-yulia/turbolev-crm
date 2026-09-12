@@ -1,4 +1,5 @@
 import { getSqlPool } from "../src/lib/sql";
+import { deriveServiceRoute, requiredStagesForServiceRoute, SERVICE_ROUTE_KINDS, SERVICE_ROUTE_LABELS, type ServiceRouteKind } from "../src/domain/workflow";
 
 type AuditRow = {
   cycle_id: string;
@@ -53,24 +54,56 @@ function maskId(value: string) {
   return `${value.slice(0, 6)}…${value.slice(-4)}`;
 }
 
-function stages(row: AuditRow): Stage[] {
+function stages(row: AuditRow, route: ServiceRouteKind): Stage[] {
   const partsOptional = !row.has_required_parts;
+  const required = new Set(requiredStagesForServiceRoute(route));
+  const passed: Record<string, boolean> = {
+    appointment: Boolean(row.appointment_id),
+    arrival: Boolean(row.actual_arrival_at),
+    diagnostics: Boolean(row.diagnostic_id),
+    diagnostic_confirmed: Boolean(row.diagnostic_confirmed_at),
+    diagnostic_card_final: row.has_final_diagnostic_card,
+    work_order: Boolean(row.work_order_id),
+    estimate: row.has_estimate,
+    approval: row.estimate_approved,
+    parts_request: partsOptional || row.has_parts_request,
+    parts_received: partsOptional || row.required_parts_received,
+    repair_completed: row.has_completed_work,
+    qc: row.qc_completed,
+    finance_actual: row.has_actual_finance,
+    payment: row.has_payment_evidence,
+    closed: row.work_order_status === "CLOSED" || Boolean(row.work_order_closed_at),
+  };
+
+  const stageKeys = [
+    "appointment",
+    "arrival",
+    "diagnostics",
+    "diagnostic_confirmed",
+    "diagnostic_card_final",
+    "work_order",
+    "estimate",
+    "approval",
+    "parts_request",
+    "parts_received",
+    "repair_completed",
+    "qc",
+    "finance_actual",
+    "payment",
+    "closed",
+  ].filter((key) => required.has(key) || (route !== "DIAGNOSTICS_ONLY" && (key === "parts_request" || key === "parts_received")));
+
+  const appointmentOptional = !row.appointment_id;
   return [
-    { key: "appointment", passed: Boolean(row.appointment_id) },
-    { key: "arrival", passed: Boolean(row.actual_arrival_at) },
-    { key: "diagnostics", passed: Boolean(row.diagnostic_id) },
-    { key: "diagnostic_confirmed", passed: Boolean(row.diagnostic_confirmed_at) },
-    { key: "diagnostic_card_final", passed: row.has_final_diagnostic_card },
-    { key: "work_order", passed: Boolean(row.work_order_id) },
-    { key: "estimate", passed: row.has_estimate },
-    { key: "approval", passed: row.estimate_approved },
-    { key: "parts_request", passed: partsOptional || row.has_parts_request, optional: partsOptional },
-    { key: "parts_received", passed: partsOptional || row.required_parts_received, optional: partsOptional },
-    { key: "repair_completed", passed: row.has_completed_work },
-    { key: "qc", passed: row.qc_completed },
-    { key: "finance_actual", passed: row.has_actual_finance },
-    { key: "payment", passed: row.has_payment_evidence },
-    { key: "closed", passed: row.work_order_status === "CLOSED" || Boolean(row.work_order_closed_at) },
+    ...(appointmentOptional || required.has("appointment")
+      ? [{ key: "appointment", passed: passed.appointment, optional: appointmentOptional }]
+      : []),
+    ...(appointmentOptional || required.has("arrival")
+      ? [{ key: "arrival", passed: passed.arrival, optional: appointmentOptional }]
+      : []),
+    ...stageKeys
+      .filter((key) => key !== "appointment" && key !== "arrival")
+      .map((key) => ({ key, passed: passed[key], optional: (key === "parts_request" || key === "parts_received") && partsOptional })),
   ];
 }
 
@@ -272,8 +305,9 @@ async function main() {
   }
 
   const evaluated = rows.map((row) => {
-    const stageList = stages(row);
-    const blockers = stageList.filter((stage) => !stage.passed).map((stage) => stage.key);
+    const route = deriveServiceRoute({ hasDiagnostic: Boolean(row.diagnostic_id), hasRepair: Boolean(row.work_order_id) });
+    const stageList = stages(row, route);
+    const blockers = stageList.filter((stage) => !stage.passed && !stage.optional).map((stage) => stage.key);
     const complete = blockers.length === 0;
     const staleBooked = row.appointment_status === "BOOKED"
       && Boolean(row.planned_start_at && row.planned_start_at.getTime() < Date.now())
@@ -282,6 +316,8 @@ async function main() {
     return {
       cycle: maskId(row.cycle_id),
       cycleKind: row.cycle_kind,
+      routeKind: route,
+      routeLabel: SERVICE_ROUTE_LABELS[route],
       vehicleRef: maskId(row.vehicle_id),
       vehicle: row.vehicle_label || "Vehicle",
       plate: maskPlate(row.plate_number),
@@ -299,17 +335,36 @@ async function main() {
 
   const auditedVehicleIds = new Set(rows.map((row) => row.vehicle_id));
   const completeVehicleIds = new Set(rows.filter((row, index) => evaluated[index]?.complete).map((row) => row.vehicle_id));
+  const completeRouteVehicleIds = new Map<ServiceRouteKind, Set<string>>(
+    SERVICE_ROUTE_KINDS.map((kind) => [kind, new Set<string>()]),
+  );
+  rows.forEach((row, index) => {
+    const audit = evaluated[index];
+    if (audit?.complete) completeRouteVehicleIds.get(audit.routeKind)?.add(row.vehicle_id);
+  });
+  const completeRouteCounts = Object.fromEntries(
+    SERVICE_ROUTE_KINDS.map((kind) => [kind, completeRouteVehicleIds.get(kind)?.size || 0]),
+  ) as Record<ServiceRouteKind, number>;
+  const routeCoveragePassed = SERVICE_ROUTE_KINDS.every((kind) => completeRouteCounts[kind] >= 1);
   const staleBooked = evaluated.filter((row) => row.staleBooked).length;
   const stalledDiagnostics = evaluated.filter((row) => row.stalledDiagnostic).length;
-  const passed = completeVehicleIds.size >= MIN_REAL_VEHICLES;
+  const passed = completeVehicleIds.size >= MIN_REAL_VEHICLES && routeCoveragePassed;
 
   console.log("REAL_VEHICLE_E2E_READINESS", JSON.stringify({
     mode: "READ_ONLY",
     lookbackDays: LOOKBACK_DAYS,
     minimumCompleteVehicles: MIN_REAL_VEHICLES,
+    requiredRouteCoverage: 1,
     auditedCycles: evaluated.length,
     auditedVehicles: auditedVehicleIds.size,
     completeVehicles: completeVehicleIds.size,
+    completeRouteCounts,
+    routeCoverage: SERVICE_ROUTE_KINDS.map((kind) => ({
+      kind,
+      label: SERVICE_ROUTE_LABELS[kind],
+      completeVehicles: completeRouteCounts[kind],
+      gate: completeRouteCounts[kind] >= 1 ? "PASS" : "BLOCKED",
+    })),
     staleBooked,
     stalledDiagnostics,
     gate: passed ? "PASS" : "BLOCKED",
