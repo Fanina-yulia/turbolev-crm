@@ -330,7 +330,9 @@
         "app/api/production/**",
         "app/api/qc/**",
         "src/services/work-order*",
-        "src/domain/workflow/**"
+        "src/domain/workflow/**",
+        "app/api/blockers/**",
+        "src/services/operational-blockers.service.ts"
       ],
       "dependencies": [
         "diagnostics",
