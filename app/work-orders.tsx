@@ -78,7 +78,7 @@ function transitionReason(item: Transition) {
 
 function transitionActionLabel(item: Transition) {
   if (!item.allowed) return "Заблоковано";
-  if (item.to === "CLOSED") return "Видати авто та закрити КП";
+  if (item.to === "CLOSED") return "Видати авто та закрити наряд";
   return "Перевести";
 }
 
@@ -154,7 +154,7 @@ export function WorkOrders() {
       const response = await fetch("/api/work-orders", { cache: "no-store" });
       const rawPayload: unknown = await response.json();
       const payload = parseWorkOrderListPayload(rawPayload);
-      if (!response.ok || !payload) throw new Error(payloadMessage(rawPayload, "Не вдалося завантажити комерційні пропозиції."));
+      if (!response.ok || !payload) throw new Error(payloadMessage(rawPayload, "Не вдалося завантажити наряди та ремонти."));
       const rawRows = payload.workOrders;
       let numberMap = new Map<string, number>();
       if (rawRows.length) {
@@ -181,7 +181,7 @@ export function WorkOrders() {
       const response = await fetch(`/api/work-orders/${encodeURIComponent(id)}`, { cache: "no-store" });
       const rawPayload: unknown = await response.json();
       const workOrder = parseWorkOrderDetailPayload(rawPayload);
-      if (!response.ok || !workOrder) throw new Error(payloadMessage(rawPayload, "Не вдалося завантажити комерційну пропозицію."));
+      if (!response.ok || !workOrder) throw new Error(payloadMessage(rawPayload, "Не вдалося завантажити наряд-замовлення."));
       setDetail(workOrder);
     } catch (error) {
       setDetail(null);
@@ -224,16 +224,16 @@ export function WorkOrders() {
   }
 
   function chooseFilter(code: string) {
-    navigateCrm("Комерційна пропозиція", code === "ALL" ? {} : { status: code });
+    navigateCrm("Наряди та ремонт", code === "ALL" ? {} : { status: code });
   }
 
   function chooseWorkOrder(item: WorkOrderRow) {
-    navigateCrm("Комерційна пропозиція", routeForWorkOrder(item.id));
+    navigateCrm("Наряди та ремонт", routeForWorkOrder(item.id));
   }
 
   function chooseTab(tab: WorkOrderTab) {
     if (!detail) return;
-    navigateCrm("Комерційна пропозиція", routeForWorkOrder(detail.id, tab));
+    navigateCrm("Наряди та ремонт", routeForWorkOrder(detail.id, tab));
   }
 
   function openDocuments() {
@@ -252,7 +252,7 @@ export function WorkOrders() {
 
   async function runTransition(transition: Transition) {
     if (!detail || !transition.allowed || busyTransition) return;
-    if (transition.to === "CLOSED" && !window.confirm("Підтвердити видачу авто клієнту та закриття комерційної пропозиції?")) return;
+    if (transition.to === "CLOSED" && !window.confirm("Підтвердити видачу авто клієнту та закриття наряду?")) return;
     setBusyTransition(transition.to);
     setMessage(null);
     try {
@@ -269,7 +269,7 @@ export function WorkOrders() {
       }
       const workOrder = parseWorkOrderTransitionPayload(rawPayload);
       if (!workOrder) throw new Error(payloadMessage(rawPayload, "Перехід не виконано."));
-      setMessage({ kind: "success", text: transition.to === "CLOSED" ? "Авто видано клієнту. Комерційну пропозицію закрито." : `Статус змінено: ${workOrder.statusLabel}.` });
+      setMessage({ kind: "success", text: transition.to === "CLOSED" ? "Авто видано клієнту. Наряд закрито." : `Статус змінено: ${workOrder.statusLabel}.` });
       await Promise.all([loadRows(), loadDetail(detail.id)]);
     } catch (error) {
       setMessage({ kind: "error", text: error instanceof Error ? error.message : "Не вдалося змінити статус." });
@@ -284,14 +284,14 @@ export function WorkOrders() {
     <header className={styles.head}>
       <div>
         <p className={styles.eyebrow}>СЕРВІС · ЗАМОВЛЕННЯ-НАРЯДИ</p>
-        <h1>Комерційна пропозиція</h1>
-        <p>Одна комерційна пропозиція веде автомобіль від підтвердженої діагностики до ремонту, контролю якості та оплати. Усі дії зібрані в одній картці без дублювання даних.</p>
+        <h1>Наряди та ремонт</h1>
+        <p>Наряд-замовлення веде автомобіль від погоджених робіт до ремонту, контролю якості, оплати та видачі. Комерційна пропозиція є окремим документом погодження.</p>
       </div>
       <button className={styles.refresh} type="button" onClick={() => void loadRows()} disabled={loading}>{loading ? "Оновлюю…" : "Оновити"}</button>
     </header>
 
     <section className={styles.kpis}>
-      <div><span>Активні комерційні пропозиції</span><strong>{counts.active}</strong></div>
+      <div><span>Активні наряди та ремонти</span><strong>{counts.active}</strong></div>
       <div><span>У ремонті</span><strong>{counts.repair}</strong></div>
       <div><span>Є блокуючі умови</span><strong>{counts.blocked}</strong></div>
       <div><span>Готові до видачі</span><strong>{counts.ready}</strong></div>
@@ -300,7 +300,7 @@ export function WorkOrders() {
     <div style={{ display: "grid", gridTemplateColumns: "minmax(240px, 1fr) auto", gap: 10, alignItems: "center", marginBottom: 12 }}>
       <label style={{ display: "grid", gridTemplateColumns: "24px 1fr auto", alignItems: "center", gap: 7, minHeight: 42, padding: "0 10px", border: "1px solid var(--line)", borderRadius: 10, background: "var(--panel)" }}>
         <span style={{ color: "var(--muted)" }}>⌕</span>
-        <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="КП-000124, клієнт, телефон, номер авто або VIN..." style={{ border: 0, outline: 0, minWidth: 0, background: "transparent", color: "var(--text)" }}/>
+        <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="ЗН-000124, клієнт, телефон, номер авто або VIN..." style={{ border: 0, outline: 0, minWidth: 0, background: "transparent", color: "var(--text)" }}/>
         {search && <button type="button" onClick={() => setSearch("")} aria-label="Очистити пошук" style={{ border: 0, background: "transparent", color: "var(--muted)", cursor: "pointer", fontSize: 18 }}>×</button>}
       </label>
       <span style={{ color: "var(--muted)", fontSize: 12 }}>{filtered.length} з {rows.length}</span>
@@ -317,7 +317,7 @@ export function WorkOrders() {
 
     <div className={styles.layout}>
       <section className={styles.list}>
-        {loading && !rows.length ? <div className={styles.empty}>Завантажую комерційні пропозиції…</div> : !filtered.length ? <div className={styles.empty}>За вибраним статусом або пошуком комерційних пропозицій немає.</div> : filtered.map((item) => <button type="button" key={item.id} className={`${styles.row} ${selectedId === item.id ? styles.rowActive : ""}`} onClick={() => chooseWorkOrder(item)}>
+        {loading && !rows.length ? <div className={styles.empty}>Завантажую наряди та ремонти…</div> : !filtered.length ? <div className={styles.empty}>За вибраним статусом або пошуком нарядів нічого не знайдено.</div> : filtered.map((item) => <button type="button" key={item.id} className={`${styles.row} ${selectedId === item.id ? styles.rowActive : ""}`} onClick={() => chooseWorkOrder(item)}>
           <div>
             <div className={styles.rowTitle}><span style={{ fontFamily: "ui-monospace,SFMono-Regular,Menlo,monospace", fontWeight: 850, fontSize: 12, color: "var(--orange)" }}>{formatWorkOrderNumber(item.number)}</span><strong>{vehicleName(item)}</strong>{item.vehicle.plateNumber && <VehiclePlate value={item.vehicle.plateNumber} size="xs" />}</div>
             <div className={styles.rowMeta}>{item.client.name || "Клієнт без імені"} · {item.client.phone}<br/>Оновлено {formatDate(item.updatedAt)}</div>
@@ -327,7 +327,7 @@ export function WorkOrders() {
       </section>
 
       <aside className={styles.detail}>
-        {detailLoading && !detail ? <div className={styles.empty}>Завантажую картку…</div> : !detail ? <div className={styles.empty}>Оберіть комерційну пропозицію зі списку.</div> : <>
+        {detailLoading && !detail ? <div className={styles.empty}>Завантажую картку…</div> : !detail ? <div className={styles.empty}>Оберіть наряд зі списку.</div> : <>
           <div className={styles.detailSticky}>
             <div className={styles.summaryTop}>
               <div className={styles.summaryIdentity}>
@@ -345,7 +345,7 @@ export function WorkOrders() {
               <span><small>Оплачено</small><b>{commercialSummary ? money(commercialSummary.paid) : "…"}</b></span>
               <span><small>Борг</small><b className={commercialSummary?.outstanding ? styles.debt : ""}>{commercialSummary ? money(commercialSummary.outstanding) : "…"}</b></span>
             </div>
-            <nav className={styles.tabs} aria-label="Розділи комерційної пропозиції">
+            <nav className={styles.tabs} aria-label="Розділи наряду">
               {WORK_ORDER_TABS.map(([code, label]) => <button type="button" key={code} className={activeTab === code ? styles.activeTab : ""} onClick={() => chooseTab(code)}>{label}</button>)}
             </nav>
           </div>
@@ -353,7 +353,7 @@ export function WorkOrders() {
           <div className={styles.detailBody}>
             {activeTab === "overview" && <div className={styles.tabContent}>
               <div className={styles.grid}>
-                <div className={styles.field}><span>Номер КП</span><strong>{formatWorkOrderNumber(selectedNumber)}</strong></div>
+                <div className={styles.field}><span>Номер наряду</span><strong>{formatWorkOrderNumber(selectedNumber)}</strong></div>
                 <div className={styles.field}><span>Клієнт</span><button type="button" onClick={() => navigateCrm("Клієнти", { clientId: detail.client.id })}><strong>{detail.client.name || detail.client.phone}</strong></button></div>
                 <div className={styles.field}><span>Автомобіль</span><button type="button" onClick={() => navigateCrm("Авто", { vehicleId: detail.vehicle.id })}><strong>{vehicleName(detail)}</strong></button></div>
                 <div className={styles.field}><span>Держномер</span><VehiclePlate value={detail.vehicle.plateNumber} size="sm" /></div>
@@ -361,15 +361,15 @@ export function WorkOrders() {
                 <div className={styles.field}><span>Пробіг</span><strong>{detail.vehicle.mileageKm ? `${detail.vehicle.mileageKm.toLocaleString("uk-UA")} км` : "—"}</strong></div>
                 <div className={styles.field}><span>Планувальник</span><strong>{detail.appointment ? `${formatDate(detail.appointment.plannedStartAt)} · ${detail.appointment.post?.name || "Без поста"}` : "Не зв'язано"}</strong></div>
               </div>
-              {commercialView && <section className={styles.sectionCard}><h3>{detail.diagnosticRequest ? "Стан комерційної пропозиції" : "Прямий ремонт без КП"}</h3><WorkOrderCommercialPanel key={detail.id} workOrderId={detail.id} view="overview" onChanged={handleCommercialChanged} onSummary={handleCommercialSummary}/></section>}
+              {commercialView && <section className={styles.sectionCard}><h3>{detail.diagnosticRequest ? "Стан наряду" : "Прямий ремонт без КП"}</h3><WorkOrderCommercialPanel key={detail.id} workOrderId={detail.id} view="overview" onChanged={handleCommercialChanged} onSummary={handleCommercialSummary}/></section>}
               <section className={styles.sectionCard}>
                 <h3>Наступний крок</h3>
-                {!detail.transitions.length ? <div className={styles.emptyInline}>Комерційна пропозиція завершена — наступних переходів немає.</div> : <div className={styles.transitions}>{detail.transitions.map((transition) => <div className={styles.transition} key={transition.to}><div><strong>→ {transition.label}</strong><small>{transitionReason(transition)}</small></div><button type="button" disabled={!transition.allowed || Boolean(busyTransition)} onClick={() => void runTransition(transition)}>{busyTransition === transition.to ? (transition.to === "CLOSED" ? "Закриваю…" : "Змінюю…") : transitionActionLabel(transition)}</button></div>)}</div>}
+                {!detail.transitions.length ? <div className={styles.emptyInline}>Наряд завершено — наступних переходів немає.</div> : <div className={styles.transitions}>{detail.transitions.map((transition) => <div className={styles.transition} key={transition.to}><div><strong>→ {transition.label}</strong><small>{transitionReason(transition)}</small></div><button type="button" disabled={!transition.allowed || Boolean(busyTransition)} onClick={() => void runTransition(transition)}>{busyTransition === transition.to ? (transition.to === "CLOSED" ? "Закриваю…" : "Змінюю…") : transitionActionLabel(transition)}</button></div>)}</div>}
               </section>
             </div>}
 
             {activeTab === "diagnostic" && <div className={styles.tabContent}>
-              {!detail.diagnosticRequest ? <section className={styles.sectionCard}><h3>Діагностична карта не застосовується</h3><p>Це прямий ремонт: автомобіль заїхав одразу на погоджені роботи.</p></section> : <><section className={styles.sectionCard}><div className={styles.sectionHead}><div><h3>Технічний висновок</h3><p>Результат підтвердженої діагностики, з якої створено цю комерційну пропозицію.</p></div><span>{detail.diagnosticRequest.status}</span></div><div className={styles.conclusion}>{detail.diagnosticRequest.technicalConclusion || "Технічний висновок відсутній."}</div></section>
+              {!detail.diagnosticRequest ? <section className={styles.sectionCard}><h3>Діагностична карта не застосовується</h3><p>Це прямий ремонт: автомобіль заїхав одразу на погоджені роботи.</p></section> : <><section className={styles.sectionCard}><div className={styles.sectionHead}><div><h3>Технічний висновок</h3><p>Результат підтвердженої діагностики, з якої створено цей наряд.</p></div><span>{detail.diagnosticRequest.status}</span></div><div className={styles.conclusion}>{detail.diagnosticRequest.technicalConclusion || "Технічний висновок відсутній."}</div></section>
               <div className={styles.grid}>
                 <div className={styles.field}><span>Підтверджено</span><strong>{formatDate(detail.diagnosticRequest.confirmedAt)}</strong></div>
                 <div className={styles.field}><span>Створено діагностику</span><strong>{formatDate(detail.diagnosticRequest.createdAt)}</strong></div>
