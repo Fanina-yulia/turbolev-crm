@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { WARRANTY_CLAIM_STATUS_CODES, WARRANTY_CLAIM_STATUS_LABELS, type WarrantyClaimStatusCode } from "@/src/domain/warranty/contract";
+import { WARRANTY_CLAIM_STATUS_CODES, WARRANTY_CLAIM_STATUS_LABELS, WARRANTY_CLAIM_TRANSITIONS, type WarrantyClaimStatusCode } from "@/src/domain/warranty/contract";
 import { navigateCrm, readCrmRoute } from "./crm-route";
 import styles from "./warranty-center.module.css";
 
@@ -144,6 +144,12 @@ export function WarrantyCenter() {
   const rows = data.rows || [];
   const counts = data.counts || { active: 0, expiring: 0, claims: 0, expired: 0 };
   const canWrite = Boolean(data.canWrite);
+  const claimOptionsForEdit = useMemo(() => {
+    const current = editRow?.openClaim?.status;
+    if (!current) return CLAIM_OPTIONS;
+    const allowed = new Set<ClaimStatus>([current, ...WARRANTY_CLAIM_TRANSITIONS[current]]);
+    return CLAIM_OPTIONS.filter((option) => allowed.has(option.value));
+  }, [editRow]);
   const visible = useMemo(() => rows.filter((row) => {
     if (tab === "active") return row.warrantyStatus === "ACTIVE" || row.warrantyStatus === "PENDING_START";
     if (tab === "expiring") return row.warrantyStatus === "EXPIRING";
@@ -303,7 +309,7 @@ export function WarrantyCenter() {
         <header><div><small>ОПРАЦЮВАННЯ ЗВЕРНЕННЯ</small><h2>{editRow.workOrderLabel} · {editRow.vehicle.plateNumber || vehicleTitle(editRow)}</h2></div><button type="button" onClick={() => setEditRow(null)} disabled={editSubmitting}>×</button></header>
         <div className={styles.modalBody}>
           <div className={styles.modalSummary}><b>{editRow.description}</b><br/>{editRow.openClaim.reason}</div>
-          <label><span>Статус</span><select value={editStatus} onChange={(event) => setEditStatus(event.target.value as ClaimStatus)}>{CLAIM_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
+          <label><span>Статус</span><select value={editStatus} onChange={(event) => setEditStatus(event.target.value as ClaimStatus)}>{claimOptionsForEdit.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
           <label><span>Рішення / коментар сервісу</span><textarea value={editResolution} onChange={(event) => setEditResolution(event.target.value)} placeholder="Що перевірено, яке рішення прийнято, що зроблено..." /></label>
           {editError && <div className={styles.error}>{editError}</div>}
         </div>
