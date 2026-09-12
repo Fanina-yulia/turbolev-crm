@@ -14,6 +14,7 @@ import {
   type WorkflowActionCode,
   type WorkflowGateState,
   type WorkflowTransitionDecision,
+  type ServiceTypeCode,
 } from "@/src/domain/workflow";
 import { getPrisma } from "@/src/lib/prisma";
 import { toPrismaJson } from "@/src/lib/prisma-json";
@@ -180,7 +181,7 @@ export async function createDirectRepairWorkOrderTx(
     clientId: string;
     vehicleId: string;
     mechanicId?: string | null;
-    works: Array<{ name: string; quantity: number; total: number }>;
+    works: Array<{ name: string; quantity: number; total: number; serviceType?: ServiceTypeCode; catalogItemId?: string | null }>;
   },
 ) {
   if (!input.works.length) throw new Error("DIRECT_REPAIR_WORK_REQUIRED");
@@ -202,6 +203,8 @@ export async function createDirectRepairWorkOrderTx(
           plannedUnitPrice: new Prisma.Decimal(work.quantity > 0 ? work.total / work.quantity : 0).toDecimalPlaces(2),
           requiredForRepair: true,
           mechanicId: input.mechanicId || null,
+          catalogItemId: work.catalogItemId || null,
+          metadata: toPrismaJson({ serviceType: work.serviceType || "REPAIR" }),
           sortOrder: index + 1,
           approvedAt: new Date(),
         })),
