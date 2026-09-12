@@ -49,6 +49,32 @@ export const SERVICE_ROUTE_REQUIRED_STAGES: Readonly<Record<ServiceRouteKind, re
   ],
 };
 
+export const SERVICE_TYPE_CODES = ["DIAGNOSTIC", "REPAIR", "BOTH"] as const;
+
+export type ServiceTypeCode = (typeof SERVICE_TYPE_CODES)[number];
+
+export const SERVICE_TYPE_LABELS: Readonly<Record<ServiceTypeCode, string>> = {
+  DIAGNOSTIC: "Діагностика",
+  REPAIR: "Ремонт",
+  BOTH: "Діагностика + ремонт",
+};
+
+export function normalizeServiceType(value: unknown, fallback: ServiceTypeCode = "REPAIR"): ServiceTypeCode {
+  const normalized = String(value || "").trim().toUpperCase();
+  return (SERVICE_TYPE_CODES as readonly string[]).includes(normalized) ? normalized as ServiceTypeCode : fallback;
+}
+
+export function deriveServiceRouteFromServiceTypes(
+  types: readonly (ServiceTypeCode | null | undefined)[],
+  fallbackPurpose: "DIAGNOSTICS" | "REPAIR" = "REPAIR",
+) {
+  const normalized = types.filter((type): type is ServiceTypeCode => Boolean(type));
+  const hasDiagnostic = normalized.some((type) => type === "DIAGNOSTIC" || type === "BOTH");
+  const hasRepair = normalized.some((type) => type === "REPAIR" || type === "BOTH");
+  if (!normalized.length) return deriveServiceRoute({ hasDiagnostic: fallbackPurpose === "DIAGNOSTICS", hasRepair: fallbackPurpose === "REPAIR" });
+  return deriveServiceRoute({ hasDiagnostic, hasRepair });
+}
+
 export function deriveServiceRoute(input: {
   hasDiagnostic: boolean;
   hasRepair: boolean;
