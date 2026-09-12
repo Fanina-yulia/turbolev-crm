@@ -127,6 +127,7 @@ const RULES: Rule[] = [
   { match: exact("/api/dashboard"), resolve: () => internal(PERMISSIONS.OVERVIEW_READ, "LOCATION", "Operational station overview.") },
   { match: prefix("/api/vehicle-images/library"), resolve: () => internal(PERMISSIONS.SETTINGS_INTEGRATIONS, "ALL", "Vehicle image library review, paid regeneration and manual replacement.", true) },
   { match: (path) => /^\/api\/vehicles\/[^/]+\/issues$/.test(path), resolve: () => internal(PERMISSIONS.DIAGNOSTICS_READ, "LOCATION", "Vehicle health is derived from Diagnostic Card findings and is filtered to diagnostic locations visible to the caller.") },
+  { match: (path) => /^\/api\/vehicles\/[^/]+\/location$/.test(path), resolve: (method) => readWrite(method, PERMISSIONS.PRODUCTION_READ, PERMISSIONS.PRODUCTION_WRITE, "LOCATION", "Vehicle physical location is an operational, station-scoped read/write projection with immutable movement history.") },
   {
     match: (path) => prefix("/api/client-card")(path) || prefix("/api/clients")(path) || path === "/api/clients-vehicles" || prefix("/api/vehicles")(path) || prefix("/api/vehicle-images")(path),
     resolve: (method) => readWrite(method, PERMISSIONS.CLIENTS_READ, PERMISSIONS.CLIENTS_WRITE, "TEAM", "Client and vehicle intelligence/read models, including protected vehicle render proxies."),
