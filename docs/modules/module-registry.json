@@ -395,7 +395,8 @@
       "paths": [
         "app/service-advisor-*",
         "app/*service-manager*",
-        "app/api/cabinet/service*/**"
+        "app/api/cabinet/service*/**",
+        "src/services/station-manager-control-center.service.ts"
       ],
       "dependencies": [
         "clients-vehicles",
@@ -426,7 +427,8 @@
       "paths": [
         "app/mechanic-*",
         "app/api/cabinet/mechanic/**",
-        "src/services/mechanic-*"
+        "src/services/mechanic-*",
+        "app/api/cabinet/execution-issues/**"
       ],
       "dependencies": [
         "planner",
