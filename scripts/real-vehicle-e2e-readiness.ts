@@ -95,12 +95,8 @@ function stages(row: AuditRow, route: ServiceRouteKind): Stage[] {
 
   const appointmentOptional = !row.appointment_id;
   return [
-    ...(appointmentOptional || required.has("appointment")
-      ? [{ key: "appointment", passed: passed.appointment, optional: appointmentOptional }]
-      : []),
-    ...(appointmentOptional || required.has("arrival")
-      ? [{ key: "arrival", passed: passed.arrival, optional: appointmentOptional }]
-      : []),
+    { key: "appointment", passed: passed.appointment, optional: appointmentOptional },
+    { key: "arrival", passed: passed.arrival, optional: appointmentOptional },
     ...stageKeys
       .filter((key) => key !== "appointment" && key !== "arrival")
       .map((key) => ({ key, passed: passed[key], optional: (key === "parts_request" || key === "parts_received") && partsOptional })),
