@@ -13,6 +13,7 @@ import { ServiceAdvisorCabinetHome } from "./service-advisor-cabinet-home";
 import { PartsRoleCabinetHome } from "./parts-role-cabinet-home";
 import { SalesRoleCabinetHome } from "./leads-sales-role-cabinet-home";
 import { ExecutionIssuesAdminPanel } from "./execution-issues-admin-panel";
+import { RoleWorkQueuesPanel } from "./role-work-queues-panel";
 import { VehiclePlate } from "./vehicle-plate";
 import type { CrmSectionLabel } from "./crm-navigation";
 import styles from "./role-cabinet.module.css";
@@ -230,6 +231,10 @@ function StationManagerCabinet({ data, userName }: { data: StationManagerCabinet
   return <StationManagerLinkedCabinet data={data} userName={userName} />;
 }
 
+function withRoleQueues(content: React.ReactNode) {
+  return <><RoleWorkQueuesPanel />{content}</>;
+}
+
 export function RoleAwareOverview({ access }: { access: CrmAccessSnapshot | null }) {
   const normalizedRoles = useMemo(
     () => (access?.roles ?? []).map((role) => ({ ...role, code: normalizeRoleCode(role.code) })).filter((role) => role.code),
@@ -269,14 +274,14 @@ export function RoleAwareOverview({ access }: { access: CrmAccessSnapshot | null
     return () => window.removeEventListener("turbolev:data-changed", handler);
   }, [load]);
 
-  if (ownerRole && access?.provisioningState === "ACTIVE") return <OwnerControlCenter userName={access?.user?.name} />;
-  if (serviceAdvisorRole && access?.provisioningState === "ACTIVE") return <ServiceAdvisorCabinetHome userName={access?.user?.name} />;
-  if (partsRole && access?.provisioningState === "ACTIVE") return <PartsRoleCabinetHome role={partsRole} userName={access?.user?.name} />;
-  if (salesRole && access?.provisioningState === "ACTIVE" && access) return <SalesRoleCabinetHome role={salesRole} access={access} />;
-  if (!specialRole || access?.provisioningState !== "ACTIVE") return <StationOverview />;
+  if (ownerRole && access?.provisioningState === "ACTIVE") return withRoleQueues(<OwnerControlCenter userName={access?.user?.name} />);
+  if (serviceAdvisorRole && access?.provisioningState === "ACTIVE") return withRoleQueues(<ServiceAdvisorCabinetHome userName={access?.user?.name} />);
+  if (partsRole && access?.provisioningState === "ACTIVE") return withRoleQueues(<PartsRoleCabinetHome role={partsRole} userName={access?.user?.name} />);
+  if (salesRole && access?.provisioningState === "ACTIVE" && access) return withRoleQueues(<SalesRoleCabinetHome role={salesRole} access={access} />);
+  if (!specialRole || access?.provisioningState !== "ACTIVE") return access?.provisioningState === "ACTIVE" ? withRoleQueues(<StationOverview />) : <StationOverview />;
   if (loading && !data) return <Loading />;
   if (error && !data) return <div className={styles.state}><strong>Не вдалося відкрити кабінет</strong><span>{error}</span><button type="button" onClick={() => void load()}>Повторити</button></div>;
   if (!data) return <Loading />;
-  if (data.cabinet === "MECHANIC") return <MechanicCabinet userName={access?.user?.name} />;
-  return <StationManagerCabinet data={data} userName={access?.user?.name} />;
+  if (data.cabinet === "MECHANIC") return withRoleQueues(<MechanicCabinet userName={access?.user?.name} />);
+  return withRoleQueues(<StationManagerCabinet data={data} userName={access?.user?.name} />);
 }
