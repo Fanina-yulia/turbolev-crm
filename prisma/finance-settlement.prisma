@@ -1,0 +1,66 @@
+enum FinancialSettlementType {
+  PAYMENT
+  REFUND
+  ADVANCE_RECEIPT
+  ADVANCE_APPLY
+  ADVANCE_REFUND
+  SUPPLIER_PAYMENT
+}
+
+enum FinancialSettlementStatus {
+  POSTED
+  REVERSED
+}
+
+// Operation envelope for settlement allocations and reversals.
+// CashTransaction remains the cash fact; this model makes allocation,
+// idempotency and reversal history explicit for receivables/payables.
+model FinancialSettlement {
+  id                String                    @id @default(cuid())
+  type              FinancialSettlementType
+  status            FinancialSettlementStatus @default(POSTED)
+  amount            Decimal                   @db.Decimal(14, 2)
+  currency          String                    @default("UAH") @db.VarChar(3)
+  occurredAt        DateTime                  @default(now())
+  moneyAccountId    String?                   @db.VarChar(96)
+  clientId          String?                   @db.VarChar(64)
+  supplierId        String?                   @db.VarChar(64)
+  workOrderId       String?                   @db.VarChar(64)
+  locationId        String?                   @db.VarChar(64)
+  counterpartyName  String?                   @db.VarChar(240)
+  cashTransactionId String?                   @unique @db.VarChar(96)
+  advanceId         String?                   @db.VarChar(96)
+  sourceEntity      String                    @db.VarChar(48)
+  sourceEntityId    String                    @db.VarChar(128)
+  reversalOfId      String?                   @unique @db.VarChar(96)
+  note              String?                   @db.Text
+  metadata          Json?
+  createdById       String?                   @db.VarChar(64)
+  createdAt         DateTime                  @default(now())
+  updatedAt         DateTime                  @updatedAt
+
+  allocations FinancialSettlementAllocation[]
+
+  @@unique([sourceEntity, sourceEntityId])
+  @@index([type, status, occurredAt])
+  @@index([locationId, occurredAt])
+  @@index([clientId, occurredAt])
+  @@index([supplierId, occurredAt])
+  @@index([workOrderId, occurredAt])
+  @@index([advanceId, occurredAt])
+  @@index([cashTransactionId])
+  @@index([reversalOfId])
+}
+
+model FinancialSettlementAllocation {
+  id           String   @id @default(cuid())
+  settlementId String
+  obligationId String   @db.VarChar(96)
+  amount       Decimal  @db.Decimal(14, 2)
+  createdAt    DateTime @default(now())
+
+  settlement FinancialSettlement @relation(fields: [settlementId], references: [id], onDelete: Cascade)
+
+  @@unique([settlementId, obligationId])
+  @@index([obligationId, createdAt])
+}

@@ -555,7 +555,12 @@
         "src/services/financial-*",
         "src/services/customer-advance*",
         "src/services/*payment*",
-        "src/services/*payroll*"
+        "src/services/*payroll*",
+        "prisma/finance-settlement.prisma",
+        "src/services/finance-settlement.service.ts",
+        "app/api/finance/settlements/**",
+        "app/api/finance/payables/**",
+        "app/api/finance/advances/**"
       ],
       "dependencies": [
         "work-orders",

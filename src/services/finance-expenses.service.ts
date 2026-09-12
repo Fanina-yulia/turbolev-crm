@@ -238,6 +238,43 @@ async function validateAccount(tx: Prisma.TransactionClient, accountId: string, 
   return account;
 }
 
+
+
+async function createPayableSettlementForCash(tx: Prisma.TransactionClient, input: { cash: any; obligation: any; actorId: string | null; sourceEntityId: string; note: string | null }) {
+  const { cash, obligation, actorId, sourceEntityId, note } = input;
+  if (!cash || !obligation) return null;
+  const existing = await tx.financialSettlement.findFirst({
+    where: { sourceEntity: EXPENSE_PAYMENT_SOURCE, sourceEntityId },
+    include: { allocations: true },
+  });
+  if (existing) return existing;
+  const settlement = await tx.financialSettlement.create({
+    data: {
+      type: "SUPPLIER_PAYMENT",
+      status: "POSTED",
+      amount: cash.amount,
+      currency: cash.currency,
+      occurredAt: cash.occurredAt,
+      moneyAccountId: cash.fromAccountId,
+      supplierId: cash.supplierId,
+      workOrderId: cash.workOrderId,
+      clientId: cash.clientId,
+      locationId: cash.locationId,
+      counterpartyName: obligation.counterpartyName,
+      cashTransactionId: cash.id,
+      sourceEntity: EXPENSE_PAYMENT_SOURCE,
+      sourceEntityId,
+      note,
+      metadata: jsonSafe({ obligationId: obligation.id, cashTransactionId: cash.id }),
+      createdById: actorId,
+    },
+  });
+  await tx.financialSettlementAllocation.create({
+    data: { settlementId: settlement.id, obligationId: obligation.id, amount: cash.amount },
+  });
+  return settlement;
+}
+
 async function createExpenseObligation(
   tx: Prisma.TransactionClient,
   expense: { id: string; amount: Prisma.Decimal; paidAmount: Prisma.Decimal; currency: string; dueAt: Date | null; categoryId: string | null; costCenterId: string | null; supplierId: string | null; locationId: string | null; counterpartyName: string | null; workOrderId: string | null; description: string | null },
@@ -467,6 +504,16 @@ export async function postExpense(id: string, input: ExpensePostingInput, actorI
         })
       : null;
 
+    const settlement = cash && obligation
+      ? await createPayableSettlementForCash(tx, {
+          cash,
+          obligation,
+          actorId,
+          sourceEntityId: current.id + ":initial",
+          note: current.description || category.name,
+        })
+      : null;
+
     const finalPaymentStatus = paymentStatusFor(current.amount, paidAmount, dueAt, now);
     const expense = await tx.expenseDocument.update({
       where: { id },
@@ -492,7 +539,7 @@ export async function postExpense(id: string, input: ExpensePostingInput, actorI
         after: jsonSafe({ status: expense.status, paymentStatus: expense.paymentStatus, amount: expense.amount.toString(), paidAmount: expense.paidAmount.toString(), eventId: event?.id ?? null, cashTransactionId: cash?.id ?? null, obligationId: obligation?.id ?? null }),
       },
     });
-    return { expense, event, cash, obligation, reused: false };
+    return { expense, event, cash, obligation, settlement, reused: false };
   });
 }
 
@@ -541,13 +588,20 @@ export async function payExpense(id: string, input: ExpensePaymentInput, actorId
         postedAt: occurredAt,
       },
     });
+    const settlement = await createPayableSettlementForCash(tx, {
+      cash: payment,
+      obligation,
+      actorId,
+      sourceEntityId,
+      note: "Оплата витрати " + expense.number,
+    });
     const settledAmount = new Prisma.Decimal(obligation.settledAmount).plus(amount).toDecimalPlaces(2);
     const fullyPaid = settledAmount.greaterThanOrEqualTo(obligation.amount);
     const updatedObligation = await tx.financialObligation.update({ where: { id: obligation.id }, data: { settledAmount, status: fullyPaid ? "PAID" : "PARTIALLY_PAID", settledAt: fullyPaid ? occurredAt : null } });
     const nextPaid = new Prisma.Decimal(expense.paidAmount).plus(amount).toDecimalPlaces(2);
     const updatedExpense = await tx.expenseDocument.update({ where: { id }, data: { paidAmount: nextPaid, paymentStatus: fullyPaid ? "PAID" : "PARTIALLY_PAID", paymentDate: occurredAt, moneyAccountId: account.id } });
     await tx.auditEvent.create({ data: { actorId, actorName, entityType: "ExpenseDocument", entityId: id, action: "EXPENSE_PAYMENT_POSTED", before: jsonSafe({ paidAmount: expense.paidAmount.toString(), obligationStatus: obligation.status }), after: jsonSafe({ paidAmount: updatedExpense.paidAmount.toString(), obligationStatus: updatedObligation.status, paymentId: payment.id, idempotencyKey }) } });
-    return { payment, obligation: updatedObligation, expense: updatedExpense, reused: false };
+    return { payment, settlement, obligation: updatedObligation, expense: updatedExpense, reused: false };
   });
 }
 
