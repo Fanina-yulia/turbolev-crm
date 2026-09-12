@@ -462,7 +462,7 @@ export async function receiveCustomerAdvance(input: FinancialSettlementInput, ac
           postedAt: receivedAt,
         },
       });
-    } else if (new Prisma.Decimal(cash.amount).notEqualTo(amount)) {
+    } else if (!new Prisma.Decimal(cash.amount).equals(amount)) {
       throw new FinanceSettlementError("ADVANCE_AMOUNT_CONFLICT", "Існуючий аванс має іншу суму.", 409);
     }
 
