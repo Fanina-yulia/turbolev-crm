@@ -67,6 +67,11 @@ export async function getWorkOrderCycleState(workOrderId: string) {
     estimateApprovalFingerprint: approval.estimateFingerprint,
     estimateIsCurrent: approval.isCurrent,
     estimateApproved: approval.approved,
+    mixedApprovalPending: approval.mixedPending,
+    mixedApprovalMode: approval.selectionMode,
+    mixedApprovalDecisionCount: approval.decisionCount,
+    mixedApprovalApprovedCount: approval.approvedDecisionCount,
+    mixedApprovalRejectedCount: approval.rejectedDecisionCount,
     gates: commercialGates,
   };
   const gates: WorkflowGateState = {

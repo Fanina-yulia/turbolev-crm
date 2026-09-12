@@ -87,6 +87,7 @@ export type ClientVehiclePortalDetail = {
     rejectedAt: string | null;
     selectionSubmitted: boolean;
     selectionMode: "ALL_APPROVED" | "ALL_REJECTED" | "MIXED" | null;
+    managerReviewRequired: boolean;
     lines: ClientVehicleEstimateLine[];
   };
   findings: Array<{
@@ -495,6 +496,7 @@ export async function getClientVehiclePortalDetail(clientId: string, vehicleId: 
       rejectedAt: latestEstimate.rejectedAt?.toISOString() || null,
       selectionSubmitted: storedDecisions.length > 0,
       selectionMode,
+      managerReviewRequired: selectionMode === "MIXED",
       lines: parsedLines.map(({ snapshot: _snapshot, ...line }) => ({ ...line, decision: decisionMap.get(line.id) || null })),
     } : null,
     findings: findings.map((finding) => ({
