@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { navigateCrm } from "./crm-route";
+import { WARRANTY_CLAIM_STATUS_CODES, WARRANTY_CLAIM_STATUS_LABELS, WARRANTY_CLAIM_TRANSITIONS, type WarrantyClaimStatusCode } from "@/src/domain/warranty/contract";
+import { navigateCrm, readCrmRoute } from "./crm-route";
 import styles from "./warranty-center.module.css";
 
-type ClaimStatus = "OPEN" | "REVIEW" | "APPROVED" | "REJECTED" | "CLOSED";
+type ClaimStatus = WarrantyClaimStatusCode;
 type WarrantyStatus = "PENDING_START" | "ACTIVE" | "EXPIRING" | "EXPIRED";
 type WarrantyClaim = {
   id: string;
@@ -58,20 +59,11 @@ const TABS: Array<{ id: TabId; label: string }> = [
   { id: "claims", label: "Звернення" },
   { id: "expired", label: "Завершені" },
 ];
-const CLAIM_LABELS: Record<ClaimStatus, string> = {
-  OPEN: "Нове",
-  REVIEW: "На перевірці",
-  APPROVED: "Погоджено",
-  REJECTED: "Відхилено",
-  CLOSED: "Закрито",
-};
-const CLAIM_OPTIONS: Array<{ value: ClaimStatus; label: string }> = [
-  { value: "OPEN", label: "Нове" },
-  { value: "REVIEW", label: "На перевірці" },
-  { value: "APPROVED", label: "Погоджено" },
-  { value: "REJECTED", label: "Відхилено" },
-  { value: "CLOSED", label: "Закрито" },
-];
+const CLAIM_LABELS = WARRANTY_CLAIM_STATUS_LABELS;
+const CLAIM_OPTIONS: Array<{ value: ClaimStatus; label: string }> = WARRANTY_CLAIM_STATUS_CODES.map((value) => ({
+  value,
+  label: WARRANTY_CLAIM_STATUS_LABELS[value],
+}));
 
 function dateText(value: string | null) {
   if (!value) return "—";
@@ -110,7 +102,8 @@ function warrantyClass(row: WarrantyRow) {
 
 export function WarrantyCenter() {
   const [tab, setTab] = useState<TabId>("active");
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState(() => readCrmRoute().filter || "");
+  const [focusedWorkOrderId] = useState(() => readCrmRoute().workOrderId || "");
   const [data, setData] = useState<WarrantyResponse>({ ok: true, rows: [], counts: { active: 0, expiring: 0, claims: 0, expired: 0 }, canWrite: false });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -134,6 +127,7 @@ export function WarrantyCenter() {
       try {
         const params = new URLSearchParams();
         if (query.trim()) params.set("q", query.trim());
+        if (focusedWorkOrderId) params.set("workOrderId", focusedWorkOrderId);
         const response = await fetch(`/api/warranties${params.size ? `?${params}` : ""}`, { cache: "no-store", signal: controller.signal });
         const payload = await response.json() as WarrantyResponse;
         if (!response.ok || !payload.ok) throw new Error(payload.error || "Не вдалося завантажити гарантії");
@@ -145,11 +139,17 @@ export function WarrantyCenter() {
       }
     }, query.trim() ? 220 : 0);
     return () => { controller.abort(); window.clearTimeout(timer); };
-  }, [query, refreshKey]);
+  }, [focusedWorkOrderId, query, refreshKey]);
 
   const rows = data.rows || [];
   const counts = data.counts || { active: 0, expiring: 0, claims: 0, expired: 0 };
   const canWrite = Boolean(data.canWrite);
+  const claimOptionsForEdit = useMemo(() => {
+    const current = editRow?.openClaim?.status;
+    if (!current) return CLAIM_OPTIONS;
+    const allowed = new Set<ClaimStatus>([current, ...WARRANTY_CLAIM_TRANSITIONS[current]]);
+    return CLAIM_OPTIONS.filter((option) => allowed.has(option.value));
+  }, [editRow]);
   const visible = useMemo(() => rows.filter((row) => {
     if (tab === "active") return row.warrantyStatus === "ACTIVE" || row.warrantyStatus === "PENDING_START";
     if (tab === "expiring") return row.warrantyStatus === "EXPIRING";
@@ -240,7 +240,7 @@ export function WarrantyCenter() {
     </section>
 
     <div className={styles.toolbar}>
-      <label className={styles.search}><span>⌕</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Клієнт, телефон, номер авто, VIN, КП або робота..." />{query && <button type="button" onClick={() => setQuery("")}>×</button>}</label>
+      <label className={styles.search}><span>⌕</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Клієнт, телефон, номер авто, VIN, наряд або робота..." />{query && <button type="button" onClick={() => setQuery("")}>×</button>}</label>
     </div>
 
     <nav className={styles.tabs} aria-label="Гарантійні черги">
@@ -283,7 +283,7 @@ export function WarrantyCenter() {
         </div>}
 
         <div className={styles.actions}>
-          <button type="button" onClick={() => navigateCrm("Комерційна пропозиція", { workOrderId: row.workOrderId, workOrderTab: "overview" })}>Відкрити КП</button>
+          <button type="button" onClick={() => navigateCrm("Комерційна пропозиція", { workOrderId: row.workOrderId, workOrderTab: "overview" })}>Відкрити наряд</button>
           {canWrite && row.openClaim && <button className={styles.primary} type="button" onClick={() => openClaimEdit(row)}>Опрацювати звернення</button>}
           {canWrite && !row.openClaim && <button className={styles.primary} type="button" onClick={() => openNewClaim(row)}>Зареєструвати звернення</button>}
         </div>
@@ -309,7 +309,7 @@ export function WarrantyCenter() {
         <header><div><small>ОПРАЦЮВАННЯ ЗВЕРНЕННЯ</small><h2>{editRow.workOrderLabel} · {editRow.vehicle.plateNumber || vehicleTitle(editRow)}</h2></div><button type="button" onClick={() => setEditRow(null)} disabled={editSubmitting}>×</button></header>
         <div className={styles.modalBody}>
           <div className={styles.modalSummary}><b>{editRow.description}</b><br/>{editRow.openClaim.reason}</div>
-          <label><span>Статус</span><select value={editStatus} onChange={(event) => setEditStatus(event.target.value as ClaimStatus)}>{CLAIM_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
+          <label><span>Статус</span><select value={editStatus} onChange={(event) => setEditStatus(event.target.value as ClaimStatus)}>{claimOptionsForEdit.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
           <label><span>Рішення / коментар сервісу</span><textarea value={editResolution} onChange={(event) => setEditResolution(event.target.value)} placeholder="Що перевірено, яке рішення прийнято, що зроблено..." /></label>
           {editError && <div className={styles.error}>{editError}</div>}
         </div>

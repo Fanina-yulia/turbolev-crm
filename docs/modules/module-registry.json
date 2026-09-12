@@ -349,6 +349,38 @@
       ]
     },
     {
+      "id": "warranties",
+      "title": "Warranties / After-sales",
+      "description": "Warranty eligibility, customer claims, service decisions and post-repair after-sales queue.",
+      "keywords": [
+        "warranty",
+        "guarantee",
+        "claim",
+        "after-sales",
+        "гарантія",
+        "гарантійне звернення"
+      ],
+      "paths": [
+        "app/warranty-*",
+        "app/api/warranties/**",
+        "src/domain/warranty/**",
+        "prisma/warranty.prisma",
+        "scripts/warranty-*"
+      ],
+      "dependencies": [
+        "work-orders",
+        "clients-vehicles",
+        "service-manager",
+        "finance"
+      ],
+      "smokeChecks": [
+        "warranty-center-load",
+        "warranty-eligibility",
+        "claim-status-transition",
+        "warranty-scope-access"
+      ]
+    },
+    {
       "id": "service-manager",
       "title": "Service Manager Cabinet",
       "description": "Service-advisor workspace for customer communication, vehicle context, estimates, approvals and repair supervision.",

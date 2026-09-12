@@ -42,7 +42,7 @@ function canonicalizeLegacy(detail: LegacyNavigateDetail): CanonicalTarget | nul
     if (detail === "Звернення") return { section: "Комунікації", params: {} };
     if (detail === "Виробництво") return { section: "Планувальник", params: { scope: "resources" } };
     if (detail === "Контроль якості") return { section: "Комерційна пропозиція", params: { status: "WAITING_QC", workOrderTab: "qc" } };
-    if (detail === "Гарантії") return { section: "Комерційна пропозиція", params: { workOrderTab: "history" } };
+    if (detail === "Гарантії") return { section: "Гарантії", params: {} };
     return null;
   }
 
@@ -80,7 +80,7 @@ function canonicalizeLegacy(detail: LegacyNavigateDetail): CanonicalTarget | nul
     return { section: "Комерційна пропозиція", params: { status: "WAITING_QC", workOrderTab: "qc" } };
   }
   if (section === "Гарантії") {
-    return { section: "Комерційна пропозиція", params: ENTITY_ID.test(filter) ? { workOrderId: filter, workOrderTab: "history" } : { workOrderTab: "history" } };
+    return { section: "Гарантії", params: ENTITY_ID.test(filter) ? { workOrderId: filter } : {} };
   }
   if (section === "Виробництво") {
     if (["posts", "mechanics", "assigned"].includes(filter)) return { section: "Планувальник", params: { scope: "resources" } };

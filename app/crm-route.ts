@@ -22,6 +22,7 @@ export type CrmRouteParams = {
   workOrderId?: string;
   workOrderNumber?: string;
   workOrderTab?: string;
+  warrantyClaimId?: string;
   partsRequestId?: string;
   supplierOrderId?: string;
 
@@ -60,6 +61,7 @@ export const CRM_ROUTE_KEYS: Array<keyof CrmRouteParams> = [
   "workOrderId",
   "workOrderNumber",
   "workOrderTab",
+  "warrantyClaimId",
   "partsRequestId",
   "supplierOrderId",
   "plate",
@@ -167,7 +169,7 @@ function canonicalNavigation(section: CrmSectionLabel, params: CrmRouteParams): 
   }
 
   if (section === "Гарантії") {
-    return { section: "Комерційна пропозиція", params: { ...params, workOrderTab: params.workOrderTab || "history" } };
+    return { section, params };
   }
 
   return { section, params };

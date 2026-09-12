@@ -58,6 +58,22 @@ assertIncludes("app/crm-route.ts", [
   'workOrderTab = context.workOrderTab || "qc"',
 ]);
 
+assertIncludes("app/crm-navigation.ts", [
+  '{ label: "Гарантії", slug: "warranties" },',
+  'navItems("diagnostics", "parts", "work-orders", "warranties")',
+  'if (value === "warranties") return "Гарантії";',
+  'if (value === "Гарантії") return "warranties";',
+]);
+assertNotIncludes("app/crm-navigation.ts", [
+  '"Гарантії": "Наряди та ремонт"',
+]);
+
+assertIncludes("app/crm-route.ts", [
+  'warrantyClaimId?: string',
+  'if (section === "Гарантії")',
+  'return { section, params };',
+]);
+
 assertIncludes("app/planner-workspace.tsx", [
   'scope === "resources"',
   "<ProductionBoard/>",
@@ -184,6 +200,8 @@ assertIncludes("app/business-flow-route-bridge.tsx", [
   'status: "WAITING_APPROVAL", workOrderTab: "estimate"',
   'section === "Підбір запчастин" && filter === "waiting-parts"',
   'section: "Закупівлі та склад"',
+  'if (detail === "Гарантії") return { section: "Гарантії", params: {} };',
+  'return { section: "Гарантії", params: ENTITY_ID.test(filter) ? { workOrderId: filter } : {} };',
 ]);
 
 assertIncludes("app/client-card-drawer-core.tsx", [

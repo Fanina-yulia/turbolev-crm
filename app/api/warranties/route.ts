@@ -4,6 +4,7 @@ import { formatWorkOrderNumber, parseWorkOrderNumber } from "@/src/domain/work-o
 import { getPrisma } from "@/src/lib/prisma";
 import { getAccessContext, hasPermission, type AccessContext } from "@/src/security/access-context";
 import { PERMISSIONS, type AccessScopeCode } from "@/src/security/permissions";
+import { isWarrantyClaimStatus, isWarrantyClaimTransitionAllowed } from "@/src/domain/warranty/contract";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -14,7 +15,6 @@ const OPEN_CLAIM_STATUSES: WarrantyClaimStatus[] = [
   WarrantyClaimStatus.REVIEW,
   WarrantyClaimStatus.APPROVED,
 ];
-const CLAIM_STATUSES = new Set(Object.values(WarrantyClaimStatus));
 const DAY_MS = 86_400_000;
 
 function positiveInteger(value: unknown) {
@@ -106,6 +106,7 @@ export async function GET(request: NextRequest) {
   const { context } = access;
   const prisma = getPrisma();
   const q = (request.nextUrl.searchParams.get("q") || "").trim().slice(0, 120);
+  const requestedWorkOrderId = (request.nextUrl.searchParams.get("workOrderId") || "").trim().slice(0, 120);
 
   try {
     const allowedWorkOrderIds = await scopedWorkOrderIds(context);
@@ -127,6 +128,7 @@ export async function GET(request: NextRequest) {
         AND: [
           { OR: [{ warrantyKm: { gt: 0 } }, { warrantyDays: { gt: 0 } }] },
           ...(allowedWorkOrderIds ? [{ workOrderId: { in: allowedWorkOrderIds } }] : []),
+          ...(requestedWorkOrderId ? [{ workOrderId: requestedWorkOrderId }] : []),
           ...(q ? [{ OR: [
             ...(exactWorkOrderId ? [{ workOrderId: exactWorkOrderId }] : []),
             { description: { contains: q, mode: "insensitive" as const } },
@@ -218,7 +220,7 @@ export async function GET(request: NextRequest) {
     });
 
     const counts = {
-      active: rows.filter((row) => row.warrantyStatus === "ACTIVE" || row.warrantyStatus === "EXPIRING").length,
+      active: rows.filter((row) => row.warrantyStatus === "ACTIVE" || row.warrantyStatus === "EXPIRING" || row.warrantyStatus === "PENDING_START").length,
       expiring: rows.filter((row) => row.warrantyStatus === "EXPIRING").length,
       claims: rows.filter((row) => Boolean(row.openClaim)).length,
       expired: rows.filter((row) => row.warrantyStatus === "EXPIRED").length,
@@ -289,19 +291,22 @@ export async function PATCH(request: NextRequest) {
   const prisma = getPrisma();
   const body = await request.json().catch(() => ({}));
   const claimId = typeof body.claimId === "string" ? body.claimId.trim() : "";
-  const status = typeof body.status === "string" ? body.status.trim() as WarrantyClaimStatus : null;
+  const statusValue = typeof body.status === "string" ? body.status.trim() : "";
   const resolution = typeof body.resolution === "string" ? body.resolution.trim().slice(0, 4000) : null;
   if (!claimId) return NextResponse.json({ ok: false, error: "Не вибрано звернення." }, { status: 400 });
-  if (!status || !CLAIM_STATUSES.has(status)) return NextResponse.json({ ok: false, error: "Некоректний статус звернення." }, { status: 400 });
+  if (!isWarrantyClaimStatus(statusValue)) return NextResponse.json({ ok: false, error: "Некоректний статус звернення." }, { status: 400 });
+  const status = statusValue as WarrantyClaimStatus;
 
   try {
     const allowedWorkOrderIds = await scopedWorkOrderIds(context);
     const claim = await prisma.warrantyClaim.findUnique({
       where: { id: claimId },
-      select: { id: true, workOrderLine: { select: { workOrderId: true } } },
+      select: { id: true, status: true, workOrderLine: { select: { workOrderId: true } } },
     });
     if (!claim) return NextResponse.json({ ok: false, error: "Гарантійне звернення не знайдено." }, { status: 404 });
     if (allowedWorkOrderIds && !allowedWorkOrderIds.includes(claim.workOrderLine.workOrderId)) return NextResponse.json({ ok: false, error: "Немає доступу до цього звернення." }, { status: 403 });
+    if (!isWarrantyClaimTransitionAllowed(String(claim.status), status)) return NextResponse.json({ ok: false, error: "Такий перехід статусу гарантійного звернення недоступний." }, { status: 409 });
+    if ((status === WarrantyClaimStatus.REJECTED || status === WarrantyClaimStatus.CLOSED) && !resolution) return NextResponse.json({ ok: false, error: "Для відхилення або закриття додайте рішення сервісу." }, { status: 400 });
 
     const terminal = status === WarrantyClaimStatus.CLOSED || status === WarrantyClaimStatus.REJECTED;
     const updated = await prisma.warrantyClaim.update({
