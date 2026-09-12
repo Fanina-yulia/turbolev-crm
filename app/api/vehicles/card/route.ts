@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getPrisma } from "@/src/lib/prisma";
+import { VEHICLE_LOCATION_LABELS, type VehicleLocationCode } from "@/src/domain/workflow";
+import { getVehicleLocation } from "@/src/services/vehicle-location.service";
 import { resolveVehicleColorByPlate } from "@/src/services/vehicle-registry-color.service";
 import { authorize } from "@/src/security/authorize";
 import { PERMISSIONS } from "@/src/security/permissions";
@@ -72,10 +74,17 @@ export async function GET(request: NextRequest) {
     const color = compact || vehicle.exteriorColorConfirmed
       ? null
       : await resolveVehicleColorByPlate(vehicle.plateNumber, vehicle.id, vehicle.vin).catch(() => null);
+    const currentVehicleLocation = await getVehicleLocation(vehicle.id);
     const responseVehicle = {
       ...vehicle,
       diagnosticRequests: "diagnosticRequests" in vehicle ? vehicle.diagnosticRequests : [],
       workOrders: "workOrders" in vehicle ? vehicle.workOrders : [],
+      vehicleLocation: currentVehicleLocation
+        ? {
+            ...currentVehicleLocation,
+            label: VEHICLE_LOCATION_LABELS[currentVehicleLocation.code as VehicleLocationCode] || currentVehicleLocation.code,
+          }
+        : null,
     };
     return NextResponse.json({ ok: true, vehicle: color ? { ...responseVehicle, ...color } : responseVehicle }, { headers: { "Cache-Control": compact ? "private, max-age=10" : "no-store" } });
   } catch (error) {
