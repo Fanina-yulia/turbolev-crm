@@ -10,6 +10,7 @@ on:
       - "src/security/integration-api-request-guard.ts"
       - "src/lib/contracts/integration/v1/**"
       - "scripts/integration-api-v1-lead-contract-smoke.ts"
+      - "scripts/integration-api-v1-attribution-smoke.ts"
       - ".github/workflows/integration-public-lead-intake.yml"
   push:
     branches: [main]
@@ -21,6 +22,7 @@ on:
       - "src/security/integration-api-request-guard.ts"
       - "src/lib/contracts/integration/v1/**"
       - "scripts/integration-api-v1-lead-contract-smoke.ts"
+      - "scripts/integration-api-v1-attribution-smoke.ts"
       - ".github/workflows/integration-public-lead-intake.yml"
 
 permissions:
@@ -45,3 +47,5 @@ jobs:
         run: npx tsc --noEmit
       - name: Public lead contract smoke
         run: npx --no-install tsx scripts/integration-api-v1-lead-contract-smoke.ts
+      - name: Attribution snapshot contract smoke
+        run: npx --no-install tsx scripts/integration-api-v1-attribution-smoke.ts
