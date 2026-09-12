@@ -106,6 +106,7 @@ export async function GET(request: NextRequest) {
   const { context } = access;
   const prisma = getPrisma();
   const q = (request.nextUrl.searchParams.get("q") || "").trim().slice(0, 120);
+  const requestedWorkOrderId = (request.nextUrl.searchParams.get("workOrderId") || "").trim().slice(0, 120);
 
   try {
     const allowedWorkOrderIds = await scopedWorkOrderIds(context);
@@ -127,6 +128,7 @@ export async function GET(request: NextRequest) {
         AND: [
           { OR: [{ warrantyKm: { gt: 0 } }, { warrantyDays: { gt: 0 } }] },
           ...(allowedWorkOrderIds ? [{ workOrderId: { in: allowedWorkOrderIds } }] : []),
+          ...(requestedWorkOrderId ? [{ workOrderId: requestedWorkOrderId }] : []),
           ...(q ? [{ OR: [
             ...(exactWorkOrderId ? [{ workOrderId: exactWorkOrderId }] : []),
             { description: { contains: q, mode: "insensitive" as const } },
@@ -218,7 +220,7 @@ export async function GET(request: NextRequest) {
     });
 
     const counts = {
-      active: rows.filter((row) => row.warrantyStatus === "ACTIVE" || row.warrantyStatus === "EXPIRING").length,
+      active: rows.filter((row) => row.warrantyStatus === "ACTIVE" || row.warrantyStatus === "EXPIRING" || row.warrantyStatus === "PENDING_START").length,
       expiring: rows.filter((row) => row.warrantyStatus === "EXPIRING").length,
       claims: rows.filter((row) => Boolean(row.openClaim)).length,
       expired: rows.filter((row) => row.warrantyStatus === "EXPIRED").length,
