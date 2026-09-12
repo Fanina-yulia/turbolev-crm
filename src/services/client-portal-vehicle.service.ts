@@ -87,6 +87,7 @@ export type ClientVehiclePortalDetail = {
     rejectedAt: string | null;
     selectionSubmitted: boolean;
     selectionMode: "ALL_APPROVED" | "ALL_REJECTED" | "MIXED" | null;
+    managerReviewRequired: boolean;
     lines: ClientVehicleEstimateLine[];
   };
   findings: Array<{
