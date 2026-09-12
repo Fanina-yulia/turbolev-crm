@@ -4,6 +4,7 @@ import { authorize } from "@/src/security/authorize";
 import { PERMISSIONS } from "@/src/security/permissions";
 import { getPrisma } from "@/src/lib/prisma";
 import { toPrismaJson } from "@/src/lib/prisma-json";
+import { transitionOperationalBlockersForSource } from "@/src/services/operational-blockers.service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -141,7 +142,23 @@ export async function PATCH(request: Request) {
       await tx.auditEvent.create({ data: { actorId: access.context.user!.id, actorName: access.context.user!.employeeName || access.context.user!.name, entityType: "WorkExecutionIssue", entityId: issueId, action: "ADMIN_RESOLVED_EXECUTION_ISSUE", before: toPrismaJson(issue), after: toPrismaJson(updatedIssue), metadata: toPrismaJson({ resolutionType, mechanicId: nextMechanicId, plannedStartAt: requestedStart || null, plannedEndAt: requestedEnd || null, postId: requestedPostId }) } });
       return updatedIssue;
     });
-    return NextResponse.json({ ok: true, issue: result });
+    let blockerSyncWarning: string | null = null;
+    if (resolutionType !== "REQUEST_CLARIFICATION") {
+      try {
+        await transitionOperationalBlockersForSource({
+          sourceType: "WORK_ORDER_LINE",
+          sourceId: source.assignmentId,
+          action: resolutionType === "CANCEL" ? "CANCEL" : "RESOLVE",
+          actorId: access.context.user!.id,
+          actorName: access.context.user!.employeeName || access.context.user!.name || "CRM",
+          resolutionComment,
+        });
+      } catch (blockerError) {
+        blockerSyncWarning = blockerError instanceof Error ? blockerError.message : "Не вдалося синхронізувати блокер.";
+        console.error("Operational blocker resolution sync failed", { assignmentId: source.assignmentId, blockerError });
+      }
+    }
+    return NextResponse.json({ ok: true, issue: result, blockerSyncWarning });
   } catch (error) {
     const code = error instanceof Error ? error.message : "UNKNOWN";
     if (code === "ISSUE_NOT_ACTIVE") return fail("Звернення вже закрите.", code, 409);
