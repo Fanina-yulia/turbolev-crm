@@ -22,7 +22,7 @@ export const MASTER_SERVICE_STAGES: ReadonlyArray<{ code: WorkflowStage; label: 
   { code: "CLOSED", label: "Закрито", order: 990 },
 ];
 
-export const WORKFLOW_ROLE_LABELS: Record<WorkflowRole, string> = ROLE_LABELS;
+export const WORKFLOW_ROLE_LABELS: Record<WorkflowRole, string> = { ...ROLE_LABELS };
 
 /** Roles that may be selected in current workflow responsibility settings. */
 export const OPERATIONAL_WORKFLOW_ROLE_LABELS = {
