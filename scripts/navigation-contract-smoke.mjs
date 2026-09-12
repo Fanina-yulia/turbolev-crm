@@ -127,9 +127,9 @@ assertIncludes("app/work-order-commercial-panel.tsx", [
 ]);
 
 assertIncludes("app/work-orders.tsx", [
-  'if (item.to === "CLOSED") return "Видати авто та закрити КП";',
-  'transition.to === "CLOSED" && !window.confirm("Підтвердити видачу авто клієнту та закриття комерційної пропозиції?")',
-  "Авто видано клієнту. Комерційну пропозицію закрито.",
+  'if (item.to === "CLOSED") return "Видати авто та закрити наряд";',
+  'transition.to === "CLOSED" && !window.confirm("Підтвердити видачу авто клієнту та закриття наряду?")',
+  "Авто видано клієнту. Наряд закрито.",
 ]);
 
 assertIncludes("app/production-board.tsx", [
