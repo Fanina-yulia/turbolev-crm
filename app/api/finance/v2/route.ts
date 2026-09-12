@@ -25,7 +25,8 @@ import {
   reverseExpense,
 } from "@/src/services/finance-expense-governance.service";
 import { listApprovalRules, saveApprovalRule, setApprovalRuleActive } from "@/src/services/financial-approval-rules.service";
-import { applyCustomerAdvance, listCustomerAdvances, refundCustomerAdvance } from "@/src/services/customer-advance.service";
+import { listCustomerAdvances } from "@/src/services/customer-advance.service";
+import { applyCustomerAdvanceSettlement, receiveCustomerAdvance, refundCustomerAdvanceSettlement } from "@/src/services/finance-settlement.service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -208,19 +209,19 @@ export async function POST(request: NextRequest) {
         result = await addExpenseAttachment(body, identity);
         break;
       case "CREATE_CUSTOMER_ADVANCE":
-        result = await createCustomerAdvance({ ...body, locationId: requestedLocationId }, identity);
+        result = await receiveCustomerAdvance({ ...body, locationId: requestedLocationId } as any, identity);
         break;
       case "APPLY_CUSTOMER_ADVANCE": {
         const advanceId = text(body.advanceId, 96);
         const workOrderId = text(body.workOrderId, 64);
         if (!advanceId || !workOrderId) throw new FinancialCenterV2Error("ADVANCE_FIELDS_REQUIRED", "Вкажіть аванс і замовлення.");
-        result = await applyCustomerAdvance(advanceId, workOrderId, body.amount, identity);
+        result = await applyCustomerAdvanceSettlement(advanceId, workOrderId, body.amount, body.idempotencyKey, identity);
         break;
       }
       case "REFUND_CUSTOMER_ADVANCE": {
         const advanceId = text(body.advanceId, 96);
         if (!advanceId) throw new FinancialCenterV2Error("ADVANCE_ID_REQUIRED", "Вкажіть аванс.");
-        result = await refundCustomerAdvance(advanceId, identity);
+        result = await refundCustomerAdvanceSettlement(advanceId, identity);
         break;
       }
       case "REQUEST_EXPENSE_APPROVAL": {
