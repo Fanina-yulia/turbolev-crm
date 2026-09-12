@@ -496,6 +496,7 @@ export async function getClientVehiclePortalDetail(clientId: string, vehicleId: 
       rejectedAt: latestEstimate.rejectedAt?.toISOString() || null,
       selectionSubmitted: storedDecisions.length > 0,
       selectionMode,
+      managerReviewRequired: selectionMode === "MIXED",
       lines: parsedLines.map(({ snapshot: _snapshot, ...line }) => ({ ...line, decision: decisionMap.get(line.id) || null })),
     } : null,
     findings: findings.map((finding) => ({
