@@ -8,7 +8,10 @@
     "scripts/ci-bootstrap-external-tables.sql",
     "app/ukrainian-license-plate.tsx",
     "app/ukrainian-license-plate-bridge.tsx",
-    "app/ukrainian-license-plate.css"
+    "app/ukrainian-license-plate.css",
+    "app/role-work-queues-panel.tsx",
+    "app/role-work-queues-panel.module.css",
+    "src/domain/role-work-queues.ts"
   ],
   "communications": [
     "app/legacy-active-action-bridge.tsx"
