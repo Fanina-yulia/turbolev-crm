@@ -3,6 +3,7 @@ import "server-only";
 import { InquiryState, WorkOrderEstimateStatus } from "@/src/generated/prisma/client";
 import { getPrisma } from "@/src/lib/prisma";
 import { listStationAttentionVehicles, type StationAttentionVehicle } from "@/src/services/station-vehicle-attention.service";
+import { listOperationalBlockers } from "@/src/services/operational-blockers.service";
 
 const MINUTE_MS = 60_000;
 
@@ -16,7 +17,7 @@ export type StationManagerControlAction = {
 
 export type StationManagerControlSignal = {
   id: string;
-  sourceType: "INQUIRY" | "APPOINTMENT" | "ESTIMATE";
+  sourceType: "INQUIRY" | "APPOINTMENT" | "ESTIMATE" | "BLOCKER";
   sourceId: string;
   code: string;
   title: string;
@@ -160,6 +161,42 @@ function vehicleSignal(row: StationAttentionVehicle, now: Date): StationManagerC
   };
 }
 
+type OperationalBlockerRow = Awaited<ReturnType<typeof listOperationalBlockers>>[number];
+
+function blockerAction(row: OperationalBlockerRow): StationManagerControlAction {
+  if (row.sourceType === "APPOINTMENT" || row.appointmentId) {
+    return { label: "Відкрити запис", section: "Планувальник", params: { appointmentId: row.appointmentId || row.sourceId } };
+  }
+  const workOrderId = row.workOrderId || (row.sourceType === "WORK_ORDER" ? row.sourceId : null);
+  if (workOrderId) {
+    return { label: "Відкрити наряд", section: "Наряди та ремонт", params: { workOrderId } };
+  }
+  if (row.sourceType === "DIAGNOSTIC" || row.vehicleId) {
+    return { label: "Відкрити авто", section: "Авто", params: row.vehicleId ? { vehicleId: row.vehicleId } : undefined };
+  }
+  return { label: "Перевірити блокер", section: "Планувальник" };
+}
+
+function blockerSignal(row: OperationalBlockerRow, now: Date): StationManagerControlSignal {
+  const dueAt = row.dueAt;
+  return {
+    id: `blocker:${row.id}`,
+    sourceType: "BLOCKER",
+    sourceId: row.id,
+    code: `BLOCKER_${row.code}`,
+    title: row.title,
+    description: row.nextAction ? `${row.reason} · Наступна дія: ${row.nextAction}` : row.reason,
+    priority: row.priority === "CRITICAL" ? "CRITICAL" : row.priority === "HIGH" ? "HIGH" : "NORMAL",
+    reason: row.reason,
+    overdue: Boolean(dueAt && dueAt.getTime() <= now.getTime()),
+    waitingMinutes: ageMinutes(row.createdAt, now),
+    plate: null,
+    vehicle: null,
+    customer: null,
+    action: blockerAction(row),
+  };
+}
+
 async function stationInquiries(locationId: string): Promise<StationInquiry[]> {
   const prisma = getPrisma();
   const now = new Date();
@@ -224,7 +261,7 @@ export async function buildStationManagerControlCenter(input: {
   const prisma = getPrisma();
   const now = new Date();
 
-  const [vehicleAttention, inquiries, workOrderAppointments] = await Promise.all([
+  const [vehicleAttention, inquiries, workOrderAppointments, operationalBlockers] = await Promise.all([
     listStationAttentionVehicles(now, input.locationId),
     input.canCommunications ? stationInquiries(input.locationId) : Promise.resolve([]),
     input.canWorkOrders
@@ -246,6 +283,13 @@ export async function buildStationManagerControlCenter(input: {
           },
           orderBy: { updatedAt: "desc" },
           take: 500,
+        })
+      : Promise.resolve([]),
+    input.canWorkOrders
+      ? listOperationalBlockers({
+          locationId: input.locationId,
+          status: ["OPEN", "ACKNOWLEDGED"],
+          limit: 100,
         })
       : Promise.resolve([]),
   ]);
@@ -360,6 +404,10 @@ export async function buildStationManagerControlCenter(input: {
       customer: appointment.customerName,
       action: { label: "Відкрити погодження", section: "Комерційна пропозиція", params: { workOrderId: estimate.workOrderId, workOrderTab: "estimate" } },
     });
+  }
+
+  for (const blocker of operationalBlockers) {
+    signals.push(blockerSignal(blocker, now));
   }
 
   for (const row of vehicleAttention) {

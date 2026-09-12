@@ -1,0 +1,63 @@
+enum OperationalBlockerStatus {
+  OPEN
+  ACKNOWLEDGED
+  RESOLVED
+  CANCELLED
+}
+
+enum OperationalBlockerPriority {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum OperationalBlockerSourceType {
+  APPOINTMENT
+  WORK_ORDER
+  WORK_ORDER_LINE
+  VEHICLE
+  DIAGNOSTIC
+  PARTS_REQUEST
+  SUPPLIER_ORDER
+  PAYMENT
+  SYSTEM
+}
+
+model OperationalBlocker {
+  id                  String                       @id @default(cuid())
+  code                String                       @db.VarChar(64)
+  status              OperationalBlockerStatus    @default(OPEN)
+  priority            OperationalBlockerPriority  @default(MEDIUM)
+  sourceType          OperationalBlockerSourceType
+  sourceId            String                       @db.VarChar(96)
+  locationId          String?                      @db.VarChar(64)
+  appointmentId       String?                      @db.VarChar(64)
+  workOrderId         String?                      @db.VarChar(64)
+  workOrderLineId     String?                      @db.VarChar(64)
+  vehicleId           String?                      @db.VarChar(64)
+  clientId            String?                      @db.VarChar(64)
+  title               String                       @db.VarChar(240)
+  reason              String                       @db.Text
+  nextAction          String?                      @db.Text
+  openedByUserId      String?                      @db.VarChar(64)
+  openedByName        String?                      @db.VarChar(160)
+  acknowledgedAt     DateTime?
+  acknowledgedByUserId String?                     @db.VarChar(64)
+  resolvedAt         DateTime?
+  resolvedByUserId   String?                      @db.VarChar(64)
+  resolutionComment  String?                      @db.Text
+  dueAt              DateTime?
+  metadata            Json?
+  createdAt           DateTime                     @default(now())
+  updatedAt           DateTime                     @updatedAt
+
+  @@unique([sourceType, sourceId, code, status])
+  @@index([locationId, status, priority, createdAt])
+  @@index([sourceType, sourceId, status])
+  @@index([appointmentId, status])
+  @@index([workOrderId, status])
+  @@index([workOrderLineId, status])
+  @@index([vehicleId, status])
+  @@index([status, dueAt])
+}

@@ -330,7 +330,9 @@
         "app/api/production/**",
         "app/api/qc/**",
         "src/services/work-order*",
-        "src/domain/workflow/**"
+        "src/domain/workflow/**",
+        "app/api/blockers/**",
+        "src/services/operational-blockers.service.ts"
       ],
       "dependencies": [
         "diagnostics",
@@ -393,7 +395,8 @@
       "paths": [
         "app/service-advisor-*",
         "app/*service-manager*",
-        "app/api/cabinet/service*/**"
+        "app/api/cabinet/service*/**",
+        "src/services/station-manager-control-center.service.ts"
       ],
       "dependencies": [
         "clients-vehicles",
@@ -424,7 +427,8 @@
       "paths": [
         "app/mechanic-*",
         "app/api/cabinet/mechanic/**",
-        "src/services/mechanic-*"
+        "src/services/mechanic-*",
+        "app/api/cabinet/execution-issues/**"
       ],
       "dependencies": [
         "planner",
