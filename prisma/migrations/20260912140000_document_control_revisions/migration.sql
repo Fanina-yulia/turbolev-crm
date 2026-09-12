@@ -33,17 +33,17 @@ CREATE TABLE "ControlledDocumentRevision" (
     FOREIGN KEY ("diagnosticRequestId") REFERENCES "DiagnosticRequest"("id") ON DELETE RESTRICT ON UPDATE CASCADE
 );
 
-CREATE UNIQUE INDEX "ControlledDocumentRevision_documentKey_revision_key"
+CREATE UNIQUE INDEX "cdr_document_key_revision_key"
   ON "ControlledDocumentRevision"("documentKey", "revision");
-CREATE UNIQUE INDEX "ControlledDocumentRevision_documentKey_contentHash_key"
+CREATE UNIQUE INDEX "cdr_document_key_hash_key"
   ON "ControlledDocumentRevision"("documentKey", "contentHash");
-CREATE INDEX "ControlledDocumentRevision_documentKey_status_revision_idx"
+CREATE INDEX "cdr_document_status_revision_idx"
   ON "ControlledDocumentRevision"("documentKey", "status", "revision");
-CREATE INDEX "ControlledDocumentRevision_type_status_issuedAt_idx"
+CREATE INDEX "cdr_type_status_issued_idx"
   ON "ControlledDocumentRevision"("type", "status", "issuedAt");
-CREATE INDEX "ControlledDocumentRevision_workOrderId_type_status_revision_idx"
+CREATE INDEX "cdr_work_order_type_status_idx"
   ON "ControlledDocumentRevision"("workOrderId", "type", "status", "revision");
-CREATE INDEX "ControlledDocumentRevision_diagnosticRequestId_type_status_revision_idx"
+CREATE INDEX "cdr_diagnostic_type_status_idx"
   ON "ControlledDocumentRevision"("diagnosticRequestId", "type", "status", "revision");
-CREATE INDEX "ControlledDocumentRevision_sourceEntityType_sourceEntityId_idx"
+CREATE INDEX "cdr_source_entity_idx"
   ON "ControlledDocumentRevision"("sourceEntityType", "sourceEntityId");
