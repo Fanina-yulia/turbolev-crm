@@ -1,10 +1,7 @@
 import { Prisma } from "@/src/generated/prisma/client";
 import { getPrisma } from "@/src/lib/prisma";
 import { toPrismaJson } from "@/src/lib/prisma-json";
-import {
-  ensureEstimateSnapshotTx,
-  type WorkOrderCommercialError,
-} from "@/src/services/work-order-commercial.service";
+import { ensureEstimateSnapshotTx } from "@/src/services/work-order-commercial.service";
 import { getWorkOrderEstimateApprovalStateTx } from "@/src/services/work-order-estimate-approval-scope.service";
 
 type Tx = Prisma.TransactionClient;
