@@ -334,7 +334,8 @@
         "src/services/work-order*",
         "src/domain/workflow/**",
         "app/api/blockers/**",
-        "src/services/operational-blockers.service.ts"
+        "src/services/operational-blockers.service.ts",
+        "src/services/mixed-estimate-approval.service.ts"
       ],
       "dependencies": [
         "diagnostics",
