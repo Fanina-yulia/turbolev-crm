@@ -42,6 +42,10 @@ export type PlannerAppointmentContract = {
   requiresDiagnosticFirst: boolean;
   processStatus: string | null;
   processLabel: string | null;
+  /** Canonical operational projection; the source entity owns the persisted status. */
+  processSource?: "APPOINTMENT" | "DIAGNOSTIC" | "WORK_ORDER" | "NONE";
+  processSourceStatus?: string | null;
+  processCompatibilityOnly?: boolean;
   payment: {
     status: PlannerPaymentStatusContract;
     amount: CrmDecimal | null;
