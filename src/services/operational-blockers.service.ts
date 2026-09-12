@@ -207,7 +207,7 @@ function nextStatus(current: OperationalBlockerStatus, action: OperationalBlocke
   if (action === "ACKNOWLEDGE" && current === OperationalBlockerStatus.OPEN) return OperationalBlockerStatus.ACKNOWLEDGED;
   if (action === "RESOLVE" && ACTIVE_STATUSES.includes(current as typeof ACTIVE_STATUSES[number])) return OperationalBlockerStatus.RESOLVED;
   if (action === "CANCEL" && ACTIVE_STATUSES.includes(current as typeof ACTIVE_STATUSES[number])) return OperationalBlockerStatus.CANCELLED;
-  if (action === "REOPEN" && [OperationalBlockerStatus.RESOLVED, OperationalBlockerStatus.CANCELLED].includes(current)) return OperationalBlockerStatus.OPEN;
+  if (action === "REOPEN" && (current === OperationalBlockerStatus.RESOLVED || current === OperationalBlockerStatus.CANCELLED)) return OperationalBlockerStatus.OPEN;
   return null;
 }
 
