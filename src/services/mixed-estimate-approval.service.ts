@@ -94,6 +94,7 @@ export async function confirmMixedEstimateApproval(
   return prisma.$transaction(async (tx) => {
     await tx.$queryRawUnsafe("SELECT pg_advisory_xact_lock(hashtext($1))", "mixed-estimate-approval:" + workOrderId);
     const state = await assertMixedPending(tx, workOrderId);
+    if (!state.estimate) throw new MixedEstimateApprovalError("ESTIMATE_NOT_FOUND", "Кошторис не знайдено.", 404);
     const estimate = state.estimate;
     const decisions = await approvalDecisions(tx, estimate.id);
     const decisionMap = new Map(decisions.map((item) => [item.lineId, item.decision]));
