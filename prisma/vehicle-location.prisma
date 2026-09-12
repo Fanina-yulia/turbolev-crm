@@ -1,0 +1,65 @@
+enum VehicleLocationCode {
+  OUTSIDE
+  RECEPTION
+  QUEUE
+  POST
+  PARKING
+  WAITING_PARTS
+  QUALITY_CONTROL
+  READY_ZONE
+  DELIVERED
+}
+
+/**
+ * Current physical projection of a vehicle inside or around a service station.
+ * References are intentionally soft: vehicles, stations and posts live in
+ * separate schema slices and the projection must remain deployable during the
+ * legacy-data transition.
+ */
+model VehicleLocation {
+  id                String             @id @default(cuid())
+  vehicleId         String             @unique @db.VarChar(64)
+  code              VehicleLocationCode
+  serviceLocationId String?            @db.VarChar(64)
+  servicePostId     String?            @db.VarChar(64)
+  reason            String?            @db.Text
+  sourceType        String             @db.VarChar(40)
+  sourceId          String             @db.VarChar(96)
+  updatedByUserId   String?            @db.VarChar(64)
+  updatedByName     String?            @db.VarChar(160)
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+
+  @@index([serviceLocationId, code])
+  @@index([servicePostId])
+  @@index([code, updatedAt])
+}
+
+/**
+ * Immutable movement journal. VehicleLocation is the fast current-state
+ * projection; this table is the audit/history source for operations.
+ */
+model VehicleLocationEvent {
+  id                    String             @id @default(cuid())
+  vehicleId             String             @db.VarChar(64)
+  fromCode              VehicleLocationCode?
+  fromServiceLocationId String?            @db.VarChar(64)
+  fromServicePostId     String?            @db.VarChar(64)
+  toCode                VehicleLocationCode
+  toServiceLocationId   String?            @db.VarChar(64)
+  toServicePostId       String?            @db.VarChar(64)
+  serviceLocationId     String?            @db.VarChar(64)
+  sourceType            String             @db.VarChar(40)
+  sourceId              String             @db.VarChar(96)
+  reason                String?            @db.Text
+  actorUserId           String?            @db.VarChar(64)
+  actorName             String?            @db.VarChar(160)
+  idempotencyKey        String?            @unique @db.VarChar(160)
+  occurredAt            DateTime           @default(now())
+  createdAt             DateTime           @default(now())
+
+  @@index([vehicleId, occurredAt])
+  @@index([toCode, occurredAt])
+  @@index([toServicePostId, occurredAt])
+  @@index([sourceType, sourceId])
+}
