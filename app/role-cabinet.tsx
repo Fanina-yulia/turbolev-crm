@@ -5,6 +5,7 @@ import type { CabinetHomePayload, StationManagerAttentionContract, StationManage
 import { cabinetHomePayloadMessage, parseCabinetHomePayload } from "@/src/lib/contracts/cabinet-home-payload.parsers";
 import { navigateCrm, type CrmRouteParams } from "./crm-route";
 import type { CrmAccessSnapshot } from "./use-crm-access";
+import { normalizeRoleCode, resolveRoleCabinet } from "@/src/security/role-contract";
 import { StationOverview } from "./station-overview";
 import { OwnerControlCenter } from "./owner-dashboard";
 import { MechanicCabinet } from "./mechanic-cabinet";
@@ -230,13 +231,17 @@ function StationManagerCabinet({ data, userName }: { data: StationManagerCabinet
 }
 
 export function RoleAwareOverview({ access }: { access: CrmAccessSnapshot | null }) {
-  const roleCodes = useMemo(() => new Set((access?.roles ?? []).map((role) => role.code).filter(Boolean)), [access?.roles]);
-  const primaryRoleCode = access?.roles.find((role) => role.isPrimary)?.code || access?.roles[0]?.code || null;
-  const specialRole = roleCodes.has("STATION_MANAGER") ? "STATION_MANAGER" : roleCodes.has("MECHANIC") ? "MECHANIC" : null;
-  const ownerRole = roleCodes.has("OWNER") || roleCodes.has("EXECUTIVE_DIRECTOR");
-  const serviceAdvisorRole = primaryRoleCode === "SERVICE_ADVISOR";
-  const partsRole = primaryRoleCode === "PARTS_SPECIALIST" ? "PARTS_SPECIALIST" : primaryRoleCode === "WAREHOUSE_KEEPER" ? "WAREHOUSE_KEEPER" : null;
-  const salesRole = primaryRoleCode === "HEAD_OF_SALES" ? "HEAD_OF_SALES" : primaryRoleCode === "SALES" ? "SALES" : null;
+  const normalizedRoles = useMemo(
+    () => (access?.roles ?? []).map((role) => ({ ...role, code: normalizeRoleCode(role.code) })).filter((role) => role.code),
+    [access?.roles],
+  );
+  const primaryRoleCode = normalizedRoles.find((role) => role.isPrimary)?.code || normalizedRoles[0]?.code || null;
+  const resolvedCabinet = resolveRoleCabinet(access?.roles ?? []);
+  const specialRole = resolvedCabinet === "STATION_MANAGER" ? "STATION_MANAGER" : resolvedCabinet === "MECHANIC" ? "MECHANIC" : null;
+  const ownerRole = resolvedCabinet === "OWNER";
+  const serviceAdvisorRole = resolvedCabinet === "SERVICE_ADVISOR";
+  const partsRole = resolvedCabinet === "PARTS" && (primaryRoleCode === "PARTS_SPECIALIST" || primaryRoleCode === "WAREHOUSE_KEEPER") ? primaryRoleCode : null;
+  const salesRole = resolvedCabinet === "SALES" && (primaryRoleCode === "HEAD_OF_SALES" || primaryRoleCode === "SALES") ? primaryRoleCode : null;
   const [data, setData] = useState<CabinetHomePayload | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");

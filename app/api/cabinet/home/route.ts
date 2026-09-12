@@ -4,6 +4,7 @@ import { getAccessContext, hasPermission } from "@/src/security/access-context";
 import { PERMISSIONS } from "@/src/security/permissions";
 import { effectiveAssignmentStatus, listAllActiveMechanicAppointments } from "@/src/services/mechanic-assignments.service";
 import { buildStationManagerControlCenter } from "@/src/services/station-manager-control-center.service";
+import { resolveRoleCabinet } from "@/src/security/role-contract";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -53,11 +54,11 @@ export async function GET(request: Request) {
       return NextResponse.json({ ok: false, error: "FORBIDDEN" }, { status: 403 });
     }
 
-    const roleCodes = new Set(context.roles.map((role) => role.code));
+    const resolvedCabinet = resolveRoleCabinet(context.roles);
     const prisma = getPrisma();
     const { startAt, endAt } = await kyivDayRange();
 
-    if (roleCodes.has("STATION_MANAGER")) {
+    if (resolvedCabinet === "STATION_MANAGER") {
       const stationRole = context.roles.find((role) => role.code === "STATION_MANAGER");
       const locationId = stationRole?.locationId ?? context.locationIds[0] ?? null;
       if (!locationId) {
@@ -169,7 +170,7 @@ export async function GET(request: Request) {
       }, { headers: { "Cache-Control": "no-store" } });
     }
 
-    if (roleCodes.has("MECHANIC")) {
+    if (resolvedCabinet === "MECHANIC") {
       const mechanic = await prisma.serviceMechanic.findFirst({
         where: { userId: context.user.id, isActive: true },
         include: { location: { select: { id: true, name: true } } },

@@ -50,8 +50,13 @@ export type WorkflowRole =
   | "STATION_MANAGER"
   | "SHIFT_MASTER"
   | "MECHANIC"
+  | "WAREHOUSE_KEEPER"
   | "ACCOUNTANT"
+  | "MARKETING_DIRECTOR"
+  | "MARKETER"
+  | "HR_MANAGER"
   | "ADMINISTRATOR"
+  | "CRM_ADMIN"
   // legacy presentation role codes
   | "SERVICE_MANAGER"
   | "PARTS_MANAGER"

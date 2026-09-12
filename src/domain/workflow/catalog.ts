@@ -1,4 +1,5 @@
 import type { BlockerCode, HardGateCode, VehicleLocationCode, WorkflowActionCode, WorkflowRole, WorkflowStage } from "./types";
+import { ROLE_LABELS } from "@/src/security/role-contract";
 
 export const STATUS_ARCHITECTURE_VERSION = "2.0.0" as const;
 
@@ -21,24 +22,7 @@ export const MASTER_SERVICE_STAGES: ReadonlyArray<{ code: WorkflowStage; label: 
   { code: "CLOSED", label: "Закрито", order: 990 },
 ];
 
-export const WORKFLOW_ROLE_LABELS: Record<WorkflowRole, string> = {
-  OWNER: "Власник",
-  EXECUTIVE_DIRECTOR: "Виконавчий директор",
-  HEAD_OF_SALES: "Керівник відділу продажів",
-  SALES: "Продавець",
-  SERVICE_ADVISOR: "Сервіс-менеджер",
-  PARTS_SPECIALIST: "Підборщик запчастин",
-  STATION_MANAGER: "Завідувач станцією",
-  SHIFT_MASTER: "Майстер зміни",
-  MECHANIC: "Автомеханік",
-  ACCOUNTANT: "Бухгалтер / каса",
-  ADMINISTRATOR: "Адміністратор",
-  SERVICE_MANAGER: "Сервіс-менеджмент (legacy)",
-  PARTS_MANAGER: "Запчастини (legacy)",
-  QUALITY_CONTROLLER: "Контроль якості (legacy)",
-  CASHIER_ACCOUNTING: "Каса / бухгалтерія (legacy)",
-  ADMIN: "Адміністратор CRM (legacy)",
-};
+export const WORKFLOW_ROLE_LABELS: Record<WorkflowRole, string> = { ...ROLE_LABELS };
 
 /** Roles that may be selected in current workflow responsibility settings. */
 export const OPERATIONAL_WORKFLOW_ROLE_LABELS = {
