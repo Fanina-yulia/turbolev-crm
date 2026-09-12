@@ -4,6 +4,12 @@ enum ServiceCatalogSource {
   MANUAL
 }
 
+enum ServiceCatalogServiceType {
+  DIAGNOSTIC
+  REPAIR
+  BOTH
+}
+
 enum ServiceCatalogItemType {
   LABOR
   DIAGNOSTIC
@@ -94,6 +100,7 @@ model ServiceCatalogItem {
   categoryId                String?
   sourceCategory            String?                           @db.VarChar(180)
   itemType                  ServiceCatalogItemType            @default(LABOR)
+  serviceType               ServiceCatalogServiceType           @default(REPAIR)
 
   basePrice                 Decimal?                          @db.Decimal(14, 2)
   currency                  String                            @default("UAH") @db.VarChar(3)
@@ -135,6 +142,7 @@ model ServiceCatalogItem {
 
   @@unique([source, externalServiceId])
   @@index([isActive, reviewStatus, itemType])
+  @@index([serviceType, isActive, reviewStatus])
   @@index([categoryId, isActive, displayName])
   @@index([source, reviewStatus])
   @@index([code])
