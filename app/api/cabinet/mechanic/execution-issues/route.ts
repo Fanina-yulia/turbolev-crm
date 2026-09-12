@@ -4,6 +4,7 @@ import { authorize } from "@/src/security/authorize";
 import { PERMISSIONS } from "@/src/security/permissions";
 import { getPrisma } from "@/src/lib/prisma";
 import { toPrismaJson } from "@/src/lib/prisma-json";
+import { blockerCodeForExecutionIssue, createOperationalBlocker } from "@/src/services/operational-blockers.service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -75,7 +76,30 @@ export async function POST(request: Request) {
       await tx.auditEvent.create({ data: { actorId: access.context.user!.id, actorName, entityType: "WorkExecutionIssue", entityId: created.id, action: "MECHANIC_REPORTED_EXECUTION_ISSUE", metadata: toPrismaJson({ assignmentId: line.id, reasonCode, locationId: mechanic.locationId }) } });
       return { duplicate: false as const, issue: created };
     });
-    return NextResponse.json({ ok: true, duplicate: issue.duplicate, issue: issue.issue, message: issue.duplicate ? "Це звернення вже передано адміністратору." : "Адміністратора повідомлено. Робота залишається у вашому списку до прийняття рішення." }, { status: issue.duplicate ? 200 : 201 });
+    let operationalBlockerId: string | null = null;
+    try {
+      const blocker = await createOperationalBlocker({
+        code: blockerCodeForExecutionIssue(reasonCode),
+        priority: "HIGH",
+        sourceType: "WORK_ORDER_LINE",
+        sourceId: line.id,
+        workOrderId: line.workOrderId,
+        workOrderLineId: line.id,
+        vehicleId: line.workOrder.vehicleId,
+        clientId: line.workOrder.clientId,
+        locationId: mechanic.locationId,
+        title: "Робота механіка зупинена",
+        reason: comment ? `${reasonCode}: ${comment}` : `Механік повідомив причину: ${reasonCode}`,
+        nextAction: "Потрібне рішення керівника станції або сервіс-менеджера.",
+        openedByUserId: access.context.user.id,
+        openedByName: actorName,
+        metadata: { executionIssueId: issue.issue.id, reasonCode },
+      });
+      operationalBlockerId = blocker.id;
+    } catch (blockerError) {
+      console.error("Operational blocker sync failed", { assignmentId: line.id, blockerError });
+    }
+    return NextResponse.json({ ok: true, duplicate: issue.duplicate, issue: issue.issue, operationalBlockerId, message: issue.duplicate ? "Це звернення вже передано адміністратору." : "Адміністратора повідомлено. Робота залишається у вашому списку до прийняття рішення." }, { status: issue.duplicate ? 200 : 201 });
   } catch (error) {
     console.error("POST mechanic execution issue failed", error);
     return fail("Не вдалося повідомити адміністратора.", "EXECUTION_ISSUE_CREATE_FAILED", 500);
