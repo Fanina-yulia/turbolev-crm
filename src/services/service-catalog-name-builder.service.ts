@@ -1,5 +1,6 @@
 import {
   findPartTerminologyMatches,
+  normalizePartTerminology,
   resolvePartTerminology,
   type PartTerminologyDefinition,
 } from "@/src/services/parts-terminology.service";
@@ -109,17 +110,76 @@ function terminologyMatches(value: string) {
   return [...byCode.values()];
 }
 
-function resolveCanonicalDefinition(source: string, explicitPart: string) {
-  if (explicitPart) {
-    const explicit = resolvePartTerminology({ query: explicitPart, partName: explicitPart });
-    if (explicit.definition) return explicit.definition;
+function hasCompoundMarker(value: string) {
+  return /[/+&]|(?:^|\s)(?:та|і|й|and)(?:\s|$)/iu.test(value);
+}
+
+function isAxisQualifier(value: string) {
+  return /^(?:передн\w*|задн\w*|лів\w*|прав\w*)$/iu.test(value);
+}
+
+function isStructuredQualifier(value: string) {
+  return isAxisQualifier(value) || /^(?:верхн\w*|нижн\w*)$/iu.test(value);
+}
+
+function catalogTokenMatches(left: string, right: string) {
+  if (left === right) return true;
+  if (left.length < 4 || right.length < 4) return false;
+  let common = 0;
+  while (common < left.length && common < right.length && left[common] === right[common]) common += 1;
+  return common >= Math.max(4, Math.min(left.length, right.length) - 2);
+}
+
+/**
+ * A terminology alias may occur inside a larger part name. That does not
+ * mean the larger part is the same catalog item: a brake-pad spring kit is
+ * not a brake-pad service, and a CV boot is not a CV joint. Only promote an
+ * alias when it covers the subject, optionally with a position qualifier.
+ */
+function isSafeTerminologyMatch(source: string, match: { normalizedAlias?: string; matchedAlias?: string }) {
+  const rawSubject = extractOperation(source).subject;
+  const subject = normalizePartTerminology(rawSubject);
+  const alias = normalizePartTerminology(match.normalizedAlias || match.matchedAlias);
+  if (!subject || !alias || hasCompoundMarker(rawSubject)) return false;
+  if (subject === alias) return true;
+
+  const sourceTokens = subject.split(" ").filter(Boolean);
+  const aliasTokens = alias.split(" ").filter(Boolean);
+  if (!aliasTokens.length || aliasTokens.length > sourceTokens.length) return false;
+
+  for (let start = 0; start <= sourceTokens.length - aliasTokens.length; start += 1) {
+    const covered = aliasTokens.every((token, index) => catalogTokenMatches(token, sourceTokens[start + index]));
+    if (!covered) continue;
+    const extras = [...sourceTokens.slice(0, start), ...sourceTokens.slice(start + aliasTokens.length)];
+    const qualifier = aliasTokens.length === 1 ? isAxisQualifier : isStructuredQualifier;
+    if (extras.every(qualifier)) return true;
   }
-  const matches = terminologyMatches(source);
-  if (matches.length === 1) return matches[0].definition;
+
+  return false;
+}
+
+function safeTerminologyDefinition(value: string) {
+  const matches = terminologyMatches(value).filter((match) => isSafeTerminologyMatch(value, match));
   const ranked = matches.sort((left, right) => right.matchedAlias.length - left.matchedAlias.length);
+  if (ranked.length === 1) return ranked[0].definition;
   return ranked[0] && ranked[1] && ranked[0].matchedAlias.length >= ranked[1].matchedAlias.length + 6
     ? ranked[0].definition
     : null;
+}
+
+function resolveCanonicalDefinition(source: string, explicitPart: string) {
+  const fromSource = safeTerminologyDefinition(source);
+  if (fromSource) return fromSource;
+
+  // Metadata can be stale after a previous import. Use it only when the
+  // explicit part is also a safe match for the source name.
+  if (explicitPart) {
+    const explicitMatches = terminologyMatches(explicitPart);
+    const compatible = explicitMatches.find((match) => isSafeTerminologyMatch(source, match));
+    if (compatible) return compatible.definition;
+  }
+
+  return null;
 }
 
 function isPluralPart(definition: PartTerminologyDefinition) {
@@ -182,24 +242,30 @@ export function normalizeServiceCatalogName(input: {
   const sourceName = clean(input.sourceName, 1000);
   const extracted = extractOperation(sourceName);
   const explicitPart = clean(input.part, 180);
-  const subject = explicitPart || extracted.subject;
   const definition = resolveCanonicalDefinition(sourceName, explicitPart);
-  const resolution = resolvePartTerminology({
-    query: sourceName,
-    partName: explicitPart || undefined,
-    side: input.side || undefined,
-    position: input.position || undefined,
-  });
-  const canonicalPart = definition?.canonicalName || explicitPart || extracted.subject;
-  const axis = resolution.attributes.axis;
-  const subPosition = resolution.attributes.subPosition;
-  const position = clean(input.position)
-    || (definition ? [axisLabel(definition, axis), subPositionLabel(subPosition)]
-      .filter((value, index, values) => value && values.indexOf(value) === index).join(" ") : "");
+  const resolution = definition
+    ? resolvePartTerminology({
+      query: sourceName,
+      canonicalCode: definition.code,
+      side: input.side || undefined,
+      position: input.position || undefined,
+    })
+    : null;
+  const canonicalPart = definition?.canonicalName || (sourceName ? extracted.subject : explicitPart);
+  const axis = resolution?.attributes.axis || null;
+  const subPosition = resolution?.attributes.subPosition || null;
+  const inferredPosition = definition
+    ? [axisLabel(definition, axis), subPositionLabel(subPosition)]
+      .filter((value, index, values) => value && values.indexOf(value) === index).join(" ")
+    : "";
+  const partAlreadyContainsPosition = /(?:^|\s)(?:передн\w*|задн\w*|лів\w*|прав\w*)\b/iu.test(canonicalPart || "");
+  const position = definition
+    ? (partAlreadyContainsPosition ? "" : clean(input.position) || inferredPosition)
+    : null;
   const side = clean(input.side, 40)
-    || (resolution.attributes.side === "LEFT" ? "лівий" : resolution.attributes.side === "RIGHT" ? "правий" : "");
+    || (resolution?.attributes.side === "LEFT" ? "лівий" : resolution?.attributes.side === "RIGHT" ? "правий" : "");
   const operation = operationLabel(input.operation) || operationLabel(extracted.operation);
-  const displayName = canonicalPart && operation
+  const displayName = definition && canonicalPart && operation
     ? buildServiceDisplayName({ part: canonicalPart, position, side, operation })
     : sourceName || buildServiceDisplayName({ part: canonicalPart, position, side, operation });
 
@@ -233,7 +299,9 @@ export function buildServiceSearchAliases(input: AliasInput) {
   const code = clean(input.code, 64);
   const externalServiceId = clean(input.externalServiceId, 64);
   const canonicalCode = clean(input.canonicalCode, 80);
-  const definition = resolvePartTerminology({ query: part, partName: part }).definition;
+  const definition = input.canonicalCode
+    ? resolvePartTerminology({ canonicalCode: input.canonicalCode }).definition
+    : safeTerminologyDefinition(part);
   const partAliases = unique([...(input.partAliases || []), ...(definition?.aliases || []), definition?.canonicalName || ""]);
   const positionalAliases = partAliases.flatMap((alias) => [
     [alias, position].filter(Boolean).join(" "),
