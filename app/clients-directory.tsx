@@ -10,6 +10,7 @@ import {
 import { CustomerCabinetCard } from "./customer-cabinet-card";
 import { TelegramClientLinkCard } from "./telegram-client-link-card";
 import { BinotelClientCalls } from "./binotel-recordings";
+import { ClientLtvCard } from "./client-ltv-card";
 import { navigateCrm, readCrmRoute } from "./crm-route";
 import { VehicleRender } from "./vehicle-render";
 import ownerVehicleStyles from "./client-owner-vehicle-card.module.css";
@@ -206,6 +207,10 @@ export function ClientsDirectory() {
                 </span>
                 <span className={ownerVehicleStyles.chevron}>›</span>
               </button>)}</div> : <div className={styles.emptyInline}>Автомобілі ще не додані.</div>}
+            </section>
+            <section className={styles.panel}>
+              <h3>Цінність клієнта</h3>
+              <ClientLtvCard clientId={selected.id} />
             </section>
             <section className={styles.panel}>
               <BinotelClientCalls clientId={selected.id} phone={selected.phone} />
