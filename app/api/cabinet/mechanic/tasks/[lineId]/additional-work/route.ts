@@ -4,14 +4,31 @@ import { authorize } from "@/src/security/authorize";
 import { PERMISSIONS } from "@/src/security/permissions";
 import { getPrisma } from "@/src/lib/prisma";
 import { toPrismaJson } from "@/src/lib/prisma-json";
+import { createOperationalBlocker } from "@/src/services/operational-blockers.service";
 import { createWorkOrderLine, WorkOrderLineError } from "@/src/services/work-order-lines.service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
 
+const REQUEST_KINDS = ["ADDITIONAL_WORK", "ADDITIONAL_DIAGNOSTIC", "REPAIR_COMPLICATION"] as const;
+const IMPACTS = ["CAN_CONTINUE", "BLOCKS_REPAIR"] as const;
+type RequestKind = (typeof REQUEST_KINDS)[number];
+type WorkImpact = (typeof IMPACTS)[number];
+
+const KIND_LABELS: Record<RequestKind, string> = {
+  ADDITIONAL_WORK: "Додаткова робота",
+  ADDITIONAL_DIAGNOSTIC: "Додаткова діагностика",
+  REPAIR_COMPLICATION: "Ускладнення під час ремонту",
+};
+
 function text(value: unknown, max: number) {
   return typeof value === "string" ? value.trim().slice(0, max) : "";
+}
+
+function enumValue<T extends readonly string[]>(value: unknown, values: T, fallback: T[number]) {
+  const normalized = text(value, 64).toUpperCase();
+  return (values as readonly string[]).includes(normalized) ? normalized as T[number] : fallback;
 }
 
 function fail(message: string, error: string, status = 400) {
@@ -20,6 +37,47 @@ function fail(message: string, error: string, status = 400) {
 
 function vehicleLabel(vehicle: { brand: string | null; model: string | null; year: number | null; plateNumber: string | null }) {
   return [vehicle.brand, vehicle.model, vehicle.year].filter(Boolean).join(" ") || vehicle.plateNumber || "Автомобіль";
+}
+
+async function ensureTechnicalDecisionBlocker(input: {
+  lineId: string;
+  sourceLineId: string;
+  workOrderId: string;
+  locationId: string;
+  appointmentId: string | null;
+  vehicleId: string;
+  clientId: string | null;
+  description: string;
+  note: string;
+  kind: RequestKind;
+  actorUserId: string;
+  actorName: string;
+}) {
+  return createOperationalBlocker({
+    code: "TECHNICAL_DECISION",
+    priority: "HIGH",
+    sourceType: "WORK_ORDER_LINE",
+    sourceId: input.lineId,
+    locationId: input.locationId,
+    appointmentId: input.appointmentId,
+    workOrderId: input.workOrderId,
+    workOrderLineId: input.lineId,
+    vehicleId: input.vehicleId,
+    clientId: input.clientId,
+    title: `${KIND_LABELS[input.kind]} · потрібне рішення`,
+    reason: input.note || input.description,
+    nextAction: "Сервіс-менеджеру: оцінити додаткову потребу, сформувати актуальну комерційну пропозицію та погодити її з клієнтом.",
+    openedByUserId: input.actorUserId,
+    openedByName: input.actorName,
+    dueAt: new Date(Date.now() + 30 * 60 * 1000),
+    metadata: {
+      source: "MECHANIC_ADDITIONAL_WORK",
+      requestKind: input.kind,
+      impact: "BLOCKS_REPAIR",
+      sourceLineId: input.sourceLineId,
+      approvalRequired: true,
+    },
+  });
 }
 
 export async function POST(request: Request, context: { params: Promise<{ lineId: string }> }) {
@@ -34,9 +92,11 @@ export async function POST(request: Request, context: { params: Promise<{ lineId
     const body = await request.json().catch(() => null) as Record<string, unknown> | null;
     const description = text(body?.description, 500);
     const note = text(body?.note, 500);
+    const kind = enumValue(body?.kind, REQUEST_KINDS, "ADDITIONAL_WORK") as RequestKind;
+    const impact = enumValue(body?.impact, IMPACTS, "CAN_CONTINUE") as WorkImpact;
     const hoursValue = body?.laborHours;
     const laborHours = hoursValue == null || hoursValue === "" ? null : Number(hoursValue);
-    if (description.length < 3) return fail("Опишіть додаткову роботу.", "DESCRIPTION_REQUIRED");
+    if (description.length < 3) return fail("Опишіть додаткову роботу або діагностику.", "DESCRIPTION_REQUIRED");
     if (laborHours !== null && (!Number.isFinite(laborHours) || laborHours <= 0 || laborHours > 1000)) {
       return fail("Вкажіть коректну кількість нормо-годин.", "INVALID_LABOR_HOURS");
     }
@@ -57,6 +117,7 @@ export async function POST(request: Request, context: { params: Promise<{ lineId
         workOrder: {
           select: {
             status: true,
+            clientId: true,
             vehicle: { select: { id: true, brand: true, model: true, year: true, plateNumber: true } },
           },
         },
@@ -64,8 +125,14 @@ export async function POST(request: Request, context: { params: Promise<{ lineId
     });
     if (!sourceLine) return fail("Роботу не знайдено або вона не закріплена за вами.", "ASSIGNED_LINE_NOT_FOUND", 404);
     if (!["IN_PROGRESS", "PAUSED", "REWORK"].includes(sourceLine.workOrder.status)) {
-      return fail("Додаткову роботу можна запропонувати лише під час активного ремонту.", "ADDITIONAL_WORK_NOT_ALLOWED", 409);
+      return fail("Додаткову потребу можна запропонувати лише під час активного ремонту.", "ADDITIONAL_WORK_NOT_ALLOWED", 409);
     }
+
+    const appointment = await prisma.serviceAppointment.findFirst({
+      where: { workOrderId: sourceLine.workOrderId, locationId: mechanic.locationId },
+      orderBy: [{ actualArrivalAt: "desc" }, { plannedStartAt: "desc" }],
+      select: { id: true },
+    });
 
     const duplicate = await prisma.workOrderLine.findFirst({
       where: {
@@ -76,16 +143,40 @@ export async function POST(request: Request, context: { params: Promise<{ lineId
       },
       select: { id: true, status: true, description: true },
     });
+    const actorName = access.context.user.employeeName || access.context.user.name || mechanic.name;
+
     if (duplicate) {
-      return NextResponse.json({ ok: true, duplicate: true, line: duplicate, message: "Таку додаткову роботу вже передано на погодження." });
+      if (impact === "BLOCKS_REPAIR") {
+        await ensureTechnicalDecisionBlocker({
+          lineId: duplicate.id,
+          sourceLineId: sourceLine.id,
+          workOrderId: sourceLine.workOrderId,
+          locationId: mechanic.locationId,
+          appointmentId: appointment?.id || null,
+          vehicleId: sourceLine.workOrder.vehicle.id,
+          clientId: sourceLine.workOrder.clientId,
+          description,
+          note,
+          kind,
+          actorUserId: access.context.user.id,
+          actorName,
+        });
+      }
+      return NextResponse.json({
+        ok: true,
+        duplicate: true,
+        line: duplicate,
+        requestKind: kind,
+        impact,
+        message: "Таку додаткову потребу вже передано на погодження.",
+      });
     }
 
-    const actorName = access.context.user.employeeName || access.context.user.name || mechanic.name;
     const created = await createWorkOrderLine(sourceLine.workOrderId, {
       type: "LABOR",
       status: "DRAFT",
       description,
-      unit: "робота",
+      unit: kind === "ADDITIONAL_DIAGNOSTIC" ? "діагностика" : "робота",
       plannedQuantity: 1,
       plannedUnitPrice: 0,
       plannedUnitCost: 0,
@@ -97,20 +188,47 @@ export async function POST(request: Request, context: { params: Promise<{ lineId
         source: "MECHANIC_ADDITIONAL_WORK",
         requested: true,
         approvalRequired: true,
+        requestKind: kind,
+        impact,
         note: note || null,
         requestedByUserId: access.context.user.id,
         requestedByMechanicId: mechanic.id,
+        requestedByName: actorName,
         requestedAt: new Date().toISOString(),
       },
     }, actorName);
 
+    let blockerId: string | null = null;
+    if (impact === "BLOCKS_REPAIR") {
+      const blocker = await ensureTechnicalDecisionBlocker({
+        lineId: created.line.id,
+        sourceLineId: sourceLine.id,
+        workOrderId: sourceLine.workOrderId,
+        locationId: mechanic.locationId,
+        appointmentId: appointment?.id || null,
+        vehicleId: sourceLine.workOrder.vehicle.id,
+        clientId: sourceLine.workOrder.clientId,
+        description,
+        note,
+        kind,
+        actorUserId: access.context.user.id,
+        actorName,
+      });
+      blockerId = blocker.id;
+    }
+
     await prisma.$transaction(async (tx) => {
       const managers = await tx.userAccessRole.findMany({
         where: { locationId: mechanic.locationId, isActive: true, role: { code: { in: ["STATION_MANAGER", "SERVICE_ADVISOR", "OWNER"] } } },
-        select: { userId: true },
+        select: { userId: true, role: { select: { code: true } } },
       });
       const recipients = Array.from(new Set(managers.map((item) => item.userId).filter((id) => id !== access.context.user!.id)));
+      const actionRecipients = Array.from(new Set(managers
+        .filter((item) => ["SERVICE_ADVISOR", "STATION_MANAGER"].includes(item.role.code) && item.userId !== access.context.user!.id)
+        .map((item) => item.userId)));
       const label = vehicleLabel(sourceLine.workOrder.vehicle);
+      const plate = sourceLine.workOrder.vehicle.plateNumber || "Без номера";
+
       if (recipients.length) {
         await tx.mechanicNotification.createMany({
           data: recipients.map((recipientUserId) => ({
@@ -120,14 +238,58 @@ export async function POST(request: Request, context: { params: Promise<{ lineId
             recipientUserId,
             workOrderId: sourceLine.workOrderId,
             type: "ADDITIONAL_WORK",
-            title: "Потрібне погодження додаткової роботи",
-            body: `${label} · ${sourceLine.workOrder.vehicle.plateNumber || "Без номера"}\nРобота: ${description}${note ? `\nКоментар: ${note}` : ""}`,
+            title: impact === "BLOCKS_REPAIR" ? "Ремонт заблоковано: потрібне погодження" : "Потрібне погодження додаткової роботи",
+            body: `${label} · ${plate}\n${KIND_LABELS[kind]}: ${description}${note ? `\nКоментар: ${note}` : ""}${impact === "BLOCKS_REPAIR" ? "\n⚠ Подальший ремонт потребує рішення." : ""}`,
             vehicleLabel: label,
             plateNumber: sourceLine.workOrder.vehicle.plateNumber,
-            payload: toPrismaJson({ lineId: created.line.id, sourceLineId: sourceLine.id, workOrderId: sourceLine.workOrderId, approvalRequired: true }),
+            payload: toPrismaJson({
+              lineId: created.line.id,
+              sourceLineId: sourceLine.id,
+              workOrderId: sourceLine.workOrderId,
+              approvalRequired: true,
+              requestKind: kind,
+              impact,
+              blockerId,
+            }),
           })),
         });
       }
+
+      if (actionRecipients.length) {
+        const dueAt = new Date(Date.now() + (impact === "BLOCKS_REPAIR" ? 30 : 60) * 60 * 1000);
+        await tx.crmTask.createMany({
+          data: actionRecipients.map((assignedUserId) => ({
+            id: randomUUID(),
+            title: `${KIND_LABELS[kind]} · ${plate}`,
+            description: `${description}${note ? `\n${note}` : ""}${impact === "BLOCKS_REPAIR" ? "\nРемонт заблоковано до рішення." : ""}`,
+            status: "OPEN",
+            priority: impact === "BLOCKS_REPAIR" ? "HIGH" : "MEDIUM",
+            assignedUserId,
+            createdByUserId: access.context.user!.id,
+            dueAt,
+            sourceType: "WORK_ORDER_LINE",
+            sourceId: created.line.id,
+            clientId: sourceLine.workOrder.clientId,
+            vehicleId: sourceLine.workOrder.vehicle.id,
+            autoGenerated: true,
+            dedupeKey: `mechanic-additional:${created.line.id}:${assignedUserId}`,
+            metadata: toPrismaJson({
+              bucket: "ACTION",
+              category: "SERVICE",
+              routeSection: "Комерційна пропозиція",
+              routeParams: { workOrderId: sourceLine.workOrderId, workOrderTab: "estimate" },
+              workOrderId: sourceLine.workOrderId,
+              workOrderLineId: created.line.id,
+              sourceLineId: sourceLine.id,
+              requestKind: kind,
+              impact,
+              blockerId,
+            }),
+          })),
+          skipDuplicates: true,
+        });
+      }
+
       await tx.auditEvent.create({
         data: {
           actorId: access.context.user!.id,
@@ -135,7 +297,18 @@ export async function POST(request: Request, context: { params: Promise<{ lineId
           entityType: "WorkOrderLine",
           entityId: created.line.id,
           action: "MECHANIC_ADDITIONAL_WORK_REQUESTED",
-          metadata: toPrismaJson({ sourceLineId: sourceLine.id, workOrderId: sourceLine.workOrderId, description, laborHours, note: note || null, approvalRequired: true }),
+          metadata: toPrismaJson({
+            sourceLineId: sourceLine.id,
+            workOrderId: sourceLine.workOrderId,
+            description,
+            laborHours,
+            note: note || null,
+            requestKind: kind,
+            impact,
+            blockerId,
+            requiredActionRecipients: actionRecipients,
+            approvalRequired: true,
+          }),
         },
       });
     });
@@ -144,7 +317,12 @@ export async function POST(request: Request, context: { params: Promise<{ lineId
       ok: true,
       duplicate: false,
       line: { id: created.line.id, status: created.line.status, description: created.line.description },
-      message: "Додаткову роботу передано сервіс-менеджеру на погодження. Після погодження вона потрапить у цей наряд і кінцеву накладну.",
+      requestKind: kind,
+      impact,
+      blockerId,
+      message: impact === "BLOCKS_REPAIR"
+        ? "Додаткову потребу передано на погодження. Ремонт позначено як такий, що потребує технічного рішення."
+        : "Додаткову потребу передано сервіс-менеджеру на погодження. Після погодження вона потрапить у виконання та фінальний документ.",
     }, { status: 201 });
   } catch (error) {
     if (error instanceof WorkOrderLineError) {
@@ -152,6 +330,6 @@ export async function POST(request: Request, context: { params: Promise<{ lineId
       return fail(error.message, error.code, status);
     }
     console.error("POST mechanic additional work failed", error);
-    return fail("Не вдалося передати додаткову роботу.", "ADDITIONAL_WORK_CREATE_FAILED", 500);
+    return fail("Не вдалося передати додаткову потребу.", "ADDITIONAL_WORK_CREATE_FAILED", 500);
   }
 }
