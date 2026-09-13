@@ -280,7 +280,7 @@ export function OwnerDashboardVisual({ analytics, period, onPeriodChange, loadin
       </button>
 
       <button type="button" className={`${styles.operationCard} ${overdue > 0 ? styles.operationDanger : ""}`} onClick={() => navigateCrm("Аналітика")}>
-        <div className={styles.operationHead}><div><MetricIcon tone={overdue > 0 ? "red" : "neutral"}>!</MetricIcon><span>Протерміновано</span></div><em>{overdue > 0 ? "Переглянути →" : "›"}</em></div>
+        <div className={styles.operationHead}><div><MetricIcon tone={overdue > 0 ? "red" : "neutral"}>!</MetricIcon><span>Протерміновано</span></div><em>›</em></div>
         <div className={styles.operationValue}><strong>{overdue}</strong><span>вийшли за плановий час</span></div>
         {delayReasons.length ? <MiniBars values={delayReasons.map((item) => item.count)} tone="red" /> : <StatusBar segments={[{ value: overdue, tone: overdue > 0 ? "red" : "neutral", label: "Протерміновано" }, { value: Math.max(0, active - overdue), tone: "neutral", label: "В межах часу" }]} />}
         <div className={styles.legendColumn}>{delayReasons.length ? delayReasons.map((item) => <span key={item.code}><i className={styles.legendRed} />{item.label} <b>{item.count}</b></span>) : <span><i className={styles.legendRed} />Протерміновано <b>{overdue}</b></span>}</div>
