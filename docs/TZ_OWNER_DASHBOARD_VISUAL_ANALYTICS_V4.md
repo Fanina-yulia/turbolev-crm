@@ -21,8 +21,10 @@
 Зберегти 4 операційні показники:
 - Активні авто — count + mini area trend.
 - У ремонті — count + mini bar/activity trend.
-- Протерміновано — count + stacked status/risk bar; red alert treatment; CTA «Переглянути».
+- Протерміновано — count + stacked status/risk bar; red alert treatment.
 - Готові до видачі — count + progress/status distribution.
+
+Окремих CTA-кнопок на кшталт «Переглянути» всередині карток немає. Перехід виконується натисканням на всю картку; у всіх картках використовується однаковий компактний navigation affordance.
 
 ## 5. Період та інтерактивність
 У шапці дашборда додати compact period control:
