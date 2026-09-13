@@ -5,8 +5,7 @@ import { CrmAccessProvider } from "./crm-access-provider";
 import type { CrmAccessSnapshot } from "./use-crm-access";
 import { MechanicCabinet } from "./mechanic-cabinet";
 import { OwnerViewAsControl } from "./personnel-owner-view-as-control";
-import { SidebarRail } from "./auth/sidebar-rail";
-import { SidebarRailIcons } from "./auth/sidebar-rail-icons";
+import { SidebarRailV5 } from "./auth/sidebar-rail-v5";
 import { BinotelRecordingProvider } from "./binotel-recordings";
 
 type HomePageProps = {
@@ -72,7 +71,7 @@ export default async function HomePage({ searchParams }: HomePageProps) {
   return <>
     <OwnerViewAsControl/>
     <CrmAccessProvider snapshot={clientAccess}>
-      <BinotelRecordingProvider><SidebarRail/><SidebarRailIcons/><CrmShell initialSection={section} initialSettingsTab={settingsTab} /></BinotelRecordingProvider>
+      <BinotelRecordingProvider><SidebarRailV5/><CrmShell initialSection={section} initialSettingsTab={settingsTab} /></BinotelRecordingProvider>
     </CrmAccessProvider>
   </>;
 }
