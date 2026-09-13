@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import { normalizePhone } from "./new-request-wizard-v5.model";
 
 const DEBOUNCE_MS = 380;
+const AUTO_HINT = "Пошук запускається автоматично після введення повного номера. Якщо клієнт є в CRM — його картка підставляється без додаткового підтвердження.";
 
 function stepNumber(root: HTMLElement) {
   const text = root.querySelector(".requestStepTitle small")?.textContent || "";
@@ -29,18 +30,27 @@ function resultPhone(result: HTMLElement | null) {
 
 function setHint(root: HTMLElement) {
   const hint = root.querySelector(".phoneLookupHint") as HTMLElement | null;
-  if (!hint) return;
-  hint.textContent = "Пошук запускається автоматично після введення повного номера. Якщо клієнт є в CRM — його картка підставляється без додаткового підтвердження.";
+  if (!hint || hint.textContent === AUTO_HINT) return;
+  hint.textContent = AUTO_HINT;
 }
 
 function setIdleButtonPresentation(button: HTMLButtonElement, complete: boolean) {
   if (!button.classList.contains("lookupState-idle")) {
-    button.style.pointerEvents = "";
+    if (button.style.pointerEvents) button.style.pointerEvents = "";
     return;
   }
-  button.textContent = complete ? "Перевіряю…" : "Автопошук";
-  button.style.pointerEvents = "none";
-  button.setAttribute("aria-label", complete ? "Автоматично перевіряю номер у CRM" : "Автопошук запуститься після введення повного номера");
+  const label = complete ? "Перевіряю…" : "Автопошук";
+  const ariaLabel = complete ? "Автоматично перевіряю номер у CRM" : "Автопошук запуститься після введення повного номера";
+  if (button.textContent !== label) button.textContent = label;
+  if (button.style.pointerEvents !== "none") button.style.pointerEvents = "none";
+  if (button.getAttribute("aria-label") !== ariaLabel) button.setAttribute("aria-label", ariaLabel);
+}
+
+function markApplied(button: HTMLButtonElement) {
+  if (button.textContent !== "✓ Підставлено") button.textContent = "✓ Підставлено";
+  if (!button.disabled) button.disabled = true;
+  const ariaLabel = "Клієнта автоматично підставлено за номером телефону";
+  if (button.getAttribute("aria-label") !== ariaLabel) button.setAttribute("aria-label", ariaLabel);
 }
 
 export function NewRequestPhoneAutoMatchEnhancer() {
@@ -110,11 +120,7 @@ export function NewRequestPhoneAutoMatchEnhancer() {
           window.setTimeout(tick, 0);
           return;
         }
-        if (useButton) {
-          useButton.textContent = "✓ Підставлено";
-          useButton.disabled = true;
-          useButton.setAttribute("aria-label", "Клієнта автоматично підставлено за номером телефону");
-        }
+        if (useButton) markApplied(useButton);
         return;
       }
 
@@ -133,7 +139,7 @@ export function NewRequestPhoneAutoMatchEnhancer() {
         if (!currentInput || !currentButton) return;
         if (normalizePhone(currentInput.value) !== phone) return;
         scheduledPhone = "";
-        currentButton.style.pointerEvents = "";
+        if (currentButton.style.pointerEvents) currentButton.style.pointerEvents = "";
         currentButton.click();
       }, DEBOUNCE_MS);
     };
