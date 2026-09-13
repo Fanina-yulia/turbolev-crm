@@ -196,9 +196,10 @@ function normalizeWizardLanguage(context: PlannerBookingContext | null) {
     const heading = step3.querySelector<HTMLElement>(".requestStepTitle h3");
     const hint = step3.querySelector<HTMLElement>(".requestHint");
     const complaint = step3.querySelector<HTMLElement>(".fastComplaint > span");
-    if (heading && heading.textContent !== "Що потрібно зробити?") heading.textContent = "Що потрібно зробити?";
-    if (hint && hint.textContent !== "Додайте роботи або коротко опишіть потребу клієнта") hint.textContent = "Додайте роботи або коротко опишіть потребу клієнта";
-    if (complaint && complaint.textContent !== "Роботи / побажання клієнта") complaint.textContent = "Роботи / побажання клієнта";
+    if (heading && heading.textContent !== "Проблема") heading.textContent = "Проблема";
+    if (hint && hint.textContent !== "Коментар необов’язковий. За потреби коротко опишіть проблему клієнта.") hint.textContent = "Коментар необов’язковий. За потреби коротко опишіть проблему клієнта.";
+    if (complaint && complaint.textContent !== "Коментар (необов’язково)") complaint.textContent = "Коментар (необов’язково)";
+    step3.querySelectorAll<HTMLElement>(".fastCategoryTags").forEach((node) => node.remove());
   }
 
   const submit = modal.querySelector<HTMLButtonElement>(".fastBookButton");
