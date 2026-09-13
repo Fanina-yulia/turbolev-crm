@@ -198,8 +198,10 @@ function renderEstimate(modal: HTMLElement, snapshot: AppointmentSnapshot | null
   const isRepair = snapshot?.purpose === "REPAIR" || heading === "Роботи";
   const label = estimate.querySelector("[data-planner-estimate-label]");
   const value = estimate.querySelector("[data-planner-estimate-value]");
-  if (label) label.textContent = isRepair ? "Орієнтовна сума робіт" : "Орієнтовна вартість діагностики";
-  if (value) value.textContent = formatAmount(snapshot?.estimatedAmount ?? null);
+  const nextLabel = isRepair ? "Орієнтовна сума робіт" : "Орієнтовна вартість діагностики";
+  const nextValue = formatAmount(snapshot?.estimatedAmount ?? null);
+  if (label && label.textContent !== nextLabel) label.textContent = nextLabel;
+  if (value && value.textContent !== nextValue) value.textContent = nextValue;
 }
 
 function applyClientLink(modal: HTMLElement, clientId: string | null) {
