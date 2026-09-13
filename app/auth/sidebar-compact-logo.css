@@ -75,4 +75,23 @@
   .shell:has(.sidebar > button[aria-controls="crm-primary-navigation"][aria-expanded="false"]) > .workspace {
     padding-left: 12px !important;
   }
+
+  /* The hover overlay restores the full brand mark. These selectors are
+     intentionally more specific than the compact rail fallback above so only
+     the logo matching the active theme is visible while the panel is open. */
+  :root:not([data-theme="light"]) .sidebar[data-rail-hover-open]:has(> button[aria-controls="crm-primary-navigation"][aria-expanded="false"]) .brandLogoDark {
+    display: block !important;
+  }
+
+  :root:not([data-theme="light"]) .sidebar[data-rail-hover-open]:has(> button[aria-controls="crm-primary-navigation"][aria-expanded="false"]) .brandLogoLight {
+    display: none !important;
+  }
+
+  :root[data-theme="light"] .sidebar[data-rail-hover-open]:has(> button[aria-controls="crm-primary-navigation"][aria-expanded="false"]) .brandLogoDark {
+    display: none !important;
+  }
+
+  :root[data-theme="light"] .sidebar[data-rail-hover-open]:has(> button[aria-controls="crm-primary-navigation"][aria-expanded="false"]) .brandLogoLight {
+    display: block !important;
+  }
 }
