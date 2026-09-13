@@ -1,6 +1,7 @@
 -- Additional work execution flow V1.
--- Keep TECHNICAL_DECISION blockers tied to a proposed WorkOrderLine in sync
--- regardless of whether approval comes from CRM, client portal or mixed approval.
+-- Keep TECHNICAL_DECISION blockers and required-action tasks tied to a mechanic
+-- proposed WorkOrderLine in sync regardless of whether approval comes from CRM,
+-- client portal or mixed approval.
 
 CREATE OR REPLACE FUNCTION "sync_mechanic_additional_work_blocker_status"()
 RETURNS trigger
@@ -13,6 +14,10 @@ DECLARE
   resolution_text text;
 BEGIN
   IF NEW."status" IS NOT DISTINCT FROM OLD."status" THEN
+    RETURN NEW;
+  END IF;
+
+  IF COALESCE(NEW."sourceEntity", '') <> 'MECHANIC_ADDITIONAL_WORK' THEN
     RETURN NEW;
   END IF;
 
@@ -72,6 +77,15 @@ BEGIN
       CURRENT_TIMESTAMP
     );
   END LOOP;
+
+  UPDATE "CrmTask"
+  SET
+    "status" = 'DONE',
+    "completedAt" = COALESCE("completedAt", CURRENT_TIMESTAMP),
+    "updatedAt" = CURRENT_TIMESTAMP
+  WHERE "sourceType" = 'WORK_ORDER_LINE'
+    AND "sourceId" = NEW."id"
+    AND "status" IN ('OPEN', 'IN_PROGRESS');
 
   RETURN NEW;
 END;
