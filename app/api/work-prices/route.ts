@@ -57,6 +57,35 @@ function startsWithPartTerm(value: unknown, definition: PartTerminologyDefinitio
   });
 }
 
+function catalogTokenMatches(left: string, right: string) {
+  if (left === right) return true;
+  if (left.length < 4 || right.length < 4) return false;
+  let common = 0;
+  while (common < left.length && common < right.length && left[common] === right[common]) common += 1;
+  return common >= Math.max(4, Math.min(left.length, right.length) - 2);
+}
+
+function isSearchQualifierToken(token: string) {
+  return /^(передн|задн|лів|прав|верхн|нижн|замі|обслугов|демонтаж|монтаж|перепрес|діагност|ремонт|знят|встанов|окрем)/u.test(token);
+}
+
+function isPartFocusedSearch(query: string, definition: PartTerminologyDefinition) {
+  const source = normalizePartTerminology(query);
+  if (!source || /(?:\/|\+|&|\b(?:та|і|й|and)\b)/u.test(source)) return false;
+  const queryTokens = source.split(" ").filter(Boolean);
+  const aliases = [definition.canonicalName, ...definition.aliases]
+    .map((alias) => normalizePartTerminology(alias).split(" ").filter(Boolean))
+    .filter((tokens) => tokens.length);
+
+  return aliases.some((aliasTokens) => {
+    const hasPartToken = queryTokens.some((queryToken) => aliasTokens.some((aliasToken) => catalogTokenMatches(queryToken, aliasToken)));
+    return hasPartToken && queryTokens.every((queryToken) => (
+      isSearchQualifierToken(queryToken)
+      || aliasTokens.some((aliasToken) => catalogTokenMatches(queryToken, aliasToken))
+    ));
+  });
+}
+
 function belongsToPart(row: {
   displayName: string;
   internalName: string;
@@ -85,7 +114,7 @@ function belongsToPart(row: {
 
 function resolvePartForSearch(query: string) {
   const direct = resolvePartTerminology({ query }).definition;
-  if (direct) return direct;
+  if (direct && isPartFocusedSearch(query, direct)) return direct;
   const tokens = normalizePartTerminology(query).split(" ").filter(Boolean);
   if (!tokens.length || tokens.length > 2) return null;
   const matches = listPartTerminology().filter((definition) => [definition.canonicalName, ...definition.aliases].some((alias) => {
