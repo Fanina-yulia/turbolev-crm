@@ -13,6 +13,7 @@ import { toPrismaJson } from "@/src/lib/prisma-json";
 import { applyDuplicateNameReview } from "@/src/services/service-catalog-duplicate-review.service";
 import { parseServiceCatalogWorkbook, type ParsedCatalogRow } from "@/src/services/service-catalog-import.service";
 import { bodySideLabel, buildServiceSearchAliases, calculatorOperationLabel, normalizeServiceCatalogName } from "@/src/services/service-catalog-name-builder.service";
+import { normalizePartTerminology, resolvePartTerminology } from "@/src/services/parts-terminology.service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -96,7 +97,22 @@ function naming(row: ParsedCatalogRow, existingAliases: string[] = []) {
     externalServiceId: row.externalServiceId,
     existing: [displayName, row.displayName, ...row.searchAliases, ...existingAliases],
   });
-  return { displayName, namePart, namePosition, nameSide, nameOperation, searchAliases };
+  return { displayName, namePart, namePosition, nameSide, nameOperation, canonicalPartCode: normalized.canonicalPartCode || row.canonicalPartCode || null, searchAliases };
+}
+
+function compatibleExistingAliases(current: {
+  externalServiceId: string | null;
+  internalName: string;
+  searchAliases: string[];
+}, name: ReturnType<typeof naming>) {
+  const canonicalCode = name.canonicalPartCode;
+  return current.searchAliases.filter((alias) => {
+    const normalizedAlias = normalizePartTerminology(alias);
+    if (!normalizedAlias) return false;
+    if ([current.externalServiceId, current.internalName].filter(Boolean).some((value) => normalizePartTerminology(value) === normalizedAlias)) return true;
+    const resolved = resolvePartTerminology({ query: alias }).definition;
+    return !resolved || resolved.code === canonicalCode;
+  });
 }
 
 function sampleRow(row: ParsedCatalogRow) {
@@ -281,9 +297,9 @@ export async function POST(request: Request) {
       await prisma.$transaction(group.map((row) => {
         const current = byExternalId.get(row.externalServiceId)!;
         const unsafe = row.reviewStatus !== "READY";
+        const initialName = naming(row);
         const name = naming(row, [
-          ...current.searchAliases,
-          current.displayName,
+          ...compatibleExistingAliases(current, initialName),
           current.internalName,
         ]);
         return prisma.serviceCatalogItem.update({
