@@ -1,6 +1,7 @@
 import { getPrisma } from "@/src/lib/prisma";
 import { decimalToNumber, roundMoney } from "@/src/domain/finance";
 import { formatWorkOrderNumber } from "@/src/domain/work-order-number";
+import { getCustomerLifetimeMetrics } from "@/src/services/customer-ltv.service";
 
 function pct(part: number, total: number) {
   return total > 0 ? Math.round((part / total) * 1000) / 10 : 0;
@@ -15,6 +16,23 @@ type Input = {
   to: Date;
   effectiveLocationIds: string[] | null;
 };
+
+function emptyResult() {
+  return {
+    workOrders: [],
+    clientLtv: [],
+    cohort: {
+      servedClients: 0,
+      lifetimeOrders: 0,
+      lifetimeRevenue: 0 as number | null,
+      lifetimeGrossProfit: 0 as number | null,
+      lifetimeContribution: 0 as number | null,
+      financeCoveragePct: 100,
+      warrantyCostCoveragePct: 100,
+      completeClients: 0,
+    },
+  };
+}
 
 export async function getOwnerAnalyticsEconomics(input: Input) {
   const prisma = getPrisma();
@@ -33,13 +51,7 @@ export async function getOwnerAnalyticsEconomics(input: Input) {
     scopedWorkOrderIds = appointmentRows.map((row) => row.workOrderId).filter((id): id is string => Boolean(id));
   }
 
-  if (scopedWorkOrderIds?.length === 0) {
-    return {
-      workOrders: [],
-      clientLtv: [],
-      cohort: { servedClients: 0, lifetimeOrders: 0, lifetimeRevenue: 0, lifetimeGrossProfit: 0 },
-    };
-  }
+  if (scopedWorkOrderIds?.length === 0) return emptyResult();
 
   const scopedWhere = scopedWorkOrderIds ? { id: { in: scopedWorkOrderIds } } : {};
   const periodOrders = await prisma.workOrder.findMany({
@@ -53,13 +65,7 @@ export async function getOwnerAnalyticsEconomics(input: Input) {
     orderBy: { closedAt: "desc" },
   });
   const periodOrderIds = periodOrders.map((row) => row.id);
-  if (!periodOrderIds.length) {
-    return {
-      workOrders: [],
-      clientLtv: [],
-      cohort: { servedClients: 0, lifetimeOrders: 0, lifetimeRevenue: 0, lifetimeGrossProfit: 0 },
-    };
-  }
+  if (!periodOrderIds.length) return emptyResult();
 
   const [periodSnapshots, numberRows, clients, vehicles] = await Promise.all([
     prisma.workOrderFinanceSnapshot.findMany({
@@ -133,66 +139,32 @@ export async function getOwnerAnalyticsEconomics(input: Input) {
   }).sort((a, b) => b.grossProfit - a.grossProfit || b.grossRevenue - a.grossRevenue);
 
   const cohortClientIds = [...new Set(periodOrders.map((row) => row.clientId))];
-  const lifetimeOrders = await prisma.workOrder.findMany({
-    where: {
-      ...scopedWhere,
-      status: "CLOSED",
-      clientId: { in: cohortClientIds },
-      NOT: { id: { startsWith: "demo_" } },
-    },
-    select: { id: true, clientId: true, closedAt: true },
-    orderBy: { closedAt: "asc" },
-  });
-  const lifetimeIds = lifetimeOrders.map((row) => row.id);
-  const lifetimeSnapshots = lifetimeIds.length
-    ? await prisma.workOrderFinanceSnapshot.findMany({
-        where: { workOrderId: { in: lifetimeIds }, kind: "ACTUAL" },
-        select: { workOrderId: true, grossRevenue: true, grossProfit: true },
-      })
-    : [];
-  const lifetimeSnapshotByOrder = new Map(lifetimeSnapshots.map((row) => [row.workOrderId, row]));
-  const grouped = new Map<string, {
-    orders: number;
-    revenue: number;
-    grossProfit: number;
-    firstClosedAt: Date | null;
-    lastClosedAt: Date | null;
-  }>();
-  for (const order of lifetimeOrders) {
-    const snapshot = lifetimeSnapshotByOrder.get(order.id);
-    if (!snapshot) continue;
-    const current = grouped.get(order.clientId) || { orders: 0, revenue: 0, grossProfit: 0, firstClosedAt: null, lastClosedAt: null };
-    current.orders += 1;
-    current.revenue += decimalToNumber(snapshot.grossRevenue);
-    current.grossProfit += decimalToNumber(snapshot.grossProfit);
-    if (order.closedAt && (!current.firstClosedAt || order.closedAt < current.firstClosedAt)) current.firstClosedAt = order.closedAt;
-    if (order.closedAt && (!current.lastClosedAt || order.closedAt > current.lastClosedAt)) current.lastClosedAt = order.closedAt;
-    grouped.set(order.clientId, current);
-  }
-
-  const clientLtv = [...grouped.entries()].map(([clientId, row]) => {
-    const client = clientById.get(clientId) ?? null;
-    return {
-      clientId,
-      name: client?.name || client?.phone || "Клієнт",
-      visits: row.orders,
-      lifetimeRevenue: roundMoney(row.revenue),
-      lifetimeGrossProfit: roundMoney(row.grossProfit),
-      averageCheck: row.orders ? roundMoney(row.revenue / row.orders) : 0,
-      grossMarginPct: pct(row.grossProfit, row.revenue),
-      firstClosedAt: row.firstClosedAt?.toISOString() ?? null,
-      lastClosedAt: row.lastClosedAt?.toISOString() ?? null,
-    };
-  }).sort((a, b) => b.lifetimeGrossProfit - a.lifetimeGrossProfit || b.lifetimeRevenue - a.lifetimeRevenue);
+  const clientLtv = await getCustomerLifetimeMetrics({ clientIds: cohortClientIds, scopedWorkOrderIds });
+  const complete = clientLtv.filter((row) => row.complete);
+  const allComplete = complete.length === clientLtv.length;
+  const lifetimeOrders = clientLtv.reduce((sum, row) => sum + row.visits, 0);
+  const weightedFinanceCoverage = lifetimeOrders
+    ? clientLtv.reduce((sum, row) => sum + row.financeCoveragePct * row.visits, 0) / lifetimeOrders
+    : 100;
+  const warrantyClaims = clientLtv.reduce((sum, row) => sum + row.warrantyClaims, 0);
+  const weightedWarrantyCoverage = warrantyClaims
+    ? clientLtv.reduce((sum, row) => sum + row.warrantyCostCoveragePct * row.warrantyClaims, 0) / warrantyClaims
+    : 100;
 
   return {
     workOrders: workOrders.slice(0, 250),
-    clientLtv: clientLtv.slice(0, 100),
+    clientLtv: clientLtv
+      .sort((a, b) => (b.lifetimeContribution ?? Number.NEGATIVE_INFINITY) - (a.lifetimeContribution ?? Number.NEGATIVE_INFINITY) || b.visits - a.visits)
+      .slice(0, 100),
     cohort: {
       servedClients: cohortClientIds.length,
-      lifetimeOrders: lifetimeSnapshots.length,
-      lifetimeRevenue: roundMoney(lifetimeSnapshots.reduce((sum, row) => sum + decimalToNumber(row.grossRevenue), 0)),
-      lifetimeGrossProfit: roundMoney(lifetimeSnapshots.reduce((sum, row) => sum + decimalToNumber(row.grossProfit), 0)),
+      lifetimeOrders,
+      lifetimeRevenue: allComplete ? roundMoney(complete.reduce((sum, row) => sum + (row.lifetimeRevenue ?? 0), 0)) : null,
+      lifetimeGrossProfit: allComplete ? roundMoney(complete.reduce((sum, row) => sum + (row.lifetimeGrossProfit ?? 0), 0)) : null,
+      lifetimeContribution: allComplete ? roundMoney(complete.reduce((sum, row) => sum + (row.lifetimeContribution ?? 0), 0)) : null,
+      financeCoveragePct: Math.round(weightedFinanceCoverage * 10) / 10,
+      warrantyCostCoveragePct: Math.round(weightedWarrantyCoverage * 10) / 10,
+      completeClients: complete.length,
     },
   };
 }
