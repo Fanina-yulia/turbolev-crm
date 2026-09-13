@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { navigateCrm } from "./crm-route";
+import { OwnerDashboardVisual, type OwnerPeriodKey } from "./owner-dashboard-visual";
 import { VehicleRender } from "./vehicle-render";
 import styles from "./owner-dashboard.module.css";
 
@@ -99,6 +100,8 @@ type DashboardPayload = {
   attention?: DashboardAttention[];
 };
 
+const KYIV_TZ = "Europe/Kyiv";
+
 function money(value: number | null | undefined) {
   if (value == null) return "—";
   return new Intl.NumberFormat("uk-UA", { style: "currency", currency: "UAH", maximumFractionDigits: 0 }).format(value);
@@ -125,16 +128,20 @@ function dateLabel(value: string) {
   return new Intl.DateTimeFormat("uk-UA", { day: "2-digit", month: "short" }).format(date);
 }
 
-function delta(current: number | null | undefined, previous: number | null | undefined) {
-  if (current == null || previous == null || previous === 0) return null;
-  return ((current - previous) / Math.abs(previous)) * 100;
+function kyivDateKey(date = new Date()) {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: KYIV_TZ, year: "numeric", month: "2-digit", day: "2-digit" }).format(date);
 }
 
-function Delta({ current, previous, invert = false }: { current: number | null | undefined; previous: number | null | undefined; invert?: boolean }) {
-  const value = delta(current, previous);
-  if (value == null) return <small className={styles.deltaNeutral}>поточний період</small>;
-  const good = invert ? value <= 0 : value >= 0;
-  return <small className={good ? styles.deltaGood : styles.deltaBad}>{value > 0 ? "↑" : value < 0 ? "↓" : "•"} {Math.abs(value).toFixed(1)}%</small>;
+function minusDays(dateKey: string, days: number) {
+  const [year, month, day] = dateKey.split("-").map(Number);
+  return new Date(Date.UTC(year, month - 1, day - days, 12)).toISOString().slice(0, 10);
+}
+
+function analyticsQuery(period: OwnerPeriodKey) {
+  const to = kyivDateKey();
+  const days = period === "TODAY" ? 1 : period === "7D" ? 7 : period === "30D" ? 30 : period === "90D" ? 90 : 365;
+  const from = minusDays(to, days - 1);
+  return `?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`;
 }
 
 function routeAttention(item: DashboardAttention) {
@@ -174,13 +181,14 @@ export function OwnerControlCenter({ userName }: { userName?: string | null }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [attentionTab, setAttentionTab] = useState<"OWNER" | "TEAM">("OWNER");
+  const [period, setPeriod] = useState<OwnerPeriodKey>("30D");
 
   const load = useCallback(async () => {
     setLoading(true);
     setError("");
     try {
       const [analyticsResponse, dashboardResponse] = await Promise.all([
-        fetch("/api/analytics", { cache: "no-store", credentials: "include" }),
+        fetch(`/api/analytics${analyticsQuery(period)}`, { cache: "no-store", credentials: "include" }),
         fetch("/api/dashboard", { cache: "no-store", credentials: "include" }),
       ]);
       const analyticsBody = await analyticsResponse.json().catch(() => null) as AnalyticsPayload | null;
@@ -193,7 +201,7 @@ export function OwnerControlCenter({ userName }: { userName?: string | null }) {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [period]);
 
   useEffect(() => {
     void load();
@@ -206,8 +214,6 @@ export function OwnerControlCenter({ userName }: { userName?: string | null }) {
     };
   }, [load]);
 
-  const kpi = analytics?.kpi;
-  const previous = analytics?.previous;
   const operations = analytics?.operations;
   const funnel = analytics?.funnel;
   const attention = dashboard?.attention ?? [];
@@ -242,21 +248,7 @@ export function OwnerControlCenter({ userName }: { userName?: string | null }) {
 
     {error && <div className={styles.error}><strong>Не вдалося оновити пульт власника</strong><span>{error}</span><button type="button" onClick={() => void load()}>Повторити</button></div>}
 
-    <section className={styles.kpis}>
-      <button type="button" onClick={() => navigateCrm("Фінансовий центр")}><span>Виручка за період</span><strong>{money(kpi?.grossRevenue)}</strong><Delta current={kpi?.grossRevenue} previous={previous?.grossRevenue} /></button>
-      <button type="button" onClick={() => navigateCrm("Фінансовий центр")}><span>Валовий прибуток</span><strong>{money(kpi?.grossProfit)}</strong><Delta current={kpi?.grossProfit} previous={previous?.grossProfit} /></button>
-      <button type="button" onClick={() => navigateCrm("Аналітика")}><span>Валова маржа</span><strong>{percent(kpi?.grossMarginPct)}</strong><small>середній чек {money(kpi?.averageCheck)}</small></button>
-      <button type="button" onClick={() => navigateCrm("Аналітика")}><span>Завантаження постів</span><strong>{percent(kpi?.postUtilizationPct)}</strong><Delta current={kpi?.postUtilizationPct} previous={previous?.postUtilizationPct} /></button>
-      <button type="button" onClick={() => navigateCrm("Аналітика")}><span>Повторні клієнти</span><strong>{percent(kpi?.repeatClientPct)}</strong><small>утримання клієнтської бази</small></button>
-      <button type="button" onClick={() => navigateCrm("Планувальник")}><span>Запис → приїзд</span><strong>{percent(kpi?.bookingToArrivalPct)}</strong><Delta current={kpi?.bookingToArrivalPct} previous={previous?.bookingToArrivalPct} /></button>
-    </section>
-
-    <section className={styles.liveStrip} aria-label="Стан мережі зараз">
-      <button type="button" onClick={() => navigateCrm("Комерційна пропозиція")}><span>Активні авто</span><strong>{operations?.activeNow ?? 0}</strong><small>у потоці мережі зараз</small></button>
-      <button type="button" onClick={() => navigateCrm("Комерційна пропозиція", { status: "IN_REPAIR" })}><span>У ремонті</span><strong>{operations?.inRepairNow ?? 0}</strong><small>фактична активна робота</small></button>
-      <button type="button" className={(operations?.overdueNow ?? 0) > 0 ? styles.danger : ""} onClick={() => navigateCrm("Аналітика")}><span>Протерміновано</span><strong>{operations?.overdueNow ?? 0}</strong><small>вийшли за плановий час</small></button>
-      <button type="button" onClick={() => navigateCrm("Комерційна пропозиція", { status: "READY_FOR_PICKUP" })}><span>Готові до видачі</span><strong>{operations?.readyNow ?? 0}</strong><small>оплата контролюється окремо</small></button>
-    </section>
+    <OwnerDashboardVisual analytics={analytics} period={period} onPeriodChange={setPeriod} loading={loading} />
 
     <div className={styles.twoColumns}>
       <section className={styles.panel}>
