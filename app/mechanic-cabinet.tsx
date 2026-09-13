@@ -1,5 +1,6 @@
 "use client";
 
+import { MechanicAdditionalWorkBridge } from "./mechanic-additional-work-bridge";
 import { MechanicLiveCabinet } from "./mechanic-live-cabinet";
 import { MechanicRequestCoordinator } from "./mechanic-request-coordinator";
 
@@ -13,5 +14,6 @@ import { MechanicRequestCoordinator } from "./mechanic-request-coordinator";
 export function MechanicCabinet({ userName }: { userName?: string | null }) {
   return <MechanicRequestCoordinator>
     <MechanicLiveCabinet userName={userName} />
+    <MechanicAdditionalWorkBridge />
   </MechanicRequestCoordinator>;
 }
