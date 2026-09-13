@@ -11,7 +11,8 @@
     "app/ukrainian-license-plate.css",
     "app/role-work-queues-panel.tsx",
     "app/role-work-queues-panel.module.css",
-    "src/domain/role-work-queues.ts"
+    "src/domain/role-work-queues.ts",
+    "app/new-request-phone-auto-match-enhancer.tsx"
   ],
   "communications": [
     "app/legacy-active-action-bridge.tsx"

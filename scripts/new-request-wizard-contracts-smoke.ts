@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import {
   parseClientLookup,
   parseVinResponse,
@@ -95,5 +96,15 @@ assert(
   !vehicleCandidateConfirmsVin(plateVehicle, "WVWZZZ1JZXW000001"),
   "a different VIN must not inherit the plate lookup confirmation",
 );
+
+const phoneAutoMatchSource = readFileSync(new URL("../app/new-request-phone-auto-match-enhancer.tsx", import.meta.url), "utf8");
+assert(phoneAutoMatchSource.includes("DEBOUNCE_MS"), "phone auto-match should debounce lookup requests");
+assert(phoneAutoMatchSource.includes("currentButton.click()"), "complete phone should trigger CRM lookup automatically");
+assert(phoneAutoMatchSource.includes("useButton.click()"), "exact phone result should be applied automatically");
+assert(phoneAutoMatchSource.includes("matchedPhone !== phone"), "stale phone lookup result must not be auto-applied");
+assert(phoneAutoMatchSource.includes("✓ Підставлено"), "auto-applied client should expose a confirmed UI state");
+
+const launcherSource = readFileSync(new URL("../app/new-request-launcher.tsx", import.meta.url), "utf8");
+assert(launcherSource.includes("NewRequestPhoneAutoMatchEnhancer"), "new request launcher must mount the phone auto-match enhancer");
 
 console.log("New request wizard contracts smoke: OK");
