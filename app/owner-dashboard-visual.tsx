@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useMemo, useState } from "react";
 import { navigateCrm } from "./crm-route";
 import styles from "./owner-dashboard-visual.module.css";
 
@@ -35,6 +36,7 @@ type AnalyticsVisualPayload = {
     overdueNow: number;
     delayReasons: Array<{ code: string; label: string; count: number }>;
   };
+  funnel?: { noShow: number };
   trend?: Array<{ date: string; closed: number; revenue: number | null; grossProfit: number | null }>;
 };
 
@@ -46,6 +48,35 @@ type Props = {
 };
 
 type Tone = "orange" | "green" | "red" | "neutral";
+
+type PaymentRow = {
+  outstanding: number;
+  paid: number;
+  overdue: boolean;
+  flags: { due: boolean; partial: boolean; debt: boolean; paidToday: boolean };
+};
+
+type PaymentsPayload = { ok?: boolean; rows?: PaymentRow[] };
+type MarginApprovalRow = { workOrderId?: string; revenue?: number; grossMarginPercent?: number; warningMarginPercent?: number };
+type MarginApprovalsPayload = { ok?: boolean; pending?: MarginApprovalRow[] };
+type AttentionItem = { id?: string; issues?: Array<{ code: string }> };
+type DashboardPayload = {
+  ok?: boolean;
+  blockers?: { approval?: number; waitingParts?: number; noShow?: number };
+  attention?: AttentionItem[];
+};
+
+type OwnerControlSnapshot = {
+  receivables: { total: number; count: number; due: number; partial: number; debt: number; debtCount: number };
+  decisions: { total: number; margin: number; marginRevenue: number; warranty: number; paused: number };
+  risk: { noShow: number; paused: number };
+};
+
+const EMPTY_CONTROL: OwnerControlSnapshot = {
+  receivables: { total: 0, count: 0, due: 0, partial: 0, debt: 0, debtCount: 0 },
+  decisions: { total: 0, margin: 0, marginRevenue: 0, warranty: 0, paused: 0 },
+  risk: { noShow: 0, paused: 0 },
+};
 
 const PERIODS: Array<{ key: OwnerPeriodKey; label: string }> = [
   { key: "TODAY", label: "Сьогодні" },
@@ -66,6 +97,11 @@ function number(value: number | null | undefined, digits = 0) {
 
 function percent(value: number | null | undefined) {
   return value == null ? "—" : `${number(value, 1)}%`;
+}
+
+function safeNumber(value: unknown) {
+  const parsed = Number(value ?? 0);
+  return Number.isFinite(parsed) ? parsed : 0;
 }
 
 function relativeDelta(current: number | null | undefined, previous: number | null | undefined) {
@@ -105,19 +141,17 @@ function Sparkline({ values, tone = "orange", area = false }: { values: Array<nu
   const max = Math.max(...data, 1);
   const min = Math.min(...data, 0);
   const span = Math.max(1, max - min);
-  const points = data.map((value, index) => {
+  const pointList = data.map((value, index) => {
     const x = data.length === 1 ? width / 2 : pad + (index / (data.length - 1)) * (width - pad * 2);
     const y = height - pad - ((value - min) / span) * (height - pad * 2);
-    return `${x.toFixed(1)},${y.toFixed(1)}`;
-  }).join(" ");
+    return { x, y };
+  });
+  const points = pointList.map((point) => `${point.x.toFixed(1)},${point.y.toFixed(1)}`).join(" ");
   const polygon = area && points ? `${pad},${height - pad} ${points} ${width - pad},${height - pad}` : "";
   return <svg className={`${styles.sparkline} ${styles[`tone${tone}`]}`} viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" aria-hidden="true">
     {area && <polygon points={polygon} className={styles.sparkArea} />}
     <polyline points={points} fill="none" className={styles.sparkLine} />
-    {data.map((_, index) => {
-      const [x, y] = points.split(" ")[index].split(",");
-      return <circle key={index} cx={x} cy={y} r="2.2" className={styles.sparkDot} />;
-    })}
+    {pointList.map((point, index) => <circle key={index} cx={point.x} cy={point.y} r="2.2" className={styles.sparkDot} />)}
   </svg>;
 }
 
@@ -143,30 +177,9 @@ function MetricIcon({ children, tone = "orange" }: { children: string; tone?: To
   return <span className={`${styles.metricIcon} ${styles[`icon${tone}`]}`} aria-hidden="true">{children}</span>;
 }
 
-function TrendMetricCard({
-  title,
-  value,
-  icon,
-  values,
-  previous,
-  current,
-  onClick,
-  chart = "line",
-  tone = "orange",
-  subtitle,
-  invertDelta = false,
-}: {
-  title: string;
-  value: string;
-  icon: string;
-  values: Array<number | null | undefined>;
-  previous?: number | null;
-  current?: number | null;
-  onClick: () => void;
-  chart?: "line" | "bars";
-  tone?: Tone;
-  subtitle?: string;
-  invertDelta?: boolean;
+function TrendMetricCard({ title, value, icon, values, previous, current, onClick, chart = "line", tone = "orange", subtitle, invertDelta = false }: {
+  title: string; value: string; icon: string; values: Array<number | null | undefined>; previous?: number | null; current?: number | null;
+  onClick: () => void; chart?: "line" | "bars"; tone?: Tone; subtitle?: string; invertDelta?: boolean;
 }) {
   return <button type="button" className={styles.metricCard} onClick={onClick} aria-label={`${title}: ${value}`}>
     <div className={styles.metricHead}><MetricIcon tone={tone}>{icon}</MetricIcon><span>{title}</span><em>›</em></div>
@@ -177,28 +190,9 @@ function TrendMetricCard({
   </button>;
 }
 
-function GaugeMetricCard({
-  title,
-  value,
-  icon,
-  gaugeValue,
-  previous,
-  current,
-  onClick,
-  tone = "orange",
-  subtitle,
-  gaugeLabel,
-}: {
-  title: string;
-  value: string;
-  icon: string;
-  gaugeValue: number | null | undefined;
-  previous?: number | null;
-  current?: number | null;
-  onClick: () => void;
-  tone?: Tone;
-  subtitle?: string;
-  gaugeLabel?: string;
+function GaugeMetricCard({ title, value, icon, gaugeValue, previous, current, onClick, tone = "orange", subtitle, gaugeLabel }: {
+  title: string; value: string; icon: string; gaugeValue: number | null | undefined; previous?: number | null; current?: number | null;
+  onClick: () => void; tone?: Tone; subtitle?: string; gaugeLabel?: string;
 }) {
   return <button type="button" className={styles.metricCard} onClick={onClick} aria-label={`${title}: ${value}`}>
     <div className={styles.metricHead}><MetricIcon tone={tone}>{icon}</MetricIcon><span>{title}</span><em>›</em></div>
@@ -222,30 +216,118 @@ function RetentionMetricCard({ value, onClick }: { value: number | null | undefi
   </button>;
 }
 
-function StatusBar({ segments }: { segments: Array<{ value: number; tone: Tone; label: string }> }) {
-  const total = Math.max(1, segments.reduce((sum, item) => sum + Math.max(0, item.value), 0));
-  return <div className={styles.statusBar} aria-hidden="true">
-    {segments.map((segment) => <i key={segment.label} className={styles[`status${segment.tone}`]} style={{ flexGrow: Math.max(0, segment.value) / total, flexBasis: segment.value > 0 ? 12 : 0 }} />)}
+function BreakdownChart({ rows }: { rows: Array<{ label: string; value: number; tone: Tone; formatted?: string }> }) {
+  const max = Math.max(1, ...rows.map((row) => Math.max(0, row.value)));
+  return <div className={styles.breakdownChart} aria-hidden="true">
+    {rows.map((row) => <div className={styles.breakdownRow} key={row.label}>
+      <span>{row.label}</span>
+      <div><i className={styles[`bar${row.tone}`]} style={{ width: `${row.value > 0 ? Math.max(5, row.value / max * 100) : 0}%` }} /></div>
+      <b>{row.formatted ?? number(row.value)}</b>
+    </div>)}
   </div>;
 }
 
+function sumRows(rows: PaymentRow[], predicate: (row: PaymentRow) => boolean) {
+  return rows.filter(predicate).reduce((sum, row) => sum + Math.max(0, safeNumber(row.outstanding)), 0);
+}
+
+function issueCount(attention: AttentionItem[], code: string) {
+  return attention.filter((item) => item.issues?.some((issue) => issue.code === code)).length;
+}
+
 export function OwnerDashboardVisual({ analytics, period, onPeriodChange, loading = false }: Props) {
+  const [control, setControl] = useState<OwnerControlSnapshot>(EMPTY_CONTROL);
+  const [controlLoading, setControlLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadControl = async () => {
+      setControlLoading(true);
+      const responses = await Promise.allSettled([
+        fetch("/api/payments", { cache: "no-store", credentials: "include" }),
+        fetch("/api/finance/margin-approvals", { cache: "no-store", credentials: "include" }),
+        fetch("/api/dashboard", { cache: "no-store", credentials: "include" }),
+      ]);
+      if (cancelled) return;
+      try {
+        const payments = responses[0].status === "fulfilled" && responses[0].value.ok ? await responses[0].value.json() as PaymentsPayload : null;
+        const margins = responses[1].status === "fulfilled" && responses[1].value.ok ? await responses[1].value.json() as MarginApprovalsPayload : null;
+        const dashboard = responses[2].status === "fulfilled" && responses[2].value.ok ? await responses[2].value.json() as DashboardPayload : null;
+        const paymentRows = payments?.rows ?? [];
+        const openRows = paymentRows.filter((row) => safeNumber(row.outstanding) > 0);
+        const attention = dashboard?.attention ?? [];
+        const marginRows = margins?.pending ?? [];
+        const warranty = issueCount(attention, "WARRANTY_OPEN");
+        const paused = issueCount(attention, "PAUSED_STALLED");
+        setControl({
+          receivables: {
+            total: openRows.reduce((sum, row) => sum + Math.max(0, safeNumber(row.outstanding)), 0),
+            count: openRows.length,
+            due: sumRows(openRows, (row) => row.flags?.due),
+            partial: sumRows(openRows, (row) => row.flags?.partial),
+            debt: sumRows(openRows, (row) => row.flags?.debt || row.overdue),
+            debtCount: openRows.filter((row) => row.flags?.debt || row.overdue).length,
+          },
+          decisions: {
+            total: marginRows.length + warranty + paused,
+            margin: marginRows.length,
+            marginRevenue: marginRows.reduce((sum, row) => sum + Math.max(0, safeNumber(row.revenue)), 0),
+            warranty,
+            paused,
+          },
+          risk: {
+            noShow: Math.max(0, safeNumber(dashboard?.blockers?.noShow)),
+            paused,
+          },
+        });
+      } finally {
+        if (!cancelled) setControlLoading(false);
+      }
+    };
+    void loadControl();
+    const onDataChanged = () => void loadControl();
+    window.addEventListener("turbolev:data-changed", onDataChanged);
+    const timer = window.setInterval(() => void loadControl(), 60_000);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("turbolev:data-changed", onDataChanged);
+      window.clearInterval(timer);
+    };
+  }, []);
+
   const kpi = analytics?.kpi;
   const previous = analytics?.previous;
   const operations = analytics?.operations;
   const trend = analytics?.trend ?? [];
   const revenueTrend = trend.map((item) => item.revenue);
   const profitTrend = trend.map((item) => item.grossProfit);
-  const closedTrend = trend.map((item) => item.closed);
   const overdue = operations?.overdueNow ?? 0;
-  const active = operations?.activeNow ?? kpi?.activeNow ?? 0;
-  const ready = operations?.readyNow ?? kpi?.readyNow ?? 0;
-  const inRepair = operations?.inRepairNow ?? 0;
-  const waitingParts = operations?.waitingPartsNow ?? 0;
-  const waitingApproval = operations?.waitingApprovalNow ?? 0;
-  const otherActive = Math.max(0, active - inRepair - waitingParts - waitingApproval - ready);
   const delayReasons = operations?.delayReasons?.slice(0, 4) ?? [];
-  const readyPct = active > 0 ? Math.min(100, (ready / active) * 100) : 0;
+  const waitingApproval = operations?.waitingApprovalNow ?? 0;
+  const noShow = Math.max(control.risk.noShow, analytics?.funnel?.noShow ?? 0);
+  const revenueRiskCount = noShow + waitingApproval + control.risk.paused;
+
+  const receivableRows = useMemo(() => [
+    { label: "До сплати", value: control.receivables.due, tone: "orange" as Tone, formatted: money(control.receivables.due) },
+    { label: "Частково", value: control.receivables.partial, tone: "neutral" as Tone, formatted: money(control.receivables.partial) },
+    { label: "Прострочено", value: control.receivables.debt, tone: "red" as Tone, formatted: money(control.receivables.debt) },
+  ], [control.receivables]);
+
+  const decisionRows = useMemo(() => [
+    { label: "Низька маржа", value: control.decisions.margin, tone: "orange" as Tone },
+    { label: "Гарантія", value: control.decisions.warranty, tone: "red" as Tone },
+    { label: "Зупинені", value: control.decisions.paused, tone: "neutral" as Tone },
+  ], [control.decisions]);
+
+  const overdueRows = useMemo(() => delayReasons.length
+    ? delayReasons.map((row) => ({ label: row.label, value: row.count, tone: "red" as Tone }))
+    : [{ label: "Без критичних прострочень", value: 0, tone: "neutral" as Tone }], [delayReasons]);
+
+  const riskRows = useMemo(() => [
+    { label: "No-show", value: noShow, tone: "red" as Tone },
+    { label: "Погодження / розрахунок", value: waitingApproval, tone: "orange" as Tone },
+    { label: "Зупинені процеси", value: control.risk.paused, tone: "neutral" as Tone },
+  ], [noShow, waitingApproval, control.risk.paused]);
 
   return <section className={styles.visualDashboard} aria-label="Ключова аналітика власника">
     <div className={styles.periodRow}>
@@ -264,33 +346,38 @@ export function OwnerDashboardVisual({ analytics, period, onPeriodChange, loadin
       <GaugeMetricCard title="Запис → приїзд" value={percent(kpi?.bookingToArrivalPct)} icon="✓" gaugeValue={kpi?.bookingToArrivalPct} current={kpi?.bookingToArrivalPct} previous={previous?.bookingToArrivalPct} tone="green" gaugeLabel="конверсія" onClick={() => navigateCrm("Планувальник")} />
     </div>
 
-    <div className={styles.operationGrid}>
-      <button type="button" className={styles.operationCard} onClick={() => navigateCrm("Комерційна пропозиція")}>
-        <div className={styles.operationHead}><div><MetricIcon>▣</MetricIcon><span>Активні авто</span></div><em>›</em></div>
-        <div className={styles.operationValue}><strong>{active}</strong><span>у поточній мережі зараз</span></div>
-        <Sparkline values={closedTrend.length ? closedTrend : [active]} tone="orange" area />
-        <div className={styles.legendRow}><span><i className={styles.legendOrange} />У ремонті {inRepair}</span><span><i className={styles.legendNeutral} />Інші {Math.max(0, active - inRepair)}</span></div>
+    <div className={styles.controlSectionHead}>
+      <div><span>КОНТРОЛЬ ВЛАСНИКА</span><strong>Гроші, рішення та ризики</strong></div>
+      <small>{controlLoading ? "Оновлюю контрольні дані…" : "живі дані CRM"}</small>
+    </div>
+
+    <div className={styles.controlGrid}>
+      <button type="button" className={styles.controlCard} onClick={() => navigateCrm("Оплати", { scope: "due" })} aria-label={`Гроші до отримання: ${money(control.receivables.total)}`}>
+        <div className={styles.controlHead}><div><MetricIcon>₴</MetricIcon><span>Гроші до отримання</span></div><em>›</em></div>
+        <div className={styles.controlValue}><strong>{money(control.receivables.total)}</strong><span>{control.receivables.count} відкритих оплат</span></div>
+        <BreakdownChart rows={receivableRows} />
+        <div className={styles.controlFoot}><span>Прострочений борг</span><b className={control.receivables.debt > 0 ? styles.textDanger : ""}>{money(control.receivables.debt)}</b></div>
       </button>
 
-      <button type="button" className={styles.operationCard} onClick={() => navigateCrm("Комерційна пропозиція", { status: "IN_REPAIR" })}>
-        <div className={styles.operationHead}><div><MetricIcon>⌁</MetricIcon><span>У ремонті</span></div><em>›</em></div>
-        <div className={styles.operationValue}><strong>{inRepair}</strong><span>фактична активна робота</span></div>
-        <StatusBar segments={[{ value: inRepair, tone: "orange", label: "У ремонті" }, { value: waitingParts, tone: "neutral", label: "Запчастини" }, { value: waitingApproval, tone: "green", label: "Погодження" }, { value: otherActive, tone: "neutral", label: "Інші" }]} />
-        <div className={styles.legendColumn}><span><i className={styles.legendOrange} />У ремонті <b>{inRepair}</b></span><span><i className={styles.legendNeutral} />Очікують запчастини <b>{waitingParts}</b></span><span><i className={styles.legendGreen} />Очікують рішення <b>{waitingApproval}</b></span></div>
+      <button type="button" className={`${styles.controlCard} ${control.decisions.total > 0 ? styles.controlAttention : ""}`} onClick={() => navigateCrm("Фінансовий центр")} aria-label={`Потрібне моє рішення: ${control.decisions.total}`}>
+        <div className={styles.controlHead}><div><MetricIcon tone={control.decisions.total > 0 ? "orange" : "neutral"}>!</MetricIcon><span>Потрібне моє рішення</span></div><em>›</em></div>
+        <div className={styles.controlValue}><strong>{control.decisions.total}</strong><span>рішень, де потрібен власник</span></div>
+        <BreakdownChart rows={decisionRows} />
+        <div className={styles.controlFoot}><span>КП з низькою маржею</span><b>{control.decisions.marginRevenue > 0 ? money(control.decisions.marginRevenue) : "—"}</b></div>
       </button>
 
-      <button type="button" className={`${styles.operationCard} ${overdue > 0 ? styles.operationDanger : ""}`} onClick={() => navigateCrm("Аналітика")}>
-        <div className={styles.operationHead}><div><MetricIcon tone={overdue > 0 ? "red" : "neutral"}>!</MetricIcon><span>Протерміновано</span></div><em>›</em></div>
-        <div className={styles.operationValue}><strong>{overdue}</strong><span>вийшли за плановий час</span></div>
-        {delayReasons.length ? <MiniBars values={delayReasons.map((item) => item.count)} tone="red" /> : <StatusBar segments={[{ value: overdue, tone: overdue > 0 ? "red" : "neutral", label: "Протерміновано" }, { value: Math.max(0, active - overdue), tone: "neutral", label: "В межах часу" }]} />}
-        <div className={styles.legendColumn}>{delayReasons.length ? delayReasons.map((item) => <span key={item.code}><i className={styles.legendRed} />{item.label} <b>{item.count}</b></span>) : <span><i className={styles.legendRed} />Протерміновано <b>{overdue}</b></span>}</div>
+      <button type="button" className={`${styles.controlCard} ${overdue > 0 ? styles.controlDanger : ""}`} onClick={() => navigateCrm("Аналітика")} aria-label={`Критичні прострочення: ${overdue}`}>
+        <div className={styles.controlHead}><div><MetricIcon tone={overdue > 0 ? "red" : "neutral"}>!</MetricIcon><span>Критичні прострочення</span></div><em>›</em></div>
+        <div className={styles.controlValue}><strong>{overdue}</strong><span>процесів вийшли за плановий час</span></div>
+        <BreakdownChart rows={overdueRows} />
+        <div className={styles.controlFoot}><span>Контроль SLA</span><b className={overdue > 0 ? styles.textDanger : ""}>{overdue > 0 ? "потрібне втручання" : "норма"}</b></div>
       </button>
 
-      <button type="button" className={styles.operationCard} onClick={() => navigateCrm("Комерційна пропозиція", { status: "READY_FOR_PICKUP" })}>
-        <div className={styles.operationHead}><div><MetricIcon tone="green">✓</MetricIcon><span>Готові до видачі</span></div><em>›</em></div>
-        <div className={styles.operationValue}><strong>{ready}</strong><span>оплата контролюється окремо</span></div>
-        <div className={styles.readyProgress}><i style={{ width: `${readyPct}%` }} /><span>{ready} / {Math.max(active, ready)}</span></div>
-        <div className={styles.legendRow}><span><i className={styles.legendGreen} />Готові {ready}</span><span><i className={styles.legendNeutral} />У потоці {Math.max(0, active - ready)}</span></div>
+      <button type="button" className={`${styles.controlCard} ${revenueRiskCount > 0 ? styles.controlRisk : ""}`} onClick={() => navigateCrm("Аналітика")} aria-label={`Ризик втрати виручки: ${revenueRiskCount} ситуацій`}>
+        <div className={styles.controlHead}><div><MetricIcon tone={revenueRiskCount > 0 ? "orange" : "green"}>↘</MetricIcon><span>Ризик втрати виручки</span></div><em>›</em></div>
+        <div className={styles.controlValue}><strong>{revenueRiskCount}</strong><span>ситуацій можуть не конвертуватися у виручку</span></div>
+        <BreakdownChart rows={riskRows} />
+        <div className={styles.controlFoot}><span>Факт без штучної оцінки</span><b>{revenueRiskCount > 0 ? "контролювати" : "ризиків немає"}</b></div>
       </button>
     </div>
   </section>;
