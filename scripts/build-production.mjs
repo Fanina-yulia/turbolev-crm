@@ -3,6 +3,7 @@ import "./check-critical-api-security.mjs";
 import "./check-mechanic-performance.mjs";
 import "./check-personnel-analytics.mjs";
 import "./check-quality-analytics.mjs";
+import "./check-customer-ltv.mjs";
 import "./check-crm-page-integrity.mjs";
 import { spawnSync } from "node:child_process";
 import { createMigrationEnvironment } from "./migration-database-url.mjs";
