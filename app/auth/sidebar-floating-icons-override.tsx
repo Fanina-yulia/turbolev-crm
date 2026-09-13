@@ -23,7 +23,7 @@ export function SidebarFloatingIconsOverride() {
         display:none!important;
       }
 
-      /* Previous visual logo was 36x36. 108x108 is exactly 3x. */
+      /* Previous visual logo was 36x36. 108x108 is exactly 3x at every desktop height. */
       .crmDockBrand7{
         width:112px!important;
         height:112px!important;
@@ -41,20 +41,6 @@ export function SidebarFloatingIconsOverride() {
       /* Keep only the icon stack visually present; no background strip around it. */
       .crmDockItems7{
         background:transparent!important;
-      }
-
-      @media(max-height:700px){
-        .crmDockBrand7{
-          width:100px!important;
-          height:100px!important;
-          min-height:100px!important;
-          flex-basis:100px!important;
-          transform:translateX(16px);
-        }
-        .crmDockBrand7 span{
-          width:96px!important;
-          height:96px!important;
-        }
       }
     }
   `}</style>;
