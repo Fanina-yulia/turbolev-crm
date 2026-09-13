@@ -126,9 +126,32 @@ function isPluralPart(definition: PartTerminologyDefinition) {
   return /(?:колодки|диски|втулки|патрубки|підвіси|хомути|гальмівні)/iu.test(definition.canonicalName);
 }
 
+const FEMININE_PART_CODES = new Set([
+  "BALL_JOINT",
+  "WHEEL_HUB_ASSEMBLY",
+  "COIL_SPRING",
+  "STABILIZER_LINK",
+  "STABILIZER_BUSHING",
+  "REAR_UPPER_LATERAL_LINK",
+  "REAR_LOWER_LATERAL_LINK",
+  "REAR_TRAILING_LINK",
+  "STRUT_MOUNT",
+  "STEERING_RACK",
+  "EXHAUST_FLEX_PIPE",
+  "EXHAUST_FRONT_PIPE",
+]);
+
+function isFemininePart(definition: PartTerminologyDefinition) {
+  // Назви зі словника, для яких вісь має узгоджуватися як «передня/задня».
+  // Без цього нормалізатор перетворював, наприклад, «ступиця передня» на
+  // граматично неправильне «ступиця передній».
+  return FEMININE_PART_CODES.has(definition.code);
+}
+
 function axisLabel(definition: PartTerminologyDefinition, axis: "FRONT" | "REAR" | null) {
   if (!axis) return "";
   if (isPluralPart(definition)) return axis === "FRONT" ? "передні" : "задні";
+  if (isFemininePart(definition)) return axis === "FRONT" ? "передня" : "задня";
   return axis === "FRONT" ? "передній" : "задній";
 }
 

@@ -28,7 +28,50 @@ function payrollEnum(value: ParsedCatalogRow["payrollType"]) { return ServiceCat
 function sideEnum(value: ParsedCatalogRow["bodySide"]) { return value ? ServiceCatalogBodySide[value] : null; }
 function operationEnum(value: ParsedCatalogRow["calculatorOperation"]) { return value ? ServiceCatalogCalculatorOperation[value] : null; }
 function chunks<T>(rows: T[], size = 100) { const result: T[][] = []; for (let i = 0; i < rows.length; i += size) result.push(rows.slice(i, i + size)); return result; }
-function naming(row: ParsedCatalogRow) {
+
+async function serviceCatalogIntegrity(prisma: ReturnType<typeof getPrisma>) {
+  const [catalogItems, operationCount, operationLinks, workOrderLinks] = await Promise.all([
+    prisma.serviceCatalogItem.findMany({
+      select: { id: true, externalServiceId: true },
+    }),
+    prisma.genericArticleOperation.count(),
+    prisma.genericArticleOperation.findMany({
+      where: { serviceCatalogItemId: { not: null } },
+      select: { id: true, serviceCatalogItemId: true },
+    }),
+    prisma.workOrderLine.findMany({
+      where: { catalogItemId: { not: null } },
+      select: { id: true, catalogItemId: true },
+    }),
+  ]);
+  const catalogIds = new Set(catalogItems.map((item) => item.id));
+  const codeCounts = new Map<string, number>();
+  for (const item of catalogItems) {
+    if (item.externalServiceId) codeCounts.set(item.externalServiceId, (codeCounts.get(item.externalServiceId) || 0) + 1);
+  }
+  const duplicateStableCodes = [...codeCounts.entries()]
+    .filter(([, count]) => count > 1)
+    .map(([externalServiceId, count]) => ({ externalServiceId, count }))
+    .sort((left, right) => right.count - left.count || left.externalServiceId.localeCompare(right.externalServiceId))
+    .slice(0, 20);
+  const brokenOperationLinks = operationLinks.filter((item) => item.serviceCatalogItemId && !catalogIds.has(item.serviceCatalogItemId));
+  const brokenWorkOrderLinks = workOrderLinks.filter((item) => item.catalogItemId && !catalogIds.has(item.catalogItemId));
+  return {
+    catalogItems: catalogItems.length,
+    duplicateStableCodes,
+    genericArticleOperations: {
+      linked: operationLinks.length - brokenOperationLinks.length,
+      broken: brokenOperationLinks.length,
+      unlinked: Math.max(0, operationCount - operationLinks.length),
+    },
+    workOrderLines: {
+      linked: workOrderLinks.length - brokenWorkOrderLinks.length,
+      broken: brokenWorkOrderLinks.length,
+    },
+  };
+}
+
+function naming(row: ParsedCatalogRow, existingAliases: string[] = []) {
   const normalized = normalizeServiceCatalogName({
     sourceName: row.displayName || row.internalName,
     part: row.namePart || row.bodyPart,
@@ -51,7 +94,7 @@ function naming(row: ParsedCatalogRow) {
     internalName: row.internalName,
     code: row.code,
     externalServiceId: row.externalServiceId,
-    existing: [displayName, row.displayName, ...row.searchAliases],
+    existing: [displayName, row.displayName, ...row.searchAliases, ...existingAliases],
   });
   return { displayName, namePart, namePosition, nameSide, nameOperation, searchAliases };
 }
@@ -99,11 +142,50 @@ export async function POST(request: Request) {
     const prisma = getPrisma();
     const source = sourceEnum(parsed.source);
     const ids = parsed.rows.map((row) => row.externalServiceId);
+    // The current production catalog was originally seeded from the legacy
+    // Turbo LEV price directory. Match those rows by their stable code too,
+    // otherwise an MS Master import would create duplicates and orphan all
+    // existing work-order / parts-knowledge links.
+    const lookupSources = [...new Set([
+      source,
+      ServiceCatalogSource.TURBO_LEV_LEGACY,
+      ServiceCatalogSource.MANUAL,
+    ])];
     const existing = await prisma.serviceCatalogItem.findMany({
-      where: { source, externalServiceId: { in: ids } },
-      select: { id: true, externalServiceId: true, isActive: true, reviewStatus: true },
+      where: { source: { in: lookupSources }, externalServiceId: { in: ids } },
+      select: {
+        id: true,
+        source: true,
+        externalServiceId: true,
+        isActive: true,
+        reviewStatus: true,
+        searchAliases: true,
+        internalName: true,
+        displayName: true,
+      },
     });
-    const byExternalId = new Map(existing.filter((row) => row.externalServiceId).map((row) => [row.externalServiceId as string, row]));
+    const sourcePriority = (item: (typeof existing)[number]) => {
+      // Prefer an active legacy row because it is the identity already used
+      // by work orders and GenericArticleOperation links.
+      if (item.source === ServiceCatalogSource.TURBO_LEV_LEGACY) return 0;
+      if (item.source === source) return 1;
+      return 2;
+    };
+    const orderedExisting = [...existing].sort((left, right) =>
+      Number(right.isActive) - Number(left.isActive)
+      || sourcePriority(left) - sourcePriority(right)
+      || left.id.localeCompare(right.id),
+    );
+    const byExternalId = new Map(orderedExisting.filter((row) => row.externalServiceId).map((row) => [row.externalServiceId as string, row]));
+    const legacyMatched = [...byExternalId.values()].filter((row) => row.source === ServiceCatalogSource.TURBO_LEV_LEGACY).length;
+    const duplicateCandidates = Math.max(0, existing.length - byExternalId.size);
+    const warnings = [...parsed.warnings];
+    if (legacyMatched) {
+      warnings.push(`Зіставлено ${legacyMatched} чинних позицій Turbo LEV за стабільним кодом; їхні ID та зв’язки будуть збережені.`);
+    }
+    if (duplicateCandidates) {
+      warnings.push(`Для ${duplicateCandidates} кодів знайдено додаткові записи в інших джерелах; вибрано один канонічний запис без видалення дублікатів.`);
+    }
     const createCount = parsed.rows.filter((row) => !byExternalId.has(row.externalServiceId)).length;
     const updateCount = parsed.rows.length - createCount;
     const preview = {
@@ -114,8 +196,8 @@ export async function POST(request: Request) {
       fileName: parsed.fileName,
       sheetName: parsed.sheetName,
       sha256: parsed.sha256,
-      stats: { ...parsed.stats, create: createCount, update: updateCount, autoActivate: 0 },
-      warnings: parsed.warnings,
+      stats: { ...parsed.stats, create: createCount, update: updateCount, legacyMatched, duplicateCandidates, autoActivate: 0 },
+      warnings,
       rows: parsed.rows.slice(0, 40).map(sampleRow),
     };
     if (mode !== "import") return NextResponse.json(preview);
@@ -132,7 +214,13 @@ export async function POST(request: Request) {
         readyRows: parsed.stats.ready,
         reviewRows: parsed.stats.needsReview,
         quarantinedRows: parsed.stats.quarantined,
-        metadata: toPrismaJson({ format: parsed.format, sheetName: parsed.sheetName, warnings: parsed.warnings, stats: parsed.stats }),
+        metadata: toPrismaJson({
+          format: parsed.format,
+          sheetName: parsed.sheetName,
+          warnings,
+          stats: parsed.stats,
+          reconciliation: { legacyMatched, duplicateCandidates },
+        }),
       },
     });
 
@@ -193,7 +281,11 @@ export async function POST(request: Request) {
       await prisma.$transaction(group.map((row) => {
         const current = byExternalId.get(row.externalServiceId)!;
         const unsafe = row.reviewStatus !== "READY";
-        const name = naming(row);
+        const name = naming(row, [
+          ...current.searchAliases,
+          current.displayName,
+          current.internalName,
+        ]);
         return prisma.serviceCatalogItem.update({
           where: { id: current.id },
           data: {
@@ -243,12 +335,15 @@ export async function POST(request: Request) {
       data: { createdRows: createCount, updatedRows: updateCount, activatedRows: preservedActive },
     });
 
+    const integrity = await serviceCatalogIntegrity(prisma);
+
     return NextResponse.json({
       ...preview,
       mode: "import",
       batchId: batch.id,
-      stats: { ...preview.stats, preservedActive },
-      message: `Імпортовано у staging ${parsed.stats.total} позицій: нових ${createCount}, оновлено ${updateCount}. Автоматично не активовано жодної нової позиції.`,
+      stats: { ...preview.stats, preservedActive, reconciledInPlace: legacyMatched },
+      integrity,
+      message: `Імпортовано у staging ${parsed.stats.total} позицій: нових ${createCount}, оновлено ${updateCount}; ${legacyMatched} чинних позицій оновлено зі збереженням ID та зв’язків. Нові позиції автоматично не активовано.`,
     });
   } catch (error) {
     const code = error instanceof Error ? error.message : "UNKNOWN";
