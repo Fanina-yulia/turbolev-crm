@@ -12,7 +12,7 @@ import { getPrisma } from "@/src/lib/prisma";
 import { toPrismaJson } from "@/src/lib/prisma-json";
 import { applyDuplicateNameReview } from "@/src/services/service-catalog-duplicate-review.service";
 import { parseServiceCatalogWorkbook, type ParsedCatalogRow } from "@/src/services/service-catalog-import.service";
-import { bodySideLabel, buildServiceSearchAliases, calculatorOperationLabel } from "@/src/services/service-catalog-name-builder.service";
+import { bodySideLabel, buildServiceSearchAliases, calculatorOperationLabel, normalizeServiceCatalogName } from "@/src/services/service-catalog-name-builder.service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -29,22 +29,31 @@ function sideEnum(value: ParsedCatalogRow["bodySide"]) { return value ? ServiceC
 function operationEnum(value: ParsedCatalogRow["calculatorOperation"]) { return value ? ServiceCatalogCalculatorOperation[value] : null; }
 function chunks<T>(rows: T[], size = 100) { const result: T[][] = []; for (let i = 0; i < rows.length; i += size) result.push(rows.slice(i, i + size)); return result; }
 function naming(row: ParsedCatalogRow) {
-  const namePart = row.bodyPart || null;
-  const namePosition = null;
-  const nameSide = bodySideLabel(row.bodySide) || null;
-  const nameOperation = calculatorOperationLabel(row.calculatorOperation) || null;
+  const normalized = normalizeServiceCatalogName({
+    sourceName: row.displayName || row.internalName,
+    part: row.namePart || row.bodyPart,
+    position: row.namePosition,
+    side: row.nameSide || bodySideLabel(row.bodySide) || null,
+    operation: row.nameOperation || calculatorOperationLabel(row.calculatorOperation) || null,
+  });
+  const displayName = normalized.displayName || row.displayName || row.internalName;
+  const namePart = normalized.part || row.namePart || row.bodyPart || null;
+  const namePosition = normalized.position || row.namePosition || null;
+  const nameSide = normalized.side || row.nameSide || bodySideLabel(row.bodySide) || null;
+  const nameOperation = normalized.operation || row.nameOperation || calculatorOperationLabel(row.calculatorOperation) || null;
   const searchAliases = buildServiceSearchAliases({
     part: namePart,
     position: namePosition,
     side: nameSide,
     operation: nameOperation,
-    displayName: row.displayName,
+    canonicalCode: normalized.canonicalPartCode || row.canonicalPartCode,
+    displayName,
     internalName: row.internalName,
     code: row.code,
     externalServiceId: row.externalServiceId,
-    existing: row.searchAliases,
+    existing: [displayName, row.displayName, ...row.searchAliases],
   });
-  return { namePart, namePosition, nameSide, nameOperation, searchAliases };
+  return { displayName, namePart, namePosition, nameSide, nameOperation, searchAliases };
 }
 
 function sampleRow(row: ParsedCatalogRow) {
@@ -53,6 +62,11 @@ function sampleRow(row: ParsedCatalogRow) {
     code: row.code,
     internalName: row.internalName,
     displayName: row.displayName,
+    namePart: row.namePart,
+    namePosition: row.namePosition,
+    nameSide: row.nameSide,
+    nameOperation: row.nameOperation,
+    canonicalPartCode: row.canonicalPartCode,
     category: row.normalizedCategory,
     sourceCategory: row.sourceCategory,
     itemType: row.itemType,
@@ -132,7 +146,7 @@ export async function POST(request: Request) {
             externalServiceId: row.externalServiceId,
             code: row.code,
             internalName: row.internalName,
-            displayName: row.displayName,
+            displayName: name.displayName,
             searchAliases: name.searchAliases,
             namePart: name.namePart,
             namePosition: name.namePosition,
@@ -185,7 +199,7 @@ export async function POST(request: Request) {
           data: {
             code: row.code,
             internalName: row.internalName,
-            displayName: row.displayName,
+            displayName: name.displayName,
             searchAliases: name.searchAliases,
             namePart: name.namePart,
             namePosition: name.namePosition,

@@ -82,6 +82,8 @@ const BASE_PART_TERMINOLOGY: readonly PartTerminologyDefinition[] = [
     aliases: [
       "гальмівні колодки",
       "гальмівна колодка",
+      "тормозні колодки",
+      "тормозна колодка",
       "тормозные колодки",
       "тормозная колодка",
       "brake pad",
@@ -383,8 +385,8 @@ function axisFromValue(value: unknown): PartAxis {
 
 function sideFromValue(value: unknown): PartSide {
   const source = normalizePartTerminology(value);
-  if (/(left|лів|лев)/u.test(source)) return "LEFT";
-  if (/(right|прав)/u.test(source)) return "RIGHT";
+  if (/(?:^|\s)(?:left|лів|лев)/u.test(source)) return "LEFT";
+  if (/(?:^|\s)(?:right|прав)/u.test(source)) return "RIGHT";
   return null;
 }
 
@@ -398,10 +400,10 @@ function subPositionFromValue(value: unknown): PartSubPosition {
 }
 
 function detectAttributes(source: string, definition: PartTerminologyDefinition | null, input: PartTerminologyInput): PartTerminologyAttributes {
-  const front = /(front|передн)/u.test(source);
-  const rear = /(rear|задн)/u.test(source);
-  const left = /(left|лів|лев)/u.test(source);
-  const right = /(right|прав)/u.test(source);
+  const front = /(?:^|\s)(?:front|передн?)/u.test(source);
+  const rear = /(?:^|\s)(?:rear|задн?)/u.test(source);
+  const left = /(?:^|\s)(?:left|лів|лев)/u.test(source);
+  const right = /(?:^|\s)(?:right|прав)/u.test(source);
   let axis: PartAxis = axisFromValue(input.axis) || axisFromValue(input.position) || (front ? "FRONT" : rear ? "REAR" : null);
   let subPosition: PartSubPosition = subPositionFromValue(input.subPosition);
 
@@ -430,6 +432,46 @@ function definitionByInput(input: PartTerminologyInput) {
   return PART_TERMINOLOGY.find((item) => item.code === code || item.slug === slug) || null;
 }
 
+function tokenMatches(left: string, right: string) {
+  if (left === right) return true;
+  if (left.length < 4 || right.length < 4) return false;
+  let common = 0;
+  while (common < left.length && common < right.length && left[common] === right[common]) common += 1;
+  return common >= Math.max(4, Math.min(left.length, right.length) - 2);
+}
+
+function phraseContains(source: string, phrase: string) {
+  if (source.includes(phrase)) return true;
+  const sourceTokens = source.split(" ").filter(Boolean);
+  const phraseTokens = phrase.split(" ").filter(Boolean);
+  if (!phraseTokens.length) return false;
+  let cursor = 0;
+  let previous = -1;
+  for (const phraseToken of phraseTokens) {
+    let found = false;
+    for (; cursor < sourceTokens.length; cursor += 1) {
+      if (tokenMatches(phraseToken, sourceTokens[cursor])) {
+        if (previous >= 0 && cursor - previous > 2) return false;
+        found = true;
+        previous = cursor;
+        cursor += 1;
+        break;
+      }
+    }
+    if (!found) return false;
+  }
+  return true;
+}
+
+export function findPartTerminologyMatches(value: unknown) {
+  const source = normalizePartTerminology(value);
+  if (!source) return [] as Array<{ definition: PartTerminologyDefinition; normalizedAlias: string }>;
+  return PART_TERMINOLOGY.flatMap((definition) => [definition.canonicalName, ...definition.aliases]
+    .map((alias) => ({ definition, normalizedAlias: normalizePartTerminology(alias) }))
+    .filter((item) => item.normalizedAlias && phraseContains(source, item.normalizedAlias))
+    .sort((left, right) => right.normalizedAlias.length - left.normalizedAlias.length));
+}
+
 export function resolvePartTerminology(input: PartTerminologyInput): PartTerminologyResolution {
   const originalQuery = textValue(input.partName || input.query);
   const combined = [input.partName, input.query].filter(Boolean).join(" ");
@@ -446,10 +488,7 @@ export function resolvePartTerminology(input: PartTerminologyInput): PartTermino
     };
   }
 
-  const matches = PART_TERMINOLOGY.flatMap((definition) => definition.aliases
-    .map((alias) => ({ definition, alias, normalizedAlias: normalizePartTerminology(alias) }))
-    .filter((item) => item.normalizedAlias && source.includes(item.normalizedAlias)))
-    .sort((left, right) => right.normalizedAlias.length - left.normalizedAlias.length);
+  const matches = findPartTerminologyMatches(source);
 
   const genericControlArmBushing = PART_TERMINOLOGY.find((item) => item.code === "CONTROL_ARM_BUSHING") || null;
   const genericBushingPhrase = genericControlArmBushing

@@ -1,5 +1,11 @@
 import { createHash } from "node:crypto";
 import { inflateRawSync } from "node:zlib";
+import {
+  bodySideLabel,
+  buildServiceSearchAliases,
+  calculatorOperationLabel,
+  normalizeServiceCatalogName,
+} from "@/src/services/service-catalog-name-builder.service";
 
 export type CatalogSource = "MS_MASTER" | "MANUAL";
 export type CatalogItemType = "LABOR" | "DIAGNOSTIC" | "MATERIAL" | "INFORMATION" | "CHECKLIST" | "RENT" | "PARKING" | "WASH" | "OTHER";
@@ -14,6 +20,11 @@ export type ParsedCatalogRow = {
   code: string;
   internalName: string;
   displayName: string;
+  namePart: string | null;
+  namePosition: string | null;
+  nameSide: string | null;
+  nameOperation: string | null;
+  canonicalPartCode: string | null;
   searchAliases: string[];
   categoryId: string;
   normalizedCategory: string;
@@ -277,16 +288,37 @@ function parseMsMaster(sheetRows: Array<Array<string | number | boolean | null>>
     const basePrice = numberOrNull(row[indexes.price]);
     const bodyPart = clean(row[indexes.bodyPart]) || null;
     const calculatorOperation = operation(clean(row[indexes.calc]));
+    const bodySide = side(clean(row[indexes.side]));
+    const name = normalizeServiceCatalogName({
+      sourceName: displayName,
+      part: bodyPart,
+      side: bodySideLabel(bodySide) || null,
+      operation: calculatorOperationLabel(calculatorOperation) || null,
+    });
+    const normalizedDisplayName = name.displayName || displayName;
     const nameOperation = inferOperationFromName(internalName);
     const inferredItemType = itemType(internalName, sourceCategory, basePrice);
     const processType = serviceType(indexes.serviceType >= 0 ? clean(row[indexes.serviceType]) : "", inferredItemType);
-    const review = reviewFor({ internalName, displayName, sourceCategory, basePrice, bodyPart, calculatorOperation, nameOperation });
+    const review = reviewFor({ internalName, displayName: normalizedDisplayName, sourceCategory, basePrice, bodyPart, calculatorOperation, nameOperation });
     result.push({
       externalServiceId,
       code: externalServiceId,
       internalName,
-      displayName,
-      searchAliases: aliases(internalName, displayName, bodyPart, externalServiceId),
+      displayName: normalizedDisplayName,
+      namePart: name.part || null,
+      namePosition: name.position || null,
+      nameSide: name.side || null,
+      nameOperation: name.operation || null,
+      canonicalPartCode: name.canonicalPartCode,
+      searchAliases: buildServiceSearchAliases({
+        ...name,
+        canonicalCode: name.canonicalPartCode,
+        displayName: normalizedDisplayName,
+        internalName,
+        code: externalServiceId,
+        externalServiceId,
+        existing: aliases(internalName, displayName, bodyPart, externalServiceId),
+      }),
       categoryId: category.id,
       normalizedCategory: category.name,
       sourceCategory,
@@ -305,7 +337,7 @@ function parseMsMaster(sheetRows: Array<Array<string | number | boolean | null>>
       mechanicPercent: null,
       mechanicFixedAmount: null,
       bodyPart,
-      bodySide: side(clean(row[indexes.side])),
+      bodySide,
       calculatorOperation,
       sourceActive: booleanOrNull(row[indexes.active]),
       sourceLanding: booleanOrNull(row[indexes.landing]),
@@ -350,8 +382,12 @@ function parseTurboLevTemplate(sheetRows: Array<Array<string | number | boolean 
     const inferredItemType = itemType(internalName, sourceCategory, basePrice);
     const processType = serviceType("", inferredItemType);
     const review = reviewFor({ internalName, displayName: internalName, sourceCategory, basePrice, bodyPart: null, calculatorOperation: null, nameOperation: null });
+    const name = normalizeServiceCatalogName({ sourceName: internalName });
     result.push({
-      externalServiceId: code, code, internalName, displayName: internalName, searchAliases: aliases(code, internalName), categoryId: category.id, normalizedCategory: category.name, sourceCategory,
+      externalServiceId: code, code, internalName, displayName: name.displayName || internalName,
+      namePart: name.part || null, namePosition: name.position || null, nameSide: name.side || null, nameOperation: name.operation || null,
+      canonicalPartCode: name.canonicalPartCode,
+      searchAliases: buildServiceSearchAliases({ ...name, canonicalCode: name.canonicalPartCode, displayName: name.displayName || internalName, internalName, code, externalServiceId: code, existing: aliases(code, internalName) }), categoryId: category.id, normalizedCategory: category.name, sourceCategory,
       itemType: inferredItemType, serviceType: processType, basePrice, unit: indexes.unit >= 0 ? clean(row[indexes.unit]) || "роб" : "роб", defaultQuantity: 1,
       normMinutes: indexes.hours >= 0 && numberOrNull(row[indexes.hours]) != null ? Math.round((numberOrNull(row[indexes.hours]) as number) * 60) : null,
       complexSurcharge: indexes.surcharge >= 0 ? numberOrNull(row[indexes.surcharge]) : null, vehicleCoefficientEnabled: true,

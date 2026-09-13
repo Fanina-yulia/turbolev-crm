@@ -4,6 +4,7 @@ import { getPrisma } from "@/src/lib/prisma";
 import type { VehicleTechnicalInput } from "@/src/domain/vehicle-intelligence";
 import { normalizePartTerminology, resolvePartTerminology, listPartTerminology } from "@/src/services/parts-terminology.service";
 import { calculateCatalogLaborPrice } from "@/src/services/labor-pricing.service";
+import { normalizeServiceCatalogName } from "@/src/services/service-catalog-name-builder.service";
 import type { SupplierOffer } from "@/src/services/suppliers/types";
 
 export type PartCoverage = "SIDE" | "WHEEL" | "AXLE" | "VEHICLE" | "FLUID" | "UNKNOWN";
@@ -171,6 +172,8 @@ function rule(
  * units have to be quoted for that finding.
  */
 const PACKAGE_RULES: Record<string, PartPackageRule> = {
+  ENGINE_PROTECTION: rule("ENGINE_PROTECTION", "PIECE", "VEHICLE", "PER_PIECE", "шт", "1 захист на автомобіль", "Захист двигуна рахується як одна деталь на автомобіль.", { packageQuantity: 1, priceQuantity: 1 }),
+  WHEEL_ARCH_LINER: rule("WHEEL_ARCH_LINER", "PIECE", "WHEEL", "PER_PIECE", "шт", "1 підкрилок на сторону", "Підкрилки рахуються окремо для кожної сторони.", { packageQuantity: 1, priceQuantity: 1 }),
   BRAKE_PAD: rule("BRAKE_PAD", "SET", "AXLE", "PER_WHEEL", "комплект", "1 комплект на вісь · 2 колеса", "Колодки продаються для всієї осі. Якщо ціна постачальника вказана за одне колесо, сума множиться на 2.", { unitsPerPackage: 2, packageQuantity: 1, priceQuantity: 2 }),
   BRAKE_DISC: rule("BRAKE_DISC", "PIECE", "WHEEL", "PER_PIECE", "шт", "1 диск на колесо", "Гальмівні диски рахуються поштучно. Для двох сторін потрібні 2 диски.", { unitsPerPackage: 1, packageQuantity: 1, priceQuantity: 1 }),
   SHOCK_ABSORBER: rule("SHOCK_ABSORBER", "PIECE", "WHEEL", "PER_PIECE", "шт", "1 амортизатор на сторону", "Амортизатори рахуються окремо для кожної сторони; парна заміна показується як 2 шт.", { packageQuantity: 1, priceQuantity: 1 }),
@@ -236,6 +239,8 @@ const PACKAGE_RULES: Record<string, PartPackageRule> = {
 };
 
 const STATIC_OPERATIONS: Record<string, StaticOperationRow[]> = {
+  ENGINE_PROTECTION: [{ operationCode: "REMOVE_INSTALL_ENGINE_PROTECTION", operationName: "Захист двигуна — демонтаж/монтаж", aliases: ["Зняття/встановлення захисту двигуна", "Зняття та встановлення захисту двигуна", "Снятие/установка защиты двигателя", "Демонтаж/монтаж захисту картера", "Демонтаж/монтаж захисту піддона"], positionRule: "VEHICLE", defaultQuantity: 1, source: "STATIC_PART_OPERATION_CATALOG" }],
+  WHEEL_ARCH_LINER: [{ operationCode: "REMOVE_INSTALL_WHEEL_ARCH_LINER", operationName: "Підкрилок — демонтаж/монтаж", aliases: ["Локер — демонтаж/монтаж", "Зняття/встановлення підкрилка", "Зняття/встановлення локера", "Снятие/установка подкрылка", "Демонтаж/монтаж підкрилка", "Демонтаж/монтаж локера"], positionRule: "SIDE", defaultQuantity: 1, source: "STATIC_PART_OPERATION_CATALOG" }],
   SHOCK_ABSORBER: [{ operationCode: "REPLACE_SHOCK_ABSORBER", operationName: "Заміна амортизатора", aliases: ["Заміна переднього амортизатора", "Заміна заднього амортизатора"], positionRule: "SIDE", defaultQuantity: 1, source: "STATIC_PART_OPERATION_CATALOG" }],
   COIL_SPRING: [{ operationCode: "REPLACE_COIL_SPRING", operationName: "Заміна пружини підвіски", aliases: ["Заміна передньої пружини", "Заміна задньої пружини"], positionRule: "SIDE", defaultQuantity: 1, source: "STATIC_PART_OPERATION_CATALOG" }],
   STRUT_MOUNT: [{ operationCode: "REPLACE_STRUT_MOUNT", operationName: "Заміна опори амортизатора", aliases: ["Заміна опори стійки"], positionRule: "SIDE", defaultQuantity: 1, source: "STATIC_PART_OPERATION_CATALOG" }],
@@ -327,7 +332,8 @@ function operationNameFor(row: StaticOperationRow, code: string, axis: "FRONT" |
     FRONT_ARM_FRONT_BUSHING: "Заміна переднього сайлентблока переднього важеля",
     FRONT_ARM_REAR_BUSHING: "Заміна заднього сайлентблока переднього важеля",
   };
-  return names[code] || row.operationName;
+  const sourceName = names[code] || row.operationName;
+  return normalizeServiceCatalogName({ sourceName }).displayName || sourceName;
 }
 
 function storedSoldAs(value: unknown): PartPackageRule["soldAs"] | null {
@@ -467,19 +473,29 @@ export function listPartOperationDefinitions(input: PartOperationInput = {}): Pa
     if (operationCode.includes("REAR")) return axis === "REAR";
     return true;
   });
-  return scopedRows.map((row) => ({
-    operationCode: row.operationCode,
-    operationName: operationNameFor(row, code, axis, subPosition),
-    aliases: unique([...row.aliases, row.operationName]),
-    positionRule: row.positionRule,
-    defaultQuantity: row.defaultQuantity,
-    source: row.source,
-  }));
+  return scopedRows.map((row) => {
+    const operationName = operationNameFor(row, code, axis, subPosition);
+    return {
+      operationCode: row.operationCode,
+      operationName,
+      aliases: unique([...row.aliases, row.operationName, operationName]),
+      positionRule: row.positionRule,
+      defaultQuantity: row.defaultQuantity,
+      source: row.source,
+    };
+  });
 }
 
 function scoreCatalogItem(item: { displayName: string; internalName: string; nameOperation: string | null; searchAliases: string[]; code: string | null }, operation: PartOperationDefinition) {
   const targets = unique([operation.operationName, ...operation.aliases].map(normalizePartTerminology));
   const sources = [item.displayName, item.internalName, item.nameOperation || "", item.code || "", ...item.searchAliases].map(normalizePartTerminology);
+  const targetPart = resolvePartTerminology({ query: operation.operationName });
+  const sourcePart = resolvePartTerminology({ query: item.displayName || item.internalName });
+  if (targetPart.definition && sourcePart.definition && targetPart.definition.code === sourcePart.definition.code) {
+    const targetAxis = targetPart.attributes.axis;
+    const sourceAxis = sourcePart.attributes.axis;
+    if (!targetAxis || !sourceAxis || targetAxis === sourceAxis) return 960;
+  }
   let score = 0;
   for (const target of targets) {
     if (!target) continue;
@@ -636,7 +652,7 @@ export async function listRelatedPartOperations(input: PartOperationInput & { ve
     const publicCatalogItem = catalogItem ? {
       id: catalogItem.id,
       code: catalogItem.code,
-      displayName: catalogItem.displayName,
+      displayName: normalizeServiceCatalogName({ sourceName: catalogItem.displayName || catalogItem.internalName }).displayName || catalogItem.displayName,
       internalName: catalogItem.internalName,
       basePrice,
       currency: catalogItem.currency || "UAH",
@@ -647,7 +663,7 @@ export async function listRelatedPartOperations(input: PartOperationInput & { ve
       id: relation?.id || identity("STATIC_OPERATION", code || "", operation.operationCode),
       relationId: relation?.id || null,
       operationCode: operation.operationCode,
-      name: relation?.operationName || operation.operationName,
+      name: relation?.source === "STATIC_PART_OPERATION_CATALOG" ? operation.operationName : relation?.operationName || operation.operationName,
       serviceCatalogItemId: catalogItem?.id || relation?.serviceCatalogItemId || null,
       serviceCode: catalogItem?.code || null,
       basePrice,
