@@ -59,12 +59,14 @@ assertIncludes("app/crm-route.ts", [
 ]);
 
 assertIncludes("app/crm-navigation.ts", [
+  '{ label: "Комерційна пропозиція", slug: "work-orders" },',
   '{ label: "Гарантії", slug: "warranties" },',
-  'navItems("diagnostics", "parts", "work-orders", "warranties")',
+  '{ label: "Сервіс", items: navItems("diagnostics", "parts", "work-orders") },',
   'if (value === "warranties") return "Гарантії";',
   'if (value === "Гарантії") return "warranties";',
 ]);
 assertNotIncludes("app/crm-navigation.ts", [
+  'navItems("diagnostics", "parts", "work-orders", "warranties")',
   '"Гарантії": "Наряди та ремонт"',
 ]);
 
