@@ -26,13 +26,32 @@ type WorkOrderEconomics = {
 type ClientLtv = {
   clientId: string;
   name: string;
+  phone: string;
   visits: number;
-  lifetimeRevenue: number;
-  lifetimeGrossProfit: number;
-  averageCheck: number;
-  grossMarginPct: number;
+  vehicles: number;
+  financeSnapshots: number;
+  financeCoveragePct: number;
+  warrantyClaims: number;
+  warrantyCostCapturedClaims: number;
+  warrantyCostCoveragePct: number;
+  currency: string | null;
+  lifetimeRevenue: number | null;
+  lifetimeGrossProfit: number | null;
+  warrantyCost: number | null;
+  lifetimeContribution: number | null;
+  averageCheck: number | null;
+  grossMarginPct: number | null;
   firstClosedAt: string | null;
   lastClosedAt: string | null;
+  lifetimeDays: number | null;
+  daysSinceLastVisit: number | null;
+  acquisitionSource: string | null;
+  acquisitionSourceCoverage: boolean;
+  acquisitionCost: null;
+  acquisitionCostCoverage: false;
+  complete: boolean;
+  blockers: string[];
+  workOrderIds: string[];
 };
 
 type Payload = {
@@ -42,17 +61,27 @@ type Payload = {
   economics: null | {
     workOrders: WorkOrderEconomics[];
     clientLtv: ClientLtv[];
-    cohort: { servedClients: number; lifetimeOrders: number; lifetimeRevenue: number; lifetimeGrossProfit: number };
+    cohort: {
+      servedClients: number;
+      lifetimeOrders: number;
+      lifetimeRevenue: number | null;
+      lifetimeGrossProfit: number | null;
+      lifetimeContribution: number | null;
+      financeCoveragePct: number;
+      warrantyCostCoveragePct: number;
+      completeClients: number;
+    };
   };
 };
 
 type Props = { from: string; to: string; locationId: string };
 
-function money(value: number, currency = "UAH") {
-  return new Intl.NumberFormat("uk-UA", { style: "currency", currency, maximumFractionDigits: 0 }).format(value || 0);
+function money(value: number | null, currency = "UAH") {
+  if (value == null) return "—";
+  return new Intl.NumberFormat("uk-UA", { style: "currency", currency, maximumFractionDigits: 0 }).format(value);
 }
-function percent(value: number) {
-  return `${new Intl.NumberFormat("uk-UA", { maximumFractionDigits: 1 }).format(value || 0)}%`;
+function percent(value: number | null) {
+  return value == null ? "—" : `${new Intl.NumberFormat("uk-UA", { maximumFractionDigits: 1 }).format(value)}%`;
 }
 function date(value: string | null) {
   if (!value) return "—";
@@ -90,17 +119,21 @@ export function AnalyticsOwnerEconomics({ from, to, locationId }: Props) {
   const data = payload?.economics;
   if (!data) return null;
 
+  const cohortComplete = data.cohort.completeClients === data.cohort.servedClients;
+
   return <>
     <section className={styles.financeCardsWide}>
       <div><small>Клієнтів у когорті</small><strong>{data.cohort.servedClients}</strong></div>
-      <div><small>Їх завершених КП за весь час</small><strong>{data.cohort.lifetimeOrders}</strong></div>
-      <div><small>Lifetime виручка когорти</small><strong>{money(data.cohort.lifetimeRevenue)}</strong></div>
-      <div><small>Lifetime валовий прибуток</small><strong>{money(data.cohort.lifetimeGrossProfit)}</strong></div>
+      <div><small>Lifetime візитів</small><strong>{data.cohort.lifetimeOrders}</strong></div>
+      <div><small>Lifetime net revenue</small><strong>{money(data.cohort.lifetimeRevenue)}</strong></div>
+      <div><small>LTV · gross contribution</small><strong>{money(data.cohort.lifetimeContribution)}</strong></div>
     </section>
+
+    {!cohortComplete && <p className={styles.note}>LTV когорти приховано, доки coverage не стане повним: ACTUAL finance {percent(data.cohort.financeCoveragePct)}, warranty cost {percent(data.cohort.warrantyCostCoveragePct)}, повністю верифікованих клієнтів {data.cohort.completeClients}/{data.cohort.servedClients}. CRM не екстраполює пропущені дані.</p>}
 
     <section className={styles.panel}>
       <header><div><small>ACTUAL · ЗАКРИТІ КП</small><h2>Прибуток по авто / замовленнях</h2></div><span>без алокації OPEX</span></header>
-      <p className={styles.note}>Валовий прибуток = фактична виручка − прямі витрати. OPEX не розподіляється по конкретному авто, тому «операційний прибуток на авто» не вигадується.</p>
+      <p className={styles.note}>Валовий прибуток = фактична net-виручка − прямі витрати. Net-виручка вже враховує знижки та refund. OPEX не розподіляється по конкретному авто без canonical allocation.</p>
       <div className={styles.tableWrap}><table>
         <thead><tr><th>КП / авто</th><th>Клієнт</th><th>Виручка</th><th>Прямі витрати</th><th>Валовий прибуток</th><th>Маржа</th><th>Закрито</th></tr></thead>
         <tbody>{data.workOrders.length ? data.workOrders.map((row) => <tr key={row.workOrderId}>
@@ -115,20 +148,22 @@ export function AnalyticsOwnerEconomics({ from, to, locationId }: Props) {
       </table></div>
     </section>
 
-    <section className={styles.panel}>
-      <header><div><small>CLIENT LTV · ФАКТ</small><h2>LTV клієнтів, обслугованих у періоді</h2></div><span>усі завершені КП у доступному scope</span></header>
-      <p className={styles.note}>Період формує когорту клієнтів. Для кожного клієнта lifetime-показники рахуються за всіма його закритими КП з ACTUAL finance snapshot у доступній станції або мережі.</p>
+    <section className={styles.panel} data-customer-ltv="true">
+      <header><div><small>CLIENT LTV · VERIFIED FACT</small><h2>LTV клієнтів, обслугованих у періоді</h2></div><span>customerId · усі авто · весь доступний lifetime</span></header>
+      <p className={styles.note}>Період формує когорту. LTV = lifetime gross profit − фактичні гарантійні витрати. Показник доступний лише при 100% ACTUAL-finance і warranty-cost coverage в одній валюті. CAC поки не віднімається: немає canonical client-level acquisition-cost attribution.</p>
       <div className={styles.tableWrap}><table>
-        <thead><tr><th>Клієнт</th><th>Візитів</th><th>Lifetime виручка</th><th>Lifetime валовий прибуток</th><th>Середній чек</th><th>Маржа</th><th>Перший / останній</th></tr></thead>
+        <thead><tr><th>Клієнт</th><th>Візити / авто</th><th>Net revenue</th><th>Gross profit</th><th>Warranty cost</th><th>LTV contribution</th><th>Джерело</th><th>Coverage</th><th>Перший / останній</th></tr></thead>
         <tbody>{data.clientLtv.length ? data.clientLtv.map((row) => <tr key={row.clientId}>
-          <td>{drillButton(() => navigateCrm("Клієнти", { clientId: row.clientId }), row.name)}</td>
-          <td>{row.visits}</td>
-          <td>{money(row.lifetimeRevenue)}</td>
-          <td><strong>{money(row.lifetimeGrossProfit)}</strong></td>
-          <td>{money(row.averageCheck)}</td>
-          <td>{percent(row.grossMarginPct)}</td>
-          <td>{date(row.firstClosedAt)}<br/><span>{date(row.lastClosedAt)}</span></td>
-        </tr>) : <tr><td colSpan={7}>Для клієнтів вибраного періоду ще немає фіналізованої lifetime-економіки.</td></tr>}</tbody>
+          <td>{drillButton(() => navigateCrm("Клієнти", { clientId: row.clientId }), <><b>{row.name}</b><br/><span>{row.phone}</span></>)}</td>
+          <td>{row.visits} / {row.vehicles}</td>
+          <td>{money(row.lifetimeRevenue, row.currency || "UAH")}</td>
+          <td>{money(row.lifetimeGrossProfit, row.currency || "UAH")}</td>
+          <td>{money(row.warrantyCost, row.currency || "UAH")}</td>
+          <td><strong>{money(row.lifetimeContribution, row.currency || "UAH")}</strong></td>
+          <td>{row.acquisitionSource || "—"}<br/><span>CAC: n.a.</span></td>
+          <td>{row.complete ? "100%" : <span title={row.blockers.join("; ")}>finance {percent(row.financeCoveragePct)}<br/>warranty {percent(row.warrantyCostCoveragePct)}</span>}</td>
+          <td>{date(row.firstClosedAt)}<br/><span>{date(row.lastClosedAt)}{row.daysSinceLastVisit != null ? ` · ${row.daysSinceLastVisit} дн.` : ""}</span></td>
+        </tr>) : <tr><td colSpan={9}>Для клієнтів вибраного періоду ще немає lifetime-економіки.</td></tr>}</tbody>
       </table></div>
     </section>
   </>;
