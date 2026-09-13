@@ -67,7 +67,6 @@ function duration(hours: number | null | undefined) {
   if (hours >= 24) return `${number(hours / 24, 1)} д`;
   return `${number(hours, 1)} год`;
 }
-function vehicleTitle(row: QualityPayload["quality"] extends infer Q ? never : never) { return row; }
 function formatVehicle(vehicle: { plateNumber: string | null; brand: string | null; model: string | null; year: number | null }) {
   const label = [vehicle.brand, vehicle.model, vehicle.year].filter(Boolean).join(" ");
   return vehicle.plateNumber ? `${vehicle.plateNumber} · ${label || "Авто"}` : label || "Автомобіль";
@@ -177,7 +176,7 @@ export function AnalyticsQualityPanel({ from, to, locationId }: { from: string; 
           <div className={styles.claims}>{quality.claims.length ? quality.claims.map((row) => <article key={row.claimId} className={styles.claim}>
             <div className={styles.claimMain}><strong>{formatVehicle(row.vehicle)}</strong><span>{row.service}</span><small>{dateText(row.createdAt)} · {row.mechanicName || "механік не вказаний"} · {row.status}</small></div>
             <div className={styles.flags}><span className={row.repeatDefect ? styles.dangerFlag : styles.okFlag}>{row.repeatDefect ? "repeat" : "first claim"}</span><span>{row.costCaptured ? money(row.costUah) : "cost —"}</span></div>
-            <div className={styles.actions}><button type="button" onClick={() => navigateCrm("Наряди та ремонт", { workOrderId: row.workOrderId })}>WO →</button>{payload.canWriteWarrantyCost && <button type="button" onClick={() => { setCostClaimId(row.claimId); setCostError(""); }}>+ витрати</button>}</div>
+            <div className={styles.actions}><button type="button" onClick={() => navigateCrm("Наряди та ремонт", { workOrderId: row.workOrderId })}>WO →</button>{Boolean(payload?.canWriteWarrantyCost) && <button type="button" onClick={() => { setCostClaimId(row.claimId); setCostError(""); }}>+ витрати</button>}</div>
           </article>) : <div className={styles.state}>За період гарантійних звернень немає.</div>}</div>
         </section>
 
