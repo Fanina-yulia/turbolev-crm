@@ -637,7 +637,6 @@ export function NewRequestWizardV5({showButton=true,onOpenChange}:NewRequestWiza
       return;
     }
     if(step===3){
-      if(!form.complaint.trim()&&preliminaryWorks.length===0)return setError("Коротко опишіть проблему або додайте хоча б одну попередню роботу.");
       if(plannerEntry){
         setError("");
         void saveRequest();
@@ -945,20 +944,13 @@ export function NewRequestWizardV5({showButton=true,onOpenChange}:NewRequestWiza
 
             {step===3&&<section className="requestStep requestFastStep">
               <div className="requestStepTitle">
-                <div><small>КРОК 3</small><h3>Мета заїзду</h3></div>
-                <span className="requestHint">{requiresDiagnosticFirst?"Ремонт: спочатку Діагностична карта":"Діагностика і ремонт мають окремі робочі процеси"}</span>
-              </div>
-              <div className="requestTags fastCategoryTags" aria-label="Тип візиту">
-                <button type="button" className={derivedPurpose==="DIAGNOSTICS"?"selected":""} onClick={()=>update("purpose","DIAGNOSTICS")}>Діагностика</button>
-                <button type="button" className={derivedPurpose==="REPAIR"?"selected":""} onClick={()=>update("purpose","REPAIR")}>Ремонт / сервіс</button>
+                <div><small>КРОК 3</small><h3>Проблема</h3></div>
+                <span className="requestHint">Коментар необов’язковий. За потреби коротко опишіть проблему клієнта.</span>
               </div>
               <label className="requestFullField fastComplaint">
-                <span>{derivedPurpose==="DIAGNOSTICS"?"Що потрібно перевірити?":"Які роботи потрібно виконати?"}</span>
-                <textarea value={form.complaint} onChange={event=>update("complaint",event.target.value)} placeholder="Напр.: щось стукає спереду, перевірити ходову…"/>
+                <span>Коментар (необов’язково)</span>
+                <textarea value={form.complaint} onChange={event=>update("complaint",event.target.value)} placeholder="Наприклад: щось стукає спереду, перевірити ходову…"/>
               </label>
-              <div className="requestTags fastCategoryTags">
-                {requestCategories.map(item=><button type="button" key={item} className={form.category===item?"selected":""} onClick={()=>update("category",form.category===item?"":item)}>{item}</button>)}
-              </div>
               {plannerEntry&&<div className="requestPlannerSelection">
                 <div>
                   <small>Обраний слот у планувальнику</small>
