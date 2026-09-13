@@ -8,6 +8,7 @@ import { OwnerViewAsControl } from "./personnel-owner-view-as-control";
 import { SidebarRailV7 } from "./auth/sidebar-rail-v7";
 import { SidebarFlyoutHoverFix } from "./auth/sidebar-flyout-hover-fix";
 import { SidebarReferenceIconTheme } from "./auth/sidebar-reference-icon-theme";
+import { SidebarFloatingIconsOverride } from "./auth/sidebar-floating-icons-override";
 import { BinotelRecordingProvider } from "./binotel-recordings";
 
 type HomePageProps = {
@@ -75,6 +76,7 @@ export default async function HomePage({ searchParams }: HomePageProps) {
     <CrmAccessProvider snapshot={clientAccess}>
       <SidebarFlyoutHoverFix/>
       <SidebarReferenceIconTheme/>
+      <SidebarFloatingIconsOverride/>
       <BinotelRecordingProvider><SidebarRailV7/><CrmShell initialSection={section} initialSettingsTab={settingsTab} /></BinotelRecordingProvider>
     </CrmAccessProvider>
   </>;
