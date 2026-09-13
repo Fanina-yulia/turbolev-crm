@@ -48,6 +48,7 @@ type Props = {
 };
 
 type Tone = "orange" | "green" | "red" | "neutral";
+type ChartRow = { label: string; value: number; tone: Tone; formatted?: string; detail?: string };
 
 type PaymentRow = {
   outstanding: number;
@@ -67,13 +68,22 @@ type DashboardPayload = {
 };
 
 type OwnerControlSnapshot = {
-  receivables: { total: number; count: number; due: number; partial: number; debt: number; debtCount: number };
+  receivables: {
+    total: number;
+    count: number;
+    due: number;
+    dueCount: number;
+    partial: number;
+    partialCount: number;
+    debt: number;
+    debtCount: number;
+  };
   decisions: { total: number; margin: number; marginRevenue: number; warranty: number; paused: number };
   risk: { noShow: number; paused: number };
 };
 
 const EMPTY_CONTROL: OwnerControlSnapshot = {
-  receivables: { total: 0, count: 0, due: 0, partial: 0, debt: 0, debtCount: 0 },
+  receivables: { total: 0, count: 0, due: 0, dueCount: 0, partial: 0, partialCount: 0, debt: 0, debtCount: 0 },
   decisions: { total: 0, margin: 0, marginRevenue: 0, warranty: 0, paused: 0 },
   risk: { noShow: 0, paused: 0 },
 };
@@ -216,14 +226,64 @@ function RetentionMetricCard({ value, onClick }: { value: number | null | undefi
   </button>;
 }
 
-function BreakdownChart({ rows }: { rows: Array<{ label: string; value: number; tone: Tone; formatted?: string }> }) {
+function Tooltip({ row }: { row: ChartRow }) {
+  return <span className={styles.chartTooltip}><strong>{row.label}</strong><b>{row.formatted ?? number(row.value)}</b>{row.detail && <small>{row.detail}</small>}</span>;
+}
+
+function InteractiveStackedBar({ rows }: { rows: ChartRow[] }) {
+  const total = rows.reduce((sum, row) => sum + Math.max(0, row.value), 0);
+  return <div className={styles.stackedWrap} aria-hidden="true">
+    <div className={styles.stackedBar}>
+      {total > 0 ? rows.map((row) => <span key={row.label} className={`${styles.stackSegment} ${styles[`stack${row.tone}`]}`} style={{ width: `${Math.max(3, row.value / total * 100)}%` }}><Tooltip row={row} /></span>) : <span className={`${styles.stackSegment} ${styles.stackneutral}`} style={{ width: "100%" }} />}
+    </div>
+    <div className={styles.stackLegend}>{rows.map((row) => <span key={row.label}><i className={styles[`dot${row.tone}`]} />{row.label}<b>{row.formatted ?? number(row.value)}</b></span>)}</div>
+  </div>;
+}
+
+function InteractiveVerticalBars({ rows }: { rows: ChartRow[] }) {
+  const max = Math.max(1, ...rows.map((row) => Math.max(0, row.value)));
+  return <div className={styles.verticalBars} aria-hidden="true">
+    {rows.map((row) => <div className={styles.verticalItem} key={row.label}>
+      <div className={styles.verticalTrack}>
+        <i className={styles[`vertical${row.tone}`]} style={{ height: `${row.value > 0 ? Math.max(12, row.value / max * 100) : 4}%` }}><Tooltip row={row} /></i>
+      </div>
+      <span>{row.label}</span>
+      <b>{row.formatted ?? number(row.value)}</b>
+    </div>)}
+  </div>;
+}
+
+function BreakdownChart({ rows }: { rows: ChartRow[] }) {
   const max = Math.max(1, ...rows.map((row) => Math.max(0, row.value)));
   return <div className={styles.breakdownChart} aria-hidden="true">
     {rows.map((row) => <div className={styles.breakdownRow} key={row.label}>
       <span>{row.label}</span>
-      <div><i className={styles[`bar${row.tone}`]} style={{ width: `${row.value > 0 ? Math.max(5, row.value / max * 100) : 0}%` }} /></div>
+      <div className={styles.breakdownTrack}><i className={styles[`bar${row.tone}`]} style={{ width: `${row.value > 0 ? Math.max(5, row.value / max * 100) : 0}%` }} /><Tooltip row={row} /></div>
       <b>{row.formatted ?? number(row.value)}</b>
     </div>)}
+  </div>;
+}
+
+function InteractiveDonut({ rows, total }: { rows: ChartRow[]; total: number }) {
+  const [active, setActive] = useState<number | null>(null);
+  const positiveRows = rows.filter((row) => row.value > 0);
+  const safeTotal = Math.max(1, positiveRows.reduce((sum, row) => sum + row.value, 0));
+  let offset = 0;
+  const activeRow = active == null ? null : positiveRows[active] ?? null;
+  return <div className={styles.donutLayout} aria-hidden="true" onMouseLeave={() => setActive(null)}>
+    <div className={styles.donutShell}>
+      <svg className={styles.donut} viewBox="0 0 100 100">
+        <circle className={styles.donutTrack} cx="50" cy="50" r="38" pathLength="100" />
+        {positiveRows.map((row, index) => {
+          const share = row.value / safeTotal * 100;
+          const dashOffset = -offset;
+          offset += share;
+          return <circle key={row.label} className={`${styles.donutSegment} ${styles[`donut${row.tone}`]} ${active === index ? styles.donutActive : ""}`} cx="50" cy="50" r="38" pathLength="100" strokeDasharray={`${share} ${100 - share}`} strokeDashoffset={dashOffset} onMouseEnter={() => setActive(index)} />;
+        })}
+      </svg>
+      <div className={styles.donutCenter}><strong>{number(activeRow?.value ?? total)}</strong><span>{activeRow?.label ?? "ризики"}</span></div>
+    </div>
+    <div className={styles.donutLegend}>{rows.map((row) => <span key={row.label}><i className={styles[`dot${row.tone}`]} />{row.label}<b>{number(row.value)}</b></span>)}</div>
   </div>;
 }
 
@@ -264,7 +324,9 @@ export function OwnerDashboardVisual({ analytics, period, onPeriodChange, loadin
             total: openRows.reduce((sum, row) => sum + Math.max(0, safeNumber(row.outstanding)), 0),
             count: openRows.length,
             due: sumRows(openRows, (row) => row.flags?.due),
+            dueCount: openRows.filter((row) => row.flags?.due).length,
             partial: sumRows(openRows, (row) => row.flags?.partial),
+            partialCount: openRows.filter((row) => row.flags?.partial).length,
             debt: sumRows(openRows, (row) => row.flags?.debt || row.overdue),
             debtCount: openRows.filter((row) => row.flags?.debt || row.overdue).length,
           },
@@ -307,26 +369,26 @@ export function OwnerDashboardVisual({ analytics, period, onPeriodChange, loadin
   const noShow = Math.max(control.risk.noShow, analytics?.funnel?.noShow ?? 0);
   const revenueRiskCount = noShow + waitingApproval + control.risk.paused;
 
-  const receivableRows = useMemo(() => [
-    { label: "До сплати", value: control.receivables.due, tone: "orange" as Tone, formatted: money(control.receivables.due) },
-    { label: "Частково", value: control.receivables.partial, tone: "neutral" as Tone, formatted: money(control.receivables.partial) },
-    { label: "Прострочено", value: control.receivables.debt, tone: "red" as Tone, formatted: money(control.receivables.debt) },
+  const receivableRows = useMemo<ChartRow[]>(() => [
+    { label: "До сплати", value: control.receivables.due, tone: "orange", formatted: money(control.receivables.due), detail: `${control.receivables.dueCount} оплат` },
+    { label: "Частково", value: control.receivables.partial, tone: "neutral", formatted: money(control.receivables.partial), detail: `${control.receivables.partialCount} оплат` },
+    { label: "Прострочено", value: control.receivables.debt, tone: "red", formatted: money(control.receivables.debt), detail: `${control.receivables.debtCount} боргів` },
   ], [control.receivables]);
 
-  const decisionRows = useMemo(() => [
-    { label: "Низька маржа", value: control.decisions.margin, tone: "orange" as Tone },
-    { label: "Гарантія", value: control.decisions.warranty, tone: "red" as Tone },
-    { label: "Зупинені", value: control.decisions.paused, tone: "neutral" as Tone },
+  const decisionRows = useMemo<ChartRow[]>(() => [
+    { label: "Низька маржа", value: control.decisions.margin, tone: "orange", detail: control.decisions.marginRevenue > 0 ? `${money(control.decisions.marginRevenue)} КП` : `${control.decisions.margin} КП` },
+    { label: "Гарантія", value: control.decisions.warranty, tone: "red", detail: `${control.decisions.warranty} відкритих рішень` },
+    { label: "Зупинені", value: control.decisions.paused, tone: "neutral", detail: `${control.decisions.paused} процесів` },
   ], [control.decisions]);
 
-  const overdueRows = useMemo(() => delayReasons.length
-    ? delayReasons.map((row) => ({ label: row.label, value: row.count, tone: "red" as Tone }))
-    : [{ label: "Без критичних прострочень", value: 0, tone: "neutral" as Tone }], [delayReasons]);
+  const overdueRows = useMemo<ChartRow[]>(() => delayReasons.length
+    ? delayReasons.map((row) => ({ label: row.label, value: row.count, tone: "red", detail: `${row.count} прострочених процесів` }))
+    : [{ label: "Без критичних прострочень", value: 0, tone: "neutral", detail: "SLA у нормі" }], [delayReasons]);
 
-  const riskRows = useMemo(() => [
-    { label: "No-show", value: noShow, tone: "red" as Tone },
-    { label: "Погодження / розрахунок", value: waitingApproval, tone: "orange" as Tone },
-    { label: "Зупинені процеси", value: control.risk.paused, tone: "neutral" as Tone },
+  const riskRows = useMemo<ChartRow[]>(() => [
+    { label: "No-show", value: noShow, tone: "red", detail: `${noShow} клієнтів не приїхали` },
+    { label: "Погодження", value: waitingApproval, tone: "orange", detail: `${waitingApproval} очікують рішення` },
+    { label: "Зупинені", value: control.risk.paused, tone: "neutral", detail: `${control.risk.paused} процесів на паузі` },
   ], [noShow, waitingApproval, control.risk.paused]);
 
   return <section className={styles.visualDashboard} aria-label="Ключова аналітика власника">
@@ -348,21 +410,21 @@ export function OwnerDashboardVisual({ analytics, period, onPeriodChange, loadin
 
     <div className={styles.controlSectionHead}>
       <div><span>КОНТРОЛЬ ВЛАСНИКА</span><strong>Гроші, рішення та ризики</strong></div>
-      <small>{controlLoading ? "Оновлюю контрольні дані…" : "живі дані CRM"}</small>
+      <small>{controlLoading ? "Оновлюю контрольні дані…" : "наведіть на графік для деталей"}</small>
     </div>
 
     <div className={styles.controlGrid}>
       <button type="button" className={styles.controlCard} onClick={() => navigateCrm("Оплати", { scope: "due" })} aria-label={`Гроші до отримання: ${money(control.receivables.total)}`}>
         <div className={styles.controlHead}><div><MetricIcon>₴</MetricIcon><span>Гроші до отримання</span></div><em>›</em></div>
         <div className={styles.controlValue}><strong>{money(control.receivables.total)}</strong><span>{control.receivables.count} відкритих оплат</span></div>
-        <BreakdownChart rows={receivableRows} />
+        <InteractiveStackedBar rows={receivableRows} />
         <div className={styles.controlFoot}><span>Прострочений борг</span><b className={control.receivables.debt > 0 ? styles.textDanger : ""}>{money(control.receivables.debt)}</b></div>
       </button>
 
       <button type="button" className={`${styles.controlCard} ${control.decisions.total > 0 ? styles.controlAttention : ""}`} onClick={() => navigateCrm("Фінансовий центр")} aria-label={`Потрібне моє рішення: ${control.decisions.total}`}>
         <div className={styles.controlHead}><div><MetricIcon tone={control.decisions.total > 0 ? "orange" : "neutral"}>!</MetricIcon><span>Потрібне моє рішення</span></div><em>›</em></div>
         <div className={styles.controlValue}><strong>{control.decisions.total}</strong><span>рішень, де потрібен власник</span></div>
-        <BreakdownChart rows={decisionRows} />
+        <InteractiveVerticalBars rows={decisionRows} />
         <div className={styles.controlFoot}><span>КП з низькою маржею</span><b>{control.decisions.marginRevenue > 0 ? money(control.decisions.marginRevenue) : "—"}</b></div>
       </button>
 
@@ -376,7 +438,7 @@ export function OwnerDashboardVisual({ analytics, period, onPeriodChange, loadin
       <button type="button" className={`${styles.controlCard} ${revenueRiskCount > 0 ? styles.controlRisk : ""}`} onClick={() => navigateCrm("Аналітика")} aria-label={`Ризик втрати виручки: ${revenueRiskCount} ситуацій`}>
         <div className={styles.controlHead}><div><MetricIcon tone={revenueRiskCount > 0 ? "orange" : "green"}>↘</MetricIcon><span>Ризик втрати виручки</span></div><em>›</em></div>
         <div className={styles.controlValue}><strong>{revenueRiskCount}</strong><span>ситуацій можуть не конвертуватися у виручку</span></div>
-        <BreakdownChart rows={riskRows} />
+        <InteractiveDonut rows={riskRows} total={revenueRiskCount} />
         <div className={styles.controlFoot}><span>Факт без штучної оцінки</span><b>{revenueRiskCount > 0 ? "контролювати" : "ризиків немає"}</b></div>
       </button>
     </div>
