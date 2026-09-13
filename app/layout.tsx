@@ -33,8 +33,6 @@ import "./layout-stability.css";
 import "./responsive-popups.css";
 import "./personnel-wizard-polish.css";
 import "./typography-final.css";
-import "./auth/sidebar-rail-width-fix.css";
-import "./auth/sidebar-compact-logo.css";
 import "./responsive-ui-contract.css";
 import "./planner-layout.css";
 import "./analytics-funnel-agreed-layout.css";
