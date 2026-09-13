@@ -35,6 +35,7 @@
     "app/analytics-workspace.module.css",
     "app/analytics-personnel*",
     "app/analytics-quality*",
+    "app/analytics-owner-economics.tsx",
     "src/services/customer-ltv.service.ts"
   ],
   "finance": [
