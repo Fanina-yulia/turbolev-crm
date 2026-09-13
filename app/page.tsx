@@ -7,6 +7,7 @@ import { MechanicCabinet } from "./mechanic-cabinet";
 import { OwnerViewAsControl } from "./personnel-owner-view-as-control";
 import { SidebarRailV7 } from "./auth/sidebar-rail-v7";
 import { SidebarFlyoutHoverFix } from "./auth/sidebar-flyout-hover-fix";
+import { SidebarReferenceIconTheme } from "./auth/sidebar-reference-icon-theme";
 import { BinotelRecordingProvider } from "./binotel-recordings";
 
 type HomePageProps = {
@@ -73,6 +74,7 @@ export default async function HomePage({ searchParams }: HomePageProps) {
     <OwnerViewAsControl/>
     <CrmAccessProvider snapshot={clientAccess}>
       <SidebarFlyoutHoverFix/>
+      <SidebarReferenceIconTheme/>
       <BinotelRecordingProvider><SidebarRailV7/><CrmShell initialSection={section} initialSettingsTab={settingsTab} /></BinotelRecordingProvider>
     </CrmAccessProvider>
   </>;
