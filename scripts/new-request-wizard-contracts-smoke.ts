@@ -104,4 +104,7 @@ assert(phoneAutoMatchSource.includes("useButton.click()"), "exact phone result s
 assert(phoneAutoMatchSource.includes("matchedPhone !== phone"), "stale phone lookup result must not be auto-applied");
 assert(phoneAutoMatchSource.includes("✓ Підставлено"), "auto-applied client should expose a confirmed UI state");
 
+const launcherSource = readFileSync(new URL("../app/new-request-launcher.tsx", import.meta.url), "utf8");
+assert(launcherSource.includes("NewRequestPhoneAutoMatchEnhancer"), "new request launcher must mount the phone auto-match enhancer");
+
 console.log("New request wizard contracts smoke: OK");
