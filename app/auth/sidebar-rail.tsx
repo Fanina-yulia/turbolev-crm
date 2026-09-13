@@ -6,16 +6,25 @@ import { navigateCrm } from "../crm-route";
 import { useCrmAccess } from "../use-crm-access";
 
 const DESKTOP_QUERY = "(min-width: 761px)";
-const LABEL_DELAY_MS = 420;
-const DOCK_RADIUS_PX = 104;
-const DOCK_MAX_SCALE = 2.2;
-const DOCK_MAX_X_PX = 10;
-const DOCK_MAX_Y_PX = 11;
+const LABEL_DELAY_MS = 380;
+const DOCK_SIGMA_PX = 58;
+const DOCK_MAX_SCALE = 2.5;
+const DOCK_MAX_X_PX = 18;
+const DOCK_MAX_PUSH_PX = 38;
+const SPRING_STIFFNESS = 0.28;
+const SPRING_DAMPING = 0.72;
 
-function smoothstep(value: number) {
-  const clamped = Math.max(0, Math.min(1, value));
-  return clamped * clamped * (3 - 2 * clamped);
-}
+type DockMotion = {
+  scale: number;
+  x: number;
+  y: number;
+  velocityScale: number;
+  velocityX: number;
+  velocityY: number;
+  targetScale: number;
+  targetX: number;
+  targetY: number;
+};
 
 function displayLabel(label: string) {
   return label === "Мої задачі" ? "Центр уваги" : label;
@@ -68,10 +77,36 @@ function DockIcon({ slug }: { slug: string }) {
   }
 }
 
+function createMotion(): DockMotion {
+  return {
+    scale: 1,
+    x: 0,
+    y: 0,
+    velocityScale: 0,
+    velocityX: 0,
+    velocityY: 0,
+    targetScale: 1,
+    targetX: 0,
+    targetY: 0,
+  };
+}
+
+function springStep(value: number, velocity: number, target: number, dt: number) {
+  let nextVelocity = velocity + (target - value) * SPRING_STIFFNESS * dt;
+  nextVelocity *= Math.pow(SPRING_DAMPING, dt);
+  const nextValue = value + nextVelocity * dt;
+  return [nextValue, nextVelocity] as const;
+}
+
 export function SidebarRail() {
   const access = useCrmAccess();
   const dockRef = useRef<HTMLDivElement>(null);
   const labelTimer = useRef<number | null>(null);
+  const labelCandidate = useRef<string | null>(null);
+  const motion = useRef(new Map<string, DockMotion>());
+  const animationFrame = useRef<number | null>(null);
+  const lastFrameTime = useRef<number | null>(null);
+  const reducedMotion = useRef(false);
   const [active, setActive] = useState<CrmSectionLabel>("Огляд станції");
   const [visibleLabelSlug, setVisibleLabelSlug] = useState<string | null>(null);
 
@@ -95,8 +130,17 @@ export function SidebarRail() {
     };
   }, []);
 
+  useEffect(() => {
+    const media = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const sync = () => { reducedMotion.current = media.matches; };
+    sync();
+    media.addEventListener("change", sync);
+    return () => media.removeEventListener("change", sync);
+  }, []);
+
   useEffect(() => () => {
     if (labelTimer.current) window.clearTimeout(labelTimer.current);
+    if (animationFrame.current) cancelAnimationFrame(animationFrame.current);
   }, []);
 
   const clearLabelTimer = () => {
@@ -105,43 +149,124 @@ export function SidebarRail() {
     labelTimer.current = null;
   };
 
-  const resetWave = () => {
+  const scheduleLabel = (slug: string) => {
+    if (labelCandidate.current === slug && (labelTimer.current || visibleLabelSlug === slug)) return;
+    clearLabelTimer();
+    labelCandidate.current = slug;
+    setVisibleLabelSlug(null);
+    labelTimer.current = window.setTimeout(() => {
+      labelTimer.current = null;
+      if (labelCandidate.current === slug) setVisibleLabelSlug(slug);
+    }, LABEL_DELAY_MS);
+  };
+
+  const hideLabel = () => {
+    clearLabelTimer();
+    labelCandidate.current = null;
+    setVisibleLabelSlug(null);
+  };
+
+  const ensureMotion = (slug: string) => {
+    const existing = motion.current.get(slug);
+    if (existing) return existing;
+    const created = createMotion();
+    motion.current.set(slug, created);
+    return created;
+  };
+
+  const writeMotion = () => {
     if (!dockRef.current) return;
     for (const node of dockRef.current.querySelectorAll<HTMLElement>("[data-dock-item]")) {
-      node.style.removeProperty("--dock-scale");
-      node.style.removeProperty("--dock-x");
-      node.style.removeProperty("--dock-y");
+      const slug = node.dataset.slug;
+      if (!slug) continue;
+      const state = ensureMotion(slug);
+      node.style.setProperty("--dock-scale", state.scale.toFixed(4));
+      node.style.setProperty("--dock-x", `${state.x.toFixed(2)}px`);
+      node.style.setProperty("--dock-y", `${state.y.toFixed(2)}px`);
     }
+  };
+
+  const animate = (now: number) => {
+    animationFrame.current = null;
+    const previous = lastFrameTime.current ?? now;
+    const dt = Math.max(0.35, Math.min(2, (now - previous) / 16.667));
+    lastFrameTime.current = now;
+    let moving = false;
+
+    for (const state of motion.current.values()) {
+      if (reducedMotion.current) {
+        state.scale = state.targetScale;
+        state.x = state.targetX;
+        state.y = state.targetY;
+        state.velocityScale = 0;
+        state.velocityX = 0;
+        state.velocityY = 0;
+      } else {
+        [state.scale, state.velocityScale] = springStep(state.scale, state.velocityScale, state.targetScale, dt);
+        [state.x, state.velocityX] = springStep(state.x, state.velocityX, state.targetX, dt);
+        [state.y, state.velocityY] = springStep(state.y, state.velocityY, state.targetY, dt);
+      }
+
+      const error = Math.abs(state.targetScale - state.scale)
+        + Math.abs(state.targetX - state.x) / 12
+        + Math.abs(state.targetY - state.y) / 12
+        + Math.abs(state.velocityScale)
+        + Math.abs(state.velocityX) / 12
+        + Math.abs(state.velocityY) / 12;
+      if (error > 0.003) moving = true;
+    }
+
+    writeMotion();
+    if (moving && !reducedMotion.current) animationFrame.current = requestAnimationFrame(animate);
+    else lastFrameTime.current = null;
+  };
+
+  const kickAnimation = () => {
+    if (animationFrame.current) return;
+    lastFrameTime.current = null;
+    animationFrame.current = requestAnimationFrame(animate);
+  };
+
+  const setRestTargets = () => {
+    for (const state of motion.current.values()) {
+      state.targetScale = 1;
+      state.targetX = 0;
+      state.targetY = 0;
+    }
+    kickAnimation();
   };
 
   const updateWave = (clientY: number) => {
     if (!dockRef.current || !window.matchMedia(DESKTOP_QUERY).matches) return;
-    for (const node of dockRef.current.querySelectorAll<HTMLElement>("[data-dock-item]")) {
-      const rect = node.getBoundingClientRect();
+    const slots = Array.from(dockRef.current.querySelectorAll<HTMLElement>("[data-dock-slot]"));
+    let nearestSlug: string | null = null;
+    let nearestDistance = Number.POSITIVE_INFINITY;
+
+    for (const slot of slots) {
+      const slug = slot.dataset.slug;
+      if (!slug) continue;
+      const rect = slot.getBoundingClientRect();
       const centerY = rect.top + rect.height / 2;
       const delta = centerY - clientY;
-      const proximity = smoothstep(1 - Math.abs(delta) / DOCK_RADIUS_PX);
-      const scale = 1 + (DOCK_MAX_SCALE - 1) * proximity;
-      const shiftX = DOCK_MAX_X_PX * proximity;
-      const shiftY = Math.sign(delta) * DOCK_MAX_Y_PX * proximity;
-      node.style.setProperty("--dock-scale", scale.toFixed(3));
-      node.style.setProperty("--dock-x", `${shiftX.toFixed(2)}px`);
-      node.style.setProperty("--dock-y", `${shiftY.toFixed(2)}px`);
+      const distance = Math.abs(delta);
+      const gaussian = Math.exp(-0.5 * Math.pow(distance / DOCK_SIGMA_PX, 2));
+      const influence = gaussian < 0.012 ? 0 : gaussian;
+      const state = ensureMotion(slug);
+      const centerRelease = 1 - Math.exp(-distance / 19);
+
+      state.targetScale = 1 + (DOCK_MAX_SCALE - 1) * influence;
+      state.targetX = DOCK_MAX_X_PX * influence;
+      state.targetY = Math.sign(delta) * DOCK_MAX_PUSH_PX * influence * centerRelease;
+
+      if (distance < nearestDistance) {
+        nearestDistance = distance;
+        nearestSlug = slug;
+      }
     }
-  };
 
-  const scheduleLabel = (slug: string) => {
-    clearLabelTimer();
-    setVisibleLabelSlug(null);
-    labelTimer.current = window.setTimeout(() => {
-      labelTimer.current = null;
-      setVisibleLabelSlug(slug);
-    }, LABEL_DELAY_MS);
-  };
-
-  const hideLabel = (slug?: string) => {
-    clearLabelTimer();
-    if (!slug || visibleLabelSlug === slug) setVisibleLabelSlug(null);
+    if (nearestSlug && nearestDistance <= 31) scheduleLabel(nearestSlug);
+    else if (labelCandidate.current) hideLabel();
+    kickAnimation();
   };
 
   return <>
@@ -150,14 +275,19 @@ export function SidebarRail() {
       className="crmMacDock"
       aria-label="Основне меню Turbo LEV"
       onPointerMove={(event) => event.pointerType !== "touch" && updateWave(event.clientY)}
-      onPointerLeave={() => { resetWave(); hideLabel(); }}
+      onPointerLeave={() => { setRestTargets(); hideLabel(); }}
     >
       <div className="crmMacDockBrand" aria-hidden="true"><span/></div>
       <nav className="crmMacDockItems" aria-label="Розділи CRM">
         {items.map((item) => {
           const isActive = active === item.label || (item.slug === "work-orders" && ["Комерційна пропозиція", "Виробництво", "Контроль якості"].includes(active));
           const label = displayLabel(item.label);
-          return <div className={`crmMacDockSlot ${item.groupStart ? "crmMacDockGroupStart" : ""}`} key={item.slug}>
+          return <div
+            className={`crmMacDockSlot ${item.groupStart ? "crmMacDockGroupStart" : ""}`}
+            key={item.slug}
+            data-dock-slot
+            data-slug={item.slug}
+          >
             <button
               type="button"
               data-dock-item
@@ -165,14 +295,8 @@ export function SidebarRail() {
               className={`crmMacDockButton ${isActive ? "crmMacDockButtonActive" : ""}`}
               aria-label={label}
               aria-current={isActive ? "page" : undefined}
-              onPointerEnter={(event) => {
-                if (event.pointerType === "touch") return;
-                updateWave(event.clientY);
-                scheduleLabel(item.slug);
-              }}
-              onPointerLeave={() => hideLabel(item.slug)}
               onFocus={() => setVisibleLabelSlug(item.slug)}
-              onBlur={() => hideLabel(item.slug)}
+              onBlur={() => hideLabel()}
               onClick={() => navigateCrm(item.label)}
             >
               <span className="crmMacDockGlyph"><DockIcon slug={item.slug}/></span>
@@ -187,14 +311,14 @@ export function SidebarRail() {
     <style jsx global>{`
       @media (min-width: 761px) {
         .shell:has(> .sidebar) {
-          --crm-sidebar-width: 68px !important;
-          grid-template-columns: 68px minmax(0,1fr) !important;
+          --crm-sidebar-width: 72px !important;
+          grid-template-columns: 72px minmax(0,1fr) !important;
         }
 
         .sidebar {
-          width: 68px !important;
-          min-width: 68px !important;
-          max-width: 68px !important;
+          width: 72px !important;
+          min-width: 72px !important;
+          max-width: 72px !important;
           padding: 0 !important;
           background: transparent !important;
           border-right: 0 !important;
@@ -209,16 +333,19 @@ export function SidebarRail() {
 
         .crmMacDock {
           position: fixed;
-          inset: 0 auto 0 0;
+          inset: 6px auto 6px 6px;
           z-index: 2450;
-          width: 68px;
+          width: 60px;
           display: flex;
           flex-direction: column;
           align-items: center;
-          padding: 8px 7px 10px;
-          background: color-mix(in srgb, var(--sidebar) 96%, transparent);
-          border-right: 1px solid var(--line);
-          box-shadow: 8px 0 24px rgba(0,0,0,.06);
+          padding: 7px 5px 9px;
+          background: color-mix(in srgb, var(--sidebar) 82%, transparent);
+          border: 1px solid color-mix(in srgb, var(--line) 86%, transparent);
+          border-radius: 18px;
+          box-shadow: 0 16px 38px rgba(0,0,0,.14), inset 0 1px rgba(255,255,255,.06);
+          backdrop-filter: blur(18px) saturate(1.18);
+          -webkit-backdrop-filter: blur(18px) saturate(1.18);
           overflow: visible;
           user-select: none;
         }
@@ -229,7 +356,7 @@ export function SidebarRail() {
           flex: 0 0 42px;
           display: grid;
           place-items: center;
-          margin-bottom: 4px;
+          margin-bottom: 3px;
         }
 
         .crmMacDockBrand span {
@@ -253,15 +380,15 @@ export function SidebarRail() {
           flex-direction: column;
           align-items: center;
           justify-content: center;
-          gap: 1px;
+          gap: 0;
           overflow: visible;
         }
 
         .crmMacDockSlot {
           position: relative;
           width: 52px;
-          height: 37px;
-          flex: 0 0 37px;
+          height: 40px;
+          flex: 0 0 40px;
           display: grid;
           place-items: center;
           overflow: visible;
@@ -271,11 +398,11 @@ export function SidebarRail() {
           content: "";
           position: absolute;
           top: -1px;
-          left: 14px;
-          right: 14px;
+          left: 15px;
+          right: 15px;
           height: 1px;
-          background: color-mix(in srgb, var(--line) 65%, transparent);
-          opacity: .72;
+          background: color-mix(in srgb, var(--line) 58%, transparent);
+          opacity: .56;
         }
 
         .crmMacDockButton {
@@ -283,44 +410,44 @@ export function SidebarRail() {
           --dock-x: 0px;
           --dock-y: 0px;
           position: relative;
-          z-index: 1;
-          width: 38px !important;
-          min-width: 38px !important;
-          max-width: 38px !important;
-          height: 36px !important;
-          min-height: 36px !important;
+          z-index: 2;
+          width: 40px !important;
+          min-width: 40px !important;
+          max-width: 40px !important;
+          height: 40px !important;
+          min-height: 40px !important;
           display: grid !important;
           place-items: center !important;
           padding: 0 !important;
           margin: 0 !important;
           border: 0 !important;
-          border-radius: 11px !important;
+          border-radius: 12px !important;
           background: transparent !important;
           color: var(--muted) !important;
           overflow: visible !important;
           cursor: pointer;
           outline: none !important;
+          transform: translate3d(var(--dock-x), var(--dock-y), 0);
+          transform-origin: center;
+          will-change: transform;
         }
 
         .crmMacDockGlyph {
           position: relative;
           z-index: 3;
-          width: 23px;
-          height: 23px;
+          width: 28px;
+          height: 28px;
           display: grid;
           place-items: center;
-          transform:
-            translate3d(var(--dock-x), var(--dock-y), 0)
-            scale(var(--dock-scale));
+          transform: scale(var(--dock-scale));
           transform-origin: center;
-          transition: transform 115ms cubic-bezier(.16,1,.3,1), color 120ms ease, filter 120ms ease;
           will-change: transform;
           pointer-events: none;
         }
 
         .crmMacDockGlyph svg {
-          width: 23px;
-          height: 23px;
+          width: 28px;
+          height: 28px;
           display: block;
           overflow: visible;
           vector-effect: non-scaling-stroke;
@@ -338,19 +465,19 @@ export function SidebarRail() {
         .crmMacDockButtonActive::before {
           content: "";
           position: absolute;
-          left: -9px;
+          left: -8px;
           top: 50%;
-          width: 4px;
-          height: 4px;
+          width: 5px;
+          height: 5px;
           border-radius: 50%;
           background: var(--orange);
-          box-shadow: 0 0 0 3px rgba(255,102,0,.10);
+          box-shadow: 0 0 0 3px rgba(255,102,0,.11);
           transform: translateY(-50%);
         }
 
         .crmMacDockButton:hover .crmMacDockGlyph,
         .crmMacDockButton:focus-visible .crmMacDockGlyph {
-          filter: drop-shadow(0 5px 8px rgba(0,0,0,.18));
+          filter: drop-shadow(0 8px 14px rgba(0,0,0,.22));
         }
 
         .crmMacDockTooltip {
@@ -359,13 +486,14 @@ export function SidebarRail() {
           top: 50%;
           z-index: 2600;
           width: max-content;
-          max-width: 260px;
-          padding: 7px 10px;
-          border: 1px solid var(--line);
-          border-radius: 9px;
-          background: var(--panel);
+          max-width: 280px;
+          padding: 7px 11px;
+          border: 1px solid color-mix(in srgb, var(--line) 82%, transparent);
+          border-radius: 10px;
+          background: color-mix(in srgb, var(--panel) 92%, transparent);
           color: var(--text);
-          box-shadow: 0 12px 30px rgba(0,0,0,.18);
+          box-shadow: 0 14px 34px rgba(0,0,0,.19);
+          backdrop-filter: blur(14px);
           font-size: 12px;
           font-weight: 700;
           line-height: 1.2;
@@ -373,9 +501,9 @@ export function SidebarRail() {
           opacity: 0;
           visibility: hidden;
           pointer-events: none;
-          transform: translate(-5px,-50%) scale(.97);
+          transform: translate(-7px,-50%) scale(.96);
           transform-origin: left center;
-          transition: opacity 120ms ease, transform 150ms cubic-bezier(.16,1,.3,1), visibility 120ms ease;
+          transition: opacity 110ms ease, transform 150ms cubic-bezier(.16,1,.3,1), visibility 110ms ease;
         }
 
         .crmMacDockTooltipVisible {
@@ -385,13 +513,13 @@ export function SidebarRail() {
         }
 
         .crmMacDockStatus {
-          width: 48px;
-          height: 30px;
-          flex: 0 0 30px;
+          width: 46px;
+          height: 28px;
+          flex: 0 0 28px;
           display: grid;
           place-items: center;
-          margin-top: 4px;
-          border-top: 1px solid var(--line);
+          margin-top: 3px;
+          border-top: 1px solid color-mix(in srgb, var(--line) 68%, transparent);
         }
 
         .crmMacDockStatus span {
@@ -403,32 +531,34 @@ export function SidebarRail() {
         }
       }
 
-      @media (max-height: 720px) and (min-width: 761px) {
+      @media (max-height: 760px) and (min-width: 761px) {
         .crmMacDock {
-          padding-top: 5px;
-          padding-bottom: 6px;
+          inset-top: 4px;
+          inset-bottom: 4px;
+          padding-top: 4px;
+          padding-bottom: 5px;
         }
         .crmMacDockBrand {
           height: 34px;
           flex-basis: 34px;
-          margin-bottom: 1px;
+          margin-bottom: 0;
         }
         .crmMacDockBrand span {
           width: 30px;
           height: 30px;
         }
         .crmMacDockSlot {
-          height: 32px;
-          flex-basis: 32px;
+          height: 34px;
+          flex-basis: 34px;
         }
         .crmMacDockButton {
-          height: 31px !important;
-          min-height: 31px !important;
+          height: 34px !important;
+          min-height: 34px !important;
         }
         .crmMacDockGlyph,
         .crmMacDockGlyph svg {
-          width: 21px;
-          height: 21px;
+          width: 24px;
+          height: 24px;
         }
       }
 
@@ -437,12 +567,10 @@ export function SidebarRail() {
       }
 
       @media (prefers-reduced-motion: reduce) and (min-width: 761px) {
+        .crmMacDockButton,
         .crmMacDockGlyph,
         .crmMacDockTooltip {
           transition: none !important;
-        }
-        .crmMacDockGlyph {
-          transform: none !important;
         }
       }
     `}</style>
