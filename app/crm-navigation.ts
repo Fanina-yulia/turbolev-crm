@@ -8,7 +8,7 @@ export const CRM_NAV = [
   { label: "Авто", slug: "vehicles" },
   { label: "Планувальник", slug: "planner" },
   { label: "Діагностика", slug: "diagnostics" },
-  { label: "Наряди та ремонт", slug: "work-orders" },
+  { label: "Комерційна пропозиція", slug: "work-orders" },
   { label: "Гарантії", slug: "warranties" },
   { label: "Підбір запчастин", slug: "parts" },
   { label: "Закупівлі та склад", slug: "procurement" },
@@ -26,7 +26,7 @@ export type LegacyCrmSectionLabel =
   | "Ліди"
   | "Звернення"
   | "Замовлення-наряди"
-  | "Комерційна пропозиція";
+  | "Наряди та ремонт";
 export type CrmSectionLabel = VisibleCrmSectionLabel | LegacyCrmSectionLabel;
 export type CrmSectionSlug = VisibleCrmSectionSlug | "production" | "quality" | "warranties";
 export type CrmNavItem = (typeof CRM_NAV)[number];
@@ -52,10 +52,10 @@ const IMPLEMENTED_SLUGS = new Set<VisibleCrmSectionSlug>([
 ]);
 
 const SECTION_FALLBACKS: Partial<Record<CrmSectionLabel, VisibleCrmSectionLabel>> = {
-  "Замовлення-наряди": "Наряди та ремонт",
-  "Комерційна пропозиція": "Наряди та ремонт",
-  "Виробництво": "Наряди та ремонт",
-  "Контроль якості": "Наряди та ремонт",
+  "Замовлення-наряди": "Комерційна пропозиція",
+  "Наряди та ремонт": "Комерційна пропозиція",
+  "Виробництво": "Комерційна пропозиція",
+  "Контроль якості": "Комерційна пропозиція",
   "Ліди": "Комунікації",
   "Активні": "Комунікації",
   "Звернення": "Комунікації",
@@ -74,7 +74,7 @@ export const CRM_NAV_GROUPS: readonly CrmNavGroup[] = [
   { label: "Робочий стіл", items: navItems("overview", "tasks") },
   { label: "Робота з клієнтами", items: navItems("communications", "planner") },
   { label: "Клієнти та авто", items: navItems("clients", "vehicles") },
-  { label: "Сервіс", items: navItems("diagnostics", "parts", "work-orders", "warranties") },
+  { label: "Сервіс", items: navItems("diagnostics", "parts", "work-orders") },
   { label: "Запчастини", items: navItems("procurement") },
   { label: "Фінанси", items: navItems("finance", "payments") },
   { label: "Управління", items: navItems("analytics", "settings") },
@@ -90,7 +90,7 @@ export function resolveCrmSection(value: CrmSectionLabel): VisibleCrmSectionLabe
 }
 
 export function sectionFromSlug(value: string | null | undefined): VisibleCrmSectionLabel {
-  if (value === "production" || value === "quality") return "Наряди та ремонт";
+  if (value === "production" || value === "quality") return "Комерційна пропозиція";
   if (value === "warranties") return "Гарантії";
   if (value === "inquiries" || value === "leads") return "Комунікації";
   const section = CRM_NAV.find((item) => item.slug === value)?.label ?? "Огляд станції";
@@ -111,6 +111,6 @@ export function isCrmSection(value: string): value is CrmSectionLabel {
     || value === "Ліди"
     || value === "Звернення"
     || value === "Замовлення-наряди"
-    || value === "Комерційна пропозиція"
+    || value === "Наряди та ремонт"
     || CRM_NAV.some((item) => item.label === value);
 }
