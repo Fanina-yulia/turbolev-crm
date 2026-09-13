@@ -6,22 +6,56 @@ enum WarrantyClaimStatus {
   CLOSED
 }
 
-model WarrantyClaim {
-  id                String              @id @default(cuid())
-  workOrderLineId   String
-  status            WarrantyClaimStatus @default(OPEN)
-  reason            String              @db.Text
-  mileageKmAtClaim  Int?
-  resolution        String?             @db.Text
-  openedByUserId    String?             @db.VarChar(64)
-  openedByName      String?             @db.VarChar(160)
-  closedAt          DateTime?
-  createdAt         DateTime            @default(now())
-  updatedAt         DateTime            @default(now()) @updatedAt
+enum WarrantyCostCategory {
+  LABOR
+  PART
+  EXTERNAL
+  OTHER
+}
 
-  workOrderLine WorkOrderLine @relation(fields: [workOrderLineId], references: [id], onDelete: Restrict)
+model WarrantyClaim {
+  id                    String              @id @default(cuid())
+  workOrderLineId       String
+  correctiveWorkOrderId String?             @db.VarChar(120)
+  status                WarrantyClaimStatus @default(OPEN)
+  reason                String              @db.Text
+  mileageKmAtClaim      Int?
+  resolution            String?             @db.Text
+  openedByUserId        String?             @db.VarChar(64)
+  openedByName          String?             @db.VarChar(160)
+  closedAt              DateTime?
+  createdAt             DateTime            @default(now())
+  updatedAt             DateTime            @default(now()) @updatedAt
+
+  workOrderLine WorkOrderLine          @relation(fields: [workOrderLineId], references: [id], onDelete: Restrict)
+  costFacts     WarrantyClaimCostFact[]
 
   @@index([workOrderLineId, status])
+  @@index([correctiveWorkOrderId])
   @@index([status, createdAt])
   @@index([createdAt])
+}
+
+model WarrantyClaimCostFact {
+  id               String               @id @default(cuid())
+  warrantyClaimId  String
+  category         WarrantyCostCategory
+  amount           Decimal              @db.Decimal(14, 2)
+  currency         String               @default("UAH") @db.VarChar(3)
+  sourceEntity     String?              @db.VarChar(40)
+  sourceEntityId   String?              @db.VarChar(120)
+  supplierId       String?              @db.VarChar(120)
+  note             String?              @db.Text
+  recordedByUserId String?              @db.VarChar(64)
+  recordedByName   String?              @db.VarChar(160)
+  recordedAt       DateTime             @default(now())
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
+
+  claim WarrantyClaim @relation(fields: [warrantyClaimId], references: [id], onDelete: Cascade)
+
+  @@index([warrantyClaimId, recordedAt])
+  @@index([category, recordedAt])
+  @@index([sourceEntity, sourceEntityId])
+  @@index([supplierId])
 }
