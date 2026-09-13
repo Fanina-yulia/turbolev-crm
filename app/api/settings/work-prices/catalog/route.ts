@@ -7,7 +7,7 @@ import {
 } from "@/src/generated/prisma/client";
 import { getPrisma } from "@/src/lib/prisma";
 import { toPrismaJson } from "@/src/lib/prisma-json";
-import { buildServiceDisplayName, buildServiceSearchAliases } from "@/src/services/service-catalog-name-builder.service";
+import { buildServiceDisplayName, buildServiceSearchAliases, calculatorOperationLabel, normalizeServiceCatalogName } from "@/src/services/service-catalog-name-builder.service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -31,6 +31,26 @@ function pageInt(value: string | null, fallback: number, max: number) { const n 
 function has(body: Record<string, unknown>, field: string) { return Object.prototype.hasOwnProperty.call(body, field); }
 function optionalText(body: Record<string, unknown>, field: string, current: string | null, max: number) {
   return has(body, field) ? text(body[field], max) || null : current;
+}
+
+function normalizedCatalogName(row: {
+  displayName: string;
+  internalName: string;
+  namePart: string | null;
+  namePosition: string | null;
+  nameSide: string | null;
+  nameOperation: string | null;
+  bodyPart: string | null;
+  bodySide: "LEFT" | "RIGHT" | null;
+  calculatorOperation: string | null;
+}) {
+  return normalizeServiceCatalogName({
+    sourceName: row.displayName || row.internalName,
+    part: row.namePart || row.bodyPart,
+    position: row.namePosition,
+    side: row.nameSide || (row.bodySide === "LEFT" ? "лівий" : row.bodySide === "RIGHT" ? "правий" : null),
+    operation: row.nameOperation || calculatorOperationLabel(row.calculatorOperation),
+  });
 }
 
 export async function GET(request: NextRequest) {
@@ -95,6 +115,18 @@ export async function GET(request: NextRequest) {
       prisma.serviceCatalogImportBatch.findFirst({ orderBy: { createdAt: "desc" } }),
     ]);
 
+    const normalizedItems = items.map((item) => {
+      const name = normalizedCatalogName(item);
+      return {
+        ...item,
+        displayName: name.displayName || item.displayName,
+        namePart: name.part || item.namePart,
+        namePosition: name.position || item.namePosition,
+        nameSide: name.side || item.nameSide,
+        nameOperation: name.operation || item.nameOperation,
+      };
+    });
+
     return NextResponse.json({
       ok: true,
       page,
@@ -104,7 +136,7 @@ export async function GET(request: NextRequest) {
       counts: { total, active: activeCount, ready: readyCount, review: reviewCount, quarantine: quarantineCount, msMaster: msMasterCount },
       categories,
       latestBatch,
-      items: items.map((item) => ({
+      items: normalizedItems.map((item) => ({
         ...item,
         basePrice: item.basePrice?.toString() ?? null,
         defaultQuantity: item.defaultQuantity.toString(),

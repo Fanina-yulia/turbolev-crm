@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { ServiceCatalogReviewStatus } from "@/src/generated/prisma/client";
 import { getPrisma } from "@/src/lib/prisma";
 import { resolveLaborPricing } from "@/src/services/labor-pricing.service";
+import { calculatorOperationLabel, normalizeServiceCatalogName } from "@/src/services/service-catalog-name-builder.service";
+import { normalizePartTerminology, resolvePartTerminology, listPartTerminology, type PartTerminologyDefinition } from "@/src/services/parts-terminology.service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -26,10 +28,69 @@ function safeBase(value: unknown) { const parsed = Number(value); return Number.
 function safeQuantity(value: unknown) { const parsed = Number(value); return Number.isFinite(parsed) && parsed > 0 ? parsed : 1; }
 function safeAdjustment(value: unknown) { const parsed = Number(value); return Number.isFinite(parsed) ? parsed : 0; }
 
+function normalizedCatalogName(row: {
+  displayName: string;
+  internalName: string;
+  namePart: string | null;
+  namePosition: string | null;
+  nameSide: string | null;
+  nameOperation: string | null;
+  bodyPart: string | null;
+  bodySide: "LEFT" | "RIGHT" | null;
+  calculatorOperation: string | null;
+}) {
+  return normalizeServiceCatalogName({
+    sourceName: row.displayName || row.internalName,
+    part: row.namePart || row.bodyPart,
+    position: row.namePosition,
+    side: row.nameSide || (row.bodySide === "LEFT" ? "лівий" : row.bodySide === "RIGHT" ? "правий" : null),
+    operation: row.nameOperation || calculatorOperationLabel(row.calculatorOperation),
+  });
+}
+
+function belongsToPart(row: {
+  displayName: string;
+  internalName: string;
+  namePart: string | null;
+  namePosition: string | null;
+  nameSide: string | null;
+  nameOperation: string | null;
+  bodyPart: string | null;
+  bodySide: "LEFT" | "RIGHT" | null;
+  calculatorOperation: string | null;
+  searchAliases: string[];
+}, definition: PartTerminologyDefinition) {
+  const normalized = normalizedCatalogName(row);
+  const values = [
+    normalized.part,
+    row.namePart,
+    row.bodyPart,
+    row.displayName,
+    row.internalName,
+    row.nameOperation,
+    ...row.searchAliases,
+  ].filter(Boolean);
+  return values.some((value) => resolvePartTerminology({ query: String(value) }).definition?.code === definition.code);
+}
+
+function resolvePartForSearch(query: string) {
+  const direct = resolvePartTerminology({ query }).definition;
+  if (direct) return direct;
+  const tokens = normalizePartTerminology(query).split(" ").filter(Boolean);
+  if (!tokens.length || tokens.length > 2) return null;
+  const matches = listPartTerminology().filter((definition) => [definition.canonicalName, ...definition.aliases].some((alias) => {
+    const aliasTokens = normalizePartTerminology(alias).split(" ").filter(Boolean);
+    return tokens.every((token) => aliasTokens.includes(token));
+  }));
+  const uniqueMatches = [...new Map(matches.map((definition) => [definition.code, definition])).values()];
+  return uniqueMatches.length === 1 ? uniqueMatches[0] : null;
+}
+
 export async function GET(request: NextRequest) {
   const prisma = getPrisma();
   const params = request.nextUrl.searchParams;
   const q = text(params.get("q"));
+  const resolvedPart = q ? resolvePartForSearch(q) : null;
   try {
     const [rows, pricing] = await Promise.all([
       prisma.serviceCatalogItem.findMany({
@@ -38,7 +99,7 @@ export async function GET(request: NextRequest) {
           showToOperator: true,
           reviewStatus: ServiceCatalogReviewStatus.READY,
           basePrice: { not: null },
-          ...(q ? {
+          ...(!q || resolvedPart ? {} : {
             OR: [
               { code: { contains: q, mode: "insensitive" } },
               { externalServiceId: { contains: q, mode: "insensitive" } },
@@ -53,30 +114,34 @@ export async function GET(request: NextRequest) {
               { bodyPart: { contains: q, mode: "insensitive" } },
               { category: { is: { name: { contains: q, mode: "insensitive" } } } },
             ],
-          } : {}),
+          }),
         },
         include: { category: { select: { name: true, sortOrder: true } } },
         orderBy: [{ category: { sortOrder: "asc" } }, { displayName: "asc" }],
-        take: q ? 150 : 1500,
+        take: q ? 1500 : 1500,
       }),
       resolveLaborPricing(vehicleInput(params)),
     ]);
 
-    const items = rows.map((row) => {
+    const matchedRows = resolvedPart
+      ? rows.filter((row) => belongsToPart(row, resolvedPart))
+      : rows;
+    const items = matchedRows.slice(0, q ? 150 : 1500).map((row) => {
       const basePrice = safeBase(row.basePrice);
       const coefficient = row.vehicleCoefficientEnabled ? pricing.coefficient : 1;
+      const normalizedName = normalizedCatalogName(row);
       return {
         id: row.id,
         code: row.code,
         externalServiceId: row.externalServiceId,
         source: row.source,
         category: row.category?.name || row.sourceCategory || "Інше",
-        name: row.displayName,
+        name: normalizedName.displayName || row.displayName,
         internalName: row.internalName,
-        namePart: row.namePart,
-        namePosition: row.namePosition,
-        nameSide: row.nameSide,
-        nameOperation: row.nameOperation,
+        namePart: normalizedName.part || row.namePart,
+        namePosition: normalizedName.position || row.namePosition,
+        nameSide: normalizedName.side || row.nameSide,
+        nameOperation: normalizedName.operation || row.nameOperation,
         searchAliases: row.searchAliases,
         itemType: row.itemType,
         serviceType: row.serviceType,
