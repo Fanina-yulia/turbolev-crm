@@ -120,8 +120,9 @@ export function NewRequestStep3Enhancer(){
       for(const chip of chips)chip.classList.toggle("selected",selected.has((chip.textContent||"").trim()));
 
       if(textarea){
-        textarea.required=true;
-        textarea.setAttribute("aria-required","true");
+        textarea.required=false;
+        textarea.removeAttribute("required");
+        textarea.setAttribute("aria-required","false");
         let hint=modal.querySelector("[data-complaint-required-hint]") as HTMLDivElement|null;
         if(!hint){
           hint=document.createElement("div");
@@ -131,9 +132,8 @@ export function NewRequestStep3Enhancer(){
           hint.style.color="var(--muted)";
           textarea.insertAdjacentElement("afterend",hint);
         }
-        const freeText=stripCategorySuffix(textarea.value).trim();
-        hint.textContent=freeText?"":"Обов’язково коротко опишіть, що саме турбує клієнта.";
-        hint.style.color=freeText?"var(--muted)":"#c2410c";
+        hint.textContent="Необов’язково до заповнення.";
+        hint.style.color="var(--muted)";
       }
     };
 
@@ -157,17 +157,7 @@ export function NewRequestStep3Enhancer(){
 
       const button=target.closest("button") as HTMLButtonElement|null;
       if(!button||!(button.textContent||"").includes("Далі"))return;
-      const textarea=modal.querySelector(".fastComplaint textarea") as HTMLTextAreaElement|null;
-      if(!textarea)return;
-      const freeText=stripCategorySuffix(textarea.value).trim();
-      if(freeText)return;
-      event.preventDefault();
-      event.stopPropagation();
-      textarea.focus();
-      textarea.setCustomValidity("Коротко опишіть, що турбує клієнта.");
-      textarea.reportValidity();
-      window.setTimeout(()=>textarea.setCustomValidity(""),0);
-      tick();
+      // Коментар є необов’язковим: не перехоплюємо перехід і не встановлюємо custom validity.
     };
 
     const onInput=(event:Event)=>{
