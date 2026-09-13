@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { parsePlannerBoardPayload } from "@/src/lib/contracts/planner-payload.parsers";
 
 const start = "2026-08-20T12:00:00.000Z";
@@ -90,5 +91,13 @@ assert.equal(parsePlannerBoardPayload({
   activeLocationId: location.id,
   appointments: [appointment],
 }), null);
+
+const compactWindowSource = readFileSync(new URL("../app/planner-appointment-window-enhancer.tsx", import.meta.url), "utf8");
+assert(compactWindowSource.includes("estimatedAmount"), "planner detail window should use appointment estimated amount");
+assert(compactWindowSource.includes("Орієнтовна сума робіт"), "repair estimate label should be present");
+assert(compactWindowSource.includes("Орієнтовна вартість діагностики"), "diagnostic estimate label should be present");
+assert(compactWindowSource.includes('navigateCrm("Клієнти", { clientId })'), "client click should open exact client card");
+assert(compactWindowSource.includes('[data-planner-hidden="true"]'), "large duplicate sections should be hidden in compact mode");
+assert(compactWindowSource.includes("max-height: calc(100vh - 16px)"), "desktop detail window should be constrained to one viewport");
 
 console.log("Planner contracts smoke: OK");
