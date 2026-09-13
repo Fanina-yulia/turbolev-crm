@@ -48,6 +48,15 @@ function normalizedCatalogName(row: {
   });
 }
 
+function startsWithPartTerm(value: unknown, definition: PartTerminologyDefinition) {
+  const source = normalizePartTerminology(value);
+  if (!source) return false;
+  return [definition.canonicalName, ...definition.aliases].some((alias) => {
+    const term = normalizePartTerminology(alias);
+    return term && (source === term || source.startsWith(`${term} `));
+  });
+}
+
 function belongsToPart(row: {
   displayName: string;
   internalName: string;
@@ -61,16 +70,17 @@ function belongsToPart(row: {
   searchAliases: string[];
 }, definition: PartTerminologyDefinition) {
   const normalized = normalizedCatalogName(row);
+  if (normalized.canonicalPartCode === definition.code) return true;
   const values = [
     normalized.part,
-    row.namePart,
-    row.bodyPart,
     row.displayName,
     row.internalName,
     row.nameOperation,
+    row.namePart,
+    row.bodyPart,
     ...row.searchAliases,
   ].filter(Boolean);
-  return values.some((value) => resolvePartTerminology({ query: String(value) }).definition?.code === definition.code);
+  return values.some((value) => startsWithPartTerm(value, definition));
 }
 
 function resolvePartForSearch(query: string) {
