@@ -31,7 +31,8 @@
   ],
   "dashboard-analytics": [
     "app/analytics-workspace.tsx",
-    "app/analytics-workspace.module.css"
+    "app/analytics-workspace.module.css",
+    "app/analytics-personnel*"
   ],
   "finance": [
     "app/financial-center.tsx"
