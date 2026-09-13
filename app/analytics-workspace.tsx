@@ -4,6 +4,7 @@ import { useEffect, useRef } from "react";
 import { readCrmRoute } from "./crm-route";
 import { AnalyticsDashboard } from "./analytics-dashboard";
 import { AnalyticsPersonnelBridge } from "./analytics-personnel-bridge";
+import { AnalyticsQualityBridge } from "./analytics-quality-bridge";
 import styles from "./analytics-workspace.module.css";
 
 const TAB_LABELS: Record<string, string> = {
@@ -151,5 +152,6 @@ export function AnalyticsWorkspace() {
     <AnalyticsRouteSynchronizer/>
     <AnalyticsDashboard/>
     <AnalyticsPersonnelBridge/>
+    <AnalyticsQualityBridge/>
   </div>;
 }
