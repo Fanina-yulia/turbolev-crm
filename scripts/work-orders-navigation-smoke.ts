@@ -7,11 +7,13 @@ import {
   slugFromSection,
 } from "@/app/crm-navigation";
 
-assert.equal(CRM_NAV.find((item) => item.slug === "work-orders")?.label, "Наряди та ремонт");
-assert.equal(CRM_NAV_GROUPS.find((group) => group.label === "Сервіс")?.items.some((item) => item.slug === "work-orders"), true);
-assert.equal(resolveCrmSection("Комерційна пропозиція"), "Наряди та ремонт");
-assert.equal(resolveCrmSection("Замовлення-наряди"), "Наряди та ремонт");
-assert.equal(sectionFromSlug("work-orders"), "Наряди та ремонт");
+assert.equal(CRM_NAV.find((item) => item.slug === "work-orders")?.label, "Комерційна пропозиція");
+const serviceItems = CRM_NAV_GROUPS.find((group) => group.label === "Сервіс")?.items.map((item) => item.slug);
+assert.deepEqual(serviceItems, ["diagnostics", "parts", "work-orders"]);
+assert.equal(resolveCrmSection("Комерційна пропозиція"), "Комерційна пропозиція");
+assert.equal(resolveCrmSection("Наряди та ремонт"), "Комерційна пропозиція");
+assert.equal(resolveCrmSection("Замовлення-наряди"), "Комерційна пропозиція");
+assert.equal(sectionFromSlug("work-orders"), "Комерційна пропозиція");
 assert.equal(slugFromSection("Комерційна пропозиція"), "work-orders");
 assert.equal(slugFromSection("Наряди та ремонт"), "work-orders");
 
