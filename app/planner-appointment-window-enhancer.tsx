@@ -85,7 +85,7 @@ const COMPACT_CSS = `
 [data-compact-appointment="true"] [data-planner-estimate] small {
   margin: 0 !important;
   color: var(--muted);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 850;
   letter-spacing: .06em;
   text-transform: uppercase;
