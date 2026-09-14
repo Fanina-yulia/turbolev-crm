@@ -4,20 +4,19 @@ import fontkit from "@pdf-lib/fontkit";
 import { PDFDocument, rgb, type PDFFont, type PDFImage, type PDFPage } from "pdf-lib";
 import type { DiagnosticCardSnapshot } from "@/src/services/diagnostic-card.service";
 import type { DocumentTemplate } from "@/src/services/document-template.service";
-import { DIAGNOSTIC_CARD_REFERENCE, DIAGNOSTIC_CARD_TABLE_HEADERS } from "@/src/document-layout/diagnostic-card-reference";
+import {
+  DIAGNOSTIC_CARD_PREVIEW_LAYOUT,
+  DIAGNOSTIC_CARD_REFERENCE,
+  DIAGNOSTIC_CARD_TABLE_HEADERS,
+  diagnosticCardPdfUnit,
+} from "@/src/document-layout/diagnostic-card-reference";
 
-const PAGE_WIDTH = 595.28;
-const PAGE_HEIGHT = 841.89;
-const SIDE = 22;
-const CONTENT_WIDTH = PAGE_WIDTH - SIDE * 2;
-const FOOTER_HEIGHT = 30;
-const ORANGE = rgb(0.96, 0.35, 0.04);
-const DARK = rgb(0.09, 0.10, 0.12);
-const MUTED = rgb(0.35, 0.38, 0.42);
-const LINE = rgb(0.82, 0.84, 0.87);
-const ROW = rgb(0.95, 0.96, 0.97);
+const PAGE_WIDTH = DIAGNOSTIC_CARD_PREVIEW_LAYOUT.page.pdfWidth;
+const PAGE_HEIGHT = DIAGNOSTIC_CARD_PREVIEW_LAYOUT.page.pdfHeight;
+const SCALE = PAGE_WIDTH / DIAGNOSTIC_CARD_PREVIEW_LAYOUT.width;
+
+const px = diagnosticCardPdfUnit;
 const WHITE = rgb(1, 1, 1);
-const RED = rgb(0.78, 0.16, 0.14);
 
 type PdfColor = ReturnType<typeof rgb>;
 type PdfAsset = { bytes: Uint8Array; mimeType: string };
@@ -57,12 +56,12 @@ function dateOnly(value: string | null | undefined) {
   }).format(date);
 }
 
-function colorFromHex(value: string | undefined, fallback: PdfColor) {
-  if (!value || !/^#[0-9a-f]{6}$/i.test(value)) return fallback;
+function colorFromHex(value: string | undefined, fallback: string) {
+  const source = value && /^#[0-9a-f]{6}$/i.test(value) ? value : fallback;
   return rgb(
-    Number.parseInt(value.slice(1, 3), 16) / 255,
-    Number.parseInt(value.slice(3, 5), 16) / 255,
-    Number.parseInt(value.slice(5, 7), 16) / 255,
+    Number.parseInt(source.slice(1, 3), 16) / 255,
+    Number.parseInt(source.slice(3, 5), 16) / 255,
+    Number.parseInt(source.slice(5, 7), 16) / 255,
   );
 }
 
@@ -75,11 +74,25 @@ function imageDataUrl(value: string) {
   } as PdfAsset;
 }
 
-async function readOptionalAsset(root: string, fileName: string, mimeType: string): Promise<PdfAsset | null> {
+function publicAssetUrl(fileName: string) {
+  const host = process.env.VERCEL_URL || process.env.VERCEL_PROJECT_PRODUCTION_URL;
+  if (!host) return null;
+  return `https://${host.replace(/^https?:\/\//, "")}/brand/${encodeURIComponent(fileName)}`;
+}
+
+async function readPublicAsset(root: string, fileName: string, mimeType: string): Promise<PdfAsset | null> {
   try {
     return { bytes: await readFile(path.join(root, "public", "brand", fileName)), mimeType };
   } catch {
-    return null;
+    const url = publicAssetUrl(fileName);
+    if (!url) return null;
+    try {
+      const response = await fetch(url, { cache: "force-cache" });
+      if (!response.ok) return null;
+      return { bytes: new Uint8Array(await response.arrayBuffer()), mimeType: response.headers.get("content-type") || mimeType };
+    } catch {
+      return null;
+    }
   }
 }
 
@@ -132,87 +145,193 @@ function wrapText(value: string, font: PDFFont, size: number, width: number) {
   return lines;
 }
 
-function drawCentered(page: PDFPage, value: string, y: number, font: PDFFont, size: number, color: PdfColor) {
+function baselineFromTop(top: number, size: number, baselineFactor = 0.82) {
+  return PAGE_HEIGHT - top - size * baselineFactor;
+}
+
+function drawCenteredFromTop(page: PDFPage, value: string, top: number, font: PDFFont, size: number, color: PdfColor) {
   const width = font.widthOfTextAtSize(value, size);
-  page.drawText(value, { x: (PAGE_WIDTH - width) / 2, y, size, font, color });
+  page.drawText(value, {
+    x: (PAGE_WIDTH - width) / 2,
+    y: baselineFromTop(top, size),
+    size,
+    font,
+    color,
+  });
 }
 
-function drawHeaderPanorama(
-  page: PDFPage,
-  logo: PDFImage | null,
-  car: PDFImage | null,
-  accent: PdfColor,
-) {
-  const top = PAGE_HEIGHT - 18;
-  if (logo) {
-    const boxWidth = 150;
-    const boxHeight = 75;
-    const scale = Math.min(boxWidth / logo.width, boxHeight / logo.height);
-    page.drawImage(logo, {
-      x: SIDE,
-      y: top - logo.height * scale,
-      width: logo.width * scale,
-      height: logo.height * scale,
-    });
-  }
-  if (car) {
-    const boxWidth = 198;
-    const boxHeight = 108;
-    const scale = Math.min(boxWidth / car.width, boxHeight / car.height);
-    const width = car.width * scale;
-    const height = car.height * scale;
-    page.drawImage(car, {
-      x: PAGE_WIDTH - SIDE - width,
-      y: top - height,
-      width,
-      height,
-    });
-  }
-
-  page.drawLine({ start: { x: 153, y: top - 64 }, end: { x: 295, y: top - 64 }, thickness: 1.9, color: accent, opacity: 0.48 });
-  page.drawLine({ start: { x: 176, y: top - 73 }, end: { x: 327, y: top - 73 }, thickness: 1.3, color: accent, opacity: 0.30 });
-  page.drawLine({ start: { x: 210, y: top - 81 }, end: { x: 338, y: top - 81 }, thickness: 0.9, color: accent, opacity: 0.20 });
+function drawPageBackground(page: PDFPage, template: DocumentTemplate | undefined) {
+  const background = template?.style.backgroundColor && /^#[0-9a-f]{6}$/i.test(template.style.backgroundColor)
+    ? colorFromHex(template.style.backgroundColor, DIAGNOSTIC_CARD_PREVIEW_LAYOUT.page.background)
+    : WHITE;
+  page.drawRectangle({ x: 0, y: 0, width: PAGE_WIDTH, height: PAGE_HEIGHT, color: background });
 }
 
-function drawMeta(page: PDFPage, snapshot: DiagnosticCardSnapshot, regular: PDFFont, bold: PDFFont, y: number) {
-  page.drawLine({ start: { x: SIDE, y: y + 13 }, end: { x: PAGE_WIDTH - SIDE, y: y + 13 }, thickness: 0.9, color: LINE });
+function drawCorner(page: PDFPage, accent: PdfColor) {
+  const corner = DIAGNOSTIC_CARD_PREVIEW_LAYOUT.corner;
+  page.drawRectangle({
+    x: 0,
+    y: PAGE_HEIGHT - px(corner.height),
+    width: px(corner.width),
+    height: px(corner.height),
+    color: accent,
+  });
+  page.drawRectangle({
+    x: px(corner.cutLeft),
+    y: PAGE_HEIGHT - px(corner.height),
+    width: px(corner.cutWidth),
+    height: px(corner.height),
+    color: WHITE,
+  });
+}
+
+function drawStretchedImage(page: PDFPage, image: PDFImage | null, x: number, top: number, width: number, height: number) {
+  if (!image) return;
+  page.drawImage(image, {
+    x,
+    y: PAGE_HEIGHT - top - height,
+    width,
+    height,
+  });
+}
+
+function drawHeaderPanorama(page: PDFPage, logo: PDFImage | null, car: PDFImage | null, accent: PdfColor) {
+  const header = DIAGNOSTIC_CARD_PREVIEW_LAYOUT.header;
+  const side = px(header.side);
+  const panoramaTop = px(header.paddingTop);
+
+  drawStretchedImage(
+    page,
+    logo,
+    side + px(header.logo.left),
+    panoramaTop + px(header.logo.top),
+    px(header.logo.width),
+    px(header.logo.height),
+  );
+  drawStretchedImage(
+    page,
+    car,
+    PAGE_WIDTH - side - px(header.car.width) - px(header.car.right),
+    panoramaTop + px(header.car.top),
+    px(header.car.width),
+    px(header.car.height),
+  );
+
+  const motionX = side + px(header.motion.left);
+  const motionTop = panoramaTop + px(header.motion.top);
+  for (const line of header.motion.lines) {
+    const y = PAGE_HEIGHT - motionTop - px(line.top);
+    page.drawLine({
+      start: { x: motionX + px(line.left), y },
+      end: { x: motionX + px(line.left + line.width), y },
+      thickness: Math.max(0.75, px(line.height)),
+      color: accent,
+      opacity: line.opacity,
+    });
+  }
+}
+
+function drawDocumentHeading(page: PDFPage, template: DocumentTemplate | undefined, bold: PDFFont, accent: PdfColor, textColor: PdfColor) {
+  const header = DIAGNOSTIC_CARD_PREVIEW_LAYOUT.header;
+  const titleTop = px(header.paddingTop + header.panoramaHeight + header.headingMarginTop);
+  const titleSize = px(header.title.size);
+  const eyebrowSize = px(header.eyebrow.size);
+  const title = (template?.title || DIAGNOSTIC_CARD_REFERENCE.title).toUpperCase();
+
+  drawCenteredFromTop(page, title, titleTop, bold, titleSize, textColor);
+  drawCenteredFromTop(
+    page,
+    DIAGNOSTIC_CARD_REFERENCE.sectionEyebrow,
+    titleTop + px(header.title.lineHeight + header.eyebrow.marginTop),
+    bold,
+    eyebrowSize,
+    accent,
+  );
+}
+
+function drawMeta(page: PDFPage, snapshot: DiagnosticCardSnapshot, regular: PDFFont, textColor: PdfColor, accent: PdfColor) {
+  const meta = DIAGNOSTIC_CARD_PREVIEW_LAYOUT.meta;
+  const header = DIAGNOSTIC_CARD_PREVIEW_LAYOUT.header;
+  const top = px(header.height);
+  const side = px(meta.side);
+  const contentWidth = PAGE_WIDTH - side * 2;
+  const fontSize = px(meta.fontSize);
+  const paddingX = px(meta.paddingX);
+  const paddingY = px(meta.paddingY);
+
+  page.drawLine({
+    start: { x: side, y: PAGE_HEIGHT - top },
+    end: { x: PAGE_WIDTH - side, y: PAGE_HEIGHT - top },
+    thickness: Math.max(0.7, px(meta.borderWidth)),
+    color: accent,
+  });
+
   const date = dateOnly(snapshot.visit?.actualEndAt || snapshot.visit?.actualStartAt || snapshot.generatedAt);
-  const items = [
-    { label: "Автомобіль", value: snapshot.vehicle.label, x: SIDE, width: 220, align: "left" as const },
-    { label: "VIN", value: snapshot.vehicle.vin, x: PAGE_WIDTH / 2 - 70, width: 210, align: "left" as const },
-    { label: "Дата", value: date, x: PAGE_WIDTH - SIDE - 118, width: 118, align: "right" as const },
+  const values = [
+    `Автомобіль: ${printable(snapshot.vehicle.label)}`,
+    `VIN: ${printable(snapshot.vehicle.vin)}`,
+    `Дата: ${date}`,
   ];
-  for (const item of items) {
-    const label = `${item.label}:`;
-    const text = `${label} ${printable(item.value)}`;
-    const textWidth = regular.widthOfTextAtSize(text, 7.4);
-    const x = item.align === "right" ? item.x + item.width - textWidth : item.x;
-    page.drawText(label, { x, y, size: 7.4, font: regular, color: DARK });
-    page.drawText(` ${printable(item.value)}`, {
-      x: x + regular.widthOfTextAtSize(label, 7.4),
-      y,
-      size: 7.4,
-      font: bold,
-      color: DARK,
-    });
-  }
+  const y = baselineFromTop(top + paddingY, fontSize);
+  const columnWidth = contentWidth / 3;
+  page.drawText(values[0], { x: side + paddingX, y, size: fontSize, font: regular, color: textColor });
+  page.drawText(values[1], { x: side + columnWidth + paddingX, y, size: fontSize, font: regular, color: textColor });
+  const lastWidth = regular.widthOfTextAtSize(values[2], fontSize);
+  page.drawText(values[2], { x: PAGE_WIDTH - side - paddingX - lastWidth, y, size: fontSize, font: regular, color: textColor });
+
+  return top + paddingY * 2 + px(meta.fontSize * 1.2) + px(meta.borderWidth);
 }
 
-function drawTableHeader(page: PDFPage, top: number, bold: PDFFont) {
-  const noWidth = 34;
-  const statusWidth = 132;
-  const detailWidth = CONTENT_WIDTH - noWidth - statusWidth;
-  const height = 25;
-  const widths = [noWidth, detailWidth, statusWidth];
-  let x = SIDE;
+function drawSectionTitle(page: PDFPage, top: number, bold: PDFFont, accent: PdfColor, textColor: PdfColor) {
+  const section = DIAGNOSTIC_CARD_PREVIEW_LAYOUT.section;
+  const side = px(section.side);
+  page.drawRectangle({
+    x: side,
+    y: PAGE_HEIGHT - top - px(section.barHeight),
+    width: px(section.barWidth),
+    height: px(section.barHeight),
+    color: accent,
+  });
+  const size = px(section.titleSize);
+  page.drawText(DIAGNOSTIC_CARD_REFERENCE.sectionTitle, {
+    x: side + px(section.titlePaddingLeft),
+    y: baselineFromTop(top, size),
+    size,
+    font: bold,
+    color: textColor,
+  });
+  return top + px(section.titleLineHeight + section.titleMarginBottom);
+}
+
+function tableWidths() {
+  const section = DIAGNOSTIC_CARD_PREVIEW_LAYOUT.section;
+  const table = DIAGNOSTIC_CARD_PREVIEW_LAYOUT.table;
+  const total = PAGE_WIDTH - px(section.side) * 2;
+  const number = px(table.numberWidth);
+  const status = px(table.statusWidth);
+  return [number, total - number - status, status] as const;
+}
+
+function drawTableHeader(page: PDFPage, top: number, bold: PDFFont, dark: PdfColor) {
+  const table = DIAGNOSTIC_CARD_PREVIEW_LAYOUT.table;
+  const section = DIAGNOSTIC_CARD_PREVIEW_LAYOUT.section;
+  const widths = tableWidths();
+  const height = px(table.headerHeight);
+  const size = px(table.fontSize);
+  let x = px(section.side);
   DIAGNOSTIC_CARD_TABLE_HEADERS.forEach((header, index) => {
-    page.drawRectangle({ x, y: top - height, width: widths[index], height, color: DARK });
-    const textWidth = bold.widthOfTextAtSize(header, 8.2);
-    const textX = index === 1 ? x + (widths[index] - textWidth) / 2 : x + (widths[index] - textWidth) / 2;
-    page.drawText(header, { x: textX, y: top - 16, size: 8.2, font: bold, color: WHITE });
+    page.drawRectangle({ x, y: PAGE_HEIGHT - top - height, width: widths[index], height, color: dark });
+    const textWidth = bold.widthOfTextAtSize(header, size);
+    page.drawText(header, {
+      x: x + (widths[index] - textWidth) / 2,
+      y: PAGE_HEIGHT - top - height / 2 - size * 0.34,
+      size,
+      font: bold,
+      color: WHITE,
+    });
     x += widths[index];
   });
-  return { y: top - height, widths };
+  return { top: top + height, widths };
 }
 
 function drawPartRow(
@@ -220,99 +339,117 @@ function drawPartRow(
   rowIndex: number,
   name: string,
   top: number,
-  widths: number[],
-  regular: PDFFont,
+  widths: readonly [number, number, number],
   bold: PDFFont,
   textColor: PdfColor,
+  lineColor: PdfColor,
+  alternateRow: PdfColor,
+  danger: PdfColor,
 ) {
-  const size = 7.5;
-  const noWidth = widths[0];
-  const detailWidth = widths[1];
-  const statusWidth = widths[2];
-  const detailLines = wrapText(name, bold, size, detailWidth - 14).slice(0, 3);
-  const rowHeight = Math.max(24, detailLines.length * 9 + 10);
-  const fill = rowIndex % 2 === 1 ? ROW : WHITE;
-  let x = SIDE;
+  const table = DIAGNOSTIC_CARD_PREVIEW_LAYOUT.table;
+  const section = DIAGNOSTIC_CARD_PREVIEW_LAYOUT.section;
+  const size = px(table.fontSize);
+  const lineHeight = px(table.lineHeight);
+  const detailPadding = px(8);
+  const detailLines = wrapText(name, bold, size, widths[1] - detailPadding * 2).slice(0, 3);
+  const rowHeight = Math.max(px(table.rowMinHeight), detailLines.length * lineHeight + px(table.cellPaddingY * 2 + 3));
+  const fill = rowIndex % 2 === 1 ? alternateRow : WHITE;
+  let x = px(section.side);
+
   widths.forEach((width) => {
-    page.drawRectangle({ x, y: top - rowHeight, width, height: rowHeight, color: fill, borderColor: LINE, borderWidth: 0.45 });
+    page.drawRectangle({
+      x,
+      y: PAGE_HEIGHT - top - rowHeight,
+      width,
+      height: rowHeight,
+      color: fill,
+      borderColor: lineColor,
+      borderWidth: Math.max(0.35, px(table.borderWidth) * 0.5),
+    });
     x += width;
   });
+
   const number = String(rowIndex + 1);
   page.drawText(number, {
-    x: SIDE + (noWidth - bold.widthOfTextAtSize(number, size)) / 2,
-    y: top - 15,
+    x: px(section.side) + (widths[0] - bold.widthOfTextAtSize(number, size)) / 2,
+    y: PAGE_HEIGHT - top - rowHeight / 2 - size * 0.34,
     size,
     font: bold,
     color: textColor,
   });
+
+  const firstLineTop = top + Math.max(px(4), (rowHeight - detailLines.length * lineHeight) / 2 + px(1));
   detailLines.forEach((line, index) => {
     page.drawText(line, {
-      x: SIDE + noWidth + 8,
-      y: top - 14 - index * 9,
+      x: px(section.side) + widths[0] + detailPadding,
+      y: baselineFromTop(firstLineTop + index * lineHeight, size),
       size,
       font: bold,
       color: textColor,
     });
   });
+
   const status = DIAGNOSTIC_CARD_REFERENCE.statusLabel;
-  const statusWidthText = bold.widthOfTextAtSize(status, size);
+  const statusWidth = bold.widthOfTextAtSize(status, size);
   page.drawText(status, {
-    x: SIDE + noWidth + detailWidth + (statusWidth - statusWidthText) / 2,
-    y: top - 15,
+    x: px(section.side) + widths[0] + widths[1] + (widths[2] - statusWidth) / 2,
+    y: PAGE_HEIGHT - top - rowHeight / 2 - size * 0.34,
     size,
     font: bold,
-    color: RED,
+    color: danger,
   });
-  return top - rowHeight;
+  return top + rowHeight;
 }
 
 function drawWarning(page: PDFPage, top: number, regular: PDFFont, muted: PdfColor) {
-  const lines = wrapText(DIAGNOSTIC_CARD_REFERENCE.warning, regular, 8.1, CONTENT_WIDTH).slice(0, 3);
+  const warning = DIAGNOSTIC_CARD_PREVIEW_LAYOUT.warning;
+  const size = px(warning.fontSize);
+  const width = PAGE_WIDTH - px(warning.side) * 2;
+  const lines = wrapText(DIAGNOSTIC_CARD_REFERENCE.warning, regular, size, width).slice(0, 3);
   lines.forEach((line, index) => {
-    page.drawText(line, { x: SIDE, y: top - index * 11, size: 8.1, font: regular, color: muted });
+    page.drawText(line, {
+      x: px(warning.side),
+      y: baselineFromTop(top + index * px(warning.lineHeight), size),
+      size,
+      font: regular,
+      color: muted,
+    });
   });
-  return top - Math.max(28, lines.length * 11 + 8);
+  return top + lines.length * px(warning.lineHeight) + px(warning.marginBottom);
 }
 
-function drawFooter(page: PDFPage, bold: PDFFont, accent: PdfColor) {
-  page.drawRectangle({ x: 0, y: 0, width: PAGE_WIDTH, height: FOOTER_HEIGHT, color: DARK });
-  page.drawRectangle({ x: PAGE_WIDTH - 17, y: 0, width: 17, height: FOOTER_HEIGHT, color: accent });
-  const y = 10.5;
-  page.drawText(DIAGNOSTIC_CARD_REFERENCE.phone, { x: SIDE, y, size: 7.2, font: bold, color: WHITE });
-  drawCentered(page, DIAGNOSTIC_CARD_REFERENCE.address, y, bold, 7.2, WHITE);
-  const siteWidth = bold.widthOfTextAtSize(DIAGNOSTIC_CARD_REFERENCE.website, 7.2);
-  page.drawText(DIAGNOSTIC_CARD_REFERENCE.website, { x: PAGE_WIDTH - SIDE - 18 - siteWidth, y, size: 7.2, font: bold, color: WHITE });
-}
-
-function drawDocumentHeader(
-  page: PDFPage,
-  snapshot: DiagnosticCardSnapshot,
-  template: DocumentTemplate | undefined,
-  regular: PDFFont,
-  bold: PDFFont,
-  logo: PDFImage | null,
-  car: PDFImage | null,
-  accent: PdfColor,
-  textColor: PdfColor,
-) {
-  drawHeaderPanorama(page, logo, car, accent);
-  const title = (template?.title || "Діагностична карта").toUpperCase();
-  drawCentered(page, title, PAGE_HEIGHT - 127, bold, 18.5, textColor);
-  drawCentered(page, DIAGNOSTIC_CARD_REFERENCE.sectionEyebrow, PAGE_HEIGHT - 146, bold, 8.9, accent);
-  drawMeta(page, snapshot, regular, bold, PAGE_HEIGHT - 162);
-  return PAGE_HEIGHT - 181;
-}
-
-function drawContinuationHeader(page: PDFPage, bold: PDFFont, accent: PdfColor, textColor: PdfColor) {
-  page.drawRectangle({ x: SIDE, y: PAGE_HEIGHT - 50, width: 7, height: 22, color: accent });
-  page.drawText(DIAGNOSTIC_CARD_REFERENCE.sectionTitle, {
-    x: SIDE + 15,
-    y: PAGE_HEIGHT - 45,
-    size: 15,
-    font: bold,
-    color: textColor,
+function drawFooter(page: PDFPage, regular: PDFFont, bold: PDFFont, accent: PdfColor, dark: PdfColor) {
+  const footer = DIAGNOSTIC_CARD_PREVIEW_LAYOUT.footer;
+  const height = px(footer.height);
+  const padding = px(footer.paddingX);
+  const accentWidth = px(footer.accentWidth);
+  const size = px(footer.fontSize);
+  page.drawRectangle({ x: 0, y: 0, width: PAGE_WIDTH, height, color: dark });
+  page.drawRectangle({ x: PAGE_WIDTH - accentWidth, y: 0, width: accentWidth, height, color: accent });
+  const y = height / 2 - size * 0.34;
+  page.drawText(DIAGNOSTIC_CARD_REFERENCE.phone, { x: padding, y, size, font: regular, color: WHITE });
+  const addressWidth = bold.widthOfTextAtSize(DIAGNOSTIC_CARD_REFERENCE.address, size);
+  page.drawText(DIAGNOSTIC_CARD_REFERENCE.address, { x: (PAGE_WIDTH - addressWidth) / 2, y, size, font: bold, color: WHITE });
+  const siteWidth = regular.widthOfTextAtSize(DIAGNOSTIC_CARD_REFERENCE.website, size);
+  page.drawText(DIAGNOSTIC_CARD_REFERENCE.website, {
+    x: PAGE_WIDTH - padding - accentWidth - siteWidth,
+    y,
+    size,
+    font: regular,
+    color: WHITE,
   });
-  return PAGE_HEIGHT - 62;
+}
+
+function newPage(pdf: PDFDocument, template: DocumentTemplate | undefined) {
+  const page = pdf.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
+  drawPageBackground(page, template);
+  return page;
+}
+
+function continuationTop(page: PDFPage, bold: PDFFont, accent: PdfColor, textColor: PdfColor, dark: PdfColor) {
+  let top = px(26);
+  top = drawSectionTitle(page, top, bold, accent, textColor);
+  return drawTableHeader(page, top, bold, dark);
 }
 
 export async function renderDiagnosticCardPdf(
@@ -324,65 +461,81 @@ export async function renderDiagnosticCardPdf(
   const pdf = await PDFDocument.create();
   pdf.registerFontkit(fontkit);
   const root = process.cwd();
-  const [regularBytes, boldBytes, defaultLogo, panoramaCar] = await Promise.all([
+  const [regularBytes, boldBytes, defaultLogoAsset, panoramaCarAsset] = await Promise.all([
     readFile(path.join(root, "public", "fonts", "DejaVuSans.ttf")),
     readFile(path.join(root, "public", "fonts", "DejaVuSans-Bold.ttf")),
-    readOptionalAsset(root, DIAGNOSTIC_CARD_REFERENCE.logoAsset, "image/png"),
-    readOptionalAsset(root, DIAGNOSTIC_CARD_REFERENCE.carAsset, "image/png"),
+    readPublicAsset(root, DIAGNOSTIC_CARD_REFERENCE.logoAsset, "image/png"),
+    readPublicAsset(root, DIAGNOSTIC_CARD_REFERENCE.carAsset, "image/png"),
   ]);
+
   const regular = await pdf.embedFont(regularBytes, { subset: true });
   const bold = await pdf.embedFont(boldBytes, { subset: true });
-  const accent = colorFromHex(template?.style.accentColor, ORANGE);
-  const textColor = colorFromHex(template?.style.textColor, DARK);
-  const muted = colorFromHex(template?.style.mutedColor, MUTED);
+  const accent = colorFromHex(template?.style.accentColor, DIAGNOSTIC_CARD_PREVIEW_LAYOUT.colors.accent);
+  const textColor = colorFromHex(template?.style.textColor, DIAGNOSTIC_CARD_PREVIEW_LAYOUT.colors.text);
+  const muted = colorFromHex(template?.style.mutedColor, DIAGNOSTIC_CARD_PREVIEW_LAYOUT.colors.muted);
+  const dark = colorFromHex(undefined, DIAGNOSTIC_CARD_PREVIEW_LAYOUT.colors.text);
+  const lineColor = colorFromHex(undefined, DIAGNOSTIC_CARD_PREVIEW_LAYOUT.colors.line);
+  const alternateRow = colorFromHex(undefined, DIAGNOSTIC_CARD_PREVIEW_LAYOUT.colors.alternateRow);
+  const danger = colorFromHex(undefined, DIAGNOSTIC_CARD_PREVIEW_LAYOUT.colors.danger);
 
-  let logoAsset = defaultLogo;
+  let logoAsset = defaultLogoAsset;
   if (template?.style.logo === "none") logoAsset = null;
-  if (template?.style.logo === "custom") logoAsset = imageDataUrl(template.style.logoDataUrl) || defaultLogo;
+  if (template?.style.logo === "custom") logoAsset = imageDataUrl(template.style.logoDataUrl) || defaultLogoAsset;
   const logo = await embedAsset(pdf, logoAsset);
-  const car = await embedAsset(pdf, panoramaCar);
+  const car = await embedAsset(pdf, panoramaCarAsset);
 
-  let page = pdf.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
-  page.drawRectangle({ x: 0, y: 0, width: PAGE_WIDTH, height: PAGE_HEIGHT, color: WHITE });
-  let cursor = drawDocumentHeader(page, snapshot, template, regular, bold, logo, car, accent, textColor);
-
-  page.drawRectangle({ x: SIDE, y: cursor - 27, width: 7, height: 25, color: accent });
-  page.drawText(DIAGNOSTIC_CARD_REFERENCE.sectionTitle, {
-    x: SIDE + 15,
-    y: cursor - 22,
-    size: 15.5,
-    font: bold,
-    color: textColor,
-  });
-  cursor -= 36;
+  let page = newPage(pdf, template);
+  drawCorner(page, accent);
+  drawHeaderPanorama(page, logo, car, accent);
+  drawDocumentHeading(page, template, bold, accent, textColor);
+  let top = drawMeta(page, snapshot, regular, textColor, accent);
+  top = drawSectionTitle(page, top, bold, accent, textColor);
+  let header = drawTableHeader(page, top, bold, dark);
+  top = header.top;
 
   const safeParts = parts.length ? parts : [{ name: "Деталі до заміни не додані" }];
-  let header = drawTableHeader(page, cursor, bold);
-  cursor = header.y;
+  const footerReserve = px(DIAGNOSTIC_CARD_PREVIEW_LAYOUT.footer.height + 18);
 
   for (let index = 0; index < safeParts.length; index += 1) {
-    const part = safeParts[index];
-    const lines = wrapText(optionalText(part.name) || "—", bold, 7.5, header.widths[1] - 14).slice(0, 3);
-    const expectedHeight = Math.max(24, lines.length * 9 + 10);
-    if (cursor - expectedHeight < FOOTER_HEIGHT + 54) {
-      drawFooter(page, bold, accent);
-      page = pdf.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
-      page.drawRectangle({ x: 0, y: 0, width: PAGE_WIDTH, height: PAGE_HEIGHT, color: WHITE });
-      cursor = drawContinuationHeader(page, bold, accent, textColor);
-      header = drawTableHeader(page, cursor, bold);
-      cursor = header.y;
+    const partName = optionalText(safeParts[index].name) || "—";
+    const size = px(DIAGNOSTIC_CARD_PREVIEW_LAYOUT.table.fontSize);
+    const lines = wrapText(partName, bold, size, header.widths[1] - px(16)).slice(0, 3);
+    const expectedHeight = Math.max(
+      px(DIAGNOSTIC_CARD_PREVIEW_LAYOUT.table.rowMinHeight),
+      lines.length * px(DIAGNOSTIC_CARD_PREVIEW_LAYOUT.table.lineHeight) + px(7),
+    );
+
+    if (top + expectedHeight > PAGE_HEIGHT - footerReserve) {
+      drawFooter(page, regular, bold, accent, dark);
+      page = newPage(pdf, template);
+      header = continuationTop(page, bold, accent, textColor, dark);
+      top = header.top;
     }
-    cursor = drawPartRow(page, index, optionalText(part.name) || "—", cursor, header.widths, regular, bold, textColor);
+
+    top = drawPartRow(
+      page,
+      index,
+      partName,
+      top,
+      header.widths,
+      bold,
+      textColor,
+      lineColor,
+      alternateRow,
+      danger,
+    );
   }
 
-  if (cursor - 50 < FOOTER_HEIGHT + 18) {
-    drawFooter(page, bold, accent);
-    page = pdf.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
-    page.drawRectangle({ x: 0, y: 0, width: PAGE_WIDTH, height: PAGE_HEIGHT, color: WHITE });
-    cursor = PAGE_HEIGHT - 48;
-  } else cursor -= 18;
-  drawWarning(page, cursor, regular, muted);
+  const warningNeed = px(DIAGNOSTIC_CARD_PREVIEW_LAYOUT.warning.lineHeight * 3 + DIAGNOSTIC_CARD_PREVIEW_LAYOUT.warning.marginBottom);
+  if (top + px(12) + warningNeed > PAGE_HEIGHT - footerReserve) {
+    drawFooter(page, regular, bold, accent, dark);
+    page = newPage(pdf, template);
+    top = px(34);
+  } else {
+    top += px(12);
+  }
+  drawWarning(page, top, regular, muted);
 
-  for (const currentPage of pdf.getPages()) drawFooter(currentPage, bold, accent);
+  for (const currentPage of pdf.getPages()) drawFooter(currentPage, regular, bold, accent, dark);
   return Buffer.from(await pdf.save());
 }
