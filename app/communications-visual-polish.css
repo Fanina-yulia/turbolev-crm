@@ -1,258 +1,503 @@
-/* Communications visual hierarchy polish.
-   Scope is intentionally anchored to the inbox filter nav so Integrations and other CRM modules stay untouched. */
+/* Communications Workspace v2
+   Messenger-like operator layout. Business logic, transport and history stay in the canonical inbox. */
 
-nav[aria-label="Фільтри комунікацій"]{
-  gap:6px;
-  padding:10px 0 9px;
-  overflow-x:auto;
-  overscroll-behavior-x:contain;
+[data-communications-workspace-v2="true"]{
+  --communications-list:360px;
+  --communications-context:300px;
+}
+
+[data-communications-workspace-v2="true"]>header:first-of-type{
+  padding-bottom:12px!important;
+  border-bottom:1px solid var(--line)!important;
+}
+[data-communications-workspace-v2="true"]>header:first-of-type h1{
+  font-size:clamp(27px,1.8vw,32px)!important;
+}
+[data-communications-workspace-v2="true"]>header:first-of-type p:last-child{
+  max-width:720px;
+}
+
+/* Primary queue filters only. Channels move to one compact picker. */
+[data-communications-workspace-v2="true"] nav[aria-label="Фільтри комунікацій"]{
+  position:relative;
+  display:flex;
+  align-items:center;
+  gap:7px;
+  min-height:52px;
+  padding:9px 0 10px;
+  overflow:visible;
   scrollbar-width:none;
 }
-nav[aria-label="Фільтри комунікацій"]::-webkit-scrollbar{display:none}
-nav[aria-label="Фільтри комунікацій"]>button,
-nav[aria-label="Фільтри комунікацій"] .communicationsLifecycleFilters button{
+[data-communications-workspace-v2="true"] nav[aria-label="Фільтри комунікацій"]::-webkit-scrollbar{display:none}
+[data-communications-workspace-v2="true"] nav[aria-label="Фільтри комунікацій"]>button{
   min-height:36px!important;
   padding:0 12px!important;
   gap:6px!important;
-  font-size:13px!important;
+  font-size:12px!important;
+  border-radius:10px!important;
 }
-nav[aria-label="Фільтри комунікацій"]>button span,
-nav[aria-label="Фільтри комунікацій"] .communicationsLifecycleFilters button span{
+[data-communications-workspace-v2="true"] nav[aria-label="Фільтри комунікацій"]>button span{
   min-width:20px!important;
   height:20px!important;
   font-size:11px!important;
 }
-
-/* Keep the inbox as a focused two-pane workspace instead of an endlessly growing document. */
-nav[aria-label="Фільтри комунікацій"]+section{
-  height:calc(100dvh - 205px)!important;
-  min-height:500px!important;
-  max-height:880px!important;
-  grid-template-columns:minmax(360px,420px) minmax(0,1fr)!important;
-  overflow:hidden!important;
-  border-radius:14px!important;
-  box-shadow:0 10px 28px rgba(15,23,42,.045)!important;
+[data-communications-workspace-v2="true"] nav[aria-label="Фільтри комунікацій"]>button[data-communications-filter-kind="channel"],
+[data-communications-workspace-v2="true"] nav[aria-label="Фільтри комунікацій"]>button[data-communications-filter-kind="secondary"]{
+  display:none!important;
 }
-nav[aria-label="Фільтри комунікацій"]+section>aside{
+[data-communications-workspace-v2="true"] nav[aria-label="Фільтри комунікацій"] .communicationsLifecycleFilters{
+  display:flex;
+  gap:7px;
+}
+[data-communications-workspace-v2="true"] nav[aria-label="Фільтри комунікацій"] .communicationsLifecycleFilters button{
+  min-height:36px!important;
+  border-radius:10px!important;
+  padding:0 11px!important;
+  font-size:12px!important;
+}
+[data-communications-channel-menu-host]{
+  margin-left:auto;
+  position:relative;
+  z-index:40;
+}
+.communicationsChannelPicker{position:relative}
+.communicationsChannelPickerButton{
+  min-width:122px;
+  height:36px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:14px;
+  border:1px solid var(--line);
+  border-radius:10px;
+  background:var(--panel);
+  color:var(--text);
+  padding:0 11px;
+  font:inherit;
+  font-size:12px;
+  font-weight:800;
+  cursor:pointer;
+}
+.communicationsChannelPickerButton:hover,
+.communicationsChannelPickerButton[aria-expanded="true"]{
+  border-color:color-mix(in srgb,var(--orange) 55%,var(--line));
+  background:color-mix(in srgb,var(--orange) 5%,var(--panel));
+}
+.communicationsChannelPickerButton i{font-style:normal;color:var(--muted);font-size:13px}
+.communicationsChannelPickerMenu{
+  position:absolute;
+  top:42px;
+  right:0;
+  width:210px;
+  display:grid;
+  gap:3px;
+  padding:7px;
+  border:1px solid var(--line);
+  border-radius:13px;
+  background:var(--panel);
+  box-shadow:0 18px 46px rgba(15,23,42,.16);
+}
+.communicationsChannelPickerMenu button{
+  width:100%;
+  min-height:38px;
+  display:grid;
+  grid-template-columns:28px minmax(0,1fr) auto;
+  align-items:center;
+  gap:8px;
+  border:0;
+  border-radius:9px;
+  background:transparent;
+  color:var(--text);
+  padding:5px 7px;
+  text-align:left;
+  font:inherit;
+  cursor:pointer;
+}
+.communicationsChannelPickerMenu button:hover{background:color-mix(in srgb,var(--text) 4%,var(--surface))}
+.communicationsChannelPickerMenu b{font-size:12px;font-weight:760}
+.communicationsChannelPickerMenu em{font-style:normal;color:var(--muted);font-size:11px}
+.communicationsChannelDot{
+  width:26px;height:26px;display:grid;place-items:center;border-radius:8px;color:#fff;font-size:11px;font-weight:900;
+}
+.communicationsChannelDot.all{background:var(--surface);color:var(--orange);border:1px solid var(--line);font-size:18px}
+
+/* Main workspace: list + conversation. The conversation itself becomes message area + client context. */
+[data-communications-role="workspace-shell"]{
+  height:calc(100dvh - 206px)!important;
+  min-height:590px!important;
+  max-height:900px!important;
+  display:grid!important;
+  grid-template-columns:var(--communications-list) minmax(0,1fr)!important;
+  overflow:hidden!important;
+  border:1px solid var(--line)!important;
+  border-radius:16px!important;
+  background:var(--panel)!important;
+  box-shadow:0 12px 32px rgba(15,23,42,.055)!important;
+}
+[data-communications-role="conversation-list"]{
+  min-width:0!important;
   min-height:0!important;
   overflow:hidden!important;
+  border-right:1px solid var(--line)!important;
+  background:var(--panel)!important;
 }
-nav[aria-label="Фільтри комунікацій"]+section>aside>div:last-child{
+[data-communications-role="conversation-list"]>div:first-child{
+  padding:11px!important;
+  gap:7px!important;
+  background:var(--panel)!important;
+}
+[data-communications-role="conversation-list"]>div:first-child input{
+  height:42px!important;
+  border-radius:10px!important;
+  font-size:12px!important;
+}
+[data-communications-role="conversation-list"]>div:first-child button{
+  width:42px!important;
+  height:42px!important;
+  border-radius:10px!important;
+}
+[data-communications-role="conversation-list"]>div:last-child{
   min-height:0!important;
   overflow-y:auto!important;
   overflow-x:hidden!important;
   scrollbar-gutter:stable;
 }
-nav[aria-label="Фільтри комунікацій"]+section>section{
-  min-width:0!important;
-  min-height:0!important;
-  display:flex!important;
-  flex-direction:column!important;
-  overflow:hidden!important;
-}
-nav[aria-label="Фільтри комунікацій"]+section>section>header{
-  flex:0 0 auto!important;
-  align-items:center!important;
-  flex-wrap:nowrap!important;
+[data-communications-conversation-row="1"]{
+  min-height:91px;
+  padding:12px 11px!important;
   gap:10px!important;
-  min-height:76px;
-  padding:10px 14px!important;
+  transition:background .14s ease,box-shadow .14s ease!important;
 }
-nav[aria-label="Фільтри комунікацій"]+section>section>header~div:not(.communicationsComposer):not(.communicationsLinkPanel){
-  min-height:0!important;
-  flex:1 1 auto!important;
-  overflow:auto!important;
+[data-communications-conversation-row="1"]:hover{
+  background:color-mix(in srgb,var(--text) 3%,var(--panel))!important;
 }
-
-/* Contact and vehicle summary: client first, car second, state last. */
-nav[aria-label="Фільтри комунікацій"]+section button[title="Відкрити картку контакту"]{
-  flex:0 1 300px!important;
-  max-width:300px!important;
-  padding:2px!important;
-  gap:9px!important;
+[data-communications-conversation-row="1"] em{
+  display:none!important;
 }
-nav[aria-label="Фільтри комунікацій"]+section button[title="Відкрити картку контакту"] strong{
-  font-size:15px!important;
-}
-nav[aria-label="Фільтри комунікацій"]+section button[title="Відкрити картку автомобіля"]{
-  min-width:190px!important;
-  flex:0 0 190px!important;
-  padding:7px 9px!important;
-  gap:7px!important;
-  border-radius:10px!important;
-}
-nav[aria-label="Фільтри комунікацій"]+section button[title="Відкрити картку автомобіля"] img,
-nav[aria-label="Фільтри комунікацій"]+section button[title="Відкрити картку автомобіля"] svg{
-  width:34px!important;
-  height:34px!important;
-}
-nav[aria-label="Фільтри комунікацій"]+section button[title="Відкрити картку автомобіля"] strong{
-  font-size:12px!important;
-}
-nav[aria-label="Фільтри комунікацій"]+section button[title="Відкрити картку автомобіля"] small{
-  font-size:11px!important;
-}
-
-/* Lifecycle controls must inform, not dominate. */
-[data-communications-lifecycle-host="row"]{
-  min-width:118px!important;
-  margin-right:4px!important;
-}
-[data-communications-lifecycle-host="header"]{
-  margin-left:auto!important;
-  gap:6px!important;
+[data-communications-conversation-row="1"] [data-communications-lifecycle-host="row"]{
+  min-width:94px!important;
+  margin:0 5px 0 auto!important;
 }
 .communicationsLifecycleControl.compact select{
-  height:30px!important;
-  min-width:116px!important;
-  max-width:128px!important;
-  padding:0 22px 0 9px!important;
+  height:28px!important;
+  min-width:90px!important;
+  max-width:100px!important;
+  padding:0 20px 0 8px!important;
+  border-radius:8px!important;
   font-size:11px!important;
   font-weight:800!important;
 }
 .communicationsLifecycleControl.header select{
   height:32px!important;
-  min-width:118px!important;
-  max-width:138px!important;
-  padding:0 24px 0 10px!important;
+  min-width:112px!important;
+  max-width:132px!important;
+  padding:0 22px 0 9px!important;
+  border-radius:9px!important;
   font-size:11px!important;
   font-weight:800!important;
 }
-.communicationsLifecycleControl[data-state="NEW"] select{
-  border-color:color-mix(in srgb,#2563eb 34%,var(--line))!important;
-  background:color-mix(in srgb,#2563eb 5%,var(--surface))!important;
-}
-.communicationsLifecycleControl[data-state="IN_WORK"] select{
-  border-color:color-mix(in srgb,var(--orange) 34%,var(--line))!important;
-  background:color-mix(in srgb,var(--orange) 5%,var(--surface))!important;
-}
-.communicationsLifecycleControl[data-state="CLOSED"] select{
-  border-color:color-mix(in srgb,#16a34a 30%,var(--line))!important;
-  background:color-mix(in srgb,#16a34a 5%,var(--surface))!important;
-}
-.communicationsLifecycleControl[data-state="NOT_OUR_CLIENT"] select{
-  border-color:color-mix(in srgb,#64748b 36%,var(--line))!important;
-  background:color-mix(in srgb,#64748b 6%,var(--surface))!important;
-}
-.communicationsLifecycleControl[data-state="SPAM"] select{
-  border-color:color-mix(in srgb,#ef4444 32%,var(--line))!important;
-  background:color-mix(in srgb,#ef4444 5%,var(--surface))!important;
-}
-.communicationsClientBadge{
-  height:28px!important;
-  padding:0 8px!important;
-  font-size:11px!important;
-  font-weight:800!important;
-  background:color-mix(in srgb,#16a34a 5%,var(--surface))!important;
-}
+.communicationsLifecycleControl[data-state="NEW"] select{border-color:color-mix(in srgb,#2563eb 34%,var(--line))!important;background:color-mix(in srgb,#2563eb 5%,var(--surface))!important}
+.communicationsLifecycleControl[data-state="IN_WORK"] select{border-color:color-mix(in srgb,var(--orange) 34%,var(--line))!important;background:color-mix(in srgb,var(--orange) 5%,var(--surface))!important}
+.communicationsLifecycleControl[data-state="CLOSED"] select{border-color:color-mix(in srgb,#16a34a 30%,var(--line))!important;background:color-mix(in srgb,#16a34a 5%,var(--surface))!important}
+.communicationsLifecycleControl[data-state="NOT_OUR_CLIENT"] select{border-color:color-mix(in srgb,#64748b 36%,var(--line))!important;background:color-mix(in srgb,#64748b 6%,var(--surface))!important}
+.communicationsLifecycleControl[data-state="SPAM"] select{border-color:color-mix(in srgb,#ef4444 32%,var(--line))!important;background:color-mix(in srgb,#ef4444 5%,var(--surface))!important}
+.communicationsClientBadge{height:28px!important;padding:0 8px!important;font-size:11px!important}
 
-/* Conversation area: lighter cards and a composer that always stays at the bottom. */
-nav[aria-label="Фільтри комунікацій"]+section>section article{
-  max-width:min(72%,650px)!important;
-  padding:9px 11px!important;
-  border-radius:12px!important;
-  box-shadow:none!important;
+[data-communications-role="conversation-pane"]{
+  min-width:0!important;
+  min-height:0!important;
+  display:grid!important;
+  grid-template-columns:minmax(0,1fr) var(--communications-context)!important;
+  grid-template-rows:auto auto minmax(0,1fr) auto!important;
+  overflow:hidden!important;
+  background:var(--surface)!important;
 }
-nav[aria-label="Фільтри комунікацій"]+section>section article p{
+[data-communications-pane-role="header"]{
+  grid-column:1;
+  grid-row:1;
+  min-width:0!important;
+  min-height:72px!important;
+  display:flex!important;
+  align-items:center!important;
+  gap:10px!important;
+  padding:9px 14px!important;
+  border-bottom:1px solid var(--line)!important;
+  background:var(--panel)!important;
+}
+[data-communications-pane-role="header"] button[title="Відкрити картку контакту"]{
+  flex:1 1 auto!important;
+  max-width:none!important;
+  padding:3px!important;
+  gap:9px!important;
+}
+[data-communications-pane-role="header"] button[title="Відкрити картку контакту"] strong{font-size:15px!important}
+[data-communications-pane-role="header"] [aria-label="Автомобілі клієнта"]{display:none!important}
+[data-communications-lifecycle-host="header"]{margin-left:auto!important;gap:6px!important}
+[data-communications-pane-role="link-panel"]{grid-column:1;grid-row:2}
+[data-communications-pane-role="timeline"]{
+  grid-column:1;
+  grid-row:3;
+  min-width:0!important;
+  min-height:0!important;
+  overflow:auto!important;
+  padding:22px clamp(18px,2vw,34px)!important;
+  background:
+    linear-gradient(180deg,color-mix(in srgb,var(--surface) 97%,var(--panel)),var(--surface)),
+    radial-gradient(circle at 50% 0,color-mix(in srgb,var(--orange) 5%,transparent),transparent 42%);
+}
+[data-communications-pane-role="timeline"] article{
+  max-width:min(72%,680px)!important;
+  border-radius:14px!important;
+  padding:10px 12px!important;
+  box-shadow:0 1px 1px rgba(15,23,42,.025)!important;
+}
+[data-communications-pane-role="timeline"] article p{
+  font-size:13px!important;
+  line-height:1.48!important;
+}
+[data-communications-pane-role="timeline"] article footer{
+  font-size:11px!important;
+}
+[data-communications-pane-role="composer"]{
+  grid-column:1;
+  grid-row:4;
+  flex:none!important;
+  position:relative!important;
+  bottom:auto!important;
+  z-index:8!important;
+  padding:10px 12px 11px!important;
+  border-top:1px solid var(--line)!important;
+  background:var(--panel)!important;
+  box-shadow:0 -9px 28px rgba(15,23,42,.035)!important;
+}
+.communicationsReplyMeta{margin:0 0 7px!important;font-size:11px!important}
+.communicationsReplyMeta label small{display:none!important}
+.communicationsReplyMeta select{min-height:31px!important;border-radius:8px!important;padding:4px 8px!important}
+.communicationsComposeRow{
+  grid-template-columns:38px minmax(0,1fr) 38px 38px 46px!important;
+  gap:7px!important;
+  align-items:flex-end!important;
+}
+.communicationsComposeRow textarea{
+  min-height:58px!important;
+  max-height:122px!important;
+  padding:11px 12px!important;
+  border-radius:12px!important;
   font-size:13px!important;
   line-height:1.45!important;
 }
-.communicationsComposer{
-  flex:0 0 auto!important;
-  margin-top:auto!important;
-  position:sticky!important;
-  bottom:0!important;
-  z-index:6!important;
-  padding:10px 12px!important;
-  background:var(--panel)!important;
-  border-top:1px solid var(--line)!important;
-  box-shadow:0 -8px 22px rgba(15,23,42,.035)!important;
-}
-.communicationsReplyMeta{
-  margin:0 0 6px!important;
-  font-size:11px!important;
-}
-.communicationsReplyMeta label small{display:none!important}
-.communicationsReplyMeta select{
-  min-height:32px!important;
-  padding:4px 8px!important;
-}
-.communicationsComposeRow{
-  grid-template-columns:32px minmax(0,1fr) 32px 32px 42px!important;
-  gap:6px!important;
-}
-.communicationsComposeRow textarea{
-  min-height:46px!important;
-  max-height:96px!important;
-  padding:10px 11px!important;
-  border-radius:10px!important;
-  font-size:13px!important;
-}
 .communicationsComposeRow button{
-  height:40px!important;
-  min-height:40px!important;
-  border-radius:9px!important;
+  height:44px!important;
+  min-height:44px!important;
+  border-radius:10px!important;
 }
+.communicationsToolButton{background:var(--surface)!important}
 .communicationsComposer>span:last-child{
   display:block!important;
-  max-width:320px!important;
   margin-top:5px!important;
   white-space:nowrap!important;
   overflow:hidden!important;
   text-overflow:ellipsis!important;
   font-size:11px!important;
-  line-height:1.25!important;
-  opacity:.78;
+  opacity:.72;
 }
 
-@media(max-width:1366px){
-  nav[aria-label="Фільтри комунікацій"]+section{
-    grid-template-columns:minmax(330px,38%) minmax(0,1fr)!important;
-  }
-  nav[aria-label="Фільтри комунікацій"]+section>section>header{
-    flex-wrap:wrap!important;
-  }
-  nav[aria-label="Фільтри комунікацій"]+section button[title="Відкрити картку контакту"]{
-    flex:1 1 280px!important;
-    max-width:none!important;
-  }
-  [data-communications-lifecycle-host="header"]{margin-left:0!important}
+/* Client context sidebar. */
+[data-communications-context-host]{
+  grid-column:2;
+  grid-row:1 / 5;
+  min-width:0;
+  min-height:0;
+  overflow:hidden;
+  border-left:1px solid var(--line);
+  background:color-mix(in srgb,var(--panel) 78%,var(--surface));
+}
+.communicationsContextPanel{
+  height:100%;
+  min-height:0;
+  overflow:auto;
+  padding:13px;
+  display:flex;
+  flex-direction:column;
+  gap:11px;
+}
+.communicationsContextTitle{
+  min-height:48px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  padding-bottom:10px;
+  border-bottom:1px solid var(--line);
+}
+.communicationsContextTitle>div{min-width:0;display:grid;gap:3px}
+.communicationsContextTitle span,
+.communicationsContextSection>header span{
+  color:var(--muted);
+  font-size:11px;
+  font-weight:900;
+  letter-spacing:.08em;
+}
+.communicationsContextTitle strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:14px}
+.communicationsContextTitle small{
+  flex:none;
+  max-width:94px;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+  border:1px solid var(--line);
+  border-radius:999px;
+  background:var(--surface);
+  color:var(--muted);
+  padding:5px 7px;
+  font-size:11px;
+}
+.communicationsContextEmpty{
+  border:1px dashed var(--line);
+  border-radius:12px;
+  padding:16px 12px;
+  color:var(--muted);
+  font-size:12px;
+  line-height:1.45;
+}
+.communicationsContextCard{
+  display:grid;
+  grid-template-columns:38px minmax(0,1fr) auto;
+  align-items:center;
+  gap:9px;
+  border:1px solid var(--line);
+  border-radius:13px;
+  background:var(--surface);
+  padding:10px;
+}
+.communicationsContextIcon{width:38px;height:38px;display:grid;place-items:center;border-radius:11px;background:color-mix(in srgb,var(--orange) 10%,var(--panel));font-size:17px}
+.communicationsContextCard>div:nth-child(2){min-width:0;display:grid;gap:2px}
+.communicationsContextCard span{color:var(--muted);font-size:11px}
+.communicationsContextCard strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px}
+.communicationsContextCard small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted);font-size:11px}
+.communicationsContextCard button{
+  border:0;
+  background:transparent;
+  color:var(--orange);
+  padding:5px 2px;
+  font:inherit;
+  font-size:11px;
+  font-weight:850;
+  cursor:pointer;
+}
+.communicationsContextStats{
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:6px;
+}
+.communicationsContextStats>div{
+  min-width:0;
+  display:grid;
+  gap:3px;
+  border:1px solid var(--line);
+  border-radius:11px;
+  background:var(--surface);
+  padding:8px;
+}
+.communicationsContextStats span{color:var(--muted);font-size:11px}
+.communicationsContextStats strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px}
+.communicationsContextSection{
+  display:grid;
+  gap:7px;
+  padding-top:2px;
+}
+.communicationsContextSection>header{display:flex;align-items:center;justify-content:space-between}
+.communicationsContextSection>p{margin:0;color:var(--muted);font-size:11px;line-height:1.48}
+.communicationsContextVehicles{display:grid;gap:6px}
+.communicationsContextVehicles>button,
+.communicationsContextOrder{
+  width:100%;
+  min-width:0;
+  display:grid;
+  grid-template-columns:34px minmax(0,1fr) auto;
+  align-items:center;
+  gap:8px;
+  border:1px solid var(--line);
+  border-radius:11px;
+  background:var(--surface);
+  color:var(--text);
+  padding:8px;
+  text-align:left;
+  font:inherit;
+  cursor:pointer;
+}
+.communicationsContextVehicles>button:hover,
+.communicationsContextOrder:hover{border-color:color-mix(in srgb,var(--orange) 50%,var(--line));background:color-mix(in srgb,var(--orange) 4%,var(--surface))}
+.communicationsVehicleGlyph{width:34px;height:34px;display:grid;place-items:center;border-radius:9px;background:var(--panel);font-size:15px}
+.communicationsContextVehicles>button>div,
+.communicationsContextOrder>div{min-width:0;display:grid;gap:2px}
+.communicationsContextVehicles strong,
+.communicationsContextOrder strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px}
+.communicationsContextVehicles small,
+.communicationsContextOrder small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted);font-size:11px}
+.communicationsContextVehicles i{font-style:normal;color:var(--muted);font-size:17px}
+.communicationsContextOrder{grid-template-columns:minmax(0,1fr) auto}
+.communicationsContextOrder>span{color:var(--orange);font-size:11px;font-weight:850}
+.communicationsContextHint{margin-top:auto;border-top:1px solid var(--line);padding-top:10px}
+
+/* Existing helper popovers stay compact and legible. */
+.communicationsChannelContext{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:4px}
+.communicationsChannelContext b{display:inline-flex;align-items:center;gap:5px;color:var(--text);font-size:11px;font-weight:700}
+.communicationsChannelContext b i{display:inline-grid;place-items:center;width:17px;height:17px;border-radius:50%;color:#fff;font-style:normal;font-size:11px}
+.communicationsChannelContext em{font-style:normal;color:var(--muted);font-size:11px;font-weight:500;padding-left:6px;border-left:1px solid var(--line)}
+.communicationsChannelSwitch{align-self:center;margin:7px auto;padding:4px 9px;border:1px solid var(--line);border-radius:999px;background:var(--panel);color:var(--muted);font-size:11px}
+.communicationsFileChips{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 8px}
+.communicationsEmojiPicker{z-index:20!important}
+.communicationsLinkClientButton{margin-left:auto!important}
+
+@media(max-width:1500px){
+  [data-communications-workspace-v2="true"]{--communications-list:330px;--communications-context:270px}
+  [data-communications-conversation-row="1"] [data-communications-lifecycle-host="row"]{min-width:88px!important}
+  .communicationsLifecycleControl.compact select{min-width:84px!important;max-width:92px!important}
 }
 
-@media(max-width:1100px){
-  nav[aria-label="Фільтри комунікацій"]+section{
-    grid-template-columns:minmax(300px,40%) minmax(0,1fr)!important;
+@media(max-width:1180px){
+  [data-communications-workspace-v2="true"]{--communications-list:320px}
+  [data-communications-role="conversation-pane"]{
+    grid-template-columns:minmax(0,1fr)!important;
   }
-  [data-communications-lifecycle-host="row"]{min-width:110px!important}
-  .communicationsLifecycleControl.compact select{min-width:108px!important;max-width:118px!important;font-size:11px!important}
+  [data-communications-context-host]{display:none!important}
+  [data-communications-pane-role="header"] [aria-label="Автомобілі клієнта"]{display:flex!important;max-width:100%;flex:1 1 100%}
+  [data-communications-pane-role="header"]{flex-wrap:wrap!important}
 }
 
 @media(max-width:900px){
-  nav[aria-label="Фільтри комунікацій"]+section{
+  [data-communications-workspace-v2="true"] nav[aria-label="Фільтри комунікацій"]{overflow-x:auto;overflow-y:visible;padding-right:4px}
+  [data-communications-channel-menu-host]{position:sticky;right:0;background:var(--bg);padding-left:6px}
+  [data-communications-role="workspace-shell"]{
     height:auto!important;
     min-height:0!important;
     max-height:none!important;
     grid-template-columns:1fr!important;
     overflow:visible!important;
   }
-  nav[aria-label="Фільтри комунікацій"]+section>aside{
-    height:min(390px,48dvh)!important;
+  [data-communications-role="conversation-list"]{
+    height:min(410px,50dvh)!important;
     min-height:300px!important;
+    border-right:0!important;
+    border-bottom:1px solid var(--line)!important;
   }
-  nav[aria-label="Фільтри комунікацій"]+section>section{
-    min-height:520px!important;
+  [data-communications-role="conversation-pane"]{
+    min-height:560px!important;
+    display:grid!important;
+    grid-template-rows:auto auto minmax(360px,1fr) auto!important;
+    overflow:hidden!important;
   }
-  nav[aria-label="Фільтри комунікацій"]+section>section>header{
-    align-items:flex-start!important;
-  }
-  nav[aria-label="Фільтри комунікацій"]+section>section article{max-width:90%!important}
-  .communicationsComposer{position:relative!important}
+  [data-communications-pane-role="timeline"] article{max-width:90%!important}
   .communicationsComposer>span:last-child{max-width:100%!important}
 }
 
-@media(max-width:560px){
-  nav[aria-label="Фільтри комунікацій"]+section>aside{height:min(420px,52dvh)!important}
-  .communicationsComposeRow{grid-template-columns:32px minmax(0,1fr) 32px 32px 40px!important}
-  [data-communications-lifecycle-host="row"]{min-width:104px!important}
-  .communicationsLifecycleControl.compact select{min-width:102px!important;max-width:110px!important}
+@media(max-width:600px){
+  [data-communications-workspace-v2="true"] nav[aria-label="Фільтри комунікацій"]>button{padding:0 10px!important}
+  [data-communications-role="conversation-list"]{height:min(430px,54dvh)!important}
+  .communicationsChannelPickerButton{min-width:108px}
+  .communicationsComposeRow{grid-template-columns:34px minmax(0,1fr) 34px 34px 42px!important}
+  .communicationsComposeRow textarea{min-height:54px!important}
+  [data-communications-pane-role="timeline"]{padding:15px 12px!important}
+  [data-communications-pane-role="timeline"] article{max-width:96%!important}
 }
