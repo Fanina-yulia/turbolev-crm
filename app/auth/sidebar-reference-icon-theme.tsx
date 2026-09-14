@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect } from "react";
+import { navigateCrm } from "../crm-route";
+import type { CrmSectionLabel } from "../crm-navigation";
 
 const GROUP_ICON_KEY: Record<string, string> = {
   "Робочий стіл": "dashboard",
@@ -13,21 +15,81 @@ const GROUP_ICON_KEY: Record<string, string> = {
   "Управління": "management",
 };
 
+const DIRECT_NAV_GROUPS: Record<string, CrmSectionLabel> = {
+  "Комунікація": "Комунікації",
+  "Планувальник": "Планувальник",
+};
+
 export function SidebarReferenceIconTheme() {
   useEffect(() => {
-    const applyWideMenuKeys = () => {
+    const applyMenuKeys = () => {
+      document.querySelectorAll<HTMLElement>(".crmDockButton7").forEach((button) => {
+        const label = button.getAttribute("aria-label")?.trim();
+        const section = label ? DIRECT_NAV_GROUPS[label] : undefined;
+        if (section) {
+          button.dataset.directSection = section;
+          button.removeAttribute("aria-haspopup");
+          button.removeAttribute("aria-expanded");
+        } else {
+          delete button.dataset.directSection;
+        }
+      });
+
       document.querySelectorAll<HTMLElement>(".crmWideGroup7").forEach((section) => {
-        const label = section.querySelector<HTMLElement>(".crmWideGroupTitle7 strong")?.textContent?.trim();
+        const title = section.querySelector<HTMLElement>(".crmWideGroupTitle7");
+        const label = title?.querySelector<HTMLElement>("strong")?.textContent?.trim();
         const key = label ? GROUP_ICON_KEY[label] : undefined;
+        const directSection = label ? DIRECT_NAV_GROUPS[label] : undefined;
         if (key) section.dataset.referenceIcon = key;
         else delete section.dataset.referenceIcon;
+        if (title && directSection) {
+          section.dataset.directNavigation = "true";
+          title.dataset.directSection = directSection;
+          title.setAttribute("role", "button");
+          title.setAttribute("tabindex", "0");
+        } else {
+          delete section.dataset.directNavigation;
+          if (title) {
+            delete title.dataset.directSection;
+            title.removeAttribute("role");
+            title.removeAttribute("tabindex");
+          }
+        }
       });
     };
 
-    applyWideMenuKeys();
-    const observer = new MutationObserver(applyWideMenuKeys);
+    const openDirectSection = (target: EventTarget | null) => {
+      if (!(target instanceof Element)) return false;
+      const direct = target.closest<HTMLElement>("[data-direct-section]");
+      const section = direct?.dataset.directSection as CrmSectionLabel | undefined;
+      if (!section) return false;
+      navigateCrm(section);
+      return true;
+    };
+
+    const onClick = (event: MouseEvent) => {
+      if (!openDirectSection(event.target)) return;
+      event.preventDefault();
+      event.stopPropagation();
+    };
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Enter" && event.key !== " ") return;
+      if (!openDirectSection(event.target)) return;
+      event.preventDefault();
+      event.stopPropagation();
+    };
+
+    applyMenuKeys();
+    const observer = new MutationObserver(applyMenuKeys);
     observer.observe(document.body, { childList: true, subtree: true });
-    return () => observer.disconnect();
+    document.addEventListener("click", onClick, true);
+    document.addEventListener("keydown", onKeyDown, true);
+    return () => {
+      observer.disconnect();
+      document.removeEventListener("click", onClick, true);
+      document.removeEventListener("keydown", onKeyDown, true);
+    };
   }, []);
 
   return <style jsx global>{`
@@ -101,6 +163,8 @@ export function SidebarReferenceIconTheme() {
       .crmDockButton7[aria-label="Фінанси"] .crmDockGlyph7::after{background-image:url("/icons/sidebar/reference-finance.svg")}
       .crmDockButton7[aria-label="Управління"] .crmDockGlyph7::after{background-image:url("/icons/sidebar/reference-management.svg")}
 
+      .crmDockSlot7:has(.crmDockButton7[data-direct-section]) .crmDockFlyout7{display:none!important}
+
       .crmWideGroupTitle7{height:46px!important;gap:12px!important}
       .crmWideGroupIcon7{
         position:relative;
@@ -134,6 +198,11 @@ export function SidebarReferenceIconTheme() {
       .crmWideGroup7[data-reference-icon="parts"] .crmWideGroupIcon7::after{background-image:url("/icons/sidebar/reference-parts.svg")}
       .crmWideGroup7[data-reference-icon="finance"] .crmWideGroupIcon7::after{background-image:url("/icons/sidebar/reference-finance.svg")}
       .crmWideGroup7[data-reference-icon="management"] .crmWideGroupIcon7::after{background-image:url("/icons/sidebar/reference-management.svg")}
+
+      .crmWideGroup7[data-direct-navigation="true"] .crmWideGroupTitle7{cursor:pointer;border-radius:9px;padding-right:7px!important}
+      .crmWideGroup7[data-direct-navigation="true"] .crmWideGroupTitle7:hover,
+      .crmWideGroup7[data-direct-navigation="true"] .crmWideGroupTitle7:focus-visible{background:color-mix(in srgb,var(--orange) 8%,var(--panel-2));outline:none}
+      .crmWideGroup7[data-direct-navigation="true"] .crmWideGroupItems7{display:none!important}
 
       @media(max-height:640px){
         .crmDockSlot7{height:50px!important;flex-basis:50px!important}
