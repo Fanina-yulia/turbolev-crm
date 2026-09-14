@@ -306,6 +306,8 @@ export async function GET(request: Request) {
       supplierStatuses: supplierSearch.supplierStatuses,
       configuredSuppliers: supplierSearch.configuredSuppliers,
       supplierProviders: supplierSearch.providers,
+      supplierResultSummary: supplierSearch.resultSummary,
+      supplierCascade: supplierSearch.cascade,
       supplierSummary: {
         added: supplierSearch.supplierStatuses.length,
         configured: supplierSearch.configuredSuppliers.length,

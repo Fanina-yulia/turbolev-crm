@@ -84,6 +84,19 @@ export type SupplierVehiclePart = {
   };
 };
 
+export type SupplierResultType =
+  | "ORIGINAL"
+  | "OEM_REPLACEMENT"
+  | "ANALOG"
+  | "ASSEMBLY"
+  | "UNKNOWN";
+
+export type SupplierCompatibilityTier =
+  | "CONFIRMED"
+  | "PARTIAL"
+  | "REVIEW_REQUIRED"
+  | "UNCONFIRMED";
+
 export type SupplierOffer = {
   supplierId: SupplierId;
   supplierName: string;
@@ -105,20 +118,32 @@ export type SupplierOffer = {
   analogOfArticle?: string | null;
   /** Classification is optional because a supplier response may not prove OEM status. */
   offerClass?: PartOfferClass;
+  /** Business-facing result classification used by the picker. */
+  resultType?: SupplierResultType;
   /** Result of the server-side VIN/catalog compatibility check. */
   fitmentStatus?: PartFitmentStatus;
   fitmentConfidence?: number | null;
   fitmentExact?: boolean | null;
   fitmentSource?: string | null;
   fitmentReason?: string | null;
+  /** Simplified UI compatibility tier. */
+  compatibilityTier?: SupplierCompatibilityTier;
   catalogProductId?: string | null;
   /** Why this exact offer was returned (OE match, cross, article or free text). */
   offerReason?: string | null;
+  /** Full list of reasons accumulated across cascade stages. */
+  matchReasons?: string[];
   /** Provenance used by the UI and audit trail. */
-  sourceKind?: "DIRECT" | "OEM" | "ANALOG" | "NAME";
+  sourceKind?: "DIRECT" | "OEM" | "ANALOG" | "NAME" | "ASSEMBLY";
+  /** Assembly/kit alternative must never be auto-selected. */
+  requiresManualConfirmation?: boolean;
+  /** Canonical component this assembly is offered instead of. */
+  alternativeForCanonicalCode?: string | null;
   /** Aggregated stock for quick comparison; detailed rows remain in `stock`. */
   stockTotal?: number | null;
   quantityMode?: "EXACT" | "BAND" | "BOOLEAN_ONLY" | "UNKNOWN";
+  /** Human-readable ETA when supplier exposes it; otherwise null. */
+  deliveryEstimate?: string | null;
   fetchedAt?: string | null;
 };
 
