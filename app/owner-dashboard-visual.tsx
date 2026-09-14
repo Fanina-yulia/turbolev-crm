@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { navigateCrm } from "./crm-route";
 import styles from "./owner-dashboard-visual.module.css";
+import pipelineStyles from "./owner-dashboard-pipeline.module.css";
 
 export type OwnerPeriodKey = "TODAY" | "7D" | "30D" | "90D" | "YEAR";
 
@@ -67,6 +68,41 @@ type DashboardPayload = {
   attention?: AttentionItem[];
 };
 
+type OwnerFactsPayload = {
+  ok?: boolean;
+  pipeline?: {
+    currency: string | null;
+    mixedCurrency: boolean;
+    total: number | null;
+    scheduledAmount: number;
+    scheduledCount: number;
+    diagnosticsAmount: number;
+    diagnosticsCount: number;
+    approvedAmount: number;
+    approvedCount: number;
+    pendingApprovalAmount: number | null;
+    pendingApprovalCount: number;
+    openWorkOrders: number;
+    unpricedCount: number;
+  } | null;
+  directRevenue?: {
+    current: number;
+    previous: number;
+    count: number;
+    averageCheck: number | null;
+    trend: Array<{ date: string; amount: number }>;
+  } | null;
+  retention?: {
+    servedClients: number;
+    returningClients: number;
+    repeatClientPct: number | null;
+  } | null;
+  dataQuality?: {
+    pipelineUnpricedCount: number;
+    waitingPaymentUnpricedCount: number;
+  } | null;
+};
+
 type OwnerControlSnapshot = {
   receivables: {
     total: number;
@@ -86,6 +122,13 @@ const EMPTY_CONTROL: OwnerControlSnapshot = {
   receivables: { total: 0, count: 0, due: 0, dueCount: 0, partial: 0, partialCount: 0, debt: 0, debtCount: 0 },
   decisions: { total: 0, margin: 0, marginRevenue: 0, warranty: 0, paused: 0 },
   risk: { noShow: 0, paused: 0 },
+};
+
+const EMPTY_FACTS: OwnerFactsPayload = {
+  pipeline: null,
+  directRevenue: null,
+  retention: null,
+  dataQuality: null,
 };
 
 const PERIODS: Array<{ key: OwnerPeriodKey; label: string }> = [
@@ -178,7 +221,7 @@ function Gauge({ value, tone = "orange", label }: { value: number | null | undef
   const accent = tone === "green" ? "var(--owner-green)" : tone === "red" ? "var(--owner-red)" : tone === "neutral" ? "var(--owner-muted)" : "var(--owner-orange)";
   return <div className={styles.gaugeWrap} aria-hidden="true">
     <div className={styles.gauge} style={{ background: `conic-gradient(${accent} ${safe * 3.6}deg, var(--owner-chart-track) 0deg)` }}>
-      <div><strong>{percent(safe)}</strong>{label && <small>{label}</small>}</div>
+      <div><strong>{percent(value)}</strong>{label && <small>{label}</small>}</div>
     </div>
   </div>;
 }
@@ -214,13 +257,13 @@ function GaugeMetricCard({ title, value, icon, gaugeValue, previous, current, on
   </button>;
 }
 
-function RetentionMetricCard({ value, onClick }: { value: number | null | undefined; onClick: () => void }) {
+function RetentionMetricCard({ value, servedClients, onClick }: { value: number | null | undefined; servedClients: number; onClick: () => void }) {
   const safe = Math.max(0, Math.min(100, Number(value) || 0));
   const bars = [0.35, 0.5, 0.42, 0.62, 0.56].map((factor, index, source) => index === source.length - 1 ? safe : safe * factor);
   return <button type="button" className={styles.metricCard} onClick={onClick} aria-label={`Повторні клієнти: ${percent(value)}`}>
     <div className={styles.metricHead}><MetricIcon>↻</MetricIcon><span>Повторні клієнти</span><em>›</em></div>
     <strong>{percent(value)}</strong>
-    <small className={styles.metricSubtitle}>утримання клієнтської бази</small>
+    <small className={styles.metricSubtitle}>{servedClients > 0 ? `${servedClients} клієнтів у періоді` : "ще немає достатніх даних"}</small>
     <MiniBars values={bars} tone={safe > 0 ? "green" : "neutral"} />
     <span className={styles.deltaNeutral}>поточний період</span>
   </button>;
@@ -297,22 +340,28 @@ function issueCount(attention: AttentionItem[], code: string) {
 
 export function OwnerDashboardVisual({ analytics, period, onPeriodChange, loading = false }: Props) {
   const [control, setControl] = useState<OwnerControlSnapshot>(EMPTY_CONTROL);
+  const [facts, setFacts] = useState<OwnerFactsPayload>(EMPTY_FACTS);
   const [controlLoading, setControlLoading] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
     const loadControl = async () => {
       setControlLoading(true);
+      const factsQuery = analytics?.range
+        ? `?from=${encodeURIComponent(analytics.range.from)}&to=${encodeURIComponent(analytics.range.to)}`
+        : "";
       const responses = await Promise.allSettled([
         fetch("/api/payments", { cache: "no-store", credentials: "include" }),
         fetch("/api/finance/margin-approvals", { cache: "no-store", credentials: "include" }),
         fetch("/api/dashboard", { cache: "no-store", credentials: "include" }),
+        fetch(`/api/owner-dashboard/facts${factsQuery}`, { cache: "no-store", credentials: "include" }),
       ]);
       if (cancelled) return;
       try {
         const payments = responses[0].status === "fulfilled" && responses[0].value.ok ? await responses[0].value.json() as PaymentsPayload : null;
         const margins = responses[1].status === "fulfilled" && responses[1].value.ok ? await responses[1].value.json() as MarginApprovalsPayload : null;
         const dashboard = responses[2].status === "fulfilled" && responses[2].value.ok ? await responses[2].value.json() as DashboardPayload : null;
+        const ownerFacts = responses[3].status === "fulfilled" && responses[3].value.ok ? await responses[3].value.json() as OwnerFactsPayload : EMPTY_FACTS;
         const paymentRows = payments?.rows ?? [];
         const openRows = paymentRows.filter((row) => safeNumber(row.outstanding) > 0);
         const attention = dashboard?.attention ?? [];
@@ -342,6 +391,7 @@ export function OwnerDashboardVisual({ analytics, period, onPeriodChange, loadin
             paused,
           },
         });
+        setFacts(ownerFacts);
       } finally {
         if (!cancelled) setControlLoading(false);
       }
@@ -355,19 +405,44 @@ export function OwnerDashboardVisual({ analytics, period, onPeriodChange, loadin
       window.removeEventListener("turbolev:data-changed", onDataChanged);
       window.clearInterval(timer);
     };
-  }, []);
+  }, [analytics?.range?.from, analytics?.range?.to]);
 
   const kpi = analytics?.kpi;
   const previous = analytics?.previous;
   const operations = analytics?.operations;
   const trend = analytics?.trend ?? [];
-  const revenueTrend = trend.map((item) => item.revenue);
+  const directRevenue = facts.directRevenue?.current ?? 0;
+  const previousDirectRevenue = facts.directRevenue?.previous ?? 0;
+  const displayedRevenue = kpi?.grossRevenue == null ? null : safeNumber(kpi.grossRevenue) + directRevenue;
+  const displayedPreviousRevenue = previous?.grossRevenue == null ? null : safeNumber(previous.grossRevenue) + previousDirectRevenue;
+  const revenueTrend = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const item of trend) map.set(item.date, safeNumber(item.revenue));
+    for (const item of facts.directRevenue?.trend ?? []) map.set(item.date, (map.get(item.date) || 0) + safeNumber(item.amount));
+    return [...map.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([, value]) => value);
+  }, [trend, facts.directRevenue]);
   const profitTrend = trend.map((item) => item.grossProfit);
+  const hasClosedOrderRevenue = safeNumber(kpi?.grossRevenue) > 0;
+  const grossProfitForDisplay = hasClosedOrderRevenue && directRevenue === 0 ? kpi?.grossProfit : null;
+  const grossMarginForDisplay = hasClosedOrderRevenue && directRevenue === 0 ? kpi?.grossMarginPct : null;
+  const averageCheckForDisplay = hasClosedOrderRevenue && directRevenue === 0
+    ? kpi?.averageCheck
+    : facts.directRevenue?.averageCheck ?? null;
+  const repeatClientPct = facts.retention?.repeatClientPct ?? null;
+  const servedClients = facts.retention?.servedClients ?? 0;
   const overdue = operations?.overdueNow ?? 0;
   const delayReasons = operations?.delayReasons?.slice(0, 4) ?? [];
   const waitingApproval = operations?.waitingApprovalNow ?? 0;
   const noShow = Math.max(control.risk.noShow, analytics?.funnel?.noShow ?? 0);
   const revenueRiskCount = noShow + waitingApproval + control.risk.paused;
+  const pipeline = facts.pipeline;
+  const dataQuality = facts.dataQuality;
+
+  const pipelineRows = useMemo<ChartRow[]>(() => [
+    { label: "Заплановано", value: pipeline?.scheduledAmount ?? 0, tone: "orange", formatted: money(pipeline?.scheduledAmount ?? 0), detail: `${pipeline?.scheduledCount ?? 0} записів` },
+    { label: "Діагностика", value: pipeline?.diagnosticsAmount ?? 0, tone: "neutral", formatted: money(pipeline?.diagnosticsAmount ?? 0), detail: `${pipeline?.diagnosticsCount ?? 0} авто` },
+    { label: "Погоджено", value: pipeline?.approvedAmount ?? 0, tone: "green", formatted: money(pipeline?.approvedAmount ?? 0), detail: `${pipeline?.approvedCount ?? 0} робіт/позицій` },
+  ], [pipeline]);
 
   const receivableRows = useMemo<ChartRow[]>(() => [
     { label: "До сплати", value: control.receivables.due, tone: "orange", formatted: money(control.receivables.due), detail: `${control.receivables.dueCount} оплат` },
@@ -400,11 +475,11 @@ export function OwnerDashboardVisual({ analytics, period, onPeriodChange, loadin
     </div>
 
     <div className={styles.metricGrid}>
-      <TrendMetricCard title="Виручка за період" value={money(kpi?.grossRevenue)} icon="₴" values={revenueTrend} current={kpi?.grossRevenue} previous={previous?.grossRevenue} chart="line" onClick={() => navigateCrm("Фінансовий центр")} />
-      <TrendMetricCard title="Валовий прибуток" value={money(kpi?.grossProfit)} icon="▥" values={profitTrend} current={kpi?.grossProfit} previous={previous?.grossProfit} chart="bars" onClick={() => navigateCrm("Фінансовий центр")} />
-      <GaugeMetricCard title="Валова маржа" value={percent(kpi?.grossMarginPct)} icon="%" gaugeValue={kpi?.grossMarginPct} current={kpi?.grossMarginPct} previous={previous?.grossMarginPct} subtitle={`середній чек ${money(kpi?.averageCheck)}`} gaugeLabel="маржа" onClick={() => navigateCrm("Аналітика")} />
+      <TrendMetricCard title="Виручка за період" value={money(displayedRevenue)} icon="₴" values={revenueTrend} current={displayedRevenue} previous={displayedPreviousRevenue} chart="line" subtitle={directRevenue > 0 ? `включно з ${money(directRevenue)} прямих оплат` : undefined} onClick={() => navigateCrm("Фінансовий центр")} />
+      <TrendMetricCard title="Валовий прибуток" value={money(grossProfitForDisplay)} icon="▥" values={profitTrend} current={grossProfitForDisplay} previous={previous?.grossProfit} chart="bars" subtitle={grossProfitForDisplay == null ? "немає повних даних про собівартість" : undefined} onClick={() => navigateCrm("Фінансовий центр")} />
+      <GaugeMetricCard title="Валова маржа" value={percent(grossMarginForDisplay)} icon="%" gaugeValue={grossMarginForDisplay} current={grossMarginForDisplay} previous={previous?.grossMarginPct} subtitle={`середній чек ${money(averageCheckForDisplay)}`} gaugeLabel="маржа" onClick={() => navigateCrm("Аналітика")} />
       <GaugeMetricCard title="Завантаження постів" value={percent(kpi?.postUtilizationPct)} icon="⌁" gaugeValue={kpi?.postUtilizationPct} current={kpi?.postUtilizationPct} previous={previous?.postUtilizationPct} gaugeLabel="зайнято" onClick={() => navigateCrm("Аналітика")} />
-      <RetentionMetricCard value={kpi?.repeatClientPct} onClick={() => navigateCrm("Аналітика")} />
+      <RetentionMetricCard value={repeatClientPct} servedClients={servedClients} onClick={() => navigateCrm("Аналітика")} />
       <GaugeMetricCard title="Запис → приїзд" value={percent(kpi?.bookingToArrivalPct)} icon="✓" gaugeValue={kpi?.bookingToArrivalPct} current={kpi?.bookingToArrivalPct} previous={previous?.bookingToArrivalPct} tone="green" gaugeLabel="конверсія" onClick={() => navigateCrm("Планувальник")} />
     </div>
 
@@ -413,12 +488,19 @@ export function OwnerDashboardVisual({ analytics, period, onPeriodChange, loadin
       <small>{controlLoading ? "Оновлюю контрольні дані…" : "наведіть на графік для деталей"}</small>
     </div>
 
-    <div className={styles.controlGrid}>
-      <button type="button" className={styles.controlCard} onClick={() => navigateCrm("Оплати", { scope: "due" })} aria-label={`Гроші до отримання: ${money(control.receivables.total)}`}>
-        <div className={styles.controlHead}><div><MetricIcon>₴</MetricIcon><span>Гроші до отримання</span></div><em>›</em></div>
-        <div className={styles.controlValue}><strong>{money(control.receivables.total)}</strong><span>{control.receivables.count} відкритих оплат</span></div>
+    <div className={`${styles.controlGrid} ${pipelineStyles.controlGridFive}`}>
+      <button type="button" className={`${styles.controlCard} ${pipelineStyles.controlCardFinance}`} onClick={() => navigateCrm("Планувальник")} aria-label={`Гроші в роботі: ${money(pipeline?.total)}`}>
+        <div className={styles.controlHead}><div><MetricIcon>₴</MetricIcon><span>Гроші в роботі</span></div><em>›</em></div>
+        <div className={styles.controlValue}><strong>{pipeline?.mixedCurrency ? "кілька валют" : money(pipeline?.total)}</strong><span>ще маємо виконати / довести до оплати</span></div>
+        <InteractiveStackedBar rows={pipelineRows} />
+        <div className={styles.controlFoot}><span>{pipeline?.pendingApprovalCount ? `На погодженні: ${pipeline.pendingApprovalCount}` : "Поточний портфель"}</span><b className={(dataQuality?.pipelineUnpricedCount ?? 0) > 0 ? pipelineStyles.dataGap : ""}>{(dataQuality?.pipelineUnpricedCount ?? 0) > 0 ? `${dataQuality?.pipelineUnpricedCount} без суми` : "оцінено"}</b></div>
+      </button>
+
+      <button type="button" className={`${styles.controlCard} ${pipelineStyles.controlCardFinance}`} onClick={() => navigateCrm("Оплати", { scope: "due" })} aria-label={`Дебіторка: ${money(control.receivables.total)}`}>
+        <div className={styles.controlHead}><div><MetricIcon>₴</MetricIcon><span>Дебіторка</span></div><em>›</em></div>
+        <div className={styles.controlValue}><strong>{money(control.receivables.total)}</strong><span>{control.receivables.count} відкритих фінансових зобов'язань</span></div>
         <InteractiveStackedBar rows={receivableRows} />
-        <div className={styles.controlFoot}><span>Прострочений борг</span><b className={control.receivables.debt > 0 ? styles.textDanger : ""}>{money(control.receivables.debt)}</b></div>
+        <div className={styles.controlFoot}><span>Прострочений борг</span><b className={(dataQuality?.waitingPaymentUnpricedCount ?? 0) > 0 ? pipelineStyles.dataGap : control.receivables.debt > 0 ? styles.textDanger : ""}>{(dataQuality?.waitingPaymentUnpricedCount ?? 0) > 0 ? `${dataQuality?.waitingPaymentUnpricedCount} очікують оплату без суми` : money(control.receivables.debt)}</b></div>
       </button>
 
       <button type="button" className={`${styles.controlCard} ${control.decisions.total > 0 ? styles.controlAttention : ""}`} onClick={() => navigateCrm("Фінансовий центр")} aria-label={`Потрібне моє рішення: ${control.decisions.total}`}>
