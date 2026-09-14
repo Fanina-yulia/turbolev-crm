@@ -98,10 +98,15 @@ export function TelephonyRealtimeBridge() {
       if (!data.ok) return;
       setEnabled(true);
       setPayload(data);
-      const incoming = (data.calls || []).find((call) => !dismissed.has(call.callId));
+      const incoming = (data.calls || []).find(
+        (call) => call.phase === "RINGING" && !dismissed.has(call.callId),
+      );
       if (incoming) {
         setActive(incoming);
         seenRef.current.add(incoming.callId);
+      } else {
+        setActive(null);
+        setTransferOpen(false);
       }
     } catch {
       // Telephony polling must never disturb the rest of CRM.
