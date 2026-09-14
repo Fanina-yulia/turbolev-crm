@@ -6,6 +6,7 @@ import type { CrmAccessSnapshot } from "./use-crm-access";
 import { MechanicCabinet } from "./mechanic-cabinet";
 import { OwnerViewAsControl } from "./personnel-owner-view-as-control";
 import { SidebarRailV7 } from "./auth/sidebar-rail-v7";
+import { SidebarSettingsSubmenuBridge } from "./auth/sidebar-settings-submenu-bridge";
 import { SidebarFlyoutHoverFix } from "./auth/sidebar-flyout-hover-fix";
 import { SidebarReferenceIconTheme } from "./auth/sidebar-reference-icon-theme";
 import { SidebarFloatingIconsOverride } from "./auth/sidebar-floating-icons-override";
@@ -79,6 +80,7 @@ export default async function HomePage({ searchParams }: HomePageProps) {
       <SidebarReferenceIconTheme/>
       <SidebarFloatingIconsOverride/>
       <SidebarMenuFinalPolish/>
+      <SidebarSettingsSubmenuBridge/>
       <BinotelRecordingProvider><SidebarRailV7/><CrmShell initialSection={section} initialSettingsTab={settingsTab} /></BinotelRecordingProvider>
     </CrmAccessProvider>
   </>;
