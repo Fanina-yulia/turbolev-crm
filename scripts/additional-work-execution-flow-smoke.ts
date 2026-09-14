@@ -20,6 +20,7 @@ expect(api, "plannedUnitPrice: 0", "mechanic cannot set price");
 expect(api, "tx.crmTask.createMany", "required-action task creation");
 expect(api, 'bucket: "ACTION"', "required-action queue metadata");
 expect(api, 'routeSection: "Комерційна пропозиція"', "commercial proposal task navigation");
+expect(api, '["IN_REPAIR", "PAUSED", "REWORK"].includes(sourceLine.workOrder.status)', "canonical active-repair work-order states");
 
 const mechanicTask = read("app/api/cabinet/mechanic/tasks/[lineId]/route.ts");
 expect(mechanicTask, '["START", "RESUME", "COMPLETE"].includes(action)', "hard-gated mechanic actions");
