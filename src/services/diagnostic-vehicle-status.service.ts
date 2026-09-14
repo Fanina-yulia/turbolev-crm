@@ -36,7 +36,7 @@ export async function getDiagnosticVehicleStatuses(vehicleIds: string[]) {
   }
 
   const requestIds = [...latestByVehicle.values()].map((request) => request.id);
-  const [reviews, cards] = requestIds.length
+  const [reviews, cards, shares] = requestIds.length
     ? await Promise.all([
         prisma.diagnosticReview.findMany({
           where: { diagnosticRequestId: { in: requestIds } },
@@ -46,40 +46,52 @@ export async function getDiagnosticVehicleStatuses(vehicleIds: string[]) {
           where: { diagnosticRequestId: { in: requestIds } },
           select: { diagnosticRequestId: true, currentRevision: true, finalizedAt: true, updatedAt: true },
         }),
+        prisma.diagnosticReportShare.findMany({
+          where: { diagnosticRequestId: { in: requestIds } },
+          orderBy: { createdAt: "desc" },
+          select: { diagnosticRequestId: true, createdAt: true },
+        }),
       ])
-    : [[], []];
+    : [[], [], []];
 
   const reviewByRequest = new Map(reviews.map((review) => [review.diagnosticRequestId, review]));
   const cardByRequest = new Map(cards.map((card) => [card.diagnosticRequestId, card]));
+  const shareByRequest = new Map<string, (typeof shares)[number]>();
+  for (const share of shares) {
+    if (!shareByRequest.has(share.diagnosticRequestId)) shareByRequest.set(share.diagnosticRequestId, share);
+  }
 
   for (const vehicleId of ids) {
     const request = latestByVehicle.get(vehicleId) || null;
     if (!request) {
-      result.set(vehicleId, statusItem("not_started", "Не було", "danger", null, null));
+      result.set(vehicleId, statusItem("not_created", "Не створена", "neutral", null, null));
       continue;
     }
 
     const review = reviewByRequest.get(request.id) || null;
     const card = cardByRequest.get(request.id) || null;
-    const updatedAt = newestDate(request.updatedAt, review?.submittedAt, review?.updatedAt, card?.updatedAt);
+    const share = shareByRequest.get(request.id) || null;
+    const updatedAt = newestDate(request.updatedAt, review?.submittedAt, review?.updatedAt, card?.updatedAt, share?.createdAt);
 
-    if (review?.state === "SUBMITTED") {
-      result.set(vehicleId, statusItem("submitted", "На перевірці", "warning", request.id, updatedAt));
+    if (share) {
+      result.set(vehicleId, statusItem("sent", "Відправлена клієнту", "success", request.id, updatedAt));
       continue;
     }
 
-    if (review?.state === "RETURNED") {
-      result.set(vehicleId, statusItem("in_progress", "На доопрацюванні", "warning", request.id, updatedAt));
-      continue;
-    }
+    const cardExists = Boolean(card)
+      || request.status === "CONFIRMED"
+      || Boolean(request.confirmedAt)
+      || review?.state === "SUBMITTED"
+      || review?.state === "RETURNED"
+      || review?.state === "CONFIRMED";
 
-    const finalCard = request.status === "CONFIRMED" || Boolean(request.confirmedAt) || Boolean(card?.finalizedAt);
-    if (finalCard || review?.state === "CONFIRMED") {
-      result.set(vehicleId, statusItem("completed", "Сформована", "success", request.id, updatedAt));
-      continue;
-    }
-
-    result.set(vehicleId, statusItem("in_progress", "Триває", "warning", request.id, updatedAt));
+    result.set(vehicleId, statusItem(
+      cardExists ? "created_not_sent" : "in_progress_not_sent",
+      cardExists ? "Не відправлена клієнту" : "Формується · не відправлена",
+      "warning",
+      request.id,
+      updatedAt,
+    ));
   }
 
   return result;
