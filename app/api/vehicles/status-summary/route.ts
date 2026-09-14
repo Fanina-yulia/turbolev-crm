@@ -38,8 +38,11 @@ function proposalStatus(row: {
   rejectedAt: Date | null;
 } | null, workOrderId: string | null, applicable = true): VehicleStatusItem {
   if (!applicable) return item("not_applicable", "Не застосовується", "neutral", null, null);
-  if (!row || row.status === "DRAFT" || row.status === "SUPERSEDED" || row.status === "CANCELLED") {
-    return item("not_sent", "Не відправлена", "danger", workOrderId, row?.updatedAt);
+  if (!row) {
+    return item("not_created", "Не створена", "neutral", workOrderId, null);
+  }
+  if (row.status === "DRAFT" || row.status === "SUPERSEDED" || row.status === "CANCELLED") {
+    return item("not_sent", "Не відправлена", "neutral", workOrderId, row.updatedAt);
   }
   if (row.status === "APPROVED" || row.approvedAt) {
     return item("approved", "Погоджена", "success", workOrderId, row.updatedAt);
@@ -48,9 +51,9 @@ function proposalStatus(row: {
     return item("rejected", "Відхилена", "danger", workOrderId, row.updatedAt);
   }
   if (row.status === "SENT" || row.sentAt) {
-    return item("pending", "На розгляді", "warning", workOrderId, row.updatedAt);
+    return item("pending", "Очікує погодження", "warning", workOrderId, row.updatedAt);
   }
-  return item("not_sent", "Не відправлена", "danger", workOrderId, row.updatedAt);
+  return item("not_sent", "Не відправлена", "neutral", workOrderId, row.updatedAt);
 }
 
 function workStatus(
@@ -152,7 +155,7 @@ export async function GET(request: NextRequest) {
       const statuses: VehicleStatusSummary = {
         diagnostics: directRepair
           ? item("not_applicable", "Не застосовується", "neutral", null, null)
-          : diagnosticStatuses.get(vehicle.id) || item("not_started", "Не було", "danger", null, null),
+          : diagnosticStatuses.get(vehicle.id) || item("not_created", "Не створена", "neutral", null, null),
         proposal: proposalStatus(estimate, workOrder?.id || null, !diagnosticOnly && !directRepair),
         work: workStatus(workOrder, obligation, !diagnosticOnly),
       };
