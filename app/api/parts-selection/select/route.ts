@@ -4,7 +4,8 @@ import { PERMISSIONS } from "@/src/security/permissions";
 import { selectDiagnosticPartOffer, PartsSelectionError } from "@/src/services/parts-selection.service";
 import type { PartFitmentStatus } from "@/src/services/parts-fitment.service";
 import { getStructuredDiagnostic, StructuredDiagnosticError } from "@/src/services/structured-diagnostics.service";
-import { recordSearchFeedback, validatePartSelection } from "@/src/services/part-catalog-intelligence.service";
+import { validatePartSelection } from "@/src/services/part-catalog-intelligence.service";
+import { recordPartSelectionKnowledge } from "@/src/services/parts-selection-knowledge.service";
 import { getPrisma } from "@/src/lib/prisma";
 
 export const runtime = "nodejs";
@@ -41,6 +42,12 @@ export async function POST(request: Request) {
       fitmentSource?: string | null;
       manualConfirmation?: boolean;
       customerProvidedPart?: boolean;
+      resultType?: "ORIGINAL" | "OEM_REPLACEMENT" | "ANALOG" | "ASSEMBLY" | "UNKNOWN" | null;
+      compatibilityTier?: "CONFIRMED" | "PARTIAL" | "REVIEW_REQUIRED" | "UNCONFIRMED" | null;
+      sourceKind?: "DIRECT" | "OEM" | "ANALOG" | "NAME" | "ASSEMBLY" | null;
+      offerReason?: string | null;
+      matchReasons?: string[] | null;
+      requiresManualConfirmation?: boolean;
     } | null;
     const diagnosticId = body?.diagnosticId?.trim() || "";
     if (!diagnosticId) return NextResponse.json({ ok: false, error: "DIAGNOSTIC_REQUIRED", message: "Не передано Діагностичну карту." }, { status: 400 });
@@ -86,10 +93,34 @@ export async function POST(request: Request) {
       manualConfirmation: body?.manualConfirmation === true,
       customerProvidedPart: body?.customerProvidedPart === true,
     });
-    if (body?.genericArticleId) {
-      await recordSearchFeedback({ genericArticleId: body.genericArticleId, vehicleId: body.vehicleId, query: body.partName || body.canonicalCode || body.article || "", provider: body.supplierId, selectedArticle: body.article, resultStatus: "SELECTED", createdByUserId: access.context.user.id, createdByName: access.context.user.employeeName || access.context.user.name || undefined, metadata: { diagnosticId, fitmentStatus: body.fitmentStatus || null } });
+
+    let knowledge: { feedbackId?: string; stagedChangeId?: string | null; staged?: boolean; recorded: boolean } = { recorded: false };
+    try {
+      const recorded = await recordPartSelectionKnowledge({
+        genericArticleId: body?.genericArticleId || null,
+        vehicleId: body?.vehicleId || null,
+        diagnosticId,
+        query: body?.partName || body?.canonicalCode || result.selected.article || body?.article || "",
+        provider: result.selected.supplierId || body?.supplierId || null,
+        selectedArticle: result.selected.article,
+        selectedBrand: result.selected.brand,
+        resultType: body?.resultType || null,
+        compatibilityTier: body?.compatibilityTier || null,
+        sourceKind: body?.sourceKind || null,
+        offerReason: body?.offerReason || null,
+        matchReasons: Array.isArray(body?.matchReasons) ? body.matchReasons : [],
+        manualConfirmation: body?.manualConfirmation === true || body?.requiresManualConfirmation === true,
+        fitmentStatus: result.fitmentStatus || body?.fitmentStatus || null,
+        fitmentExact: result.fitmentExact ?? body?.fitmentExact ?? null,
+        createdByUserId: access.context.user.id,
+        createdByName: access.context.user.employeeName || access.context.user.name || undefined,
+      });
+      knowledge = { ...recorded, recorded: true };
+    } catch (knowledgeError) {
+      console.error("Part selection knowledge persistence failed", knowledgeError);
     }
-    return NextResponse.json({ ok: true, warnings: body?.genericArticleId ? undefined : [], ...result });
+
+    return NextResponse.json({ ok: true, warnings: [], knowledge, ...result });
   } catch (error) {
     if (error instanceof PartsSelectionError || error instanceof StructuredDiagnosticError) {
       return NextResponse.json({ ok: false, error: error.code, message: error.message }, { status: error.status });
