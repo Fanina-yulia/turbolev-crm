@@ -11,6 +11,7 @@ import { SidebarFlyoutHoverFix } from "./auth/sidebar-flyout-hover-fix";
 import { SidebarReferenceIconTheme } from "./auth/sidebar-reference-icon-theme";
 import { SidebarFloatingIconsOverride } from "./auth/sidebar-floating-icons-override";
 import { SidebarMenuFinalPolish } from "./auth/sidebar-menu-final-polish";
+import { SidebarSubmenuHoverDelay } from "./auth/sidebar-submenu-hover-delay";
 import { BinotelRecordingProvider } from "./binotel-recordings";
 
 type HomePageProps = {
@@ -80,6 +81,7 @@ export default async function HomePage({ searchParams }: HomePageProps) {
       <SidebarReferenceIconTheme/>
       <SidebarFloatingIconsOverride/>
       <SidebarMenuFinalPolish/>
+      <SidebarSubmenuHoverDelay/>
       <SidebarSettingsSubmenuBridge/>
       <BinotelRecordingProvider><SidebarRailV7/><CrmShell initialSection={section} initialSettingsTab={settingsTab} /></BinotelRecordingProvider>
     </CrmAccessProvider>
