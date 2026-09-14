@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
-import { readFile, writeFile } from "node:fs/promises";
+import { writeFile } from "node:fs/promises";
 import { PDFDocument } from "pdf-lib";
-import { renderDiagnosticCardPdf, type DiagnosticCardPdfMedia } from "../src/services/diagnostic-card-pdf-renderer";
+import { renderDiagnosticCardPdf } from "../src/services/diagnostic-card-pdf-renderer";
 import type { DiagnosticCardSnapshot } from "../src/services/diagnostic-card.service";
 
 const snapshot: DiagnosticCardSnapshot = {
@@ -17,23 +17,27 @@ const snapshot: DiagnosticCardSnapshot = {
   station: { id: "station", name: "Turbo LEV" },
   mechanic: { id: "mechanic", name: "Микола Карабан" },
   reviewer: { id: null, name: null },
-  counts: { total: 2, checked: 2, ok: 1, attention: 0, defect: 1, critical: 1 },
-  technicalConclusion: "Потрібна заміна переднього амортизатора.",
-  mechanicComment: "Фото додано під час огляду.",
+  counts: { total: 119, checked: 107, ok: 95, attention: 0, defect: 12, critical: 0 },
+  technicalConclusion: "Цей технічний текст не повинен потрапляти до клієнтської PDF-карти.",
+  mechanicComment: "Внутрішній коментар механіка не повинен потрапляти до PDF.",
   managerComment: null,
-  recommendations: { works: [{ findingId: "finding", name: "Заміна амортизатора", action: "REPLACE", urgency: "CRITICAL", section: "Підвіска", checkName: "Амортизатор" }], parts: [{ findingId: "finding", name: "Амортизатор передній", action: "REPLACE", urgency: "CRITICAL", section: "Підвіска", checkName: "Амортизатор" }] },
-  inspections: [{ name: "Базовий огляд", sections: [{ name: "Підвіска", items: [{ checkId: "check-ok", name: "Сайлентблок", position: "Передня вісь", state: "OK", measurementValue: null, measurementText: null, measurementUnit: null, note: null, finding: null }, { checkId: "check-defect", name: "Амортизатор", position: "Передня вісь", state: "DEFECT", measurementValue: "25", measurementText: null, measurementUnit: "%", note: "Є підтікання", finding: { id: "finding", action: "REPLACE", urgency: "CRITICAL", text: "Підтікання корпусу", suggestedWorkName: "Заміна амортизатора", suggestedPartName: "Амортизатор передній", mediaIds: [] } }] }] }],
+  recommendations: {
+    works: [{ findingId: "finding", name: "Заміна амортизатора", action: "REPLACE", urgency: "CRITICAL", section: "Підвіска", checkName: "Амортизатор" }],
+    parts: [
+      { findingId: "finding-1", name: "Передні гальмівні колодки", action: "REPLACE", urgency: "ATTENTION", section: "Передні гальма", checkName: "Колодки" },
+      { findingId: "finding-2", name: "Передній гальмівний диск", action: "REPLACE", urgency: "ATTENTION", section: "Передні гальма", checkName: "Диск" },
+      { findingId: "finding-3", name: "Супорт передній", action: "REPLACE", urgency: "ATTENTION", section: "Передні гальма", checkName: "Супорт" },
+    ],
+  },
+  inspections: [{ name: "Базовий огляд", sections: [{ name: "Підвіска", items: [{ checkId: "check-ok", name: "Сайлентблок", position: "Передня вісь", state: "OK", measurementValue: null, measurementText: null, measurementUnit: null, note: null, finding: null }] }] }],
 };
 
-const media: DiagnosticCardPdfMedia[] = [
-  { id: "smoke-media", fileName: "turbo-lev-plate-standard.jpg", mimeType: "image/jpeg", fileData: await readFile("public/brand/turbo-lev-plate-standard.jpg") },
-  { id: "broken-media", fileName: "broken-photo.png", mimeType: "image/png", fileData: new Uint8Array([0, 1, 2, 3]) },
-];
-snapshot.inspections[0].sections[0].items[1].finding!.mediaIds = ["smoke-media"];
-snapshot.inspections[0].sections[0].items[1].finding!.mediaIds.push("broken-media");
-const bytes = await renderDiagnosticCardPdf(snapshot, media);
+const bytes = await renderDiagnosticCardPdf(snapshot);
 assert.equal(Buffer.from(bytes).subarray(0, 5).toString("ascii"), "%PDF-", "Renderer must produce a PDF binary");
 const document = await PDFDocument.load(bytes);
-assert.ok(document.getPageCount() >= 1, "PDF must contain at least one page");
+assert.equal(document.getPageCount(), 1, "Compact client diagnostic card should stay on one A4 page for a normal parts list");
+const size = document.getPage(0).getSize();
+assert.ok(Math.abs(size.width - 595.28) < 0.2, "Diagnostic card must stay A4 width");
+assert.ok(Math.abs(size.height - 841.89) < 0.2, "Diagnostic card must stay A4 height");
 if (process.env.PDF_SMOKE_OUTPUT) await writeFile(process.env.PDF_SMOKE_OUTPUT, bytes);
-console.log(`[diagnostic-card-pdf-renderer] OK — ${bytes.byteLength} bytes, ${document.getPageCount()} page(s).`);
+console.log(`[diagnostic-card-pdf-renderer] OK — ${bytes.byteLength} bytes, ${document.getPageCount()} page(s), approved client layout.`);
