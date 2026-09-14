@@ -1,0 +1,110 @@
+/* Final optical alignment for the desktop planner header.
+   Keeps the approved reference layout but normalizes every control to one baseline. */
+@media (min-width: 1100px) {
+  [class*="planner-v2_headerActions__"] {
+    min-height: 36px !important;
+    align-items: center !important;
+    gap: 18px !important;
+  }
+
+  [class*="planner-v2_headerActionsTop__"] {
+    min-height: 36px !important;
+    height: 36px !important;
+    align-items: center !important;
+    gap: 8px !important;
+  }
+
+  [class*="planner-v2_headerDateNav__"] {
+    min-width: 288px !important;
+    height: 36px !important;
+    grid-template-columns: 36px minmax(206px, 1fr) 36px !important;
+    gap: 5px !important;
+    align-items: center !important;
+  }
+
+  [class*="planner-v2_dayRangeNav__"] button {
+    width: 36px !important;
+    min-width: 36px !important;
+    height: 36px !important;
+    min-height: 36px !important;
+    padding: 0 !important;
+    border-radius: 9px !important;
+    box-sizing: border-box !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    line-height: 1 !important;
+  }
+
+  [class*="planner-v2_calendarControl__"] {
+    height: 36px !important;
+    min-height: 36px !important;
+    min-width: 206px !important;
+    padding: 0 34px 0 13px !important;
+    border-radius: 9px !important;
+    box-sizing: border-box !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    font-size: 11px !important;
+    font-weight: 700 !important;
+    line-height: 1 !important;
+  }
+
+  [class*="planner-v2_calendarControl__"]::after {
+    right: 11px !important;
+    font-size: 13px !important;
+    line-height: 1 !important;
+  }
+
+  [class*="planner-layout_viewToggle__"] {
+    height: 36px !important;
+    min-height: 36px !important;
+    padding: 3px !important;
+    border-radius: 9px !important;
+    box-sizing: border-box !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    gap: 3px !important;
+  }
+
+  [class*="planner-layout_viewButton__"] {
+    height: 28px !important;
+    min-height: 28px !important;
+    padding: 0 14px !important;
+    border-radius: 7px !important;
+    box-sizing: border-box !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    font-size: 11px !important;
+    font-weight: 800 !important;
+    line-height: 1 !important;
+    white-space: nowrap !important;
+  }
+
+  [class*="planner-v2_primary__"],
+  [class*="planner-v2_secondary__"] {
+    height: 36px !important;
+    min-height: 36px !important;
+    padding: 0 15px !important;
+    border-radius: 9px !important;
+    box-sizing: border-box !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    font-size: 11px !important;
+    font-weight: 800 !important;
+    line-height: 1 !important;
+    white-space: nowrap !important;
+  }
+
+  [class*="planner-v2_primary__"] {
+    padding-inline: 16px !important;
+  }
+
+  /* The groups should read as date navigation / view mode / actions, not one fused strip. */
+  [class*="planner-v2_headerActionsTop__"] > [class*="planner-layout_viewToggle__"] {
+    margin-right: 1px !important;
+  }
+}
