@@ -12,12 +12,15 @@ const GROUP_ICON_KEY: Record<string, string> = {
   "Сервіс": "service",
   "Запчастини": "parts",
   "Фінанси": "finance",
-  "Управління": "management",
+  "Аналітика": "analytics",
+  "Налаштування": "settings",
 };
 
 const DIRECT_NAV_GROUPS: Record<string, CrmSectionLabel> = {
   "Комунікація": "Комунікації",
   "Планувальник": "Планувальник",
+  "Аналітика": "Аналітика",
+  "Налаштування": "Налаштування",
 };
 
 export function SidebarReferenceIconTheme() {
@@ -161,7 +164,8 @@ export function SidebarReferenceIconTheme() {
       .crmDockButton7[aria-label="Сервіс"] .crmDockGlyph7::after{background-image:url("/icons/sidebar/reference-service.svg")}
       .crmDockButton7[aria-label="Запчастини"] .crmDockGlyph7::after{background-image:url("/icons/sidebar/reference-parts.svg")}
       .crmDockButton7[aria-label="Фінанси"] .crmDockGlyph7::after{background-image:url("/icons/sidebar/reference-finance.svg")}
-      .crmDockButton7[aria-label="Управління"] .crmDockGlyph7::after{background-image:url("/icons/sidebar/reference-management.svg")}
+      .crmDockButton7[aria-label="Аналітика"] .crmDockGlyph7::after{background-image:url("/icons/sidebar/reference-analytics.svg")}
+      .crmDockButton7[aria-label="Налаштування"] .crmDockGlyph7::after{background-image:url("/icons/sidebar/reference-settings.svg")}
 
       .crmDockSlot7:has(.crmDockButton7[data-direct-section]) .crmDockFlyout7{display:none!important}
 
@@ -197,7 +201,8 @@ export function SidebarReferenceIconTheme() {
       .crmWideGroup7[data-reference-icon="service"] .crmWideGroupIcon7::after{background-image:url("/icons/sidebar/reference-service.svg")}
       .crmWideGroup7[data-reference-icon="parts"] .crmWideGroupIcon7::after{background-image:url("/icons/sidebar/reference-parts.svg")}
       .crmWideGroup7[data-reference-icon="finance"] .crmWideGroupIcon7::after{background-image:url("/icons/sidebar/reference-finance.svg")}
-      .crmWideGroup7[data-reference-icon="management"] .crmWideGroupIcon7::after{background-image:url("/icons/sidebar/reference-management.svg")}
+      .crmWideGroup7[data-reference-icon="analytics"] .crmWideGroupIcon7::after{background-image:url("/icons/sidebar/reference-analytics.svg")}
+      .crmWideGroup7[data-reference-icon="settings"] .crmWideGroupIcon7::after{background-image:url("/icons/sidebar/reference-settings.svg")}
 
       .crmWideGroup7[data-direct-navigation="true"] .crmWideGroupTitle7{cursor:pointer;border-radius:9px;padding-right:7px!important}
       .crmWideGroup7[data-direct-navigation="true"] .crmWideGroupTitle7:hover,
