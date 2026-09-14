@@ -169,16 +169,23 @@ function DeltaLabel({ current, previous, invert = false }: { current: number | n
   return <span className={good ? styles.deltaGood : styles.deltaBad}>{value > 0 ? "↑" : value < 0 ? "↓" : "•"} {Math.abs(value).toFixed(1)}% <small>до попереднього</small></span>;
 }
 
-function compactDate(value: string | undefined) {
+function compactDate(value: string | undefined, withYear = false) {
   if (!value) return "";
-  const date = new Date(value);
+  const date = new Date(`${value}T00:00:00Z`);
   if (!Number.isFinite(date.getTime())) return value;
-  return new Intl.DateTimeFormat("uk-UA", { day: "2-digit", month: "short" }).format(date);
+  return new Intl.DateTimeFormat("uk-UA", {
+    timeZone: "UTC",
+    day: "2-digit",
+    month: "short",
+    ...(withYear ? { year: "numeric" } : {}),
+  }).format(date);
 }
 
 function rangeLabel(range: AnalyticsVisualPayload["range"]) {
   if (!range) return "Поточний період";
-  return range.days <= 1 ? compactDate(range.from) : `${compactDate(range.from)} — ${compactDate(range.to)}`;
+  if (range.days <= 1) return compactDate(range.from);
+  const crossesYear = range.from.slice(0, 4) !== range.to.slice(0, 4);
+  return `${compactDate(range.from, crossesYear)} — ${compactDate(range.to, crossesYear)}`;
 }
 
 function chartValues(values: Array<number | null | undefined>) {
@@ -259,13 +266,13 @@ function GaugeMetricCard({ title, value, icon, gaugeValue, previous, current, on
 
 function RetentionMetricCard({ value, servedClients, onClick }: { value: number | null | undefined; servedClients: number; onClick: () => void }) {
   const safe = Math.max(0, Math.min(100, Number(value) || 0));
-  const bars = [0.35, 0.5, 0.42, 0.62, 0.56].map((factor, index, source) => index === source.length - 1 ? safe : safe * factor);
   return <button type="button" className={styles.metricCard} onClick={onClick} aria-label={`Повторні клієнти: ${percent(value)}`}>
     <div className={styles.metricHead}><MetricIcon>↻</MetricIcon><span>Повторні клієнти</span><em>›</em></div>
-    <strong>{percent(value)}</strong>
-    <small className={styles.metricSubtitle}>{servedClients > 0 ? `${servedClients} клієнтів у періоді` : "ще немає достатніх даних"}</small>
-    <MiniBars values={bars} tone={safe > 0 ? "green" : "neutral"} />
-    <span className={styles.deltaNeutral}>поточний період</span>
+    <div className={styles.gaugeCardBody}>
+      <div><strong>{percent(value)}</strong><small className={styles.metricSubtitle}>{servedClients > 0 ? `${servedClients} клієнтів у періоді` : "ще немає достатніх даних"}</small></div>
+      <Gauge value={value} tone={safe > 0 ? "green" : "neutral"} label="повторні" />
+    </div>
+    <span className={styles.deltaNeutral}>факт за вибраний період</span>
   </button>;
 }
 
@@ -485,7 +492,7 @@ export function OwnerDashboardVisual({ analytics, period, onPeriodChange, loadin
 
     <div className={styles.controlSectionHead}>
       <div><span>КОНТРОЛЬ ВЛАСНИКА</span><strong>Гроші, рішення та ризики</strong></div>
-      <small>{controlLoading ? "Оновлюю контрольні дані…" : "наведіть на графік для деталей"}</small>
+      <small>{controlLoading ? "Оновлюю контрольні дані…" : "станом на зараз · наведіть на графік для деталей"}</small>
     </div>
 
     <div className={`${styles.controlGrid} ${pipelineStyles.controlGridFive}`}>
