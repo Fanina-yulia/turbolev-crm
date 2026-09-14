@@ -143,6 +143,18 @@ export async function PATCH(request: Request, context: { params: Promise<{ lineI
       if (!line) throw new Error("ASSIGNED_LINE_NOT_FOUND");
       if (line.type === "PART") throw new Error("PART_LINE_NOT_EXECUTABLE");
 
+      if (["START", "RESUME", "COMPLETE"].includes(action)) {
+        const technicalDecision = await tx.operationalBlocker.findFirst({
+          where: {
+            workOrderId: line.workOrderId,
+            code: "TECHNICAL_DECISION",
+            status: { in: ["OPEN", "ACKNOWLEDGED"] },
+          },
+          select: { id: true },
+        });
+        if (technicalDecision) throw new Error("TECHNICAL_DECISION_PENDING");
+      }
+
       const previous = {
         status: line.status,
         metadata: line.metadata,
@@ -383,6 +395,7 @@ export async function PATCH(request: Request, context: { params: Promise<{ lineI
       ASSIGNED_LINE_NOT_FOUND: ["Призначену Вам роботу не знайдено.", 404],
       PART_LINE_NOT_EXECUTABLE: ["Рядок запчастини не є виконуваною роботою механіка.", 409],
       LINE_NOT_APPROVED: ["Робота ще не погоджена сервіс-менеджером.", 409],
+      TECHNICAL_DECISION_PENDING: ["Ремонт заблоковано: дочекайтесь рішення по додатковій роботі або діагностиці.", 409],
       INVALID_START_STATE: ["Цю роботу зараз не можна розпочати.", 409],
       INVALID_PAUSE_STATE: ["На паузу можна поставити лише активну роботу.", 409],
       INVALID_STOP_STATE: ["Зупинити можна лише активну роботу.", 409],
