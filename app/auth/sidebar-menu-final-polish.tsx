@@ -3,10 +3,14 @@
 export function SidebarMenuFinalPolish() {
   return <style jsx global>{`
     @media(min-width:761px){
-      /* One brand mark at a time: when the expanded menu is open, the rail logo fades out. */
+      /*
+       * Keep the launcher hitbox alive while the expanded menu is open.
+       * Opacity alone removes the duplicate visual; disabling pointer events here
+       * caused an immediate pointerleave -> close -> reopen loop (visible flicker).
+       */
       .crmDockBrandOpen7{
         opacity:0!important;
-        pointer-events:none!important;
+        pointer-events:auto!important;
         transition:opacity 120ms ease!important;
       }
 
