@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import {
   buildCommunicationConversations,
   getCommunicationLifecycleState,
@@ -174,5 +175,15 @@ assert.equal(telegramConversation.representative.channel, "TELEGRAM", "latest Te
 assert.deepEqual(telegramConversation.channels, ["TELEGRAM", "WEBSITE"]);
 assert.equal(getDefaultCommunicationReplyInquiry(telegramConversation).channel, "TELEGRAM", "composer must automatically reply through Telegram after a Telegram inbound message");
 assert.equal(telegramConversation.timeline.at(-1)?.channel, "TELEGRAM", "Telegram timeline messages must display their real transport channel");
+
+const workspaceV3 = readFileSync(new URL("../app/communications-workspace-v3-enhancer.tsx", import.meta.url), "utf8");
+const workspaceV2 = readFileSync(new URL("../app/communications-workspace-enhancer.tsx", import.meta.url), "utf8");
+assert.ok(workspaceV3.includes('navigateCrm("Клієнти", { clientId: client.id })'), "client context action must deep-link by canonical clientId");
+assert.ok(workspaceV3.includes('navigateCrm("Авто", { vehicleId: vehicle.id })'), "vehicle context action must deep-link by canonical vehicleId");
+assert.ok(workspaceV2.includes('navigateCrm("Наряди та ремонт", { workOrderId: latestOrder.id })'), "work-order context action must deep-link by canonical workOrderId");
+assert.ok(workspaceV3.includes('new CustomEvent("turbolev:call"'), "callback actions must use canonical Binotel click-to-call bridge");
+assert.ok(workspaceV3.includes('new CustomEvent("turbolev:open-new-request"'), "booking action must use the canonical new-request flow");
+assert.ok(workspaceV3.includes('plate: bookingVehicle?.plateNumber || ""'), "booking flow must carry selected vehicle plate context");
+assert.ok(workspaceV3.includes('vin: bookingVehicle?.vin || ""'), "booking flow must carry selected vehicle VIN context");
 
 console.log("communications-inbox-smoke: ok");
