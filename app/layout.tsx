@@ -40,6 +40,7 @@ import "./planner-header-alignment.css";
 import "./planner-control-system.css";
 import "./analytics-funnel-agreed-layout.css";
 import "./diagnostics-compact-registry.css";
+import "./diagnostic-pdf-modal-compact.css";
 import "./appearance-global.css";
 import "@/src/lib/global-phone-copy.css";
 import "./crm-responsive-standard.css";
