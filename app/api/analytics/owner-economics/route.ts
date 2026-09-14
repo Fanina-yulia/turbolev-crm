@@ -53,6 +53,22 @@ function currentMonthRange() {
 function dayKey(date: Date) {
   return new Intl.DateTimeFormat("en-CA", { timeZone: KYIV_TZ, year: "numeric", month: "2-digit", day: "2-digit" }).format(date);
 }
+function emptyEconomics() {
+  return {
+    workOrders: [],
+    clientLtv: [],
+    cohort: {
+      servedClients: 0,
+      lifetimeOrders: 0,
+      lifetimeRevenue: 0,
+      lifetimeGrossProfit: 0,
+      lifetimeContribution: 0,
+      financeCoveragePct: 100,
+      warrantyCostCoveragePct: 100,
+      completeClients: 0,
+    },
+  };
+}
 
 export async function GET(request: NextRequest) {
   try {
@@ -104,7 +120,7 @@ export async function GET(request: NextRequest) {
         permitted: true,
         emptyScope: true,
         range: { from: dayKey(from), to: dayKey(new Date(to.getTime() - 1)), timezone: KYIV_TZ },
-        economics: { workOrders: [], clientLtv: [], cohort: { servedClients: 0, lifetimeOrders: 0, lifetimeRevenue: 0, lifetimeGrossProfit: 0 } },
+        economics: emptyEconomics(),
       }, { headers: { "Cache-Control": "no-store" } });
     }
 
