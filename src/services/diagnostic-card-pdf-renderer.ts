@@ -4,7 +4,6 @@ import fontkit from "@pdf-lib/fontkit";
 import { PDFDocument, rgb, type PDFFont, type PDFPage } from "pdf-lib";
 import type { DiagnosticCardSnapshot } from "@/src/services/diagnostic-card.service";
 import type { DocumentTemplate } from "@/src/services/document-template.service";
-import { maskDocumentArticle } from "@/src/services/document-article-masking";
 import { drawNeutralVehicle } from "@/src/services/vehicle-document-art";
 import { getVehicleDocumentImage } from "@/src/services/vehicle-images/vehicle-document-asset.service";
 
@@ -473,18 +472,16 @@ class PdfLayout {
     const rows = parts.length
       ? parts.map((part, index) => [
         String(index + 1),
-        maskDocumentArticle(part.article) || "—",
-        part.brand?.trim() || "—",
         part.name.trim() || "—",
-        String(part.quantity ?? "1"),
+        "Потребує заміни",
       ])
-      : [["—", "—", "—", "Деталі до заміни не додані", "0"]];
+      : [["—", "Деталі до заміни не додані", "—"]];
     this.table(
-      ["№", "Артикул", "Бренд", "Найменування деталі", "Кільк."],
+      ["№", "Деталь", "Статус"],
       rows,
-      [30, 100, 82, 277, 50],
-      [],
-      -1,
+      [30, CONTENT_WIDTH - 175, 145],
+      parts.map(() => RED),
+      2,
     );
   }
 
