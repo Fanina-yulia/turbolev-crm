@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 
 const exactReplacements = new Map<string, string>([
+  ["План робіт", "Планувальник"],
   ["Активні", "Звернення"],
   ["Ліди", "Звернення"],
   ["Лід", "Звернення"],
