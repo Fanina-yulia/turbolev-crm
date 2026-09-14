@@ -43,15 +43,15 @@ const DIAGNOSTIC_BLOCKS: Array<Pick<Block, "id" | "label">> = [
 const REFERENCE_BLOCKS: Record<TemplateType, string[]> = {
   DIAGNOSTIC_CARD: [
     "Шапка: логотип, клієнт, автомобіль, VIN та дата",
-    "Деталі до заміни: маскований артикул, бренд, назва та кількість",
+    "Деталі до заміни: порядковий номер, назва деталі та статус",
     "Контакти Turbo LEV та футер",
   ],
   COMMERCIAL_PROPOSAL: [
-  "Шапка: логотип, автомобіль, VIN та дата",
-  "Запчастини: маскований артикул, бренд, найменування, ціна, кількість, сума",
-  "Послуги: найменування, кількість, ціна та сума",
-  "Загальна сума до сплати та QR-код",
-  "Попередження, контакти Turbo LEV та футер",
+    "Шапка: логотип, автомобіль, VIN та дата",
+    "Запчастини: маскований артикул, бренд, найменування, ціна, кількість, сума",
+    "Послуги: найменування, кількість, ціна та сума",
+    "Загальна сума до сплати та QR-код",
+    "Попередження, контакти Turbo LEV та футер",
   ],
 };
 
@@ -219,19 +219,19 @@ export function DocumentTemplateBuilder() {
         <button type="button" className={styles.saveDraft} disabled={!dirty || saving} onClick={() => void save("DRAFT")}>Зберегти як чернетку</button>
       </div>
 
-      <div className={styles.previewColumn}><div className={styles.previewToolbar}><strong>Попередній перегляд</strong><span>A4 · HTML preview</span></div>{isReferenceDocument ? <DiagnosticCardReferencePreview/> : <CommercialProposalReferencePreview/>}<p className={styles.previewHint}>{isReferenceDocument ? "Діагностична карта показує лише перелік деталей без вартості послуг, закупівельних цін і підсумків." : "Комерційна пропозиція містить деталі, послуги, підсумок, QR-код і попередження для клієнта. Артикули показуються з маскуванням."}</p></div>
+      <div className={styles.previewColumn}><div className={styles.previewToolbar}><strong>Попередній перегляд</strong><span>A4 · HTML preview</span></div>{isReferenceDocument ? <DiagnosticCardReferencePreview/> : <CommercialProposalReferencePreview/>}<p className={styles.previewHint}>{isReferenceDocument ? "Діагностична карта показує номер, деталь і статус заміни без артикулів, брендів, кількості, цін і підсумків." : "Комерційна пропозиція містить деталі, послуги, підсумок, QR-код і попередження для клієнта. Артикули показуються з маскуванням."}</p></div>
     </div>
   </section>;
 }
 
 function DiagnosticCardReferencePreview() {
   const parts = [
-    ["1", maskDocumentArticle("113-1451X"), "QUICK BRAKE", "Направляюча переднього супорта Opel Astra J/Chevrolet Aveo 09-", "1"],
-    ["2", maskDocumentArticle("181513"), "ICER", "Колодки гальмівні передні Toyota Corolla 2001-2014", "1"],
-    ["3", maskDocumentArticle("818 0243 10"), "FAG", "Тяга переднього стабілізатора Citroen C4/C5/Berlingo/Peugeot 307", "1"],
-    ["4", maskDocumentArticle("181233-701"), "ICER", "Колодки гальмівні передні Mercedes-Benz A-Class W168", "1"],
-    ["5", maskDocumentArticle("738128"), "FRENKIT", "Ремкомплект заднього супорта Mercedes-Benz Vito W639", "2"],
-    ["6", maskDocumentArticle("208024"), "SOLGY", "Диск гальмівний задній Citroen Berlingo/Peugeot Partner", "2"],
+    ["1", "Направляюча переднього супорта Opel Astra J/Chevrolet Aveo 09-", "Потребує заміни"],
+    ["2", "Колодки гальмівні передні Toyota Corolla 2001-2014", "Потребує заміни"],
+    ["3", "Тяга переднього стабілізатора Citroen C4/C5/Berlingo/Peugeot 307", "Потребує заміни"],
+    ["4", "Колодки гальмівні передні Mercedes-Benz A-Class W168", "Потребує заміни"],
+    ["5", "Ремкомплект заднього супорта Mercedes-Benz Vito W639", "Потребує заміни"],
+    ["6", "Диск гальмівний задній Citroen Berlingo/Peugeot Partner", "Потребує заміни"],
   ];
   return <article className={styles.referenceDocument}>
     <div className={styles.referenceCorner}/>
@@ -244,8 +244,8 @@ function DiagnosticCardReferencePreview() {
       <div className={styles.referenceHeading}><h1>ДІАГНОСТИЧНА КАРТА</h1><strong>ПЕРЕЛІК ДЕТАЛЕЙ ДО ЗАМІНИ</strong></div>
     </header>
     <div className={styles.referenceMeta}><span>Автомобіль: <b>Citroen C3</b></span><span>VIN: <b>VF7SXHNVTKT682038</b></span><span>Дата: <b>05.08.2026</b></span></div>
-    <ReferenceTable title="ДЕТАЛІ ДО ЗАМІНИ" columns={["№", "Артикул", "Бренд", "Найменування", "Кільк."]} rows={parts} variant="parts"/>
-    <p className={styles.referenceWarning}>Артикулі у клієнтському документі замасковані: останні три цифри замінено на ###.</p>
+    <ReferenceTable title="ДЕТАЛІ ДО ЗАМІНИ" columns={["№", "Деталь", "Статус"]} rows={parts} variant="parts"/>
+    <p className={styles.referenceWarning}>У діагностичній карті відображається лише клієнтська інформація: номер позиції, назва деталі та статус «Потребує заміни».</p>
     <footer className={styles.referenceFooter}><span>098 341 56 46</span><b>Глеваха, вул. Окружна, 55 Г</b><span>turbolev.net</span></footer>
   </article>;
 }
@@ -288,5 +288,8 @@ function CommercialProposalReferencePreview() {
 }
 
 function ReferenceTable({ title, columns, rows, total, variant = "parts" }: { title: string; columns: string[]; rows: string[][]; total?: string; variant?: "parts" | "works" }) {
-  return <section className={styles.referenceTableSection}><h2>{title}</h2><div className={`${styles.referenceTable} ${variant === "works" ? styles.referenceWorkTable : variant === "parts" && columns.length === 5 ? styles.referencePartsTable : ""}`}><div className={styles.referenceTableHead}>{columns.map((column) => <span key={column}>{column}</span>)}</div>{rows.map((row, rowIndex) => <div className={styles.referenceTableRow} key={`${title}-${rowIndex}`}>{row.map((cell, cellIndex) => <span key={`${rowIndex}-${cellIndex}`}>{cell}</span>)}</div>)}{total ? <div className={styles.referenceTableTotal}><span>Всього {title.toLowerCase()}:</span><b>{columns.length === 6 ? "8" : ""}</b><strong>{total}</strong></div> : null}</div></section>;
+  const diagnosticPartsGrid = variant === "parts" && columns.length === 3
+    ? { gridTemplateColumns: "38px minmax(0,1fr) 120px" }
+    : undefined;
+  return <section className={styles.referenceTableSection}><h2>{title}</h2><div className={`${styles.referenceTable} ${variant === "works" ? styles.referenceWorkTable : variant === "parts" && columns.length === 5 ? styles.referencePartsTable : ""}`}><div className={styles.referenceTableHead} style={diagnosticPartsGrid}>{columns.map((column) => <span key={column}>{column}</span>)}</div>{rows.map((row, rowIndex) => <div className={styles.referenceTableRow} style={diagnosticPartsGrid} key={`${title}-${rowIndex}`}>{row.map((cell, cellIndex) => <span key={`${rowIndex}-${cellIndex}`} style={diagnosticPartsGrid && cellIndex === 2 ? { color: "#c62828", fontWeight: 800 } : undefined}>{cell}</span>)}</div>)}{total ? <div className={styles.referenceTableTotal}><span>Всього {title.toLowerCase()}:</span><b>{columns.length === 6 ? "8" : ""}</b><strong>{total}</strong></div> : null}</div></section>;
 }
