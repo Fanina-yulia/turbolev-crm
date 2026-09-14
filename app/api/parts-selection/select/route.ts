@@ -96,20 +96,29 @@ export async function POST(request: Request) {
 
     let knowledge: { feedbackId?: string; stagedChangeId?: string | null; staged?: boolean; recorded: boolean } = { recorded: false };
     try {
+      let knowledgeGenericArticleId = body?.genericArticleId?.trim() || result.line?.genericArticleId || null;
+      if (!knowledgeGenericArticleId && body?.canonicalCode?.trim()) {
+        const canonicalArticle = await getPrisma().genericArticle.findFirst({
+          where: { code: body.canonicalCode.trim() },
+          select: { id: true },
+        });
+        knowledgeGenericArticleId = canonicalArticle?.id || null;
+      }
+      const evidence = result.selectionEvidence;
       const recorded = await recordPartSelectionKnowledge({
-        genericArticleId: body?.genericArticleId || null,
+        genericArticleId: knowledgeGenericArticleId,
         vehicleId: body?.vehicleId || null,
         diagnosticId,
         query: body?.partName || body?.canonicalCode || result.selected.article || body?.article || "",
         provider: result.selected.supplierId || body?.supplierId || null,
         selectedArticle: result.selected.article,
         selectedBrand: result.selected.brand,
-        resultType: body?.resultType || null,
-        compatibilityTier: body?.compatibilityTier || null,
-        sourceKind: body?.sourceKind || null,
-        offerReason: body?.offerReason || null,
-        matchReasons: Array.isArray(body?.matchReasons) ? body.matchReasons : [],
-        manualConfirmation: body?.manualConfirmation === true || body?.requiresManualConfirmation === true,
+        resultType: evidence?.resultType || null,
+        compatibilityTier: evidence?.compatibilityTier || null,
+        sourceKind: evidence?.sourceKind || null,
+        offerReason: evidence?.offerReason || null,
+        matchReasons: evidence?.matchReasons || [],
+        manualConfirmation: body?.manualConfirmation === true,
         fitmentStatus: result.fitmentStatus || body?.fitmentStatus || null,
         fitmentExact: result.fitmentExact ?? body?.fitmentExact ?? null,
         createdByUserId: access.context.user.id,

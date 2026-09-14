@@ -299,6 +299,23 @@ export async function selectDiagnosticPartOffer(input: {
   if (searchMode === "VIN" && (liveOffer.fitmentStatus !== "VERIFIED" || liveOffer.fitmentExact === false)) {
     throw new PartsSelectionError("CATALOG_FITMENT_REQUIRED", "Обрана пропозиція не має підтвердженого зв’язку з точною модифікацією автомобіля.", 409);
   }
+  const selectionEvidence = {
+    resultType: liveOffer.resultType || "UNKNOWN",
+    compatibilityTier: liveOffer.compatibilityTier || "UNCONFIRMED",
+    sourceKind: liveOffer.sourceKind || null,
+    offerReason: liveOffer.offerReason || liveOffer.fitmentReason || null,
+    matchReasons: liveOffer.matchReasons || [],
+    requiresManualConfirmation: liveOffer.requiresManualConfirmation === true || liveOffer.resultType === "ASSEMBLY",
+  };
+  if (selectionEvidence.requiresManualConfirmation && input.manualConfirmation !== true) {
+    throw new PartsSelectionError(
+      "MANUAL_CONFIRMATION_REQUIRED",
+      liveOffer.resultType === "ASSEMBLY"
+        ? "Комплектна альтернатива потребує явного підтвердження менеджера після перевірки сумісності та складу комплекту."
+        : "Ця пропозиція потребує ручного підтвердження сумісності.",
+      409,
+    );
+  }
   if (!liveOffer.available || liveOffer.purchasePrice == null) throw new PartsSelectionError("OFFER_UNAVAILABLE", "Ця деталь зараз недоступна у постачальника.", 409);
 
   const packagingRule = getPartPackageRule({
@@ -381,7 +398,13 @@ export async function selectDiagnosticPartOffer(input: {
       supplierId: supplier.id,
       supplierName: priced.supplierName,
       searchMode,
-      manualConfirmation: searchMode !== "VIN",
+      manualConfirmation: input.manualConfirmation === true,
+      resultType: selectionEvidence.resultType,
+      compatibilityTier: selectionEvidence.compatibilityTier,
+      sourceKind: selectionEvidence.sourceKind,
+      offerReason: selectionEvidence.offerReason,
+      matchReasons: selectionEvidence.matchReasons,
+      requiresManualConfirmation: selectionEvidence.requiresManualConfirmation,
       fitmentStatus: fitment.status,
       fitmentExact: fitment.exact,
       fitmentConfirmed: catalogFitmentConfirmed,
@@ -420,9 +443,11 @@ export async function selectDiagnosticPartOffer(input: {
           sellPrice: priced.sellPrice,
           currency: priced.currency || supplier.defaultCurrency || "UAH",
           quantity: supplierQuantity,
-          note: searchMode === "VIN"
-            ? "Підібрано за VIN"
-            : "Підібрано за номером/назвою після ручного підтвердження" + (packageResolution.priceBasis === "PER_WHEEL" ? "; ціна скоригована на кількість коліс" : ""),
+          note: selectionEvidence.resultType === "ASSEMBLY"
+            ? "Комплектна альтернатива: менеджер вручну підтвердив сумісність і склад комплекту"
+            : searchMode === "VIN"
+              ? "Підібрано за VIN"
+              : "Підібрано за номером/назвою після ручного підтвердження" + (packageResolution.priceBasis === "PER_WHEEL" ? "; ціна скоригована на кількість коліс" : ""),
         },
       });
     }
@@ -452,7 +477,13 @@ export async function selectDiagnosticPartOffer(input: {
           catalogQuantityLabel: packageResolution.label,
           catalogPriceBasis: packageResolution.priceBasis,
           searchMode,
-          manualConfirmation: searchMode !== "VIN",
+          manualConfirmation: input.manualConfirmation === true,
+          resultType: selectionEvidence.resultType,
+          compatibilityTier: selectionEvidence.compatibilityTier,
+          sourceKind: selectionEvidence.sourceKind,
+          offerReason: selectionEvidence.offerReason,
+          matchReasons: selectionEvidence.matchReasons,
+          requiresManualConfirmation: selectionEvidence.requiresManualConfirmation,
           fitmentStatus: fitment.status,
           fitmentExact: fitment.exact,
           fitmentConfirmed: catalogFitmentConfirmed,
@@ -491,7 +522,8 @@ export async function selectDiagnosticPartOffer(input: {
     line: updated.line,
     labor,
     searchMode,
-    manualConfirmationRequired: searchMode !== "VIN",
+    selectionEvidence,
+    manualConfirmationRequired: searchMode !== "VIN" || selectionEvidence.requiresManualConfirmation,
     fitmentStatus: fitment.status,
     fitmentExact: fitment.exact,
     fitmentConfirmed: catalogFitmentConfirmed,
