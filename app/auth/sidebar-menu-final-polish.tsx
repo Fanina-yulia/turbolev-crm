@@ -4,6 +4,26 @@ export function SidebarMenuFinalPolish() {
   return <style jsx global>{`
     @media(min-width:761px){
       /*
+       * The floating Dock is visually 68px wide, but it is fixed and may overlap
+       * the workspace. Reserve only 48px in the shell so page content sits closer
+       * to the icons without reflow when the Dock magnifies on hover.
+       */
+      html body .shell:has(>.sidebar){
+        --crm-sidebar-width:48px!important;
+        grid-template-columns:48px minmax(0,1fr)!important;
+      }
+      html body .shell:has(>.sidebar)>.sidebar{
+        width:48px!important;
+        min-width:48px!important;
+        max-width:48px!important;
+      }
+      html body .shell:has(>.sidebar)>.workspace{
+        grid-column:2!important;
+        margin-left:0!important;
+        border-left:0!important;
+      }
+
+      /*
        * Keep the launcher hitbox alive while the expanded menu is open.
        * Opacity alone removes the duplicate visual; disabling pointer events here
        * caused an immediate pointerleave -> close -> reopen loop (visible flicker).
