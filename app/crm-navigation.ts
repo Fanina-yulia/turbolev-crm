@@ -72,7 +72,8 @@ function navItems(...slugs: VisibleCrmSectionSlug[]): CrmNavItem[] {
 
 export const CRM_NAV_GROUPS: readonly CrmNavGroup[] = [
   { label: "Робочий стіл", items: navItems("overview", "tasks") },
-  { label: "Робота з клієнтами", items: navItems("communications", "planner") },
+  { label: "Комунікація", items: navItems("communications") },
+  { label: "Планувальник", items: navItems("planner") },
   { label: "Клієнти та авто", items: navItems("clients", "vehicles") },
   { label: "Сервіс", items: navItems("diagnostics", "parts", "work-orders") },
   { label: "Запчастини", items: navItems("procurement") },
