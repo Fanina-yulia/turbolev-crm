@@ -28,6 +28,17 @@ const STYLE = `
   font: inherit;
   font-size: 13px;
 }
+[data-mechanic-additional-policy="true"] {
+  margin: 0;
+  padding: 9px 11px;
+  border: 1px solid color-mix(in srgb, var(--m-accent, #2563eb) 28%, transparent);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--m-accent, #2563eb) 6%, transparent);
+  color: inherit;
+  font-size: 11px;
+  line-height: 1.45;
+  font-weight: 720;
+}
 [data-mechanic-additional-warning="true"] {
   margin: 0;
   padding: 10px 11px;
@@ -100,6 +111,10 @@ function decorateMechanicAdditionalWork() {
   const classifier = document.createElement("div");
   classifier.dataset.mechanicAdditionalClassifier = "true";
 
+  const policy = document.createElement("p");
+  policy.dataset.mechanicAdditionalPolicy = "true";
+  policy.textContent = "Механік не встановлює ціну і не запускає нову роботу без погодження. Якщо ремонт заблоковано, продовжити або завершити роботи можна лише після рішення по додатковій потребі.";
+
   const kindLabel = document.createElement("label");
   kindLabel.append(document.createTextNode("Тип виявленої потреби"));
   const kind = document.createElement("select");
@@ -122,7 +137,7 @@ function decorateMechanicAdditionalWork() {
   impact.addEventListener("change", () => updateWarning(classifier));
   impactLabel.append(impact);
 
-  classifier.append(kindLabel, impactLabel);
+  classifier.append(policy, kindLabel, impactLabel);
   form.insertBefore(classifier, descriptionLabel);
 }
 
