@@ -175,7 +175,8 @@ function attentionDelay(value: string) {
   return `Прострочено ${days} д${restHours ? ` ${restHours} год` : ""}`;
 }
 
-export function OwnerControlCenter({ userName }: { userName?: string | null }) {
+export function OwnerControlCenter({ userName, mode = "OWNER" }: { userName?: string | null; mode?: "OWNER" | "EXECUTIVE" }) {
+  const isExecutive = mode === "EXECUTIVE";
   const [analytics, setAnalytics] = useState<AnalyticsPayload | null>(null);
   const [dashboard, setDashboard] = useState<DashboardPayload | null>(null);
   const [loading, setLoading] = useState(true);
@@ -197,7 +198,7 @@ export function OwnerControlCenter({ userName }: { userName?: string | null }) {
       setAnalytics(analyticsBody);
       setDashboard(dashboardResponse.ok && dashboardBody?.ok ? dashboardBody : null);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Помилка кабінету власника");
+      setError(cause instanceof Error ? cause.message : isExecutive ? "Помилка кабінету виконавчого директора" : "Помилка кабінету власника");
     } finally {
       setLoading(false);
     }
@@ -236,9 +237,9 @@ export function OwnerControlCenter({ userName }: { userName?: string | null }) {
   return <>
     <header className={styles.header}>
       <div>
-        <p className="eyebrow">TURBO LEV · OWNER CONTROL CENTER</p>
-        <h1>Пульт власника</h1>
-        <span className="muted">{userName || "Власник"} · {scopeLabel} · {loading ? "оновлюю дані…" : "живі управлінські дані"}</span>
+        <p className="eyebrow">{isExecutive ? "TURBO LEV · EXECUTIVE CONTROL CENTER" : "TURBO LEV · OWNER CONTROL CENTER"}</p>
+        <h1>{isExecutive ? "Пульт виконавчого директора" : "Пульт власника"}</h1>
+        <span className="muted">{userName || (isExecutive ? "Виконавчий директор" : "Власник")} · {scopeLabel} · {loading ? "оновлюю дані…" : "живі управлінські дані"}</span>
       </div>
       <div className={styles.headerActions}>
         <button type="button" onClick={() => navigateCrm("Аналітика")}>Повна аналітика</button>
@@ -246,7 +247,7 @@ export function OwnerControlCenter({ userName }: { userName?: string | null }) {
       </div>
     </header>
 
-    {error && <div className={styles.error}><strong>Не вдалося оновити пульт власника</strong><span>{error}</span><button type="button" onClick={() => void load()}>Повторити</button></div>}
+    {error && <div className={styles.error}><strong>{isExecutive ? "Не вдалося оновити пульт виконавчого директора" : "Не вдалося оновити пульт власника"}</strong><span>{error}</span><button type="button" onClick={() => void load()}>Повторити</button></div>}
 
     <OwnerDashboardVisual analytics={analytics} period={period} onPeriodChange={setPeriod} loading={loading} />
 
@@ -280,8 +281,8 @@ export function OwnerControlCenter({ userName }: { userName?: string | null }) {
       <section className={styles.panel}>
         <div className={styles.panelHead}><div><p className="eyebrow">КОНТРОЛЬ СЕРВІСУ</p><h2>Потрібна дія</h2></div><button type="button" onClick={() => navigateCrm("Авто")}>Усі авто →</button></div>
         <div className={styles.attentionTabs} role="tablist" aria-label="Категорії автомобілів, які потребують уваги">
-          <button type="button" role="tab" aria-selected={attentionTab === "OWNER"} className={attentionTab === "OWNER" ? styles.attentionTabActive : ""} onClick={() => setAttentionTab("OWNER")}>Моє рішення <b>{ownerAttention.length}</b></button>
-          <button type="button" role="tab" aria-selected={attentionTab === "TEAM"} className={attentionTab === "TEAM" ? styles.attentionTabActive : ""} onClick={() => setAttentionTab("TEAM")}>Контроль команди <b>{teamAttention.length}</b></button>
+          <button type="button" role="tab" aria-selected={attentionTab === "OWNER"} className={attentionTab === "OWNER" ? styles.attentionTabActive : ""} onClick={() => setAttentionTab("OWNER")}>{isExecutive ? "Ескалації мені" : "Моє рішення"} <b>{ownerAttention.length}</b></button>
+          <button type="button" role="tab" aria-selected={attentionTab === "TEAM"} className={attentionTab === "TEAM" ? styles.attentionTabActive : ""} onClick={() => setAttentionTab("TEAM")}>{isExecutive ? "Контроль керівників" : "Контроль команди"} <b>{teamAttention.length}</b></button>
         </div>
         {selectedAttention.length ? <div className={styles.attentionCards}>{selectedAttention.map((item) => <article key={item.id} className={`${styles.attentionCard} ${item.attentionLevel === "CRITICAL" ? styles.attentionCritical : item.attentionLevel === "HIGH" ? styles.attentionHigh : ""}`}>
           {item.vehicleId ? <VehicleRender id={item.vehicleId} brand={item.vehicle} size="mini" className={styles.attentionVehicleImage} /> : <span className={styles.attentionVehicleFallback} aria-label="Зображення автомобіля недоступне">🚗</span>}

@@ -244,6 +244,7 @@ export function RoleAwareOverview({ access }: { access: CrmAccessSnapshot | null
   const resolvedCabinet = resolveRoleCabinet(access?.roles ?? []);
   const specialRole = resolvedCabinet === "STATION_MANAGER" ? "STATION_MANAGER" : resolvedCabinet === "MECHANIC" ? "MECHANIC" : null;
   const ownerRole = resolvedCabinet === "OWNER";
+  const executiveRole = resolvedCabinet === "EXECUTIVE";
   const serviceAdvisorRole = resolvedCabinet === "SERVICE_ADVISOR";
   const partsRole = resolvedCabinet === "PARTS" && (primaryRoleCode === "PARTS_SPECIALIST" || primaryRoleCode === "WAREHOUSE_KEEPER") ? primaryRoleCode : null;
   const salesRole = resolvedCabinet === "SALES" && (primaryRoleCode === "HEAD_OF_SALES" || primaryRoleCode === "SALES") ? primaryRoleCode : null;
@@ -274,7 +275,8 @@ export function RoleAwareOverview({ access }: { access: CrmAccessSnapshot | null
     return () => window.removeEventListener("turbolev:data-changed", handler);
   }, [load]);
 
-  if (ownerRole && access?.provisioningState === "ACTIVE") return withRoleQueues(<OwnerControlCenter userName={access?.user?.name} />);
+  if (ownerRole && access?.provisioningState === "ACTIVE") return withRoleQueues(<OwnerControlCenter mode="OWNER" userName={access?.user?.name} />);
+  if (executiveRole && access?.provisioningState === "ACTIVE") return withRoleQueues(<OwnerControlCenter mode="EXECUTIVE" userName={access?.user?.name} />);
   if (serviceAdvisorRole && access?.provisioningState === "ACTIVE") return withRoleQueues(<ServiceAdvisorCabinetHome userName={access?.user?.name} />);
   if (partsRole && access?.provisioningState === "ACTIVE") return withRoleQueues(<PartsRoleCabinetHome role={partsRole} userName={access?.user?.name} />);
   if (salesRole && access?.provisioningState === "ACTIVE" && access) return withRoleQueues(<SalesRoleCabinetHome role={salesRole} access={access} />);
