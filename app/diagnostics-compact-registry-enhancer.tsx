@@ -3,115 +3,129 @@
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 
-type DiagnosticsDensity = "compact" | "detailed";
+type DiagnosticProgress = {
+  diagnosticCard?: { number?: string | null } | null;
+  structured?: { inspections?: number; checked?: number } | null;
+};
 
-const STORAGE_KEY = "turbolev:diagnostics-density:v1";
-
-function savedDensity(): DiagnosticsDensity {
-  if (typeof window === "undefined") return "compact";
-  return window.localStorage.getItem(STORAGE_KEY) === "detailed" ? "detailed" : "compact";
-}
+type DiagnosticsResponse = {
+  ok?: boolean;
+  diagnostics?: DiagnosticProgress[];
+};
 
 function isDiagnosticsRegistryVisible() {
   return Array.from(document.querySelectorAll("h1")).some((node) => node.textContent?.trim() === "Всі діагностики");
 }
 
+function statusKey(label: string) {
+  const value = label.toLocaleLowerCase("uk-UA");
+  if (value.includes("на перевірці")) return "review";
+  if (value.includes("в роботі")) return "progress";
+  if (value.includes("підтвердж")) return "confirmed";
+  if (value.includes("скас")) return "cancelled";
+  return "pending";
+}
+
 export function DiagnosticsCompactRegistryEnhancer() {
-  const [density, setDensity] = useState<DiagnosticsDensity>("compact");
-  const [toolbarHost, setToolbarHost] = useState<HTMLElement | null>(null);
   const [headerHost, setHeaderHost] = useState<HTMLElement | null>(null);
 
   useEffect(() => {
-    setDensity(savedDensity());
-  }, []);
+    document.documentElement.dataset.diagnosticsReference = "true";
+    delete document.documentElement.dataset.diagnosticsDensity;
 
-  useEffect(() => {
-    document.documentElement.dataset.diagnosticsDensity = density;
-    try {
-      window.localStorage.setItem(STORAGE_KEY, density);
-    } catch {
-      // Local storage can be unavailable in hardened browser contexts.
-    }
-  }, [density]);
-
-  useEffect(() => {
     let frame = 0;
+    let disposed = false;
+    const progressByCard = new Map<string, number>();
 
-    const ensureHosts = () => {
+    const applyRows = () => {
+      const rows = Array.from(document.querySelectorAll<HTMLElement>('button[aria-label^="Відкрити діагностичну карту:"]'));
+      for (const row of rows) {
+        const status = row.querySelector<HTMLElement>(":scope > div:first-child")?.textContent?.trim() || "";
+        row.dataset.diagnosticsState = statusKey(status);
+
+        const cardMatch = row.textContent?.match(/ДК-\d{4}-\d+/u)?.[0];
+        const ratio = cardMatch ? progressByCard.get(cardMatch) : undefined;
+        row.style.setProperty("--diagnostics-progress", `${Math.max(0, Math.min(100, ratio ?? 0))}%`);
+      }
+    };
+
+    const ensureHeader = () => {
       frame = 0;
       if (!isDiagnosticsRegistryVisible()) {
-        setToolbarHost(null);
         setHeaderHost(null);
         return;
       }
 
-      const filterNav = document.querySelector<HTMLElement>('nav[aria-label="Фільтр за етапом"]');
+      document.querySelectorAll('[data-diagnostics-density-host="true"]').forEach((node) => node.remove());
       const firstRow = document.querySelector<HTMLElement>('button[aria-label^="Відкрити діагностичну карту:"]');
       const list = firstRow?.parentElement instanceof HTMLElement ? firstRow.parentElement : null;
-
-      if (filterNav) {
-        let host = filterNav.querySelector<HTMLElement>('[data-diagnostics-density-host="true"]');
-        if (!host) {
-          host = document.createElement("span");
-          host.dataset.diagnosticsDensityHost = "true";
-          filterNav.appendChild(host);
-        }
-        setToolbarHost((current) => current === host ? current : host);
-      } else {
-        setToolbarHost(null);
-      }
-
-      if (list) {
-        let host = list.querySelector<HTMLElement>(':scope > [data-diagnostics-header-host="true"]');
-        if (!host) {
-          host = document.createElement("div");
-          host.dataset.diagnosticsHeaderHost = "true";
-          list.prepend(host);
-        }
-        setHeaderHost((current) => current === host ? current : host);
-      } else {
+      if (!list) {
         setHeaderHost(null);
+        return;
       }
+
+      let host = list.querySelector<HTMLElement>(':scope > [data-diagnostics-header-host="true"]');
+      if (!host) {
+        host = document.createElement("div");
+        host.dataset.diagnosticsHeaderHost = "true";
+        list.prepend(host);
+      }
+      setHeaderHost((current) => current === host ? current : host);
+      applyRows();
     };
 
     const schedule = () => {
       if (frame) return;
-      frame = window.requestAnimationFrame(ensureHosts);
+      frame = window.requestAnimationFrame(ensureHeader);
     };
 
-    ensureHosts();
+    const loadProgress = async () => {
+      try {
+        const response = await fetch("/api/diagnostics?limit=500", { cache: "no-store", credentials: "include" });
+        const data = await response.json() as DiagnosticsResponse;
+        if (!response.ok || !data.ok || !Array.isArray(data.diagnostics)) return;
+        for (const diagnostic of data.diagnostics) {
+          const number = diagnostic.diagnosticCard?.number;
+          const total = Number(diagnostic.structured?.inspections || 0);
+          const checked = Number(diagnostic.structured?.checked || 0);
+          if (!number || total <= 0) continue;
+          progressByCard.set(number, (checked / total) * 100);
+        }
+        if (!disposed) schedule();
+      } catch {
+        // The native diagnostics page remains fully functional if enrichment cannot be loaded.
+      }
+    };
+
+    ensureHeader();
+    void loadProgress();
+
     const observer = new MutationObserver(schedule);
-    observer.observe(document.body, { childList: true, subtree: true });
+    observer.observe(document.body, { childList: true, subtree: true, characterData: true });
     window.addEventListener("popstate", schedule);
+    window.addEventListener("turbolev:data-changed", loadProgress as EventListener);
 
     return () => {
+      disposed = true;
       observer.disconnect();
       window.removeEventListener("popstate", schedule);
+      window.removeEventListener("turbolev:data-changed", loadProgress as EventListener);
       if (frame) window.cancelAnimationFrame(frame);
-      document.querySelectorAll('[data-diagnostics-density-host="true"], [data-diagnostics-header-host="true"]').forEach((node) => node.remove());
+      document.querySelectorAll('[data-diagnostics-header-host="true"], [data-diagnostics-density-host="true"]').forEach((node) => node.remove());
+      delete document.documentElement.dataset.diagnosticsReference;
     };
   }, []);
 
-  return <>
-    {toolbarHost ? createPortal(
-      <div className="diagnosticsDensityControl" aria-label="Щільність списку діагностик">
-        <span>Вигляд:</span>
-        <button type="button" className={density === "compact" ? "isActive" : ""} aria-pressed={density === "compact"} onClick={() => setDensity("compact")}>Компактно</button>
-        <button type="button" className={density === "detailed" ? "isActive" : ""} aria-pressed={density === "detailed"} onClick={() => setDensity("detailed")}>Детально</button>
-      </div>,
-      toolbarHost,
-    ) : null}
-    {headerHost && density === "compact" ? createPortal(
-      <div className="diagnosticsCompactHeader" role="row">
-        <span role="columnheader">Статус</span>
-        <span role="columnheader">Автомобіль / ДК</span>
-        <span role="columnheader">Клієнт</span>
-        <span role="columnheader">Механік</span>
-        <span role="columnheader">Прогрес</span>
-        <span role="columnheader">Візит</span>
-        <span role="columnheader">Дії</span>
-      </div>,
-      headerHost,
-    ) : null}
-  </>;
+  return headerHost ? createPortal(
+    <div className="diagnosticsCompactHeader" role="row">
+      <span role="columnheader">Статус</span>
+      <span role="columnheader">Авто / ДК</span>
+      <span role="columnheader">Клієнт</span>
+      <span role="columnheader">Механік</span>
+      <span role="columnheader">Прогрес</span>
+      <span role="columnheader">Візит</span>
+      <span className="diagnosticsHeaderGear" role="columnheader" aria-label="Налаштування списку">⚙</span>
+    </div>,
+    headerHost,
+  ) : null;
 }
