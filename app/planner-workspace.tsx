@@ -3,7 +3,8 @@
 import { useEffect, useState } from "react";
 import { readCrmRoute } from "./crm-route";
 import { PlannerAppointmentWindowEnhancer } from "./planner-appointment-window-enhancer";
-import { PlannerCommercialSummaryEnhancer } from "./planner-commercial-summary-enhancer";
+import { PlannerCommercialSummaryEnhancerV2 } from "./planner-commercial-summary-enhancer-v2";
+import { PlannerModalCloseBehavior } from "./planner-modal-close-behavior";
 import { PlannerV2 } from "./planner-v2";
 import { ProductionBoard } from "./production-board";
 import styles from "./planner-workspace.module.css";
@@ -25,6 +26,8 @@ export function PlannerWorkspace() {
   }, []);
 
   return <div className={styles.root} data-resource-mode-label="Пости та механіки">
-    {mode === "resources" ? <ProductionBoard/> : <><PlannerV2/><PlannerAppointmentWindowEnhancer/><PlannerCommercialSummaryEnhancer/></>}
+    {mode === "resources"
+      ? <ProductionBoard/>
+      : <><PlannerV2/><PlannerAppointmentWindowEnhancer/><PlannerCommercialSummaryEnhancerV2/><PlannerModalCloseBehavior/></>}
   </div>;
 }
