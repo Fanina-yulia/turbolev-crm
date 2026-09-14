@@ -51,9 +51,14 @@ total += patchFile("src/services/parts-selection.service.ts", [
 
 total += patchFile("app/api/parts-selection/select/route.ts", [
   {
+    label: "remove unsupported work-order generic article fallback",
+    from: `      let knowledgeGenericArticleId = body?.genericArticleId?.trim() || result.line?.genericArticleId || null;`,
+    to: `      let knowledgeGenericArticleId = body?.genericArticleId?.trim() || null;`,
+  },
+  {
     label: "resolve canonical generic article for knowledge",
     from: `    let knowledge: { feedbackId?: string; stagedChangeId?: string | null; staged?: boolean; recorded: boolean } = { recorded: false };\n    try {\n      const recorded = await recordPartSelectionKnowledge({\n        genericArticleId: body?.genericArticleId || null,`,
-    to: `    let knowledge: { feedbackId?: string; stagedChangeId?: string | null; staged?: boolean; recorded: boolean } = { recorded: false };\n    try {\n      let knowledgeGenericArticleId = body?.genericArticleId?.trim() || result.line?.genericArticleId || null;\n      if (!knowledgeGenericArticleId && body?.canonicalCode?.trim()) {\n        const canonicalArticle = await getPrisma().genericArticle.findFirst({\n          where: { code: body.canonicalCode.trim() },\n          select: { id: true },\n        });\n        knowledgeGenericArticleId = canonicalArticle?.id || null;\n      }\n      const evidence = result.selectionEvidence;\n      const recorded = await recordPartSelectionKnowledge({\n        genericArticleId: knowledgeGenericArticleId,`,
+    to: `    let knowledge: { feedbackId?: string; stagedChangeId?: string | null; staged?: boolean; recorded: boolean } = { recorded: false };\n    try {\n      let knowledgeGenericArticleId = body?.genericArticleId?.trim() || null;\n      if (!knowledgeGenericArticleId && body?.canonicalCode?.trim()) {\n        const canonicalArticle = await getPrisma().genericArticle.findFirst({\n          where: { code: body.canonicalCode.trim() },\n          select: { id: true },\n        });\n        knowledgeGenericArticleId = canonicalArticle?.id || null;\n      }\n      const evidence = result.selectionEvidence;\n      const recorded = await recordPartSelectionKnowledge({\n        genericArticleId: knowledgeGenericArticleId,`,
   },
   {
     label: "use live server evidence for knowledge",
