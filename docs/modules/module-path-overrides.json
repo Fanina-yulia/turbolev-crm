@@ -28,7 +28,8 @@
     "app/client-ltv-card*"
   ],
   "diagnostics": [
-    "src/services/structured-diagnostics.service.ts"
+    "src/services/structured-diagnostics.service.ts",
+    "app/document-template-builder.tsx"
   ],
   "dashboard-analytics": [
     "app/analytics-workspace.tsx",
