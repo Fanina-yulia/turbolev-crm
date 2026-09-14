@@ -1,27 +1,26 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import fontkit from "@pdf-lib/fontkit";
-import { PDFDocument, rgb, type PDFFont, type PDFPage } from "pdf-lib";
+import { PDFDocument, rgb, type PDFFont, type PDFImage, type PDFPage } from "pdf-lib";
 import type { DiagnosticCardSnapshot } from "@/src/services/diagnostic-card.service";
 import type { DocumentTemplate } from "@/src/services/document-template.service";
-import { drawNeutralVehicle } from "@/src/services/vehicle-document-art";
-import { getVehicleDocumentImage } from "@/src/services/vehicle-images/vehicle-document-asset.service";
+import { DIAGNOSTIC_CARD_REFERENCE, DIAGNOSTIC_CARD_TABLE_HEADERS } from "@/src/document-layout/diagnostic-card-reference";
 
 const PAGE_WIDTH = 595.28;
 const PAGE_HEIGHT = 841.89;
-const MARGIN = 28;
-const CONTENT_WIDTH = PAGE_WIDTH - MARGIN * 2;
-const FOOTER_HEIGHT = 31;
-const ORANGE = rgb(0.94, 0.29, 0.05);
-const ORANGE_LIGHT = rgb(1, 0.96, 0.93);
-const DARK = rgb(0.09, 0.11, 0.14);
-const MUTED = rgb(0.34, 0.38, 0.44);
-const LIGHT = rgb(0.90, 0.91, 0.93);
-const ROW_LIGHT = rgb(0.96, 0.965, 0.97);
+const SIDE = 22;
+const CONTENT_WIDTH = PAGE_WIDTH - SIDE * 2;
+const FOOTER_HEIGHT = 30;
+const ORANGE = rgb(0.96, 0.35, 0.04);
+const DARK = rgb(0.09, 0.10, 0.12);
+const MUTED = rgb(0.35, 0.38, 0.42);
+const LINE = rgb(0.82, 0.84, 0.87);
+const ROW = rgb(0.95, 0.96, 0.97);
 const WHITE = rgb(1, 1, 1);
-const GREEN = rgb(0.08, 0.56, 0.30);
-const YELLOW = rgb(0.86, 0.55, 0.05);
-const RED = rgb(0.78, 0.15, 0.12);
+const RED = rgb(0.78, 0.16, 0.14);
+
+type PdfColor = ReturnType<typeof rgb>;
+type PdfAsset = { bytes: Uint8Array; mimeType: string };
 
 export type DiagnosticCardPdfMedia = {
   id: string;
@@ -37,61 +36,6 @@ export type DiagnosticCardPdfPart = {
   quantity?: string | number | null;
 };
 
-type PdfColor = ReturnType<typeof rgb>;
-type PdfImage = Awaited<ReturnType<PDFDocument["embedPng"]>> | Awaited<ReturnType<PDFDocument["embedJpg"]>>;
-type PdfAsset = { bytes: Uint8Array; mimeType: string };
-
-const stateLabels: Record<string, string> = {
-  OK: "Норма",
-  ATTENTION: "Увага",
-  DEFECT: "Дефект",
-  NOT_CHECKED: "Не перевірено",
-  IN_PROGRESS: "В роботі",
-};
-
-const actionLabels: Record<string, string> = {
-  REPLACE: "Заміна",
-  REPAIR: "Ремонт",
-  OBSERVE: "Спостерігати",
-  DIAGNOSE: "Додаткова діагностика",
-  NONE: "Без дії",
-};
-
-function colorFromHex(value: string | undefined, fallback: PdfColor) {
-  if (!value || !/^#[0-9a-f]{6}$/i.test(value)) return fallback;
-  return rgb(Number.parseInt(value.slice(1, 3), 16) / 255, Number.parseInt(value.slice(3, 5), 16) / 255, Number.parseInt(value.slice(5, 7), 16) / 255);
-}
-
-type HexRgb = { red: number; green: number; blue: number };
-
-function hexRgb(value: string | undefined): HexRgb | null {
-  if (!value || !/^#[0-9a-f]{6}$/i.test(value)) return null;
-  return {
-    red: Number.parseInt(value.slice(1, 3), 16) / 255,
-    green: Number.parseInt(value.slice(3, 5), 16) / 255,
-    blue: Number.parseInt(value.slice(5, 7), 16) / 255,
-  };
-}
-
-function luminance(color: HexRgb) {
-  const channel = (value: number) => value <= 0.03928 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
-  return 0.2126 * channel(color.red) + 0.7152 * channel(color.green) + 0.0722 * channel(color.blue);
-}
-
-function contrastRatio(first: HexRgb, second: HexRgb) {
-  const light = Math.max(luminance(first), luminance(second));
-  const dark = Math.min(luminance(first), luminance(second));
-  return (light + 0.05) / (dark + 0.05);
-}
-
-function readableColor(value: string | undefined, fallback: PdfColor, background: string, minimumContrast: number) {
-  const candidate = hexRgb(value);
-  const backgroundRgb = hexRgb(background);
-  return candidate && backgroundRgb && contrastRatio(candidate, backgroundRgb) >= minimumContrast
-    ? colorFromHex(value, fallback)
-    : fallback;
-}
-
 function optionalText(value: string | number | null | undefined) {
   if (value === null || value === undefined) return "";
   return String(value).trim();
@@ -101,7 +45,7 @@ function printable(value: string | number | null | undefined) {
   return optionalText(value) || "—";
 }
 
-function dateText(value: string | null | undefined) {
+function dateOnly(value: string | null | undefined) {
   if (!value) return "—";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "—";
@@ -109,32 +53,45 @@ function dateText(value: string | null | undefined) {
     day: "2-digit",
     month: "2-digit",
     year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
     timeZone: "Europe/Kyiv",
   }).format(date);
 }
 
-function mileageText(value: number | null | undefined) {
-  return value === null || value === undefined ? "—" : `${new Intl.NumberFormat("uk-UA").format(value)} км`;
+function colorFromHex(value: string | undefined, fallback: PdfColor) {
+  if (!value || !/^#[0-9a-f]{6}$/i.test(value)) return fallback;
+  return rgb(
+    Number.parseInt(value.slice(1, 3), 16) / 255,
+    Number.parseInt(value.slice(3, 5), 16) / 255,
+    Number.parseInt(value.slice(5, 7), 16) / 255,
+  );
 }
 
-function measurementText(item: { measurementValue: string | null; measurementText: string | null; measurementUnit: string | null }) {
-  if (item.measurementValue) return `${item.measurementValue}${item.measurementUnit ? ` ${item.measurementUnit}` : ""}`;
-  return item.measurementText || "";
+function imageDataUrl(value: string) {
+  const match = /^data:image\/(png|jpeg|jpg);base64,([A-Za-z0-9+/=\s]+)$/i.exec(value || "");
+  if (!match) return null;
+  return {
+    mimeType: match[1].toLowerCase() === "png" ? "image/png" : "image/jpeg",
+    bytes: Buffer.from(match[2].replace(/\s/g, ""), "base64"),
+  } as PdfAsset;
 }
 
-function stateColor(state: string): PdfColor {
-  if (state === "DEFECT") return RED;
-  if (state === "ATTENTION") return YELLOW;
-  if (state === "OK") return GREEN;
-  return MUTED;
+async function readOptionalAsset(root: string, fileName: string, mimeType: string): Promise<PdfAsset | null> {
+  try {
+    return { bytes: await readFile(path.join(root, "public", "brand", fileName)), mimeType };
+  } catch {
+    return null;
+  }
 }
 
-function cardStatus(snapshot: DiagnosticCardSnapshot) {
-  if (snapshot.counts.critical > 0 || snapshot.counts.defect > 0) return { label: "Критично", color: RED };
-  if (snapshot.counts.attention > 0) return { label: "Увага", color: YELLOW };
-  return { label: "Норма", color: GREEN };
+async function embedAsset(pdf: PDFDocument, asset: PdfAsset | null): Promise<PDFImage | null> {
+  if (!asset) return null;
+  try {
+    if (asset.mimeType.includes("png")) return await pdf.embedPng(asset.bytes);
+    if (asset.mimeType.includes("jpeg") || asset.mimeType.includes("jpg")) return await pdf.embedJpg(asset.bytes);
+  } catch {
+    return null;
+  }
+  return null;
 }
 
 function splitLongToken(token: string, font: PDFFont, size: number, width: number) {
@@ -153,7 +110,7 @@ function splitLongToken(token: string, font: PDFFont, size: number, width: numbe
 
 function wrapText(value: string, font: PDFFont, size: number, width: number) {
   const lines: string[] = [];
-  for (const paragraph of value.split(/\r?\n/)) {
+  for (const paragraph of String(value || "").split(/\r?\n/)) {
     const words = paragraph.split(/\s+/).filter(Boolean);
     if (!words.length) {
       lines.push("");
@@ -170,483 +127,262 @@ function wrapText(value: string, font: PDFFont, size: number, width: number) {
         } else current = next;
       }
     }
-    lines.push(current);
+    if (current) lines.push(current);
   }
   return lines;
 }
 
-function imageDataUrl(value: string) {
-  const match = /^data:image\/(png|jpeg|jpg);base64,([A-Za-z0-9+/=\s]+)$/i.exec(value || "");
-  if (!match) return null;
-  return {
-    mimeType: match[1].toLowerCase() === "png" ? "image/png" : "image/jpeg",
-    bytes: Buffer.from(match[2].replace(/\s/g, ""), "base64"),
-  };
+function drawCentered(page: PDFPage, value: string, y: number, font: PDFFont, size: number, color: PdfColor) {
+  const width = font.widthOfTextAtSize(value, size);
+  page.drawText(value, { x: (PAGE_WIDTH - width) / 2, y, size, font, color });
 }
 
-class PdfLayout {
-  readonly pages: PDFPage[] = [];
-  private page: PDFPage;
-  private y: number;
-  private readonly pdf: PDFDocument;
-  private readonly regular: PDFFont;
-  private readonly bold: PDFFont;
-  private readonly media: Map<string, DiagnosticCardPdfMedia>;
-  private readonly accent: PdfColor;
-  private readonly textColor: PdfColor;
-  private readonly mutedColor: PdfColor;
-  private readonly backgroundColor: PdfColor;
-
-  constructor(
-    pdf: PDFDocument,
-    regular: PDFFont,
-    bold: PDFFont,
-    media: DiagnosticCardPdfMedia[],
-    theme: { accent: PdfColor; text: PdfColor; muted: PdfColor; background: PdfColor },
-  ) {
-    this.pdf = pdf;
-    this.regular = regular;
-    this.bold = bold;
-    this.media = new Map(media.map((item) => [item.id, item]));
-    this.accent = theme.accent;
-    this.textColor = theme.text;
-    this.mutedColor = theme.muted;
-    this.backgroundColor = theme.background;
-    this.page = this.pdf.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
-    this.pages.push(this.page);
-    this.paintBackground();
-    this.y = PAGE_HEIGHT - MARGIN;
-  }
-
-  private paintBackground() {
-    this.page.drawRectangle({ x: 0, y: 0, width: PAGE_WIDTH, height: PAGE_HEIGHT, color: this.backgroundColor });
-  }
-
-  private addPage() {
-    this.page = this.pdf.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
-    this.pages.push(this.page);
-    this.paintBackground();
-    this.y = PAGE_HEIGHT - MARGIN;
-    this.page.drawText("ДІАГНОСТИЧНА КАРТА · ПРОДОВЖЕННЯ", {
-      x: MARGIN,
-      y: this.y - 9,
-      size: 6.8,
-      font: this.bold,
-      color: this.accent,
+function drawHeaderPanorama(
+  page: PDFPage,
+  logo: PDFImage | null,
+  car: PDFImage | null,
+  accent: PdfColor,
+) {
+  const top = PAGE_HEIGHT - 18;
+  if (logo) {
+    const boxWidth = 150;
+    const boxHeight = 75;
+    const scale = Math.min(boxWidth / logo.width, boxHeight / logo.height);
+    page.drawImage(logo, {
+      x: SIDE,
+      y: top - logo.height * scale,
+      width: logo.width * scale,
+      height: logo.height * scale,
     });
-    this.y -= 18;
   }
-
-  private ensure(height: number) {
-    if (this.y - height < FOOTER_HEIGHT + 10) this.addPage();
-  }
-
-  private lineHeight(size: number) {
-    return Math.max(size * 1.28, 9.5);
-  }
-
-  private writeAt(value: string, x: number, top: number, width: number, size: number, font: PDFFont, color: PdfColor, maxLines = Number.POSITIVE_INFINITY) {
-    const lines = wrapText(value, font, size, width).slice(0, maxLines);
-    lines.forEach((line, index) => {
-      this.page.drawText(line, { x, y: top - size - index * this.lineHeight(size), size, font, color });
+  if (car) {
+    const boxWidth = 198;
+    const boxHeight = 108;
+    const scale = Math.min(boxWidth / car.width, boxHeight / car.height);
+    const width = car.width * scale;
+    const height = car.height * scale;
+    page.drawImage(car, {
+      x: PAGE_WIDTH - SIDE - width,
+      y: top - height,
+      width,
+      height,
     });
-    return lines.length * this.lineHeight(size);
   }
 
-  private async embedImage(bytes: Uint8Array, mimeType: string) {
-    try {
-      if (mimeType.toLowerCase().includes("png")) return await this.pdf.embedPng(bytes);
-      if (mimeType.toLowerCase().includes("jpeg") || mimeType.toLowerCase().includes("jpg")) return await this.pdf.embedJpg(bytes);
-    } catch {
-      return null;
-    }
-    return null;
-  }
+  page.drawLine({ start: { x: 153, y: top - 64 }, end: { x: 295, y: top - 64 }, thickness: 1.9, color: accent, opacity: 0.48 });
+  page.drawLine({ start: { x: 176, y: top - 73 }, end: { x: 327, y: top - 73 }, thickness: 1.3, color: accent, opacity: 0.30 });
+  page.drawLine({ start: { x: 210, y: top - 81 }, end: { x: 338, y: top - 81 }, thickness: 0.9, color: accent, opacity: 0.20 });
+}
 
-  private async drawAsset(asset: PdfAsset | null, options: { x: number; top: number; width: number; maxHeight: number }) {
-    if (!asset) return;
-    const image = await this.embedImage(asset.bytes, asset.mimeType);
-    if (!image) return;
-    const scale = Math.min(options.width / image.width, options.maxHeight / image.height, 1);
-    const width = image.width * scale;
-    const height = image.height * scale;
-    this.page.drawImage(image, { x: options.x, y: options.top - height, width, height });
-  }
-
-  text(value: string | null | undefined, options: { size?: number; bold?: boolean; color?: PdfColor; gapAfter?: number; width?: number } = {}) {
-    const text = optionalText(value) || "—";
-    const size = options.size || 8.5;
-    const font = options.bold ? this.bold : this.regular;
-    const width = options.width || CONTENT_WIDTH;
-    const height = wrapText(text, font, size, width).length * this.lineHeight(size) + (options.gapAfter || 0);
-    this.ensure(height);
-    this.writeAt(text, MARGIN, this.y, width, size, font, options.color || this.textColor);
-    this.y -= height;
-  }
-
-  section(value: string, reserve = 31) {
-    this.ensure(reserve);
-    const top = this.y;
-    this.page.drawRectangle({ x: MARGIN, y: top - 23, width: 7, height: 23, color: this.accent });
-    this.page.drawText(value.toUpperCase(), {
-      x: MARGIN + 15,
-      y: top - 17,
-      size: 12.5,
-      font: this.bold,
-      color: this.textColor,
-    });
-    this.y = top - 33;
-  }
-
-  subsection(value: string) {
-    this.ensure(22);
-    this.page.drawText(value.toUpperCase(), {
-      x: MARGIN,
-      y: this.y - 10,
-      size: 8.2,
-      font: this.bold,
-      color: this.accent,
-    });
-    this.y -= 17;
-  }
-
-  private infoRow(entries: Array<[string, string | number | null | undefined, PdfColor?]>, height = 28) {
-    const gap = 10;
-    const width = (CONTENT_WIDTH - gap * (entries.length - 1)) / entries.length;
-    this.ensure(height);
-    const top = this.y;
-    entries.forEach(([label, value, valueColor], index) => {
-      const x = MARGIN + index * (width + gap);
-      this.page.drawText(label.toUpperCase(), { x, y: top - 8, size: 6.2, font: this.bold, color: this.mutedColor });
-      const valueLines = wrapText(printable(value), this.bold, 8, width).slice(0, 2);
-      valueLines.forEach((line, lineIndex) => {
-        this.page.drawText(line, { x, y: top - 19 - lineIndex * 9, size: 8, font: this.bold, color: valueColor || this.textColor });
-      });
-      this.page.drawLine({ start: { x, y: top - height + 2 }, end: { x: x + width, y: top - height + 2 }, thickness: 0.45, color: LIGHT });
-    });
-    this.y = top - height;
-  }
-
-  async header(snapshot: DiagnosticCardSnapshot, title: string, description: string, logo: PdfAsset | null, car: PdfAsset | null) {
-    // Variant 3: compact diagonal brand composition. The car is resolved from
-    // the CRM vehicle card; the neutral vector is only a deterministic fallback
-    // while the model-specific image is missing or still being generated.
-    this.ensure(158);
-    const top = this.y;
-    const logoImage = logo ? await this.embedImage(logo.bytes, logo.mimeType) : null;
-    const carImage = car ? await this.embedImage(car.bytes, car.mimeType) : null;
-    if (carImage) {
-      const maxWidth = 220;
-      const maxHeight = 101;
-      const scale = Math.min(maxWidth / carImage.width, maxHeight / carImage.height);
-      const carWidth = carImage.width * scale;
-      const carHeight = carImage.height * scale;
-      const carX = PAGE_WIDTH - MARGIN - carWidth;
-      this.page.drawImage(carImage, { x: carX, y: top - carHeight - 2, width: carWidth, height: carHeight });
-    } else {
-      drawNeutralVehicle(this.page, PAGE_WIDTH - MARGIN - 220, top - 97, 220, 88);
-    }
-    if (logoImage) this.page.drawImage(logoImage, { x: MARGIN, y: top - 76, width: 148, height: 74 });
-    [
-      { start: { x: 246, y: top - 5 }, end: { x: 337, y: top - 100 }, thickness: 10, opacity: 0.92 },
-      { start: { x: 258, y: top - 7 }, end: { x: 349, y: top - 102 }, thickness: 3.5, opacity: 0.32 },
-      { start: { x: 154, y: top - 52 }, end: { x: 244, y: top - 56 }, thickness: 1.6, opacity: 0.32 },
-    ].forEach((line) => this.page.drawLine({ ...line, color: this.accent }));
-
-    const centerX = PAGE_WIDTH / 2;
-    const eyebrow = "TURBO LEV · АВТОСЕРВІС";
-    const titleText = title.toUpperCase();
-    const titleSize = 17;
-    const titleWidth = this.bold.widthOfTextAtSize(titleText, titleSize);
-    this.page.drawText(eyebrow, { x: centerX - this.bold.widthOfTextAtSize(eyebrow, 7.4) / 2, y: top - 108, size: 7.4, font: this.bold, color: this.accent });
-    this.page.drawText(titleText, { x: centerX - titleWidth / 2, y: top - 128, size: titleSize, font: this.bold, color: this.textColor });
-    const subtitle = description || "Результати проведеної діагностики автомобіля.";
-    const subtitleWidth = this.regular.widthOfTextAtSize(subtitle, 7.2);
-    this.page.drawText(subtitle, { x: centerX - subtitleWidth / 2, y: top - 141, size: 7.2, font: this.regular, color: this.mutedColor });
-    this.page.drawRectangle({ x: MARGIN, y: top - 151, width: CONTENT_WIDTH, height: 2, color: this.accent });
-    this.y = top - 160;
-
-    const status = cardStatus(snapshot);
-    this.infoRow([
-      ["Дата", dateText(snapshot.visit?.actualEndAt || snapshot.visit?.actualStartAt || snapshot.generatedAt)],
-      ["Автомобіль", snapshot.vehicle.label],
-      ["Держ. номер", snapshot.vehicle.plateNumber],
-    ], 25);
-    this.infoRow([
-      ["VIN", snapshot.vehicle.vin],
-      ["Клієнт", snapshot.client.name],
-      ["Механік", snapshot.mechanic.name],
-    ], 25);
-    this.infoRow([
-      ["Пробіг", mileageText(snapshot.vehicle.mileageKm)],
-      ["Статус карти", status.label, status.color],
-      ["Ревізія", snapshot.revisionKind === "FINAL" ? "Підтверджена" : "На перевірці"],
-    ], 25);
-    this.y -= 4;
-  }
-
-  metrics(snapshot: DiagnosticCardSnapshot) {
-    this.ensure(40);
-    const gap = 7;
-    const width = (CONTENT_WIDTH - gap * 3) / 4;
-    const height = 32;
-    const top = this.y;
-    const values: Array<[string, string, PdfColor]> = [
-      ["Перевірено", `${snapshot.counts.checked}/${snapshot.counts.total}`, this.textColor],
-      ["Норма", String(snapshot.counts.ok), GREEN],
-      ["Увага", String(snapshot.counts.attention), YELLOW],
-      ["Дефекти", String(snapshot.counts.defect), RED],
-    ];
-    values.forEach(([label, value, color], index) => {
-      const x = MARGIN + index * (width + gap);
-      this.page.drawRectangle({ x, y: top - height, width, height, color: index === 3 ? rgb(1, 0.96, 0.95) : ROW_LIGHT, borderColor: LIGHT, borderWidth: 0.6 });
-      this.page.drawText(label, { x: x + 7, y: top - 11, size: 6.4, font: this.regular, color: this.mutedColor });
-      this.page.drawText(value, { x: x + 7, y: top - 25, size: 9.6, font: this.bold, color });
-    });
-    this.y = top - height - 8;
-  }
-
-  callout(label: string, value: string | null | undefined, color = this.accent) {
-    const text = optionalText(value) || "Не вказано.";
-    const lines = wrapText(text, this.regular, 8.2, CONTENT_WIDTH - 20).slice(0, 5);
-    const height = Math.max(47, 25 + lines.length * this.lineHeight(8.2));
-    this.ensure(height + 7);
-    const top = this.y;
-    this.page.drawRectangle({ x: MARGIN, y: top - height, width: CONTENT_WIDTH, height, color: ORANGE_LIGHT, borderColor: color, borderWidth: 0.9 });
-    this.page.drawText(label.toUpperCase(), { x: MARGIN + 10, y: top - 15, size: 7.2, font: this.bold, color });
-    this.writeAt(text, MARGIN + 10, top - 22, CONTENT_WIDTH - 20, 8.2, this.regular, this.textColor, 5);
-    this.y = top - height - 7;
-  }
-
-  table(headers: string[], rows: string[][], widths: number[], rowColors: PdfColor[] = [], accentColumn = 2) {
-    const headerHeight = 27;
-    const size = 7.05;
-    const drawHeader = () => {
-      this.ensure(headerHeight + 32);
-      const top = this.y;
-      let x = MARGIN;
-      headers.forEach((header, index) => {
-        this.page.drawRectangle({ x, y: top - headerHeight, width: widths[index], height: headerHeight, color: DARK });
-        const lines = wrapText(header, this.bold, size, widths[index] - 10).slice(0, 2);
-        lines.forEach((line, lineIndex) => {
-          this.page.drawText(line, { x: x + 5, y: top - 10 - lineIndex * 8, size, font: this.bold, color: WHITE });
-        });
-        x += widths[index];
-      });
-      this.y = top - headerHeight;
-    };
-
-    drawHeader();
-    rows.forEach((row, rowIndex) => {
-      const lineSets = row.map((value, index) => wrapText(value || "—", this.regular, size, widths[index] - 10).slice(0, 4));
-      const height = Math.max(25, Math.max(...lineSets.map((lines) => lines.length)) * 9 + 10);
-      if (this.y - height < FOOTER_HEIGHT + 10) drawHeader();
-      const top = this.y;
-      let x = MARGIN;
-      row.forEach((_, index) => {
-        this.page.drawRectangle({ x, y: top - height, width: widths[index], height, color: rowIndex % 2 ? ROW_LIGHT : WHITE, borderColor: LIGHT, borderWidth: 0.5 });
-        const lines = lineSets[index];
-        lines.forEach((line, lineIndex) => {
-          this.page.drawText(line, {
-            x: x + 5,
-            y: top - 12 - lineIndex * 9,
-            size,
-            font: index === 0 ? this.bold : this.regular,
-            color: index === accentColumn ? rowColors[rowIndex] || this.textColor : this.textColor,
-          });
-        });
-        x += widths[index];
-      });
-      this.y = top - height;
-    });
-    this.y -= 8;
-  }
-
-  list(title: string, rows: Array<{ name: string; detail: string; tone: PdfColor }>) {
-    const safeRows = rows.length ? rows : [{ name: "Немає зафіксованих позицій", detail: "—", tone: this.mutedColor }];
-    this.table(["№", title, "Опис / стан"], safeRows.map((row, index) => [String(index + 1), row.name, row.detail]), [30, 245, CONTENT_WIDTH - 275], safeRows.map((row) => row.tone), 2);
-  }
-
-  replacementParts(parts: DiagnosticCardPdfPart[]) {
-    this.section("ДЕТАЛІ ДО ЗАМІНИ", 31 + 27 + 32);
-    const rows = parts.length
-      ? parts.map((part, index) => [
-        String(index + 1),
-        part.name.trim() || "—",
-        "Потребує заміни",
-      ])
-      : [["—", "Деталі до заміни не додані", "—"]];
-    this.table(
-      ["№", "Деталь", "Статус"],
-      rows,
-      [30, CONTENT_WIDTH - 175, 145],
-      parts.map(() => RED),
-      2,
-    );
-  }
-
-  async photos(snapshot: DiagnosticCardSnapshot) {
-    const ids = snapshot.inspections.flatMap((inspection) => inspection.sections.flatMap((section) => section.items.flatMap((item) => item.finding?.mediaIds || [])));
-    const invalid: string[] = [];
-    const valid: Array<{ name: string; image: PdfImage }> = [];
-    for (const id of ids) {
-      const media = this.media.get(id);
-      if (!media) continue;
-      const mime = media.mimeType.toLowerCase();
-      if (!mime.includes("png") && !mime.includes("jpeg") && !mime.includes("jpg")) {
-        invalid.push(`${media.fileName}: формат не підтримується у PDF`);
-        continue;
-      }
-      const image = await this.embedImage(media.fileData, media.mimeType);
-      if (!image) {
-        invalid.push(`${media.fileName}: файл пошкоджений або недоступний`);
-        continue;
-      }
-      valid.push({ name: media.fileName, image });
-    }
-
-    if (!valid.length && !invalid.length) {
-      this.text("Фото дефектів до цієї карти не прикріплені.", { size: 8, color: this.mutedColor, gapAfter: 5 });
-      return;
-    }
-
-    const gap = 8;
-    const cellWidth = (CONTENT_WIDTH - gap) / 2;
-    for (let index = 0; index < valid.length; index += 2) {
-      const pair = valid.slice(index, index + 2);
-      const layouts = pair.map(({ image }) => {
-        const scale = Math.min((cellWidth - 12) / image.width, 105 / image.height, 1);
-        return { width: image.width * scale, height: image.height * scale };
-      });
-      const rowHeight = Math.max(125, ...layouts.map((item) => item.height + 28));
-      this.ensure(rowHeight + 5);
-      const top = this.y;
-      pair.forEach(({ name, image }, pairIndex) => {
-        const x = MARGIN + pairIndex * (cellWidth + gap);
-        const item = layouts[pairIndex];
-        this.page.drawRectangle({ x, y: top - rowHeight, width: cellWidth, height: rowHeight, color: WHITE, borderColor: LIGHT, borderWidth: 0.6 });
-        this.page.drawImage(image, { x: x + (cellWidth - item.width) / 2, y: top - 8 - item.height, width: item.width, height: item.height });
-        this.writeAt(name, x + 6, top - rowHeight + 20, cellWidth - 12, 6.6, this.regular, this.mutedColor, 2);
-      });
-      this.y = top - rowHeight - 7;
-    }
-    invalid.forEach((message) => this.callout("Доказ недоступний у PDF", message, this.mutedColor));
-  }
-
-  signature(snapshot: DiagnosticCardSnapshot) {
-    this.section("ВІДПОВІДАЛЬНІ ОСОБИ", 31 + 27 + 25);
-    this.table(
-      ["Механік", "Перевірив", "Дата формування"],
-      [[snapshot.mechanic.name || "—", snapshot.reviewer.name || "Не перевірено", dateText(snapshot.generatedAt)]],
-      [CONTENT_WIDTH / 3, CONTENT_WIDTH / 3, CONTENT_WIDTH / 3],
-      [],
-      -1,
-    );
-  }
-
-  async contacts(snapshot: DiagnosticCardSnapshot, qr: PdfAsset | null, footerText: string) {
-    this.section("КОНТАКТИ СТО", 31 + 92);
-    this.ensure(92);
-    const top = this.y;
-    const qrWidth = 76;
-    const leftWidth = CONTENT_WIDTH - qrWidth - 14;
-    this.page.drawRectangle({ x: MARGIN, y: top - 76, width: leftWidth, height: 76, color: ORANGE_LIGHT, borderColor: this.accent, borderWidth: 1 });
-    this.page.drawText("Turbo Lev · Автосервіс", { x: MARGIN + 12, y: top - 19, size: 9.2, font: this.bold, color: this.textColor });
-    this.page.drawText("Діагностична карта сформована у CRM", { x: MARGIN + 12, y: top - 34, size: 7.2, font: this.regular, color: this.mutedColor });
-    this.page.drawText("098 341 56 46  ·  turbolev.net", { x: MARGIN + 12, y: top - 53, size: 8, font: this.bold, color: this.accent });
-    this.page.drawText(snapshot.station.name || footerText, { x: MARGIN + 12, y: top - 67, size: 6.8, font: this.regular, color: this.mutedColor });
-    if (qr) {
-      await this.drawAsset(qr, { x: PAGE_WIDTH - MARGIN - qrWidth, top: top - 1, width: qrWidth, maxHeight: qrWidth });
-      this.page.drawText("Скануйте QR", { x: PAGE_WIDTH - MARGIN - qrWidth, y: top - 87, size: 6.2, font: this.regular, color: this.mutedColor });
-    }
-    this.y = top - 92;
-  }
-
-  footer(cardNumber: string, footerText: string) {
-    this.pages.forEach((page, index) => {
-      page.drawRectangle({ x: 0, y: 0, width: PAGE_WIDTH, height: FOOTER_HEIGHT, color: DARK });
-      page.drawRectangle({ x: PAGE_WIDTH - 22, y: 0, width: 22, height: FOOTER_HEIGHT, color: this.accent });
-      page.drawText("098 341 56 46", { x: MARGIN, y: 11, size: 6.8, font: this.bold, color: WHITE });
-      const station = footerText || "Turbo Lev · Автосервіс";
-      const stationWidth = this.bold.widthOfTextAtSize(station, 6.8);
-      page.drawText(station, { x: (PAGE_WIDTH - stationWidth) / 2, y: 11, size: 6.8, font: this.bold, color: WHITE });
-      const right = `${cardNumber} · ${index + 1}/${this.pages.length}`;
-      const rightWidth = this.regular.widthOfTextAtSize(right, 6.4);
-      page.drawText(right, { x: PAGE_WIDTH - MARGIN - 22 - rightWidth, y: 11, size: 6.4, font: this.regular, color: WHITE });
+function drawMeta(page: PDFPage, snapshot: DiagnosticCardSnapshot, regular: PDFFont, bold: PDFFont, y: number) {
+  page.drawLine({ start: { x: SIDE, y: y + 13 }, end: { x: PAGE_WIDTH - SIDE, y: y + 13 }, thickness: 0.9, color: LINE });
+  const date = dateOnly(snapshot.visit?.actualEndAt || snapshot.visit?.actualStartAt || snapshot.generatedAt);
+  const items = [
+    { label: "Автомобіль", value: snapshot.vehicle.label, x: SIDE, width: 220, align: "left" as const },
+    { label: "VIN", value: snapshot.vehicle.vin, x: PAGE_WIDTH / 2 - 70, width: 210, align: "left" as const },
+    { label: "Дата", value: date, x: PAGE_WIDTH - SIDE - 118, width: 118, align: "right" as const },
+  ];
+  for (const item of items) {
+    const label = `${item.label}:`;
+    const text = `${label} ${printable(item.value)}`;
+    const textWidth = regular.widthOfTextAtSize(text, 7.4);
+    const x = item.align === "right" ? item.x + item.width - textWidth : item.x;
+    page.drawText(label, { x, y, size: 7.4, font: regular, color: DARK });
+    page.drawText(` ${printable(item.value)}`, {
+      x: x + regular.widthOfTextAtSize(label, 7.4),
+      y,
+      size: 7.4,
+      font: bold,
+      color: DARK,
     });
   }
 }
 
-async function readOptionalAsset(root: string, fileName: string, mimeType: string): Promise<PdfAsset | null> {
-  try {
-    return { bytes: await readFile(path.join(root, "public", "brand", fileName)), mimeType };
-  } catch {
-    return null;
-  }
+function drawTableHeader(page: PDFPage, top: number, bold: PDFFont) {
+  const noWidth = 34;
+  const statusWidth = 132;
+  const detailWidth = CONTENT_WIDTH - noWidth - statusWidth;
+  const height = 25;
+  const widths = [noWidth, detailWidth, statusWidth];
+  let x = SIDE;
+  DIAGNOSTIC_CARD_TABLE_HEADERS.forEach((header, index) => {
+    page.drawRectangle({ x, y: top - height, width: widths[index], height, color: DARK });
+    const textWidth = bold.widthOfTextAtSize(header, 8.2);
+    const textX = index === 1 ? x + (widths[index] - textWidth) / 2 : x + (widths[index] - textWidth) / 2;
+    page.drawText(header, { x: textX, y: top - 16, size: 8.2, font: bold, color: WHITE });
+    x += widths[index];
+  });
+  return { y: top - height, widths };
+}
+
+function drawPartRow(
+  page: PDFPage,
+  rowIndex: number,
+  name: string,
+  top: number,
+  widths: number[],
+  regular: PDFFont,
+  bold: PDFFont,
+  textColor: PdfColor,
+) {
+  const size = 7.5;
+  const noWidth = widths[0];
+  const detailWidth = widths[1];
+  const statusWidth = widths[2];
+  const detailLines = wrapText(name, bold, size, detailWidth - 14).slice(0, 3);
+  const rowHeight = Math.max(24, detailLines.length * 9 + 10);
+  const fill = rowIndex % 2 === 1 ? ROW : WHITE;
+  let x = SIDE;
+  widths.forEach((width) => {
+    page.drawRectangle({ x, y: top - rowHeight, width, height: rowHeight, color: fill, borderColor: LINE, borderWidth: 0.45 });
+    x += width;
+  });
+  const number = String(rowIndex + 1);
+  page.drawText(number, {
+    x: SIDE + (noWidth - bold.widthOfTextAtSize(number, size)) / 2,
+    y: top - 15,
+    size,
+    font: bold,
+    color: textColor,
+  });
+  detailLines.forEach((line, index) => {
+    page.drawText(line, {
+      x: SIDE + noWidth + 8,
+      y: top - 14 - index * 9,
+      size,
+      font: bold,
+      color: textColor,
+    });
+  });
+  const status = DIAGNOSTIC_CARD_REFERENCE.statusLabel;
+  const statusWidthText = bold.widthOfTextAtSize(status, size);
+  page.drawText(status, {
+    x: SIDE + noWidth + detailWidth + (statusWidth - statusWidthText) / 2,
+    y: top - 15,
+    size,
+    font: bold,
+    color: RED,
+  });
+  return top - rowHeight;
+}
+
+function drawWarning(page: PDFPage, top: number, regular: PDFFont, muted: PdfColor) {
+  const lines = wrapText(DIAGNOSTIC_CARD_REFERENCE.warning, regular, 8.1, CONTENT_WIDTH).slice(0, 3);
+  lines.forEach((line, index) => {
+    page.drawText(line, { x: SIDE, y: top - index * 11, size: 8.1, font: regular, color: muted });
+  });
+  return top - Math.max(28, lines.length * 11 + 8);
+}
+
+function drawFooter(page: PDFPage, bold: PDFFont, accent: PdfColor) {
+  page.drawRectangle({ x: 0, y: 0, width: PAGE_WIDTH, height: FOOTER_HEIGHT, color: DARK });
+  page.drawRectangle({ x: PAGE_WIDTH - 17, y: 0, width: 17, height: FOOTER_HEIGHT, color: accent });
+  const y = 10.5;
+  page.drawText(DIAGNOSTIC_CARD_REFERENCE.phone, { x: SIDE, y, size: 7.2, font: bold, color: WHITE });
+  drawCentered(page, DIAGNOSTIC_CARD_REFERENCE.address, y, bold, 7.2, WHITE);
+  const siteWidth = bold.widthOfTextAtSize(DIAGNOSTIC_CARD_REFERENCE.website, 7.2);
+  page.drawText(DIAGNOSTIC_CARD_REFERENCE.website, { x: PAGE_WIDTH - SIDE - 18 - siteWidth, y, size: 7.2, font: bold, color: WHITE });
+}
+
+function drawDocumentHeader(
+  page: PDFPage,
+  snapshot: DiagnosticCardSnapshot,
+  template: DocumentTemplate | undefined,
+  regular: PDFFont,
+  bold: PDFFont,
+  logo: PDFImage | null,
+  car: PDFImage | null,
+  accent: PdfColor,
+  textColor: PdfColor,
+) {
+  drawHeaderPanorama(page, logo, car, accent);
+  const title = (template?.title || "Діагностична карта").toUpperCase();
+  drawCentered(page, title, PAGE_HEIGHT - 127, bold, 18.5, textColor);
+  drawCentered(page, DIAGNOSTIC_CARD_REFERENCE.sectionEyebrow, PAGE_HEIGHT - 146, bold, 8.9, accent);
+  drawMeta(page, snapshot, regular, bold, PAGE_HEIGHT - 162);
+  return PAGE_HEIGHT - 181;
+}
+
+function drawContinuationHeader(page: PDFPage, bold: PDFFont, accent: PdfColor, textColor: PdfColor) {
+  page.drawRectangle({ x: SIDE, y: PAGE_HEIGHT - 50, width: 7, height: 22, color: accent });
+  page.drawText(DIAGNOSTIC_CARD_REFERENCE.sectionTitle, {
+    x: SIDE + 15,
+    y: PAGE_HEIGHT - 45,
+    size: 15,
+    font: bold,
+    color: textColor,
+  });
+  return PAGE_HEIGHT - 62;
 }
 
 export async function renderDiagnosticCardPdf(
   snapshot: DiagnosticCardSnapshot,
-  media: DiagnosticCardPdfMedia[] = [],
+  _media: DiagnosticCardPdfMedia[] = [],
   template?: DocumentTemplate,
   parts: DiagnosticCardPdfPart[] = snapshot.recommendations.parts,
 ) {
   const pdf = await PDFDocument.create();
   pdf.registerFontkit(fontkit);
   const root = process.cwd();
-  const [regularBytes, boldBytes, defaultLogo, vehicleImage, qr] = await Promise.all([
+  const [regularBytes, boldBytes, defaultLogo, panoramaCar] = await Promise.all([
     readFile(path.join(root, "public", "fonts", "DejaVuSans.ttf")),
     readFile(path.join(root, "public", "fonts", "DejaVuSans-Bold.ttf")),
-    readOptionalAsset(root, "turbo-lev-document-logo.png", "image/png"),
-    getVehicleDocumentImage(snapshot.vehicle.id),
-    readOptionalAsset(root, "turbo-lev-document-qr.png", "image/png"),
+    readOptionalAsset(root, DIAGNOSTIC_CARD_REFERENCE.logoAsset, "image/png"),
+    readOptionalAsset(root, DIAGNOSTIC_CARD_REFERENCE.carAsset, "image/png"),
   ]);
   const regular = await pdf.embedFont(regularBytes, { subset: true });
   const bold = await pdf.embedFont(boldBytes, { subset: true });
-  const car = vehicleImage ? { bytes: vehicleImage.bytes, mimeType: vehicleImage.mimeType } : null;
-  // CRM uses a dark interface, but the PDF is printed on light paper. Prevent
-  // a dark/low-contrast CRM palette from producing an unreadable document.
-  const requestedBackground = template?.style.background === "brand" ? "#FFF7F0" : template?.style.backgroundColor;
-  const backgroundRgb = hexRgb(requestedBackground);
-  const backgroundHex = backgroundRgb && luminance(backgroundRgb) >= 0.42 ? requestedBackground! : "#FFFFFF";
-  const accent = readableColor(template?.style.accentColor, ORANGE, backgroundHex, 3);
-  const text = readableColor(template?.style.textColor, DARK, backgroundHex, 4.5);
-  const muted = readableColor(template?.style.mutedColor, MUTED, backgroundHex, 3);
-  const background = colorFromHex(backgroundHex, WHITE);
-  const layout = new PdfLayout(pdf, regular, bold, media, { accent, text, muted, background });
+  const accent = colorFromHex(template?.style.accentColor, ORANGE);
+  const textColor = colorFromHex(template?.style.textColor, DARK);
+  const muted = colorFromHex(template?.style.mutedColor, MUTED);
 
-  let logo = defaultLogo;
-  if (template?.style.logo === "none") logo = null;
-  if (template?.style.logo === "custom") {
-    const custom = imageDataUrl(template.style.logoDataUrl);
-    logo = custom ? { bytes: custom.bytes, mimeType: custom.mimeType } : defaultLogo;
+  let logoAsset = defaultLogo;
+  if (template?.style.logo === "none") logoAsset = null;
+  if (template?.style.logo === "custom") logoAsset = imageDataUrl(template.style.logoDataUrl) || defaultLogo;
+  const logo = await embedAsset(pdf, logoAsset);
+  const car = await embedAsset(pdf, panoramaCar);
+
+  let page = pdf.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
+  page.drawRectangle({ x: 0, y: 0, width: PAGE_WIDTH, height: PAGE_HEIGHT, color: WHITE });
+  let cursor = drawDocumentHeader(page, snapshot, template, regular, bold, logo, car, accent, textColor);
+
+  page.drawRectangle({ x: SIDE, y: cursor - 27, width: 7, height: 25, color: accent });
+  page.drawText(DIAGNOSTIC_CARD_REFERENCE.sectionTitle, {
+    x: SIDE + 15,
+    y: cursor - 22,
+    size: 15.5,
+    font: bold,
+    color: textColor,
+  });
+  cursor -= 36;
+
+  const safeParts = parts.length ? parts : [{ name: "Деталі до заміни не додані" }];
+  let header = drawTableHeader(page, cursor, bold);
+  cursor = header.y;
+
+  for (let index = 0; index < safeParts.length; index += 1) {
+    const part = safeParts[index];
+    const lines = wrapText(optionalText(part.name) || "—", bold, 7.5, header.widths[1] - 14).slice(0, 3);
+    const expectedHeight = Math.max(24, lines.length * 9 + 10);
+    if (cursor - expectedHeight < FOOTER_HEIGHT + 54) {
+      drawFooter(page, bold, accent);
+      page = pdf.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
+      page.drawRectangle({ x: 0, y: 0, width: PAGE_WIDTH, height: PAGE_HEIGHT, color: WHITE });
+      cursor = drawContinuationHeader(page, bold, accent, textColor);
+      header = drawTableHeader(page, cursor, bold);
+      cursor = header.y;
+    }
+    cursor = drawPartRow(page, index, optionalText(part.name) || "—", cursor, header.widths, regular, bold, textColor);
   }
 
-  await layout.header(snapshot, template?.title || "Діагностична карта", template?.description || "Перелік деталей до заміни автомобіля.", logo, car);
+  if (cursor - 50 < FOOTER_HEIGHT + 18) {
+    drawFooter(page, bold, accent);
+    page = pdf.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
+    page.drawRectangle({ x: 0, y: 0, width: PAGE_WIDTH, height: PAGE_HEIGHT, color: WHITE });
+    cursor = PAGE_HEIGHT - 48;
+  } else cursor -= 18;
+  drawWarning(page, cursor, regular, muted);
 
-  const defaultBlockOrder = ["identity", "parts", "contacts"];
-  const requestedBlockOrder = template?.blocks?.length
-    ? template.blocks.map((block) => block.id).filter((id, index, ids) => ids.indexOf(id) === index)
-    : defaultBlockOrder;
-  const blockOrder = [
-    ...requestedBlockOrder.filter((id) => defaultBlockOrder.includes(id)),
-    ...defaultBlockOrder.filter((id) => !requestedBlockOrder.includes(id)),
-  ];
-
-  const renderBlock = async (id: string) => {
-    if (id === "identity") return;
-
-    if (id === "parts") {
-      layout.replacementParts(parts);
-      return;
-    }
-
-    if (id === "contacts") {
-      await layout.contacts(snapshot, qr, template?.style.footerText || "Turbo Lev · Автосервіс");
-    }
-  };
-
-  for (const id of blockOrder) await renderBlock(id);
-  layout.footer(snapshot.cardNumber, template?.style.footerText || "Turbo Lev · Автосервіс");
+  for (const currentPage of pdf.getPages()) drawFooter(currentPage, bold, accent);
   return Buffer.from(await pdf.save());
 }

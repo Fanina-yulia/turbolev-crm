@@ -29,7 +29,8 @@
   ],
   "diagnostics": [
     "src/services/structured-diagnostics.service.ts",
-    "app/document-template-builder.tsx"
+    "app/document-template-builder.tsx",
+    "src/document-layout/diagnostic-card-reference.ts"
   ],
   "dashboard-analytics": [
     "app/analytics-workspace.tsx",
