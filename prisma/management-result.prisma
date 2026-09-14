@@ -1,0 +1,85 @@
+enum ManagementPlanStatus {
+  DRAFT
+  OWNER_APPROVED
+  EXECUTIVE_DISTRIBUTED
+  STATION_ACCEPTED
+  ACTIVE
+  CLOSED
+}
+
+enum ManagementPlanMetric {
+  MANAGEMENT_GROSS_PROFIT
+}
+
+enum ManagementPlanAllocationLevel {
+  LOCATION
+  POST
+  DAY
+}
+
+model ManagementPlan {
+  id              String               @id @default(cuid())
+  periodStart     DateTime             @db.Date
+  periodEnd       DateTime             @db.Date
+  metric          ManagementPlanMetric @default(MANAGEMENT_GROSS_PROFIT)
+  currency        String               @default("UAH") @db.VarChar(3)
+  minimumAmount   Decimal?             @db.Decimal(14, 2)
+  targetAmount    Decimal              @db.Decimal(14, 2)
+  stretchAmount   Decimal?             @db.Decimal(14, 2)
+  breakEvenAmount Decimal?             @db.Decimal(14, 2)
+  status          ManagementPlanStatus @default(DRAFT)
+  createdById     String?              @db.VarChar(64)
+  approvedById    String?              @db.VarChar(64)
+  approvedAt      DateTime?
+  activatedAt     DateTime?
+  closedAt        DateTime?
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+
+  allocations ManagementPlanAllocation[]
+  revisions   ManagementPlanRevision[]
+
+  @@unique([periodStart, periodEnd, metric])
+  @@index([status, periodStart, periodEnd])
+}
+
+model ManagementPlanAllocation {
+  id              String                        @id @default(cuid())
+  planId          String
+  level           ManagementPlanAllocationLevel
+  locationId      String?                       @db.VarChar(64)
+  postId          String?                       @db.VarChar(64)
+  day             DateTime?                     @db.Date
+  targetAmount    Decimal                       @db.Decimal(14, 2)
+  capacityMinutes Int?
+  source          String                        @default("AUTO_CAPACITY") @db.VarChar(32)
+  createdById     String?                       @db.VarChar(64)
+  acceptedById    String?                       @db.VarChar(64)
+  acceptedAt      DateTime?
+  createdAt       DateTime                      @default(now())
+  updatedAt       DateTime                      @updatedAt
+
+  plan ManagementPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+
+  @@index([planId, level])
+  @@index([locationId, level, day])
+  @@index([postId, day])
+}
+
+model ManagementPlanRevision {
+  id        String   @id @default(cuid())
+  planId    String
+  actorId   String?  @db.VarChar(64)
+  actorRole String?  @db.VarChar(64)
+  action    String   @db.VarChar(64)
+  reason    String?  @db.Text
+  before    Json?
+  after     Json
+  createdAt DateTime @default(now())
+
+  plan ManagementPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+
+  @@index([planId, createdAt])
+  @@index([actorId, createdAt])
+  @@index([action, createdAt])
+}
