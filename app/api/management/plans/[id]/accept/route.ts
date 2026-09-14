@@ -13,7 +13,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
   const { id } = await context.params;
   try {
     const result = await acceptStationPlan({ planId: id, locationIds: access.locationIds, actor });
-    return NextResponse.json({ ok: true, ...result });
+    return NextResponse.json(result);
   } catch (error) {
     if (error instanceof ManagementResultError) return NextResponse.json({ ok: false, code: error.code, error: error.message }, { status: error.status });
     console.error("management station acceptance failed", error);

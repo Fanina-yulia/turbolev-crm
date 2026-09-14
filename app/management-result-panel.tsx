@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { weekKeys } from "@/src/domain/management-result";
 import styles from "./management-result-panel.module.css";
+import { ManagementIntelligencePanels, type ManagementIntelligenceUiPayload } from "./management-intelligence-panels";
 
 type ManagementMode = "OWNER" | "EXECUTIVE" | "STATION";
 
@@ -59,8 +60,8 @@ type ResultPayload = {
     pipelineWithoutPlannedFinance: number;
     forecastCompleteness: "PARTIAL" | "COMPLETE";
   };
-  access?: { role?: string; canEditTarget?: boolean; canActivate?: boolean };
-};
+  access?: { role?: string; canEditTarget?: boolean; canActivate?: boolean; canEditBonusFormula?: boolean; canDistribute?: boolean; canClose?: boolean; canRedistributeStation?: boolean };
+} & ManagementIntelligenceUiPayload;
 
 function currentKyivDateKey() {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Kyiv", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
@@ -124,8 +125,8 @@ export function ManagementResultPanel({ mode, locationId }: { mode: ManagementMo
       const query = new URLSearchParams({ week: weekAnchor });
       if (locationId) query.set("locationId", locationId);
       const response = await fetch(`/api/management/result?${query.toString()}`, { cache: "no-store", credentials: "include" });
-      const body = await response.json().catch(() => null) as ResultPayload | { error?: string } | null;
-      if (!response.ok || !body || body.ok !== true) throw new Error(body && "error" in body && body.error ? body.error : "Не вдалося завантажити план.");
+      const body = await response.json().catch(() => null) as ResultPayload | { ok?: false; error?: string } | null;
+      if (!response.ok || !body || !("ok" in body) || body.ok !== true) throw new Error(body && "error" in body && body.error ? body.error : "Не вдалося завантажити план.");
       const payload = body as ResultPayload;
       setData(payload);
       setTargetInput(payload.plan?.targetAmount != null ? String(Math.round(payload.plan.targetAmount)) : "");
@@ -255,6 +256,8 @@ export function ManagementResultPanel({ mode, locationId }: { mode: ManagementMo
         <div><span>Структура факту</span><b>роботи/маржа деталей {money(data.breakdown.workOrderFact)} · прямі діагностики {money(data.breakdown.directServiceFact)}</b></div>
         {qualityWarning > 0 ? <div className={styles.dataWarning}><span>Якість даних</span><b>{data.dataQuality.closedWithoutFinalFinance} закритих без фінфакту · {data.dataQuality.pipelineWithoutPlannedFinance} у pipeline без суми</b></div> : <div className={styles.dataOk}><span>Якість даних</span><b>суми для поточного розрахунку заповнені</b></div>}
       </div>
+
+      <ManagementIntelligencePanels data={data} mode={mode} weekAnchor={weekAnchor} locationId={locationId} onRefresh={load} />
 
       <div className={styles.actions}>
         {data.plan && (mode === "OWNER" || mode === "EXECUTIVE") && !["ACTIVE", "CLOSED"].includes(data.plan.status) && <button type="button" onClick={() => void planAction("ACTIVATE")} disabled={saving}>Активувати план</button>}

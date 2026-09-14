@@ -82,7 +82,7 @@ export async function finalizeStationManagerBonus(input: { actor: ManagementActo
       performancePct: preliminary.performancePct,
       qualityScorePct: preliminary.qualityScorePct,
       payoutAmount: preliminary.payoutAmount,
-      details: preliminary.details,
+      details: toPrismaJson(preliminary.details ?? {}),
       calculatedAt: preliminary.calculatedAt,
       finalizedAt: new Date(),
       finalizedById: input.actor.id,

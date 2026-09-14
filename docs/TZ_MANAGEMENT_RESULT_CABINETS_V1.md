@@ -363,3 +363,17 @@ A phase is DONE only when:
 - relevant production API returns expected schema;
 - no relevant 5xx errors appear after deploy;
 - evidence/commit/deployment identifiers are recorded in the delivery note.
+
+
+## 22. Implementation status
+Implemented in `feature/management-result-complete-v1`:
+- weekly Minimum/Target/Stretch/Break-even planning and audited state workflow;
+- Owner approval, Executive station distribution, Station day/lift redistribution and acceptance;
+- Plan/Fact/Cash In/confirmed/base/optimistic/weighted/pace forecasts;
+- historical stage probabilities, persisted daily forecast snapshots and automatic deviation attribution;
+- capacity/lift utilization and gap-closing recommendations;
+- EmployeeShift scheduling, team utilization, employee economics/KPI contribution;
+- configurable Station Manager bonus, quality gates, preliminary result and finalization into payroll BONUS when a payroll period exists;
+- role-scoped Owner / Executive Director / Station Manager UI and API security inventory.
+
+Production facts remain immutable sources of truth. Management tables are an additive planning/read-model layer.

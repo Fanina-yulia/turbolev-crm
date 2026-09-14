@@ -88,7 +88,7 @@ export async function POST(request: NextRequest) {
     if (action === "ACCEPT") {
       if (typeof body.planId !== "string" || !body.planId) return NextResponse.json({ ok: false, error: "planId обов'язковий." }, { status: 400 });
       const result = await acceptStationPlan({ planId: body.planId, locationIds: context.locationIds, actor: actor(context, role) });
-      return NextResponse.json({ ok: true, ...result });
+      return NextResponse.json(result);
     }
     return NextResponse.json({ ok: false, error: "Невідома дія." }, { status: 400 });
   } catch (error) {

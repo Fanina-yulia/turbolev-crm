@@ -202,7 +202,7 @@ export async function getManagementIntelligence(input: {
       select: { amount: true, settledAmount: true, status: true, dueAt: true, locationId: true },
     }),
     prisma.stationBonusScheme.findMany({
-      where: { isActive: true, effectiveFrom: { lte: dateOnly(week.end) }, OR: [{ effectiveTo: null }, { effectiveTo: { gte: dateOnly(week.start) } }], ...(locationIds.length ? { OR: [{ locationId: null }, { locationId: { in: locationIds } }] } : {}) },
+      where: { isActive: true, effectiveFrom: { lte: dateOnly(week.end) }, AND: [{ OR: [{ effectiveTo: null }, { effectiveTo: { gte: dateOnly(week.start) } }] }, ...(locationIds.length ? [{ OR: [{ locationId: null }, { locationId: { in: locationIds } }] }] : [])] },
       orderBy: [{ effectiveFrom: "desc" }, { createdAt: "desc" }],
     }),
   ]);
@@ -259,7 +259,7 @@ export async function getManagementIntelligence(input: {
 
   const warrantyClaims = closedOrderIds.length ? await prisma.warrantyClaim.findMany({
     where: { createdAt: { gte: from, lt: to }, workOrderLine: { workOrderId: { in: closedOrderIds } } },
-    select: { id: true, status: true, workOrderLineId: true },
+    select: { id: true, status: true, workOrderLineId: true, workOrderLine: { select: { workOrderId: true, mechanicId: true } } },
   }) : [];
   const warrantyRatePct = closedOrderIds.length ? Math.round(warrantyClaims.length / closedOrderIds.length * 1000) / 10 : null;
   const receivableTotal = receivables.reduce((sum, row) => sum + Math.max(0, numberOf(row.amount) - numberOf(row.settledAmount)), 0);
@@ -381,6 +381,9 @@ export async function getManagementIntelligence(input: {
   const mechanicUtilValues = team.filter((row) => row.roleCode === "MECHANIC" && row.utilizationPct != null).map((row) => row.utilizationPct!);
   const averageMechanicUtilizationPct = mechanicUtilValues.length ? Math.round(mechanicUtilValues.reduce((a, b) => a + b, 0) / mechanicUtilValues.length * 10) / 10 : null;
   const freeLiftHours = Math.round(posts.reduce((sum, row) => sum + row.freeMinutes, 0) / 6) / 10;
+  const requiredMechanicHours = roundMoney(appointments.filter((row) => ACTIVE_STATUSES.includes(row.status)).reduce((sum, row) => sum + minutesBetween(row.plannedStartAt, row.plannedEndAt), 0) / 60);
+  const scheduledMechanicHours = roundMoney(team.filter((row) => row.roleCode === "MECHANIC").reduce((sum, row) => sum + (row.availableMinutes || 0), 0) / 60);
+  const staffingGapHours = roundMoney(Math.max(0, requiredMechanicHours - scheduledMechanicHours));
 
   const deviations = deriveManagementDeviations({
     target: input.base.result.target,
@@ -421,7 +424,7 @@ export async function getManagementIntelligence(input: {
     const locationReceivables = receivables.filter((row) => row.locationId === locationResult.id);
     const locationReceivableTotal = locationReceivables.reduce((sum, row) => sum + Math.max(0, numberOf(row.amount) - numberOf(row.settledAmount)), 0);
     const locationOverdue = locationReceivables.filter((row) => row.status === "OVERDUE" || (row.dueAt && row.dueAt < now)).reduce((sum, row) => sum + Math.max(0, numberOf(row.amount) - numberOf(row.settledAmount)), 0);
-    const locationWarranty = warrantyClaims.filter((claim) => laborLines.some((line) => line.id === claim.workOrderLineId && workOrderLocation.get(line.workOrderId) === locationResult.id)).length;
+    const locationWarranty = warrantyClaims.filter((claim) => workOrderLocation.get(claim.workOrderLine.workOrderId) === locationResult.id).length;
     const locationClosed = closedCountByLocation.get(locationResult.id) || 0;
     const quality = {
       grossMarginPct,
@@ -589,6 +592,9 @@ export async function getManagementIntelligence(input: {
       averageMechanicUtilizationPct,
       activeMechanicsToday: team.filter((row) => row.roleCode === "MECHANIC" && ["ON_SHIFT", "LATE", "PARTIAL_SHIFT"].includes(row.shift?.status || "")).length,
       unassignedActive,
+      requiredMechanicHours,
+      scheduledMechanicHours,
+      staffingGapHours,
     },
     quality: {
       grossMarginPct,
