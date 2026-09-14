@@ -1,0 +1,164 @@
+/* Compact desktop presentation for diagnostic-card PDF previews.
+   Scoped by dialog aria-labelledby so other CRM modals are untouched. */
+
+@media (min-width: 761px) {
+  div:has(> [role="dialog"][aria-labelledby*="diagnostic-pdf"]) {
+    z-index: 1800 !important;
+    place-items: center !important;
+    padding: 32px !important;
+  }
+
+  [role="dialog"][aria-labelledby*="diagnostic-pdf"] {
+    position: relative !important;
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) auto !important;
+    grid-template-rows: auto auto minmax(0, 1fr) !important;
+    width: min(1000px, calc(100dvw - 160px)) !important;
+    height: min(820px, calc(100dvh - 80px)) !important;
+    min-height: 560px !important;
+    max-height: calc(100dvh - 80px) !important;
+    overflow: hidden !important;
+    border-radius: 16px !important;
+    box-shadow: 0 28px 90px rgba(0, 0, 0, .42) !important;
+  }
+
+  [role="dialog"][aria-labelledby*="diagnostic-pdf"] > header[class*="pdfModalHeader"] {
+    grid-column: 1;
+    grid-row: 1;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: flex-start !important;
+    min-width: 0;
+    min-height: 56px;
+    gap: 8px !important;
+    padding: 9px 8px 9px 14px !important;
+    border-bottom: 1px solid var(--line) !important;
+  }
+
+  [role="dialog"][aria-labelledby*="diagnostic-pdf"] > header[class*="pdfModalHeader"] > div {
+    display: flex !important;
+    align-items: center !important;
+    min-width: 0;
+    gap: 8px;
+    flex-wrap: nowrap;
+  }
+
+  [role="dialog"][aria-labelledby*="diagnostic-pdf"] > header[class*="pdfModalHeader"] > div > span[class*="eyebrow"] {
+    display: none !important;
+  }
+
+  [role="dialog"][aria-labelledby*="diagnostic-pdf"] > header[class*="pdfModalHeader"] h4 {
+    min-width: 0;
+    max-width: 390px;
+    margin: 0 !important;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 14px !important;
+    line-height: 1.15 !important;
+  }
+
+  [role="dialog"][aria-labelledby*="diagnostic-pdf"] > header[class*="pdfModalHeader"] small {
+    flex: 0 0 auto;
+    color: var(--muted) !important;
+    font-size: 11px !important;
+    white-space: nowrap;
+  }
+
+  [role="dialog"][aria-labelledby*="diagnostic-pdf"] > header[class*="pdfModalHeader"] small::before {
+    content: "• ";
+  }
+
+  [role="dialog"][aria-labelledby*="diagnostic-pdf"] > header[class*="pdfModalHeader"] > button[aria-label*="Закрити"] {
+    position: absolute !important;
+    z-index: 2;
+    top: 10px !important;
+    right: 10px !important;
+    width: 34px !important;
+    height: 34px !important;
+    min-width: 34px !important;
+    min-height: 34px !important;
+    border: 1px solid var(--line) !important;
+    border-radius: 9px !important;
+    background: var(--panel) !important;
+    color: var(--text) !important;
+    font-size: 20px !important;
+    line-height: 1 !important;
+  }
+
+  [role="dialog"][aria-labelledby*="diagnostic-pdf"] > div[class*="pdfActions"] {
+    grid-column: 2;
+    grid-row: 1;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: flex-end !important;
+    flex-wrap: nowrap !important;
+    min-width: max-content;
+    gap: 7px !important;
+    padding: 8px 52px 8px 8px !important;
+    border-bottom: 1px solid var(--line) !important;
+  }
+
+  [role="dialog"][aria-labelledby*="diagnostic-pdf"] > div[class*="pdfActions"] button {
+    min-height: 36px !important;
+    padding: 0 12px !important;
+    white-space: nowrap !important;
+    border-radius: 9px !important;
+    font-size: 11px !important;
+  }
+
+  [role="dialog"][aria-labelledby*="diagnostic-pdf"] > div[class*="shareOptions"] {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    min-height: 0;
+    padding: 6px 12px !important;
+    border-bottom: 1px solid var(--line) !important;
+  }
+
+  [role="dialog"][aria-labelledby*="diagnostic-pdf"] > iframe[class*="pdfFrame"] {
+    grid-column: 1 / -1;
+    grid-row: 3;
+    display: block !important;
+    width: 100% !important;
+    height: 100% !important;
+    min-height: 0 !important;
+    border: 0 !important;
+  }
+}
+
+@media (min-width: 761px) and (max-width: 1120px) {
+  div:has(> [role="dialog"][aria-labelledby*="diagnostic-pdf"]) {
+    padding: 16px !important;
+  }
+
+  [role="dialog"][aria-labelledby*="diagnostic-pdf"] {
+    grid-template-columns: 1fr !important;
+    grid-template-rows: auto auto auto minmax(0, 1fr) !important;
+    width: min(920px, calc(100dvw - 32px)) !important;
+    height: calc(100dvh - 32px) !important;
+    max-height: calc(100dvh - 32px) !important;
+  }
+
+  [role="dialog"][aria-labelledby*="diagnostic-pdf"] > header[class*="pdfModalHeader"] {
+    grid-column: 1;
+    grid-row: 1;
+    padding-right: 52px !important;
+  }
+
+  [role="dialog"][aria-labelledby*="diagnostic-pdf"] > div[class*="pdfActions"] {
+    grid-column: 1;
+    grid-row: 2;
+    justify-content: flex-start !important;
+    padding: 6px 12px !important;
+  }
+
+  [role="dialog"][aria-labelledby*="diagnostic-pdf"] > div[class*="shareOptions"] {
+    grid-column: 1;
+    grid-row: 3;
+  }
+
+  [role="dialog"][aria-labelledby*="diagnostic-pdf"] > iframe[class*="pdfFrame"] {
+    grid-column: 1;
+    grid-row: 4;
+  }
+}
