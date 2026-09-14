@@ -1,0 +1,150 @@
+enum EmployeeShiftStatus {
+  ON_SHIFT
+  DAY_OFF
+  VACATION
+  SICK
+  ABSENT
+  LATE
+  PARTIAL_SHIFT
+}
+
+enum ManagementBonusBasis {
+  FACT
+  ABOVE_BREAK_EVEN
+  ABOVE_TARGET
+}
+
+enum ManagementBonusResultStatus {
+  PRELIMINARY
+  FINAL
+}
+
+enum ManagementDeviationSeverity {
+  INFO
+  WARNING
+  CRITICAL
+}
+
+model EmployeeShift {
+  id          String              @id @default(cuid())
+  employeeId  String              @db.VarChar(64)
+  locationId  String              @db.VarChar(64)
+  day         DateTime            @db.Date
+  startMinute Int?
+  endMinute   Int?
+  status      EmployeeShiftStatus @default(ON_SHIFT)
+  note        String?             @db.Text
+  createdById String?             @db.VarChar(64)
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+
+  @@unique([employeeId, locationId, day])
+  @@index([locationId, day, status])
+  @@index([employeeId, day])
+}
+
+model StationBonusScheme {
+  id                        String               @id @default(cuid())
+  locationId                String?              @db.VarChar(64)
+  name                      String               @default("Бонус керівника станції") @db.VarChar(160)
+  basis                     ManagementBonusBasis @default(ABOVE_BREAK_EVEN)
+  activationThresholdPct    Decimal              @default(90) @db.Decimal(7, 2)
+  basePercent               Decimal              @default(3) @db.Decimal(7, 3)
+  fixedAmount               Decimal?             @db.Decimal(14, 2)
+  tier2ThresholdPct         Decimal?             @db.Decimal(7, 2)
+  tier2Percent              Decimal?             @db.Decimal(7, 3)
+  tier3ThresholdPct         Decimal?             @db.Decimal(7, 2)
+  tier3Percent              Decimal?             @db.Decimal(7, 3)
+  minMarginPct              Decimal?             @db.Decimal(7, 2)
+  maxWarrantyRatePct        Decimal?             @db.Decimal(7, 2)
+  maxOverdueReceivablePct   Decimal?             @db.Decimal(7, 2)
+  minDataQualityPct         Decimal?             @db.Decimal(7, 2)
+  capAmount                 Decimal?             @db.Decimal(14, 2)
+  isActive                  Boolean              @default(true)
+  effectiveFrom             DateTime             @db.Date
+  effectiveTo               DateTime?            @db.Date
+  createdById               String?              @db.VarChar(64)
+  updatedById               String?              @db.VarChar(64)
+  createdAt                 DateTime              @default(now())
+  updatedAt                 DateTime              @updatedAt
+
+  @@index([locationId, isActive, effectiveFrom, effectiveTo])
+  @@index([isActive, effectiveFrom])
+}
+
+model StationBonusResult {
+  id               String                      @id @default(cuid())
+  schemeId         String?                     @db.VarChar(64)
+  planId           String?                     @db.VarChar(64)
+  locationId       String                      @db.VarChar(64)
+  periodStart      DateTime                    @db.Date
+  periodEnd        DateTime                    @db.Date
+  status           ManagementBonusResultStatus @default(PRELIMINARY)
+  targetAmount     Decimal                     @default(0) @db.Decimal(14, 2)
+  factAmount       Decimal                     @default(0) @db.Decimal(14, 2)
+  performancePct   Decimal                     @default(0) @db.Decimal(9, 2)
+  qualityScorePct  Decimal                     @default(0) @db.Decimal(9, 2)
+  payoutAmount     Decimal                     @default(0) @db.Decimal(14, 2)
+  details          Json                        @default("{}")
+  calculatedAt     DateTime                    @default(now())
+  finalizedAt      DateTime?
+  finalizedById    String?                     @db.VarChar(64)
+  createdAt        DateTime                    @default(now())
+  updatedAt        DateTime                    @updatedAt
+
+  @@unique([locationId, periodStart, periodEnd, status])
+  @@index([planId, locationId])
+  @@index([status, periodStart, periodEnd])
+}
+
+model ManagementForecastSnapshot {
+  id                  String   @id @default(cuid())
+  snapshotKey         String   @unique @db.VarChar(180)
+  planId              String?  @db.VarChar(64)
+  locationId          String?  @db.VarChar(64)
+  periodStart         DateTime @db.Date
+  periodEnd           DateTime @db.Date
+  factAmount          Decimal  @default(0) @db.Decimal(14, 2)
+  paceForecast        Decimal  @default(0) @db.Decimal(14, 2)
+  conservativeForecast Decimal @default(0) @db.Decimal(14, 2)
+  confirmedForecast   Decimal  @default(0) @db.Decimal(14, 2)
+  weightedForecast    Decimal  @default(0) @db.Decimal(14, 2)
+  baseForecast        Decimal  @default(0) @db.Decimal(14, 2)
+  optimisticForecast  Decimal  @default(0) @db.Decimal(14, 2)
+  gapAmount           Decimal? @db.Decimal(14, 2)
+  factors             Json     @default("{}")
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@index([planId, locationId, periodStart, periodEnd])
+  @@index([locationId, createdAt])
+}
+
+model ManagementDeviation {
+  id            String                      @id @default(cuid())
+  deviationKey  String                      @unique @db.VarChar(190)
+  planId        String?                     @db.VarChar(64)
+  locationId    String?                     @db.VarChar(64)
+  periodStart   DateTime                    @db.Date
+  periodEnd     DateTime                    @db.Date
+  code          String                      @db.VarChar(64)
+  severity      ManagementDeviationSeverity @default(WARNING)
+  impactAmount  Decimal?                    @db.Decimal(14, 2)
+  impactHours   Decimal?                    @db.Decimal(12, 2)
+  impactClients Int?
+  sourceType    String?                     @db.VarChar(64)
+  sourceId      String?                     @db.VarChar(120)
+  description   String                      @db.Text
+  recommendedAction String?                 @db.Text
+  status        String                      @default("OPEN") @db.VarChar(24)
+  detectedAt    DateTime                    @default(now())
+  resolvedAt    DateTime?
+  resolvedById  String?                     @db.VarChar(64)
+  metadata      Json                        @default("{}")
+  createdAt     DateTime                    @default(now())
+  updatedAt     DateTime                    @updatedAt
+
+  @@index([planId, locationId, status])
+  @@index([locationId, periodStart, periodEnd, severity])
+  @@index([code, status, detectedAt])
+}
