@@ -8,6 +8,7 @@ import type { CrmAccessSnapshot } from "./use-crm-access";
 import { normalizeRoleCode, resolveRoleCabinet } from "@/src/security/role-contract";
 import { StationOverview } from "./station-overview";
 import { OwnerControlCenter } from "./owner-dashboard";
+import { ManagementResultPanel } from "./management-result-panel";
 import { MechanicCabinet } from "./mechanic-cabinet";
 import { ServiceAdvisorCabinetHome } from "./service-advisor-cabinet-home";
 import { PartsRoleCabinetHome } from "./parts-role-cabinet-home";
@@ -133,6 +134,8 @@ function StationManagerLinkedCabinet({ data, userName }: { data: LinkedStationMa
       <div><p className="eyebrow">TURBO LEV · КАБІНЕТ КЕРІВНИКА СТАНЦІЇ</p><h1>Операційний пульт станції</h1><span className="muted">{userName || "Керівник станції"} · {data.station.name} · усе, що зараз потребує управлінської дії</span></div>
       <button className={styles.primaryAction} type="button" onClick={() => navigateCrm("Виробництво", { scope: "posts" })}>Виробництво зараз →</button>
     </header>
+
+    <ManagementResultPanel mode="STATION" locationId={data.station.id} />
 
     <section className={styles.managerKpis} aria-label="Ключові показники керівника станції">
       {roleKpis.map((item) => <button

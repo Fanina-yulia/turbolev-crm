@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { navigateCrm } from "./crm-route";
 import { OwnerDashboardVisual, type OwnerPeriodKey } from "./owner-dashboard-visual";
+import { ManagementResultPanel } from "./management-result-panel";
 import { VehicleRender } from "./vehicle-render";
 import styles from "./owner-dashboard.module.css";
 
@@ -250,6 +251,8 @@ export function OwnerControlCenter({ userName, mode = "OWNER" }: { userName?: st
     {error && <div className={styles.error}><strong>{isExecutive ? "Не вдалося оновити пульт виконавчого директора" : "Не вдалося оновити пульт власника"}</strong><span>{error}</span><button type="button" onClick={() => void load()}>Повторити</button></div>}
 
     <OwnerDashboardVisual analytics={analytics} period={period} onPeriodChange={setPeriod} loading={loading} />
+
+    <ManagementResultPanel mode={isExecutive ? "EXECUTIVE" : "OWNER"} />
 
     <div className={styles.twoColumns}>
       <section className={styles.panel}>
