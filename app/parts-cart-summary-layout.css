@@ -1,0 +1,182 @@
+/* TURBO LEV · Parts selection cart summary layout
+   Keep "Підсумок" directly under the cart instead of using a third column. */
+
+[class*="parts-catalog_columns__"] {
+  grid-template-columns: minmax(230px, .72fr) minmax(0, 2.75fr) !important;
+  grid-template-rows: auto auto !important;
+  align-items: start !important;
+}
+
+[class*="parts-catalog_needsColumn__"] {
+  grid-column: 1 !important;
+  grid-row: 1 / span 2 !important;
+}
+
+[class*="parts-catalog_selectedColumn__"] {
+  grid-column: 2 !important;
+  grid-row: 1 !important;
+}
+
+[aria-labelledby="parts-summary-title"] {
+  grid-column: 2 !important;
+  grid-row: 2 !important;
+  min-height: 0 !important;
+}
+
+[aria-labelledby="parts-summary-title"] [class*="parts-catalog_columnTitle__"] {
+  min-height: 42px !important;
+  padding: 8px 10px !important;
+}
+
+[aria-labelledby="parts-summary-title"] [class*="parts-catalog_columnTitle__"] p,
+[aria-labelledby="parts-summary-title"] [class*="parts-catalog_columnTitle__"] small {
+  display: none !important;
+}
+
+#parts-summary-title {
+  font-size: 14px !important;
+}
+
+[aria-labelledby="parts-summary-title"] [class*="parts-catalog_summaryBody__"] {
+  display: grid !important;
+  grid-template-columns: minmax(170px, .8fr) minmax(360px, 2fr) minmax(170px, .85fr) !important;
+  gap: 8px !important;
+  align-items: stretch !important;
+  padding: 9px !important;
+}
+
+[aria-labelledby="parts-summary-title"] [class*="parts-catalog_summaryState__"] {
+  align-items: center !important;
+  min-height: 52px !important;
+  padding: 8px !important;
+}
+
+[aria-labelledby="parts-summary-title"] [class*="parts-catalog_summaryMetrics__"] {
+  display: grid !important;
+  grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+}
+
+[aria-labelledby="parts-summary-title"] [class*="parts-catalog_summaryMetrics__"] > div {
+  display: grid !important;
+  align-content: center !important;
+  gap: 3px !important;
+  padding: 7px 9px !important;
+  border-right: 1px solid var(--line) !important;
+  border-bottom: 0 !important;
+}
+
+[aria-labelledby="parts-summary-title"] [class*="parts-catalog_summaryMetrics__"] > div:last-child {
+  border-right: 0 !important;
+}
+
+[aria-labelledby="parts-summary-title"] [class*="parts-catalog_summaryMetrics__"] b {
+  text-align: left !important;
+}
+
+[aria-labelledby="parts-summary-title"] [class*="parts-catalog_summaryTotal__"] {
+  display: grid !important;
+  align-content: center !important;
+  gap: 5px !important;
+  padding: 8px 10px !important;
+  border: 1px solid var(--line) !important;
+  border-radius: 8px !important;
+}
+
+[aria-labelledby="parts-summary-title"] [class*="parts-catalog_summaryTotal__"] strong {
+  font-size: 17px !important;
+}
+
+/* Keep the operational summary compact. Detailed pricing policy/source text is not needed on every view. */
+[aria-labelledby="parts-summary-title"] [class*="parts-catalog_summaryNote__"],
+[aria-labelledby="parts-summary-title"] [class*="parts-catalog_summaryDelivery__"] {
+  display: none !important;
+}
+
+[aria-labelledby="parts-summary-title"] [class*="parts-catalog_summaryActions__"] {
+  grid-column: 2 / 4 !important;
+  display: flex !important;
+  justify-content: flex-end !important;
+  gap: 8px !important;
+  margin: 0 !important;
+}
+
+[aria-labelledby="parts-summary-title"] [class*="parts-catalog_summaryActions__"] button {
+  flex: 0 1 190px !important;
+}
+
+[aria-labelledby="parts-summary-title"] [class*="parts-catalog_policyNote__"] {
+  grid-column: 1 / -1 !important;
+  padding: 5px 2px 0 !important;
+  border: 0 !important;
+}
+
+@media (max-width: 1100px) {
+  [class*="parts-catalog_columns__"] {
+    grid-template-columns: minmax(210px, .72fr) minmax(0, 2.25fr) !important;
+  }
+
+  [aria-labelledby="parts-summary-title"] [class*="parts-catalog_summaryBody__"] {
+    grid-template-columns: minmax(150px, .8fr) minmax(0, 2fr) !important;
+  }
+
+  [aria-labelledby="parts-summary-title"] [class*="parts-catalog_summaryTotal__"] {
+    grid-column: 1 !important;
+  }
+
+  [aria-labelledby="parts-summary-title"] [class*="parts-catalog_summaryMetrics__"] {
+    grid-column: 2 !important;
+    grid-row: 1 / span 2 !important;
+  }
+
+  [aria-labelledby="parts-summary-title"] [class*="parts-catalog_summaryActions__"] {
+    grid-column: 1 / -1 !important;
+  }
+}
+
+@media (max-width: 760px) {
+  [class*="parts-catalog_columns__"] {
+    grid-template-columns: minmax(0, 1fr) !important;
+    grid-template-rows: auto !important;
+  }
+
+  [class*="parts-catalog_needsColumn__"],
+  [class*="parts-catalog_selectedColumn__"],
+  [aria-labelledby="parts-summary-title"] {
+    grid-column: 1 !important;
+    grid-row: auto !important;
+  }
+
+  [aria-labelledby="parts-summary-title"] [class*="parts-catalog_summaryBody__"] {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  [aria-labelledby="parts-summary-title"] [class*="parts-catalog_summaryState__"],
+  [aria-labelledby="parts-summary-title"] [class*="parts-catalog_summaryMetrics__"],
+  [aria-labelledby="parts-summary-title"] [class*="parts-catalog_summaryTotal__"],
+  [aria-labelledby="parts-summary-title"] [class*="parts-catalog_summaryActions__"],
+  [aria-labelledby="parts-summary-title"] [class*="parts-catalog_policyNote__"] {
+    grid-column: 1 !important;
+    grid-row: auto !important;
+  }
+
+  [aria-labelledby="parts-summary-title"] [class*="parts-catalog_summaryMetrics__"] {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  [aria-labelledby="parts-summary-title"] [class*="parts-catalog_summaryMetrics__"] > div:nth-child(2) {
+    border-right: 0 !important;
+  }
+
+  [aria-labelledby="parts-summary-title"] [class*="parts-catalog_summaryMetrics__"] > div:nth-child(-n+2) {
+    border-bottom: 1px solid var(--line) !important;
+  }
+
+  [aria-labelledby="parts-summary-title"] [class*="parts-catalog_summaryActions__"] {
+    flex-direction: column !important;
+  }
+
+  [aria-labelledby="parts-summary-title"] [class*="parts-catalog_summaryActions__"] button {
+    flex: 1 1 auto !important;
+    width: 100% !important;
+  }
+}
