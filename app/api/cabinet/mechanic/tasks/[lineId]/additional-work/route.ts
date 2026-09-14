@@ -124,7 +124,7 @@ export async function POST(request: Request, context: { params: Promise<{ lineId
       },
     });
     if (!sourceLine) return fail("Роботу не знайдено або вона не закріплена за вами.", "ASSIGNED_LINE_NOT_FOUND", 404);
-    if (!["IN_PROGRESS", "PAUSED", "REWORK"].includes(sourceLine.workOrder.status)) {
+    if (!["IN_REPAIR", "PAUSED", "REWORK"].includes(sourceLine.workOrder.status)) {
       return fail("Додаткову потребу можна запропонувати лише під час активного ремонту.", "ADDITIONAL_WORK_NOT_ALLOWED", 409);
     }
 
