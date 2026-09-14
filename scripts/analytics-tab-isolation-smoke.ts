@@ -23,9 +23,9 @@ assert.doesNotMatch(bridge, /↻ Оновити/, "WALK-IN must not duplicate th
 for (const tab of ["overview", "funnel", "workshop", "diagnostics", "finance", "parts"]) {
   assert.match(dashboard, new RegExp(`tab === \\"${tab}\\"`), `native dashboard must retain dedicated ${tab} analytics`);
 }
-assert.match(dashboard, /\/api\/analytics\/diagnostics/, "diagnostics tab must use diagnostics analytics API");
-assert.match(dashboard, /\/api\/analytics\/finance/, "finance tab must use finance analytics API");
-assert.match(dashboard, /\/api\/analytics\/parts/, "parts tab must use parts analytics API");
+assert.match(dashboard, /target !== "diagnostics" && target !== "finance" && target !== "parts"/, "detail dispatcher must be limited to diagnostics, finance and parts");
+assert.match(dashboard, /const endpoint = target/, "detail dispatcher must map each active detail tab to its matching endpoint");
+assert.match(dashboard, /fetch\(`\/api\/analytics\/\$\{endpoint\}\?/, "detail tabs must fetch their own analytics endpoint");
 
 assert.match(walkInApi, /prisma\.diagnosticVisitLink\.findMany/, "DiagnosticVisitLink must be the canonical appointment/diagnostic relation");
 assert.match(walkInApi, /canonicalByAppointment\.get\(row\.id\) \|\| diagnosticIdFromComment/, "legacy comment marker must be fallback only");
