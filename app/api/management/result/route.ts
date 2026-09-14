@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAccessContext } from "@/src/security/access-context";
 import { getWeeklyManagementResult, ManagementResultError } from "@/src/services/management-result.service";
+import { getManagementIntelligence } from "@/src/services/management-intelligence.service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -29,19 +30,30 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const payload = await getWeeklyManagementResult({
+    const base = await getWeeklyManagementResult({
       anchor: week,
       locationIds: currentRole === "STATION_MANAGER" ? context.locationIds : null,
       selectedLocationId: requestedLocationId,
     });
+    const advanced = await getManagementIntelligence({
+      anchor: week,
+      locationIds: currentRole === "STATION_MANAGER" ? context.locationIds : null,
+      selectedLocationId: requestedLocationId,
+      base,
+    });
     return NextResponse.json({
-      ...payload,
+      ...base,
+      ...advanced,
       access: {
         role: currentRole,
         scope: currentRole === "STATION_MANAGER" ? "LOCATION" : requestedLocationId ? "LOCATION" : "ALL",
         locationIds: currentRole === "STATION_MANAGER" ? context.locationIds : undefined,
         canEditTarget: currentRole === "OWNER",
+        canEditBonusFormula: currentRole === "OWNER",
+        canDistribute: currentRole === "OWNER" || currentRole === "EXECUTIVE_DIRECTOR",
         canActivate: currentRole === "OWNER" || currentRole === "EXECUTIVE_DIRECTOR",
+        canClose: currentRole === "OWNER" || currentRole === "EXECUTIVE_DIRECTOR",
+        canRedistributeStation: currentRole === "STATION_MANAGER" || currentRole === "EXECUTIVE_DIRECTOR" || currentRole === "OWNER",
       },
     }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
