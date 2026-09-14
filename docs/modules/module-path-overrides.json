@@ -24,7 +24,8 @@
     "src/services/vin-intelligence.service.ts",
     "app/vehicle-workflow.module.css",
     "app/vehicle-identity.tsx",
-    "src/domain/registration-plate.ts"
+    "src/domain/registration-plate.ts",
+    "app/client-ltv-card*"
   ],
   "diagnostics": [
     "src/services/structured-diagnostics.service.ts"
@@ -33,7 +34,9 @@
     "app/analytics-workspace.tsx",
     "app/analytics-workspace.module.css",
     "app/analytics-personnel*",
-    "app/analytics-quality*"
+    "app/analytics-quality*",
+    "app/analytics-owner-economics.tsx",
+    "src/services/customer-ltv.service.ts"
   ],
   "finance": [
     "app/financial-center.tsx"
