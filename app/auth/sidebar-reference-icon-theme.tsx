@@ -4,7 +4,8 @@ import { useEffect } from "react";
 
 const GROUP_ICON_KEY: Record<string, string> = {
   "Робочий стіл": "dashboard",
-  "Робота з клієнтами": "communications",
+  "Комунікація": "communications",
+  "Планувальник": "planner",
   "Клієнти та авто": "clients-auto",
   "Сервіс": "service",
   "Запчастини": "parts",
@@ -92,7 +93,8 @@ export function SidebarReferenceIconTheme() {
       }
 
       .crmDockButton7[aria-label="Робочий стіл"] .crmDockGlyph7::after{background-image:url("/icons/sidebar/reference-dashboard.svg")}
-      .crmDockButton7[aria-label="Робота з клієнтами"] .crmDockGlyph7::after{background-image:url("/icons/sidebar/reference-communications.svg")}
+      .crmDockButton7[aria-label="Комунікація"] .crmDockGlyph7::after{background-image:url("/icons/sidebar/reference-communications.svg")}
+      .crmDockButton7[aria-label="Планувальник"] .crmDockGlyph7::after{background-image:url("/icons/sidebar/reference-planner.svg")}
       .crmDockButton7[aria-label="Клієнти та авто"] .crmDockGlyph7::after{background-image:url("/icons/sidebar/reference-clients-auto.svg")}
       .crmDockButton7[aria-label="Сервіс"] .crmDockGlyph7::after{background-image:url("/icons/sidebar/reference-service.svg")}
       .crmDockButton7[aria-label="Запчастини"] .crmDockGlyph7::after{background-image:url("/icons/sidebar/reference-parts.svg")}
@@ -126,6 +128,7 @@ export function SidebarReferenceIconTheme() {
       }
       .crmWideGroup7[data-reference-icon="dashboard"] .crmWideGroupIcon7::after{background-image:url("/icons/sidebar/reference-dashboard.svg")}
       .crmWideGroup7[data-reference-icon="communications"] .crmWideGroupIcon7::after{background-image:url("/icons/sidebar/reference-communications.svg")}
+      .crmWideGroup7[data-reference-icon="planner"] .crmWideGroupIcon7::after{background-image:url("/icons/sidebar/reference-planner.svg")}
       .crmWideGroup7[data-reference-icon="clients-auto"] .crmWideGroupIcon7::after{background-image:url("/icons/sidebar/reference-clients-auto.svg")}
       .crmWideGroup7[data-reference-icon="service"] .crmWideGroupIcon7::after{background-image:url("/icons/sidebar/reference-service.svg")}
       .crmWideGroup7[data-reference-icon="parts"] .crmWideGroupIcon7::after{background-image:url("/icons/sidebar/reference-parts.svg")}
