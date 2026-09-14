@@ -1,0 +1,257 @@
+/* Planner control system — one final geometry layer for the desktop toolbar.
+   This file is intentionally loaded after legacy planner layout overrides. */
+
+@media (min-width: 1100px) {
+  [class*="planner-v2_header__"] {
+    align-items: center !important;
+    min-height: 76px !important;
+    gap: 20px !important;
+    padding-block: 6px 10px !important;
+  }
+
+  [class*="planner-v2_headerActions__"] {
+    min-height: 40px !important;
+    align-items: center !important;
+    justify-content: flex-end !important;
+    gap: 10px !important;
+  }
+
+  [class*="planner-v2_headerActionsTop__"] {
+    height: 40px !important;
+    min-height: 40px !important;
+    align-items: center !important;
+    gap: 8px !important;
+  }
+
+  [class*="planner-v2_headerDateNav__"] {
+    height: 40px !important;
+    min-height: 40px !important;
+    min-width: 300px !important;
+    grid-template-columns: 40px minmax(210px, 1fr) 40px !important;
+    gap: 6px !important;
+    align-items: center !important;
+    margin: 0 !important;
+  }
+
+  [class*="planner-v2_dayRangeNav__"] button,
+  [class*="planner-v2_calendarControl__"],
+  [class*="planner-v2_primary__"],
+  [class*="planner-v2_secondary__"] {
+    height: 40px !important;
+    min-height: 40px !important;
+    box-sizing: border-box !important;
+    border-radius: 10px !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    line-height: 1 !important;
+    white-space: nowrap !important;
+  }
+
+  [class*="planner-v2_dayRangeNav__"] button {
+    width: 40px !important;
+    min-width: 40px !important;
+    padding: 0 !important;
+  }
+
+  [class*="planner-v2_calendarControl__"] {
+    min-width: 210px !important;
+    padding: 0 36px 0 14px !important;
+  }
+
+  [class*="planner-layout_viewToggle__"] {
+    height: 40px !important;
+    min-height: 40px !important;
+    padding: 3px !important;
+    border-radius: 10px !important;
+    box-sizing: border-box !important;
+    display: inline-flex !important;
+    align-items: center !important;
+  }
+
+  [class*="planner-layout_viewButton__"] {
+    height: 32px !important;
+    min-height: 32px !important;
+    padding-inline: 15px !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    white-space: nowrap !important;
+    line-height: 1 !important;
+  }
+
+  [class*="planner-v2_toolbar__"] {
+    display: grid !important;
+    grid-template-columns: 160px 160px 160px minmax(0, 1fr) !important;
+    column-gap: 10px !important;
+    row-gap: 8px !important;
+    align-items: end !important;
+    padding: 10px 12px !important;
+    margin-top: 10px !important;
+    min-height: 74px !important;
+    box-sizing: border-box !important;
+  }
+
+  [class*="planner-v2_toolbar__"] > label {
+    min-width: 0 !important;
+    display: grid !important;
+    grid-template-rows: 14px 40px !important;
+    gap: 5px !important;
+    align-items: end !important;
+  }
+
+  [class*="planner-v2_toolbar__"] > label > span {
+    min-height: 14px !important;
+    display: flex !important;
+    align-items: center !important;
+    margin: 0 !important;
+    line-height: 1 !important;
+    white-space: nowrap !important;
+  }
+
+  [class*="planner-v2_toolbar__"] select {
+    width: 100% !important;
+    min-width: 0 !important;
+    height: 40px !important;
+    min-height: 40px !important;
+    box-sizing: border-box !important;
+    border-radius: 9px !important;
+    padding: 0 32px 0 10px !important;
+    line-height: 1 !important;
+  }
+
+  [class*="planner-v2_toolbarEnd__"] {
+    grid-column: 4 !important;
+    min-width: 0 !important;
+    display: grid !important;
+    grid-template-columns: minmax(360px, 1fr) auto !important;
+    align-items: end !important;
+    gap: 12px !important;
+  }
+
+  [class*="planner-v2_searchBox__"] {
+    width: 100% !important;
+    min-width: 0 !important;
+    height: 40px !important;
+    min-height: 40px !important;
+    box-sizing: border-box !important;
+    grid-template-columns: 24px minmax(0, 1fr) 92px !important;
+    align-items: center !important;
+    padding-left: 8px !important;
+    border-radius: 9px !important;
+  }
+
+  [class*="planner-v2_searchBox__"] > span {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    line-height: 1 !important;
+  }
+
+  [class*="planner-v2_searchBox__"] input {
+    min-width: 0 !important;
+    width: 100% !important;
+    height: 38px !important;
+    padding: 0 8px 0 0 !important;
+    box-sizing: border-box !important;
+    line-height: 1.2 !important;
+  }
+
+  [class*="planner-v2_searchBox__"] button {
+    width: 88px !important;
+    min-width: 88px !important;
+    height: 32px !important;
+    min-height: 32px !important;
+    margin: 0 4px 0 0 !important;
+    padding: 0 12px !important;
+    box-sizing: border-box !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    border-radius: 7px !important;
+    line-height: 1 !important;
+    white-space: nowrap !important;
+    word-break: keep-all !important;
+    overflow: visible !important;
+    flex-shrink: 0 !important;
+  }
+
+  [class*="planner-v2_daySummary__"] {
+    min-width: 0 !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: flex-end !important;
+    gap: 5px !important;
+    flex-wrap: nowrap !important;
+    white-space: nowrap !important;
+  }
+
+  [class*="planner-v2_daySummary__"] > strong,
+  [class*="planner-v2_daySummary__"] > span,
+  [class*="planner-v2_daySummary__"] > b {
+    min-height: 28px !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    padding: 0 8px !important;
+    box-sizing: border-box !important;
+    border: 1px solid var(--line) !important;
+    border-radius: 999px !important;
+    background: var(--panel-2) !important;
+    font-size: 11px !important;
+    line-height: 1 !important;
+    font-weight: 700 !important;
+    white-space: nowrap !important;
+  }
+
+  [class*="planner-v2_daySummary__"] > strong {
+    color: var(--text) !important;
+    font-weight: 850 !important;
+  }
+
+  [class*="planner-v2_daySummary__"] > b {
+    color: var(--orange) !important;
+    border-color: color-mix(in srgb, var(--orange) 24%, var(--line)) !important;
+    background: color-mix(in srgb, var(--orange) 7%, var(--panel-2)) !important;
+  }
+}
+
+@media (min-width: 1100px) and (max-width: 1499px) {
+  [class*="planner-v2_toolbar__"] {
+    grid-template-columns: repeat(3, minmax(150px, 1fr)) !important;
+  }
+
+  [class*="planner-v2_toolbarEnd__"] {
+    grid-column: 1 / -1 !important;
+    grid-template-columns: minmax(360px, 1fr) auto !important;
+  }
+
+  [class*="planner-v2_daySummary__"] {
+    flex-wrap: wrap !important;
+    justify-content: flex-end !important;
+    max-width: 620px !important;
+  }
+}
+
+@media (min-width: 1100px) and (max-width: 1240px) {
+  [class*="planner-v2_toolbarEnd__"] {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  [class*="planner-v2_daySummary__"] {
+    justify-content: flex-start !important;
+    max-width: none !important;
+  }
+}
+
+@media (max-width: 1099px) {
+  [class*="planner-v2_searchBox__"] {
+    grid-template-columns: 24px minmax(0, 1fr) 92px !important;
+  }
+
+  [class*="planner-v2_searchBox__"] button {
+    min-width: 88px !important;
+    padding-inline: 12px !important;
+    white-space: nowrap !important;
+  }
+}
