@@ -3,25 +3,23 @@ import type { VehicleCardContract, VehicleStatusItem, VehicleStatusTone } from "
 export type VehicleTabKey = "diagnostics" | "proposal" | "history";
 export type VehicleTabStatus = Pick<VehicleStatusItem, "tone" | "label">;
 
-const ACTIVE_WORK_ORDER_STATUSES = new Set([
-  "PARTS_REVIEW",
-  "WAITING_APPROVAL",
-  "WAITING_PARTS",
-  "READY_FOR_REPAIR",
-  "IN_REPAIR",
-  "PAUSED",
-  "REWORK",
-  "WAITING_QC",
-]);
+const CRITICAL_SERVICE_STATUSES = new Set(["REWORK", "WARRANTY"]);
+const CRITICAL_CONCLUSION = /(критич|небезпеч|аварійн|термінов)/i;
 
-const NOT_STARTED: VehicleTabStatus = { tone: "danger", label: "Не розпочато" };
+const NOT_CREATED: VehicleTabStatus = { tone: "neutral", label: "Не створена" };
 
 export function getVehicleTabStatus(vehicle: VehicleCardContract, tab: VehicleTabKey): VehicleTabStatus {
-  if (tab === "diagnostics") return vehicle.statusSummary?.diagnostics || NOT_STARTED;
-  if (tab === "proposal") return vehicle.statusSummary?.proposal || { tone: "danger", label: "Не відправлена" };
-  if (!vehicle.workOrders.length) return { tone: "danger", label: "Немає історії" };
-  if (vehicle.workOrders.some((workOrder) => ACTIVE_WORK_ORDER_STATUSES.has(String(workOrder.status)))) return { tone: "warning", label: "В роботі" };
-  return { tone: "success", label: "Історія є" };
+  if (tab === "diagnostics") return vehicle.statusSummary?.diagnostics || NOT_CREATED;
+  if (tab === "proposal") return vehicle.statusSummary?.proposal || NOT_CREATED;
+
+  const hasHistory = vehicle.workOrders.length > 0 || vehicle.diagnosticRequests.length > 0;
+  if (!hasHistory) return { tone: "neutral", label: "Історія відсутня" };
+
+  const hasCriticalServiceState = vehicle.workOrders.some((workOrder) => CRITICAL_SERVICE_STATUSES.has(String(workOrder.status)));
+  const hasCriticalConclusion = vehicle.diagnosticRequests.some((request) => CRITICAL_CONCLUSION.test(request.technicalConclusion || ""));
+  if (hasCriticalServiceState || hasCriticalConclusion) return { tone: "danger", label: "Потребує уваги" };
+
+  return { tone: "success", label: "Актуальна" };
 }
 
 export function vehicleTabToneClass(tone: VehicleStatusTone, styles: Record<string, string>) {
