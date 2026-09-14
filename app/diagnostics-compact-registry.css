@@ -1,0 +1,247 @@
+[data-diagnostics-density-host="true"] {
+  flex: 0 0 auto;
+  margin-left: auto;
+}
+
+.diagnosticsDensityControl {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 34px;
+  padding-left: 8px;
+  color: var(--muted);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.diagnosticsDensityControl > span {
+  font-weight: 700;
+}
+
+.diagnosticsDensityControl button {
+  min-height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--panel);
+  color: var(--muted);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.diagnosticsDensityControl button:hover {
+  border-color: color-mix(in srgb, var(--orange) 42%, var(--line));
+  color: var(--text);
+}
+
+.diagnosticsDensityControl button.isActive {
+  border-color: var(--orange);
+  background: color-mix(in srgb, var(--orange) 8%, var(--panel));
+  color: var(--orange);
+}
+
+[data-diagnostics-header-host="true"] {
+  grid-column: 1 / -1;
+}
+
+.diagnosticsCompactHeader {
+  display: grid;
+  grid-template-columns: 120px minmax(220px, 1.3fr) minmax(140px, .9fr) minmax(140px, .9fr) minmax(190px, 1.15fr) 165px 96px;
+  gap: 10px;
+  align-items: center;
+  min-height: 34px;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--line);
+  background: color-mix(in srgb, var(--panel-2) 76%, var(--panel));
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+
+html[data-diagnostics-density="compact"] nav[aria-label="Фільтр за етапом"] {
+  align-items: center;
+}
+
+html[data-diagnostics-density="compact"] button[aria-label^="Відкрити діагностичну карту:"] {
+  display: grid !important;
+  grid-template-columns: 120px minmax(220px, 1.3fr) minmax(140px, .9fr) minmax(140px, .9fr) minmax(190px, 1.15fr) 165px 96px !important;
+  grid-template-rows: 30px 20px;
+  gap: 2px 10px !important;
+  align-items: center !important;
+  min-height: 60px;
+  padding: 5px 12px !important;
+  background: var(--panel) !important;
+  box-shadow: none !important;
+}
+
+html[data-diagnostics-density="compact"] button[aria-label^="Відкрити діагностичну карту:"]:hover {
+  background: color-mix(in srgb, var(--panel-2) 64%, var(--panel)) !important;
+}
+
+html[data-diagnostics-density="compact"] button[aria-label^="Відкрити діагностичну карту:"] > div:nth-child(1),
+html[data-diagnostics-density="compact"] button[aria-label^="Відкрити діагностичну карту:"] > div:nth-child(3),
+html[data-diagnostics-density="compact"] button[aria-label^="Відкрити діагностичну карту:"] > div:nth-child(4),
+html[data-diagnostics-density="compact"] button[aria-label^="Відкрити діагностичну карту:"] > div:nth-child(5),
+html[data-diagnostics-density="compact"] button[aria-label^="Відкрити діагностичну карту:"] > div:nth-child(6) {
+  grid-row: 1 / span 2;
+  align-self: center !important;
+  min-height: 0 !important;
+}
+
+html[data-diagnostics-density="compact"] button[aria-label^="Відкрити діагностичну карту:"] > div:nth-child(1) {
+  grid-column: 1;
+  padding-top: 0 !important;
+}
+
+html[data-diagnostics-density="compact"] button[aria-label^="Відкрити діагностичну карту:"] > div:nth-child(2) {
+  grid-column: 2;
+  grid-row: 1;
+  display: flex !important;
+  align-items: center !important;
+  align-content: center !important;
+  flex-wrap: wrap;
+  gap: 5px 7px !important;
+  min-height: 0 !important;
+}
+
+html[data-diagnostics-density="compact"] button[aria-label^="Відкрити діагностичну карту:"] > div:nth-child(2) > strong {
+  width: auto !important;
+  max-width: 100%;
+  font-size: 12px !important;
+  line-height: 16px !important;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+html[data-diagnostics-density="compact"] button[aria-label^="Відкрити діагностичну карту:"] > div:nth-child(2) > [data-vehicle-plate="true"] {
+  display: inline-flex !important;
+  margin: 0 !important;
+}
+
+html[data-diagnostics-density="compact"] button[aria-label^="Відкрити діагностичну карту:"] > div:nth-child(3) {
+  grid-column: 3;
+}
+
+html[data-diagnostics-density="compact"] button[aria-label^="Відкрити діагностичну карту:"] > div:nth-child(4) {
+  grid-column: 4;
+}
+
+html[data-diagnostics-density="compact"] button[aria-label^="Відкрити діагностичну карту:"] > div:nth-child(5) {
+  grid-column: 5;
+}
+
+html[data-diagnostics-density="compact"] button[aria-label^="Відкрити діагностичну карту:"] > div:nth-child(6) {
+  grid-column: 6;
+}
+
+html[data-diagnostics-density="compact"] button[aria-label^="Відкрити діагностичну карту:"] > div:nth-child(n+3):nth-child(-n+6) {
+  display: flex !important;
+  min-width: 0;
+  align-items: center;
+}
+
+html[data-diagnostics-density="compact"] button[aria-label^="Відкрити діагностичну карту:"] > div:nth-child(n+3):nth-child(-n+6) > span {
+  display: none !important;
+}
+
+html[data-diagnostics-density="compact"] button[aria-label^="Відкрити діагностичну карту:"] > div:nth-child(n+3):nth-child(-n+6) > small,
+html[data-diagnostics-density="compact"] button[aria-label^="Відкрити діагностичну карту:"] > div:nth-child(6) > time {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text);
+  font-size: 11px !important;
+  line-height: 15px !important;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+html[data-diagnostics-density="compact"] button[aria-label^="Відкрити діагностичну карту:"] > div:nth-child(5) > small {
+  font-variant-numeric: tabular-nums;
+}
+
+html[data-diagnostics-density="compact"] button[aria-label^="Відкрити діагностичну карту:"] > div:nth-child(7) {
+  display: contents !important;
+}
+
+html[data-diagnostics-density="compact"] button[aria-label^="Відкрити діагностичну карту:"] > div:nth-child(7) > span:first-child {
+  grid-column: 2;
+  grid-row: 2;
+  align-self: start;
+  justify-self: start;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  background: transparent !important;
+  color: #71a9f4 !important;
+  font-size: 11px !important;
+  line-height: 16px;
+  white-space: nowrap;
+}
+
+html[data-diagnostics-density="compact"] button[aria-label^="Відкрити діагностичну карту:"] > div:nth-child(7) > span:nth-child(2):not(:last-child) {
+  grid-column: 5;
+  grid-row: 2;
+  align-self: start;
+  justify-self: start;
+  margin: 0 !important;
+  padding: 1px 6px !important;
+  font-size: 11px !important;
+  line-height: 15px;
+}
+
+html[data-diagnostics-density="compact"] button[aria-label^="Відкрити діагностичну карту:"] > div:nth-child(7) > span:last-child {
+  grid-column: 7;
+  grid-row: 1 / span 2;
+  align-self: center;
+  justify-self: end;
+  margin: 0 !important;
+  color: var(--orange);
+  font-size: 11px !important;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+html[data-diagnostics-density="compact"] button[aria-label^="Відкрити діагностичну карту:"] .status {
+  padding: 3px 7px;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+html[data-diagnostics-density="compact"] section:has(> button[aria-label^="Відкрити діагностичну карту:"]) {
+  overflow-x: auto !important;
+}
+
+@media (max-width: 1240px) {
+  .diagnosticsCompactHeader,
+  html[data-diagnostics-density="compact"] button[aria-label^="Відкрити діагностичну карту:"] {
+    grid-template-columns: 110px minmax(200px, 1.2fr) 130px 135px minmax(175px, 1fr) 150px 88px !important;
+    gap: 2px 8px !important;
+  }
+}
+
+@media (max-width: 1080px) {
+  .diagnosticsCompactHeader,
+  html[data-diagnostics-density="compact"] button[aria-label^="Відкрити діагностичну карту:"] {
+    min-width: 980px;
+  }
+
+  [data-diagnostics-density-host="true"] {
+    margin-left: 0;
+  }
+}
+
+@media (max-width: 720px) {
+  .diagnosticsDensityControl {
+    padding-left: 0;
+  }
+
+  .diagnosticsDensityControl > span {
+    display: none;
+  }
+}
