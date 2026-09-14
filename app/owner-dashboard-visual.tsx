@@ -354,7 +354,7 @@ export function OwnerDashboardVisual({ analytics, period, onPeriodChange, loadin
         fetch("/api/payments", { cache: "no-store", credentials: "include" }),
         fetch("/api/finance/margin-approvals", { cache: "no-store", credentials: "include" }),
         fetch("/api/dashboard", { cache: "no-store", credentials: "include" }),
-        fetch(`/api/owner-dashboard/facts${factsQuery}`, { cache: "no-store", credentials: "include" }),
+        fetch(`/api/analytics/owner-dashboard-facts${factsQuery}`, { cache: "no-store", credentials: "include" }),
       ]);
       if (cancelled) return;
       try {
