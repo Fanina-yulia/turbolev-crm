@@ -74,18 +74,18 @@
 .locationRow > div strong { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .locationRow > div small { color: #64748b; margin-top: 2px; }
 .locationRow > span { min-width: 0; display: flex; flex-direction: column; }
-.locationRow > span small { color: #94a3b8; font-size: 10px; text-transform: uppercase; font-weight: 800; }
+.locationRow > span small { color: #94a3b8; font-size: 11px; text-transform: uppercase; font-weight: 800; }
 .locationRow > span b { margin-top: 2px; font-size: 12px; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .locationRow em { justify-self: end; font-style: normal; font-weight: 900; font-size: 12px; color: #475569; }
 .locationGap b { color: #c2410c; }.locationGood b { color: #15803d; }
 
 .foot { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; }
 .foot > div { display: flex; flex-direction: column; gap: 2px; padding: 9px 10px; border-radius: 10px; background: #f8fafc; color: #475569; }
-.foot span { font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: .04em; }
+.foot span { font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .04em; }
 .foot b { font-size: 11px; line-height: 1.35; }
 .dataWarning { background: #fff7ed !important; color: #9a3412 !important; }.dataOk { background: #f0fdf4 !important; color: #166534 !important; }
 .actions { display: flex; align-items: center; gap: 10px; margin-top: 10px; }
-.actions span { margin-left: auto; color: #64748b; font-size: 10px; text-align: right; }
+.actions span { margin-left: auto; color: #64748b; font-size: 11px; text-align: right; }
 
 @media (max-width: 900px) {
   .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
