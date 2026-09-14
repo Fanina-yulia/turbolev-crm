@@ -12,6 +12,11 @@ function closeAppointment() {
   navigateCrm("Планувальник", rest);
 }
 
+function isPlannerCloseButton(target: EventTarget | null) {
+  const button = target instanceof Element ? target.closest('button[aria-label="Закрити"]') : null;
+  return Boolean(button?.closest(PLANNER_DIALOG));
+}
+
 export function PlannerModalCloseBehavior() {
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -20,8 +25,19 @@ export function PlannerModalCloseBehavior() {
       closeAppointment();
     };
 
+    const onClick = (event: MouseEvent) => {
+      if (!isPlannerCloseButton(event.target)) return;
+      queueMicrotask(() => {
+        if (readCrmRoute().appointmentId) closeAppointment();
+      });
+    };
+
     window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
+    document.addEventListener("click", onClick);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      document.removeEventListener("click", onClick);
+    };
   }, []);
 
   return null;
