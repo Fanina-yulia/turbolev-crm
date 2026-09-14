@@ -21,12 +21,21 @@ expect(api, "tx.crmTask.createMany", "required-action task creation");
 expect(api, 'bucket: "ACTION"', "required-action queue metadata");
 expect(api, 'routeSection: "Комерційна пропозиція"', "commercial proposal task navigation");
 
+const mechanicTask = read("app/api/cabinet/mechanic/tasks/[lineId]/route.ts");
+expect(mechanicTask, '["START", "RESUME", "COMPLETE"].includes(action)', "hard-gated mechanic actions");
+expect(mechanicTask, "tx.operationalBlocker.findFirst", "technical-decision lookup");
+expect(mechanicTask, 'code: "TECHNICAL_DECISION"', "technical-decision code gate");
+expect(mechanicTask, 'status: { in: ["OPEN", "ACKNOWLEDGED"] }', "active blocker states");
+expect(mechanicTask, 'throw new Error("TECHNICAL_DECISION_PENDING")', "hard execution rejection");
+expect(mechanicTask, 'TECHNICAL_DECISION_PENDING: ["Ремонт заблоковано', "409 mechanic error mapping");
+
 const bridge = read("app/mechanic-additional-work-bridge.tsx");
 expect(bridge, "＋ Додати виявлене", "mechanic discovered-work action label");
 expect(bridge, "Додаткова діагностика", "mechanic additional diagnostic choice");
 expect(bridge, "Ускладнення під час ремонту", "mechanic complication choice");
 expect(bridge, "Ні, потрібне рішення / погодження", "blocking choice");
 expect(bridge, "kind, impact", "request augmentation");
+expect(bridge, "Механік не встановлює ціну і не запускає нову роботу без погодження", "always-visible approval policy");
 
 const summaryApi = read("app/api/planner/[id]/commercial-summary/route.ts");
 expect(summaryApi, "PERMISSIONS.PLANNER_READ", "planner permission gate");
@@ -50,11 +59,27 @@ expect(migration, "OPERATIONAL_BLOCKER_AUTO_CANCELLED", "blocker auto cancel aud
 expect(migration, 'UPDATE "CrmTask"', "required-action auto completion");
 expect(migration, '"status" = \'DONE\'', "required-action done state");
 
+const hardGateMigration = read("prisma/migrations/20260914090000_additional_work_hard_execution_gate/migration.sql");
+expect(hardGateMigration, "hard_stop_source_line_for_technical_decision", "automatic source-line stop");
+expect(hardGateMigration, "CUSTOMER_APPROVAL_REQUIRED", "approval-required stop reason");
+expect(hardGateMigration, "MECHANIC_WORK_AUTO_STOPPED_FOR_APPROVAL", "automatic stop audit");
+expect(hardGateMigration, "guard_work_order_line_technical_decision", "database execution invariant");
+expect(hardGateMigration, "TECHNICAL_DECISION_PENDING", "database rejection code");
+expect(hardGateMigration, "NEW.\"status\"::text IN ('IN_PROGRESS', 'COMPLETED')", "database start/complete guard");
+expect(hardGateMigration, "old_stop_at <> '' AND new_stop_at = ''", "database resume guard");
+
 const spec = read("docs/TZ_ADDITIONAL_WORK_EXECUTION_FLOW_V1.md");
 expect(spec, "Work Order є єдиним джерелом правди", "single source of truth");
 expect(spec, "DRAFT → APPROVED → IN_PROGRESS → COMPLETED", "canonical line lifecycle");
 expect(spec, "Механік не може самостійно обійти", "mechanic approval gate");
 expect(spec, "Погоджено", "approved amount requirement");
 expect(spec, "Очікує погодження", "pending amount requirement");
+
+const hardGateSpec = read("docs/TZ_ADDITIONAL_WORK_HARD_BLOCK_V2.md");
+expect(hardGateSpec, "реальним системним стопом", "hard-stop purpose");
+expect(hardGateSpec, "START", "start hard gate");
+expect(hardGateSpec, "RESUME", "resume hard gate");
+expect(hardGateSpec, "COMPLETE", "complete hard gate");
+expect(hardGateSpec, "DB trigger не дає обійти інваріант", "database invariant acceptance");
 
 console.log("additional-work-execution-flow-smoke: ok");
