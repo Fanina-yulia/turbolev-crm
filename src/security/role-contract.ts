@@ -73,6 +73,7 @@ export const LEGACY_ROLE_ALIASES: Readonly<Record<LegacyRoleCode, CanonicalRoleC
 
 export type RoleCabinetCode =
   | "OWNER"
+  | "EXECUTIVE"
   | "SERVICE_ADVISOR"
   | "PARTS"
   | "STATION_MANAGER"
@@ -82,7 +83,7 @@ export type RoleCabinetCode =
 
 export const ROLE_CABINET_BY_CODE: Readonly<Record<CanonicalRoleCode, RoleCabinetCode>> = {
   OWNER: "OWNER",
-  EXECUTIVE_DIRECTOR: "OWNER",
+  EXECUTIVE_DIRECTOR: "EXECUTIVE",
   STATION_MANAGER: "STATION_MANAGER",
   SERVICE_ADVISOR: "SERVICE_ADVISOR",
   MECHANIC: "MECHANIC",
@@ -121,6 +122,7 @@ export function resolveRoleCabinet(
     .filter((role): role is { code: CanonicalRoleCode; isPrimary?: boolean } => Boolean(role.code));
 
   if (normalized.some((role) => ROLE_CABINET_BY_CODE[role.code] === "OWNER")) return "OWNER";
+  if (normalized.some((role) => ROLE_CABINET_BY_CODE[role.code] === "EXECUTIVE")) return "EXECUTIVE";
 
   const primary = normalized.find((role) => role.isPrimary);
   if (primary) return ROLE_CABINET_BY_CODE[primary.code];

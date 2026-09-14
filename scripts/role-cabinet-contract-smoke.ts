@@ -24,6 +24,7 @@ assert.equal(normalizeRoleCode("unknown"), null);
 assert.equal(Object.keys(LEGACY_ROLE_ALIASES).length, 6);
 
 assert.equal(resolveRoleCabinet([{ code: "OWNER", isPrimary: true }, { code: "MECHANIC" }]), "OWNER");
+assert.equal(resolveRoleCabinet([{ code: "EXECUTIVE_DIRECTOR", isPrimary: true }]), "EXECUTIVE");
 assert.equal(resolveRoleCabinet([{ code: "SERVICE_MANAGER", isPrimary: true }]), "SERVICE_ADVISOR");
 assert.equal(resolveRoleCabinet([{ code: "PARTS_MANAGER", isPrimary: true }]), "PARTS");
 assert.equal(resolveRoleCabinet([{ code: "MECHANIC", isPrimary: true }]), "MECHANIC");
