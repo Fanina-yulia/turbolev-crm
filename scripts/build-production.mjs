@@ -86,3 +86,8 @@ if (process.env.VERCEL_ENV === "production") {
 
 run(["prisma", "generate"]);
 run(["next", "build"]);
+
+if (process.env.VERCEL_ENV === "production") {
+  console.log("[build] Production deployment: seeding idempotent canonical parts terminology after a successful application build.");
+  run(["tsx", "scripts/parts-knowledge-seed.ts"]);
+}
