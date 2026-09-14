@@ -78,7 +78,8 @@ export const CRM_NAV_GROUPS: readonly CrmNavGroup[] = [
   { label: "Сервіс", items: navItems("diagnostics", "parts", "work-orders") },
   { label: "Запчастини", items: navItems("procurement") },
   { label: "Фінанси", items: navItems("finance", "payments") },
-  { label: "Управління", items: navItems("analytics", "settings") },
+  { label: "Аналітика", items: navItems("analytics") },
+  { label: "Налаштування", items: navItems("settings") },
 ];
 
 export function isImplementedCrmSection(value: CrmSectionLabel): boolean {
