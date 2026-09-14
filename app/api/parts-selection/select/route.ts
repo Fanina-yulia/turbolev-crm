@@ -96,7 +96,7 @@ export async function POST(request: Request) {
 
     let knowledge: { feedbackId?: string; stagedChangeId?: string | null; staged?: boolean; recorded: boolean } = { recorded: false };
     try {
-      let knowledgeGenericArticleId = body?.genericArticleId?.trim() || result.line?.genericArticleId || null;
+      let knowledgeGenericArticleId = body?.genericArticleId?.trim() || null;
       if (!knowledgeGenericArticleId && body?.canonicalCode?.trim()) {
         const canonicalArticle = await getPrisma().genericArticle.findFirst({
           where: { code: body.canonicalCode.trim() },
