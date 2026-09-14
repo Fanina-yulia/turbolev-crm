@@ -11,6 +11,7 @@ import { SidebarReferenceIconTheme } from "./auth/sidebar-reference-icon-theme";
 import { SidebarFloatingIconsOverride } from "./auth/sidebar-floating-icons-override";
 import { SidebarMenuFinalPolish } from "./auth/sidebar-menu-final-polish";
 import { BinotelRecordingProvider } from "./binotel-recordings";
+import { PlannerAppointmentModalCloseGuard } from "./planner-appointment-modal-close-guard";
 
 type HomePageProps = {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
@@ -79,6 +80,7 @@ export default async function HomePage({ searchParams }: HomePageProps) {
       <SidebarReferenceIconTheme/>
       <SidebarFloatingIconsOverride/>
       <SidebarMenuFinalPolish/>
+      <PlannerAppointmentModalCloseGuard/>
       <BinotelRecordingProvider><SidebarRailV7/><CrmShell initialSection={section} initialSettingsTab={settingsTab} /></BinotelRecordingProvider>
     </CrmAccessProvider>
   </>;
