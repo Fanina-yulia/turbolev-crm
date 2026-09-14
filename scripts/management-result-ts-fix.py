@@ -38,3 +38,15 @@ replace_once(
     "      details: toPrismaJson(preliminary.details ?? {}),\n",
     "bonus json input",
 )
+
+for css_path in [
+    "app/management-result-panel.module.css",
+    "app/management-intelligence-panels.module.css",
+]:
+    css_file = Path(css_path)
+    css = css_file.read_text()
+    css = css.replace("font-size: 9px", "font-size: 11px")
+    css = css.replace("font-size:9px", "font-size:11px")
+    css = css.replace("font-size: 10px", "font-size: 11px")
+    css = css.replace("font-size:10px", "font-size:11px")
+    css_file.write_text(css)
