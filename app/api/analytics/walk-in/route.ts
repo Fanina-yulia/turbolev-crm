@@ -10,6 +10,7 @@ export const maxDuration = 30;
 const KYIV_TZ = "Europe/Kyiv";
 const PAYMENT_SOURCE = "WALK_IN_DIAGNOSTIC_PAYMENT";
 const REPAIR_AUDIT_ACTION = "WALK_IN_SENT_TO_REPAIR_FLOW";
+const WALK_IN_SOURCE = "WALK_IN";
 
 function round(value: number, digits = 1) {
   const scale = 10 ** digits;
@@ -82,12 +83,21 @@ export async function GET(request: NextRequest) {
   }
 
   const appointments = await prisma.serviceAppointment.findMany({
-    where: { source: "WALK_IN", plannedStartAt: { gte: from, lt: to }, NOT: { id: { startsWith: "demo_" } }, ...(effectiveLocationIds ? { locationId: { in: effectiveLocationIds } } : {}) },
+    where: { source: WALK_IN_SOURCE, plannedStartAt: { gte: from, lt: to }, NOT: { id: { startsWith: "demo_" } }, ...(effectiveLocationIds ? { locationId: { in: effectiveLocationIds } } : {}) },
     select: { id: true, status: true, locationId: true, customerName: true, vehicleLabel: true, plateNumber: true, comment: true, plannedStartAt: true, actualStartAt: true, actualEndAt: true },
     orderBy: { plannedStartAt: "asc" },
     take: 2000,
   });
-  const diagnosticIds = appointments.map((row) => diagnosticIdFromComment(row.comment)).filter((id): id is string => Boolean(id));
+
+  const visitLinks = appointments.length ? await prisma.diagnosticVisitLink.findMany({
+    where: { appointmentId: { in: appointments.map((row) => row.id) }, source: WALK_IN_SOURCE },
+    select: { appointmentId: true, diagnosticRequestId: true },
+  }) : [];
+  const canonicalByAppointment = new Map(visitLinks.map((row) => [row.appointmentId, row.diagnosticRequestId]));
+  const diagnosticIdFor = (row: typeof appointments[number]) => canonicalByAppointment.get(row.id) || diagnosticIdFromComment(row.comment);
+  const legacyFallbackAppointments = appointments.filter((row) => !canonicalByAppointment.has(row.id) && Boolean(diagnosticIdFromComment(row.comment))).length;
+  const diagnosticIds = [...new Set(appointments.map((row) => diagnosticIdFor(row)).filter((id): id is string => Boolean(id)))];
+
   const [payments, repairAudits] = await Promise.all([
     diagnosticIds.length ? prisma.cashTransaction.findMany({ where: { sourceEntity: PAYMENT_SOURCE, sourceEntityId: { in: diagnosticIds.map((id) => `${id}:payment`) }, status: "POSTED" }, select: { sourceEntityId: true, amount: true, currency: true, occurredAt: true } }) : Promise.resolve([]),
     diagnosticIds.length ? prisma.auditEvent.findMany({ where: { action: REPAIR_AUDIT_ACTION, entityType: "DiagnosticRequest", entityId: { in: diagnosticIds } }, select: { entityId: true }, distinct: ["entityId"] }) : Promise.resolve([]),
@@ -95,17 +105,36 @@ export async function GET(request: NextRequest) {
 
   const repairIds = new Set(repairAudits.flatMap((row) => row.entityId ? [row.entityId] : []));
   const paidIds = new Set(payments.flatMap((row) => row.sourceEntityId ? [row.sourceEntityId.replace(/:payment$/, "")] : []));
-  const diagnosticsReached = appointments.filter((row) => Boolean(row.actualStartAt) || Boolean(diagnosticIdFromComment(row.comment))).length;
+  const diagnosticsReached = appointments.filter((row) => Boolean(row.actualStartAt) || Boolean(diagnosticIdFor(row))).length;
   const completed = appointments.filter((row) => row.status === "COMPLETED" || Boolean(row.actualEndAt)).length;
   const sentToRepair = diagnosticIds.filter((id) => repairIds.has(id)).length;
   const diagnosticOnly = appointments.filter((row) => {
-    const id = diagnosticIdFromComment(row.comment);
+    const id = diagnosticIdFor(row);
     return (row.status === "COMPLETED" || Boolean(row.actualEndAt)) && (!id || !repairIds.has(id));
   }).length;
   const paid = diagnosticIds.filter((id) => paidIds.has(id)).length;
-  const awaitingPayment = appointments.filter((row) => { const id = diagnosticIdFromComment(row.comment); return row.status === "WAITING_PAYMENT" && (!id || !paidIds.has(id)); }).length;
-  const awaitingRoute = appointments.filter((row) => { const id = diagnosticIdFromComment(row.comment); return row.status === "WAITING_PAYMENT" && Boolean(id && paidIds.has(id)); }).length;
+
+  const awaitingPaymentRows = appointments.filter((row) => {
+    const id = diagnosticIdFor(row);
+    return row.status === "WAITING_PAYMENT" && (!id || !paidIds.has(id));
+  });
+  const awaitingRouteRows = appointments.filter((row) => {
+    const id = diagnosticIdFor(row);
+    return row.status === "WAITING_PAYMENT" && Boolean(id && paidIds.has(id));
+  });
+  const awaitingPayment = awaitingPaymentRows.length;
+  const awaitingRoute = awaitingRouteRows.length;
   const diagnosticRevenue = payments.reduce((sum, row) => sum + Number(row.amount), 0);
+
+  const actionRow = (row: typeof appointments[number]) => ({
+    appointmentId: row.id,
+    diagnosticId: diagnosticIdFor(row),
+    customerName: row.customerName,
+    vehicleLabel: row.vehicleLabel,
+    plateNumber: row.plateNumber,
+    plannedStartAt: row.plannedStartAt,
+    date: dayKey(row.plannedStartAt),
+  });
 
   const dailyMap = new Map<string, { visits: number; diagnostics: number; paid: number; sentToRepair: number; completed: number }>();
   const byDiagnostic = new Map<string, typeof appointments[number]>();
@@ -113,9 +142,9 @@ export async function GET(request: NextRequest) {
     const key = dayKey(appointment.plannedStartAt);
     const row = dailyMap.get(key) || { visits: 0, diagnostics: 0, paid: 0, sentToRepair: 0, completed: 0 };
     row.visits += 1;
-    if (appointment.actualStartAt || diagnosticIdFromComment(appointment.comment)) row.diagnostics += 1;
+    if (appointment.actualStartAt || diagnosticIdFor(appointment)) row.diagnostics += 1;
     if (appointment.status === "COMPLETED" || appointment.actualEndAt) row.completed += 1;
-    const id = diagnosticIdFromComment(appointment.comment);
+    const id = diagnosticIdFor(appointment);
     if (id) byDiagnostic.set(id, appointment);
     dailyMap.set(key, row);
   }
@@ -128,6 +157,12 @@ export async function GET(request: NextRequest) {
     financial: canFinancial,
     range: { from: dayKey(from), to: dayKey(new Date(to.getTime() - 1)), timezone: KYIV_TZ },
     scope: { analyticsScope, selectedLocationId, locationIds: effectiveLocationIds },
+    dataQuality: {
+      appointments: appointments.length,
+      canonicalVisitLinks: visitLinks.length,
+      legacyFallbackAppointments,
+      syntheticAppointmentsExcluded: true,
+    },
     walkIn: {
       visits: appointments.length,
       diagnosticsReached,
@@ -137,6 +172,7 @@ export async function GET(request: NextRequest) {
       completed,
       awaitingPayment,
       awaitingRoute,
+      actionRequired: awaitingPayment + awaitingRoute,
       visitToDiagnosticsPct: pct(diagnosticsReached, appointments.length),
       diagnosticToPaidPct: pct(paid, diagnosticsReached),
       diagnosticToRepairPct: pct(sentToRepair, diagnosticsReached),
@@ -144,6 +180,10 @@ export async function GET(request: NextRequest) {
       diagnosticRevenue: canFinancial ? round(diagnosticRevenue, 2) : null,
       averageDiagnosticCheck: canFinancial ? (payments.length ? round(diagnosticRevenue / payments.length, 2) : 0) : null,
       currency: canFinancial ? payments[0]?.currency || "UAH" : null,
+      actions: {
+        awaitingPayment: awaitingPaymentRows.map(actionRow),
+        awaitingRoute: awaitingRouteRows.map(actionRow),
+      },
       daily: [...dailyMap.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([date, row]) => ({ date, ...row })),
     },
   }, { headers: { "Cache-Control": "no-store" } });
