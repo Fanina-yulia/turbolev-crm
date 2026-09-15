@@ -1,0 +1,332 @@
+.compactViewport{
+  min-height:100dvh;
+  background:#0f141a;
+}
+
+@media(max-width:600px){
+  .compactViewport :global([data-mechanic-cabinet="true"]){
+    --mechanic-mobile-edge:12px;
+    --mechanic-mobile-gap:10px;
+  }
+
+  .compactViewport :global([data-mechanic-cabinet="true"] > div){
+    padding-bottom:calc(70px + env(safe-area-inset-bottom))!important;
+  }
+
+  .compactViewport :global([data-mechanic-cabinet="true"] header:has(button[aria-label="Сповіщення"])){
+    min-height:82px!important;
+    padding:calc(10px + env(safe-area-inset-top)) 14px 10px!important;
+    gap:10px!important;
+  }
+
+  .compactViewport :global([data-mechanic-cabinet="true"] header:has(button[aria-label="Сповіщення"]) img[data-crm-logo-slot="mechanic"]){
+    width:36px!important;
+    height:28px!important;
+  }
+
+  .compactViewport :global([data-mechanic-cabinet="true"] header:has(button[aria-label="Сповіщення"]) img[data-crm-logo-slot="mechanic"] + div){
+    font-size:20px!important;
+    line-height:1!important;
+  }
+
+  .compactViewport :global([data-mechanic-cabinet="true"] header:has(button[aria-label="Сповіщення"]) img[data-crm-logo-slot="mechanic"] + div b){
+    font-size:24px!important;
+  }
+
+  .compactViewport :global([data-mechanic-cabinet="true"] header:has(button[aria-label="Сповіщення"]) small){
+    margin-top:4px!important;
+    font-size:12px!important;
+    line-height:1.2!important;
+  }
+
+  .compactViewport :global([data-mechanic-cabinet="true"] header:has(button[aria-label="Сповіщення"]) button[aria-label="Сповіщення"]){
+    width:42px!important;
+    height:42px!important;
+    border-radius:13px!important;
+  }
+
+  .compactViewport :global([data-mechanic-cabinet="true"] header:has(button[aria-label="Назад"])){
+    min-height:58px!important;
+    padding:env(safe-area-inset-top) 10px 0!important;
+    grid-template-columns:42px minmax(0,1fr) 42px!important;
+  }
+
+  .compactViewport :global([data-mechanic-cabinet="true"] header:has(button[aria-label="Назад"]) button[aria-label="Назад"]){
+    width:38px!important;
+    height:38px!important;
+    border-radius:11px!important;
+    font-size:27px!important;
+  }
+
+  .compactViewport :global([data-mechanic-cabinet="true"] header:has(button[aria-label="Назад"]) strong){
+    font-size:16px!important;
+  }
+
+  .compactViewport :global([data-mechanic-cabinet="true"] main){
+    padding:10px var(--mechanic-mobile-edge) 16px!important;
+    gap:var(--mechanic-mobile-gap)!important;
+  }
+
+  .compactViewport :global([data-mechanic-cabinet="true"] main h1){
+    font-size:24px!important;
+    line-height:1.15!important;
+  }
+
+  .compactViewport :global([data-mechanic-cabinet="true"] main h2){
+    font-size:18px!important;
+    line-height:1.2!important;
+  }
+
+  .compactViewport :global([data-mechanic-cabinet="true"] main h3){
+    font-size:17px!important;
+    line-height:1.2!important;
+  }
+
+  .compactViewport :global([data-mechanic-cabinet="true"] header:has(button[aria-label="Сповіщення"]) + main > section:first-child > div:first-child){
+    margin-bottom:8px!important;
+  }
+
+  .compactViewport :global([data-mechanic-cabinet="true"] header:has(button[aria-label="Сповіщення"]) + main > section:first-child > div:first-child p){
+    margin-top:2px!important;
+    font-size:12px!important;
+  }
+
+  .compactViewport :global([data-mechanic-cabinet="true"] header:has(button[aria-label="Сповіщення"]) + main > section:first-child article){
+    padding:12px!important;
+    border-radius:14px!important;
+  }
+
+  .compactViewport :global([data-mechanic-cabinet="true"] header:has(button[aria-label="Сповіщення"]) + main > section:first-child article > div:first-child){
+    gap:8px!important;
+    align-items:center!important;
+  }
+
+  .compactViewport :global([data-mechanic-cabinet="true"] header:has(button[aria-label="Сповіщення"]) + main > section:first-child article > div:first-child > div){
+    min-width:0!important;
+  }
+
+  .compactViewport :global([data-mechanic-cabinet="true"] header:has(button[aria-label="Сповіщення"]) + main > section:first-child article > div:first-child > span){
+    flex:0 0 auto!important;
+    max-width:116px!important;
+    padding:5px 8px!important;
+    font-size:10px!important;
+  }
+
+  .compactViewport :global([data-mechanic-cabinet="true"] header:has(button[aria-label="Сповіщення"]) + main > section:first-child article > strong){
+    margin:9px 0 0!important;
+    padding-top:9px!important;
+    font-size:14px!important;
+    line-height:1.3!important;
+  }
+
+  .compactViewport :global([data-mechanic-cabinet="true"] header:has(button[aria-label="Сповіщення"]) + main > section:first-child article > div:nth-of-type(2)){
+    margin:8px 0!important;
+    gap:14px!important;
+    font-size:12px!important;
+  }
+
+  .compactViewport :global([data-mechanic-cabinet="true"] header:has(button[aria-label="Сповіщення"]) + main > section:first-child article > button){
+    min-height:44px!important;
+    margin-top:8px!important;
+    padding:9px 12px!important;
+    border-radius:12px!important;
+    font-size:15px!important;
+  }
+
+  .compactViewport :global([data-mechanic-cabinet="true"] header:has(button[aria-label="Сповіщення"]) + main > section + section){
+    padding:12px!important;
+    border-radius:14px!important;
+  }
+
+  .compactViewport :global([data-mechanic-cabinet="true"] header:has(button[aria-label="Сповіщення"]) + main > section + section > div:first-child){
+    margin-bottom:4px!important;
+  }
+
+  .compactViewport :global([data-mechanic-cabinet="true"] header:has(button[aria-label="Сповіщення"]) + main > section + section > div:first-child p){
+    margin-top:2px!important;
+    font-size:12px!important;
+  }
+
+  .compactViewport :global([data-mechanic-cabinet="true"] header:has(button[aria-label="Сповіщення"]) + main > section + section > div:nth-child(2) > button){
+    min-height:54px!important;
+    padding:8px 0!important;
+    gap:8px!important;
+  }
+
+  .compactViewport :global([data-mechanic-cabinet="true"] header:has(button[aria-label="Сповіщення"]) + main > section + section > div:nth-child(2) > button strong){
+    font-size:14px!important;
+    line-height:1.15!important;
+  }
+
+  .compactViewport :global([data-mechanic-cabinet="true"] header:has(button[aria-label="Сповіщення"]) + main > section + section > div:nth-child(2) > button small){
+    margin-top:2px!important;
+    font-size:11px!important;
+    line-height:1.2!important;
+  }
+
+  .compactViewport :global([data-mechanic-cabinet="true"] header:has(button[aria-label="Сповіщення"]) + main > section + section > div:nth-child(2) > button > span){
+    flex:0 0 auto!important;
+    max-width:112px!important;
+    padding:5px 7px!important;
+    font-size:10px!important;
+  }
+
+  .compactViewport :global([data-mechanic-cabinet="true"] header:has(button[aria-label="Сповіщення"]) + main .uaLicensePlate),
+  .compactViewport :global([data-mechanic-cabinet="true"] main:has([aria-label="Фільтр робіт"]) .uaLicensePlate){
+    --ua-plate-h:28px!important;
+    --ua-plate-blue-w:calc(var(--ua-plate-h) * .398)!important;
+    --ua-plate-number-size:18px!important;
+    --ua-plate-min-w:calc(var(--ua-plate-h) * 4.98)!important;
+  }
+
+  .compactViewport :global([data-mechanic-cabinet="true"] main:has([aria-label="Фільтр робіт"]) > div:first-child){
+    padding:0 1px 2px!important;
+  }
+
+  .compactViewport :global([data-mechanic-cabinet="true"] main:has([aria-label="Фільтр робіт"]) > div:first-child p){
+    margin-top:3px!important;
+    font-size:12px!important;
+    line-height:1.35!important;
+  }
+
+  .compactViewport :global([data-mechanic-cabinet="true"] [aria-label="Фільтр робіт"]){
+    display:flex!important;
+    grid-template-columns:none!important;
+    gap:6px!important;
+    overflow-x:auto!important;
+    overscroll-behavior-x:contain!important;
+    -webkit-overflow-scrolling:touch;
+    padding:1px 1px 3px!important;
+    scrollbar-width:none;
+  }
+
+  .compactViewport :global([data-mechanic-cabinet="true"] [aria-label="Фільтр робіт"]::-webkit-scrollbar){
+    display:none;
+  }
+
+  .compactViewport :global([data-mechanic-cabinet="true"] [aria-label="Фільтр робіт"] > button){
+    flex:0 0 auto!important;
+    min-width:max-content!important;
+    min-height:38px!important;
+    padding:7px 12px!important;
+    border-radius:999px!important;
+    font-size:12px!important;
+    white-space:nowrap!important;
+  }
+
+  .compactViewport :global([data-mechanic-cabinet="true"] [aria-label="Фільтр робіт"] + div){
+    gap:8px!important;
+  }
+
+  .compactViewport :global([data-mechanic-cabinet="true"] [aria-label="Фільтр робіт"] + div > button){
+    min-height:0!important;
+    padding:11px 12px!important;
+    border-radius:14px!important;
+  }
+
+  .compactViewport :global([data-mechanic-cabinet="true"] [aria-label="Фільтр робіт"] + div > button > div:first-child){
+    gap:8px!important;
+    min-width:0!important;
+  }
+
+  .compactViewport :global([data-mechanic-cabinet="true"] [aria-label="Фільтр робіт"] + div > button > div:first-child h3){
+    min-width:0!important;
+    overflow:hidden!important;
+    text-overflow:ellipsis!important;
+    white-space:nowrap!important;
+    font-size:16px!important;
+  }
+
+  .compactViewport :global([data-mechanic-cabinet="true"] [aria-label="Фільтр робіт"] + div > button > p){
+    margin:7px 0!important;
+    font-size:13px!important;
+    line-height:1.3!important;
+  }
+
+  .compactViewport :global([data-mechanic-cabinet="true"] [aria-label="Фільтр робіт"] + div > button > div:nth-of-type(2)){
+    margin:7px 0!important;
+    gap:12px!important;
+    font-size:11px!important;
+  }
+
+  .compactViewport :global([data-mechanic-cabinet="true"] [aria-label="Фільтр робіт"] + div > button > span){
+    max-width:124px!important;
+    padding:5px 8px!important;
+    font-size:10px!important;
+  }
+
+  .compactViewport :global(nav[aria-label="Навігація механіка"]){
+    min-height:calc(64px + env(safe-area-inset-bottom))!important;
+    padding:5px 6px max(5px,env(safe-area-inset-bottom))!important;
+  }
+
+  .compactViewport :global(nav[aria-label="Навігація механіка"] button){
+    min-height:48px!important;
+    padding:4px 2px!important;
+    border-radius:10px!important;
+  }
+
+  .compactViewport :global(nav[aria-label="Навігація механіка"] button span){
+    font-size:17px!important;
+  }
+
+  .compactViewport :global(nav[aria-label="Навігація механіка"] button b){
+    font-size:11px!important;
+    line-height:1.05!important;
+  }
+
+  .compactViewport :global(nav[aria-label="Навігація механіка"] button[aria-label="Сканувати"]){
+    width:58px!important;
+    height:58px!important;
+    min-height:58px!important;
+    border-radius:18px!important;
+  }
+}
+
+@media(max-width:390px){
+  .compactViewport :global([data-mechanic-cabinet="true"]){
+    --mechanic-mobile-edge:10px;
+    --mechanic-mobile-gap:8px;
+  }
+
+  .compactViewport :global([data-mechanic-cabinet="true"] header:has(button[aria-label="Сповіщення"])){
+    min-height:76px!important;
+    padding-left:12px!important;
+    padding-right:12px!important;
+  }
+
+  .compactViewport :global([data-mechanic-cabinet="true"] header:has(button[aria-label="Сповіщення"]) img[data-crm-logo-slot="mechanic"]){
+    width:32px!important;
+    height:25px!important;
+  }
+
+  .compactViewport :global([data-mechanic-cabinet="true"] header:has(button[aria-label="Сповіщення"]) img[data-crm-logo-slot="mechanic"] + div){
+    font-size:18px!important;
+  }
+
+  .compactViewport :global([data-mechanic-cabinet="true"] header:has(button[aria-label="Сповіщення"]) img[data-crm-logo-slot="mechanic"] + div b){
+    font-size:22px!important;
+  }
+
+  .compactViewport :global([data-mechanic-cabinet="true"] main h1){font-size:22px!important}
+  .compactViewport :global([data-mechanic-cabinet="true"] main h2){font-size:17px!important}
+  .compactViewport :global([data-mechanic-cabinet="true"] main h3){font-size:16px!important}
+
+  .compactViewport :global([data-mechanic-cabinet="true"] [aria-label="Фільтр робіт"] > button){
+    min-height:36px!important;
+    padding:6px 10px!important;
+    font-size:11px!important;
+  }
+
+  .compactViewport :global([data-mechanic-cabinet="true"] header:has(button[aria-label="Сповіщення"]) + main .uaLicensePlate),
+  .compactViewport :global([data-mechanic-cabinet="true"] main:has([aria-label="Фільтр робіт"]) .uaLicensePlate){
+    --ua-plate-h:26px!important;
+    --ua-plate-number-size:17px!important;
+  }
+}
+
+@media(prefers-reduced-motion:reduce){
+  .compactViewport :global(*){
+    scroll-behavior:auto!important;
+  }
+}
