@@ -2,6 +2,7 @@
 
 import dynamic from "next/dynamic";
 import { MechanicStandaloneCabinet } from "./mechanic-standalone-cabinet";
+import { MechanicCabinetPreferences } from "./mechanic-cabinet-preferences";
 import compactStyles from "./mechanic-mobile-compact.module.css";
 import polishStyles from "./mechanic-mobile-polish.module.css";
 import statusLayoutStyles from "./mechanic-mobile-status-layout.module.css";
@@ -17,16 +18,17 @@ const MechanicDiagnosticsArrivalBridge = dynamic(
 
 /**
  * The mechanic cabinet has one canonical notification surface:
- * MechanicStandaloneCabinet. Keep this wrapper limited to the legacy scanner
- * bridges so assignment notifications cannot be rendered a second time.
+ * MechanicStandaloneCabinet. The dedicated preferences layer replaces only the
+ * visible top-right trigger; the original notification action stays mounted
+ * and is available from the settings sheet.
  *
- * The mobile wrappers are presentation-only. They give the mechanic cabinet a
- * dedicated phone layout without changing workflow, task, diagnostics or
- * scanner behavior.
+ * The mobile wrappers and preferences are presentation-only. They do not alter
+ * workflow, task, diagnostics or scanner behavior.
  */
 export function MechanicLiveCabinet({ userName }: { userName?: string | null }) {
   return <div className={`${compactStyles.compactViewport} ${polishStyles.polishViewport} ${statusLayoutStyles.statusLayoutViewport}`}>
     <MechanicStandaloneCabinet userName={userName} />
+    <MechanicCabinetPreferences />
     <MechanicVehicleScanner />
     <MechanicDiagnosticsArrivalBridge />
   </div>;
