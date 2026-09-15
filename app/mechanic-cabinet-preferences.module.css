@@ -1,4 +1,5 @@
-:global([data-mechanic-settings-source="true"]){display:none!important}
+.preferencesActive{}
+.preferencesActive :global([data-mechanic-settings-source="true"]){display:none!important}
 
 .settingsTrigger{
   position:relative;
@@ -173,46 +174,43 @@
   .settingsTrigger{width:42px;height:42px;border-radius:13px}
   .settingsTrigger svg{width:22px;height:22px}
 
-  /* Font-size preferences override the mobile compact layer without changing layout logic. */
-  :global([data-mechanic-cabinet="true"][data-mechanic-font-scale="compact"][data-mechanic-font-scale]) main h1{font-size:21px!important}
-  :global([data-mechanic-cabinet="true"][data-mechanic-font-scale="standard"][data-mechanic-font-scale]) main h1{font-size:24px!important}
-  :global([data-mechanic-cabinet="true"][data-mechanic-font-scale="large"][data-mechanic-font-scale]) main h1{font-size:27px!important}
+  .preferencesActive :global([data-mechanic-cabinet="true"][data-mechanic-font-scale="compact"][data-mechanic-font-scale]) main h1{font-size:21px!important}
+  .preferencesActive :global([data-mechanic-cabinet="true"][data-mechanic-font-scale="standard"][data-mechanic-font-scale]) main h1{font-size:24px!important}
+  .preferencesActive :global([data-mechanic-cabinet="true"][data-mechanic-font-scale="large"][data-mechanic-font-scale]) main h1{font-size:27px!important}
 
-  :global([data-mechanic-cabinet="true"][data-mechanic-font-scale="compact"][data-mechanic-font-scale]) main h2{font-size:16px!important}
-  :global([data-mechanic-cabinet="true"][data-mechanic-font-scale="standard"][data-mechanic-font-scale]) main h2{font-size:18px!important}
-  :global([data-mechanic-cabinet="true"][data-mechanic-font-scale="large"][data-mechanic-font-scale]) main h2{font-size:21px!important}
+  .preferencesActive :global([data-mechanic-cabinet="true"][data-mechanic-font-scale="compact"][data-mechanic-font-scale]) main h2{font-size:16px!important}
+  .preferencesActive :global([data-mechanic-cabinet="true"][data-mechanic-font-scale="standard"][data-mechanic-font-scale]) main h2{font-size:18px!important}
+  .preferencesActive :global([data-mechanic-cabinet="true"][data-mechanic-font-scale="large"][data-mechanic-font-scale]) main h2{font-size:21px!important}
 
-  :global([data-mechanic-cabinet="true"][data-mechanic-font-scale="compact"][data-mechanic-font-scale]) main h3{font-size:14px!important}
-  :global([data-mechanic-cabinet="true"][data-mechanic-font-scale="standard"][data-mechanic-font-scale]) main h3{font-size:17px!important}
-  :global([data-mechanic-cabinet="true"][data-mechanic-font-scale="large"][data-mechanic-font-scale]) main h3{font-size:19px!important}
+  .preferencesActive :global([data-mechanic-cabinet="true"][data-mechanic-font-scale="compact"][data-mechanic-font-scale]) main h3{font-size:14px!important}
+  .preferencesActive :global([data-mechanic-cabinet="true"][data-mechanic-font-scale="standard"][data-mechanic-font-scale]) main h3{font-size:17px!important}
+  .preferencesActive :global([data-mechanic-cabinet="true"][data-mechanic-font-scale="large"][data-mechanic-font-scale]) main h3{font-size:19px!important}
 
-  :global([data-mechanic-cabinet="true"][data-mechanic-font-scale="compact"][data-mechanic-font-scale]) main :is(p,small,label){font-size:11px!important}
-  :global([data-mechanic-cabinet="true"][data-mechanic-font-scale="standard"][data-mechanic-font-scale]) main :is(p,small,label){font-size:12px!important}
-  :global([data-mechanic-cabinet="true"][data-mechanic-font-scale="large"][data-mechanic-font-scale]) main :is(p,small,label){font-size:14px!important}
+  .preferencesActive :global([data-mechanic-cabinet="true"][data-mechanic-font-scale="compact"][data-mechanic-font-scale]) main :is(p,small,label){font-size:11px!important}
+  .preferencesActive :global([data-mechanic-cabinet="true"][data-mechanic-font-scale="standard"][data-mechanic-font-scale]) main :is(p,small,label){font-size:12px!important}
+  .preferencesActive :global([data-mechanic-cabinet="true"][data-mechanic-font-scale="large"][data-mechanic-font-scale]) main :is(p,small,label){font-size:14px!important}
 
-  :global([data-mechanic-cabinet="true"][data-mechanic-font-scale="compact"][data-mechanic-font-scale]) main article>button{font-size:13px!important}
-  :global([data-mechanic-cabinet="true"][data-mechanic-font-scale="standard"][data-mechanic-font-scale]) main article>button{font-size:15px!important}
-  :global([data-mechanic-cabinet="true"][data-mechanic-font-scale="large"][data-mechanic-font-scale]) main article>button{font-size:17px!important}
+  .preferencesActive :global([data-mechanic-cabinet="true"][data-mechanic-font-scale="compact"][data-mechanic-font-scale]) main article>button{font-size:13px!important}
+  .preferencesActive :global([data-mechanic-cabinet="true"][data-mechanic-font-scale="standard"][data-mechanic-font-scale]) main article>button{font-size:15px!important}
+  .preferencesActive :global([data-mechanic-cabinet="true"][data-mechanic-font-scale="large"][data-mechanic-font-scale]) main article>button{font-size:17px!important}
 
-  :global([data-mechanic-cabinet="true"][data-mechanic-font-scale="large"][data-mechanic-font-scale]) [aria-label="Фільтр робіт"]>button{font-size:13px!important}
-  :global([data-mechanic-cabinet="true"][data-mechanic-font-scale="compact"][data-mechanic-font-scale]) [aria-label="Фільтр робіт"]>button{font-size:11px!important}
+  .preferencesActive :global([data-mechanic-cabinet="true"][data-mechanic-font-scale="large"][data-mechanic-font-scale]) [aria-label="Фільтр робіт"]>button{font-size:13px!important}
+  .preferencesActive :global([data-mechanic-cabinet="true"][data-mechanic-font-scale="compact"][data-mechanic-font-scale]) [aria-label="Фільтр робіт"]>button{font-size:11px!important}
 
-  /* Density settings use the same card grammar on Home and the full Works screen. */
-  :global([data-mechanic-cabinet="true"][data-mechanic-density="compact"][data-mechanic-density] header:has(button[aria-label="Сповіщення"]) + main > section + section > div:nth-child(2) > button),
-  :global([data-mechanic-cabinet="true"][data-mechanic-density="compact"][data-mechanic-density] main:has([aria-label="Фільтр робіт"]) [aria-label="Фільтр робіт"] + div > button){padding:6px 8px!important}
+  .preferencesActive :global([data-mechanic-cabinet="true"][data-mechanic-density="compact"][data-mechanic-density] header:has(button[aria-label="Сповіщення"]) + main > section + section > div:nth-child(2) > button),
+  .preferencesActive :global([data-mechanic-cabinet="true"][data-mechanic-density="compact"][data-mechanic-density] main:has([aria-label="Фільтр робіт"]) [aria-label="Фільтр робіт"] + div > button){padding:6px 8px!important}
 
-  :global([data-mechanic-cabinet="true"][data-mechanic-density="standard"][data-mechanic-density] header:has(button[aria-label="Сповіщення"]) + main > section + section > div:nth-child(2) > button),
-  :global([data-mechanic-cabinet="true"][data-mechanic-density="standard"][data-mechanic-density] main:has([aria-label="Фільтр робіт"]) [aria-label="Фільтр робіт"] + div > button){padding:8px 10px!important}
+  .preferencesActive :global([data-mechanic-cabinet="true"][data-mechanic-density="standard"][data-mechanic-density] header:has(button[aria-label="Сповіщення"]) + main > section + section > div:nth-child(2) > button),
+  .preferencesActive :global([data-mechanic-cabinet="true"][data-mechanic-density="standard"][data-mechanic-density] main:has([aria-label="Фільтр робіт"]) [aria-label="Фільтр робіт"] + div > button){padding:8px 10px!important}
 
-  :global([data-mechanic-cabinet="true"][data-mechanic-density="comfortable"][data-mechanic-density] header:has(button[aria-label="Сповіщення"]) + main > section + section > div:nth-child(2) > button),
-  :global([data-mechanic-cabinet="true"][data-mechanic-density="comfortable"][data-mechanic-density] main:has([aria-label="Фільтр робіт"]) [aria-label="Фільтр робіт"] + div > button){padding:12px 14px!important}
+  .preferencesActive :global([data-mechanic-cabinet="true"][data-mechanic-density="comfortable"][data-mechanic-density] header:has(button[aria-label="Сповіщення"]) + main > section + section > div:nth-child(2) > button),
+  .preferencesActive :global([data-mechanic-cabinet="true"][data-mechanic-density="comfortable"][data-mechanic-density] main:has([aria-label="Фільтр робіт"]) [aria-label="Фільтр робіт"] + div > button){padding:12px 14px!important}
 
-  :global([data-mechanic-cabinet="true"][data-mechanic-density="compact"][data-mechanic-density] [aria-label="Фільтр робіт"] + div){gap:6px!important}
-  :global([data-mechanic-cabinet="true"][data-mechanic-density="standard"][data-mechanic-density] [aria-label="Фільтр робіт"] + div){gap:8px!important}
-  :global([data-mechanic-cabinet="true"][data-mechanic-density="comfortable"][data-mechanic-density] [aria-label="Фільтр робіт"] + div){gap:12px!important}
+  .preferencesActive :global([data-mechanic-cabinet="true"][data-mechanic-density="compact"][data-mechanic-density] [aria-label="Фільтр робіт"] + div){gap:6px!important}
+  .preferencesActive :global([data-mechanic-cabinet="true"][data-mechanic-density="standard"][data-mechanic-density] [aria-label="Фільтр робіт"] + div){gap:8px!important}
+  .preferencesActive :global([data-mechanic-cabinet="true"][data-mechanic-density="comfortable"][data-mechanic-density] [aria-label="Фільтр робіт"] + div){gap:12px!important}
 
-  /* Accent follows the selected cabinet palette, including the hero glow. */
-  :global([data-mechanic-cabinet="true"] header:has(button[aria-label="Сповіщення"])){
+  .preferencesActive :global([data-mechanic-cabinet="true"] header:has(button[aria-label="Сповіщення"])){
     background:radial-gradient(circle at 88% 5%,color-mix(in srgb,var(--m-orange) 18%,transparent),transparent 34%),linear-gradient(145deg,var(--m-header-2),var(--m-header))!important;
   }
 }
