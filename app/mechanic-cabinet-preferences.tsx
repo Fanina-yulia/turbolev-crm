@@ -133,6 +133,11 @@ export function MechanicCabinetPreferences() {
   const accentEntries = useMemo(() => Object.entries(ACCENTS) as Array<[AccentPreference, { label: string; color: string }]>, []);
 
   useEffect(() => {
+    document.body.classList.add(styles.preferencesActive);
+    return () => document.body.classList.remove(styles.preferencesActive);
+  }, []);
+
+  useEffect(() => {
     const stored = parsePreferences(window.localStorage.getItem(STORAGE_KEY));
     setPreferences(stored);
   }, []);
