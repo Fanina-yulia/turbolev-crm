@@ -40,8 +40,11 @@
     white-space:nowrap!important;
   }
 
-  /* Home short list: same hierarchy as the full Works page.
+  /* Home short list: same hierarchy and spacing as the full Works page.
      Row 1 = vehicle / plate, row 2 = work summary / status. */
+  .statusLayoutViewport :global([data-mechanic-cabinet="true"] header:has(button[aria-label="Сповіщення"]) + main > section + section > div:nth-child(2)){
+    gap:8px!important;
+  }
   .statusLayoutViewport :global([data-mechanic-cabinet="true"] header:has(button[aria-label="Сповіщення"]) + main > section + section > div:nth-child(2) > button){
     display:grid!important;
     grid-template-columns:minmax(0,1fr) auto!important;
@@ -50,7 +53,8 @@
     row-gap:3px!important;
     align-items:start!important;
     min-height:56px!important;
-    padding:6px 0!important;
+    padding:8px 10px!important;
+    border-top:0!important;
   }
   .statusLayoutViewport :global([data-mechanic-cabinet="true"] header:has(button[aria-label="Сповіщення"]) + main > section + section > div:nth-child(2) > button > div){
     display:contents!important;
@@ -154,6 +158,7 @@
 @media(max-width:390px){
   .statusLayoutViewport :global([data-mechanic-cabinet="true"] header:has(button[aria-label="Сповіщення"]) + main > section + section > div:nth-child(2) > button){
     min-height:54px!important;
+    padding:7px 9px!important;
     column-gap:6px!important;
   }
   .statusLayoutViewport :global([data-mechanic-cabinet="true"] main:has([aria-label="Фільтр робіт"]) [aria-label="Фільтр робіт"] + div > button){
