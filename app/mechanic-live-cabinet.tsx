@@ -4,6 +4,7 @@ import dynamic from "next/dynamic";
 import { MechanicStandaloneCabinet } from "./mechanic-standalone-cabinet";
 import compactStyles from "./mechanic-mobile-compact.module.css";
 import polishStyles from "./mechanic-mobile-polish.module.css";
+import statusLayoutStyles from "./mechanic-mobile-status-layout.module.css";
 
 const MechanicVehicleScanner = dynamic(
   () => import("./mechanic-vehicle-scanner").then((module) => module.MechanicVehicleScanner),
@@ -19,12 +20,12 @@ const MechanicDiagnosticsArrivalBridge = dynamic(
  * MechanicStandaloneCabinet. Keep this wrapper limited to the legacy scanner
  * bridges so assignment notifications cannot be rendered a second time.
  *
- * The compactViewport/polishViewport wrappers are presentation-only. They give
- * the mechanic cabinet a dedicated mobile-first density layer without changing
- * workflow, task, diagnostics or scanner behavior.
+ * The mobile wrappers are presentation-only. They give the mechanic cabinet a
+ * dedicated phone layout without changing workflow, task, diagnostics or
+ * scanner behavior.
  */
 export function MechanicLiveCabinet({ userName }: { userName?: string | null }) {
-  return <div className={`${compactStyles.compactViewport} ${polishStyles.polishViewport}`}>
+  return <div className={`${compactStyles.compactViewport} ${polishStyles.polishViewport} ${statusLayoutStyles.statusLayoutViewport}`}>
     <MechanicStandaloneCabinet userName={userName} />
     <MechanicVehicleScanner />
     <MechanicDiagnosticsArrivalBridge />
