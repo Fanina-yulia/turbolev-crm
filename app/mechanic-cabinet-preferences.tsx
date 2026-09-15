@@ -18,6 +18,7 @@ type MechanicCabinetPreferences = {
 
 const STORAGE_KEY = "turbolev:mechanic-ui-preferences-v1";
 const LEGACY_THEME_KEY = "turbolev:mechanic-theme";
+const PREFERENCES_EVENT = "turbolev:mechanic-ui-preferences";
 
 const DEFAULT_PREFERENCES: MechanicCabinetPreferences = {
   theme: "system",
@@ -94,6 +95,10 @@ function parsePreferences(value: string | null): MechanicCabinetPreferences {
   }
 }
 
+function getCabinetRoot() {
+  return document.querySelector<HTMLElement>('[data-mechanic-cabinet="true"]');
+}
+
 function applyPreferences(root: HTMLElement, preferences: MechanicCabinetPreferences) {
   const systemDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
   const dark = preferences.theme === "dark" || (preferences.theme === "system" && systemDark);
@@ -101,6 +106,7 @@ function applyPreferences(root: HTMLElement, preferences: MechanicCabinetPrefere
   const accent = ACCENTS[preferences.accent].color;
   const density = DENSITY_VARS[preferences.density];
 
+  root.dataset.themeChoice = preferences.theme;
   root.dataset.mechanicPrefTheme = preferences.theme;
   root.dataset.mechanicFontScale = preferences.font;
   root.dataset.mechanicDensity = preferences.density;
@@ -116,6 +122,14 @@ function applyPreferences(root: HTMLElement, preferences: MechanicCabinetPrefere
   root.style.setProperty("--mechanic-mobile-edge", density.edge, "important");
   root.style.setProperty("--mechanic-mobile-gap", density.gap, "important");
   root.style.background = dark ? "#070A0E" : "#E9EDF2";
+}
+
+function applyAndPersistPreferences(preferences: MechanicCabinetPreferences) {
+  const root = getCabinetRoot();
+  if (root) applyPreferences(root, preferences);
+  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(preferences));
+  window.localStorage.setItem(LEGACY_THEME_KEY, preferences.theme);
+  window.dispatchEvent(new CustomEvent(PREFERENCES_EVENT, { detail: preferences }));
 }
 
 function GearIcon() {
@@ -140,23 +154,37 @@ export function MechanicCabinetPreferences() {
   useEffect(() => {
     const stored = parsePreferences(window.localStorage.getItem(STORAGE_KEY));
     setPreferences(stored);
+    applyAndPersistPreferences(stored);
   }, []);
 
   useEffect(() => {
     let notificationObserver: MutationObserver | null = null;
+    let rootObserver: MutationObserver | null = null;
 
     const bind = () => {
-      const root = document.querySelector<HTMLElement>('[data-mechanic-cabinet="true"]');
+      const root = getCabinetRoot();
       const button = root?.querySelector<HTMLButtonElement>('button[aria-label="Сповіщення"]') ?? null;
       if (!root || !button) return;
+
+      const saved = parsePreferences(window.localStorage.getItem(STORAGE_KEY));
+      applyPreferences(root, saved);
+
       button.dataset.mechanicSettingsSource = "true";
       setSourceButton(button);
       setHeader(button.closest("header"));
+
       const updateCount = () => setNotificationCount(Number(button.querySelector("em")?.textContent || 0) || 0);
       updateCount();
       notificationObserver?.disconnect();
       notificationObserver = new MutationObserver(updateCount);
       notificationObserver.observe(button, { childList: true, subtree: true, characterData: true });
+
+      rootObserver?.disconnect();
+      rootObserver = new MutationObserver(() => {
+        const current = parsePreferences(window.localStorage.getItem(STORAGE_KEY));
+        if (root.dataset.themeChoice !== current.theme) applyPreferences(root, current);
+      });
+      rootObserver.observe(root, { attributes: true, attributeFilter: ["data-theme-choice"] });
     };
 
     bind();
@@ -165,19 +193,17 @@ export function MechanicCabinetPreferences() {
     return () => {
       observer.disconnect();
       notificationObserver?.disconnect();
+      rootObserver?.disconnect();
     };
   }, []);
 
   useEffect(() => {
-    const root = document.querySelector<HTMLElement>('[data-mechanic-cabinet="true"]');
-    if (!root) return;
-    applyPreferences(root, preferences);
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(preferences));
-    window.localStorage.setItem(LEGACY_THEME_KEY, preferences.theme);
-
     if (preferences.theme !== "system") return;
     const media = window.matchMedia("(prefers-color-scheme: dark)");
-    const onChange = () => applyPreferences(root, preferences);
+    const onChange = () => {
+      const root = getCabinetRoot();
+      if (root) applyPreferences(root, preferences);
+    };
     media.addEventListener("change", onChange);
     return () => media.removeEventListener("change", onChange);
   }, [preferences]);
@@ -194,12 +220,17 @@ export function MechanicCabinetPreferences() {
     };
   }, [open]);
 
+  function commit(next: MechanicCabinetPreferences) {
+    applyAndPersistPreferences(next);
+    setPreferences(next);
+  }
+
   function update<K extends keyof MechanicCabinetPreferences>(key: K, value: MechanicCabinetPreferences[K]) {
-    setPreferences((current) => ({ ...current, [key]: value }));
+    commit({ ...preferences, [key]: value });
   }
 
   function reset() {
-    setPreferences(DEFAULT_PREFERENCES);
+    commit(DEFAULT_PREFERENCES);
   }
 
   function openNotifications() {
