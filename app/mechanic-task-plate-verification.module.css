@@ -40,8 +40,11 @@
   min-height:52px;
   border:1px solid var(--m-border,#dfe6eb);
   border-radius:13px;
-  background:var(--m-surface-2,#f7f9fb);
-  color:var(--m-text,#111923);
+  background:#f7f9fb;
+  color:#111923;
+  -webkit-text-fill-color:#111923;
+  caret-color:#111923;
+  opacity:1;
   padding:12px 14px;
   font:inherit;
   font-size:17px;
@@ -50,7 +53,7 @@
   outline:none;
 }
 .field input:focus{border-color:var(--m-orange,#ff6500);box-shadow:0 0 0 3px color-mix(in srgb,var(--m-orange,#ff6500) 18%,transparent)}
-.field input::placeholder{color:var(--m-muted,#718096);font-weight:500;letter-spacing:.02em}
+.field input::placeholder{color:#718096;-webkit-text-fill-color:#718096;opacity:1;font-weight:500;letter-spacing:.02em}
 .upload{
   display:flex;
   align-items:center;
