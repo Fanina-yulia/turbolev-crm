@@ -70,15 +70,19 @@ function syncActionVisibility(root: HTMLElement) {
   const startButtonVisible = hasButton(section, "Почати роботу");
   const workStarted = !startButtonVisible && (STARTED_STATUSES.has(status) || hasStartedControls(section));
   const hidden = !workStarted;
+  const display = hidden ? "none" : "";
+  const ariaHidden = hidden ? "true" : "false";
+  const startedValue = workStarted ? "true" : "false";
 
-  actionList.hidden = hidden;
-  actionList.style.display = hidden ? "none" : "";
-  actionList.setAttribute("aria-hidden", hidden ? "true" : "false");
-  actionList.dataset.mechanicWorkStarted = workStarted ? "true" : "false";
+  if (actionList.hidden !== hidden) actionList.hidden = hidden;
+  if (actionList.style.display !== display) actionList.style.display = display;
+  if (actionList.getAttribute("aria-hidden") !== ariaHidden) actionList.setAttribute("aria-hidden", ariaHidden);
+  if (actionList.dataset.mechanicWorkStarted !== startedValue) actionList.dataset.mechanicWorkStarted = startedValue;
 
   for (const button of actionList.querySelectorAll<HTMLButtonElement>("button")) {
-    button.tabIndex = hidden ? -1 : 0;
-    button.disabled = hidden;
+    const nextTabIndex = hidden ? -1 : 0;
+    if (button.tabIndex !== nextTabIndex) button.tabIndex = nextTabIndex;
+    if (button.disabled !== hidden) button.disabled = hidden;
   }
 }
 
