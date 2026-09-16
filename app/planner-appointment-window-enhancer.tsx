@@ -80,7 +80,7 @@ function stringOrNull(value: unknown) { return typeof value === "string" && valu
 function numericOrNull(value: unknown) { const n = Number(value); return value != null && value !== "" && Number.isFinite(n) ? n : null; }
 function money(value: number | null | undefined) { return value == null ? "—" : new Intl.NumberFormat("uk-UA",{style:"currency",currency:"UAH",maximumFractionDigits:0}).format(value); }
 function paymentLabel(status: FinanceState["status"]) { return status === "PAID" ? "Оплачено" : status === "PARTIAL" ? "Частково оплачено" : status === "OVERDUE" ? "Прострочено" : status === "UNPAID" ? "Очікує оплату" : "Не сформовано"; }
-function methodLabel(method: FinanceState["lastPayment"] extends infer T ? T extends {method: infer M} ? M : never : never) { return method === "CASH" ? "готівка" : method === "TERMINAL" ? "термінал" : method === "ONLINE" ? "онлайн" : method === "OTHER" ? "інший спосіб" : ""; }
+function methodLabel(method: "CASH" | "TERMINAL" | "ONLINE" | "OTHER" | null) { return method === "CASH" ? "готівка" : method === "TERMINAL" ? "термінал" : method === "ONLINE" ? "онлайн" : method === "OTHER" ? "інший спосіб" : ""; }
 
 function parseSnapshot(value: unknown, appointmentId: string): Omit<AppointmentSnapshot,"finance"> | null {
   if (!isRecord(value) || !Array.isArray(value.appointments)) return null;
@@ -169,7 +169,7 @@ async function resolveSnapshot(appointmentId:string,signal:AbortSignal):Promise<
   const now=Date.now();const params=new URLSearchParams({from:new Date(now-86_400_000).toISOString(),to:new Date(now+86_400_000).toISOString(),appointmentId});
   const [plannerResponse,financeResponse]=await Promise.all([
     fetch(`/api/planner?${params}`,{cache:"no-store",credentials:"include",signal}),
-    fetch(`/api/visit-financial-state?appointmentId=${encodeURIComponent(appointmentId)}`,{cache:"no-store",credentials:"include",signal}),
+    fetch(`/api/vehicles/visit-financial-state?appointmentId=${encodeURIComponent(appointmentId)}`,{cache:"no-store",credentials:"include",signal}),
   ]);
   const plannerPayload:unknown=await plannerResponse.json().catch(()=>null);const financePayload:unknown=await financeResponse.json().catch(()=>null);
   if(!plannerResponse.ok)return null;let base=parseSnapshot(plannerPayload,appointmentId);if(!base)return null;
