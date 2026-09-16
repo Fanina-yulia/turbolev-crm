@@ -1,6 +1,6 @@
 import { getPrisma } from "@/src/lib/prisma";
 
-export type VisitPaymentStatus = "NOT_FORMED" | "UNPAID" | "PARTIAL" | "PAID" | "OVERDUE" | "CANCELLED";
+export type VisitPaymentStatus = "NOT_FORMED" | "UNPAID" | "PREPAID" | "PARTIAL" | "PAID" | "OVERDUE" | "CANCELLED";
 export type VisitFinanceSource = "WORK_ORDER" | "WALK_IN_DIAGNOSTIC" | "ESTIMATE" | "NONE";
 export type VisitPaymentMethod = "CASH" | "TERMINAL" | "ONLINE" | "OTHER" | null;
 
@@ -13,6 +13,7 @@ export type VisitFinancialState = {
   appointmentStatus: string;
   operationalLabel: string;
   source: VisitFinanceSource;
+  /** true only when the total charge comes from a factual FinancialObligation. */
   actual: boolean;
   status: VisitPaymentStatus;
   amount: number | null;
@@ -63,12 +64,13 @@ function paymentMethod(metadata: unknown, accountType?: string | null): VisitPay
   return accountType ? "OTHER" : null;
 }
 
-function deriveStatus(amount: number | null, paid: number, overdue: boolean): VisitPaymentStatus {
+function deriveStatus(amount: number | null, paid: number, overdue: boolean, hasActualCharge: boolean): VisitPaymentStatus {
   const normalizedAmount = amount == null ? null : Math.max(0, amount);
   const normalizedPaid = Math.max(0, paid);
+  if (!hasActualCharge && normalizedPaid > 0) return "PREPAID";
   const outstanding = normalizedAmount == null ? null : Math.max(0, normalizedAmount - normalizedPaid);
   if (overdue && outstanding != null && outstanding > 0) return "OVERDUE";
-  if (normalizedAmount == null || normalizedAmount <= 0) return normalizedPaid > 0 ? "PAID" : "NOT_FORMED";
+  if (normalizedAmount == null || normalizedAmount <= 0) return normalizedPaid > 0 ? "PREPAID" : "NOT_FORMED";
   if (normalizedPaid <= 0) return "UNPAID";
   if (normalizedPaid + 0.005 < normalizedAmount) return "PARTIAL";
   return "PAID";
@@ -219,11 +221,11 @@ export async function getVisitFinancialState(input: ResolveInput): Promise<Visit
     actual = true;
     amount = obligationAmount;
     paid = obligationPaid ?? postedPaid;
-  } else if (payments.length && diagnosticId) {
-    source = "WALK_IN_DIAGNOSTIC";
-    actual = true;
+  } else if (payments.length) {
+    source = appointment.workOrderId ? "WORK_ORDER" : diagnosticId ? "WALK_IN_DIAGNOSTIC" : "NONE";
+    actual = false;
     paid = postedPaid;
-    amount = postedPaid;
+    amount = estimatedAmount && estimatedAmount > 0 ? estimatedAmount : null;
   } else if (estimatedAmount != null && estimatedAmount > 0) {
     source = "ESTIMATE";
     amount = estimatedAmount;
@@ -231,8 +233,10 @@ export async function getVisitFinancialState(input: ResolveInput): Promise<Visit
   }
 
   const overdue = obligations.some((row) => row.status === "OVERDUE");
-  const status = deriveStatus(amount, paid, overdue);
-  const outstanding = amount == null ? null : Math.max(0, amount - paid);
+  const status = deriveStatus(amount, paid, overdue, obligations.length > 0);
+  // Until a receivable exists, a prepayment is factual but a debt is not. Do not
+  // manufacture an outstanding balance from an estimate.
+  const outstanding = obligations.length > 0 && amount != null ? Math.max(0, amount - paid) : status === "UNPAID" && amount != null ? amount : null;
   const last = payments[0] || null;
   const diagnostic = await diagnosticSummary(diagnosticId);
 
