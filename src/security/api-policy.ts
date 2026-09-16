@@ -134,6 +134,9 @@ const RULES: Rule[] = [
     match: (path) => prefix("/api/client-card")(path) || prefix("/api/clients")(path) || path === "/api/clients-vehicles" || prefix("/api/vehicles")(path) || prefix("/api/vehicle-images")(path),
     resolve: (method) => readWrite(method, PERMISSIONS.CLIENTS_READ, PERMISSIONS.CLIENTS_WRITE, "TEAM", "Client and vehicle intelligence/read models, including protected vehicle render proxies."),
   },
+  { match: exact("/api/parts-selection/line"), resolve: (method) => method.toUpperCase() === "GET"
+    ? internal(PERMISSIONS.PARTS_READ, "LOCATION", "Selected-part cart facts are read only inside the Diagnostic Card location scope.", true)
+    : internal(PERMISSIONS.PARTS_WRITE, "LOCATION", "Manual corrections to selected-part commercial facts are strict, location-scoped and audited.", true) },
   { match: exact("/api/parts-selection/select"), resolve: () => internal(PERMISSIONS.PARTS_WRITE, "LOCATION", "Selecting a supplier offer from a Diagnostic Card persists commercial part data and is a strict location-scoped parts write.", true) },
   { match: prefix("/api/vehicle-issues"), resolve: () => internal(PERMISSIONS.DIAGNOSTICS_WRITE, "LOCATION", "Manual VehicleIssue lifecycle changes are strict diagnostic writes and the handler enforces source-diagnostic location scope.", true) },
   { match: prefix("/api/parts-requests"), resolve: (method) => readWrite(method, PERMISSIONS.PROCUREMENT_READ, PERMISSIONS.PROCUREMENT_WRITE, "LOCATION", "Parts request lifecycle.") },
