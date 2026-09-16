@@ -3,12 +3,28 @@
 import { useEffect } from "react";
 import { navigateCrm, readCrmRoute } from "./crm-route";
 
+type FinancialSnapshot = {
+  amount: string | number | null;
+  amountKind: "ESTIMATED" | "FINAL";
+  approved: boolean;
+  approvalState: "NOT_CALCULATED" | "ESTIMATED" | "APPROVED" | "REJECTED";
+  rejected: boolean;
+  paid: string | number;
+  outstanding: string | number | null;
+  paymentStatus: "NOT_FORMED" | "UNPAID" | "PARTIAL" | "PAID" | "OVERDUE";
+  displayStatus: string;
+  displayTone: "neutral" | "warning" | "success" | "danger";
+  additionalPending: string | number | null;
+  pendingTotal: string | number | null;
+};
+
 type AppointmentSnapshot = {
   id: string;
   clientId: string | null;
   phone: string | null;
   estimatedAmount: string | number | null;
   purpose: "DIAGNOSTICS" | "REPAIR" | null;
+  finance: FinancialSnapshot | null;
 };
 
 type JsonRecord = Record<string, unknown>;
@@ -73,16 +89,23 @@ const COMPACT_CSS = `
 }
 [data-compact-appointment="true"] [data-planner-estimate] {
   margin-top: 7px;
-  padding: 8px 10px;
+  padding: 9px 10px;
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
+  flex-direction: column;
+  gap: 7px;
   border: 1px solid color-mix(in srgb, var(--orange) 35%, var(--line));
   border-radius: 8px;
   background: color-mix(in srgb, var(--orange) 6%, var(--panel));
 }
-[data-compact-appointment="true"] [data-planner-estimate] small {
+[data-compact-appointment="true"] [data-planner-finance-main],
+[data-compact-appointment="true"] [data-planner-finance-row] {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+[data-compact-appointment="true"] [data-planner-finance-main] small,
+[data-compact-appointment="true"] [data-planner-finance-row] small {
   margin: 0 !important;
   color: var(--muted);
   font-size: 11px;
@@ -90,10 +113,48 @@ const COMPACT_CSS = `
   letter-spacing: .06em;
   text-transform: uppercase;
 }
-[data-compact-appointment="true"] [data-planner-estimate] strong {
+[data-compact-appointment="true"] [data-planner-finance-main] strong {
   color: var(--orange);
   font-size: 15px;
   white-space: nowrap;
+}
+[data-compact-appointment="true"] [data-planner-finance-row] strong {
+  color: var(--text);
+  font-size: 13px;
+  white-space: nowrap;
+}
+[data-compact-appointment="true"] [data-planner-finance-row="paid"] strong {
+  color: var(--green);
+}
+[data-compact-appointment="true"] [data-planner-finance-row="balance"] strong,
+[data-compact-appointment="true"] [data-planner-finance-row="additional"] strong {
+  color: var(--orange);
+}
+[data-compact-appointment="true"] [data-planner-finance-note] {
+  display: block;
+  margin: 0 !important;
+  color: var(--muted);
+  font-size: 11px;
+}
+[data-compact-appointment="true"] [data-planner-status-tone="neutral"] {
+  color: var(--muted) !important;
+  border-color: var(--line) !important;
+  background: color-mix(in srgb, var(--muted) 8%, var(--panel)) !important;
+}
+[data-compact-appointment="true"] [data-planner-status-tone="warning"] {
+  color: var(--orange) !important;
+  border-color: color-mix(in srgb, var(--orange) 45%, var(--line)) !important;
+  background: color-mix(in srgb, var(--orange) 8%, var(--panel)) !important;
+}
+[data-compact-appointment="true"] [data-planner-status-tone="success"] {
+  color: var(--green) !important;
+  border-color: color-mix(in srgb, var(--green) 45%, var(--line)) !important;
+  background: color-mix(in srgb, var(--green) 8%, var(--panel)) !important;
+}
+[data-compact-appointment="true"] [data-planner-status-tone="danger"] {
+  color: var(--red) !important;
+  border-color: color-mix(in srgb, var(--red) 45%, var(--line)) !important;
+  background: color-mix(in srgb, var(--red) 8%, var(--panel)) !important;
 }
 [data-compact-appointment="true"] [data-planner-hidden="true"],
 [data-compact-appointment="true"] [class*="detailsReadonly"],
@@ -124,6 +185,47 @@ function stringOrNull(value: unknown) {
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
+function moneyOrNull(value: unknown) {
+  if (value == null || value === "") return null;
+  if (typeof value !== "number" && typeof value !== "string") return null;
+  return Number.isFinite(Number(value)) ? value : null;
+}
+
+function parseFinancialSnapshot(value: unknown): FinancialSnapshot | null {
+  if (!isRecord(value)) return null;
+  const amount = moneyOrNull(value.amount);
+  const paid = moneyOrNull(value.paid) ?? 0;
+  const outstanding = moneyOrNull(value.outstanding);
+  const additionalPending = moneyOrNull(value.additionalPending);
+  const pendingTotal = moneyOrNull(value.pendingTotal);
+  const amountKind = value.amountKind === "FINAL" ? "FINAL" : value.amountKind === "ESTIMATED" ? "ESTIMATED" : null;
+  const approvalState = ["NOT_CALCULATED", "ESTIMATED", "APPROVED", "REJECTED"].includes(String(value.approvalState))
+    ? value.approvalState as FinancialSnapshot["approvalState"]
+    : null;
+  const paymentStatus = ["NOT_FORMED", "UNPAID", "PARTIAL", "PAID", "OVERDUE"].includes(String(value.paymentStatus))
+    ? value.paymentStatus as FinancialSnapshot["paymentStatus"]
+    : null;
+  const displayTone = ["neutral", "warning", "success", "danger"].includes(String(value.displayTone))
+    ? value.displayTone as FinancialSnapshot["displayTone"]
+    : null;
+  const displayStatus = stringOrNull(value.displayStatus);
+  if (!amountKind || !approvalState || !paymentStatus || !displayTone || !displayStatus) return null;
+  return {
+    amount,
+    amountKind,
+    approved: value.approved === true,
+    approvalState,
+    rejected: value.rejected === true,
+    paid,
+    outstanding,
+    paymentStatus,
+    displayStatus,
+    displayTone,
+    additionalPending,
+    pendingTotal,
+  };
+}
+
 function parseSnapshot(value: unknown, appointmentId: string): AppointmentSnapshot | null {
   if (!isRecord(value) || !Array.isArray(value.appointments)) return null;
   const row = value.appointments.find((item) => isRecord(item) && item.id === appointmentId);
@@ -136,6 +238,7 @@ function parseSnapshot(value: unknown, appointmentId: string): AppointmentSnapsh
     phone: stringOrNull(row.phone),
     estimatedAmount,
     purpose,
+    finance: null,
   };
 }
 
@@ -144,7 +247,11 @@ function parseClientId(value: unknown) {
   return stringOrNull(value.client.id);
 }
 
-function formatAmount(value: AppointmentSnapshot["estimatedAmount"]) {
+function parseFinancePayload(value: unknown) {
+  return isRecord(value) && value.status === "OK" ? parseFinancialSnapshot(value.summary) : null;
+}
+
+function formatAmount(value: string | number | null | undefined) {
   const numeric = value == null || value === "" ? Number.NaN : Number(value);
   return Number.isFinite(numeric)
     ? new Intl.NumberFormat("uk-UA", { style: "currency", currency: "UAH", maximumFractionDigits: 0 }).format(numeric)
@@ -178,30 +285,70 @@ function hideNoise(modal: HTMLElement) {
   }
 }
 
-function renderEstimate(modal: HTMLElement, snapshot: AppointmentSnapshot | null) {
+function financeRow(labelText: string, valueText: string, kind: "prepayment" | "balance" | "paid" | "additional") {
+  const row = document.createElement("div");
+  row.dataset.plannerFinanceRow = kind;
+  const label = document.createElement("small");
+  label.textContent = labelText;
+  const value = document.createElement("strong");
+  value.textContent = valueText;
+  row.append(label, value);
+  return row;
+}
+
+function renderFinancialSummary(modal: HTMLElement, snapshot: AppointmentSnapshot | null) {
   const workSection = findSection(modal, ["Діагностика", "Роботи"]);
   if (!workSection) return;
   let estimate = workSection.querySelector("[data-planner-estimate]") as HTMLElement | null;
   if (!estimate) {
     estimate = document.createElement("div");
     estimate.dataset.plannerEstimate = "true";
-    const label = document.createElement("small");
-    label.dataset.plannerEstimateLabel = "true";
-    const value = document.createElement("strong");
-    value.dataset.plannerEstimateValue = "true";
-    estimate.append(label, value);
     const title = workSection.querySelector("[class*='detailsSectionTitle']");
     title?.insertAdjacentElement("afterend", estimate);
     if (!title) workSection.prepend(estimate);
   }
-  const heading = textOf(workSection.querySelector("h3"));
-  const isRepair = snapshot?.purpose === "REPAIR" || heading === "Роботи";
-  const label = estimate.querySelector("[data-planner-estimate-label]");
-  const value = estimate.querySelector("[data-planner-estimate-value]");
-  const nextLabel = isRepair ? "Орієнтовна сума робіт" : "Орієнтовна вартість діагностики";
-  const nextValue = formatAmount(snapshot?.estimatedAmount ?? null);
-  if (label && label.textContent !== nextLabel) label.textContent = nextLabel;
-  if (value && value.textContent !== nextValue) value.textContent = nextValue;
+
+  estimate.replaceChildren();
+  const finance = snapshot?.finance ?? null;
+  const amountValue = finance?.amount ?? snapshot?.estimatedAmount ?? null;
+  const main = document.createElement("div");
+  main.dataset.plannerFinanceMain = "true";
+  const label = document.createElement("small");
+  label.dataset.plannerEstimateLabel = "true";
+  label.textContent = finance?.approved ? "Вартість" : "Орієнтовна вартість";
+  const value = document.createElement("strong");
+  value.dataset.plannerEstimateValue = "true";
+  value.textContent = formatAmount(amountValue);
+  main.append(label, value);
+  estimate.append(main);
+
+  if (finance?.additionalPending != null && Number(finance.additionalPending) > 0) {
+    estimate.append(financeRow("Додатково до погодження", formatAmount(finance.additionalPending), "additional"));
+  }
+
+  const paid = Number(finance?.paid ?? 0);
+  const outstanding = finance?.outstanding == null ? null : Number(finance.outstanding);
+  if (paid > 0 && outstanding != null && outstanding > 0) {
+    estimate.append(financeRow("Передплата", formatAmount(paid), "prepayment"));
+    estimate.append(financeRow("Залишок", formatAmount(outstanding), "balance"));
+  } else if (paid > 0 && (outstanding == null || outstanding <= 0)) {
+    estimate.append(financeRow("Оплачено", formatAmount(paid), "paid"));
+  }
+
+  if (finance && finance.approvalState !== "APPROVED" && finance.amount != null) {
+    const note = document.createElement("small");
+    note.dataset.plannerFinanceNote = "true";
+    note.textContent = finance.approvalState === "REJECTED" ? "Погодження відхилено" : "Сума залишається орієнтовною до погодження клієнтом або адміністратором.";
+    estimate.append(note);
+  }
+}
+
+function renderHeaderStatus(modal: HTMLElement, finance: FinancialSnapshot | null) {
+  if (!finance) return;
+  const status = modal.querySelector("[class*='detailsStatusGroup'] em") as HTMLElement | null;
+  if (!status) return;
+  status.textContent = finance.displayStatus;
+  status.dataset.plannerStatusTone = finance.displayTone;
 }
 
 function applyClientLink(modal: HTMLElement, clientId: string | null) {
@@ -229,11 +376,19 @@ async function resolveSnapshot(appointmentId: string, signal: AbortSignal) {
     to: new Date(now + 86_400_000).toISOString(),
     appointmentId,
   });
-  const response = await fetch(`/api/planner?${params.toString()}`, { cache: "no-store", credentials: "include", signal });
-  const payload: unknown = await response.json().catch(() => null);
+  const [response, financeResponse] = await Promise.all([
+    fetch(`/api/planner?${params.toString()}`, { cache: "no-store", credentials: "include", signal }),
+    fetch(`/api/planner/${encodeURIComponent(appointmentId)}/financial-summary`, { cache: "no-store", credentials: "include", signal }),
+  ]);
+  const [payload, financePayload]: [unknown, unknown] = await Promise.all([
+    response.json().catch(() => null),
+    financeResponse.json().catch(() => null),
+  ]);
   if (!response.ok) return null;
-  const snapshot = parseSnapshot(payload, appointmentId);
-  if (!snapshot || snapshot.clientId || !snapshot.phone) return snapshot;
+  const base = parseSnapshot(payload, appointmentId);
+  if (!base) return null;
+  const snapshot = { ...base, finance: financeResponse.ok ? parseFinancePayload(financePayload) : null };
+  if (snapshot.clientId || !snapshot.phone) return snapshot;
 
   const clientResponse = await fetch(`/api/client-card?phone=${encodeURIComponent(snapshot.phone)}`, { cache: "no-store", credentials: "include", signal });
   const clientPayload: unknown = await clientResponse.json().catch(() => null);
@@ -251,7 +406,8 @@ export function PlannerAppointmentWindowEnhancer() {
     const decorate = (modal: HTMLElement, snapshot: AppointmentSnapshot | null) => {
       modal.dataset.compactAppointment = "true";
       hideNoise(modal);
-      renderEstimate(modal, snapshot);
+      renderFinancialSummary(modal, snapshot);
+      renderHeaderStatus(modal, snapshot?.finance ?? null);
       applyClientLink(modal, snapshot?.clientId ?? null);
     };
 
