@@ -23,10 +23,19 @@ const STYLE = `
   padding: 9px 11px;
   border: 1px solid var(--m-border, #d8dde4);
   border-radius: 10px;
-  background: var(--m-card, #fff);
-  color: inherit;
+  background: var(--m-surface-2, #f7f9fb);
+  color: var(--m-text, #111923);
+  -webkit-text-fill-color: var(--m-text, #111923);
+  caret-color: var(--m-text, #111923);
+  opacity: 1;
+  color-scheme: light dark;
   font: inherit;
   font-size: 13px;
+}
+[data-mechanic-additional-classifier="true"] select option {
+  background: var(--m-surface, #fff);
+  color: var(--m-text, #111923);
+  -webkit-text-fill-color: var(--m-text, #111923);
 }
 [data-mechanic-additional-policy="true"] {
   margin: 0;
@@ -96,11 +105,12 @@ function decorateMechanicAdditionalWork() {
   if (!cabinet) return;
 
   for (const button of Array.from(cabinet.querySelectorAll("button"))) {
-    if (textOf(button).includes("Додаткові роботи")) button.textContent = "＋ Додати виявлене";
+    const label = textOf(button);
+    if (label.includes("Додаткові роботи") || label.includes("Додати виявлене")) button.textContent = "＋ Додаткова робота";
   }
 
   for (const strong of Array.from(cabinet.querySelectorAll("header strong"))) {
-    if (textOf(strong) === "Додаткова робота") strong.textContent = "Додати виявлене";
+    if (["Додаткова робота", "Додати виявлене"].includes(textOf(strong))) strong.textContent = "Додаткова робота";
   }
 
   const descriptionLabel = Array.from(cabinet.querySelectorAll("label")).find((label) => textOf(label).includes("Що потрібно додатково виконати?"));
