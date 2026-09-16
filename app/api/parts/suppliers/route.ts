@@ -2,9 +2,10 @@ import { NextResponse } from "next/server";
 import { PERMISSIONS } from "@/src/security/permissions";
 import { authorizeScopedLocation } from "@/src/security/scoped-location-access";
 import { enrichOffersWithSellPrice } from "@/src/services/suppliers/order.service";
-import { listSupplierStatuses, searchConfiguredSuppliers } from "@/src/services/suppliers/registry";
 import { resolvePartFitment } from "@/src/services/parts-fitment.service";
 import { normalizePartNeed } from "@/src/services/part-normalization.service";
+import { mergeOeNumbers, resolveCuratedOeEvidence } from "@/src/services/parts-oe-evidence.service";
+import { searchConfiguredSuppliersOeFirst } from "@/src/services/strict-parts-search.service";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -23,7 +24,7 @@ export async function GET(request: Request) {
   const subPosition = searchParams.get("subPosition")?.trim() || null;
   const position = searchParams.get("position")?.trim() || null;
   const genericArticleId = searchParams.get("genericArticleId")?.trim() || null;
-  const oeNumbers = [...new Set((searchParams.get("oeNumbers") || "")
+  const requestedOeNumbers = [...new Set((searchParams.get("oeNumbers") || "")
     .split(",")
     .map((value) => value.trim())
     .filter((value) => value.length >= 2)
@@ -36,20 +37,17 @@ export async function GET(request: Request) {
     return NextResponse.json({ status: "INVALID_QUERY", message: "Введіть артикул або назву деталі." }, { status: 400 });
   }
 
-  const fitment = await resolvePartFitment({
+  // Normalize first so axis/position are part of fitment, not merely UI text.
+  const normalization = await normalizePartNeed({
     query: q,
     partName,
     canonicalCode,
-    axis,
+    genericArticleId,
     position,
+    axis,
     side,
     subPosition,
-    genericArticleId,
-    vehicleId,
-    vin,
-    plate,
   });
-  const normalization = await normalizePartNeed({ query: q, partName, canonicalCode, genericArticleId, position, axis, side, subPosition });
   const resolvedGenericArticleId = genericArticleId || normalization.genericArticle?.id || null;
   const resolvedCanonicalCode = canonicalCode || normalization.genericArticle?.code || normalization.canonicalCode || null;
   const resolvedPartName = normalization.genericArticle?.name || normalization.canonicalName || partName;
@@ -57,6 +55,34 @@ export async function GET(request: Request) {
   const resolvedSide = side || normalization.side || null;
   const resolvedSubPosition = subPosition || normalization.subPosition || null;
   const resolvedPosition = position || normalization.position || null;
+
+  const fitment = await resolvePartFitment({
+    query: q,
+    partName: resolvedPartName,
+    canonicalCode: resolvedCanonicalCode,
+    axis: resolvedAxis,
+    position: resolvedPosition || resolvedAxis,
+    side: resolvedSide,
+    subPosition: resolvedSubPosition,
+    genericArticleId: resolvedGenericArticleId,
+    vehicleId,
+    vin,
+    plate,
+  });
+
+  const curatedOe = resolveCuratedOeEvidence({
+    vehicle: fitment.vehicle,
+    canonicalCode: resolvedCanonicalCode,
+    partName: resolvedPartName,
+    axis: resolvedAxis,
+    position: resolvedPosition,
+  });
+  const effectiveOeNumbers = mergeOeNumbers(
+    fitment.oeNumbers,
+    requestedOeNumbers,
+    curatedOe?.oeNumbers,
+  );
+
   const fitmentPayload = {
     status: fitment.status,
     confirmed: fitment.confirmed,
@@ -69,33 +95,36 @@ export async function GET(request: Request) {
     genericArticle: fitment.genericArticle,
     normalization,
   };
-  const [result, suppliers] = await Promise.all([
-    searchConfiguredSuppliers(q, 20, {
-      vehicleId,
-      vin,
-      plate,
-      fitmentStatus: fitment.status,
-      fitmentConfidence: fitment.confidence,
-      fitmentExact: fitment.exact,
-      fitmentSource: fitment.catalog?.source || null,
-      fitmentReason: fitment.reason,
-      providerVehicle: fitment.providerVehicle,
-      fitmentOffers: fitment.matches.flatMap((match) => match.offer ? [match.offer] : []),
-      partName: resolvedPartName,
-      canonicalCode: resolvedCanonicalCode,
-      axis: resolvedAxis,
-      side: resolvedSide,
-      subPosition: resolvedSubPosition,
-      position: resolvedPosition,
-      genericArticleId: resolvedGenericArticleId,
-      catalogArticles: fitment.catalogArticles,
-      analogArticles: fitment.analogArticles,
-      oeNumbers: [...new Set([...fitment.oeNumbers, ...oeNumbers])],
-      normalizedQuery: normalization.normalizedQuery,
-      analogReferences: fitment.matches.map((match) => ({ brand: match.brand, article: match.article })).slice(0, 8),
-    }),
-    listSupplierStatuses(),
-  ]);
+
+  const result = await searchConfiguredSuppliersOeFirst(q, 20, {
+    vehicleId,
+    vin,
+    plate,
+    fitmentStatus: fitment.status,
+    fitmentConfidence: fitment.confidence,
+    fitmentExact: fitment.exact,
+    fitmentSource: fitment.catalog?.source || curatedOe?.source || null,
+    fitmentReason: fitment.reason,
+    providerVehicle: fitment.providerVehicle,
+    fitmentOffers: fitment.matches.flatMap((match) => match.offer ? [match.offer] : []),
+    partName: resolvedPartName,
+    canonicalCode: resolvedCanonicalCode,
+    axis: resolvedAxis,
+    requestedAxis: resolvedAxis,
+    side: resolvedSide,
+    subPosition: resolvedSubPosition,
+    position: resolvedPosition,
+    genericArticleId: resolvedGenericArticleId,
+    catalogArticles: fitment.catalogArticles,
+    analogArticles: fitment.analogArticles,
+    oeNumbers: effectiveOeNumbers,
+    curatedOeNumbers: curatedOe?.oeNumbers || [],
+    normalizedQuery: normalization.normalizedQuery,
+    analogReferences: fitment.matches.map((match) => ({ brand: match.brand, article: match.article })).slice(0, 8),
+    vehicleBrand: fitment.vehicle?.brand || null,
+    vehicleModel: fitment.vehicle?.model || null,
+    vehicleYear: fitment.vehicle?.year || null,
+  });
   const offers = await enrichOffersWithSellPrice(result.offers);
   const supplierStatuses = result.supplierStatuses;
   const configuredCount = result.configuredSuppliers.length;
@@ -104,15 +133,27 @@ export async function GET(request: Request) {
   return NextResponse.json({
     status: "OK",
     query: q,
-    context: { vehicleId, vin, plate, partName, canonicalCode, axis, side, subPosition, position },
+    context: {
+      vehicleId,
+      vin,
+      plate,
+      partName: resolvedPartName,
+      canonicalCode: resolvedCanonicalCode,
+      genericArticleId: resolvedGenericArticleId,
+      axis: resolvedAxis,
+      side: resolvedSide,
+      subPosition: resolvedSubPosition,
+      position: resolvedPosition,
+    },
     fitment: fitmentPayload,
     catalogMatches: fitment.matches,
-    oeNumbers: fitment.oeNumbers,
+    oeNumbers: effectiveOeNumbers,
     catalogArticles: fitment.catalogArticles,
     analogArticles: fitment.analogArticles,
+    oeResolution: curatedOe,
     ...result,
     offers,
-    suppliers,
+    suppliers: supplierStatuses,
     supplierStatuses,
     supplierSummary: {
       added: supplierStatuses.length,
@@ -125,16 +166,17 @@ export async function GET(request: Request) {
     pricing: {
       basis: "SUPPLIER_DEFAULT_MARKUP",
       defaultMarkupPercent: 40,
-      message: "Ціна продажу розраховується від закупівельної ціни за правилом постачальника; базове правило Turbo LEV — 40%. Ручний override фіксується в аудиті під час створення supplier order draft.",
+      message: "Ціна продажу розраховується від закупівельної ціни за правилом постачальника; нульова закупівельна ціна вважається відсутньою. Ручний override фіксується в аудиті.",
     },
     supplierSearchBlocked: result.blocked,
     supplierSearchBlockReason: result.blockReason,
     supplierSearchMode: result.searchMode,
     policy: {
+      algorithm: "OE_FIRST_V2",
       priceType: "PURCHASE_PRICE",
       fitmentConfirmed: fitment.confirmed,
       supplierSearchAllowed: !result.blocked,
-      message: fitment.reason,
+      message: curatedOe?.reason || fitment.reason,
     },
   }, { headers: { "Cache-Control": "no-store" } });
 }
