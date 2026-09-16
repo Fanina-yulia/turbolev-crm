@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { parsePlannerBoardPayload } from "@/src/lib/contracts/planner-payload.parsers";
+import { derivePlannerFinancialPresentation } from "@/src/services/planner-financial-summary.service";
 
 const start = "2026-08-20T12:00:00.000Z";
 const end = "2026-08-20T13:00:00.000Z";
@@ -92,10 +93,51 @@ assert.equal(parsePlannerBoardPayload({
   appointments: [appointment],
 }), null);
 
+const notCalculated = derivePlannerFinancialPresentation({
+  amount: null,
+  approved: false,
+  paid: 0,
+  appointmentStatus: "WAITING_PAYMENT",
+});
+assert.equal(notCalculated.displayStatus, "Очікує розрахунку");
+assert.equal(notCalculated.approvalState, "NOT_CALCULATED");
+
+const estimated = derivePlannerFinancialPresentation({
+  amount: 3000,
+  approved: false,
+  paid: 0,
+  appointmentStatus: "BOOKED",
+});
+assert.equal(estimated.displayStatus, "Очікує погодження");
+assert.equal(estimated.approvalState, "ESTIMATED");
+
+const prepaid = derivePlannerFinancialPresentation({
+  amount: 3000,
+  approved: true,
+  paid: 1000,
+  appointmentStatus: "IN_REPAIR",
+});
+assert.equal(prepaid.displayStatus, "Частково оплачено");
+assert.equal(prepaid.outstanding, 2000);
+
+const fullyPaid = derivePlannerFinancialPresentation({
+  amount: 3000,
+  approved: true,
+  paid: 3000,
+  appointmentStatus: "COMPLETED",
+});
+assert.equal(fullyPaid.displayStatus, "Оплачено");
+assert.equal(fullyPaid.outstanding, 0);
+
 const compactWindowSource = readFileSync(new URL("../app/planner-appointment-window-enhancer.tsx", import.meta.url), "utf8");
-assert(compactWindowSource.includes("estimatedAmount"), "planner detail window should use appointment estimated amount");
-assert(compactWindowSource.includes("Орієнтовна сума робіт"), "repair estimate label should be present");
-assert(compactWindowSource.includes("Орієнтовна вартість діагностики"), "diagnostic estimate label should be present");
+assert(compactWindowSource.includes("Орієнтовна вартість"), "unapproved amount label should be present");
+assert(compactWindowSource.includes("Вартість"), "approved amount label should be present");
+assert(compactWindowSource.includes("Передплата"), "prepayment label should be present");
+assert(compactWindowSource.includes("Залишок"), "balance label should be present");
+assert(compactWindowSource.includes("Оплачено"), "paid label should be present");
+assert(compactWindowSource.includes("Додатково до погодження"), "additional approval amount should be present");
+assert(compactWindowSource.includes("/financial-summary"), "planner appointment should load canonical financial summary");
+assert(!compactWindowSource.includes("Орієнтовна вартість діагностики"), "legacy diagnostic-only amount label must be removed");
 assert(compactWindowSource.includes('navigateCrm("Клієнти", { clientId })'), "client click should open exact client card");
 assert(compactWindowSource.includes('[data-planner-hidden="true"]'), "large duplicate sections should be hidden in compact mode");
 assert(compactWindowSource.includes("max-height: calc(100vh - 16px)"), "desktop detail window should be constrained to one viewport");
