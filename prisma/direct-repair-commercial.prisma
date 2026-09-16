@@ -1,0 +1,35 @@
+enum DirectRepairPartsMode {
+  SERVICE_SUPPLIED
+  CUSTOMER_SUPPLIED
+  MIXED
+  NO_PARTS
+}
+
+enum PartSupplySource {
+  SERVICE
+  CUSTOMER
+}
+
+/// Extension table for DIRECT_REPAIR commercial configuration.
+/// Kept separate from legacy WorkOrder to make rollout additive and reversible.
+model DirectRepairCommercialConfig {
+  workOrderId String                @id
+  partsMode   DirectRepairPartsMode?
+  createdAt   DateTime              @default(now())
+  updatedAt   DateTime              @updatedAt
+
+  @@index([partsMode, updatedAt])
+}
+
+/// Per-PART source for direct repair. CUSTOMER rows never enter procurement.
+model DirectRepairPartSource {
+  workOrderLineId        String           @id
+  workOrderId            String
+  source                 PartSupplySource
+  customerPartConfirmedAt DateTime?
+  createdAt              DateTime         @default(now())
+  updatedAt              DateTime         @updatedAt
+
+  @@index([workOrderId, source])
+  @@index([workOrderId, customerPartConfirmedAt])
+}

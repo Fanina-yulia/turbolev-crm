@@ -19,6 +19,8 @@ assert.deepEqual(requiredStagesForServiceRoute("DIAGNOSTICS_ONLY"), [
 ]);
 assert.deepEqual(requiredStagesForServiceRoute("REPAIR_ONLY"), [
   "work_order",
+  "estimate",
+  "approval",
   "repair_completed",
   "qc",
   "finance_actual",

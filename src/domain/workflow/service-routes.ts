@@ -4,6 +4,10 @@
  * A diagnostic request without a Work Order is a diagnostic-only visit.
  * A Work Order without a diagnostic request is a direct repair.
  * Both records together form the combined diagnostic-to-repair route.
+ *
+ * Both repair routes have a commercial approval stage. The difference is the
+ * source of the scope: DIAGNOSTICS_TO_REPAIR is derived from diagnostics/DK,
+ * while REPAIR_ONLY is assembled directly from known works and parts supply.
  */
 
 export const SERVICE_ROUTE_KINDS = [
@@ -28,6 +32,8 @@ export const SERVICE_ROUTE_REQUIRED_STAGES: Readonly<Record<ServiceRouteKind, re
   ],
   REPAIR_ONLY: [
     "work_order",
+    "estimate",
+    "approval",
     "repair_completed",
     "qc",
     "finance_actual",

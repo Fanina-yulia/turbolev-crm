@@ -27,8 +27,14 @@ async function financeGateStateTx(tx: Tx, workOrderId: string) {
   return { actualFinalized: true, receivable, outstanding, zeroBalance: outstanding.isZero() };
 }
 
-function applyStableApprovalGates(gates: WorkflowGateState, approved: boolean, directRepairApproved = false): WorkflowGateState {
-  const effectiveApproval = approved || directRepairApproved;
+/**
+ * Commercial state is the canonical approval gate. In particular, a new
+ * DIRECT_REPAIR may not use directPriceConfirmedAt as a bypass for a stale or
+ * missing estimate. Legacy in-progress direct repairs are handled explicitly by
+ * work-order-commercial.service before they reach this function.
+ */
+function applyStableApprovalGates(gates: WorkflowGateState): WorkflowGateState {
+  const effectiveApproval = gates.ESTIMATE_APPROVED_BEFORE_REPAIR === true;
   return {
     ...gates,
     ESTIMATE_APPROVED_BEFORE_REPAIR: effectiveApproval,
@@ -37,15 +43,13 @@ function applyStableApprovalGates(gates: WorkflowGateState, approved: boolean, d
 }
 
 export async function getWorkOrderCycleGateStateTx(tx: Tx, workOrderId: string): Promise<WorkflowGateState> {
-  const [commercial, approval, qc, finance, workOrder] = await Promise.all([
+  const [commercial, qc, finance] = await Promise.all([
     getWorkOrderGateStateTx(tx, workOrderId),
-    getWorkOrderEstimateApprovalStateTx(tx, workOrderId),
     getQualityControlStateTx(tx, workOrderId),
     financeGateStateTx(tx, workOrderId),
-    tx.workOrder.findUnique({ where: { id: workOrderId }, select: { origin: true, directPriceConfirmedAt: true } }),
   ]);
   return {
-    ...applyStableApprovalGates(commercial, approval.approved, workOrder?.origin === "DIRECT_REPAIR" && Boolean(workOrder.directPriceConfirmedAt)),
+    ...applyStableApprovalGates(commercial),
     QC_PASSED_BEFORE_READY: qc.passed,
     ZERO_BALANCE_BEFORE_DELIVERY: finance.zeroBalance,
   };
@@ -60,13 +64,15 @@ export async function getWorkOrderCycleState(workOrderId: string) {
     financeGateStateTx(prisma, workOrderId),
   ]);
 
-  const commercialGates = applyStableApprovalGates(commercial.gates, approval.approved, commercial.directRepairPriceConfirmed);
+  const commercialGates = applyStableApprovalGates(commercial.gates);
   const normalizedCommercial = {
     ...commercial,
     currentApprovalFingerprint: approval.currentFingerprint,
     estimateApprovalFingerprint: approval.estimateFingerprint,
-    estimateIsCurrent: approval.isCurrent,
-    estimateApproved: approval.approved,
+    // Source-aware commercial fingerprint is canonical for the actual gate.
+    // Approval-scope metadata is still returned for mixed client decisions.
+    estimateIsCurrent: commercial.estimateIsCurrent,
+    estimateApproved: commercial.estimateApproved,
     mixedApprovalPending: approval.mixedPending,
     mixedApprovalMode: approval.selectionMode,
     mixedApprovalDecisionCount: approval.decisionCount,

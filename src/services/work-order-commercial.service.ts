@@ -3,6 +3,7 @@ import { Prisma } from "@/src/generated/prisma/client";
 import { evaluateWorkflowTransition, type WorkflowGateState } from "@/src/domain/workflow";
 import { getPrisma } from "@/src/lib/prisma";
 import { toPrismaJson } from "@/src/lib/prisma-json";
+import { getDirectRepairPartContextTx } from "@/src/services/direct-repair-commercial.service";
 
 const ACTIVE_LINE_STATUSES = ["DRAFT", "APPROVED", "IN_PROGRESS", "COMPLETED"] as const;
 const PARTS_STATUSES = [
@@ -10,10 +11,12 @@ const PARTS_STATUSES = [
   "PARTIALLY_RECEIVED", "RECEIVED", "INSTALLED", "RETURNED", "CANCELLED",
 ] as const;
 const PARTS_STATUS_SET = new Set<string>(PARTS_STATUSES);
+const LEGACY_DIRECT_REPAIR_PROGRESS = new Set(["READY_FOR_REPAIR", "IN_REPAIR", "PAUSED", "WAITING_QC", "REWORK", "WAITING_PAYMENT", "READY_FOR_PICKUP", "CLOSED"]);
 
 type Tx = Prisma.TransactionClient;
 type PartsStatus = (typeof PARTS_STATUSES)[number];
 type CommercialLine = Prisma.WorkOrderLineGetPayload<{}>;
+type DirectPartContext = Awaited<ReturnType<typeof getDirectRepairPartContextTx>>;
 
 export class WorkOrderCommercialError extends Error {
   readonly code: string;
@@ -49,7 +52,7 @@ function decimal(value: unknown, field: string) {
   }
 }
 
-function lineSnapshot(line: CommercialLine) {
+function lineSnapshot(line: CommercialLine, directRepair?: DirectPartContext) {
   return {
     id: line.id,
     type: line.type,
@@ -71,6 +74,7 @@ function lineSnapshot(line: CommercialLine) {
     supplierQuoteId: line.supplierQuoteId,
     supplierOrderId: line.supplierOrderId,
     catalogItemId: line.catalogItemId,
+    partSupplySource: line.type === "PART" ? directRepair?.sourceByLineId.get(line.id) ?? null : null,
     sortOrder: line.sortOrder,
   };
 }
@@ -95,14 +99,14 @@ async function activeLines(tx: Tx, workOrderId: string) {
   });
 }
 
-function buildSnapshot(lines: CommercialLine[]) {
+function buildSnapshot(lines: CommercialLine[], directRepair?: DirectPartContext) {
   if (!lines.length) throw new WorkOrderCommercialError("NO_LINE_ITEMS", "Додайте роботи або деталі до комерційної пропозиції.");
   const currencies = [...new Set(lines.map((line) => line.currency.toUpperCase()))];
   if (currencies.length !== 1) {
     throw new WorkOrderCommercialError("MIXED_CURRENCIES", "Кошторис не може містити рядки в різних валютах.");
   }
 
-  const snapshot = lines.map(lineSnapshot);
+  const snapshot = lines.map((line) => lineSnapshot(line, directRepair));
   const sums = {
     LABOR: new Prisma.Decimal(0),
     PART: new Prisma.Decimal(0),
@@ -151,7 +155,15 @@ export async function ensureEstimateSnapshotTx(
 ) {
   await ensureWorkOrder(tx, workOrderId);
   const lines = await activeLines(tx, workOrderId);
-  const built = buildSnapshot(lines);
+  const directRepair = await getDirectRepairPartContextTx(tx, workOrderId, lines);
+  if (options.send && directRepair.isDirectRepair && !directRepair.configurationComplete) {
+    throw new WorkOrderCommercialError(
+      "DIRECT_REPAIR_PARTS_CONFIGURATION_INCOMPLETE",
+      directRepair.blockers[0] || "Завершіть налаштування запчастин прямого ремонту перед відправкою КП.",
+      { blockers: directRepair.blockers },
+    );
+  }
+  const built = buildSnapshot(lines, directRepair);
   const current = await latestEstimate(tx, workOrderId);
   const now = new Date();
 
@@ -230,9 +242,10 @@ export async function ensurePartsRequestTx(
   });
   if (existing) return existing;
 
-  const partLines = estimateState.lines.filter((line) => line.type === "PART");
+  const directRepair = await getDirectRepairPartContextTx(tx, workOrderId, estimateState.lines);
+  const partLines = estimateState.lines.filter((line) => line.type === "PART" && (!directRepair.isDirectRepair || directRepair.sourceByLineId.get(line.id) === "SERVICE"));
   if (!partLines.length) {
-    throw new WorkOrderCommercialError("NO_PART_LINES", "У комерційній пропозиції немає деталей, для яких потрібен PartsRequest.");
+    throw new WorkOrderCommercialError("NO_SERVICE_PART_LINES", "Немає запчастин, які повинно закуповувати СТО.");
   }
 
   const request = await tx.partsRequest.create({
@@ -277,20 +290,44 @@ export async function ensurePartsRequestTx(
 async function commercialStateTx(tx: Tx, workOrderId: string) {
   const workOrder = await ensureWorkOrder(tx, workOrderId);
   const lines = await activeLines(tx, workOrderId);
-  const currentBuilt = lines.length ? buildSnapshot(lines) : null;
+  const directRepair = await getDirectRepairPartContextTx(tx, workOrderId, lines);
+  const currentBuilt = lines.length ? buildSnapshot(lines, directRepair) : null;
   const estimate = await latestEstimate(tx, workOrderId);
   const estimateIsCurrent = Boolean(currentBuilt && estimate && currentBuilt.fingerprint === estimate.lineFingerprint);
-  const directRepairPriceConfirmed = workOrder.origin === "DIRECT_REPAIR" && Boolean(workOrder.directPriceConfirmedAt);
-  const estimateApproved = directRepairPriceConfirmed || Boolean(estimateIsCurrent && estimate?.status === "APPROVED" && estimate.approvedAt);
+  const legacyDirectRepair = workOrder.origin === "DIRECT_REPAIR"
+    && !directRepair.mode
+    && Boolean(workOrder.directPriceConfirmedAt)
+    && LEGACY_DIRECT_REPAIR_PROGRESS.has(workOrder.status);
+  const estimateApproved = Boolean(estimateIsCurrent && estimate?.status === "APPROVED" && estimate.approvedAt) || legacyDirectRepair;
   const request = estimate?.partsRequests?.[0] ?? null;
   const requiredParts = lines.filter((line) => line.type === "PART" && line.requiredForRepair);
+  const serviceRequiredParts = directRepair.isDirectRepair
+    ? requiredParts.filter((line) => directRepair.sourceByLineId.get(line.id) === "SERVICE")
+    : requiredParts;
+  const customerRequiredParts = directRepair.isDirectRepair
+    ? requiredParts.filter((line) => directRepair.sourceByLineId.get(line.id) === "CUSTOMER")
+    : [];
+  const unresolvedRequiredParts = directRepair.isDirectRepair
+    ? requiredParts.filter((line) => !directRepair.sourceByLineId.get(line.id))
+    : [];
   const requestItems = request?.items ?? [];
-  const partsReady = requiredParts.length === 0 || (
+  const servicePartsReady = serviceRequiredParts.length === 0 || (
+    Boolean(request) && serviceRequiredParts.every((line) => {
+      const item = requestItems.find((candidate) => candidate.workOrderLineId === line.id);
+      return Boolean(item && item.receivedQuantity.greaterThanOrEqualTo(item.quantity));
+    })
+  );
+  const customerConfirmed = new Set(directRepair.customerConfirmedLineIds);
+  const customerPartsReady = customerRequiredParts.length === 0 || customerRequiredParts.every((line) => customerConfirmed.has(line.id));
+  const legacyPartsReady = requiredParts.length === 0 || (
     Boolean(request) && requiredParts.every((line) => {
       const item = requestItems.find((candidate) => candidate.workOrderLineId === line.id);
       return Boolean(item && item.receivedQuantity.greaterThanOrEqualTo(item.quantity));
     })
   );
+  const partsReady = legacyDirectRepair
+    ? legacyPartsReady
+    : directRepair.configurationComplete && unresolvedRequiredParts.length === 0 && servicePartsReady && customerPartsReady;
   const appointment = await tx.serviceAppointment.findFirst({
     where: { workOrderId, mechanicId: { not: null } },
     orderBy: [{ actualArrivalAt: "desc" }, { plannedStartAt: "desc" }],
@@ -315,12 +352,27 @@ async function commercialStateTx(tx: Tx, workOrderId: string) {
     currentFingerprint: currentBuilt?.fingerprint ?? null,
     estimateIsCurrent,
     estimateApproved,
-    directRepairPriceConfirmed,
+    directRepairPriceConfirmed: legacyDirectRepair || Boolean(estimateApproved && workOrder.origin === "DIRECT_REPAIR"),
     requiredPartsCount: requiredParts.length,
+    servicePartsCount: serviceRequiredParts.length,
+    customerPartsCount: customerRequiredParts.length,
     partsReady,
     mechanicAssigned,
     appointment,
     partsPaymentSatisfied,
+    directRepair: {
+      isDirectRepair: directRepair.isDirectRepair,
+      partsMode: directRepair.mode,
+      modeSelected: directRepair.modeSelected,
+      configurationComplete: directRepair.configurationComplete || legacyDirectRepair,
+      blockers: legacyDirectRepair ? [] : directRepair.blockers,
+      partSupplySources: Object.fromEntries(directRepair.sourceByLineId.entries()),
+      customerPartConfirmedLineIds: directRepair.customerConfirmedLineIds,
+      customerPartPendingLineIds: directRepair.customerPendingLineIds,
+      servicePartCount: directRepair.servicePartLineIds.length,
+      customerPartCount: directRepair.customerPartLineIds.length,
+      legacy: legacyDirectRepair,
+    },
     gates,
   };
 }
@@ -350,9 +402,17 @@ export async function decideEstimate(
   const prisma = getPrisma();
   return prisma.$transaction(async (tx) => {
     await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`wo-commercial:${workOrderId}`}))`;
-    await ensureWorkOrder(tx, workOrderId);
+    const workOrder = await ensureWorkOrder(tx, workOrderId);
     const lines = await activeLines(tx, workOrderId);
-    const current = buildSnapshot(lines);
+    const directRepair = await getDirectRepairPartContextTx(tx, workOrderId, lines);
+    if (directRepair.isDirectRepair && !directRepair.configurationComplete) {
+      throw new WorkOrderCommercialError(
+        "DIRECT_REPAIR_PARTS_CONFIGURATION_INCOMPLETE",
+        directRepair.blockers[0] || "Завершіть налаштування запчастин прямого ремонту.",
+        { blockers: directRepair.blockers },
+      );
+    }
+    const current = buildSnapshot(lines, directRepair);
     const estimate = await latestEstimate(tx, workOrderId);
     if (!estimate || estimate.status !== "SENT") {
       throw new WorkOrderCommercialError("ESTIMATE_NOT_SENT", "Спочатку сформуйте та відправте актуальний кошторис клієнту.");
@@ -362,7 +422,7 @@ export async function decideEstimate(
         where: { id: estimate.id },
         data: { status: "SUPERSEDED", supersededAt: new Date() },
       });
-      throw new WorkOrderCommercialError("ESTIMATE_SCOPE_CHANGED", "Склад або ціни комерційної пропозиції змінилися після відправки. Сформуйте нову ревізію кошторису.");
+      throw new WorkOrderCommercialError("ESTIMATE_SCOPE_CHANGED", "Склад, ціни або джерело запчастин змінилися після відправки. Сформуйте нову ревізію кошторису.");
     }
 
     const now = new Date();
@@ -390,6 +450,12 @@ export async function decideEstimate(
         data: { status: "APPROVED", approvedAt: now },
       });
     }
+    if (workOrder.origin === "DIRECT_REPAIR") {
+      await tx.workOrder.update({
+        where: { id: workOrderId },
+        data: { directPriceConfirmedAt: approved ? now : null },
+      });
+    }
 
     await tx.auditEvent.create({
       data: {
@@ -399,7 +465,7 @@ export async function decideEstimate(
         action: approved ? "ESTIMATE_APPROVED" : "ESTIMATE_REJECTED",
         before: jsonSafe(estimate),
         after: jsonSafe(updated),
-        metadata: jsonSafe({ workOrderId, revision: updated.revision, fingerprint: current.fingerprint }),
+        metadata: jsonSafe({ workOrderId, revision: updated.revision, fingerprint: current.fingerprint, origin: workOrder.origin }),
       },
     });
     return updated;
