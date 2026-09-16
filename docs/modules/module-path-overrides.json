@@ -21,6 +21,7 @@
     "app/vehicle-health-enhancer.tsx",
     "app/api/vehicle-issues/**",
     "app/api/vehicles/visit-financial-state/**",
+    "app/customer-cabinet-card.tsx",
     "src/services/vehicle-issues.service.ts",
     "src/services/vin-intelligence.service.ts",
     "app/vehicle-workflow.module.css",
