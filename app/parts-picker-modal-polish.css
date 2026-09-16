@@ -1,0 +1,181 @@
+/* TURBO LEV · Parts picker modal polish
+   Keeps the sourcing dialog above the floating CRM dock, prevents toolbar overlap,
+   and gives supplier results their own scrollable work area. */
+
+html:not([data-settings-page="true"]) [class*="parts-selection-workspace-v4_backdrop__"]{
+  z-index:3600!important;
+  box-sizing:border-box!important;
+  place-items:center!important;
+  padding:clamp(8px,1.4vw,20px)!important;
+  overflow:hidden!important;
+}
+
+html:not([data-settings-page="true"]) [class*="parts-selection-workspace-v4_backdrop__"] > [class*="parts-selection-workspace-v4_picker__"]{
+  width:min(1760px,calc(100vw - 32px))!important;
+  max-width:calc(100vw - 32px)!important;
+  max-height:calc(100vh - 32px)!important;
+  max-height:calc(100dvh - 32px)!important;
+  overflow:hidden!important;
+}
+
+@media(min-width:761px){
+  [class*="parts-selection-workspace-v4_picker__"]{
+    grid-template-columns:minmax(0,1fr)!important;
+    grid-template-rows:auto auto auto auto minmax(180px,1fr) auto auto!important;
+  }
+
+  [class*="parts-selection-workspace-v4_pickerHeader__"]{grid-column:1!important;grid-row:1!important}
+  [class*="parts-selection-workspace-v4_searchBar__"]{grid-column:1!important;grid-row:2!important}
+  [class*="parts-selection-workspace-v4_resultToolbar__"]{grid-column:1!important;grid-row:3!important}
+  [class*="parts-selection-workspace-v4_manualConfirm__"]{grid-column:1!important;grid-row:4!important}
+  [class*="parts-selection-workspace-v4_offerArea__"]{grid-column:1!important;grid-row:5!important}
+  [class*="parts-selection-workspace-v4_providerErrors__"]{grid-column:1!important;grid-row:6!important}
+  [class*="parts-selection-workspace-v4_pickerFooter__"]{grid-column:1!important;grid-row:7!important}
+}
+
+[class*="parts-selection-workspace-v4_pickerHeader__"],
+[class*="parts-selection-workspace-v4_searchBar__"],
+[class*="parts-selection-workspace-v4_resultToolbar__"],
+[class*="parts-selection-workspace-v4_manualConfirm__"],
+[class*="parts-selection-workspace-v4_pickerFooter__"]{
+  min-width:0!important;
+}
+
+[class*="parts-selection-workspace-v4_resultToolbar__"]{
+  display:flex!important;
+  flex-wrap:wrap!important;
+  align-items:center!important;
+  gap:8px!important;
+  padding:9px 16px!important;
+}
+
+[class*="parts-selection-workspace-v4_resultToolbar__"] select{
+  flex:0 1 310px!important;
+  min-width:220px!important;
+  max-width:340px!important;
+}
+
+[class*="parts-selection-workspace-v4_resultToolbar__"] strong{
+  flex:0 0 auto!important;
+  margin-right:auto!important;
+  white-space:nowrap!important;
+}
+
+[class*="parts-selection-workspace-v4_resultToolbar__"] button{
+  flex:0 0 auto!important;
+  height:32px!important;
+  padding:0 10px!important;
+  border:1px solid var(--line)!important;
+  border-radius:8px!important;
+  background:var(--panel-2)!important;
+  white-space:nowrap!important;
+}
+
+[class*="parts-selection-workspace-v4_resultToolbar__"] button:hover,
+[class*="parts-selection-workspace-v4_resultToolbar__"] [class*="parts-selection-workspace-v4_sortActive__"]{
+  border-color:color-mix(in srgb,var(--orange) 55%,var(--line))!important;
+  background:color-mix(in srgb,var(--orange) 8%,var(--panel-2))!important;
+}
+
+[class*="parts-selection-workspace-v4_manualConfirm__"]{
+  display:flex!important;
+  align-items:center!important;
+  justify-self:stretch!important;
+  width:auto!important;
+  padding:8px 16px!important;
+  border-bottom:1px solid color-mix(in srgb,var(--orange) 24%,var(--line))!important;
+  background:color-mix(in srgb,var(--orange) 6%,var(--panel))!important;
+  white-space:normal!important;
+  line-height:1.35!important;
+}
+
+[class*="parts-selection-workspace-v4_offerArea__"]{
+  min-width:0!important;
+  min-height:180px!important;
+  max-width:100%!important;
+  overflow:auto!important;
+  overscroll-behavior:contain!important;
+}
+
+@media(min-width:1181px){
+  [class*="parts-selection-workspace-v4_offerRow__"]{
+    grid-template-columns:minmax(300px,2fr) minmax(110px,.72fr) minmax(96px,.64fr) minmax(130px,.82fr) minmax(150px,1fr) minmax(120px,.8fr) 118px!important;
+    gap:12px!important;
+    min-height:60px!important;
+    padding:8px 10px!important;
+  }
+
+  [class*="parts-selection-workspace-v4_addOffer__"]{
+    width:100%!important;
+    min-width:108px!important;
+    white-space:nowrap!important;
+  }
+}
+
+[data-parts-search-loading="true"]{
+  position:relative!important;
+  display:flex!important;
+  flex-direction:column!important;
+  align-items:center!important;
+  justify-content:center!important;
+  gap:8px!important;
+  min-height:230px!important;
+  padding:24px!important;
+  color:var(--muted)!important;
+  text-align:center!important;
+}
+
+[data-parts-search-loading="true"]::before{
+  content:"";
+  display:block;
+  width:112px;
+  height:112px;
+  margin-bottom:2px;
+  border-radius:22px;
+  background:url("/brand/turbo-lev-search.gif") center/contain no-repeat;
+}
+
+[data-parts-search-loading="true"]::after{
+  content:"BM Parts · UniTrade · аналоги";
+  display:block;
+  color:var(--muted);
+  font-size:11px;
+  font-weight:700;
+  letter-spacing:.02em;
+}
+
+@media(prefers-reduced-motion:reduce){
+  [data-parts-search-loading="true"]::before{
+    background-image:url("/brand/turbo-lev-search-static.png");
+  }
+}
+
+@media(max-width:760px){
+  html:not([data-settings-page="true"]) [class*="parts-selection-workspace-v4_backdrop__"]{
+    padding:0!important;
+  }
+
+  html:not([data-settings-page="true"]) [class*="parts-selection-workspace-v4_backdrop__"] > [class*="parts-selection-workspace-v4_picker__"]{
+    width:100vw!important;
+    max-width:100vw!important;
+    max-height:100dvh!important;
+  }
+
+  [class*="parts-selection-workspace-v4_resultToolbar__"]{
+    padding:8px 12px!important;
+  }
+
+  [class*="parts-selection-workspace-v4_resultToolbar__"] select,
+  [class*="parts-selection-workspace-v4_resultToolbar__"] strong{
+    flex:1 1 100%!important;
+    max-width:none!important;
+  }
+
+  [class*="parts-selection-workspace-v4_resultToolbar__"] button{
+    flex:1 1 auto!important;
+  }
+
+  [class*="parts-selection-workspace-v4_manualConfirm__"]{
+    padding:7px 12px!important;
+  }
+}
