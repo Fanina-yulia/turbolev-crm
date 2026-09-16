@@ -10,6 +10,9 @@ const wrapper = read("app/parts-catalog-legacy.tsx");
 const workspace = read("app/parts-selection-workspace-v4.tsx");
 const workspaceCss = read("app/parts-selection-workspace-v4.module.css");
 const partsLayoutCss = read("app/parts-cart-summary-layout.css");
+const pickerPolishCss = read("app/parts-picker-modal-polish.css");
+const loadingEnhancer = read("app/parts-picker-loading-enhancer.tsx");
+const rootLayout = read("app/layout.tsx");
 const lineRoute = read("app/api/parts-selection/line/route.ts");
 const selectRoute = read("app/api/parts-selection/select/route.ts");
 const handoffRoute = read("app/api/diagnostics/[id]/commercial-handoff/route.ts");
@@ -44,6 +47,15 @@ assert.match(partsLayoutCss, /max-width:\s*460px/, "needs panel must stop growin
 assert.match(partsLayoutCss, /min-height:\s*50px/, "need rows must stay compact on desktop");
 assert.match(partsLayoutCss, /grid-template-columns:\s*18px\s+minmax\(0,\s*1fr\)\s+38px\s+76px/, "need row columns must prioritize the part name over quantity and action chrome");
 
+assert.match(pickerPolishCss, /z-index:3600!important/, "parts picker backdrop must render above the CRM dock");
+assert.match(pickerPolishCss, /grid-template-rows:auto auto auto auto minmax\(180px,1fr\) auto auto!important/, "manual compatibility confirmation must occupy its own row below sorting");
+assert.match(pickerPolishCss, /turbo-lev-search\.gif/, "supplier search must use the animated Turbo Lev loader asset");
+assert.match(pickerPolishCss, /118px!important/, "result action column must be wide enough to avoid clipped confirmation buttons");
+assert.match(loadingEnhancer, /Шукаю BM Parts, UniTrade/, "loading enhancer must detect the real supplier-search state");
+assert.match(loadingEnhancer, /partsSearchLoading = "true"/, "loading enhancer must mark only the active supplier-search state");
+assert.match(rootLayout, /\.\/parts-picker-modal-polish\.css/, "parts picker modal polish must be globally loaded after responsive popup rules");
+assert.match(rootLayout, /<PartsPickerLoadingEnhancer\/>/, "animated parts picker loading enhancer must be mounted");
+
 assert.match(lineRoute, /PERMISSIONS\.PARTS_READ/, "cart GET must require PARTS_READ");
 assert.match(lineRoute, /PERMISSIONS\.PARTS_WRITE/, "cart PATCH must require PARTS_WRITE");
 assert.match(lineRoute, /listDiagnosticPartCartRows/, "cart route must support staged and canonical rows");
@@ -71,4 +83,4 @@ assert.match(specV5, /IN_PROGRESS/, "V5 must explicitly support parts sourcing w
 assert.match(specV7, /28–30% `Деталі до заміни` \/ 70–72% `Вибрані деталі`/, "V7 must codify the selected-parts-first desktop workspace");
 assert.match(specV7, /(?:усі|всі) погоджені 14 колонок/, "V7 must preserve every agreed cart column");
 
-console.log("Parts picker + editable cart + pre-confirmation staging V5 + selected-parts-first workspace density V7 smoke: PASS");
+console.log("Parts picker + editable cart + pre-confirmation staging V5 + selected-parts-first workspace density V7 + modal/loading polish smoke: PASS");
