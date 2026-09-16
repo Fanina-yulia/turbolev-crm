@@ -54,3 +54,47 @@ $$ LANGUAGE plpgsql;
 CREATE TRIGGER "DirectRepairPartSource_validate_line"
 BEFORE INSERT OR UPDATE ON "DirectRepairPartSource"
 FOR EACH ROW EXECUTE FUNCTION "validate_direct_repair_part_source"();
+
+-- New DIRECT_REPAIR records must pass the commercial flow instead of bypassing it
+-- with legacy directPriceConfirmedAt + READY_FOR_REPAIR defaults.
+CREATE OR REPLACE FUNCTION "direct_repair_before_insert"() RETURNS TRIGGER AS $$
+BEGIN
+  IF NEW."origin" = 'DIRECT_REPAIR' THEN
+    NEW."directPriceConfirmedAt" := NULL;
+    NEW."status" := 'PARTS_REVIEW';
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER "WorkOrder_direct_repair_before_insert"
+BEFORE INSERT ON "WorkOrder"
+FOR EACH ROW EXECUTE FUNCTION "direct_repair_before_insert"();
+
+-- Intake currently creates initial direct-repair lines as APPROVED. For a new
+-- direct repair they are only requested scope until the estimate is approved.
+CREATE OR REPLACE FUNCTION "direct_repair_line_before_insert"() RETURNS TRIGGER AS $$
+DECLARE
+  direct_pending BOOLEAN;
+BEGIN
+  SELECT EXISTS (
+    SELECT 1 FROM "WorkOrder" w
+    WHERE w."id" = NEW."workOrderId"
+      AND w."origin" = 'DIRECT_REPAIR'
+      AND w."status" = 'PARTS_REVIEW'
+      AND w."directPriceConfirmedAt" IS NULL
+  ) INTO direct_pending;
+
+  IF direct_pending THEN
+    NEW."status" := 'DRAFT';
+    NEW."approvedAt" := NULL;
+    NEW."startedAt" := NULL;
+    NEW."completedAt" := NULL;
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER "WorkOrderLine_direct_repair_before_insert"
+BEFORE INSERT ON "WorkOrderLine"
+FOR EACH ROW EXECUTE FUNCTION "direct_repair_line_before_insert"();
