@@ -237,15 +237,22 @@ function applyHeaderStatus(modal: HTMLElement, finance: FinanceState | null) {
   status.dataset.plannerStatusTone = finance.displayTone;
 }
 
-function ensureVisitFacts(workSection: HTMLElement) {
-  let host = workSection.querySelector("[data-planner-visit-facts]") as HTMLElement | null;
-  if (host) return host;
-  host = document.createElement("div");
-  host.dataset.plannerVisitFacts = "true";
-  const title = workSection.querySelector("[class*='detailsSectionTitle']");
-  title?.insertAdjacentElement("afterend", host);
-  if (!title) workSection.prepend(host);
-  return host;
+function applyClientLink(modal: HTMLElement, clientId: string | null) {
+  const cell = findClientCell(modal);
+  if (!cell) return;
+  if (!clientId) {
+    delete cell.dataset.plannerClientLink;
+    delete cell.dataset.clientId;
+    cell.removeAttribute("role");
+    cell.removeAttribute("tabindex");
+    cell.removeAttribute("title");
+    return;
+  }
+  cell.dataset.plannerClientLink = "true";
+  cell.dataset.clientId = clientId;
+  cell.setAttribute("role", "button");
+  cell.setAttribute("tabindex", "0");
+  cell.setAttribute("title", "Відкрити картку клієнта");
 }
 
 function financeRow(labelText: string, valueText: string, kind: "prepayment" | "balance" | "paid" | "additional") {
@@ -336,7 +343,12 @@ function renderFacts(modal: HTMLElement, snapshot: AppointmentSnapshot | null) {
     return;
   }
 
-  const host = ensureVisitFacts(section);
+  const host = document.createElement("div");
+  host.dataset.plannerVisitFacts = "true";
+  const title = section.querySelector("[class*='detailsSectionTitle']");
+  title?.insertAdjacentElement("afterend", host);
+  if (!title) section.prepend(host);
+
   if (finance.diagnostic) {
     const block = document.createElement("div");
     block.dataset.plannerDiagnosticFact = "true";
@@ -360,25 +372,19 @@ function renderFacts(modal: HTMLElement, snapshot: AppointmentSnapshot | null) {
     block.append(meta);
     host.append(block);
   }
+
   renderFinancialFact(host, finance);
 }
 
-function applyClientLink(modal: HTMLElement, clientId: string | null) {
-  const cell = findClientCell(modal);
-  if (!cell) return;
-  if (!clientId) {
-    delete cell.dataset.plannerClientLink;
-    delete cell.dataset.clientId;
-    cell.removeAttribute("role");
-    cell.removeAttribute("tabindex");
-    cell.removeAttribute("title");
-    return;
-  }
-  cell.dataset.plannerClientLink = "true";
-  cell.dataset.clientId = clientId;
-  cell.setAttribute("role", "button");
-  cell.setAttribute("tabindex", "0");
-  cell.setAttribute("title", "Відкрити картку клієнта");
+function snapshotSignature(appointmentId: string, snapshot: AppointmentSnapshot | null) {
+  if (!snapshot) return `${appointmentId}:loading`;
+  return JSON.stringify([
+    appointmentId,
+    snapshot.clientId,
+    snapshot.estimatedAmount,
+    snapshot.purpose,
+    snapshot.finance,
+  ]);
 }
 
 async function resolveSnapshot(appointmentId: string, signal: AbortSignal): Promise<AppointmentSnapshot | null> {
@@ -411,8 +417,12 @@ export function PlannerAppointmentWindowEnhancer() {
     let activeAppointmentId = "";
     let controller: AbortController | null = null;
     let stopped = false;
+    let scheduled = false;
 
-    const decorate = (modal: HTMLElement, snapshot: AppointmentSnapshot | null) => {
+    const decorate = (modal: HTMLElement, appointmentId: string, snapshot: AppointmentSnapshot | null) => {
+      const signature = snapshotSignature(appointmentId, snapshot);
+      if (modal.dataset.plannerEnhancerSignature === signature) return;
+      modal.dataset.plannerEnhancerSignature = signature;
       modal.dataset.compactAppointment = "true";
       hideNoise(modal);
       renderFacts(modal, snapshot);
@@ -421,6 +431,7 @@ export function PlannerAppointmentWindowEnhancer() {
     };
 
     const tick = () => {
+      scheduled = false;
       if (stopped) return;
       const modal = detailsModal();
       if (!modal) {
@@ -429,27 +440,37 @@ export function PlannerAppointmentWindowEnhancer() {
         controller = null;
         return;
       }
+
       const appointmentId = readCrmRoute().appointmentId || "";
       if (!appointmentId) return;
       const cached = cache.get(appointmentId);
-      decorate(modal, cached ?? null);
+      decorate(modal, appointmentId, cached ?? null);
       if (cache.has(appointmentId)) return;
       if (activeAppointmentId === appointmentId && controller) return;
 
       controller?.abort();
       controller = new AbortController();
       activeAppointmentId = appointmentId;
-      void resolveSnapshot(appointmentId, controller.signal)
+      const currentController = controller;
+      void resolveSnapshot(appointmentId, currentController.signal)
         .then((snapshot) => {
-          if (stopped || controller?.signal.aborted || activeAppointmentId !== appointmentId) return;
+          if (stopped || currentController.signal.aborted || activeAppointmentId !== appointmentId) return;
           cache.set(appointmentId, snapshot);
           const current = detailsModal();
-          if (current && readCrmRoute().appointmentId === appointmentId) decorate(current, snapshot);
+          if (current && readCrmRoute().appointmentId === appointmentId) decorate(current, appointmentId, snapshot);
         })
         .catch((error) => {
           if (error instanceof DOMException && error.name === "AbortError") return;
           cache.set(appointmentId, null);
+          const current = detailsModal();
+          if (current) delete current.dataset.plannerEnhancerSignature;
         });
+    };
+
+    const scheduleTick = () => {
+      if (scheduled || stopped) return;
+      scheduled = true;
+      window.requestAnimationFrame(tick);
     };
 
     const openTarget = (target: EventTarget | null) => {
@@ -469,39 +490,47 @@ export function PlannerAppointmentWindowEnhancer() {
     };
 
     const onClick = (event: MouseEvent) => {
-      if (openTarget(event.target)) event.preventDefault();
+      if (!openTarget(event.target)) return;
+      event.preventDefault();
+      event.stopPropagation();
     };
+
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== "Enter" && event.key !== " ") return;
-      if (openTarget(event.target)) event.preventDefault();
+      if (!openTarget(event.target)) return;
+      event.preventDefault();
+      event.stopPropagation();
     };
+
     const refresh = () => {
       const id = readCrmRoute().appointmentId || "";
       if (id) cache.delete(id);
       controller?.abort();
       controller = null;
       activeAppointmentId = "";
-      tick();
+      const modal = detailsModal();
+      if (modal) delete modal.dataset.plannerEnhancerSignature;
+      scheduleTick();
     };
 
     document.addEventListener("click", onClick, true);
     document.addEventListener("keydown", onKeyDown, true);
-    window.addEventListener("popstate", tick);
+    window.addEventListener("popstate", scheduleTick);
+    window.addEventListener("focus", scheduleTick);
     window.addEventListener("turbolev:data-changed", refresh as EventListener);
-    const observer = new MutationObserver(tick);
+    const observer = new MutationObserver(scheduleTick);
     observer.observe(document.body, { childList: true, subtree: true });
-    const timer = window.setInterval(tick, 350);
-    tick();
+    scheduleTick();
 
     return () => {
       stopped = true;
       controller?.abort();
       document.removeEventListener("click", onClick, true);
       document.removeEventListener("keydown", onKeyDown, true);
-      window.removeEventListener("popstate", tick);
+      window.removeEventListener("popstate", scheduleTick);
+      window.removeEventListener("focus", scheduleTick);
       window.removeEventListener("turbolev:data-changed", refresh as EventListener);
       observer.disconnect();
-      window.clearInterval(timer);
     };
   }, []);
 
