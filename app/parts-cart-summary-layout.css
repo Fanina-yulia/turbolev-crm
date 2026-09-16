@@ -180,3 +180,63 @@
     width: 100% !important;
   }
 }
+
+/* V8 · Focused diagnostic parts workspace.
+   Needs are a compact queue; selected parts are the primary working surface. */
+@media (min-width: 1181px) {
+  [class*="parts-selection-workspace-v4_workspace__"] {
+    grid-template-columns: clamp(340px, 28vw, 460px) minmax(0, 1fr) !important;
+    gap: 10px !important;
+    align-items: start !important;
+  }
+
+  [class*="parts-selection-workspace-v4_needsPanel__"] {
+    width: 100% !important;
+    max-width: 460px !important;
+    align-self: start !important;
+  }
+
+  [class*="parts-selection-workspace-v4_cartPanel__"] {
+    min-width: 0 !important;
+    align-self: start !important;
+  }
+
+  [class*="parts-selection-workspace-v4_needsPanel__"] > header {
+    padding: 8px 10px !important;
+  }
+
+  [class*="parts-selection-workspace-v4_needRow__"] {
+    grid-template-columns: 18px minmax(0, 1fr) 38px 76px !important;
+    gap: 6px !important;
+    min-height: 50px !important;
+    padding: 6px 8px !important;
+  }
+
+  [class*="parts-selection-workspace-v4_needRow__"] > span {
+    padding-top: 2px !important;
+  }
+
+  [class*="parts-selection-workspace-v4_needRow__"] > div {
+    gap: 2px !important;
+  }
+
+  [class*="parts-selection-workspace-v4_needRow__"] b {
+    -webkit-line-clamp: 2 !important;
+    line-height: 1.22 !important;
+  }
+
+  [class*="parts-selection-workspace-v4_needRow__"] small {
+    line-height: 1.2 !important;
+  }
+
+  [class*="parts-selection-workspace-v4_needRow__"] em {
+    justify-self: end !important;
+    white-space: nowrap !important;
+  }
+
+  [class*="parts-selection-workspace-v4_needRow__"] strong {
+    min-width: 70px !important;
+    padding: 5px 6px !important;
+    white-space: nowrap !important;
+  }
+}
