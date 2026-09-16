@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import styles from "./customer-cabinet-card.module.css";
 import { VehiclePlate } from "./vehicle-plate";
+import { VehicleCurrentFinanceCard } from "./vehicle-current-finance-card";
 
 type ShareMeta = {
   id: string;
@@ -22,7 +23,6 @@ type CabinetCase = {
 };
 
 type ContextResponse = { ok: boolean; cases?: CabinetCase[]; error?: string };
-
 type ReportResponse = { ok: boolean; share?: ShareMeta | null; path?: string; error?: string; message?: string };
 
 const reviewLabel: Record<string, string> = {
@@ -50,46 +50,37 @@ export function CustomerCabinetCard({ clientId, vehicleId }: { clientId?: string
   }, [clientId, vehicleId]);
 
   useEffect(() => {
-    if (!query) {
-      setCases([]);
-      setLoading(false);
-      return;
-    }
+    if (!query) { setCases([]); setLoading(false); return; }
     const controller = new AbortController();
-    setLoading(true);
-    setError("");
+    setLoading(true); setError("");
     void (async () => {
       try {
-        const response = await fetch(`/api/customer-cabinet/context?${query}`, {
-          cache: "no-store",
-          credentials: "include",
-          signal: controller.signal,
-        });
+        const response = await fetch(`/api/customer-cabinet/context?${query}`, { cache: "no-store", credentials: "include", signal: controller.signal });
         const body = await response.json().catch(() => null) as ContextResponse | null;
         if (!response.ok || !body?.ok) throw new Error(body?.error || "Не вдалося завантажити кабінет клієнта");
         setCases(body.cases || []);
       } catch (cause) {
         if ((cause as Error).name !== "AbortError") setError(cause instanceof Error ? cause.message : "Помилка кабінету клієнта");
-      } finally {
-        if (!controller.signal.aborted) setLoading(false);
-      }
+      } finally { if (!controller.signal.aborted) setLoading(false); }
     })();
     return () => controller.abort();
   }, [query]);
 
-  return <div className={styles.cabinetCard}>
-    <div className={styles.cabinetHeading}>
-      <div><span className={styles.cabinetEyebrow}>КАБІНЕТ КЛІЄНТА</span><h3>Посилання для клієнта</h3></div>
-      <span className={styles.cabinetIcon}>↗</span>
+  return <>
+    {vehicleId ? <VehicleCurrentFinanceCard vehicleId={vehicleId} /> : null}
+    <div className={styles.cabinetCard}>
+      <div className={styles.cabinetHeading}>
+        <div><span className={styles.cabinetEyebrow}>КАБІНЕТ КЛІЄНТА</span><h3>Посилання для клієнта</h3></div>
+        <span className={styles.cabinetIcon}>↗</span>
+      </div>
+      <p className={styles.cabinetIntro}>Клієнт відкриває статус авто, діагностику, кошторис, погодження та чат без входу в CRM.</p>
+
+      {loading && <div className={styles.cabinetMuted}>Перевіряю доступність кабінету…</div>}
+      {error && <div className={styles.cabinetError}>{error}</div>}
+      {!loading && !error && !cases.length && <div className={styles.cabinetMuted}>Посилання стане доступним після створення діагностики та передачі її сервіс-менеджеру.</div>}
+      {!loading && !error && cases.map((item) => <CabinetCaseRow key={item.vehicle.id} item={item} />)}
     </div>
-    <p className={styles.cabinetIntro}>Клієнт відкриває статус авто, діагностику, кошторис, погодження та чат без входу в CRM.</p>
-
-    {loading && <div className={styles.cabinetMuted}>Перевіряю доступність кабінету…</div>}
-    {error && <div className={styles.cabinetError}>{error}</div>}
-    {!loading && !error && !cases.length && <div className={styles.cabinetMuted}>Посилання стане доступним після створення діагностики та передачі її сервіс-менеджеру.</div>}
-
-    {!loading && !error && cases.map((item) => <CabinetCaseRow key={item.vehicle.id} item={item} />)}
-  </div>;
+  </>;
 }
 
 function CabinetCaseRow({ item }: { item: CabinetCase }) {
@@ -100,19 +91,12 @@ function CabinetCaseRow({ item }: { item: CabinetCase }) {
   const [error, setError] = useState("");
 
   useEffect(() => {
-    setShare(null);
-    setFreshPath(null);
-    setMessage("");
-    setError("");
+    setShare(null); setFreshPath(null); setMessage(""); setError("");
     if (!item.shareable || !item.diagnosticId) return;
     const controller = new AbortController();
     void (async () => {
       try {
-        const response = await fetch(`/api/diagnostics/${encodeURIComponent(item.diagnosticId!)}/report`, {
-          cache: "no-store",
-          credentials: "include",
-          signal: controller.signal,
-        });
+        const response = await fetch(`/api/diagnostics/${encodeURIComponent(item.diagnosticId!)}/report`, { cache: "no-store", credentials: "include", signal: controller.signal });
         const body = await response.json().catch(() => null) as ReportResponse | null;
         if (!response.ok || !body?.ok) throw new Error(body?.message || body?.error || "Не вдалося перевірити посилання");
         setShare(body.share || null);
@@ -127,31 +111,19 @@ function CabinetCaseRow({ item }: { item: CabinetCase }) {
     if (!item.diagnosticId) return;
     setBusy(true); setError(""); setMessage("");
     try {
-      const response = await fetch(`/api/diagnostics/${encodeURIComponent(item.diagnosticId)}/report`, {
-        method: "POST",
-        credentials: "include",
-      });
+      const response = await fetch(`/api/diagnostics/${encodeURIComponent(item.diagnosticId)}/report`, { method: "POST", credentials: "include" });
       const body = await response.json().catch(() => null) as ReportResponse | null;
       if (!response.ok || !body?.ok || !body.path) throw new Error(body?.message || body?.error || "Не вдалося створити посилання");
-      setShare(body.share || null);
-      setFreshPath(body.path);
-      setMessage("Посилання створено. Тепер його можна скопіювати та надіслати клієнту.");
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Помилка створення посилання");
-    } finally {
-      setBusy(false);
-    }
+      setShare(body.share || null); setFreshPath(body.path); setMessage("Посилання створено. Тепер його можна скопіювати та надіслати клієнту.");
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "Помилка створення посилання"); }
+    finally { setBusy(false); }
   }
 
   async function copyLink() {
     if (!freshPath) return;
     const url = `${window.location.origin}${freshPath}`;
-    try {
-      await navigator.clipboard.writeText(url);
-      setMessage("Посилання скопійовано.");
-    } catch {
-      setError("Не вдалося скопіювати автоматично. Виділіть посилання нижче та скопіюйте вручну.");
-    }
+    try { await navigator.clipboard.writeText(url); setMessage("Посилання скопійовано."); }
+    catch { setError("Не вдалося скопіювати автоматично. Виділіть посилання нижче та скопіюйте вручну."); }
   }
 
   async function revokeLink() {
@@ -159,20 +131,12 @@ function CabinetCaseRow({ item }: { item: CabinetCase }) {
     if (!window.confirm("Відкликати посилання на кабінет клієнта?")) return;
     setBusy(true); setError(""); setMessage("");
     try {
-      const response = await fetch(`/api/diagnostics/${encodeURIComponent(item.diagnosticId)}/report?shareId=${encodeURIComponent(share.id)}`, {
-        method: "DELETE",
-        credentials: "include",
-      });
+      const response = await fetch(`/api/diagnostics/${encodeURIComponent(item.diagnosticId)}/report?shareId=${encodeURIComponent(share.id)}`, { method: "DELETE", credentials: "include" });
       const body = await response.json().catch(() => null) as ReportResponse | null;
       if (!response.ok || !body?.ok) throw new Error(body?.message || body?.error || "Не вдалося відкликати посилання");
-      setShare(body.share || null);
-      setFreshPath(null);
-      setMessage("Посилання відкликано.");
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Помилка відкликання посилання");
-    } finally {
-      setBusy(false);
-    }
+      setShare(body.share || null); setFreshPath(null); setMessage("Посилання відкликано.");
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "Помилка відкликання посилання"); }
+    finally { setBusy(false); }
   }
 
   const fullUrl = freshPath ? `${typeof window !== "undefined" ? window.location.origin : ""}${freshPath}` : "";
@@ -184,7 +148,6 @@ function CabinetCaseRow({ item }: { item: CabinetCase }) {
       <span className={`${styles.cabinetStatus} ${item.shareable ? styles.cabinetReady : ""}`}>{item.shareable ? (share?.active ? "● Доступний" : "Готовий") : "Недоступний"}</span>
     </div>
     <div className={styles.cabinetState}>{stateText}</div>
-
     {item.shareable ? <>
       <div className={styles.cabinetActions}>
         <button type="button" className={styles.cabinetPrimary} disabled={busy} onClick={() => void createLink()}>{share?.active ? "Створити нове посилання" : "Створити посилання"}</button>
@@ -196,7 +159,6 @@ function CabinetCaseRow({ item }: { item: CabinetCase }) {
       {share?.active && !freshPath && <small className={styles.cabinetNote}>Активне посилання вже існує. З міркувань безпеки сам токен не зберігається у CRM, тому для копіювання створіть нове — попереднє автоматично буде відкликано.</small>}
       {share?.expiresAt && <small className={styles.cabinetNote}>Діє до {formatDate(share.expiresAt)}</small>}
     </> : <small className={styles.cabinetNote}>Кнопка «Створити посилання» з’явиться автоматично після передачі діагностики сервіс-менеджеру.</small>}
-
     {message && <div className={styles.cabinetMessage}>{message}</div>}
     {error && <div className={styles.cabinetError}>{error}</div>}
   </div>;
