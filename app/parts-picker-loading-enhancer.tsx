@@ -43,7 +43,7 @@ const STRUCTURE_CSS = `
 
   [data-parts-picker-vehicle="true"] > span{
     color:var(--muted)!important;
-    font-size:10px!important;
+    font-size:11px!important;
     font-weight:700!important;
   }
 
@@ -131,7 +131,7 @@ const STRUCTURE_CSS = `
     border-bottom:1px solid var(--line)!important;
     background:var(--panel-2)!important;
     color:var(--muted)!important;
-    font-size:10px!important;
+    font-size:11px!important;
     font-weight:850!important;
   }
 
