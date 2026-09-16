@@ -49,6 +49,7 @@ import "./communications-workspace-v3.css";
 import "./vehicle-directory-brand-badge-fix.css";
 import "./parts-cart-summary-layout.css";
 import "./parts-picker-modal-polish.css";
+import "./parts-picker-ultra-compact.css";
 import { PhoneInputNormalizer } from "./phone-input-normalizer";
 import { LeadDetailsEnhancer } from "./lead-details-enhancer";
 import { VehicleConfigurationEnhancer } from "./vehicle-configuration-enhancer";
