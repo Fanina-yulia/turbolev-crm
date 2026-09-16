@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { createPortal } from "react-dom";
 import styles from "./mechanic-task-plate-verification.module.css";
 
 type Task = { id: string; vehicle: string; plate: string };
@@ -40,7 +41,7 @@ export function MechanicTaskPlateVerification({ task, onClose, onVerified }: { t
     } finally { setBusy(false); }
   }
 
-  return <div className={styles.backdrop} role="dialog" aria-modal="true" aria-labelledby="mechanic-plate-verification-title">
+  const dialog = <div className={styles.backdrop} role="dialog" aria-modal="true" aria-labelledby="mechanic-plate-verification-title">
     <section className={styles.sheet}>
       <div className={styles.head}><div><h2 id="mechanic-plate-verification-title">Підтвердіть автомобіль</h2><p>{task.vehicle} · очікується {task.plate || "номер не вказано"}</p></div><button className={styles.close} type="button" onClick={onClose} aria-label="Закрити">×</button></div>
       <label className={styles.field}><span>Державний номер</span><input value={plate} onChange={(event) => { setPlate(event.target.value.toUpperCase()); setVerificationMethod("MANUAL"); }} placeholder="AA 6919 YD" autoCapitalize="characters" autoComplete="off" inputMode="text" /></label>
@@ -49,4 +50,7 @@ export function MechanicTaskPlateVerification({ task, onClose, onVerified }: { t
       <button className={styles.submit} type="button" disabled={busy} onClick={() => void verify(verificationMethod)}>{busy ? "Перевіряю…" : "Підтвердити та почати"}</button>
     </section>
   </div>;
+
+  if (typeof document === "undefined") return null;
+  return createPortal(dialog, document.body);
 }
