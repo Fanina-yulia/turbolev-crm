@@ -33,7 +33,7 @@ CREATE TABLE "DiagnosticPartSelectionDraft" (
     CONSTRAINT "DiagnosticPartSelectionDraft_pkey" PRIMARY KEY ("id")
 );
 
-CREATE UNIQUE INDEX "DiagnosticPartSelectionDraft_diagnosticRequestId_selectionKey_key"
+CREATE UNIQUE INDEX "DiagnosticPartSelectionDraft_diagnosticRequestId_selectionK_key"
 ON "DiagnosticPartSelectionDraft"("diagnosticRequestId", "selectionKey");
 
 CREATE INDEX "DiagnosticPartSelectionDraft_diagnosticRequestId_updatedAt_idx"
