@@ -101,6 +101,6 @@ assert(
   "client click should open exact client card",
 );
 assert(compactWindowSource.includes('[data-planner-hidden="true"]'), "large duplicate sections should be hidden in compact mode");
-assert(compactWindowSource.includes("max-height: calc(100vh - 16px)"), "desktop detail window should be constrained to one viewport");
+assert(/max-height:\s*calc\(100vh - 16px\)/.test(compactWindowSource), "desktop detail window should be constrained to one viewport");
 
 console.log("Planner contracts smoke: OK");
