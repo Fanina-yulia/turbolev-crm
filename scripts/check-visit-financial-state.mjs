@@ -23,6 +23,14 @@ assertIncludes("src/services/visit-financial-state.service.ts", [
   'return "PREPAID"',
   'return "PARTIAL"',
   'return "PAID"',
+  'prisma.workOrderEstimate.findMany',
+  'presentationLabel: approved ? "Вартість" : "Орієнтовна вартість"',
+  'displayStatus: "Очікує розрахунку"',
+  'displayStatus: "Очікує погодження"',
+  'displayStatus: "Потрібне додаткове погодження"',
+  'displayStatus: "Частково оплачено"',
+  'displayStatus: "Оплачено"',
+  'additionalPending = pendingTotal - presentationAmount',
   'SUSPENSION_MATRIX',
   "Do not\n  // manufacture an outstanding balance from an estimate",
 ]);
@@ -33,12 +41,19 @@ assertIncludes("app/api/vehicles/visit-financial-state/route.ts", [
 ]);
 assertIncludes("app/planner-appointment-window-enhancer.tsx", [
   "/api/vehicles/visit-financial-state?appointmentId=",
+  "Орієнтовна вартість",
+  "Вартість",
   "Передплата",
-  "Частково оплачено",
-  "Нараховано",
+  "Додатково до погодження",
   "Оплачено",
   "Залишок",
+  "Сума залишається орієнтовною до погодження клієнтом або адміністратором.",
+  "finance.displayStatus",
   'navigateCrm("Діагностика"',
+]);
+assertExcludes("app/planner-appointment-window-enhancer.tsx", [
+  "Орієнтовна вартість діагностики",
+  "Орієнтовна сума робіт",
 ]);
 assertIncludes("app/vehicle-current-finance-card.tsx", [
   "/api/vehicles/visit-financial-state?vehicleId=",
@@ -62,4 +77,4 @@ assertExcludes("app/mechanic-walk-in-settlement.tsx", [
   "Повертаю на головний екран…",
 ]);
 
-console.log("[visit-finance] canonical Planner + Vehicle Card + prepayment + post-payment contracts OK");
+console.log("[visit-finance] canonical Planner + consent-aware price + prepayment + post-payment contracts OK");

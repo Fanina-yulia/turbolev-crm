@@ -4,6 +4,9 @@ import { useEffect } from "react";
 import { navigateCrm, readCrmRoute } from "./crm-route";
 
 type PaymentStatus = "NOT_FORMED" | "UNPAID" | "PREPAID" | "PARTIAL" | "PAID" | "OVERDUE" | "CANCELLED";
+type ApprovalState = "NOT_CALCULATED" | "ESTIMATED" | "APPROVED" | "REJECTED";
+type DisplayTone = "neutral" | "warning" | "success" | "danger";
+
 type FinanceState = {
   appointmentId: string;
   vehicleId: string | null;
@@ -17,11 +20,41 @@ type FinanceState = {
   paid: number;
   outstanding: number | null;
   estimatedAmount: number | null;
-  lastPayment: { id: string; amount: number; occurredAt: string; method: "CASH" | "TERMINAL" | "ONLINE" | "OTHER" | null } | null;
-  diagnostic: { reviewState: string | null; workflowLabel: string; total: number; checked: number; defects: number; completed: boolean } | null;
+  presentationAmount: number | null;
+  presentationOutstanding: number | null;
+  presentationLabel: "Орієнтовна вартість" | "Вартість";
+  approvalState: ApprovalState;
+  approved: boolean;
+  rejected: boolean;
+  additionalPending: number | null;
+  pendingTotal: number | null;
+  displayStatus: string;
+  displayTone: DisplayTone;
+  lastPayment: {
+    id: string;
+    amount: number;
+    occurredAt: string;
+    method: "CASH" | "TERMINAL" | "ONLINE" | "OTHER" | null;
+  } | null;
+  diagnostic: {
+    reviewState: string | null;
+    workflowLabel: string;
+    total: number;
+    checked: number;
+    defects: number;
+    completed: boolean;
+  } | null;
 };
 
-type AppointmentSnapshot = { id: string; clientId: string | null; phone: string | null; estimatedAmount: string | number | null; purpose: "DIAGNOSTICS" | "REPAIR" | null; finance: FinanceState | null; };
+type AppointmentSnapshot = {
+  id: string;
+  clientId: string | null;
+  phone: string | null;
+  estimatedAmount: string | number | null;
+  purpose: "DIAGNOSTICS" | "REPAIR" | null;
+  finance: FinanceState | null;
+};
+
 type JsonRecord = Record<string, unknown>;
 
 const COMPACT_CSS = `
@@ -45,42 +78,432 @@ const COMPACT_CSS = `
 [data-compact-appointment="true"] [data-planner-fact-head] strong { font-size:13px; }
 [data-compact-appointment="true"] [data-planner-diagnostic-link] { border:0;background:transparent;color:var(--orange);font:inherit;font-weight:800;cursor:pointer;padding:2px 0; }
 [data-compact-appointment="true"] [data-planner-diagnostic-meta] { margin-top:4px;color:var(--muted);font-size:11px; }
-[data-compact-appointment="true"] [data-planner-payment-badge] { display:inline-flex;align-items:center;border-radius:999px;padding:3px 8px;font-size:11px;font-weight:850;white-space:nowrap; }
-[data-compact-appointment="true"] [data-planner-payment-badge="PAID"] { color:#07834c;background:color-mix(in srgb,#16a36a 12%,var(--panel)); }
-[data-compact-appointment="true"] [data-planner-payment-badge="PREPAID"],[data-compact-appointment="true"] [data-planner-payment-badge="PARTIAL"] { color:#b96a00;background:color-mix(in srgb,#f59e0b 14%,var(--panel)); }
-[data-compact-appointment="true"] [data-planner-payment-badge="UNPAID"],[data-compact-appointment="true"] [data-planner-payment-badge="OVERDUE"] { color:#c2410c;background:color-mix(in srgb,var(--orange) 12%,var(--panel)); }
-[data-compact-appointment="true"] [data-planner-money-grid] { display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin-top:6px; }
-[data-compact-appointment="true"] [data-planner-money-grid] span { display:flex;flex-direction:column;gap:1px; }
-[data-compact-appointment="true"] [data-planner-money-grid] small { color:var(--muted);font-size:11px; }
-[data-compact-appointment="true"] [data-planner-money-grid] b { font-size:13px; }
+[data-compact-appointment="true"] [data-planner-finance-main] { display:flex;align-items:center;justify-content:space-between;gap:12px;padding:1px 0 5px; }
+[data-compact-appointment="true"] [data-planner-finance-main] small { margin:0!important;color:var(--muted);font-size:11px;font-weight:850;letter-spacing:.06em;text-transform:uppercase; }
+[data-compact-appointment="true"] [data-planner-finance-main] strong { color:var(--orange);font-size:15px;white-space:nowrap; }
+[data-compact-appointment="true"] [data-planner-finance-row] { display:flex;align-items:center;justify-content:space-between;gap:12px;padding-top:5px;border-top:1px solid color-mix(in srgb,var(--line) 75%,transparent); }
+[data-compact-appointment="true"] [data-planner-finance-row] small { margin:0!important;color:var(--muted);font-size:11px;font-weight:800; }
+[data-compact-appointment="true"] [data-planner-finance-row] strong { font-size:13px;white-space:nowrap; }
+[data-compact-appointment="true"] [data-planner-finance-row="paid"] strong { color:var(--green); }
+[data-compact-appointment="true"] [data-planner-finance-row="balance"] strong,[data-compact-appointment="true"] [data-planner-finance-row="additional"] strong { color:var(--orange); }
 [data-compact-appointment="true"] [data-planner-last-payment] { display:block;margin-top:5px;color:var(--muted);font-size:11px; }
 [data-compact-appointment="true"] [data-planner-finance-note] { display:block;margin-top:5px;color:var(--muted);font-size:11px;line-height:1.35; }
 [data-compact-appointment="true"] [data-planner-estimate] { margin-top:7px;padding:8px 10px;display:flex;align-items:center;justify-content:space-between;gap:12px;border:1px solid color-mix(in srgb,var(--orange) 35%,var(--line));border-radius:8px;background:color-mix(in srgb,var(--orange) 6%,var(--panel)); }
 [data-compact-appointment="true"] [data-planner-estimate] small { margin:0!important;color:var(--muted);font-size:11px;font-weight:850;letter-spacing:.06em;text-transform:uppercase; }
 [data-compact-appointment="true"] [data-planner-estimate] strong { color:var(--orange);font-size:15px;white-space:nowrap; }
+[data-compact-appointment="true"] [data-planner-status-tone="neutral"] { color:var(--muted)!important;border-color:var(--line)!important;background:color-mix(in srgb,var(--muted) 8%,var(--panel))!important; }
+[data-compact-appointment="true"] [data-planner-status-tone="warning"] { color:var(--orange)!important;border-color:color-mix(in srgb,var(--orange) 45%,var(--line))!important;background:color-mix(in srgb,var(--orange) 8%,var(--panel))!important; }
+[data-compact-appointment="true"] [data-planner-status-tone="success"] { color:var(--green)!important;border-color:color-mix(in srgb,var(--green) 45%,var(--line))!important;background:color-mix(in srgb,var(--green) 8%,var(--panel))!important; }
+[data-compact-appointment="true"] [data-planner-status-tone="danger"] { color:var(--red)!important;border-color:color-mix(in srgb,var(--red) 45%,var(--line))!important;background:color-mix(in srgb,var(--red) 8%,var(--panel))!important; }
 [data-compact-appointment="true"] [data-planner-hidden="true"],[data-compact-appointment="true"] [class*="detailsReadonly"],[data-compact-appointment="true"] [class*="detailsFoot"] { display:none!important; }
 @media (max-height:760px) and (min-width:761px) { [data-compact-appointment="true"] [class*="detailsHead"] { padding-top:8px!important;padding-bottom:7px!important; } [data-compact-appointment="true"] [class*="detailsBody"] { gap:5px!important;padding-top:7px!important;padding-bottom:8px!important; } [data-compact-appointment="true"] [class*="detailsVehicle"] { padding-top:7px!important;padding-bottom:7px!important; } [data-compact-appointment="true"] [class*="detailsGrid"] > div { padding-top:6px!important;padding-bottom:6px!important; } [data-compact-appointment="true"] [class*="detailsSection"] { padding-top:7px!important;padding-bottom:7px!important; } }
-@media (max-width:760px) { [data-compact-appointment="true"] { width:100%!important;max-height:calc(100vh - 12px)!important;overflow:auto!important; } [data-compact-appointment="true"] [data-planner-money-grid] { grid-template-columns:1fr; } }
+@media (max-width:760px) { [data-compact-appointment="true"] { width:100%!important;max-height:calc(100vh - 12px)!important;overflow:auto!important; } }
 `;
 
-function isRecord(value: unknown): value is JsonRecord { return typeof value === "object" && value !== null && !Array.isArray(value); }
-function stringOrNull(value: unknown) { return typeof value === "string" && value.trim() ? value.trim() : null; }
-function numericOrNull(value: unknown) { const n=Number(value);return value!=null&&value!==""&&Number.isFinite(n)?n:null; }
-function money(value: number|null|undefined) { return value==null?"—":new Intl.NumberFormat("uk-UA",{style:"currency",currency:"UAH",maximumFractionDigits:0}).format(value); }
-function paymentLabel(status:PaymentStatus){return status==="PAID"?"Оплачено":status==="PREPAID"?"Передплата":status==="PARTIAL"?"Частково оплачено":status==="OVERDUE"?"Прострочено":status==="UNPAID"?"Очікує оплату":"Не сформовано";}
-function methodLabel(method:"CASH"|"TERMINAL"|"ONLINE"|"OTHER"|null){return method==="CASH"?"готівка":method==="TERMINAL"?"термінал":method==="ONLINE"?"онлайн":method==="OTHER"?"інший спосіб":"";}
-function parseSnapshot(value:unknown,appointmentId:string):Omit<AppointmentSnapshot,"finance">|null{if(!isRecord(value)||!Array.isArray(value.appointments))return null;const row=value.appointments.find(item=>isRecord(item)&&item.id===appointmentId);if(!isRecord(row))return null;const purpose=row.purpose==="DIAGNOSTICS"||row.purpose==="REPAIR"?row.purpose:null;return{id:appointmentId,clientId:stringOrNull(row.clientId),phone:stringOrNull(row.phone),estimatedAmount:typeof row.estimatedAmount==="number"||typeof row.estimatedAmount==="string"?row.estimatedAmount:null,purpose};}
-function parseFinance(value:unknown):FinanceState|null{if(!isRecord(value)||value.ok!==true||!isRecord(value.state))return null;const row=value.state;const status=typeof row.status==="string"?row.status:"NOT_FORMED";if(!["NOT_FORMED","UNPAID","PREPAID","PARTIAL","PAID","OVERDUE","CANCELLED"].includes(status))return null;const diagnostic=isRecord(row.diagnostic)?{reviewState:stringOrNull(row.diagnostic.reviewState),workflowLabel:stringOrNull(row.diagnostic.workflowLabel)||"Діагностика",total:Number(row.diagnostic.total)||0,checked:Number(row.diagnostic.checked)||0,defects:Number(row.diagnostic.defects)||0,completed:row.diagnostic.completed===true}:null;const lastPayment=isRecord(row.lastPayment)&&typeof row.lastPayment.id==="string"&&typeof row.lastPayment.occurredAt==="string"?{id:row.lastPayment.id,amount:Number(row.lastPayment.amount)||0,occurredAt:row.lastPayment.occurredAt,method:["CASH","TERMINAL","ONLINE","OTHER"].includes(String(row.lastPayment.method))?row.lastPayment.method as "CASH"|"TERMINAL"|"ONLINE"|"OTHER":null}:null;return{appointmentId:String(row.appointmentId||""),vehicleId:stringOrNull(row.vehicleId),diagnosticId:stringOrNull(row.diagnosticId),isCurrentVisit:row.isCurrentVisit===true,operationalLabel:stringOrNull(row.operationalLabel)||"Запис",source:(row.source as FinanceState["source"])||"NONE",actual:row.actual===true,status:status as PaymentStatus,amount:numericOrNull(row.amount),paid:Number(row.paid)||0,outstanding:numericOrNull(row.outstanding),estimatedAmount:numericOrNull(row.estimatedAmount),lastPayment,diagnostic};}
-function parseClientId(value:unknown){return isRecord(value)&&isRecord(value.client)?stringOrNull(value.client.id):null;}
-function formatEstimate(value:AppointmentSnapshot["estimatedAmount"]){const numeric=numericOrNull(value);return numeric==null?"Ще не розраховано":money(numeric);}
-function detailsModal(){return document.querySelector('[role="dialog"][aria-label="Інформація про запис"]') as HTMLElement|null;}
-function textOf(element:Element|null){return element?.textContent?.replace(/\s+/g," ").trim()||"";}
-function findSection(modal:HTMLElement,headings:string[]){return Array.from(modal.querySelectorAll("section")).find(section=>headings.includes(textOf(section.querySelector("h3")))) as HTMLElement|undefined;}
-function findClientCell(modal:HTMLElement){const label=Array.from(modal.querySelectorAll("small")).find(node=>textOf(node)==="КЛІЄНТ");return label?.parentElement as HTMLElement|null;}
-function hideNoise(modal:HTMLElement){for(const heading of["Фінанси","Стан роботи"]){const section=findSection(modal,[heading]);if(section)section.dataset.plannerHidden="true";}}
-function applyHeaderStatus(modal:HTMLElement,finance:FinanceState|null){if(!finance)return;const label=Array.from(modal.querySelectorAll("small")).find(node=>textOf(node)==="СТАТУС ЗАПИСУ");const status=label?.parentElement?.querySelector("em");if(status&&status.textContent!==finance.operationalLabel)status.textContent=finance.operationalLabel;}
-function ensureVisitFacts(workSection:HTMLElement){let host=workSection.querySelector("[data-planner-visit-facts]") as HTMLElement|null;if(host)return host;host=document.createElement("div");host.dataset.plannerVisitFacts="true";const title=workSection.querySelector("[class*='detailsSectionTitle']");title?.insertAdjacentElement("afterend",host);if(!title)workSection.prepend(host);return host;}
-function renderFacts(modal:HTMLElement,snapshot:AppointmentSnapshot|null){const section=findSection(modal,["Діагностика","Роботи"]);if(!section)return;section.querySelector("[data-planner-estimate]")?.remove();const finance=snapshot?.finance||null;if(!finance){let estimate=section.querySelector("[data-planner-estimate]") as HTMLElement|null;if(!estimate){estimate=document.createElement("div");estimate.dataset.plannerEstimate="true";estimate.innerHTML="<small></small><strong></strong>";const title=section.querySelector("[class*='detailsSectionTitle']");title?.insertAdjacentElement("afterend",estimate);}const isRepair=snapshot?.purpose==="REPAIR"||textOf(section.querySelector("h3"))==="Роботи";const small=estimate?.querySelector("small");const strong=estimate?.querySelector("strong");if(small)small.textContent=isRepair?"Орієнтовна сума робіт":"Орієнтовна вартість діагностики";if(strong)strong.textContent=formatEstimate(snapshot?.estimatedAmount??null);return;}const host=ensureVisitFacts(section);host.replaceChildren();if(finance.diagnostic){const block=document.createElement("div");block.dataset.plannerDiagnosticFact="true";const head=document.createElement("div");head.dataset.plannerFactHead="true";const strong=document.createElement("strong");strong.textContent=finance.diagnostic.workflowLabel;head.append(strong);if(finance.diagnosticId){const button=document.createElement("button");button.type="button";button.dataset.plannerDiagnosticLink="true";button.dataset.diagnosticId=finance.diagnosticId;button.textContent="Відкрити ДК →";head.append(button);}block.append(head);const meta=document.createElement("div");meta.dataset.plannerDiagnosticMeta="true";meta.textContent=`${finance.diagnostic.checked}/${finance.diagnostic.total} перевірено · ${finance.diagnostic.defects} деф.`;block.append(meta);host.append(block);}const fin=document.createElement("div");fin.dataset.plannerFinanceFact="true";const head=document.createElement("div");head.dataset.plannerFactHead="true";const title=document.createElement("strong");title.textContent="Оплата";const badge=document.createElement("span");badge.dataset.plannerPaymentBadge=finance.status;badge.textContent=paymentLabel(finance.status);head.append(title,badge);fin.append(head);const grid=document.createElement("div");grid.dataset.plannerMoneyGrid="true";for(const[label,value]of[[finance.actual?"Нараховано":"Планова сума",money(finance.amount)],["Оплачено",money(finance.paid)],["Залишок",money(finance.outstanding)]]as const){const cell=document.createElement("span");const small=document.createElement("small");small.textContent=label;const b=document.createElement("b");b.textContent=value;cell.append(small,b);grid.append(cell);}fin.append(grid);if(finance.lastPayment){const last=document.createElement("small");last.dataset.plannerLastPayment="true";const date=new Intl.DateTimeFormat("uk-UA",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"}).format(new Date(finance.lastPayment.occurredAt));last.textContent=`Остання оплата: ${money(finance.lastPayment.amount)}${finance.lastPayment.method?` · ${methodLabel(finance.lastPayment.method)}`:""} · ${date}`;fin.append(last);}if(finance.status==="PREPAID"){const note=document.createElement("small");note.dataset.plannerFinanceNote="true";note.textContent="Передплату зафіксовано. Остаточний залишок з’явиться після формування фактичного нарахування.";fin.append(note);}host.append(fin);}
-function applyClientLink(modal:HTMLElement,clientId:string|null){const cell=findClientCell(modal);if(!cell)return;if(!clientId){delete cell.dataset.plannerClientLink;delete cell.dataset.clientId;cell.removeAttribute("role");cell.removeAttribute("tabindex");cell.removeAttribute("title");return;}cell.dataset.plannerClientLink="true";cell.dataset.clientId=clientId;cell.setAttribute("role","button");cell.setAttribute("tabindex","0");cell.setAttribute("title","Відкрити картку клієнта");}
-async function resolveSnapshot(appointmentId:string,signal:AbortSignal):Promise<AppointmentSnapshot|null>{const now=Date.now();const params=new URLSearchParams({from:new Date(now-86_400_000).toISOString(),to:new Date(now+86_400_000).toISOString(),appointmentId});const[plannerResponse,financeResponse]=await Promise.all([fetch(`/api/planner?${params}`,{cache:"no-store",credentials:"include",signal}),fetch(`/api/vehicles/visit-financial-state?appointmentId=${encodeURIComponent(appointmentId)}`,{cache:"no-store",credentials:"include",signal})]);const plannerPayload:unknown=await plannerResponse.json().catch(()=>null);const financePayload:unknown=await financeResponse.json().catch(()=>null);if(!plannerResponse.ok)return null;let base=parseSnapshot(plannerPayload,appointmentId);if(!base)return null;if(!base.clientId&&base.phone){const clientResponse=await fetch(`/api/client-card?phone=${encodeURIComponent(base.phone)}`,{cache:"no-store",credentials:"include",signal});const clientPayload:unknown=await clientResponse.json().catch(()=>null);if(clientResponse.ok)base={...base,clientId:parseClientId(clientPayload)};}return{...base,finance:financeResponse.ok?parseFinance(financePayload):null};}
-export function PlannerAppointmentWindowEnhancer(){useEffect(()=>{const cache=new Map<string,AppointmentSnapshot|null>();let activeAppointmentId="";let controller:AbortController|null=null;let stopped=false;const decorate=(modal:HTMLElement,snapshot:AppointmentSnapshot|null)=>{modal.dataset.compactAppointment="true";hideNoise(modal);renderFacts(modal,snapshot);applyHeaderStatus(modal,snapshot?.finance||null);applyClientLink(modal,snapshot?.clientId??null);};const tick=()=>{if(stopped)return;const modal=detailsModal();if(!modal){activeAppointmentId="";controller?.abort();controller=null;return;}const appointmentId=readCrmRoute().appointmentId||"";if(!appointmentId)return;const cached=cache.get(appointmentId);decorate(modal,cached??null);if(cache.has(appointmentId))return;if(activeAppointmentId===appointmentId&&controller)return;controller?.abort();controller=new AbortController();activeAppointmentId=appointmentId;void resolveSnapshot(appointmentId,controller.signal).then(snapshot=>{if(stopped||controller?.signal.aborted||activeAppointmentId!==appointmentId)return;cache.set(appointmentId,snapshot);const current=detailsModal();if(current&&readCrmRoute().appointmentId===appointmentId)decorate(current,snapshot);}).catch(error=>{if(error instanceof DOMException&&error.name==="AbortError")return;cache.set(appointmentId,null);});};const openTarget=(target:EventTarget|null)=>{if(!(target instanceof Element))return false;const client=target.closest("[data-planner-client-link]") as HTMLElement|null;if(client?.dataset.clientId){navigateCrm("Клієнти",{clientId:client.dataset.clientId});return true;}const diagnostic=target.closest("[data-planner-diagnostic-link]") as HTMLElement|null;if(diagnostic?.dataset.diagnosticId){const vehicleId=cache.get(readCrmRoute().appointmentId||"")?.finance?.vehicleId||undefined;navigateCrm("Діагностика",{diagnosticId:diagnostic.dataset.diagnosticId,vehicleId});return true;}return false;};const onClick=(event:MouseEvent)=>{if(openTarget(event.target))event.preventDefault();};const onKeyDown=(event:KeyboardEvent)=>{if(event.key!=="Enter"&&event.key!==" ")return;if(openTarget(event.target))event.preventDefault();};const refresh=()=>{const id=readCrmRoute().appointmentId||"";if(id)cache.delete(id);controller?.abort();controller=null;activeAppointmentId="";tick();};document.addEventListener("click",onClick,true);document.addEventListener("keydown",onKeyDown,true);window.addEventListener("popstate",tick);window.addEventListener("turbolev:data-changed",refresh as EventListener);const observer=new MutationObserver(tick);observer.observe(document.body,{childList:true,subtree:true});const timer=window.setInterval(tick,350);tick();return()=>{stopped=true;controller?.abort();document.removeEventListener("click",onClick,true);document.removeEventListener("keydown",onKeyDown,true);window.removeEventListener("popstate",tick);window.removeEventListener("turbolev:data-changed",refresh as EventListener);observer.disconnect();window.clearInterval(timer);};},[]);return<style dangerouslySetInnerHTML={{__html:COMPACT_CSS}}/>;}
+function isRecord(value: unknown): value is JsonRecord {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function stringOrNull(value: unknown) {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function numericOrNull(value: unknown) {
+  const n = Number(value);
+  return value != null && value !== "" && Number.isFinite(n) ? n : null;
+}
+
+function money(value: number | null | undefined) {
+  return value == null
+    ? "—"
+    : new Intl.NumberFormat("uk-UA", { style: "currency", currency: "UAH", maximumFractionDigits: 0 }).format(value);
+}
+
+function methodLabel(method: "CASH" | "TERMINAL" | "ONLINE" | "OTHER" | null) {
+  return method === "CASH" ? "готівка" : method === "TERMINAL" ? "термінал" : method === "ONLINE" ? "онлайн" : method === "OTHER" ? "інший спосіб" : "";
+}
+
+function parseSnapshot(value: unknown, appointmentId: string): Omit<AppointmentSnapshot, "finance"> | null {
+  if (!isRecord(value) || !Array.isArray(value.appointments)) return null;
+  const row = value.appointments.find((item) => isRecord(item) && item.id === appointmentId);
+  if (!isRecord(row)) return null;
+  const purpose = row.purpose === "DIAGNOSTICS" || row.purpose === "REPAIR" ? row.purpose : null;
+  return {
+    id: appointmentId,
+    clientId: stringOrNull(row.clientId),
+    phone: stringOrNull(row.phone),
+    estimatedAmount: typeof row.estimatedAmount === "number" || typeof row.estimatedAmount === "string" ? row.estimatedAmount : null,
+    purpose,
+  };
+}
+
+function parseFinance(value: unknown): FinanceState | null {
+  if (!isRecord(value) || value.ok !== true || !isRecord(value.state)) return null;
+  const row = value.state;
+  const status = typeof row.status === "string" ? row.status : "NOT_FORMED";
+  if (!["NOT_FORMED", "UNPAID", "PREPAID", "PARTIAL", "PAID", "OVERDUE", "CANCELLED"].includes(status)) return null;
+  const approvalState = String(row.approvalState || "NOT_CALCULATED");
+  if (!["NOT_CALCULATED", "ESTIMATED", "APPROVED", "REJECTED"].includes(approvalState)) return null;
+  const displayTone = String(row.displayTone || "neutral");
+  if (!["neutral", "warning", "success", "danger"].includes(displayTone)) return null;
+  const presentationLabel = row.presentationLabel === "Вартість" ? "Вартість" : "Орієнтовна вартість";
+  const diagnostic = isRecord(row.diagnostic)
+    ? {
+        reviewState: stringOrNull(row.diagnostic.reviewState),
+        workflowLabel: stringOrNull(row.diagnostic.workflowLabel) || "Діагностика",
+        total: Number(row.diagnostic.total) || 0,
+        checked: Number(row.diagnostic.checked) || 0,
+        defects: Number(row.diagnostic.defects) || 0,
+        completed: row.diagnostic.completed === true,
+      }
+    : null;
+  const lastPayment = isRecord(row.lastPayment) && typeof row.lastPayment.id === "string" && typeof row.lastPayment.occurredAt === "string"
+    ? {
+        id: row.lastPayment.id,
+        amount: Number(row.lastPayment.amount) || 0,
+        occurredAt: row.lastPayment.occurredAt,
+        method: ["CASH", "TERMINAL", "ONLINE", "OTHER"].includes(String(row.lastPayment.method))
+          ? row.lastPayment.method as "CASH" | "TERMINAL" | "ONLINE" | "OTHER"
+          : null,
+      }
+    : null;
+  return {
+    appointmentId: String(row.appointmentId || ""),
+    vehicleId: stringOrNull(row.vehicleId),
+    diagnosticId: stringOrNull(row.diagnosticId),
+    isCurrentVisit: row.isCurrentVisit === true,
+    operationalLabel: stringOrNull(row.operationalLabel) || "Запис",
+    source: (row.source as FinanceState["source"]) || "NONE",
+    actual: row.actual === true,
+    status: status as PaymentStatus,
+    amount: numericOrNull(row.amount),
+    paid: Number(row.paid) || 0,
+    outstanding: numericOrNull(row.outstanding),
+    estimatedAmount: numericOrNull(row.estimatedAmount),
+    presentationAmount: numericOrNull(row.presentationAmount),
+    presentationOutstanding: numericOrNull(row.presentationOutstanding),
+    presentationLabel,
+    approvalState: approvalState as ApprovalState,
+    approved: row.approved === true,
+    rejected: row.rejected === true,
+    additionalPending: numericOrNull(row.additionalPending),
+    pendingTotal: numericOrNull(row.pendingTotal),
+    displayStatus: stringOrNull(row.displayStatus) || "Очікує розрахунку",
+    displayTone: displayTone as DisplayTone,
+    lastPayment,
+    diagnostic,
+  };
+}
+
+function parseClientId(value: unknown) {
+  return isRecord(value) && isRecord(value.client) ? stringOrNull(value.client.id) : null;
+}
+
+function formatEstimate(value: AppointmentSnapshot["estimatedAmount"]) {
+  const numeric = numericOrNull(value);
+  return numeric == null ? "Ще не розраховано" : money(numeric);
+}
+
+function detailsModal() {
+  return document.querySelector('[role="dialog"][aria-label="Інформація про запис"]') as HTMLElement | null;
+}
+
+function textOf(element: Element | null) {
+  return element?.textContent?.replace(/\s+/g, " ").trim() || "";
+}
+
+function findSection(modal: HTMLElement, headings: string[]) {
+  return Array.from(modal.querySelectorAll("section")).find((section) => headings.includes(textOf(section.querySelector("h3")))) as HTMLElement | undefined;
+}
+
+function findClientCell(modal: HTMLElement) {
+  const label = Array.from(modal.querySelectorAll("small")).find((node) => textOf(node) === "КЛІЄНТ");
+  return label?.parentElement as HTMLElement | null;
+}
+
+function hideNoise(modal: HTMLElement) {
+  for (const heading of ["Фінанси", "Стан роботи"]) {
+    const section = findSection(modal, [heading]);
+    if (section) section.dataset.plannerHidden = "true";
+  }
+}
+
+function applyHeaderStatus(modal: HTMLElement, finance: FinanceState | null) {
+  if (!finance) return;
+  const label = Array.from(modal.querySelectorAll("small")).find((node) => textOf(node) === "СТАТУС ЗАПИСУ");
+  const status = label?.parentElement?.querySelector("em") as HTMLElement | null;
+  if (!status) return;
+  status.textContent = finance.displayStatus;
+  status.dataset.plannerStatusTone = finance.displayTone;
+}
+
+function ensureVisitFacts(workSection: HTMLElement) {
+  let host = workSection.querySelector("[data-planner-visit-facts]") as HTMLElement | null;
+  if (host) return host;
+  host = document.createElement("div");
+  host.dataset.plannerVisitFacts = "true";
+  const title = workSection.querySelector("[class*='detailsSectionTitle']");
+  title?.insertAdjacentElement("afterend", host);
+  if (!title) workSection.prepend(host);
+  return host;
+}
+
+function financeRow(labelText: string, valueText: string, kind: "prepayment" | "balance" | "paid" | "additional") {
+  const row = document.createElement("div");
+  row.dataset.plannerFinanceRow = kind;
+  const label = document.createElement("small");
+  label.textContent = labelText;
+  const value = document.createElement("strong");
+  value.textContent = valueText;
+  row.append(label, value);
+  return row;
+}
+
+function renderFinancialFact(host: HTMLElement, finance: FinanceState) {
+  const fin = document.createElement("div");
+  fin.dataset.plannerFinanceFact = "true";
+
+  const main = document.createElement("div");
+  main.dataset.plannerFinanceMain = "true";
+  const label = document.createElement("small");
+  label.textContent = finance.presentationLabel;
+  const amount = document.createElement("strong");
+  amount.textContent = finance.presentationAmount == null ? "Ще не розраховано" : money(finance.presentationAmount);
+  main.append(label, amount);
+  fin.append(main);
+
+  if ((finance.additionalPending ?? 0) > 0) {
+    fin.append(financeRow("Додатково до погодження", money(finance.additionalPending), "additional"));
+  }
+
+  const paid = Math.max(0, finance.paid);
+  const balance = finance.presentationOutstanding;
+  if (paid > 0 && balance != null && balance > 0) {
+    fin.append(financeRow("Передплата", money(paid), "prepayment"));
+    fin.append(financeRow("Залишок", money(balance), "balance"));
+  } else if (paid > 0 && balance != null && balance <= 0) {
+    fin.append(financeRow("Оплачено", money(paid), "paid"));
+  } else if (paid > 0) {
+    fin.append(financeRow("Передплата", money(paid), "prepayment"));
+  }
+
+  if (finance.lastPayment) {
+    const last = document.createElement("small");
+    last.dataset.plannerLastPayment = "true";
+    const date = new Intl.DateTimeFormat("uk-UA", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }).format(new Date(finance.lastPayment.occurredAt));
+    last.textContent = `Остання оплата: ${money(finance.lastPayment.amount)}${finance.lastPayment.method ? ` · ${methodLabel(finance.lastPayment.method)}` : ""} · ${date}`;
+    fin.append(last);
+  }
+
+  if (finance.approvalState === "ESTIMATED") {
+    const note = document.createElement("small");
+    note.dataset.plannerFinanceNote = "true";
+    note.textContent = "Сума залишається орієнтовною до погодження клієнтом або адміністратором.";
+    fin.append(note);
+  } else if (finance.approvalState === "REJECTED") {
+    const note = document.createElement("small");
+    note.dataset.plannerFinanceNote = "true";
+    note.textContent = "Погодження вартості відхилено. Потрібно сформувати або погодити нову суму.";
+    fin.append(note);
+  } else if (finance.presentationAmount == null && paid > 0) {
+    const note = document.createElement("small");
+    note.dataset.plannerFinanceNote = "true";
+    note.textContent = "Передплату зафіксовано. Залишок буде розраховано після формування загальної суми.";
+    fin.append(note);
+  }
+
+  host.append(fin);
+}
+
+function renderFacts(modal: HTMLElement, snapshot: AppointmentSnapshot | null) {
+  const section = findSection(modal, ["Діагностика", "Роботи"]);
+  if (!section) return;
+  section.querySelector("[data-planner-estimate]")?.remove();
+  section.querySelector("[data-planner-visit-facts]")?.remove();
+
+  const finance = snapshot?.finance || null;
+  if (!finance) {
+    const estimate = document.createElement("div");
+    estimate.dataset.plannerEstimate = "true";
+    const label = document.createElement("small");
+    label.textContent = "Орієнтовна вартість";
+    const value = document.createElement("strong");
+    value.textContent = formatEstimate(snapshot?.estimatedAmount ?? null);
+    estimate.append(label, value);
+    const title = section.querySelector("[class*='detailsSectionTitle']");
+    title?.insertAdjacentElement("afterend", estimate);
+    if (!title) section.prepend(estimate);
+    return;
+  }
+
+  const host = ensureVisitFacts(section);
+  if (finance.diagnostic) {
+    const block = document.createElement("div");
+    block.dataset.plannerDiagnosticFact = "true";
+    const head = document.createElement("div");
+    head.dataset.plannerFactHead = "true";
+    const strong = document.createElement("strong");
+    strong.textContent = finance.diagnostic.workflowLabel;
+    head.append(strong);
+    if (finance.diagnosticId) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.dataset.plannerDiagnosticLink = "true";
+      button.dataset.diagnosticId = finance.diagnosticId;
+      button.textContent = "Відкрити ДК →";
+      head.append(button);
+    }
+    block.append(head);
+    const meta = document.createElement("div");
+    meta.dataset.plannerDiagnosticMeta = "true";
+    meta.textContent = `${finance.diagnostic.checked}/${finance.diagnostic.total} перевірено · ${finance.diagnostic.defects} деф.`;
+    block.append(meta);
+    host.append(block);
+  }
+  renderFinancialFact(host, finance);
+}
+
+function applyClientLink(modal: HTMLElement, clientId: string | null) {
+  const cell = findClientCell(modal);
+  if (!cell) return;
+  if (!clientId) {
+    delete cell.dataset.plannerClientLink;
+    delete cell.dataset.clientId;
+    cell.removeAttribute("role");
+    cell.removeAttribute("tabindex");
+    cell.removeAttribute("title");
+    return;
+  }
+  cell.dataset.plannerClientLink = "true";
+  cell.dataset.clientId = clientId;
+  cell.setAttribute("role", "button");
+  cell.setAttribute("tabindex", "0");
+  cell.setAttribute("title", "Відкрити картку клієнта");
+}
+
+async function resolveSnapshot(appointmentId: string, signal: AbortSignal): Promise<AppointmentSnapshot | null> {
+  const now = Date.now();
+  const params = new URLSearchParams({
+    from: new Date(now - 86_400_000).toISOString(),
+    to: new Date(now + 86_400_000).toISOString(),
+    appointmentId,
+  });
+  const [plannerResponse, financeResponse] = await Promise.all([
+    fetch(`/api/planner?${params}`, { cache: "no-store", credentials: "include", signal }),
+    fetch(`/api/vehicles/visit-financial-state?appointmentId=${encodeURIComponent(appointmentId)}`, { cache: "no-store", credentials: "include", signal }),
+  ]);
+  const plannerPayload: unknown = await plannerResponse.json().catch(() => null);
+  const financePayload: unknown = await financeResponse.json().catch(() => null);
+  if (!plannerResponse.ok) return null;
+  let base = parseSnapshot(plannerPayload, appointmentId);
+  if (!base) return null;
+  if (!base.clientId && base.phone) {
+    const clientResponse = await fetch(`/api/client-card?phone=${encodeURIComponent(base.phone)}`, { cache: "no-store", credentials: "include", signal });
+    const clientPayload: unknown = await clientResponse.json().catch(() => null);
+    if (clientResponse.ok) base = { ...base, clientId: parseClientId(clientPayload) };
+  }
+  return { ...base, finance: financeResponse.ok ? parseFinance(financePayload) : null };
+}
+
+export function PlannerAppointmentWindowEnhancer() {
+  useEffect(() => {
+    const cache = new Map<string, AppointmentSnapshot | null>();
+    let activeAppointmentId = "";
+    let controller: AbortController | null = null;
+    let stopped = false;
+
+    const decorate = (modal: HTMLElement, snapshot: AppointmentSnapshot | null) => {
+      modal.dataset.compactAppointment = "true";
+      hideNoise(modal);
+      renderFacts(modal, snapshot);
+      applyHeaderStatus(modal, snapshot?.finance || null);
+      applyClientLink(modal, snapshot?.clientId ?? null);
+    };
+
+    const tick = () => {
+      if (stopped) return;
+      const modal = detailsModal();
+      if (!modal) {
+        activeAppointmentId = "";
+        controller?.abort();
+        controller = null;
+        return;
+      }
+      const appointmentId = readCrmRoute().appointmentId || "";
+      if (!appointmentId) return;
+      const cached = cache.get(appointmentId);
+      decorate(modal, cached ?? null);
+      if (cache.has(appointmentId)) return;
+      if (activeAppointmentId === appointmentId && controller) return;
+
+      controller?.abort();
+      controller = new AbortController();
+      activeAppointmentId = appointmentId;
+      void resolveSnapshot(appointmentId, controller.signal)
+        .then((snapshot) => {
+          if (stopped || controller?.signal.aborted || activeAppointmentId !== appointmentId) return;
+          cache.set(appointmentId, snapshot);
+          const current = detailsModal();
+          if (current && readCrmRoute().appointmentId === appointmentId) decorate(current, snapshot);
+        })
+        .catch((error) => {
+          if (error instanceof DOMException && error.name === "AbortError") return;
+          cache.set(appointmentId, null);
+        });
+    };
+
+    const openTarget = (target: EventTarget | null) => {
+      if (!(target instanceof Element)) return false;
+      const client = target.closest("[data-planner-client-link]") as HTMLElement | null;
+      if (client?.dataset.clientId) {
+        navigateCrm("Клієнти", { clientId: client.dataset.clientId });
+        return true;
+      }
+      const diagnostic = target.closest("[data-planner-diagnostic-link]") as HTMLElement | null;
+      if (diagnostic?.dataset.diagnosticId) {
+        const vehicleId = cache.get(readCrmRoute().appointmentId || "")?.finance?.vehicleId || undefined;
+        navigateCrm("Діагностика", { diagnosticId: diagnostic.dataset.diagnosticId, vehicleId });
+        return true;
+      }
+      return false;
+    };
+
+    const onClick = (event: MouseEvent) => {
+      if (openTarget(event.target)) event.preventDefault();
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Enter" && event.key !== " ") return;
+      if (openTarget(event.target)) event.preventDefault();
+    };
+    const refresh = () => {
+      const id = readCrmRoute().appointmentId || "";
+      if (id) cache.delete(id);
+      controller?.abort();
+      controller = null;
+      activeAppointmentId = "";
+      tick();
+    };
+
+    document.addEventListener("click", onClick, true);
+    document.addEventListener("keydown", onKeyDown, true);
+    window.addEventListener("popstate", tick);
+    window.addEventListener("turbolev:data-changed", refresh as EventListener);
+    const observer = new MutationObserver(tick);
+    observer.observe(document.body, { childList: true, subtree: true });
+    const timer = window.setInterval(tick, 350);
+    tick();
+
+    return () => {
+      stopped = true;
+      controller?.abort();
+      document.removeEventListener("click", onClick, true);
+      document.removeEventListener("keydown", onKeyDown, true);
+      window.removeEventListener("popstate", tick);
+      window.removeEventListener("turbolev:data-changed", refresh as EventListener);
+      observer.disconnect();
+      window.clearInterval(timer);
+    };
+  }, []);
+
+  return <style dangerouslySetInnerHTML={{ __html: COMPACT_CSS }} />;
+}
