@@ -6,6 +6,7 @@ import { MechanicCabinetPreferences } from "./mechanic-cabinet-preferences";
 import compactStyles from "./mechanic-mobile-compact.module.css";
 import polishStyles from "./mechanic-mobile-polish.module.css";
 import statusLayoutStyles from "./mechanic-mobile-status-layout.module.css";
+import mobileFirstStyles from "./mechanic-mobile-first-v3.module.css";
 
 const MechanicVehicleScanner = dynamic(
   () => import("./mechanic-vehicle-scanner").then((module) => module.MechanicVehicleScanner),
@@ -26,7 +27,7 @@ const MechanicDiagnosticsArrivalBridge = dynamic(
  * workflow, task, diagnostics or scanner behavior.
  */
 export function MechanicLiveCabinet({ userName }: { userName?: string | null }) {
-  return <div className={`${compactStyles.compactViewport} ${polishStyles.polishViewport} ${statusLayoutStyles.statusLayoutViewport}`}>
+  return <div className={`${compactStyles.compactViewport} ${polishStyles.polishViewport} ${statusLayoutStyles.statusLayoutViewport} ${mobileFirstStyles.mobileFirstV3}`}>
     <MechanicStandaloneCabinet userName={userName} />
     <MechanicCabinetPreferences />
     <MechanicVehicleScanner />
