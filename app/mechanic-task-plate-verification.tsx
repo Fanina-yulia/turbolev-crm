@@ -1,12 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import styles from "./mechanic-execution-issue-form.module.css";
+import styles from "./mechanic-task-plate-verification.module.css";
 
 type Task = { id: string; vehicle: string; plate: string };
+type VerificationMethod = "CAMERA" | "MANUAL";
 
 export function MechanicTaskPlateVerification({ task, onClose, onVerified }: { task: Task; onClose: () => void; onVerified: () => Promise<void> | void }) {
   const [plate, setPlate] = useState("");
+  const [verificationMethod, setVerificationMethod] = useState<VerificationMethod>("MANUAL");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
@@ -19,12 +21,13 @@ export function MechanicTaskPlateVerification({ task, onClose, onVerified }: { t
       const body = await response.json().catch(() => null) as { recognition?: { plate?: string }; message?: string; error?: string } | null;
       if (!response.ok || !body?.recognition?.plate) throw new Error(body?.message || body?.error || "Номер не вдалося розпізнати. Введіть його вручну.");
       setPlate(body.recognition.plate);
+      setVerificationMethod("CAMERA");
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Номер не вдалося розпізнати.");
     } finally { setBusy(false); }
   }
 
-  async function verify(method: "CAMERA" | "MANUAL") {
+  async function verify(method: VerificationMethod) {
     if (!plate.trim()) { setError("Введіть або відскануйте номер автомобіля."); return; }
     setBusy(true); setError("");
     try {
@@ -37,13 +40,13 @@ export function MechanicTaskPlateVerification({ task, onClose, onVerified }: { t
     } finally { setBusy(false); }
   }
 
-  return <div className={styles.backdrop} role="dialog" aria-modal="true">
+  return <div className={styles.backdrop} role="dialog" aria-modal="true" aria-labelledby="mechanic-plate-verification-title">
     <section className={styles.sheet}>
-      <div className={styles.head}><div><h2>Підтвердіть автомобіль</h2><p>{task.vehicle} · очікується {task.plate || "номер не вказано"}</p></div><button className={styles.close} type="button" onClick={onClose} aria-label="Закрити">×</button></div>
-      <label className={styles.field}><span>Державний номер</span><input value={plate} onChange={(event) => setPlate(event.target.value.toUpperCase())} placeholder="AA 6919 YD" autoCapitalize="characters" autoComplete="off" /></label>
-      <label className={styles.upload} style={{ width: "100%", height: 52, fontSize: 15 }}>📷 Сканувати камерою<input type="file" accept="image/*" capture="environment" onChange={(event) => { const file = event.currentTarget.files?.[0]; event.currentTarget.value = ""; if (file) void scan(file); }} /></label>
+      <div className={styles.head}><div><h2 id="mechanic-plate-verification-title">Підтвердіть автомобіль</h2><p>{task.vehicle} · очікується {task.plate || "номер не вказано"}</p></div><button className={styles.close} type="button" onClick={onClose} aria-label="Закрити">×</button></div>
+      <label className={styles.field}><span>Державний номер</span><input value={plate} onChange={(event) => { setPlate(event.target.value.toUpperCase()); setVerificationMethod("MANUAL"); }} placeholder="AA 6919 YD" autoCapitalize="characters" autoComplete="off" inputMode="text" /></label>
+      <label className={styles.upload}>📷 Сканувати камерою<input type="file" accept="image/*" capture="environment" onChange={(event) => { const file = event.currentTarget.files?.[0]; event.currentTarget.value = ""; if (file) void scan(file); }} /></label>
       {error && <p className={styles.error}>{error}</p>}
-      <button className={styles.submit} type="button" disabled={busy} onClick={() => void verify("MANUAL")}>{busy ? "Перевіряю…" : "Підтвердити та почати"}</button>
+      <button className={styles.submit} type="button" disabled={busy} onClick={() => void verify(verificationMethod)}>{busy ? "Перевіряю…" : "Підтвердити та почати"}</button>
     </section>
   </div>;
 }
