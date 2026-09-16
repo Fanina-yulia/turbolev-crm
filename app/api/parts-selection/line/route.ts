@@ -115,7 +115,8 @@ export async function GET(request: Request) {
 export async function PATCH(request: Request) {
   const access = await authorize(PERMISSIONS.PARTS_WRITE, { request, minimumScope: "LOCATION", strict: true });
   if (!access.allowed) return access.response!;
-  if (!access.context.user) return NextResponse.json({ ok: false, error: "UNAUTHENTICATED" }, { status: 401 });
+  const actorUser = access.context.user;
+  if (!actorUser) return NextResponse.json({ ok: false, error: "UNAUTHENTICATED" }, { status: 401 });
   try {
     const body = await request.json().catch(() => null) as Record<string, unknown> | null;
     const diagnosticId = clean(body?.diagnosticId, 160);
@@ -183,7 +184,7 @@ export async function PATCH(request: Request) {
     const oldManual = isRecord(currentMetadata.partsManualOverrides) ? currentMetadata.partsManualOverrides : {};
     const previousFields = Array.isArray(oldManual.fields) ? oldManual.fields.filter((field): field is string => typeof field === "string") : [];
     const manualFields = Array.from(new Set([...previousFields, ...changedFields]));
-    const actorName = access.context.user.employeeName || access.context.user.name || "CRM / Підбір запчастин";
+    const actorName = actorUser.employeeName || actorUser.name || "CRM / Підбір запчастин";
     const metadata = {
       ...currentMetadata,
       supplierName: next.supplierName,
@@ -201,7 +202,7 @@ export async function PATCH(request: Request) {
         fields: manualFields,
         priceOverrideReason: priceOverride ? reason : typeof oldManual.priceOverrideReason === "string" ? oldManual.priceOverrideReason : null,
         updatedAt: new Date().toISOString(),
-        updatedByUserId: access.context.user.id,
+        updatedByUserId: actorUser.id,
         updatedByName: actorName,
       },
     };
@@ -227,7 +228,7 @@ export async function PATCH(request: Request) {
         sourcingMode: "MANUAL_OVERRIDE",
       } });
       await tx.auditEvent.create({ data: {
-        actorId: access.context.user.id,
+        actorId: actorUser.id,
         actorName,
         entityType: "WorkOrderLine",
         entityId: lineId,
