@@ -6,6 +6,7 @@ import {
   DiagnosticCommercialProposalError,
 } from "@/src/services/diagnostic-commercial-proposal.service";
 import { DiagnosticCommercialHandoffError } from "@/src/services/diagnostic-commercial-handoff.service";
+import { syncDiagnosticPartSelectionDraftsToWorkOrder } from "@/src/services/diagnostic-part-selection-draft.service";
 import { DiagnosticRequestNotFoundError, WorkOrderHardGateError } from "@/src/services/work-orders.service";
 import { WorkOrderCommercialError } from "@/src/services/work-order-commercial.service";
 import { getStructuredDiagnostic, StructuredDiagnosticError } from "@/src/services/structured-diagnostics.service";
@@ -29,7 +30,18 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     if (!access.context.user) return NextResponse.json({ ok: false, error: "UNAUTHENTICATED" }, { status: 401 });
     if (!(await locationAllowed(access, id))) return NextResponse.json({ ok: false, error: "LOCATION_FORBIDDEN" }, { status: 403 });
 
-    const result = await createCommercialProposalFromDiagnostic(id, access.context.user.name || "CRM / Сервіс-менеджер", access.context.user.id);
+    const actorName = access.context.user.employeeName || access.context.user.name || "CRM / Сервіс-менеджер";
+    const result = await createCommercialProposalFromDiagnostic(id, actorName, access.context.user.id);
+
+    let partsSelectionSync: { synced: number; skipped: number } | null = null;
+    let partsSelectionSyncWarning: string | null = null;
+    try {
+      partsSelectionSync = await syncDiagnosticPartSelectionDraftsToWorkOrder(id, { id: access.context.user.id, name: actorName });
+    } catch (syncError) {
+      partsSelectionSyncWarning = syncError instanceof Error ? syncError.message : "Не вдалося перенести попередньо підібрані деталі в замовлення-наряд.";
+      console.error("Staged parts selection promotion failed", { diagnosticRequestId: id, workOrderId: result.workOrder.id, syncError });
+    }
+
     let issueSyncWarning: string | null = null;
     try {
       await markDiagnosticIssuesQuoted(id, result.workOrder.id);
@@ -37,7 +49,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       issueSyncWarning = issueError instanceof Error ? issueError.message : "Не вдалося оновити стан проблем автомобіля.";
       console.error("Vehicle issue commercial handoff sync failed", { diagnosticRequestId: id, workOrderId: result.workOrder.id, issueError });
     }
-    return NextResponse.json({ ok: true, ...result, issueSyncWarning });
+    return NextResponse.json({ ok: true, ...result, partsSelectionSync, partsSelectionSyncWarning, issueSyncWarning });
   } catch (error) {
     if (error instanceof DiagnosticCommercialProposalError || error instanceof DiagnosticCommercialHandoffError || error instanceof StructuredDiagnosticError) {
       return NextResponse.json({ ok: false, error: error.code, message: error.message }, { status: error.status });

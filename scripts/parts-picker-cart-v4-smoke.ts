@@ -8,8 +8,14 @@ const read = (path: string) => readFileSync(resolve(root, path), "utf8");
 
 const wrapper = read("app/parts-catalog-legacy.tsx");
 const workspace = read("app/parts-selection-workspace-v4.tsx");
-const route = read("app/api/parts-selection/line/route.ts");
-const spec = read("docs/TZ_PARTS_PICKER_CART_V4.md");
+const lineRoute = read("app/api/parts-selection/line/route.ts");
+const selectRoute = read("app/api/parts-selection/select/route.ts");
+const handoffRoute = read("app/api/diagnostics/[id]/commercial-handoff/route.ts");
+const proposalRoute = read("app/api/diagnostics/[id]/commercial-proposal/route.ts");
+const staging = read("src/services/diagnostic-part-selection-draft.service.ts");
+const prismaModel = read("prisma/parts-selection-draft.prisma");
+const specV4 = read("docs/TZ_PARTS_PICKER_CART_V4.md");
+const specV5 = read("docs/TZ_PARTS_IN_PROGRESS_STAGING_V5.md");
 
 assert.match(wrapper, /PartsSelectionWorkspaceV4/, "diagnostic route must mount V4 picker/cart workspace");
 assert.match(wrapper, /PartsCatalogV3/, "non-diagnostic legacy entry must remain available");
@@ -25,12 +31,30 @@ assert.match(workspace, /\/api\/parts-selection\/line/, "cart must load and pers
 assert.match(workspace, /Ціна закупки, грн/, "cart must retain purchase price column");
 assert.match(workspace, /Прибуток, грн/, "cart must calculate profit column");
 assert.match(workspace, /priceOverrideReason/, "direct sell-price override must carry reason context");
-assert.match(route, /PERMISSIONS\.PARTS_READ/, "cart GET must require PARTS_READ");
-assert.match(route, /PERMISSIONS\.PARTS_WRITE/, "cart PATCH must require PARTS_WRITE");
-assert.match(route, /PART_SELECTION_LINE_MANUAL_OVERRIDE/, "manual corrections must create audit event");
-assert.match(route, /partsManualOverrides/, "manual provenance must be persisted in metadata");
-assert.match(route, /partsRequestItem\.updateMany/, "cart edits must sync PartsRequestItem");
-assert.match(route, /LOCKED_REQUEST_STATUSES/, "ordered or received parts must be protected from unsafe editing");
-assert.match(spec, /жодних вигаданих даних/i, "spec must forbid fabricated supplier/cart facts");
 
-console.log("Parts picker + editable cart V4 smoke: PASS");
+assert.match(lineRoute, /PERMISSIONS\.PARTS_READ/, "cart GET must require PARTS_READ");
+assert.match(lineRoute, /PERMISSIONS\.PARTS_WRITE/, "cart PATCH must require PARTS_WRITE");
+assert.match(lineRoute, /listDiagnosticPartCartRows/, "cart route must support staged and canonical rows");
+assert.match(lineRoute, /updateDiagnosticPartCartRow/, "cart route must delegate staged/canonical updates to the service");
+
+assert.match(selectRoute, /view\.diagnostic\.status === "CONFIRMED"/, "confirmed diagnostics must retain canonical selection flow");
+assert.match(selectRoute, /stageDiagnosticPartOffer/, "unconfirmed diagnostics must persist selected offers without creating a WorkOrder");
+assert.match(handoffRoute, /getDiagnosticPartSelectionPreview/, "handoff GET must expose parts preview before confirmation");
+assert.match(handoffRoute, /commercialReady: false/, "pre-confirmation preview must explicitly remain non-commercial");
+assert.match(proposalRoute, /syncDiagnosticPartSelectionDraftsToWorkOrder/, "commercial proposal creation must promote staged selections");
+
+assert.match(staging, /diagnosticPartSelectionDraft\.upsert/, "reselection must replace one staged row for the same diagnostic need");
+assert.match(staging, /PART_OFFER_STAGED_BEFORE_DIAGNOSTIC_CONFIRMATION/, "pre-confirmation supplier selection must be audited");
+assert.match(staging, /lineId: `draft:\$\{row\.id\}`/, "staged rows must expose stable UI cart ids");
+assert.match(staging, /PART_SELECTION_LINE_MANUAL_OVERRIDE/, "manual corrections must create audit events");
+assert.match(staging, /partsManualOverrides/, "manual provenance must be persisted when staged facts become canonical");
+assert.match(staging, /partsRequestItem\.updateMany/, "cart edits and promotion must sync PartsRequestItem");
+assert.match(staging, /LOCKED_REQUEST_STATUSES/, "ordered or received canonical parts must remain protected from unsafe editing");
+assert.match(staging, /STAGED_PART_SELECTION_SYNCED_TO_WORK_ORDER/, "promotion to WorkOrder must be explicitly audited");
+assert.match(prismaModel, /model DiagnosticPartSelectionDraft/, "staged supplier selections must have a durable database source of truth");
+assert.match(prismaModel, /@@unique\(\[diagnosticRequestId, selectionKey\]\)/, "one diagnostic need must have one staged selection row");
+assert.match(specV4, /жодних вигаданих даних/i, "V4 spec must forbid fabricated supplier/cart facts");
+assert.match(specV5, /не створює WorkOrder і не створює Комерційну пропозицію/, "V5 must preserve the commercial hard gate while allowing sourcing");
+assert.match(specV5, /IN_PROGRESS/, "V5 must explicitly support parts sourcing while diagnostics are in progress");
+
+console.log("Parts picker + editable cart + pre-confirmation staging V5 smoke: PASS");
