@@ -88,27 +88,46 @@ function syncActionVisibility(root: HTMLElement) {
 
 export function MechanicWorkActionVisibilityGuard() {
   useEffect(() => {
-    const root = document.querySelector<HTMLElement>('[data-mechanic-cabinet="true"]');
-    if (!root) return;
-
     let frame = 0;
+    let root: HTMLElement | null = null;
+    let rootObserver: MutationObserver | null = null;
+    let bootstrapObserver: MutationObserver | null = null;
+
     const schedule = () => {
       window.cancelAnimationFrame(frame);
-      frame = window.requestAnimationFrame(() => syncActionVisibility(root));
+      frame = window.requestAnimationFrame(() => {
+        const nextRoot = document.querySelector<HTMLElement>('[data-mechanic-cabinet="true"]');
+        if (!nextRoot) return;
+
+        if (root !== nextRoot) {
+          rootObserver?.disconnect();
+          root = nextRoot;
+          rootObserver = new MutationObserver(schedule);
+          rootObserver.observe(root, {
+            subtree: true,
+            childList: true,
+            characterData: true,
+            attributes: true,
+            attributeFilter: ["class", "hidden", "aria-hidden"],
+          });
+        }
+
+        syncActionVisibility(nextRoot);
+
+        if (bootstrapObserver) {
+          bootstrapObserver.disconnect();
+          bootstrapObserver = null;
+        }
+      });
     };
 
+    bootstrapObserver = new MutationObserver(schedule);
+    bootstrapObserver.observe(document.body, { subtree: true, childList: true });
     schedule();
-    const observer = new MutationObserver(schedule);
-    observer.observe(root, {
-      subtree: true,
-      childList: true,
-      characterData: true,
-      attributes: true,
-      attributeFilter: ["class", "hidden", "aria-hidden"],
-    });
 
     return () => {
-      observer.disconnect();
+      bootstrapObserver?.disconnect();
+      rootObserver?.disconnect();
       window.cancelAnimationFrame(frame);
     };
   }, []);
