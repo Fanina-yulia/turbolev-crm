@@ -50,10 +50,7 @@ function hasStartedControls(section: HTMLElement) {
   return buttons.some((value) => value.includes("Пауза") || value.includes("Продовжити") || value.includes("Завершити ремонт"));
 }
 
-function syncActionVisibility() {
-  const root = document.querySelector<HTMLElement>('[data-mechanic-cabinet="true"]');
-  if (!root) return;
-
+function syncActionVisibility(root: HTMLElement) {
   const heading = Array.from(root.querySelectorAll("h2")).find((node) => text(node) === "Керування роботою");
   const section = heading?.closest<HTMLElement>("section");
   const main = section?.closest<HTMLElement>("main");
@@ -75,15 +72,18 @@ function syncActionVisibility() {
 
 export function MechanicWorkActionVisibilityGuard() {
   useEffect(() => {
+    const root = document.querySelector<HTMLElement>('[data-mechanic-cabinet="true"]');
+    if (!root) return;
+
     let frame = 0;
     const schedule = () => {
       window.cancelAnimationFrame(frame);
-      frame = window.requestAnimationFrame(syncActionVisibility);
+      frame = window.requestAnimationFrame(() => syncActionVisibility(root));
     };
 
     schedule();
     const observer = new MutationObserver(schedule);
-    observer.observe(document.body, { subtree: true, childList: true, characterData: true, attributes: true });
+    observer.observe(root, { subtree: true, childList: true, characterData: true });
 
     return () => {
       observer.disconnect();
