@@ -9,8 +9,9 @@ import { resolvePartFitment } from "@/src/services/parts-fitment.service";
 import { normalizePartNeed } from "@/src/services/part-normalization.service";
 import { resolvePartKnowledge } from "@/src/services/parts-knowledge.service";
 import { enrichOffersWithSellPrice } from "@/src/services/suppliers/order.service";
-import { searchConfiguredSuppliers } from "@/src/services/suppliers/registry";
 import { decorateSupplierOffersWithPackaging, getPartPackageRule } from "@/src/services/part-operation-catalog.service";
+import { mergeOeNumbers, resolveCuratedOeEvidence } from "@/src/services/parts-oe-evidence.service";
+import { searchConfiguredSuppliersOeFirst } from "@/src/services/strict-parts-search.service";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -53,22 +54,9 @@ export async function GET(request: Request) {
       return null;
     }
   };
-  const rawVehicleContextPromise = decodeVehicleContext(rawVin);
 
-  const fitmentPromise = resolvePartFitment({
-    query: q,
-    partName,
-    canonicalCode,
-    axis,
-    position,
-    side,
-    subPosition,
-    genericArticleId,
-    vehicleId,
-    vin: rawVin,
-    plate,
-  });
-  const normalizationPromise = normalizePartNeed({
+  // Normalize intent before fitment so REAR/FRONT is never lost between UI and provider search.
+  const normalization = await normalizePartNeed({
     query: q,
     partName,
     canonicalCode,
@@ -78,27 +66,20 @@ export async function GET(request: Request) {
     side,
     subPosition,
   });
-  const knowledgePromise = resolvePartKnowledge({
-    query: q,
-    partName,
-    canonicalCode,
-    genericArticleId,
-    position,
-    side,
-    subPosition,
-  });
-  const referencePromise = searchReferenceParts(q, 50);
-  const fitment = await fitmentPromise;
-  const [normalization, knowledge, reference] = await Promise.all([
-    normalizationPromise,
-    knowledgePromise,
-    referencePromise,
+  const [knowledge, reference, rawVehicleContext] = await Promise.all([
+    resolvePartKnowledge({
+      query: q,
+      partName,
+      canonicalCode,
+      genericArticleId,
+      position,
+      side,
+      subPosition,
+    }),
+    searchReferenceParts(q, 50),
+    decodeVehicleContext(rawVin),
   ]);
 
-  // Resolve the mechanic-facing label once and pass the same canonical intent
-  // to every supplier. The provider adapters must not independently guess
-  // whether "кульова опора — ліва сторона, передня вісь" means a ball joint,
-  // a control arm, or a bushing.
   const resolvedGenericArticleId = genericArticleId || normalization.genericArticle?.id || knowledge.genericArticleId || null;
   const resolvedCanonicalCode = canonicalCode
     || normalization.genericArticle?.code
@@ -114,37 +95,33 @@ export async function GET(request: Request) {
   const resolvedSubPosition = subPosition || normalization.subPosition || knowledge.attributes.subPosition || null;
   const resolvedPosition = position || normalization.position || null;
 
-  const supplierPromise = includeSuppliers
-    ? searchConfiguredSuppliers(q, 20, {
-        vehicleId,
-        vin: rawVin,
-        plate,
-        fitmentStatus: fitment.status,
-        fitmentConfidence: fitment.confidence,
-        fitmentExact: fitment.exact,
-        fitmentSource: fitment.catalog?.source || null,
-        fitmentReason: fitment.reason,
-        providerVehicle: fitment.providerVehicle,
-        fitmentOffers: fitment.matches.flatMap((match) => match.offer ? [match.offer] : []),
-        partName: resolvedPartName,
-        canonicalCode: resolvedCanonicalCode,
-        axis: resolvedAxis,
-        side: resolvedSide,
-        subPosition: resolvedSubPosition,
-        position: resolvedPosition,
-        genericArticleId: resolvedGenericArticleId,
-        catalogArticles: fitment.catalogArticles,
-        analogArticles: fitment.analogArticles,
-        oeNumbers: fitment.oeNumbers,
-        normalizedQuery: normalization.normalizedQuery,
-        analogReferences: fitment.matches.map((match) => ({ brand: match.brand, article: match.article })).slice(0, 8),
-      })
-    : null;
+  const fitment = await resolvePartFitment({
+    query: q,
+    partName: resolvedPartName,
+    canonicalCode: resolvedCanonicalCode,
+    axis: resolvedAxis,
+    position: resolvedPosition || resolvedAxis,
+    side: resolvedSide,
+    subPosition: resolvedSubPosition,
+    genericArticleId: resolvedGenericArticleId,
+    vehicleId,
+    vin: rawVin,
+    plate,
+  });
 
-  let vehicleContext = await rawVehicleContextPromise;
+  let vehicleContext = rawVehicleContext;
   if (!vehicleContext && fitment.vehicle?.vin && fitment.vehicle.vin !== rawVin) {
     vehicleContext = await decodeVehicleContext(fitment.vehicle.vin);
   }
+
+  const curatedOe = resolveCuratedOeEvidence({
+    vehicle: fitment.vehicle,
+    canonicalCode: resolvedCanonicalCode,
+    partName: resolvedPartName,
+    axis: resolvedAxis,
+    position: resolvedPosition,
+  });
+  const effectiveOeNumbers = mergeOeNumbers(fitment.oeNumbers, curatedOe?.oeNumbers);
 
   const displayVehicle = vehicleContext?.vehicle
     ? vehicleContext.vehicle
@@ -163,6 +140,39 @@ export async function GET(request: Request) {
           vehicleType: null,
         }
       : null;
+
+  const supplierPromise = includeSuppliers
+    ? searchConfiguredSuppliersOeFirst(q, 20, {
+        vehicleId,
+        vin: rawVin,
+        plate,
+        fitmentStatus: fitment.status,
+        fitmentConfidence: fitment.confidence,
+        fitmentExact: fitment.exact,
+        fitmentSource: fitment.catalog?.source || curatedOe?.source || null,
+        fitmentReason: fitment.reason,
+        providerVehicle: fitment.providerVehicle,
+        fitmentOffers: fitment.matches.flatMap((match) => match.offer ? [match.offer] : []),
+        partName: resolvedPartName,
+        canonicalCode: resolvedCanonicalCode,
+        axis: resolvedAxis,
+        requestedAxis: resolvedAxis,
+        side: resolvedSide,
+        subPosition: resolvedSubPosition,
+        position: resolvedPosition,
+        genericArticleId: resolvedGenericArticleId,
+        catalogArticles: fitment.catalogArticles,
+        analogArticles: fitment.analogArticles,
+        oeNumbers: effectiveOeNumbers,
+        curatedOeNumbers: curatedOe?.oeNumbers || [],
+        normalizedQuery: normalization.normalizedQuery,
+        analogReferences: fitment.matches.map((match) => ({ brand: match.brand, article: match.article })).slice(0, 8),
+        vehicleBrand: fitment.vehicle?.brand || null,
+        vehicleModel: fitment.vehicle?.model || null,
+        vehicleYear: fitment.vehicle?.year || null,
+      })
+    : null;
+
   const pricingPromise = displayVehicle ? resolveLaborPricing({
     make: displayVehicle.make || undefined,
     model: displayVehicle.model || undefined,
@@ -178,6 +188,7 @@ export async function GET(request: Request) {
     pricingPromise,
     supplierPromise || Promise.resolve(null),
   ]);
+
   const supplierOffers = supplierSearch
     ? decorateSupplierOffersWithPackaging(await enrichOffersWithSellPrice(supplierSearch.offers), {
         genericArticleId: resolvedGenericArticleId,
@@ -206,7 +217,7 @@ export async function GET(request: Request) {
       status: "REFERENCE_ONLY" as const,
       confidence: displayVehicle ? 30 : 10,
       confirmed: false,
-      reason: "Це довідкова назва деталі. Точна сумісність береться лише з catalogMatches нижче.",
+      reason: "Це довідкова назва деталі. Точна сумісність береться лише з catalogMatches/OE evidence нижче.",
     },
   }));
 
@@ -258,7 +269,8 @@ export async function GET(request: Request) {
       normalization,
     },
     catalogMatches: fitment.matches,
-    oeNumbers: fitment.oeNumbers,
+    oeNumbers: effectiveOeNumbers,
+    oeResolution: curatedOe,
     catalogArticles: fitment.catalogArticles,
     analogArticles: fitment.analogArticles,
     packaging,
@@ -283,17 +295,18 @@ export async function GET(request: Request) {
       level: fitment.status,
       canAutoApprove: fitment.confirmed,
       requiredForOrder: fitment.confirmed ? "NONE" : "MANUAL_CONFIRMATION_OR_CATALOG",
-      message: fitment.reason,
+      message: curatedOe?.reason || fitment.reason,
+      algorithm: "OE_FIRST_V2",
     },
     providers: supplierSearch?.providers || [
       {
         id: reference.remote ? FREE_PARTS_SOURCE.id : "TURBO_LEV_LOCAL_FALLBACK",
         role: "REFERENCE_CATALOG",
-        license: reference.remote ? FREE_PARTS_SOURCE.license : "Turbo LEV internal",
+        license: reference.remote ? FREE_PARTS_SOURCE.license : "Turbo Lev internal",
         pinnedCommit: reference.remote ? FREE_PARTS_SOURCE.commit : null,
       },
       {
-        id: fitment.catalog?.source || "CATALOG_NOT_CONNECTED",
+        id: fitment.catalog?.source || curatedOe?.source || "CATALOG_NOT_CONNECTED",
         role: "VIN_FITMENT",
         status: fitment.status,
         vehicleReferenceId: fitment.catalog?.vehicleReferenceId || null,
@@ -308,6 +321,7 @@ export async function GET(request: Request) {
       supplierProviders: supplierSearch.providers,
       supplierResultSummary: supplierSearch.resultSummary,
       supplierCascade: supplierSearch.cascade,
+      strictSearch: supplierSearch.strictSearch,
       supplierSummary: {
         added: supplierSearch.supplierStatuses.length,
         configured: supplierSearch.configuredSuppliers.length,
@@ -319,7 +333,7 @@ export async function GET(request: Request) {
       supplierPricing: {
         basis: "SUPPLIER_DEFAULT_MARKUP",
         defaultMarkupPercent: 40,
-        message: "Ціна продажу розраховується від закупівельної ціни за правилом постачальника; базове правило Turbo LEV — 40%.",
+        message: "Ціна продажу розраховується від закупівельної ціни за правилом постачальника; нульова ціна вважається відсутньою.",
       },
       supplierSearchBlocked: supplierSearch.blocked,
       supplierSearchBlockReason: supplierSearch.blockReason,
