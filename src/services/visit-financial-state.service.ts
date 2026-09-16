@@ -129,7 +129,7 @@ async function diagnosticSummary(diagnosticId: string | null) {
     prisma.diagnosticReview.findUnique({ where: { diagnosticRequestId: diagnosticId }, select: { state: true } }),
     prisma.diagnosticInspection.findMany({
       where: { diagnosticRequestId: diagnosticId },
-      select: { id: true, status: true, template: { select: { code: true } } },
+      select: { id: true, status: true, templateId: true },
     }),
   ]);
   if (!inspections.length) {
@@ -143,7 +143,13 @@ async function diagnosticSummary(diagnosticId: string | null) {
       completed: reviewState === "SUBMITTED" || reviewState === "CONFIRMED",
     };
   }
-  const matrix = inspections.filter((row) => row.template.code === "SUSPENSION_MATRIX");
+
+  const templates = await prisma.diagnosticTemplate.findMany({
+    where: { id: { in: Array.from(new Set(inspections.map((row) => row.templateId))) } },
+    select: { id: true, code: true },
+  });
+  const templateCodeById = new Map(templates.map((row) => [row.id, row.code]));
+  const matrix = inspections.filter((row) => templateCodeById.get(row.templateId) === "SUSPENSION_MATRIX");
   const effective = matrix.length ? matrix : inspections;
   const checks = await prisma.diagnosticCheck.findMany({
     where: { inspectionId: { in: effective.map((row) => row.id) } },
