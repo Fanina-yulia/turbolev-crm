@@ -78,6 +78,7 @@ console.log("[build] Verifying complete API security policy inventory before mig
 runNodeScript("scripts/crm-hardening-smoke.mjs");
 run(["tsx", "scripts/api-security-policy-smoke.ts"]);
 run(["tsx", "scripts/parts-picker-cart-v4-smoke.ts"]);
+run(["tsx", "scripts/parts-oe-first-search-contract-smoke.ts"]);
 
 if (process.env.VERCEL_ENV === "production") {
   console.log("[build] Production deployment: applying pending Prisma migrations before build.");
