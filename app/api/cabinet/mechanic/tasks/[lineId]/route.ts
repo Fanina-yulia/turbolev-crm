@@ -123,7 +123,7 @@ export async function PATCH(request: Request, context: { params: Promise<{ lineI
     const nowIso = now.toISOString();
 
     const mutation = await prisma.$transaction(async (tx) => {
-      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`mechanic-line:${lineId}`}))`;
+      await tx.$queryRaw<{ locked: string | null }[]>`SELECT pg_advisory_xact_lock(hashtext(${`mechanic-line:${lineId}`}))::text AS locked`;
       const line = await tx.workOrderLine.findFirst({
         where: { id: lineId, mechanicId: { in: mechanicIds } },
         select: {
