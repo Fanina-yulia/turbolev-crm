@@ -108,5 +108,9 @@ assert(
 );
 assert(compactWindowSource.includes('[data-planner-hidden="true"]'), "large duplicate sections should be hidden in compact mode");
 assert(/max-height:\s*calc\(100vh - 16px\)/.test(compactWindowSource), "desktop detail window should be constrained to one viewport");
+assert(compactWindowSource.includes("plannerEnhancerSignature"), "planner modal enhancement must be idempotent per appointment snapshot");
+assert(compactWindowSource.includes("new MutationObserver(scheduleTick)"), "DOM observer must schedule work instead of mutating synchronously");
+assert(compactWindowSource.includes("requestAnimationFrame(tick)"), "planner modal mutations must be coalesced to one animation-frame tick");
+assert(!compactWindowSource.includes("new MutationObserver(tick)"), "direct observer-to-mutation recursion must remain forbidden");
 
 console.log("Planner contracts smoke: OK");
