@@ -1,0 +1,253 @@
+/* TURBO LEV · Parts picker ultra-compact desktop density
+   Goal: keep the sourcing dialog information-dense so the supplier result list
+   gets the largest possible share of the viewport without changing business logic. */
+
+@media (min-width: 761px) {
+  html:not([data-settings-page="true"]) [class*="parts-selection-workspace-v4_backdrop__"] {
+    padding: 6px !important;
+  }
+
+  html:not([data-settings-page="true"]) [class*="parts-selection-workspace-v4_backdrop__"] > [class*="parts-selection-workspace-v4_picker__"] {
+    width: calc(100vw - 12px) !important;
+    max-width: calc(100vw - 12px) !important;
+    max-height: calc(100dvh - 12px) !important;
+    border-radius: 10px !important;
+  }
+
+  [class*="parts-selection-workspace-v4_picker__"] {
+    grid-template-rows: auto auto auto auto minmax(0, 1fr) auto auto !important;
+  }
+
+  [class*="parts-selection-workspace-v4_pickerHeader__"] {
+    gap: 10px !important;
+    padding: 8px 12px 7px !important;
+  }
+
+  [class*="parts-selection-workspace-v4_pickerHeader__"] > div {
+    gap: 0 !important;
+  }
+
+  [class*="parts-selection-workspace-v4_pickerHeader__"] p {
+    margin: 0 !important;
+    font-size: 11px !important;
+    line-height: 1.1 !important;
+  }
+
+  [class*="parts-selection-workspace-v4_pickerHeader__"] h2 {
+    margin: 2px 0 1px !important;
+    font-size: 18px !important;
+    line-height: 1.12 !important;
+  }
+
+  [class*="parts-selection-workspace-v4_pickerHeader__"] span {
+    font-size: 11px !important;
+    line-height: 1.15 !important;
+  }
+
+  [class*="parts-selection-workspace-v4_pickerHeader__"] > button {
+    width: 32px !important;
+    height: 32px !important;
+    flex: 0 0 32px !important;
+    border-radius: 7px !important;
+    font-size: 17px !important;
+  }
+
+  [class*="parts-selection-workspace-v4_searchBar__"] {
+    grid-template-columns: minmax(0, 1fr) minmax(220px, 28%) !important;
+    gap: 8px !important;
+    padding: 6px 12px !important;
+  }
+
+  [class*="parts-selection-workspace-v4_searchBar__"] label {
+    gap: 2px !important;
+  }
+
+  [class*="parts-selection-workspace-v4_searchBar__"] label > span {
+    font-size: 11px !important;
+    line-height: 1.1 !important;
+  }
+
+  [class*="parts-selection-workspace-v4_searchBar__"] input,
+  [class*="parts-selection-workspace-v4_searchBar__"] label > b {
+    height: 32px !important;
+    min-height: 32px !important;
+    font-size: 11px !important;
+  }
+
+  [class*="parts-selection-workspace-v4_searchBar__"] input {
+    padding: 0 8px !important;
+  }
+
+  [class*="parts-selection-workspace-v4_searchBar__"] label > div > button {
+    width: 38px !important;
+  }
+
+  [class*="parts-selection-workspace-v4_resultToolbar__"] {
+    flex-wrap: nowrap !important;
+    gap: 5px !important;
+    min-height: 38px !important;
+    padding: 4px 12px !important;
+  }
+
+  [class*="parts-selection-workspace-v4_resultToolbar__"] select {
+    flex: 0 1 280px !important;
+    min-width: 190px !important;
+    max-width: 300px !important;
+    height: 30px !important;
+    padding: 0 7px !important;
+    font-size: 11px !important;
+  }
+
+  [class*="parts-selection-workspace-v4_resultToolbar__"] strong {
+    flex: 0 0 auto !important;
+    margin-right: auto !important;
+    font-size: 11px !important;
+    white-space: nowrap !important;
+  }
+
+  [class*="parts-selection-workspace-v4_resultToolbar__"] button {
+    height: 30px !important;
+    min-width: 0 !important;
+    padding: 0 8px !important;
+    border-radius: 7px !important;
+    font-size: 11px !important;
+  }
+
+  [class*="parts-selection-workspace-v4_manualConfirm__"] {
+    gap: 7px !important;
+    min-height: 32px !important;
+    padding: 4px 12px !important;
+    font-size: 11px !important;
+    line-height: 1.2 !important;
+  }
+
+  [class*="parts-selection-workspace-v4_manualConfirm__"] input {
+    width: 14px !important;
+    height: 14px !important;
+    flex: 0 0 14px !important;
+  }
+
+  [class*="parts-selection-workspace-v4_offerArea__"] {
+    min-height: 0 !important;
+    padding: 0 6px 5px !important;
+  }
+
+  [class*="parts-selection-workspace-v4_offerGroup__"] h3 {
+    margin: 0 !important;
+    padding: 6px 4px 3px !important;
+    font-size: 12px !important;
+    line-height: 1.15 !important;
+  }
+
+  [class*="parts-selection-workspace-v4_offerRow__"] {
+    grid-template-columns: minmax(250px, 2fr) minmax(105px, .72fr) 78px minmax(120px, .82fr) minmax(135px, 1fr) minmax(112px, .8fr) 106px !important;
+    gap: 6px !important;
+    min-height: 46px !important;
+    padding: 4px 6px !important;
+  }
+
+  [class*="parts-selection-workspace-v4_offerIdentity__"] {
+    gap: 6px !important;
+  }
+
+  [class*="parts-selection-workspace-v4_offerIdentity__"] img,
+  [class*="parts-selection-workspace-v4_noImage__"] {
+    width: 28px !important;
+    height: 28px !important;
+    flex: 0 0 28px !important;
+    border-radius: 6px !important;
+  }
+
+  [class*="parts-selection-workspace-v4_offerIdentity__"] > div,
+  [class*="parts-selection-workspace-v4_providerCell__"],
+  [class*="parts-selection-workspace-v4_brandCell__"],
+  [class*="parts-selection-workspace-v4_priceCell__"] {
+    gap: 0 !important;
+  }
+
+  [class*="parts-selection-workspace-v4_offerIdentity__"] b,
+  [class*="parts-selection-workspace-v4_providerCell__"] b,
+  [class*="parts-selection-workspace-v4_brandCell__"] b,
+  [class*="parts-selection-workspace-v4_priceCell__"] b {
+    font-size: 11px !important;
+    line-height: 1.15 !important;
+  }
+
+  [class*="parts-selection-workspace-v4_offerIdentity__"] small,
+  [class*="parts-selection-workspace-v4_providerCell__"] small,
+  [class*="parts-selection-workspace-v4_brandCell__"] span,
+  [class*="parts-selection-workspace-v4_priceCell__"] small,
+  [class*="parts-selection-workspace-v4_stockDetails__"],
+  [class*="parts-selection-workspace-v4_compatOk__"],
+  [class*="parts-selection-workspace-v4_compatWarn__"] {
+    font-size: 11px !important;
+    line-height: 1.15 !important;
+  }
+
+  [class*="parts-selection-workspace-v4_addOffer__"] {
+    width: 100% !important;
+    min-width: 96px !important;
+    height: 30px !important;
+    padding: 0 7px !important;
+    border-radius: 7px !important;
+    font-size: 11px !important;
+    white-space: nowrap !important;
+  }
+
+  [class*="parts-selection-workspace-v4_providerErrors__"] {
+    padding: 5px 12px !important;
+    font-size: 11px !important;
+  }
+
+  [class*="parts-selection-workspace-v4_pickerFooter__"] {
+    min-height: 36px !important;
+    gap: 8px !important;
+    padding: 4px 10px !important;
+  }
+
+  [class*="parts-selection-workspace-v4_pickerFooter__"] span {
+    font-size: 11px !important;
+  }
+
+  [class*="parts-selection-workspace-v4_pickerFooter__"] button {
+    height: 30px !important;
+    padding: 0 10px !important;
+    font-size: 11px !important;
+  }
+
+  [data-parts-search-loading="true"] {
+    min-height: 150px !important;
+    gap: 5px !important;
+    padding: 12px !important;
+  }
+
+  [data-parts-search-loading="true"]::before {
+    width: 76px !important;
+    height: 76px !important;
+    margin-bottom: 0 !important;
+    border-radius: 16px !important;
+  }
+}
+
+@media (min-width: 1500px) {
+  [class*="parts-selection-workspace-v4_pickerHeader__"] h2 {
+    font-size: 19px !important;
+  }
+
+  [class*="parts-selection-workspace-v4_offerRow__"] {
+    min-height: 44px !important;
+  }
+}
+
+@media (max-width: 760px) {
+  [class*="parts-selection-workspace-v4_pickerHeader__"] {
+    padding: 10px 12px !important;
+  }
+
+  [class*="parts-selection-workspace-v4_searchBar__"],
+  [class*="parts-selection-workspace-v4_resultToolbar__"],
+  [class*="parts-selection-workspace-v4_manualConfirm__"] {
+    padding-left: 10px !important;
+    padding-right: 10px !important;
+  }
+}
