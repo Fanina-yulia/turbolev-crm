@@ -6,19 +6,21 @@ import { fileURLToPath } from "node:url";
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const read = (path: string) => readFileSync(resolve(root, path), "utf8");
 
-const client = read("app/parts-catalog-legacy.tsx");
+const wrapper = read("app/parts-catalog-legacy.tsx");
+const client = read("app/parts-selection-workspace-v4.tsx");
 const registry = read("src/services/suppliers/registry.ts");
 const selection = read("src/services/parts-selection.service.ts");
 const knowledge = read("src/services/parts-knowledge.service.ts");
 const build = read("scripts/build-production.mjs");
 const spec = read("docs/TZ_PARTS_SEARCH_RECOVERY_V3.md");
 
+assert.ok(wrapper.includes("PartsSelectionWorkspaceV4"), "diagnostic parts context must mount the active V4 workspace");
 assert.ok(client.includes('/api/parts/search?'), "picker must call the reference/fitment search route");
 assert.ok(client.includes('/api/parts/suppliers?'), "picker must call supplier search after reference lookup");
 assert.ok(!client.includes('if (vehicleScoped && resolvedFitment?.status !== "VERIFIED")'), "missing verified fitment must not hard-stop supplier API search");
-assert.ok(client.includes("Supplier search is intentionally not blocked when exact OE fitment is missing"), "client must document non-blocking supplier fallback");
 assert.ok(client.includes("manualConfirmation"), "manual confirmation gate must remain for unverified offers");
 assert.ok(client.includes('offer.requiresManualConfirmation === true'), "offer-level compatibility review must remain enforced");
+assert.ok(client.includes('setOffers(Array.isArray(supplier?.offers) ? supplier.offers : [])'), "unverified supplier results must remain visible rather than being discarded client-side");
 
 assert.ok(registry.includes('const useVehicleScopedSearch = vehicleScoped && context.fitmentStatus === "VERIFIED"'), "exact provider vehicle search must remain reserved for verified fitment");
 assert.ok(registry.includes("otherwise run the\n  // ordinary article/name search"), "registry must explicitly fall back to ordinary supplier search");
