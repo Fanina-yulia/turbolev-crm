@@ -3,16 +3,18 @@
 import { useCallback, useEffect, useState } from "react";
 import styles from "./vehicle-current-finance-card.module.css";
 
+type PaymentMethod = "CASH" | "TERMINAL" | "ONLINE" | "OTHER" | null;
+type PaymentStatus = "NOT_FORMED" | "UNPAID" | "PARTIAL" | "PAID" | "OVERDUE" | "CANCELLED";
 type State = {
   appointmentId: string;
   isCurrentVisit: boolean;
   operationalLabel: string;
-  status: "NOT_FORMED" | "UNPAID" | "PARTIAL" | "PAID" | "OVERDUE" | "CANCELLED";
+  status: PaymentStatus;
   amount: number | null;
   paid: number;
   outstanding: number | null;
   actual: boolean;
-  lastPayment: { amount: number; occurredAt: string; method: "CASH" | "TERMINAL" | "ONLINE" | "OTHER" | null } | null;
+  lastPayment: { amount: number; occurredAt: string; method: PaymentMethod } | null;
 };
 
 type Payload = { ok?: boolean; state?: State | null; error?: string };
@@ -21,7 +23,7 @@ function money(value: number | null | undefined) {
   return value == null ? "—" : new Intl.NumberFormat("uk-UA", { style: "currency", currency: "UAH", maximumFractionDigits: 0 }).format(value);
 }
 
-function statusLabel(status: State["status"]) {
+function statusLabel(status: PaymentStatus) {
   if (status === "PAID") return "Оплачено";
   if (status === "PARTIAL") return "Частково оплачено";
   if (status === "OVERDUE") return "Прострочено";
@@ -29,7 +31,16 @@ function statusLabel(status: State["status"]) {
   return "Не сформовано";
 }
 
-function methodLabel(method: State["lastPayment"] extends infer T ? T extends { method: infer M } ? M : never : never) {
+function statusClass(status: PaymentStatus) {
+  if (status === "PAID") return styles.paid;
+  if (status === "PARTIAL") return styles.partial;
+  if (status === "UNPAID") return styles.unpaid;
+  if (status === "OVERDUE") return styles.overdue;
+  if (status === "CANCELLED") return styles.cancelled;
+  return styles.not_formed;
+}
+
+function methodLabel(method: PaymentMethod) {
   if (method === "CASH") return "готівка";
   if (method === "TERMINAL") return "термінал";
   if (method === "ONLINE") return "онлайн";
@@ -46,7 +57,7 @@ export function VehicleCurrentFinanceCard({ vehicleId }: { vehicleId: string }) 
     setLoading(true);
     setError("");
     try {
-      const response = await fetch(`/api/visit-financial-state?vehicleId=${encodeURIComponent(vehicleId)}`, {
+      const response = await fetch(`/api/vehicles/visit-financial-state?vehicleId=${encodeURIComponent(vehicleId)}`, {
         cache: "no-store",
         credentials: "include",
         signal,
@@ -76,7 +87,7 @@ export function VehicleCurrentFinanceCard({ vehicleId }: { vehicleId: string }) 
   return <section className={styles.card} aria-label="Фінанси поточного візиту">
     <div className={styles.heading}>
       <div><span>{state?.isCurrentVisit === false ? "ОСТАННІЙ ВІЗИТ" : "ПОТОЧНИЙ ВІЗИТ"}</span><h3>Фінанси візиту</h3></div>
-      {state && <b className={styles[state.status.toLowerCase()] || ""}>{statusLabel(state.status)}</b>}
+      {state && <b className={statusClass(state.status)}>{statusLabel(state.status)}</b>}
     </div>
     {loading && <div className={styles.muted}>Оновлюю стан розрахунків…</div>}
     {error && <div className={styles.error}>{error}</div>}
