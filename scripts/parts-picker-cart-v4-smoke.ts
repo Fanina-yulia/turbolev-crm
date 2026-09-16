@@ -9,6 +9,7 @@ const read = (path: string) => readFileSync(resolve(root, path), "utf8");
 const wrapper = read("app/parts-catalog-legacy.tsx");
 const workspace = read("app/parts-selection-workspace-v4.tsx");
 const workspaceCss = read("app/parts-selection-workspace-v4.module.css");
+const partsLayoutCss = read("app/parts-cart-summary-layout.css");
 const lineRoute = read("app/api/parts-selection/line/route.ts");
 const selectRoute = read("app/api/parts-selection/select/route.ts");
 const handoffRoute = read("app/api/diagnostics/[id]/commercial-handoff/route.ts");
@@ -34,11 +35,14 @@ assert.match(workspace, /Ціна закупки, грн/, "cart must retain pur
 assert.match(workspace, /Прибуток, грн/, "cart must calculate profit column");
 assert.match(workspace, /priceOverrideReason/, "direct sell-price override must carry reason context");
 
-assert.match(workspaceCss, /grid-template-columns:minmax\(390px,40%\) minmax\(0,60%\)/, "desktop workspace must allocate readable width to needs and cart");
-assert.match(workspaceCss, /-webkit-line-clamp:2/, "need names must be readable across up to two lines");
+assert.match(workspaceCss, /-webkit-line-clamp:2/, "need names must remain readable across up to two lines");
 assert.match(workspaceCss, /align-items:start/, "workspace panels must not stretch each other into a large empty area");
 assert.match(workspaceCss, /\.cartFooter button:disabled\{opacity:1;border-color:var\(--line\);background:var\(--panel\)/, "disabled commercial CTA must be visually secondary");
 assert.match(workspaceCss, /min-width:1360px/, "cart must retain all agreed columns through horizontal scrolling");
+assert.match(partsLayoutCss, /grid-template-columns:\s*clamp\(340px,\s*28vw,\s*460px\)\s+minmax\(0,\s*1fr\)/, "desktop workspace must reserve roughly 28-30% for needs and give the remaining width to selected parts");
+assert.match(partsLayoutCss, /max-width:\s*460px/, "needs panel must stop growing on wide displays");
+assert.match(partsLayoutCss, /min-height:\s*50px/, "need rows must stay compact on desktop");
+assert.match(partsLayoutCss, /grid-template-columns:\s*18px\s+minmax\(0,\s*1fr\)\s+38px\s+76px/, "need row columns must prioritize the part name over quantity and action chrome");
 
 assert.match(lineRoute, /PERMISSIONS\.PARTS_READ/, "cart GET must require PARTS_READ");
 assert.match(lineRoute, /PERMISSIONS\.PARTS_WRITE/, "cart PATCH must require PARTS_WRITE");
@@ -64,7 +68,7 @@ assert.match(prismaModel, /@@unique\(\[diagnosticRequestId, selectionKey\]\)/, "
 assert.match(specV4, /жодних вигаданих даних/i, "V4 spec must forbid fabricated supplier/cart facts");
 assert.match(specV5, /не створює WorkOrder і не створює Комерційну пропозицію/, "V5 must preserve the commercial hard gate while allowing sourcing");
 assert.match(specV5, /IN_PROGRESS/, "V5 must explicitly support parts sourcing while diagnostics are in progress");
-assert.match(specV7, /40% `Деталі до заміни` \/ 60% `Кошик`/, "V7 must codify the balanced desktop workspace");
+assert.match(specV7, /28–30% `Деталі до заміни` \/ 70–72% `Вибрані деталі`/, "V7 must codify the selected-parts-first desktop workspace");
 assert.match(specV7, /(?:усі|всі) погоджені 14 колонок/, "V7 must preserve every agreed cart column");
 
-console.log("Parts picker + editable cart + pre-confirmation staging V5 + workspace density V7 smoke: PASS");
+console.log("Parts picker + editable cart + pre-confirmation staging V5 + selected-parts-first workspace density V7 smoke: PASS");
