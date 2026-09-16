@@ -26,7 +26,8 @@
     "app/vehicle-process-status.ts",
     "app/vehicle-identity.tsx",
     "src/domain/registration-plate.ts",
-    "app/client-ltv-card*"
+    "app/client-ltv-card*",
+    "app/vehicle-current-finance-card*"
   ],
   "diagnostics": [
     "src/services/structured-diagnostics.service.ts",
@@ -42,7 +43,9 @@
     "src/services/customer-ltv.service.ts"
   ],
   "finance": [
-    "app/financial-center.tsx"
+    "app/financial-center.tsx",
+    "app/api/visit-financial-state/**",
+    "src/services/visit-financial-state.service.ts"
   ],
   "parts-inventory": [
     "app/api/parts-selection/**",
