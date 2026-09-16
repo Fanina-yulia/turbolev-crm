@@ -3,6 +3,7 @@
 import { MechanicAdditionalWorkBridge } from "./mechanic-additional-work-bridge";
 import { MechanicLiveCabinet } from "./mechanic-live-cabinet";
 import { MechanicRequestCoordinator } from "./mechanic-request-coordinator";
+import { MechanicWorkflowUxBridge } from "./mechanic-workflow-ux-bridge";
 
 /**
  * Canonical entry point for every mechanic cabinet route.
@@ -15,5 +16,6 @@ export function MechanicCabinet({ userName }: { userName?: string | null }) {
   return <MechanicRequestCoordinator>
     <MechanicLiveCabinet userName={userName} />
     <MechanicAdditionalWorkBridge />
+    <MechanicWorkflowUxBridge />
   </MechanicRequestCoordinator>;
 }

@@ -34,7 +34,7 @@ export function MechanicRepairCompletion({ task, onBack, onCompleted }: { task: 
   }
 
   async function submit() {
-    if (PHOTO_FIELDS.some((field) => !files[field.key])) { setError("Додайте всі 3 фото перед завершенням ремонту."); return; }
+    if (PHOTO_FIELDS.some((field) => !files[field.key])) { setError("Додайте всі 3 фото перед завершенням роботи."); return; }
     setBusy(true); setError("");
     try {
       const form = new FormData();
@@ -44,12 +44,12 @@ export function MechanicRepairCompletion({ task, onBack, onCompleted }: { task: 
       if (!response.ok || !body?.ok) throw new Error(body?.message || body?.error || "Не вдалося зберегти фото.");
       await onCompleted();
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Не вдалося завершити ремонт.");
+      setError(cause instanceof Error ? cause.message : "Не вдалося завершити роботу.");
     } finally { setBusy(false); }
   }
 
   return <main className={styles.page}>
-    <header className={styles.header}><button type="button" onClick={onBack} aria-label="Назад">←</button><div><span>ЗАВЕРШЕННЯ РЕМОНТУ</span><h1>{task.vehicle}</h1><p>{task.plate} · {task.description}</p></div></header>
+    <header className={styles.header}><button type="button" onClick={onBack} aria-label="Назад">←</button><div><span>ЗАВЕРШЕННЯ РОБОТИ</span><h1>{task.vehicle}</h1><p>{task.plate} · {task.description}</p></div></header>
     <section className={styles.notice}><strong>Потрібні 3 фото робочого місця</strong><span>Два фото складеного інструменту та одне фото прибраної зони поста.</span></section>
     <section className={styles.grid}>{PHOTO_FIELDS.map((field) => <article className={styles.photoCard} key={field.key}>
       <div className={styles.preview}>{previews[field.key] ? <img src={previews[field.key]} alt={field.title} /> : <span>📷</span>}</div>
@@ -57,6 +57,6 @@ export function MechanicRepairCompletion({ task, onBack, onCompleted }: { task: 
       <label className={styles.choose}>{files[field.key] ? "Замінити фото" : "Додати фото"}<input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={(event) => { choose(field.key, event.currentTarget.files?.[0]); event.currentTarget.value = ""; }} /></label>
     </article>)}</section>
     {error && <p className={styles.error}>{error}</p>}
-    <div className={styles.actions}><button type="button" className={styles.back} onClick={onBack}>Назад</button><button type="button" className={styles.submit} disabled={busy} onClick={() => void submit()}>{busy ? "Зберігаю фото…" : "Завершити ремонт →"}</button></div>
+    <div className={styles.actions}><button type="button" className={styles.back} onClick={onBack}>Назад</button><button type="button" className={styles.submit} disabled={busy} onClick={() => void submit()}>{busy ? "Зберігаю фото…" : "Завершити роботу →"}</button></div>
   </main>;
 }
