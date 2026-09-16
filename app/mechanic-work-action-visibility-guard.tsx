@@ -64,10 +64,13 @@ function syncActionVisibility() {
 
   const status = selectedStatus(main);
   const workStarted = STARTED_STATUSES.has(status) || (!PRE_START_STATUSES.has(status) && hasStartedControls(section));
+  const hidden = !workStarted;
+  const ariaHidden = hidden ? "true" : "false";
+  const startedValue = workStarted ? "true" : "false";
 
-  actionList.hidden = !workStarted;
-  actionList.setAttribute("aria-hidden", workStarted ? "false" : "true");
-  actionList.dataset.mechanicWorkStarted = workStarted ? "true" : "false";
+  if (actionList.hidden !== hidden) actionList.hidden = hidden;
+  if (actionList.getAttribute("aria-hidden") !== ariaHidden) actionList.setAttribute("aria-hidden", ariaHidden);
+  if (actionList.dataset.mechanicWorkStarted !== startedValue) actionList.dataset.mechanicWorkStarted = startedValue;
 }
 
 export function MechanicWorkActionVisibilityGuard() {
