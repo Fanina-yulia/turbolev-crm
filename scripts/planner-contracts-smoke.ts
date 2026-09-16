@@ -93,9 +93,15 @@ assert.equal(parsePlannerBoardPayload({
 }), null);
 
 const compactWindowSource = readFileSync(new URL("../app/planner-appointment-window-enhancer.tsx", import.meta.url), "utf8");
-assert(compactWindowSource.includes("estimatedAmount"), "planner detail window should use appointment estimated amount");
-assert(compactWindowSource.includes("Орієнтовна сума робіт"), "repair estimate label should be present");
-assert(compactWindowSource.includes("Орієнтовна вартість діагностики"), "diagnostic estimate label should be present");
+assert(compactWindowSource.includes("estimatedAmount"), "planner detail window should keep appointment estimate as fallback");
+assert(compactWindowSource.includes("Орієнтовна вартість"), "unapproved visit should show the unified estimated-cost label");
+assert(compactWindowSource.includes("Вартість"), "approved visit should show final cost label");
+assert(compactWindowSource.includes("Передплата"), "partial/prepayment amount should be visible");
+assert(compactWindowSource.includes("Залишок"), "remaining balance should be visible");
+assert(compactWindowSource.includes("Оплачено"), "full-payment amount should be visible");
+assert(compactWindowSource.includes("Додатково до погодження"), "post-approval cost growth should require another approval");
+assert(!compactWindowSource.includes("Орієнтовна сума робіт"), "legacy repair-only estimate label must be removed");
+assert(!compactWindowSource.includes("Орієнтовна вартість діагностики"), "legacy diagnostic-only estimate label must be removed");
 assert(
   compactWindowSource.includes('navigateCrm("Клієнти"') && compactWindowSource.includes("clientId"),
   "client click should open exact client card",
