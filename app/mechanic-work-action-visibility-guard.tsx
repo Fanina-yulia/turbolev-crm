@@ -1,0 +1,92 @@
+"use client";
+
+import { useEffect } from "react";
+
+const ACTION_LABELS = [
+  "Додати фото / виявлений дефект",
+  "Запросити запчастину",
+  "Поставити питання менеджеру",
+] as const;
+
+const PRE_START_STATUSES = new Set([
+  "Очікує погодження",
+  "Готово до роботи",
+  "Заплановано",
+  "Скасовано",
+]);
+
+const STARTED_STATUSES = new Set([
+  "В роботі",
+  "Пауза",
+  "СТОП — потребує уваги",
+  "Доопрацювання",
+  "Очікує запчастини",
+  "Завершено",
+  "Виконано",
+]);
+
+function text(node: Element | null) {
+  return node?.textContent?.replace(/\s+/g, " ").trim() || "";
+}
+
+function findActionList(section: HTMLElement) {
+  return Array.from(section.querySelectorAll<HTMLElement>(":scope > div")).find((candidate) => {
+    const labels = Array.from(candidate.querySelectorAll("button")).map((button) => text(button));
+    return ACTION_LABELS.every((label) => labels.some((value) => value.includes(label)));
+  }) || null;
+}
+
+function selectedStatus(main: HTMLElement) {
+  const summary = main.querySelector<HTMLElement>(":scope > section:first-of-type");
+  if (!summary) return "";
+  const known = new Set([...PRE_START_STATUSES, ...STARTED_STATUSES]);
+  return Array.from(summary.querySelectorAll("span"))
+    .map((node) => text(node))
+    .find((value) => known.has(value)) || "";
+}
+
+function hasStartedControls(section: HTMLElement) {
+  const buttons = Array.from(section.querySelectorAll("button")).map((button) => text(button));
+  return buttons.some((value) => value.includes("Пауза") || value.includes("Продовжити") || value.includes("Завершити ремонт"));
+}
+
+function syncActionVisibility() {
+  const root = document.querySelector<HTMLElement>('[data-mechanic-cabinet="true"]');
+  if (!root) return;
+
+  const heading = Array.from(root.querySelectorAll("h2")).find((node) => text(node) === "Керування роботою");
+  const section = heading?.closest<HTMLElement>("section");
+  const main = section?.closest<HTMLElement>("main");
+  if (!section || !main) return;
+
+  const actionList = findActionList(section);
+  if (!actionList) return;
+
+  const status = selectedStatus(main);
+  const workStarted = STARTED_STATUSES.has(status) || (!PRE_START_STATUSES.has(status) && hasStartedControls(section));
+
+  actionList.hidden = !workStarted;
+  actionList.setAttribute("aria-hidden", workStarted ? "false" : "true");
+  actionList.dataset.mechanicWorkStarted = workStarted ? "true" : "false";
+}
+
+export function MechanicWorkActionVisibilityGuard() {
+  useEffect(() => {
+    let frame = 0;
+    const schedule = () => {
+      window.cancelAnimationFrame(frame);
+      frame = window.requestAnimationFrame(syncActionVisibility);
+    };
+
+    schedule();
+    const observer = new MutationObserver(schedule);
+    observer.observe(document.body, { subtree: true, childList: true, characterData: true, attributes: true });
+
+    return () => {
+      observer.disconnect();
+      window.cancelAnimationFrame(frame);
+    };
+  }, []);
+
+  return null;
+}
