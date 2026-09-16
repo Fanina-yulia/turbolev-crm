@@ -81,8 +81,8 @@ function normalizeModel(value: unknown) {
 export function normalizeSearchAxis(value: unknown): "FRONT" | "REAR" | null {
   const source = normalizeText(value);
   if (!source) return null;
-  const front = /(?:^|\s)(?:FRONT|ПЕРЕД\w*)(?:\s|$)/u.test(source);
-  const rear = /(?:^|\s)(?:REAR|ЗАД\w*)(?:\s|$)/u.test(source);
+  const front = /(?:^|\s)(?:FRONT|ПЕРЕД[А-ЯІЇЄҐ]*)(?:\s|$)/u.test(source);
+  const rear = /(?:^|\s)(?:REAR|ЗАД[А-ЯІЇЄҐ]*)(?:\s|$)/u.test(source);
   if (front === rear) return null;
   return front ? "FRONT" : "REAR";
 }
