@@ -1,0 +1,402 @@
+.mobileFirstV3{
+  min-height:100dvh;
+  width:100%;
+  max-width:100%;
+  overflow-x:hidden;
+}
+
+@media(max-width:600px){
+  .mobileFirstV3,
+  .mobileFirstV3 :global([data-mechanic-cabinet="true"]),
+  .mobileFirstV3 :global([data-mechanic-cabinet="true"] > div),
+  .mobileFirstV3 :global([class*="mechanic-diagnostic-responsive_page"]){
+    width:100%!important;
+    max-width:100%!important;
+    min-width:0!important;
+    overflow-x:hidden!important;
+  }
+
+  .mobileFirstV3 :global([data-mechanic-cabinet="true"] > div){
+    padding-bottom:calc(92px + env(safe-area-inset-bottom))!important;
+  }
+
+  .mobileFirstV3 :global([class*="mechanic-standalone-cabinet_content"]){
+    width:100%!important;
+    max-width:100%!important;
+    min-width:0!important;
+    overflow-x:hidden!important;
+    padding:12px 12px calc(96px + env(safe-area-inset-bottom))!important;
+    gap:10px!important;
+  }
+
+  .mobileFirstV3 :global([class*="mechanic-standalone-cabinet_pageTitle"]){
+    padding:1px 1px 4px!important;
+  }
+  .mobileFirstV3 :global([class*="mechanic-standalone-cabinet_pageTitle"] h1){
+    font-size:24px!important;
+    line-height:1.08!important;
+  }
+  .mobileFirstV3 :global([class*="mechanic-standalone-cabinet_pageTitle"] p){
+    margin-top:4px!important;
+    font-size:12px!important;
+  }
+
+  /* Mobile card system: every work/diagnostic row owns its width and never pushes the viewport. */
+  .mobileFirstV3 :global([class*="mechanic-standalone-cabinet_stack"]){
+    min-width:0!important;
+    gap:8px!important;
+  }
+  .mobileFirstV3 :global([class*="mechanic-standalone-cabinet_listCard"]){
+    min-width:0!important;
+    max-width:100%!important;
+    padding:11px 12px!important;
+    border-radius:14px!important;
+    overflow:hidden!important;
+  }
+  .mobileFirstV3 :global([class*="mechanic-standalone-cabinet_listCard"] > div:first-child){
+    display:grid!important;
+    grid-template-columns:minmax(0,1fr) auto!important;
+    align-items:center!important;
+    gap:8px!important;
+    min-width:0!important;
+  }
+  .mobileFirstV3 :global([class*="mechanic-standalone-cabinet_listCard"] h3){
+    min-width:0!important;
+    margin:0!important;
+    overflow:hidden!important;
+    text-overflow:ellipsis!important;
+    white-space:nowrap!important;
+    font-size:15px!important;
+    line-height:1.15!important;
+  }
+  .mobileFirstV3 :global([class*="mechanic-standalone-cabinet_listCard"] > p){
+    margin:6px 0!important;
+    font-size:12px!important;
+    line-height:1.28!important;
+  }
+  .mobileFirstV3 :global([class*="mechanic-standalone-cabinet_listCard"] [class*="mechanic-standalone-cabinet_meta"]){
+    margin:6px 0!important;
+    gap:10px!important;
+    font-size:11px!important;
+  }
+  .mobileFirstV3 :global([class*="mechanic-standalone-cabinet_listCard"] [class*="mechanic-standalone-cabinet_pill"]){
+    max-width:112px!important;
+    padding:5px 8px!important;
+    font-size:11px!important;
+  }
+
+  /* Number plates are context, not the dominant element. */
+  .mobileFirstV3 :global(.uaLicensePlate){
+    --ua-plate-h:24px!important;
+    --ua-plate-blue-w:calc(var(--ua-plate-h) * .398)!important;
+    --ua-plate-number-size:16px!important;
+    --ua-plate-min-w:calc(var(--ua-plate-h) * 4.98)!important;
+    flex:0 1 auto!important;
+    max-width:148px!important;
+  }
+  .mobileFirstV3 :global([class*="mechanic-standalone-cabinet_listCard"] .uaLicensePlate){
+    --ua-plate-h:22px!important;
+    --ua-plate-number-size:15px!important;
+    max-width:138px!important;
+  }
+  .mobileFirstV3 :global([class*="mechanic-standalone-cabinet_taskHero"] .uaLicensePlate){
+    --ua-plate-h:23px!important;
+    --ua-plate-number-size:15px!important;
+    max-width:142px!important;
+  }
+
+  /* Featured / overdue card: concise and fully inside viewport. */
+  .mobileFirstV3 :global([class*="mechanic-standalone-cabinet_taskHero"]){
+    min-width:0!important;
+    max-width:100%!important;
+    padding:12px!important;
+    border-radius:15px!important;
+    overflow:hidden!important;
+  }
+  .mobileFirstV3 :global([class*="mechanic-standalone-cabinet_taskTop"]){
+    display:grid!important;
+    grid-template-columns:minmax(0,1fr) auto!important;
+    gap:8px!important;
+    min-width:0!important;
+  }
+  .mobileFirstV3 :global([class*="mechanic-standalone-cabinet_taskTop"] > *),
+  .mobileFirstV3 :global([class*="mechanic-standalone-cabinet_taskTop"] > div){
+    min-width:0!important;
+  }
+  .mobileFirstV3 :global([class*="mechanic-standalone-cabinet_taskTop"] h2),
+  .mobileFirstV3 :global([class*="mechanic-standalone-cabinet_taskTop"] h3){
+    min-width:0!important;
+    overflow:hidden!important;
+    text-overflow:ellipsis!important;
+    white-space:nowrap!important;
+    font-size:17px!important;
+  }
+  .mobileFirstV3 :global([class*="mechanic-standalone-cabinet_taskHero"] > strong){
+    margin-top:10px!important;
+    padding-top:10px!important;
+    font-size:14px!important;
+  }
+  .mobileFirstV3 :global([class*="mechanic-standalone-cabinet_taskHero"] [class*="mechanic-standalone-cabinet_meta"]){
+    margin:9px 0!important;
+  }
+
+  /* Notification popup must never be wider than the actual phone viewport. */
+  .mobileFirstV3 :global([class*="mechanic-standalone-cabinet_notificationPopups"]){
+    left:8px!important;
+    right:8px!important;
+    width:auto!important;
+    max-width:none!important;
+  }
+  .mobileFirstV3 :global([class*="mechanic-standalone-cabinet_notificationPopupWrap"]),
+  .mobileFirstV3 :global([class*="mechanic-standalone-cabinet_notificationPopup"]){
+    width:100%!important;
+    max-width:100%!important;
+    min-width:0!important;
+    overflow:hidden!important;
+  }
+  .mobileFirstV3 :global([class*="mechanic-standalone-cabinet_notificationPopupBottom"]){
+    flex-wrap:wrap!important;
+  }
+  .mobileFirstV3 :global([class*="mechanic-standalone-cabinet_notificationPopupBottom"] > *){
+    min-width:0!important;
+  }
+
+  /* Bottom navigation stays clear of iPhone browser/home safe areas and never covers content. */
+  .mobileFirstV3 :global(nav[aria-label="Навігація механіка"]){
+    position:fixed!important;
+    left:50%!important;
+    right:auto!important;
+    bottom:0!important;
+    transform:translateX(-50%)!important;
+    width:min(100%,820px)!important;
+    max-width:100vw!important;
+    min-height:calc(68px + env(safe-area-inset-bottom))!important;
+    padding:6px 10px max(8px,env(safe-area-inset-bottom))!important;
+    z-index:120!important;
+    box-sizing:border-box!important;
+  }
+
+  /* Diagnostic workspace: hard no-horizontal-scroll contract. */
+  .mobileFirstV3 :global([class*="mechanic-diagnostic-responsive_page"]){
+    box-sizing:border-box!important;
+    background:#f3f5f8!important;
+    color:#111923!important;
+    padding-bottom:calc(94px + env(safe-area-inset-bottom))!important;
+  }
+  .mobileFirstV3 :global([class*="mechanic-diagnostic-matrix_top"]){
+    width:100%!important;
+    max-width:100%!important;
+    height:60px!important;
+    grid-template-columns:44px minmax(0,1fr) 44px!important;
+    padding:0 10px!important;
+    box-sizing:border-box!important;
+  }
+  .mobileFirstV3 :global([class*="mechanic-diagnostic-matrix_top"] > button){
+    width:40px!important;
+    height:40px!important;
+    border-radius:12px!important;
+    font-size:28px!important;
+  }
+  .mobileFirstV3 :global([class*="mechanic-diagnostic-matrix_top"] > strong){
+    min-width:0!important;
+    overflow:hidden!important;
+    text-overflow:ellipsis!important;
+    white-space:nowrap!important;
+    font-size:17px!important;
+    color:#fff!important;
+  }
+  .mobileFirstV3 :global([class*="mechanic-diagnostic-matrix_content"]){
+    width:100%!important;
+    max-width:100%!important;
+    min-width:0!important;
+    box-sizing:border-box!important;
+    padding:12px 12px 20px!important;
+    gap:10px!important;
+    overflow-x:hidden!important;
+  }
+
+  .mobileFirstV3 :global([class*="mechanic-diagnostic-matrix_vehicleBar"]){
+    width:100%!important;
+    min-width:0!important;
+    display:grid!important;
+    grid-template-columns:minmax(0,1fr) auto!important;
+    align-items:center!important;
+    gap:8px!important;
+    padding:12px!important;
+    border-radius:16px!important;
+    box-sizing:border-box!important;
+    overflow:hidden!important;
+  }
+  .mobileFirstV3 :global([class*="mechanic-diagnostic-matrix_vehicleBar"] > div){
+    min-width:0!important;
+  }
+  .mobileFirstV3 :global([class*="mechanic-diagnostic-matrix_vehicleBar"] strong){
+    min-width:0!important;
+    overflow:hidden!important;
+    text-overflow:ellipsis!important;
+    white-space:nowrap!important;
+    color:#f4f7fb!important;
+    font-size:15px!important;
+  }
+  .mobileFirstV3 :global([class*="mechanic-diagnostic-matrix_vehicleBar"] .uaLicensePlate){
+    --ua-plate-h:22px!important;
+    --ua-plate-number-size:15px!important;
+    max-width:136px!important;
+  }
+  .mobileFirstV3 :global([class*="mechanic-diagnostic-matrix_vehicleBar"] > b){
+    max-width:108px!important;
+    padding:6px 8px!important;
+    font-size:11px!important;
+    line-height:1.15!important;
+    white-space:normal!important;
+    text-align:center!important;
+  }
+
+  .mobileFirstV3 :global([class*="mechanic-diagnostic-matrix_axisSection"]),
+  .mobileFirstV3 :global([class*="mechanic-diagnostic-matrix_systemSection"]),
+  .mobileFirstV3 :global([class*="mechanic-diagnostic-matrix_finishCard"]),
+  .mobileFirstV3 :global([class*="mechanic-diagnostic-matrix_submitCard"]){
+    width:100%!important;
+    max-width:100%!important;
+    min-width:0!important;
+    box-sizing:border-box!important;
+    border-radius:16px!important;
+    overflow:hidden!important;
+  }
+  .mobileFirstV3 :global([class*="mechanic-diagnostic-matrix_axisHeader"]),
+  .mobileFirstV3 :global([class*="mechanic-diagnostic-matrix_systemHeader"]){
+    padding:12px 12px 10px!important;
+  }
+  .mobileFirstV3 :global([class*="mechanic-diagnostic-matrix_axisHeader"] span),
+  .mobileFirstV3 :global([class*="mechanic-diagnostic-matrix_systemHeader"] span){
+    font-size:11px!important;
+  }
+  .mobileFirstV3 :global([class*="mechanic-diagnostic-matrix_axisHeader"] h2),
+  .mobileFirstV3 :global([class*="mechanic-diagnostic-matrix_systemHeader"] h2){
+    color:#eef3f8!important;
+    font-size:18px!important;
+    line-height:1.15!important;
+  }
+
+  /* One part row = one mobile unit. Side controls stack vertically, so the part name owns the width. */
+  .mobileFirstV3 :global([class*="mechanic-diagnostic-matrix_columnLabels"]),
+  .mobileFirstV3 :global([class*="mechanic-diagnostic-matrix_partRow"]){
+    width:100%!important;
+    max-width:100%!important;
+    min-width:0!important;
+    grid-template-columns:52px minmax(0,1fr) 52px!important;
+    padding-left:4px!important;
+    padding-right:4px!important;
+    box-sizing:border-box!important;
+  }
+  .mobileFirstV3 :global([class*="mechanic-diagnostic-photo-controls_partRowWithPhoto"]){
+    grid-template-columns:52px minmax(0,1fr) 52px!important;
+  }
+  .mobileFirstV3 :global([class*="mechanic-diagnostic-photo-controls_sideAction"]){
+    width:100%!important;
+    min-width:0!important;
+    flex-direction:column!important;
+    gap:3px!important;
+  }
+  .mobileFirstV3 :global([class*="mechanic-diagnostic-photo-controls_sideActionRight"]){
+    flex-direction:column!important;
+  }
+  .mobileFirstV3 :global([class*="mechanic-diagnostic-matrix_sideCheck"]){
+    width:40px!important;
+    height:40px!important;
+    margin:auto!important;
+    border-radius:11px!important;
+    font-size:22px!important;
+  }
+  .mobileFirstV3 :global([class*="mechanic-diagnostic-photo-controls_photoButton"]){
+    width:28px!important;
+    height:28px!important;
+    padding:5px!important;
+    border-radius:9px!important;
+  }
+  .mobileFirstV3 :global([class*="mechanic-diagnostic-matrix_partRow"] > strong){
+    min-width:0!important;
+    padding:9px 5px!important;
+    overflow-wrap:anywhere!important;
+    word-break:normal!important;
+    color:#eef3f8!important;
+    font-size:15px!important;
+    line-height:1.18!important;
+  }
+  .mobileFirstV3 :global([class*="mechanic-diagnostic-matrix_nodeSection"] h3){
+    padding:9px 10px!important;
+    font-size:12px!important;
+  }
+
+  .mobileFirstV3 :global([class*="mechanic-diagnostic-matrix_systemRow"]){
+    min-width:0!important;
+    padding:11px 10px!important;
+  }
+  .mobileFirstV3 :global([class*="mechanic-diagnostic-matrix_systemItemHeader"]){
+    min-width:0!important;
+    gap:7px!important;
+    flex-wrap:wrap!important;
+  }
+  .mobileFirstV3 :global([class*="mechanic-diagnostic-matrix_systemItemHeader"] > strong){
+    min-width:0!important;
+    flex:1 1 150px!important;
+    color:#eef3f8!important;
+    font-size:14px!important;
+  }
+  .mobileFirstV3 :global([class*="mechanic-diagnostic-matrix_stateChoices"]){
+    grid-template-columns:repeat(3,minmax(0,1fr))!important;
+    gap:5px!important;
+    min-width:0!important;
+  }
+  .mobileFirstV3 :global([class*="mechanic-diagnostic-matrix_stateChoice"]){
+    min-width:0!important;
+    min-height:42px!important;
+    padding:6px 3px!important;
+    font-size:11px!important;
+    line-height:1.12!important;
+    overflow-wrap:anywhere!important;
+  }
+
+  .mobileFirstV3 :global([class*="mechanic-diagnostic-matrix_finishCard"]),
+  .mobileFirstV3 :global([class*="mechanic-diagnostic-matrix_submitCard"]){
+    padding:13px!important;
+  }
+}
+
+@media(max-width:390px){
+  .mobileFirstV3 :global([class*="mechanic-standalone-cabinet_content"]){
+    padding-left:10px!important;
+    padding-right:10px!important;
+  }
+  .mobileFirstV3 :global(.uaLicensePlate){
+    --ua-plate-h:22px!important;
+    --ua-plate-number-size:15px!important;
+    max-width:136px!important;
+  }
+  .mobileFirstV3 :global([class*="mechanic-standalone-cabinet_listCard"] .uaLicensePlate){
+    --ua-plate-h:21px!important;
+    --ua-plate-number-size:14px!important;
+    max-width:128px!important;
+  }
+  .mobileFirstV3 :global([class*="mechanic-diagnostic-matrix_content"]){
+    padding-left:10px!important;
+    padding-right:10px!important;
+  }
+  .mobileFirstV3 :global([class*="mechanic-diagnostic-matrix_columnLabels"]),
+  .mobileFirstV3 :global([class*="mechanic-diagnostic-matrix_partRow"]),
+  .mobileFirstV3 :global([class*="mechanic-diagnostic-photo-controls_partRowWithPhoto"]){
+    grid-template-columns:48px minmax(0,1fr) 48px!important;
+  }
+  .mobileFirstV3 :global([class*="mechanic-diagnostic-matrix_sideCheck"]){
+    width:38px!important;
+    height:38px!important;
+  }
+  .mobileFirstV3 :global([class*="mechanic-diagnostic-photo-controls_photoButton"]){
+    width:27px!important;
+    height:27px!important;
+  }
+  .mobileFirstV3 :global(nav[aria-label="Навігація механіка"]){
+    padding-left:8px!important;
+    padding-right:8px!important;
+  }
+}
