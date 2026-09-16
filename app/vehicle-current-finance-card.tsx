@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import styles from "./vehicle-current-finance-card.module.css";
 
 type PaymentMethod = "CASH" | "TERMINAL" | "ONLINE" | "OTHER" | null;
-type PaymentStatus = "NOT_FORMED" | "UNPAID" | "PARTIAL" | "PAID" | "OVERDUE" | "CANCELLED";
+type PaymentStatus = "NOT_FORMED" | "UNPAID" | "PREPAID" | "PARTIAL" | "PAID" | "OVERDUE" | "CANCELLED";
 type State = {
   appointmentId: string;
   isCurrentVisit: boolean;
@@ -25,6 +25,7 @@ function money(value: number | null | undefined) {
 
 function statusLabel(status: PaymentStatus) {
   if (status === "PAID") return "Оплачено";
+  if (status === "PREPAID") return "Передплата";
   if (status === "PARTIAL") return "Частково оплачено";
   if (status === "OVERDUE") return "Прострочено";
   if (status === "UNPAID") return "Очікує оплату";
@@ -33,7 +34,7 @@ function statusLabel(status: PaymentStatus) {
 
 function statusClass(status: PaymentStatus) {
   if (status === "PAID") return styles.paid;
-  if (status === "PARTIAL") return styles.partial;
+  if (status === "PREPAID" || status === "PARTIAL") return styles.partial;
   if (status === "UNPAID") return styles.unpaid;
   if (status === "OVERDUE") return styles.overdue;
   if (status === "CANCELLED") return styles.cancelled;
@@ -95,12 +96,12 @@ export function VehicleCurrentFinanceCard({ vehicleId }: { vehicleId: string }) 
     {!loading && !error && state && <>
       <div className={styles.operation}>{state.operationalLabel}</div>
       <div className={styles.moneyGrid}>
-        <span><small>Нараховано</small><strong>{money(state.amount)}</strong></span>
+        <span><small>{state.actual ? "Нараховано" : "Планова сума"}</small><strong>{money(state.amount)}</strong></span>
         <span><small>Оплачено</small><strong>{money(state.paid)}</strong></span>
         <span><small>Залишок</small><strong>{money(state.outstanding)}</strong></span>
       </div>
       {state.lastPayment && <div className={styles.lastPayment}>Остання оплата: <b>{money(state.lastPayment.amount)}</b>{state.lastPayment.method ? ` · ${methodLabel(state.lastPayment.method)}` : ""} · {new Intl.DateTimeFormat("uk-UA", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }).format(new Date(state.lastPayment.occurredAt))}</div>}
-      {!state.actual && state.amount != null && <div className={styles.note}>Поки що показана планова сума. Фактичний розрахунок з’явиться після формування фінансового документа.</div>}
+      {!state.actual && state.amount != null && <div className={styles.note}>{state.status === "PREPAID" ? "Передплату зафіксовано. Остаточний залишок з’явиться після формування фактичного нарахування." : "Поки що показана планова сума. Фактичний розрахунок з’явиться після формування фінансового документа."}</div>}
     </>}
   </section>;
 }
