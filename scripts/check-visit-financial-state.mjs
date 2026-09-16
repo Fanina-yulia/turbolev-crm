@@ -24,13 +24,13 @@ assertIncludes("src/services/visit-financial-state.service.ts", [
   'return "PAID"',
   'SUSPENSION_MATRIX',
 ]);
-assertIncludes("app/api/visit-financial-state/route.ts", [
+assertIncludes("app/api/vehicles/visit-financial-state/route.ts", [
   "PERMISSIONS.CLIENTS_READ",
   '"Cache-Control": "no-store"',
   "getVisitFinancialState",
 ]);
 assertIncludes("app/planner-appointment-window-enhancer.tsx", [
-  "/api/visit-financial-state?appointmentId=",
+  "/api/vehicles/visit-financial-state?appointmentId=",
   "Частково оплачено",
   "Нараховано",
   "Оплачено",
@@ -38,7 +38,7 @@ assertIncludes("app/planner-appointment-window-enhancer.tsx", [
   'navigateCrm("Діагностика"',
 ]);
 assertIncludes("app/vehicle-current-finance-card.tsx", [
-  "/api/visit-financial-state?vehicleId=",
+  "/api/vehicles/visit-financial-state?vehicleId=",
   "Фінанси візиту",
   "Частково оплачено",
   "Остання оплата",
