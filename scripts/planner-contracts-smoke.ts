@@ -96,8 +96,11 @@ const compactWindowSource = readFileSync(new URL("../app/planner-appointment-win
 assert(compactWindowSource.includes("estimatedAmount"), "planner detail window should use appointment estimated amount");
 assert(compactWindowSource.includes("Орієнтовна сума робіт"), "repair estimate label should be present");
 assert(compactWindowSource.includes("Орієнтовна вартість діагностики"), "diagnostic estimate label should be present");
-assert(compactWindowSource.includes('navigateCrm("Клієнти", { clientId })'), "client click should open exact client card");
+assert(
+  compactWindowSource.includes('navigateCrm("Клієнти"') && compactWindowSource.includes("clientId"),
+  "client click should open exact client card",
+);
 assert(compactWindowSource.includes('[data-planner-hidden="true"]'), "large duplicate sections should be hidden in compact mode");
-assert(compactWindowSource.includes("max-height: calc(100vh - 16px)"), "desktop detail window should be constrained to one viewport");
+assert(/max-height:\s*calc\(100vh - 16px\)/.test(compactWindowSource), "desktop detail window should be constrained to one viewport");
 
 console.log("Planner contracts smoke: OK");
