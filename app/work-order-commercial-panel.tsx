@@ -24,6 +24,21 @@ type Line = {
 type Estimate = { id: string; revision: number; status: string; currency: string; subtotal: string; discountAmount: string; totalAmount: string; sentAt: string | null; approvedAt: string | null; approvedByName: string | null };
 type PartItem = { id: string; workOrderLineId: string; description: string; article: string | null; brand: string | null; quantity: string; receivedQuantity: string; installedQuantity: string; currency: string; requiredForRepair: boolean; etaAt: string | null };
 type PartsRequest = { id: string; status: string; paymentRequired: boolean; paymentConfirmedAt: string | null; items: PartItem[] };
+type DirectRepairMode = "SERVICE_SUPPLIED" | "CUSTOMER_SUPPLIED" | "MIXED" | "NO_PARTS";
+type PartSupplySource = "SERVICE" | "CUSTOMER";
+type DirectRepairState = {
+  isDirectRepair: boolean;
+  partsMode: DirectRepairMode | null;
+  modeSelected: boolean;
+  configurationComplete: boolean;
+  blockers: string[];
+  partSupplySources: Record<string, PartSupplySource | null>;
+  customerPartConfirmedLineIds: string[];
+  customerPartPendingLineIds: string[];
+  servicePartCount: number;
+  customerPartCount: number;
+  legacy: boolean;
+};
 type Commercial = {
   lines: Line[];
   estimate: Estimate | null;
@@ -31,9 +46,12 @@ type Commercial = {
   estimateIsCurrent: boolean;
   estimateApproved: boolean;
   requiredPartsCount: number;
+  servicePartsCount?: number;
+  customerPartsCount?: number;
   partsReady: boolean;
   mechanicAssigned: boolean;
   partsPaymentSatisfied: boolean;
+  directRepair?: DirectRepairState;
 };
 type QcAttempt = { id: string; attempt: number; status: string; performedByName: string | null; resultNote: string | null; startedAt: string | null; completedAt: string | null };
 type QualityControl = { latest: QcAttempt | null; attempts: QcAttempt[]; passed: boolean; failed: boolean; active: boolean };
@@ -41,7 +59,7 @@ type Finance = { summary: { receivable: string | null; paid: string; outstanding
 type Account = { id: string; name: string; type: string; currency: string; isActive: boolean };
 type WorkPrice = { id: string; code: string | null; name: string; unit: string; adjustedPrice: number; basePrice: number; coefficient: number; normHours: number | null };
 type SupplierQuote = { id: string; article: string; brand: string | null; name: string | null; purchasePrice: string | null; currency: string | null; fetchedAt: string; supplier: { id: string; name: string; code: string; defaultMarkupPercent: string } };
-type WorkOrderInfo = { status: string; vehicle: { brand: string | null; model: string | null; year: number | null } };
+type WorkOrderInfo = { origin?: string; status: string; vehicle: { brand: string | null; model: string | null; year: number | null } };
 
 export type WorkOrderCommercialView = "overview" | "works" | "parts" | "estimate" | "qc" | "payment";
 export type WorkOrderCommercialSummary = {
@@ -60,6 +78,13 @@ export type WorkOrderCommercialSummary = {
   partsRequestStatus: string | null;
   qcStatus: string | null;
 };
+
+const DIRECT_REPAIR_MODES: Array<{ value: DirectRepairMode; title: string; description: string }> = [
+  { value: "SERVICE_SUPPLIED", title: "Підбирає СТО", description: "СТО підбирає, закуповує та продає потрібні запчастини." },
+  { value: "CUSTOMER_SUPPLIED", title: "Запчастини клієнта", description: "Клієнт привозить деталі. У КП вони мають 0 грн." },
+  { value: "MIXED", title: "Змішаний варіант", description: "Частину деталей постачає СТО, частину — клієнт." },
+  { value: "NO_PARTS", title: "Запчастини не потрібні", description: "КП складається лише з робіт, матеріалів і послуг." },
+];
 
 function money(value: string | number | null | undefined, currency = "UAH") {
   const n = Number(value);
@@ -81,6 +106,9 @@ function nextLineStatus(status: string) {
 function lineAction(status: string) {
   return status === "DRAFT" ? "Погодити" : status === "APPROVED" ? "В роботу" : status === "IN_PROGRESS" ? "Виконано" : null;
 }
+function modeLabel(mode: DirectRepairMode | null | undefined) {
+  return DIRECT_REPAIR_MODES.find((item) => item.value === mode)?.title || "Не обрано";
+}
 
 export function WorkOrderCommercialPanel({ workOrderId, view = "overview", onChanged, onSummary }: {
   workOrderId: string;
@@ -98,6 +126,7 @@ export function WorkOrderCommercialPanel({ workOrderId, view = "overview", onCha
   const [message, setMessage] = useState("");
   const [approvalName, setApprovalName] = useState("");
   const [draft, setDraft] = useState({ type: "LABOR", description: "", quantity: "1", price: "", cost: "", article: "" });
+  const [customerPart, setCustomerPart] = useState({ description: "", brand: "", article: "", quantity: "1" });
   const [workQuery, setWorkQuery] = useState("");
   const [workResults, setWorkResults] = useState<WorkPrice[]>([]);
   const [quoteQuery, setQuoteQuery] = useState("");
@@ -146,6 +175,22 @@ export function WorkOrderCommercialPanel({ workOrderId, view = "overview", onCha
   const workLines = useMemo(() => data?.lines.filter((line) => line.type !== "PART") || [], [data?.lines]);
   const partLines = useMemo(() => data?.lines.filter((line) => line.type === "PART") || [], [data?.lines]);
   const outstanding = Number(finance?.summary?.outstanding || 0);
+  const direct = data?.directRepair?.isDirectRepair ? data.directRepair : null;
+  const directMode = direct?.partsMode ?? null;
+  const canUseServiceParts = !direct || directMode === "SERVICE_SUPPLIED" || directMode === "MIXED";
+  const canUseCustomerParts = Boolean(direct && (directMode === "CUSTOMER_SUPPLIED" || directMode === "MIXED"));
+  const noPartsMode = Boolean(direct && directMode === "NO_PARTS");
+  const directSetupReady = !direct || direct.configurationComplete;
+  const estimateCanSend = data ? data.lines.length > 0 && !data.estimateApproved && directSetupReady : false;
+  const canMarkReady = Boolean(
+    direct
+      && data?.estimateApproved
+      && data?.estimateIsCurrent
+      && data?.partsReady
+      && data?.mechanicAssigned
+      && workOrder
+      && !["READY_FOR_REPAIR", "IN_REPAIR", "WAITING_QC", "REWORK", "WAITING_PAYMENT", "READY_FOR_PICKUP", "CLOSED", "CANCELLED"].includes(workOrder.status),
+  );
 
   useEffect(() => {
     if (!data || !finance) return;
@@ -185,9 +230,13 @@ export function WorkOrderCommercialPanel({ workOrderId, view = "overview", onCha
     }
   }
 
+  function directAct(key: string, body: Record<string, unknown>) {
+    return act(key, `/api/work-orders/${encodeURIComponent(workOrderId)}/direct-repair`, "PATCH", body);
+  }
+
   async function addLine() {
     if (!draft.description.trim()) return;
-    const ok = await act("line", `/api/work-orders/${encodeURIComponent(workOrderId)}/lines`, "POST", {
+    const result = await act("line", `/api/work-orders/${encodeURIComponent(workOrderId)}/lines`, "POST", {
       type: draft.type,
       description: draft.description,
       plannedQuantity: draft.quantity || "1",
@@ -196,7 +245,29 @@ export function WorkOrderCommercialPanel({ workOrderId, view = "overview", onCha
       article: draft.article || undefined,
       actorName: "CRM / WorkOrder Center",
     });
-    if (ok) setDraft({ type: view === "parts" ? "PART" : "LABOR", description: "", quantity: "1", price: "", cost: "", article: "" });
+    if (result?.line?.id && direct && draft.type === "PART" && directMode === "MIXED") {
+      await directAct(`source:${result.line.id}`, { action: "SET_PART_SOURCE", lineId: result.line.id, source: "SERVICE" });
+    }
+    if (result) setDraft({ type: view === "parts" ? "PART" : "LABOR", description: "", quantity: "1", price: "", cost: "", article: "" });
+  }
+
+  async function addSupplierQuote(quote: SupplierQuote) {
+    const result = await act(`quote:${quote.id}`, `/api/work-orders/${encodeURIComponent(workOrderId)}/lines`, "POST", { supplierQuoteId: quote.id, actorName: "CRM / WorkOrder Center" });
+    if (result?.line?.id && direct && directMode === "MIXED") {
+      await directAct(`source:${result.line.id}`, { action: "SET_PART_SOURCE", lineId: result.line.id, source: "SERVICE" });
+    }
+  }
+
+  async function addCustomerPart() {
+    if (!customerPart.description.trim()) return;
+    const result = await directAct("customer-part", {
+      action: "ADD_CUSTOMER_PART",
+      description: customerPart.description,
+      brand: customerPart.brand || undefined,
+      article: customerPart.article || undefined,
+      quantity: customerPart.quantity || "1",
+    });
+    if (result) setCustomerPart({ description: "", brand: "", article: "", quantity: "1" });
   }
 
   async function searchWorks() {
@@ -281,17 +352,36 @@ export function WorkOrderCommercialPanel({ workOrderId, view = "overview", onCha
   if (loading && !data) return <div className={styles.empty}>Завантажую дані комерційної пропозиції…</div>;
   if (!data) return <div className={styles.notice}>{message || "Дані комерційної пропозиції недоступні."}</div>;
 
+  const directSetup = direct && !direct.legacy ? <section className={styles.directRepairBox}>
+    <div className={styles.directHeader}>
+      <div><span className={styles.directEyebrow}>ПРЯМИЙ РЕМОНТ · БЕЗ ДІАГНОСТИЧНОЇ КАРТИ</span><strong>Як забезпечуються запчастини?</strong><small>КП формується безпосередньо з робіт і вибраного джерела деталей.</small></div>
+      <span className={direct.configurationComplete ? styles.readyPill : styles.pendingPill}>{direct.configurationComplete ? "Налаштовано" : "Потрібне рішення"}</span>
+    </div>
+    <div className={styles.modeGrid}>
+      {DIRECT_REPAIR_MODES.map((item) => <button
+        key={item.value}
+        type="button"
+        className={`${styles.modeCard} ${directMode === item.value ? styles.modeCardActive : ""}`}
+        disabled={Boolean(busy)}
+        onClick={() => void directAct(`mode:${item.value}`, { action: "SET_PARTS_MODE", mode: item.value })}
+      ><b>{item.title}</b><span>{item.description}</span></button>)}
+    </div>
+    {!!direct.blockers.length && <div className={styles.blockers}>{direct.blockers.map((blocker) => <span key={blocker}>• {blocker}</span>)}</div>}
+  </section> : null;
+
   return <div className={styles.panel}>
+    {direct && (view === "overview" || view === "parts" || view === "estimate") && directSetup}
+
     {view === "overview" && <>
       <div className={styles.overviewCards}>
         <div className={styles.overviewCard}><span>Кошторис</span><strong>{data.estimate ? money(data.estimate.totalAmount, data.estimate.currency) : "Не сформовано"}</strong><small>{data.estimateApproved ? "Погоджено клієнтом" : data.estimate?.status || "Очікує формування"}</small></div>
         <div className={styles.overviewCard}><span>Роботи</span><strong>{workLines.length}</strong><small>{workLines.filter((line) => line.status === "COMPLETED").length} виконано</small></div>
-        <div className={styles.overviewCard}><span>Запчастини</span><strong>{partLines.length}</strong><small>{data.partsRequest?.status || (partLines.length ? "Заявку ще не відкрито" : "Немає позицій")}</small></div>
+        <div className={styles.overviewCard}><span>Запчастини</span><strong>{partLines.length}</strong><small>{direct ? modeLabel(directMode) : data.partsRequest?.status || (partLines.length ? "Заявку ще не відкрито" : "Немає позицій")}</small></div>
         <div className={styles.overviewCard}><span>Контроль якості</span><strong>{qc?.passed ? "Пройдено" : qc?.latest?.status || "Не розпочато"}</strong><small>{qc?.latest ? `Спроба №${qc.latest.attempt}` : "Очікує етапу QC"}</small></div>
         <div className={styles.overviewCard}><span>Оплата</span><strong>{finance?.summary?.actualFinalized ? money(finance.summary.paid, "UAH") : "Ще не фіналізовано"}</strong><small>{finance?.summary?.actualFinalized ? (finance.summary.fullyPaid ? "Оплачено повністю" : `Борг ${money(finance.summary.outstanding, "UAH")}`) : "Сума з’явиться після QC"}</small></div>
       </div>
       <div className={styles.gateGrid}>
-        <div className={styles.gate}><span>Кошторис погоджено</span><strong className={data.estimateApproved ? styles.ok : styles.bad}>{data.estimateApproved ? "ТАК" : "НІ"}</strong></div>
+        <div className={styles.gate}><span>КП погоджено</span><strong className={data.estimateApproved ? styles.ok : styles.bad}>{data.estimateApproved ? "ТАК" : "НІ"}</strong></div>
         <div className={styles.gate}><span>Обов'язкові деталі готові</span><strong className={data.partsReady ? styles.ok : styles.bad}>{data.partsReady ? "ТАК" : "НІ"}</strong></div>
         <div className={styles.gate}><span>Автомеханік призначений</span><strong className={data.mechanicAssigned ? styles.ok : styles.bad}>{data.mechanicAssigned ? "ТАК" : "НІ"}</strong></div>
         <div className={styles.gate}><span>QC пройдено</span><strong className={qc?.passed ? styles.ok : styles.bad}>{qc?.passed ? "ТАК" : "НІ"}</strong></div>
@@ -300,12 +390,12 @@ export function WorkOrderCommercialPanel({ workOrderId, view = "overview", onCha
     </>}
 
     {view === "works" && <div className={styles.block}>
-      <div className={styles.blockTitle}><div><strong>Роботи та послуги</strong><small>Тільки роботи, матеріали та сторонні послуги. Деталі винесені в окрему вкладку.</small></div><span className={styles.counter}>{workLines.length}</span></div>
+      <div className={styles.blockTitle}><div><strong>Роботи та послуги</strong><small>{direct ? "Для прямого ремонту саме ці роботи є джерелом КП замість Діагностичної карти." : "Тільки роботи, матеріали та сторонні послуги. Деталі винесені в окрему вкладку."}</small></div><span className={styles.counter}>{workLines.length}</span></div>
       <div className={styles.lineList}>{workLines.map((line) => {
         const next = nextLineStatus(line.status);
-        return <div className={styles.line} key={line.id}><div><strong>{line.description}</strong><small>{line.type} · {num(line.plannedQuantity)} × {money(line.plannedUnitPrice, line.currency)} · собівартість {money(line.plannedUnitCost, line.currency)}</small></div><div className={styles.lineActions}><span className={styles.amount}>{money(num(line.plannedQuantity) * num(line.plannedUnitPrice) - num(line.plannedDiscount), line.currency)}</span>{next && <button className={styles.button} disabled={Boolean(busy)} onClick={() => void updateLine(line, next)}>{lineAction(line.status)}</button>}</div></div>;
+        return <div className={styles.line} key={line.id}><div><strong>{line.description}</strong><small>{line.type} · {num(line.plannedQuantity)} × {money(line.plannedUnitPrice, line.currency)} · собівартість {money(line.plannedUnitCost, line.currency)}</small></div><div className={styles.lineActions}><span className={styles.amount}>{money(num(line.plannedQuantity) * num(line.plannedUnitPrice) - num(line.plannedDiscount), line.currency)}</span>{!direct && next && <button className={styles.button} disabled={Boolean(busy)} onClick={() => void updateLine(line, next)}>{lineAction(line.status)}</button>}</div></div>;
       })}</div>
-      {!workLines.length && <div className={styles.empty}>Робіт ще немає.</div>}
+      {!workLines.length && <div className={styles.empty}>Робіт ще немає. Додайте конкретну роботу, яку замовив клієнт.</div>}
 
       <div className={styles.searchBox}>
         <strong>Додати роботу з прайсу</strong>
@@ -325,41 +415,67 @@ export function WorkOrderCommercialPanel({ workOrderId, view = "overview", onCha
 
     {view === "parts" && <>
       <div className={styles.block}>
-        <div className={styles.blockTitle}><div><strong>Позиції запчастин</strong><small>Підбір, ціни та склад деталей цього ремонту.</small></div><span className={styles.counter}>{partLines.length}</span></div>
-        <div className={styles.lineList}>{partLines.map((line) => <div className={styles.line} key={line.id}><div><strong>{line.description}</strong><small>{[line.brand, line.article].filter(Boolean).join(" · ") || line.status} · {num(line.plannedQuantity)} × {money(line.plannedUnitPrice, line.currency)} · закупка {money(line.plannedUnitCost, line.currency)}</small></div><div className={styles.lineActions}><span className={styles.amount}>{money(num(line.plannedQuantity) * num(line.plannedUnitPrice) - num(line.plannedDiscount), line.currency)}</span></div></div>)}</div>
-        {!partLines.length && <div className={styles.empty}>Запчастин у комерційній пропозиції ще немає.</div>}
+        <div className={styles.blockTitle}><div><strong>Позиції запчастин</strong><small>{direct ? `Режим: ${modeLabel(directMode)}. Для кожної деталі CRM фіксує, хто її постачає.` : "Підбір, ціни та склад деталей цього ремонту."}</small></div><span className={styles.counter}>{partLines.length}</span></div>
+        <div className={styles.lineList}>{partLines.map((line) => {
+          const source = direct?.partSupplySources?.[line.id] ?? null;
+          const customerConfirmed = Boolean(direct?.customerPartConfirmedLineIds?.includes(line.id));
+          return <div className={styles.line} key={line.id}><div><strong>{line.description}</strong><small>{[line.brand, line.article].filter(Boolean).join(" · ") || line.status} · {num(line.plannedQuantity)} × {source === "CUSTOMER" ? "Надає клієнт · 0 грн" : money(line.plannedUnitPrice, line.currency)}{source !== "CUSTOMER" ? ` · закупка ${money(line.plannedUnitCost, line.currency)}` : ""}</small>{direct && <div className={styles.sourceRow}><span className={source === "CUSTOMER" ? styles.customerBadge : source === "SERVICE" ? styles.serviceBadge : styles.sourceMissing}>{source === "CUSTOMER" ? "Надає клієнт" : source === "SERVICE" ? "Постачає СТО" : "Джерело не вказано"}</span>{directMode === "MIXED" && <><button className={styles.miniButton} disabled={Boolean(busy) || source === "SERVICE"} onClick={() => void directAct(`source:${line.id}`, { action: "SET_PART_SOURCE", lineId: line.id, source: "SERVICE" })}>СТО</button><button className={styles.miniButton} disabled={Boolean(busy) || source === "CUSTOMER"} onClick={() => void directAct(`source:${line.id}`, { action: "SET_PART_SOURCE", lineId: line.id, source: "CUSTOMER" })}>Клієнт</button></>}</div>}</div><div className={styles.lineActions}><span className={styles.amount}>{source === "CUSTOMER" ? "0 грн" : money(num(line.plannedQuantity) * num(line.plannedUnitPrice) - num(line.plannedDiscount), line.currency)}</span>{source === "CUSTOMER" && <button className={customerConfirmed ? styles.confirmedButton : styles.button} disabled={Boolean(busy)} onClick={() => void directAct(`confirm:${line.id}`, { action: "CONFIRM_CUSTOMER_PART", lineId: line.id, confirmed: !customerConfirmed })}>{customerConfirmed ? "✓ Деталь на СТО" : "Підтвердити наявність"}</button>}{direct && !["IN_PROGRESS", "COMPLETED"].includes(line.status) && <button className={styles.danger} disabled={Boolean(busy)} onClick={() => void updateLine(line, "CANCELLED")}>Скасувати</button>}</div></div>;
+        })}</div>
+        {!partLines.length && <div className={styles.empty}>{noPartsMode ? "Для цього ремонту запчастини не потрібні." : "Запчастин у комерційній пропозиції ще немає."}</div>}
 
-        <div className={styles.searchBox}>
-          <strong>Додати деталь із пропозицій постачальників</strong>
+        {canUseServiceParts && !noPartsMode && <div className={styles.searchBox}>
+          <strong>Запчастини, які постачає СТО</strong>
           <div className={styles.searchRow}><input placeholder="Артикул, бренд або назва" value={quoteQuery} onChange={(event) => setQuoteQuery(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void searchQuotes(); }}/><button className={styles.button} onClick={() => void searchQuotes()} disabled={busy === "quote-search"}>{busy === "quote-search" ? "Шукаю…" : "Знайти"}</button></div>
-          {!!quoteResults.length && <div className={styles.results}>{quoteResults.map((quote) => <button key={quote.id} className={styles.result} disabled={Boolean(busy)} onClick={() => void act(`quote:${quote.id}`, `/api/work-orders/${encodeURIComponent(workOrderId)}/lines`, "POST", { supplierQuoteId: quote.id, actorName: "CRM / WorkOrder Center" })}><span><b>{[quote.brand, quote.article].filter(Boolean).join(" · ")}</b><small>{quote.name || ""} · {quote.supplier.name} · актуально від {date(quote.fetchedAt)}</small></span><strong>{quote.purchasePrice ? money(quote.purchasePrice, quote.currency || "UAH") : "ціна не надана"}</strong></button>)}</div>}
-        </div>
+          {!!quoteResults.length && <div className={styles.results}>{quoteResults.map((quote) => <button key={quote.id} className={styles.result} disabled={Boolean(busy)} onClick={() => void addSupplierQuote(quote)}><span><b>{[quote.brand, quote.article].filter(Boolean).join(" · ")}</b><small>{quote.name || ""} · {quote.supplier.name} · актуально від {date(quote.fetchedAt)}</small></span><strong>{quote.purchasePrice ? money(quote.purchasePrice, quote.currency || "UAH") : "ціна не надана"}</strong></button>)}</div>}
+        </div>}
 
-        <div className={styles.manualPartForm}>
+        {canUseServiceParts && !noPartsMode && <div className={styles.manualPartForm}>
           <input placeholder="Артикул" value={draft.article} onChange={(event) => setDraft((current) => ({ ...current, article: event.target.value, type: "PART" }))}/>
-          <input placeholder="Назва деталі" value={draft.description} onChange={(event) => setDraft((current) => ({ ...current, description: event.target.value, type: "PART" }))}/>
+          <input placeholder="Назва деталі СТО" value={draft.description} onChange={(event) => setDraft((current) => ({ ...current, description: event.target.value, type: "PART" }))}/>
           <input placeholder="К-сть" value={draft.quantity} onChange={(event) => setDraft((current) => ({ ...current, quantity: event.target.value }))}/>
           <input placeholder="Продаж ₴" value={draft.price} onChange={(event) => setDraft((current) => ({ ...current, price: event.target.value }))}/>
           <input placeholder="Закупка ₴" value={draft.cost} onChange={(event) => setDraft((current) => ({ ...current, cost: event.target.value }))}/>
-          <button className={styles.button} disabled={Boolean(busy) || !draft.description.trim()} onClick={() => void addLine()}>+ Додати деталь</button>
-        </div>
+          <button className={styles.button} disabled={Boolean(busy) || !draft.description.trim()} onClick={() => void addLine()}>+ Додати деталь СТО</button>
+        </div>}
+
+        {canUseCustomerParts && <div className={styles.customerPartBox}>
+          <strong>Запчастина клієнта</strong><small>Фіксуємо її у складі ремонту, але не включаємо у продаж і закупівлю СТО.</small>
+          <div className={styles.customerPartForm}>
+            <input placeholder="Артикул (необов'язково)" value={customerPart.article} onChange={(event) => setCustomerPart((current) => ({ ...current, article: event.target.value }))}/>
+            <input placeholder="Бренд (необов'язково)" value={customerPart.brand} onChange={(event) => setCustomerPart((current) => ({ ...current, brand: event.target.value }))}/>
+            <input placeholder="Назва деталі *" value={customerPart.description} onChange={(event) => setCustomerPart((current) => ({ ...current, description: event.target.value }))}/>
+            <input placeholder="К-сть" value={customerPart.quantity} onChange={(event) => setCustomerPart((current) => ({ ...current, quantity: event.target.value }))}/>
+            <button className={styles.button} disabled={Boolean(busy) || !customerPart.description.trim()} onClick={() => void addCustomerPart()}>+ Додати деталь клієнта</button>
+          </div>
+        </div>}
       </div>
 
-      <div className={styles.block}>
-        <div className={styles.estimateTop}><div><strong>Заявка на запчастини</strong><small>{data.partsRequest ? `${data.partsRequest.status} · ${data.partsRequest.items.length} позицій` : `У комерційній пропозиції ${data.requiredPartsCount} обов'язкових позицій`}</small></div></div>
-        {!data.partsRequest && <div className={styles.toolbar}><button className={styles.button} disabled={Boolean(busy) || !partLines.length} onClick={() => void act("parts-open", `/api/work-orders/${encodeURIComponent(workOrderId)}/parts-request`, "POST", { actorName: "CRM / WorkOrder Center" })}>Створити заявку на закупівлю</button></div>}
+      {!noPartsMode && (!direct || (data.servicePartsCount ?? direct.servicePartCount) > 0) && <div className={styles.block}>
+        <div className={styles.estimateTop}><div><strong>Заявка на закупівлю</strong><small>{data.partsRequest ? `${data.partsRequest.status} · ${data.partsRequest.items.length} позицій СТО` : `До закупівлі СТО: ${data.servicePartsCount ?? data.requiredPartsCount} позицій`}</small></div></div>
+        {!data.partsRequest && <div className={styles.toolbar}><button className={styles.button} disabled={Boolean(busy) || (direct ? (data.servicePartsCount ?? 0) === 0 : !partLines.length)} onClick={() => void act("parts-open", `/api/work-orders/${encodeURIComponent(workOrderId)}/parts-request`, "POST", { actorName: "CRM / WorkOrder Center" })}>Створити заявку на закупівлю</button></div>}
         {data.partsRequest && <><div className={styles.toolbar}>{nextParts && <button className={styles.button} disabled={Boolean(busy)} onClick={() => void advanceParts(nextParts[0])}>{nextParts[1]}</button>}<label className={styles.check}><input type="checkbox" checked={data.partsRequest.paymentRequired} onChange={(event) => void act("payment-required", `/api/parts-requests/${encodeURIComponent(data.partsRequest!.id)}`, "PATCH", { paymentRequired: event.target.checked })}/>Передоплата деталей</label>{data.partsRequest.paymentRequired && !data.partsRequest.paymentConfirmedAt && <button className={styles.button} onClick={() => void act("payment-confirm", `/api/parts-requests/${encodeURIComponent(data.partsRequest!.id)}`, "PATCH", { paymentConfirmed: true })}>Оплату деталей підтверджено</button>}</div><div className={styles.partList}>{data.partsRequest.items.map((item) => {
           const received = Math.min(100, Math.round((num(item.receivedQuantity) / Math.max(.001, num(item.quantity))) * 100));
           const installed = Math.min(100, Math.round((num(item.installedQuantity) / Math.max(.001, num(item.quantity))) * 100));
           return <div className={styles.part} key={item.id}><div><strong>{item.brand ? `${item.brand} ` : ""}{item.article || item.description}</strong><small>Отримано {num(item.receivedQuantity)} / {num(item.quantity)} · встановлено {num(item.installedQuantity)}</small><div className={styles.progress}><i style={{ width: `${received}%` }}/></div></div><div className={styles.lineActions}><button className={styles.button} disabled={Boolean(busy) || received >= 100} onClick={() => void receive(item)}>{received >= 100 ? "Отримано" : "Прийняти"}</button><button className={styles.button} disabled={Boolean(busy) || received < 100 || installed >= 100} onClick={() => void install(item)}>{installed >= 100 ? "Встановлено" : "Встановити"}</button></div></div>;
         })}</div></>}
-      </div>
+      </div>}
     </>}
 
     {view === "estimate" && <div className={styles.block}>
-      <div className={styles.estimateTop}><div><strong>Кошторис {data.estimate ? `№${data.estimate.revision}` : "не сформований"}</strong><small>{data.estimate ? `${data.estimate.status} · ${money(data.estimate.totalAmount, data.estimate.currency)} · відправлено ${date(data.estimate.sentAt)}` : "Фіксує склад робіт, деталей і погоджених цін."}</small></div>{data.estimate && <span className={styles.amount}>{data.estimateIsCurrent ? "Актуальний" : "Потрібна нова ревізія"}</span>}</div>
-      <div className={styles.toolbar}><button className={styles.primary} disabled={Boolean(busy) || !data.lines.length || data.estimateApproved} onClick={() => void act("send", `/api/work-orders/${encodeURIComponent(workOrderId)}/estimate`, "POST", { actorName: "CRM / WorkOrder Center" })}>{busy === "send" ? "Формую…" : "Сформувати / відправити"}</button></div>
-      {data.estimate?.status === "SENT" && <div className={styles.decision}><input placeholder="Хто погодив" value={approvalName} onChange={(event) => setApprovalName(event.target.value)}/><button className={styles.primary} disabled={Boolean(busy)} onClick={() => void decide("APPROVE")}>Погоджено</button><button className={styles.danger} disabled={Boolean(busy)} onClick={() => void decide("REJECT")}>Відхилено</button></div>}
+      <div className={styles.estimateTop}><div><strong>{direct ? "Комерційна пропозиція прямого ремонту" : "Кошторис"} {data.estimate ? `№${data.estimate.revision}` : "не сформована"}</strong><small>{data.estimate ? `${data.estimate.status} · ${money(data.estimate.totalAmount, data.estimate.currency)} · відправлено ${date(data.estimate.sentAt)}` : direct ? "Формується з робіт і джерел запчастин, без Діагностичної карти." : "Фіксує склад робіт, деталей і погоджених цін."}</small></div>{data.estimate && <span className={styles.amount}>{data.estimateIsCurrent ? "Актуальна" : "Потрібна нова ревізія"}</span>}</div>
+      {direct && <div className={styles.estimateReadiness}>
+        <span><b>Роботи</b>{workLines.length ? `${workLines.length} позицій` : "не додані"}</span>
+        <span><b>Запчастини</b>{modeLabel(directMode)}</span>
+        <span><b>КП</b>{data.estimateApproved ? "погоджена" : data.estimate?.status || "ще не сформована"}</span>
+        <span><b>Готовність деталей</b>{data.partsReady ? "готові" : "ще не готові"}</span>
+      </div>}
+      <div className={styles.toolbar}><button className={styles.primary} disabled={Boolean(busy) || !estimateCanSend} onClick={() => void act("send", `/api/work-orders/${encodeURIComponent(workOrderId)}/estimate`, "POST", { actorName: "CRM / WorkOrder Center" })}>{busy === "send" ? "Формую…" : data.estimate && !data.estimateIsCurrent ? "Сформувати нову ревізію / відправити" : "Сформувати / відправити КП"}</button></div>
+      {direct && !direct.configurationComplete && <div className={styles.notice}>Спочатку завершіть налаштування джерела запчастин. КП не буде відправлена з неоднозначним складом ремонту.</div>}
+      {data.estimate?.status === "SENT" && data.estimateIsCurrent && <div className={styles.decision}><input placeholder="Хто погодив" value={approvalName} onChange={(event) => setApprovalName(event.target.value)}/><button className={styles.primary} disabled={Boolean(busy)} onClick={() => void decide("APPROVE")}>Погоджено</button><button className={styles.danger} disabled={Boolean(busy)} onClick={() => void decide("REJECT")}>Відхилено</button></div>}
+      {data.estimateApproved && <div className={styles.approvedBanner}>✓ Актуальну КП погоджено клієнтом.</div>}
+      {direct && data.estimateApproved && !data.partsReady && <div className={styles.notice}>КП погоджено, але ремонт ще не готовий до старту: дочекайтесь деталей СТО та/або підтвердьте наявність деталей клієнта.</div>}
+      {direct && data.estimateApproved && data.partsReady && !data.mechanicAssigned && <div className={styles.notice}>Комерційна частина готова. Призначте механіка перед переведенням у «Готовий до ремонту».</div>}
+      {canMarkReady && <button className={styles.readyButton} disabled={Boolean(busy)} onClick={() => void act("ready", `/api/work-orders/${encodeURIComponent(workOrderId)}`, "PATCH", { status: "READY_FOR_REPAIR" })}>✓ Все погоджено — готовий до ремонту</button>}
     </div>}
 
     {view === "qc" && <div className={styles.block}>
