@@ -3,6 +3,8 @@ import { getPrisma } from "@/src/lib/prisma";
 export type VisitPaymentStatus = "NOT_FORMED" | "UNPAID" | "PREPAID" | "PARTIAL" | "PAID" | "OVERDUE" | "CANCELLED";
 export type VisitFinanceSource = "WORK_ORDER" | "WALK_IN_DIAGNOSTIC" | "ESTIMATE" | "NONE";
 export type VisitPaymentMethod = "CASH" | "TERMINAL" | "ONLINE" | "OTHER" | null;
+export type VisitApprovalState = "NOT_CALCULATED" | "ESTIMATED" | "APPROVED" | "REJECTED";
+export type VisitDisplayTone = "neutral" | "warning" | "success" | "danger";
 
 export type VisitFinancialState = {
   appointmentId: string;
@@ -13,13 +15,27 @@ export type VisitFinancialState = {
   appointmentStatus: string;
   operationalLabel: string;
   source: VisitFinanceSource;
-  /** true only when the total charge comes from a factual FinancialObligation. */
+  /** true only when the accounting total comes from a factual FinancialObligation. */
   actual: boolean;
   status: VisitPaymentStatus;
+  /** Accounting amount. Existing consumers must keep using this for ledger facts. */
   amount: number | null;
   paid: number;
   outstanding: number | null;
   estimatedAmount: number | null;
+  /** Planner presentation: consent-aware amount that must not silently grow after approval. */
+  presentationAmount: number | null;
+  presentationOutstanding: number | null;
+  presentationLabel: "Орієнтовна вартість" | "Вартість";
+  approvalState: VisitApprovalState;
+  approved: boolean;
+  approvedAt: string | null;
+  approvalSource: string | null;
+  rejected: boolean;
+  additionalPending: number | null;
+  pendingTotal: number | null;
+  displayStatus: string;
+  displayTone: VisitDisplayTone;
   lastPayment: {
     id: string;
     amount: number;
@@ -39,6 +55,7 @@ export type VisitFinancialState = {
 type ResolveInput = { appointmentId?: string | null; vehicleId?: string | null };
 
 const TERMINAL_VISIT_STATUSES = ["COMPLETED", "CANCELLED", "NO_SHOW"] as const;
+const PAYMENT_DUE_STATUSES = new Set(["WAITING_PAYMENT", "READY_FOR_PICKUP", "COMPLETED"]);
 
 function num(value: unknown) {
   const result = Number(value ?? 0);
@@ -101,6 +118,53 @@ function operationalLabel(status: string, reviewState: string | null, paidStatus
     RESERVE: "Резерв",
   };
   return labels[status] || status;
+}
+
+function derivePresentation(input: {
+  presentationAmount: number | null;
+  approved: boolean;
+  rejected: boolean;
+  paid: number;
+  overdue: boolean;
+  appointmentStatus: string;
+  additionalPending: number | null;
+}) {
+  const amount = input.presentationAmount == null ? null : Math.max(0, input.presentationAmount);
+  const paid = Math.max(0, input.paid);
+  const presentationOutstanding = amount == null ? null : Math.max(0, amount - paid);
+  const approvalState: VisitApprovalState = amount == null
+    ? "NOT_CALCULATED"
+    : input.rejected && !input.approved
+      ? "REJECTED"
+      : input.approved
+        ? "APPROVED"
+        : "ESTIMATED";
+
+  if (amount == null) {
+    return { approvalState, presentationOutstanding, displayStatus: "Очікує розрахунку", displayTone: "neutral" as VisitDisplayTone };
+  }
+  if (input.rejected && !input.approved) {
+    return { approvalState, presentationOutstanding, displayStatus: "Погодження відхилено", displayTone: "danger" as VisitDisplayTone };
+  }
+  if (!input.approved) {
+    return { approvalState, presentationOutstanding, displayStatus: "Очікує погодження", displayTone: "warning" as VisitDisplayTone };
+  }
+  if ((input.additionalPending ?? 0) > 0) {
+    return { approvalState, presentationOutstanding, displayStatus: "Потрібне додаткове погодження", displayTone: "warning" as VisitDisplayTone };
+  }
+  if (amount > 0 && paid + 0.005 >= amount) {
+    return { approvalState, presentationOutstanding, displayStatus: "Оплачено", displayTone: "success" as VisitDisplayTone };
+  }
+  if (paid > 0 && presentationOutstanding != null && presentationOutstanding > 0) {
+    return { approvalState, presentationOutstanding, displayStatus: "Частково оплачено", displayTone: "warning" as VisitDisplayTone };
+  }
+  if (input.overdue && presentationOutstanding != null && presentationOutstanding > 0) {
+    return { approvalState, presentationOutstanding, displayStatus: "Оплата прострочена", displayTone: "danger" as VisitDisplayTone };
+  }
+  if (PAYMENT_DUE_STATUSES.has(input.appointmentStatus)) {
+    return { approvalState, presentationOutstanding, displayStatus: "Очікує оплату", displayTone: "warning" as VisitDisplayTone };
+  }
+  return { approvalState, presentationOutstanding, displayStatus: "Погоджено", displayTone: "success" as VisitDisplayTone };
 }
 
 async function resolveAppointment(input: ResolveInput) {
@@ -181,22 +245,39 @@ export async function getVisitFinancialState(input: ResolveInput): Promise<Visit
   }).catch(() => null);
   const diagnosticId = link?.diagnosticRequestId || null;
 
-  const obligations = appointment.workOrderId
-    ? await prisma.financialObligation.findMany({
-        where: { workOrderId: appointment.workOrderId, direction: "RECEIVABLE", status: { not: "CANCELLED" } },
-        orderBy: { issuedAt: "asc" },
-      })
-    : diagnosticId
-      ? await prisma.financialObligation.findMany({
-          where: {
-            direction: "RECEIVABLE",
-            status: { not: "CANCELLED" },
-            sourceEntity: "WALK_IN_DIAGNOSTIC",
-            sourceEntityId: `${diagnosticId}:receivable`,
-          },
+  const [obligations, estimates] = await Promise.all([
+    appointment.workOrderId
+      ? prisma.financialObligation.findMany({
+          where: { workOrderId: appointment.workOrderId, direction: "RECEIVABLE", status: { not: "CANCELLED" } },
           orderBy: { issuedAt: "asc" },
         })
-      : [];
+      : diagnosticId
+        ? prisma.financialObligation.findMany({
+            where: {
+              direction: "RECEIVABLE",
+              status: { not: "CANCELLED" },
+              sourceEntity: "WALK_IN_DIAGNOSTIC",
+              sourceEntityId: `${diagnosticId}:receivable`,
+            },
+            orderBy: { issuedAt: "asc" },
+          })
+        : Promise.resolve([]),
+    appointment.workOrderId
+      ? prisma.workOrderEstimate.findMany({
+          where: { workOrderId: appointment.workOrderId },
+          orderBy: [{ revision: "desc" }, { updatedAt: "desc" }],
+          take: 20,
+          select: {
+            revision: true,
+            status: true,
+            totalAmount: true,
+            approvedAt: true,
+            approvalSource: true,
+            rejectedAt: true,
+          },
+        })
+      : Promise.resolve([]),
+  ]);
 
   const obligationIds = obligations.map((row) => row.id);
   const paymentOr = [
@@ -238,11 +319,72 @@ export async function getVisitFinancialState(input: ResolveInput): Promise<Visit
     paid = 0;
   }
 
+  const activeEstimate = estimates.find((row) => row.status !== "CANCELLED" && row.status !== "SUPERSEDED") ?? null;
+  const approvedEstimate = estimates.find((row) => row.status === "APPROVED" || Boolean(row.approvedAt)) ?? null;
+  let presentationAmount = amount;
+  let approved = false;
+  let approvedAt: string | null = null;
+  let approvalSource: string | null = null;
+  let rejected = false;
+  let additionalPending: number | null = null;
+  let pendingTotal: number | null = null;
+
+  if (approvedEstimate) {
+    const approvedAmount = nullableAmount(approvedEstimate.totalAmount);
+    presentationAmount = approvedAmount ?? amount;
+    approved = presentationAmount != null;
+    approvedAt = approvedEstimate.approvedAt?.toISOString() ?? null;
+    approvalSource = approvedEstimate.approvalSource || "COMMERCIAL_PROPOSAL";
+
+    if (
+      activeEstimate
+      && activeEstimate.revision > approvedEstimate.revision
+      && activeEstimate.status !== "APPROVED"
+      && activeEstimate.status !== "REJECTED"
+    ) {
+      pendingTotal = nullableAmount(activeEstimate.totalAmount);
+      if (pendingTotal != null && presentationAmount != null && pendingTotal > presentationAmount) {
+        additionalPending = pendingTotal - presentationAmount;
+      }
+    }
+  } else if (activeEstimate) {
+    presentationAmount = nullableAmount(activeEstimate.totalAmount) ?? amount ?? estimatedAmount;
+    rejected = activeEstimate.status === "REJECTED" || Boolean(activeEstimate.rejectedAt);
+    source = source === "NONE" ? "ESTIMATE" : source;
+  } else if (obligations.length) {
+    // A factual receivable means an administrator/service process has fixed the charge.
+    presentationAmount = amount;
+    approved = presentationAmount != null;
+    approvalSource = appointment.workOrderId ? "FINANCIAL_OBLIGATION" : "DIAGNOSTIC_SETTLEMENT";
+  } else {
+    presentationAmount = amount ?? estimatedAmount;
+  }
+
+  if (!appointment.workOrderId && obligations.length) {
+    approved = presentationAmount != null;
+    approvalSource = "DIAGNOSTIC_SETTLEMENT";
+  }
+  if (!approved && paid > 0 && presentationAmount != null && !appointment.workOrderId) {
+    // A posted diagnostic payment is an explicit acceptance of the known amount.
+    approved = true;
+    approvalSource = "PAYMENT";
+    approvedAt = payments[0]?.occurredAt.toISOString() ?? null;
+  }
+
   const overdue = obligations.some((row) => row.status === "OVERDUE");
   const status = deriveStatus(amount, paid, overdue, obligations.length > 0);
   // Until a receivable exists, a prepayment is factual but a debt is not. Do not
   // manufacture an outstanding balance from an estimate.
   const outstanding = obligations.length > 0 && amount != null ? Math.max(0, amount - paid) : status === "UNPAID" && amount != null ? amount : null;
+  const presentation = derivePresentation({
+    presentationAmount,
+    approved,
+    rejected,
+    paid,
+    overdue,
+    appointmentStatus: appointment.status,
+    additionalPending,
+  });
   const last = payments[0] || null;
   const diagnostic = await diagnosticSummary(diagnosticId);
 
@@ -261,6 +403,18 @@ export async function getVisitFinancialState(input: ResolveInput): Promise<Visit
     paid,
     outstanding,
     estimatedAmount,
+    presentationAmount,
+    presentationOutstanding: presentation.presentationOutstanding,
+    presentationLabel: approved ? "Вартість" : "Орієнтовна вартість",
+    approvalState: presentation.approvalState,
+    approved,
+    approvedAt,
+    approvalSource,
+    rejected,
+    additionalPending,
+    pendingTotal,
+    displayStatus: presentation.displayStatus,
+    displayTone: presentation.displayTone,
     lastPayment: last ? {
       id: last.id,
       amount: num(last.amount),
