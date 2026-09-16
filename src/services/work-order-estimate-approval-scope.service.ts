@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { Prisma } from "@/src/generated/prisma/client";
 import { getPrisma } from "@/src/lib/prisma";
+import { getDirectRepairPartContextTx } from "@/src/services/direct-repair-commercial.service";
 
 type Tx = Prisma.TransactionClient;
 
@@ -17,6 +18,7 @@ type ApprovalScopeLine = {
   plannedQuantity: string;
   plannedUnitPrice: string;
   plannedDiscount: string;
+  partSupplySource: string | null;
 };
 
 function cleanText(value: unknown) {
@@ -48,6 +50,7 @@ function approvalScopeLine(value: Record<string, unknown>): ApprovalScopeLine {
     plannedQuantity: decimalText(value.plannedQuantity, 3),
     plannedUnitPrice: decimalText(value.plannedUnitPrice, 2),
     plannedDiscount: decimalText(value.plannedDiscount, 2),
+    partSupplySource: nullableText(value.partSupplySource)?.toUpperCase() ?? null,
   };
 }
 
@@ -69,21 +72,12 @@ async function currentApprovalFingerprintTx(tx: Tx, workOrderId: string) {
   const lines = await tx.workOrderLine.findMany({
     where: { workOrderId, status: { in: [...ACTIVE_LINE_STATUSES] } },
     orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }, { id: "asc" }],
-    select: {
-      id: true,
-      type: true,
-      description: true,
-      code: true,
-      article: true,
-      brand: true,
-      unit: true,
-      currency: true,
-      plannedQuantity: true,
-      plannedUnitPrice: true,
-      plannedDiscount: true,
-    },
   });
-  const scope = canonicalizeScope(lines.map((line) => approvalScopeLine(line as unknown as Record<string, unknown>)));
+  const directRepair = await getDirectRepairPartContextTx(tx, workOrderId, lines);
+  const scope = canonicalizeScope(lines.map((line) => approvalScopeLine({
+    ...line,
+    partSupplySource: line.type === "PART" ? directRepair.sourceByLineId.get(line.id) ?? null : null,
+  } as unknown as Record<string, unknown>)));
   return {
     lineCount: lines.length,
     lineIds: lines.map((line) => line.id),
