@@ -346,7 +346,7 @@ export async function transitionWorkOrder(id: string, toStatus: string, actorNam
   }
 
   return prisma.$transaction(async (tx) => {
-    await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`work-order-transition:${id}`}))`;
+    await tx.$queryRaw<{ locked: string | null }[]>`SELECT pg_advisory_xact_lock(hashtext(${`work-order-transition:${id}`}))::text AS locked`;
     const current = await tx.workOrder.findUnique({ where: { id }, include: workOrderInclude });
     if (!current) throw new WorkOrderNotFoundError(id);
 
