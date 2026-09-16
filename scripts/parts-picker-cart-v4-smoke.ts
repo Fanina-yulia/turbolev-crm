@@ -65,6 +65,6 @@ assert.match(specV4, /жодних вигаданих даних/i, "V4 spec mus
 assert.match(specV5, /не створює WorkOrder і не створює Комерційну пропозицію/, "V5 must preserve the commercial hard gate while allowing sourcing");
 assert.match(specV5, /IN_PROGRESS/, "V5 must explicitly support parts sourcing while diagnostics are in progress");
 assert.match(specV7, /40% `Деталі до заміни` \/ 60% `Кошик`/, "V7 must codify the balanced desktop workspace");
-assert.match(specV7, /усі погоджені 14 колонок/, "V7 must preserve every agreed cart column");
+assert.match(specV7, /(?:усі|всі) погоджені 14 колонок/, "V7 must preserve every agreed cart column");
 
 console.log("Parts picker + editable cart + pre-confirmation staging V5 + workspace density V7 smoke: PASS");
