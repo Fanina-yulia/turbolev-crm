@@ -34,6 +34,22 @@ ALTER TABLE IF EXISTS "DiagnosticFinding" DROP CONSTRAINT IF EXISTS "DiagnosticF
 ALTER TABLE IF EXISTS "DiagnosticMedia" DROP CONSTRAINT IF EXISTS "DiagnosticMedia_findingId_fkey";
 ALTER TABLE IF EXISTS "UserUiPreference" DROP CONSTRAINT IF EXISTS "UserUiPreference_userId_fkey";
 
+-- Direct-repair commercial extensions deliberately keep database-enforced
+-- referential integrity and created-by-SQL timestamp defaults. The split Prisma
+-- models expose the foreign-key scalar IDs and use @updatedAt without a database
+-- default. Preserve the stronger production constraints/defaults; normalize only
+-- the disposable CI database before the Prisma-managed drift comparison.
+ALTER TABLE IF EXISTS "DirectRepairCommercialConfig"
+  DROP CONSTRAINT IF EXISTS "DirectRepairCommercialConfig_workOrderId_fkey";
+ALTER TABLE IF EXISTS "DirectRepairPartSource"
+  DROP CONSTRAINT IF EXISTS "DirectRepairPartSource_workOrderLineId_fkey";
+ALTER TABLE IF EXISTS "DirectRepairPartSource"
+  DROP CONSTRAINT IF EXISTS "DirectRepairPartSource_workOrderId_fkey";
+ALTER TABLE IF EXISTS "DirectRepairCommercialConfig"
+  ALTER COLUMN "updatedAt" DROP DEFAULT;
+ALTER TABLE IF EXISTS "DirectRepairPartSource"
+  ALTER COLUMN "updatedAt" DROP DEFAULT;
+
 -- RepairKitItem timestamps and the legacy composite ordering index are historical,
 -- non-destructive database extras. Runtime code does not depend on these fields;
 -- keep them in production for audit/history, but remove them only in the disposable

@@ -76,6 +76,7 @@ export const NAV_PERMISSION: Record<string, PermissionCode> = {
   vehicles: PERMISSIONS.CLIENTS_READ,
   planner: PERMISSIONS.PLANNER_READ,
   diagnostics: PERMISSIONS.DIAGNOSTICS_READ,
+  "work-journal": PERMISSIONS.WORK_ORDERS_READ,
   "work-orders": PERMISSIONS.WORK_ORDERS_READ,
   production: PERMISSIONS.PRODUCTION_READ,
   quality: PERMISSIONS.QC_READ,
