@@ -15,7 +15,7 @@ const PHOTO_SPECS = [
   { key: "workspacePhoto", kind: "WORKSPACE_CLEAN" as const, label: "прибрана зона поста" },
 ] as const;
 const IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
-const MAX_FILE_SIZE = 8 * 1024 * 1024;
+const MAX_FILE_SIZE = 4 * 1024 * 1024;
 
 function fail(message: string, code: string, status = 400) {
   return NextResponse.json({ ok: false, error: code, message }, { status });
@@ -39,21 +39,29 @@ export async function POST(request: Request, context: { params: Promise<{ lineId
 
     const line = await prisma.workOrderLine.findFirst({
       where: { id: lineId, mechanicId: { in: [mechanic.id, access.context.user.id] }, type: { not: "PART" } },
-      select: { id: true, workOrderId: true, description: true },
+      select: { id: true, workOrderId: true, description: true, status: true },
     });
     if (!line) return fail("Призначену Вам роботу не знайдено.", "ASSIGNED_LINE_NOT_FOUND", 404);
-
-    const form = await request.formData();
-    const files = PHOTO_SPECS.map((spec) => ({ spec, file: form.get(spec.key) })) as Array<{ spec: typeof PHOTO_SPECS[number]; file: FormDataEntryValue | null }>;
-    for (const { spec, file } of files) {
-      if (!(file instanceof File) || file.size === 0) return fail(`Додайте фото: ${spec.label}.`, "COMPLETION_PHOTO_REQUIRED", 400);
-      if (!IMAGE_TYPES.has(file.type)) return fail("Дозволені лише JPG, PNG або WEBP.", "COMPLETION_PHOTO_TYPE_INVALID", 400);
-      if (file.size > MAX_FILE_SIZE) return fail("Розмір кожного фото не може перевищувати 8 МБ.", "COMPLETION_PHOTO_TOO_LARGE", 413);
+    if (line.status !== "IN_PROGRESS") {
+      return fail("Фінальні фото можна додати лише до активної роботи до її завершення.", "COMPLETION_PHOTOS_IMMUTABLE", 409);
     }
 
+    const form = await request.formData();
+    const files = PHOTO_SPECS
+      .map((spec) => ({ spec, file: form.get(spec.key) }))
+      .filter(({ file }) => file instanceof File && file.size > 0) as Array<{ spec: typeof PHOTO_SPECS[number]; file: File }>;
+
+    if (!files.length) return fail("Додайте хоча б одне фото завершення ремонту.", "COMPLETION_PHOTO_REQUIRED", 400);
+
+    for (const { file } of files) {
+      if (!IMAGE_TYPES.has(file.type)) return fail("Дозволені лише JPG, PNG або WEBP.", "COMPLETION_PHOTO_TYPE_INVALID", 400);
+      if (file.size > MAX_FILE_SIZE) return fail("Розмір одного підготовленого фото не може перевищувати 4 МБ.", "COMPLETION_PHOTO_TOO_LARGE", 413);
+    }
+
+    const actorId = access.context.user.id;
+    const actorName = access.context.user.employeeName || access.context.user.name || mechanic.name;
     await prisma.$transaction(async (tx) => {
       for (const { spec, file } of files) {
-        if (!(file instanceof File)) continue;
         const buffer = Buffer.from(await file.arrayBuffer());
         await tx.workOrderCompletionPhoto.upsert({
           where: { workOrderLineId_kind: { workOrderLineId: line.id, kind: spec.kind } },
@@ -66,30 +74,46 @@ export async function POST(request: Request, context: { params: Promise<{ lineId
             mimeType: file.type,
             fileSize: buffer.byteLength,
             fileData: buffer,
-            createdByUserId: access.context.user!.id,
+            createdByUserId: actorId,
           },
           update: {
             fileName: file.name.slice(0, 255) || `${spec.key}.jpg`,
             mimeType: file.type,
             fileSize: buffer.byteLength,
             fileData: buffer,
-            createdByUserId: access.context.user!.id,
+            createdByUserId: actorId,
+          },
+        });
+        await tx.auditEvent.create({
+          data: {
+            actorId,
+            actorName,
+            entityType: "WorkOrderLine",
+            entityId: line.id,
+            action: "MECHANIC_REPAIR_COMPLETION_PHOTO_UPLOADED",
+            metadata: toPrismaJson({
+              workOrderId: line.workOrderId,
+              lineId: line.id,
+              kind: spec.kind,
+              fileSize: buffer.byteLength,
+            }),
           },
         });
       }
-      await tx.auditEvent.create({
-        data: {
-          actorId: access.context.user!.id,
-          actorName: access.context.user!.employeeName || access.context.user!.name || mechanic.name,
-          entityType: "WorkOrderLine",
-          entityId: line.id,
-          action: "MECHANIC_REPAIR_COMPLETION_PHOTOS_UPLOADED",
-          metadata: toPrismaJson({ workOrderId: line.workOrderId, lineId: line.id, kinds: PHOTO_SPECS.map((item) => item.kind) }),
-        },
-      });
     });
 
-    return NextResponse.json({ ok: true, lineId: line.id, count: PHOTO_SPECS.length, message: "Фото збережено. Тепер ремонт можна завершити." });
+    const count = await prisma.workOrderCompletionPhoto.count({
+      where: { workOrderLineId: line.id, kind: { in: ["TOOL_FIRST", "TOOL_SECOND", "WORKSPACE_CLEAN"] } },
+    });
+
+    return NextResponse.json({
+      ok: true,
+      lineId: line.id,
+      uploaded: files.map(({ spec }) => spec.kind),
+      count,
+      complete: count === PHOTO_SPECS.length,
+      message: count === PHOTO_SPECS.length ? "3/3 фото збережено. Тепер ремонт можна завершити." : `Фото збережено: ${count}/3.`,
+    });
   } catch (cause) {
     console.error("POST mechanic completion photos failed", cause);
     return fail("Не вдалося зберегти фото завершення ремонту.", "COMPLETION_PHOTOS_UPLOAD_FAILED", 500);
