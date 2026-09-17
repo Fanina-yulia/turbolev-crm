@@ -31,7 +31,8 @@ expect(mechanicTask, 'throw new Error("TECHNICAL_DECISION_PENDING")', "hard exec
 expect(mechanicTask, 'TECHNICAL_DECISION_PENDING: ["Ремонт заблоковано', "409 mechanic error mapping");
 
 const bridge = read("app/mechanic-additional-work-bridge.tsx");
-expect(bridge, "＋ Додати виявлене", "mechanic discovered-work action label");
+expect(bridge, "＋ Додаткова робота", "mechanic additional-work action label");
+expect(bridge, 'label.includes("Додаткові роботи") || label.includes("Додати виявлене")', "legacy action-label compatibility");
 expect(bridge, "Додаткова діагностика", "mechanic additional diagnostic choice");
 expect(bridge, "Ускладнення під час ремонту", "mechanic complication choice");
 expect(bridge, "Ні, потрібне рішення / погодження", "blocking choice");
