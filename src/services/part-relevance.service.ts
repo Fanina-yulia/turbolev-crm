@@ -1,5 +1,6 @@
 import type { SupplierOffer } from "@/src/services/suppliers/types";
 import { resolvePartTerminology } from "@/src/services/parts-terminology.service";
+import { evaluatePartFamily } from "@/src/services/part-family-policy.service";
 
 export type PartRelevanceInput = {
   query?: string | null;
@@ -65,72 +66,65 @@ const CONTROL_ARM_TERM = /(?:важел\w*|важіл\w*|важил\w*|рыча�
 const BUSHING_TERM = /(?:сайлентблок\w*|втулк\w*|bushing\w*)/u;
 
 /**
- * Supplier search is intentionally fuzzy, but the picker must not display a
- * different part family as if it were a match. Exact catalog/OE evidence is
- * trusted; otherwise family-specific semantic guards are applied here.
+ * Provider relevance is a pre-filter, not the final compatibility authority.
+ * V3 nevertheless applies the same universal family invariant here so a
+ * clearly wrong component family cannot contaminate BM vehicle fitment/OE
+ * discovery before the strict policy layer runs.
  */
 export function checkPartOfferRelevance(offer: SupplierOffer, input: PartRelevanceInput): PartRelevanceResult {
   const canonicalCode = requestedCanonicalCode(input);
   if (!canonicalCode) {
-    return { relevant: true, canonicalCode: null, reason: "Канонічну групу деталі не визначено; результат залишено для ручної перевірки." };
+    return { relevant: true, canonicalCode: null, reason: "Канонічну групу деталі не визначено; результат залишено для strict review." };
+  }
+
+  const family = evaluatePartFamily(offer, canonicalCode);
+  if (family.conflict) {
+    return {
+      relevant: false,
+      canonicalCode,
+      reason: `PART_FAMILY_CONFLICT: ${family.reason}`,
+    };
   }
 
   const name = cleanText(offer.name);
-
   if (canonicalCode === "BALL_JOINT") {
     const hasBallJointTerm = BALL_JOINT_TERM.test(name);
     const hasControlArmTerm = CONTROL_ARM_TERM.test(name);
     const hasBushingTerm = BUSHING_TERM.test(name);
-    const trustedArticle = hasTrustedArticle(offer, input);
 
-    if (!hasBallJointTerm) {
-      if (trustedArticle) {
-        return { relevant: true, canonicalCode, reason: "Артикул або OE-номер підтверджений каталогом CRM." };
-      }
-      return {
-        relevant: false,
-        canonicalCode,
-        reason: "Назва товару не містить ознаки кульової опори.",
-      };
-    }
-
-    // A common BM Parts false positive is an arm title ending with “кульова”
-    // because the arm includes a ball joint. It is an assembly, not the requested
-    // standalone ball joint, so it must not appear in the picker. This guard runs
-    // before article trust: an incorrect supplier title must not be rescued by a
-    // broad cross/OE number belonging to the assembly.
+    // Preserve the stronger historical ball-joint assembly guard. A control
+    // arm mentioning a ball joint is still a different sellable component.
     if (hasControlArmTerm && (firstIndex(name, CONTROL_ARM_TERM) < firstIndex(name, BALL_JOINT_TERM) || hasBushingTerm)) {
       return {
         relevant: false,
         canonicalCode,
-        reason: "Постачальник повернув важіль/сайлентблок із згадкою кульової, а не окрему кульову опору.",
+        reason: "PART_FAMILY_CONFLICT: постачальник повернув важіль/сайлентблок із згадкою кульової, а не окрему кульову опору.",
       };
     }
-
-    if (trustedArticle) {
-      return { relevant: true, canonicalCode, reason: "Артикул або OE-номер підтверджений каталогом CRM." };
+    if (!hasBallJointTerm && !hasTrustedArticle(offer, input)) {
+      return {
+        relevant: false,
+        canonicalCode,
+        reason: "Назва товару не містить ознаки кульової опори і trusted OE/article evidence відсутній.",
+      };
     }
-
-    return { relevant: true, canonicalCode, reason: "Назва товару відповідає групі кульової опори." };
   }
 
   if (hasTrustedArticle(offer, input)) {
-    return { relevant: true, canonicalCode, reason: "Артикул або OE-номер підтверджений каталогом CRM." };
+    return { relevant: true, canonicalCode, reason: "Артикул або OE-номер підтверджений каталогом CRM і family conflict відсутній." };
   }
 
-  if (canonicalCode !== "BALL_JOINT") {
-    return { relevant: true, canonicalCode, reason: "Для цієї групи діє загальна перевірка постачальника." };
+  if (family.matchedCanonicalCode === canonicalCode) {
+    return { relevant: true, canonicalCode, reason: `Назва товару відповідає canonical family ${canonicalCode}.` };
   }
 
-  // The BALL_JOINT branch above returns for every possible outcome. Keep an
-  // explicit defensive fallback so strict production type-checking remains
-  // stable if the terminology union grows in the future.
-  const fallback: PartRelevanceResult = {
+  // Unknown family is not silently promoted to compatible. It may continue to
+  // the strict layer, but can only become REVIEW_REQUIRED without OE/cross/model evidence.
+  return {
     relevant: true,
     canonicalCode,
-    reason: "Результат залишено для ручної перевірки.",
+    reason: "Canonical family з назви не доведена; результат допускається лише до strict evidence review.",
   };
-  return fallback;
 }
 
 export function isPartOfferRelevant(offer: SupplierOffer, input: PartRelevanceInput) {
