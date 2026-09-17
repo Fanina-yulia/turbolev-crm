@@ -1,0 +1,231 @@
+/* TURBO LEV · Parts selection reference layout V8
+   Approved geometry:
+   1) vehicle context full width
+   2) selected parts full width
+   3) needs left + supplier workspace right
+   The existing picker remains the single source of supplier-search behavior. */
+
+@media (min-width: 1181px) {
+  [class*="parts-selection-workspace-v4_page__"] {
+    display: grid !important;
+    grid-template-columns: clamp(340px, 27vw, 430px) minmax(0, 1fr) !important;
+    grid-auto-rows: auto !important;
+    gap: 12px !important;
+    align-items: start !important;
+    min-width: 0 !important;
+  }
+
+  [class*="parts-selection-workspace-v4_contextBar__"] {
+    grid-column: 1 / -1 !important;
+    grid-row: 1 !important;
+    min-width: 0 !important;
+  }
+
+  /* Let the V4 children participate directly in the page grid. */
+  [class*="parts-selection-workspace-v4_workspace__"] {
+    display: contents !important;
+  }
+
+  /* The agreed primary working surface. */
+  [class*="parts-selection-workspace-v4_cartPanel__"] {
+    grid-column: 1 / -1 !important;
+    grid-row: 2 !important;
+    width: 100% !important;
+    max-width: none !important;
+    min-width: 0 !important;
+    align-self: start !important;
+  }
+
+  [class*="parts-selection-workspace-v4_cartHeader__"] {
+    min-height: 70px !important;
+    padding: 12px 14px !important;
+  }
+
+  [class*="parts-selection-workspace-v4_tableScroll__"] {
+    width: 100% !important;
+    max-width: 100% !important;
+    overflow-x: auto !important;
+    overflow-y: visible !important;
+  }
+
+  [class*="parts-selection-workspace-v4_cartTable__"] {
+    width: 100% !important;
+    min-width: 1510px !important;
+  }
+
+  [class*="parts-selection-workspace-v4_cartFooter__"] {
+    min-height: 50px !important;
+    padding: 9px 12px !important;
+  }
+
+  [class*="parts-selection-workspace-v4_needsPanel__"] {
+    grid-column: 1 !important;
+    grid-row: 3 !important;
+    width: 100% !important;
+    max-width: 430px !important;
+    min-width: 0 !important;
+    align-self: start !important;
+  }
+
+  [class*="parts-selection-workspace-v4_needsPanel__"] > header {
+    min-height: 58px !important;
+    padding: 10px 12px !important;
+  }
+
+  [class*="parts-selection-workspace-v4_needsList__"] {
+    max-height: 610px !important;
+    overflow: auto !important;
+  }
+
+  [class*="parts-selection-workspace-v4_needRow__"] {
+    grid-template-columns: 20px minmax(0, 1fr) 42px 82px !important;
+    gap: 7px !important;
+    min-height: 58px !important;
+    padding: 8px 10px !important;
+  }
+
+  [class*="parts-selection-workspace-v4_needRow__"] b {
+    display: -webkit-box !important;
+    overflow: hidden !important;
+    -webkit-box-orient: vertical !important;
+    -webkit-line-clamp: 2 !important;
+    white-space: normal !important;
+    line-height: 1.25 !important;
+  }
+
+  [class*="parts-selection-workspace-v4_needRow__"] strong {
+    min-width: 76px !important;
+    padding: 6px 7px !important;
+    border: 1px solid rgba(255, 102, 0, .45) !important;
+    border-radius: 8px !important;
+    color: var(--orange) !important;
+    background: rgba(255, 102, 0, .045) !important;
+    text-align: center !important;
+    white-space: nowrap !important;
+  }
+
+  [class*="parts-selection-workspace-v4_needRowActive__"] {
+    background: rgba(255, 102, 0, .075) !important;
+    box-shadow: inset 3px 0 var(--orange) !important;
+  }
+
+  /* Honest empty supplier workspace before a detail is opened. */
+  [class*="parts-selection-workspace-v4_page__"]::after {
+    content: "Пропозиції постачальників\A\AОберіть деталь зі списку зліва\AТут з’являться живі пропозиції, ціни, наявність і терміни з підключених API.";
+    grid-column: 2 !important;
+    grid-row: 3 !important;
+    display: grid !important;
+    place-items: center !important;
+    min-height: 330px !important;
+    padding: 28px !important;
+    border: 1px solid var(--line) !important;
+    border-radius: 13px !important;
+    background: var(--panel) !important;
+    color: var(--muted) !important;
+    white-space: pre-line !important;
+    text-align: center !important;
+    font-size: 12px !important;
+    line-height: 1.55 !important;
+  }
+
+  [class*="parts-selection-workspace-v4_page__"]:has([class*="parts-selection-workspace-v4_backdrop__"])::after {
+    display: none !important;
+  }
+
+  /* Desktop picker becomes the right-hand supplier workspace instead of a modal overlay. */
+  [class*="parts-selection-workspace-v4_backdrop__"] {
+    position: relative !important;
+    inset: auto !important;
+    z-index: auto !important;
+    grid-column: 2 !important;
+    grid-row: 3 !important;
+    display: block !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    padding: 0 !important;
+    background: transparent !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    align-self: start !important;
+  }
+
+  [class*="parts-selection-workspace-v4_picker__"] {
+    width: 100% !important;
+    max-width: none !important;
+    max-height: 610px !important;
+    height: auto !important;
+    min-height: 330px !important;
+    border-radius: 13px !important;
+    box-shadow: none !important;
+  }
+
+  [class*="parts-selection-workspace-v4_pickerHeader__"] {
+    min-height: 58px !important;
+    padding: 10px 12px !important;
+  }
+
+  [class*="parts-selection-workspace-v4_pickerHeader__"] p {
+    font-size: 0 !important;
+    letter-spacing: 0 !important;
+  }
+
+  [class*="parts-selection-workspace-v4_pickerHeader__"] p::after {
+    content: "ПРОПОЗИЦІЇ ПОСТАЧАЛЬНИКІВ" !important;
+    color: var(--orange) !important;
+    font-size: 11px !important;
+    font-weight: 900 !important;
+    letter-spacing: .1em !important;
+  }
+
+  [class*="parts-selection-workspace-v4_pickerHeader__"] h2 {
+    margin-top: 2px !important;
+    font-size: 16px !important;
+  }
+
+  [class*="parts-selection-workspace-v4_searchBar__"] {
+    grid-template-columns: minmax(0, 1fr) 190px !important;
+    gap: 8px !important;
+    padding: 8px 12px !important;
+  }
+
+  [class*="parts-selection-workspace-v4_resultToolbar__"] {
+    grid-template-columns: 190px minmax(150px, 1fr) repeat(4, auto) !important;
+    gap: 6px !important;
+    padding: 7px 12px !important;
+  }
+
+  [class*="parts-selection-workspace-v4_manualConfirm__"] {
+    padding-right: 12px !important;
+  }
+
+  [class*="parts-selection-workspace-v4_offerArea__"] {
+    min-height: 190px !important;
+    max-height: 390px !important;
+    overflow: auto !important;
+  }
+
+  [class*="parts-selection-workspace-v4_offerRow__"] {
+    grid-template-columns: minmax(240px, 1.65fr) minmax(105px, .7fr) 74px minmax(125px, .9fr) minmax(130px, .9fr) 120px 84px !important;
+    gap: 7px !important;
+    min-height: 50px !important;
+    padding: 6px 7px !important;
+  }
+
+  [class*="parts-selection-workspace-v4_pickerFooter__"] {
+    min-height: 42px !important;
+    padding: 7px 12px !important;
+  }
+
+  [class*="parts-selection-workspace-v4_message__"] {
+    grid-column: 1 / -1 !important;
+    grid-row: 4 !important;
+    min-width: 0 !important;
+  }
+}
+
+/* Tablet/mobile keep the existing proven modal behavior and single-column workspace. */
+@media (max-width: 1180px) {
+  [class*="parts-selection-workspace-v4_page__"]::after {
+    content: none !important;
+  }
+}

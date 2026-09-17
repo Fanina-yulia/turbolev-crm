@@ -50,6 +50,7 @@ import "./vehicle-directory-brand-badge-fix.css";
 import "./parts-cart-summary-layout.css";
 import "./parts-picker-modal-polish.css";
 import "./parts-picker-ultra-compact.css";
+import "./parts-selection-reference-layout-v8.css";
 import { PhoneInputNormalizer } from "./phone-input-normalizer";
 import { LeadDetailsEnhancer } from "./lead-details-enhancer";
 import { VehicleConfigurationEnhancer } from "./vehicle-configuration-enhancer";
