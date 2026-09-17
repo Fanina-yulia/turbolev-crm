@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { resolveCuratedOeEvidence } from "../src/services/parts-oe-evidence.service";
+import { resolvePartSearchIntent } from "../src/services/parts-search-intent.service";
 import {
   applyStrictOfferPolicy,
   evaluateStrictOffer,
@@ -42,6 +44,28 @@ const geelyFront = resolveCuratedOeEvidence({
   axis: "FRONT",
 });
 assert.equal(geelyFront, null, "rear-only curated OE seed must not leak into FRONT search");
+
+const brakeIntent = resolvePartSearchIntent({
+  query: "Гальмівні колодки — права сторона, задня вісь",
+  partName: "Гальмівні колодки — права сторона, задня вісь",
+  canonicalCode: "STABILIZER_BUSHING",
+  genericArticleId: "stale-stabilizer-id",
+  axis: "REAR",
+  side: "RIGHT",
+});
+assert.equal(brakeIntent.metadataConflict, true, "visible brake-pad text must override stale stabilizer metadata");
+assert.equal(brakeIntent.canonicalCode, "BRAKE_PAD");
+assert.equal(brakeIntent.genericArticleId, null, "stale generic article id must be discarded on family conflict");
+assert.equal(brakeIntent.axis, "REAR");
+assert.equal(brakeIntent.side, null, "brake pads are axle-scoped, so a stale wheel side must not poison supplier search");
+
+const brakePadMustNotReuseStabilizerOe = resolveCuratedOeEvidence({
+  vehicle: { brand: "GEELY", model: "EMGRAND X7", year: 2014 },
+  canonicalCode: brakeIntent.canonicalCode,
+  partName: brakeIntent.partName,
+  axis: brakeIntent.axis,
+});
+assert.equal(brakePadMustNotReuseStabilizerOe, null, "BRAKE_PAD search must never receive stabilizer OE 1014012805");
 
 const strictContext = {
   query: "Втулка стабілізатора задня вісь",
@@ -109,4 +133,10 @@ const applied = applyStrictOfferPolicy(offer({
 assert.ok(applied.offer);
 assert.equal(applied.offer?.purchasePrice, null, "zero-priced OE offer must be non-orderable until a real price arrives");
 
-console.log("[parts-oe-first] curated OE, hard reject, evidence tier and zero-price contracts OK");
+const strictSearchSource = readFileSync("src/services/strict-parts-search.service.ts", "utf8");
+assert.ok(strictSearchSource.includes("searchBmVehicleEvidence"), "OE-first search must supplement generic supplier search with BM vehicle evidence");
+assert.ok(strictSearchSource.includes("adapter.searchVehicleParts"), "BM vehicle-scoped API must be called directly when vehicle context is available");
+assert.ok(strictSearchSource.includes("OE_FIRST_V3"), "search audit must expose the V3 algorithm");
+assert.ok(strictSearchSource.includes('fitmentExact: null'), "review-only rows must not masquerade as model-confirmed rows");
+
+console.log("[parts-oe-first] V3 intent guard, BM vehicle search, hard reject, evidence tier and zero-price contracts OK");
