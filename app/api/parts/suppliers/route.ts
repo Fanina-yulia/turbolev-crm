@@ -6,6 +6,7 @@ import { resolvePartFitment } from "@/src/services/parts-fitment.service";
 import { normalizePartNeed } from "@/src/services/part-normalization.service";
 import { mergeOeNumbers, resolveCuratedOeEvidence } from "@/src/services/parts-oe-evidence.service";
 import { searchConfiguredSuppliersOeFirst } from "@/src/services/strict-parts-search.service";
+import { resolvePartSearchIntent } from "@/src/services/parts-search-intent.service";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -37,8 +38,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ status: "INVALID_QUERY", message: "Введіть артикул або назву деталі." }, { status: 400 });
   }
 
-  // Normalize first so axis/position are part of fitment, not merely UI text.
-  const normalization = await normalizePartNeed({
+  const intent = resolvePartSearchIntent({
     query: q,
     partName,
     canonicalCode,
@@ -48,13 +48,27 @@ export async function GET(request: Request) {
     side,
     subPosition,
   });
-  const resolvedGenericArticleId = genericArticleId || normalization.genericArticle?.id || null;
-  const resolvedCanonicalCode = canonicalCode || normalization.genericArticle?.code || normalization.canonicalCode || null;
-  const resolvedPartName = normalization.genericArticle?.name || normalization.canonicalName || partName;
-  const resolvedAxis = axis || normalization.axis || null;
-  const resolvedSide = side || normalization.side || null;
-  const resolvedSubPosition = subPosition || normalization.subPosition || null;
-  const resolvedPosition = position || normalization.position || null;
+
+  // Normalize only after stale metadata has been reconciled with the visible
+  // requested part. This prevents BRAKE_PAD text from inheriting another
+  // finding's STABILIZER_BUSHING metadata/OE seed.
+  const normalization = await normalizePartNeed({
+    query: q,
+    partName: intent.partName,
+    canonicalCode: intent.canonicalCode,
+    genericArticleId: intent.genericArticleId,
+    position: intent.position,
+    axis: intent.axis,
+    side: intent.side,
+    subPosition: intent.subPosition,
+  });
+  const resolvedGenericArticleId = intent.genericArticleId || normalization.genericArticle?.id || null;
+  const resolvedCanonicalCode = intent.canonicalCode || normalization.genericArticle?.code || normalization.canonicalCode || null;
+  const resolvedPartName = normalization.genericArticle?.name || normalization.canonicalName || intent.partName;
+  const resolvedAxis = intent.axis || normalization.axis || null;
+  const resolvedSide = intent.side || normalization.side || null;
+  const resolvedSubPosition = intent.subPosition || normalization.subPosition || null;
+  const resolvedPosition = intent.position || normalization.position || resolvedAxis || null;
 
   const fitment = await resolvePartFitment({
     query: q,
@@ -79,7 +93,7 @@ export async function GET(request: Request) {
   });
   const effectiveOeNumbers = mergeOeNumbers(
     fitment.oeNumbers,
-    requestedOeNumbers,
+    intent.metadataConflict ? [] : requestedOeNumbers,
     curatedOe?.oeNumbers,
   );
 
@@ -145,6 +159,7 @@ export async function GET(request: Request) {
       subPosition: resolvedSubPosition,
       position: resolvedPosition,
     },
+    searchIntent: intent,
     fitment: fitmentPayload,
     catalogMatches: fitment.matches,
     oeNumbers: effectiveOeNumbers,
@@ -172,11 +187,11 @@ export async function GET(request: Request) {
     supplierSearchBlockReason: result.blockReason,
     supplierSearchMode: result.searchMode,
     policy: {
-      algorithm: "OE_FIRST_V2",
+      algorithm: "OE_FIRST_V3",
       priceType: "PURCHASE_PRICE",
       fitmentConfirmed: fitment.confirmed,
       supplierSearchAllowed: !result.blocked,
-      message: curatedOe?.reason || fitment.reason,
+      message: intent.metadataConflict ? intent.reason : curatedOe?.reason || fitment.reason,
     },
   }, { headers: { "Cache-Control": "no-store" } });
 }

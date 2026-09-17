@@ -1,5 +1,5 @@
-import { searchConfiguredSuppliers, type SupplierSearchContext } from "@/src/services/suppliers/registry";
-import type { SupplierId, SupplierOffer } from "@/src/services/suppliers/types";
+import { getSupplierAdapter, searchConfiguredSuppliers, type SupplierSearchContext } from "@/src/services/suppliers/registry";
+import type { SupplierId, SupplierOffer, SupplierVehicleContext } from "@/src/services/suppliers/types";
 import {
   applyStrictOfferPolicy,
   compareStrictOffers,
@@ -7,6 +7,7 @@ import {
   type StrictOfferDecision,
 } from "@/src/services/part-offer-compatibility.service";
 import { mergeOeNumbers } from "@/src/services/parts-oe-evidence.service";
+import { resolvePartTerminology } from "@/src/services/parts-terminology.service";
 
 export type OeFirstSupplierSearchContext = SupplierSearchContext & {
   vehicleBrand?: string | null;
@@ -21,21 +22,69 @@ type ProcessedOffer = {
   decision: StrictOfferDecision;
 };
 
+type ProviderState = { id: SupplierId; ok: boolean; message?: string };
+
+type BmVehicleSearchAudit = {
+  attempted: boolean;
+  vehicleResolved: boolean;
+  resultCount: number;
+  message: string | null;
+};
+
 function normalizeArticle(value: unknown) {
   return typeof value === "string"
     ? value.trim().toUpperCase().replace(/[^A-ZА-ЯІЇЄҐ0-9]/giu, "")
     : "";
 }
 
-function offerKey(offer: SupplierOffer) {
-  const brand = normalizeArticle(offer.brand);
-  const article = normalizeArticle(offer.article);
-  if (article) return `${offer.supplierId}:${brand}:${article}`;
-  return `${offer.supplierId}:${offer.externalProductId || offer.name}`;
+function normalizeText(value: unknown) {
+  return typeof value === "string"
+    ? value.toLocaleUpperCase("uk-UA").replace(/[^A-ZА-ЯІЇЄҐ0-9]+/giu, " ").replace(/\s+/g, " ").trim()
+    : "";
 }
 
-function providerKey(provider: { id: SupplierId; ok: boolean; message?: string }) {
+function offerKey(offer: SupplierOffer) {
+  const article = normalizeArticle(offer.article);
+  const name = normalizeText(offer.name);
+  if (article) return `${offer.supplierId}:${article}:${name}`;
+  return `${offer.supplierId}:${offer.externalProductId || name}`;
+}
+
+function providerKey(provider: ProviderState) {
   return provider.id;
+}
+
+function trustedNumbers(context: OeFirstSupplierSearchContext) {
+  return new Set([
+    ...(context.oeNumbers || []),
+    ...(context.curatedOeNumbers || []),
+    ...(context.catalogArticles || []),
+    ...(context.analogArticles || []),
+  ].map(normalizeArticle).filter(Boolean));
+}
+
+function candidateHasTrustedNumber(offer: SupplierOffer, context: OeFirstSupplierSearchContext) {
+  const trusted = trustedNumbers(context);
+  if (!trusted.size) return false;
+  if (trusted.has(normalizeArticle(offer.article))) return true;
+  return (offer.oeNumbers || []).some((number) => trusted.has(normalizeArticle(number)));
+}
+
+function familyConflictDecision(offer: SupplierOffer, context: OeFirstSupplierSearchContext): StrictOfferDecision | null {
+  const requested = context.canonicalCode?.trim().toUpperCase() || "";
+  if (!requested || candidateHasTrustedNumber(offer, context)) return null;
+  const detected = resolvePartTerminology({ query: offer.name, partName: offer.name });
+  const detectedCode = detected.definition?.code?.trim().toUpperCase() || "";
+  if (!detectedCode || detected.confidence === "LOW" || detectedCode === requested) return null;
+  return {
+    accepted: false,
+    rejected: true,
+    rejectCode: "PART_FAMILY_CONFLICT",
+    evidence: "REVIEW",
+    compatibilityTier: "UNCONFIRMED",
+    score: -850,
+    reason: `Позиція відхилена: запит ${requested}, а назва товару однозначно розпізнана як ${detectedCode}.`,
+  };
 }
 
 function processOffers(
@@ -63,14 +112,25 @@ function processOffers(
   const rejected: StrictOfferDecision[] = [];
 
   for (const candidate of offers) {
+    const familyConflict = familyConflictDecision(candidate, context);
+    if (familyConflict) {
+      rejected.push(familyConflict);
+      continue;
+    }
     const result = applyStrictOfferPolicy(candidate, strictContext);
     if (!result.offer) {
       rejected.push(result.decision);
       continue;
     }
-    const key = offerKey(result.offer);
+
+    // REVIEW means no model/VIN proof exists. Do not expose fitmentExact=false
+    // as “model confirmed” in UI; reserve false for PARTIAL model-level evidence.
+    const patchedOffer = result.decision.evidence === "REVIEW"
+      ? { ...result.offer, fitmentStatus: "MANUAL_REQUIRED" as const, fitmentExact: null }
+      : result.offer;
+    const key = offerKey(patchedOffer);
     const current = accepted.get(key);
-    const next: ProcessedOffer = { offer: result.offer, decision: result.decision };
+    const next: ProcessedOffer = { offer: patchedOffer, decision: result.decision };
     if (!current || compareStrictOffers(next, current) < 0) accepted.set(key, next);
   }
 
@@ -78,17 +138,24 @@ function processOffers(
   return { rows, rejected };
 }
 
-function mergeProviders(
-  left: Array<{ id: SupplierId; ok: boolean; message?: string }>,
-  right: Array<{ id: SupplierId; ok: boolean; message?: string }>,
-) {
-  const map = new Map<string, { id: SupplierId; ok: boolean; message?: string }>();
+function mergeProviders(left: ProviderState[], right: ProviderState[]) {
+  const map = new Map<string, ProviderState>();
   for (const item of [...left, ...right]) {
     const key = providerKey(item);
     const existing = map.get(key);
     if (!existing || (!existing.ok && item.ok)) map.set(key, item);
   }
   return [...map.values()];
+}
+
+function mergeProcessedRows(...groups: ProcessedOffer[][]) {
+  const merged = new Map<string, ProcessedOffer>();
+  for (const row of groups.flat()) {
+    const key = offerKey(row.offer);
+    const current = merged.get(key);
+    if (!current || compareStrictOffers(row, current) < 0) merged.set(key, row);
+  }
+  return [...merged.values()].sort(compareStrictOffers);
 }
 
 function buildResultSummary(offers: SupplierOffer[]) {
@@ -105,13 +172,75 @@ function buildResultSummary(offers: SupplierOffer[]) {
   };
 }
 
-/**
- * OE-first orchestration rules:
- * 1) Search by OE/catalog evidence first.
- * 2) Hard-reject contradictory axle/vehicle/part-family rows.
- * 3) If strong OE/cross/model evidence exists, suppress fuzzy REVIEW rows.
- * 4) Only when evidence search yields no strong rows, run the free-text fallback.
- */
+async function resolveBmVehicle(context: OeFirstSupplierSearchContext): Promise<SupplierVehicleContext | null> {
+  if (context.providerVehicle?.provider === "bm-parts") return context.providerVehicle;
+  const adapter = getSupplierAdapter("bm-parts");
+  if (!adapter?.resolveVehicle || !(await adapter.isConfigured())) return null;
+  const identifiers = [context.vin, context.plate].map((value) => value?.trim() || "").filter((value) => value.length >= 3);
+  for (const identifier of identifiers) {
+    try {
+      const vehicle = await adapter.resolveVehicle(identifier);
+      if (vehicle) return vehicle;
+    } catch {
+      // Generic supplier search remains available.
+    }
+  }
+  return null;
+}
+
+async function searchBmVehicleEvidence(
+  query: string,
+  limit: number,
+  context: OeFirstSupplierSearchContext,
+): Promise<{ offers: SupplierOffer[]; provider: ProviderState | null; audit: BmVehicleSearchAudit }> {
+  const adapter = getSupplierAdapter("bm-parts");
+  const emptyAudit: BmVehicleSearchAudit = { attempted: false, vehicleResolved: false, resultCount: 0, message: null };
+  if (!adapter?.searchVehicleParts || !(await adapter.isConfigured())) return { offers: [], provider: null, audit: emptyAudit };
+  const vehicle = await resolveBmVehicle(context);
+  if (!vehicle) {
+    return {
+      offers: [],
+      provider: { id: "bm-parts", ok: true, message: "BM Parts відповів, але vehicle context для model-scoped пошуку не визначено." },
+      audit: { attempted: true, vehicleResolved: false, resultCount: 0, message: "vehicle context не визначено" },
+    };
+  }
+
+  const position = [context.requestedAxis || context.axis, context.side, context.subPosition, context.position]
+    .map((value) => value?.trim() || "")
+    .filter(Boolean)
+    .filter((value, index, rows) => rows.indexOf(value) === index)
+    .join(" ") || null;
+
+  try {
+    const scoped = await adapter.searchVehicleParts({
+      query: context.partName?.trim() || query.trim(),
+      vehicle,
+      limit: Math.min(Math.max(limit, 1), 50),
+      position,
+      canonicalPart: context.canonicalCode || context.partName
+        ? {
+            code: context.canonicalCode || null,
+            name: context.partName || query,
+            genericArticleId: context.genericArticleId || null,
+          }
+        : null,
+    });
+    const offers = scoped.map((row) => row.offer);
+    return {
+      offers,
+      provider: { id: "bm-parts", ok: true },
+      audit: { attempted: true, vehicleResolved: true, resultCount: offers.length, message: offers.length ? null : "vehicle-scoped пошук не повернув позицій" },
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Помилка BM Parts vehicle search";
+    return {
+      offers: [],
+      provider: { id: "bm-parts", ok: false, message },
+      audit: { attempted: true, vehicleResolved: true, resultCount: 0, message },
+    };
+  }
+}
+
 export async function searchConfiguredSuppliersOeFirst(
   query: string,
   limitPerSupplier = 20,
@@ -131,36 +260,32 @@ export async function searchConfiguredSuppliersOeFirst(
     normalizedQuery: evidenceDriven ? primarySeed : context.normalizedQuery,
   };
 
-  const primary = await searchConfiguredSuppliers(primarySeed, limitPerSupplier, strictContext);
+  const [primary, bmVehicle] = await Promise.all([
+    searchConfiguredSuppliers(primarySeed, limitPerSupplier, strictContext),
+    searchBmVehicleEvidence(query, limitPerSupplier, strictContext),
+  ]);
   const processedPrimary = processOffers(primary.offers, strictContext, query);
+  const processedBm = processOffers(bmVehicle.offers, { ...strictContext, providerVehicle: context.providerVehicle || null }, query);
   const primaryStrong = processedPrimary.rows.filter((row) => row.decision.evidence !== "REVIEW");
 
   let fallbackUsed = false;
-  let providers = primary.providers;
-  let rejected = [...processedPrimary.rejected];
-  let rows = processedPrimary.rows;
+  let providers = bmVehicle.provider ? mergeProviders(primary.providers, [bmVehicle.provider]) : primary.providers;
+  let rejected = [...processedPrimary.rejected, ...processedBm.rejected];
+  let rows = evidenceDriven && primaryStrong.length > 0 ? primaryStrong : processedPrimary.rows;
+  rows = mergeProcessedRows(rows, processedBm.rows);
   let fallbackSearchMode: string | null = null;
 
-  if (evidenceDriven && primaryStrong.length > 0) {
-    rows = primaryStrong;
-  } else if (evidenceDriven && query.trim() && normalizeArticle(query) !== normalizeArticle(primarySeed)) {
+  if (evidenceDriven && primaryStrong.length === 0 && query.trim() && normalizeArticle(query) !== normalizeArticle(primarySeed)) {
     fallbackUsed = true;
     const fallback = await searchConfiguredSuppliers(query, limitPerSupplier, {
       ...context,
       oeNumbers: effectiveOeNumbers,
     });
     fallbackSearchMode = fallback.searchMode;
-    providers = mergeProviders(primary.providers, fallback.providers);
+    providers = mergeProviders(providers, fallback.providers);
     const processedFallback = processOffers(fallback.offers, strictContext, query);
     rejected.push(...processedFallback.rejected);
-
-    const merged = new Map<string, ProcessedOffer>();
-    for (const row of [...rows, ...processedFallback.rows]) {
-      const key = offerKey(row.offer);
-      const current = merged.get(key);
-      if (!current || compareStrictOffers(row, current) < 0) merged.set(key, row);
-    }
-    rows = [...merged.values()].sort(compareStrictOffers);
+    rows = mergeProcessedRows(rows, processedFallback.rows);
   }
 
   const offers = rows.map((row) => row.offer)
@@ -176,14 +301,15 @@ export async function searchConfiguredSuppliersOeFirst(
     offers,
     providers,
     resultSummary: buildResultSummary(offers),
-    searchMode: evidenceDriven ? "OE_FIRST_CASCADE" : primary.searchMode,
+    searchMode: evidenceDriven ? "OE_FIRST_CASCADE" : bmVehicle.audit.resultCount > 0 ? "VEHICLE_MODEL_CASCADE" : primary.searchMode,
     strictSearch: {
-      algorithm: "OE_FIRST_V2",
+      algorithm: "OE_FIRST_V3",
       evidenceDriven,
       primarySeed: primarySeed || null,
       effectiveOeNumbers,
       fallbackUsed,
       fallbackSearchMode,
+      bmVehicleSearch: bmVehicle.audit,
       rejectedCount: rejected.length,
       rejectedByCode,
       strongResultCount: rows.filter((row) => row.decision.evidence !== "REVIEW").length,
