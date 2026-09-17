@@ -7,6 +7,7 @@ import {
   type StrictOfferDecision,
 } from "@/src/services/part-offer-compatibility.service";
 import { mergeOeNumbers } from "@/src/services/parts-oe-evidence.service";
+import { resolvePartTerminology } from "@/src/services/parts-terminology.service";
 
 export type OeFirstSupplierSearchContext = SupplierSearchContext & {
   vehicleBrand?: string | null;
@@ -42,11 +43,6 @@ function normalizeText(value: unknown) {
     : "";
 }
 
-/**
- * Do not include brand in the primary identity. Supplier APIs can return the
- * same article/name twice with an inconsistent displayBrand. Real collisions
- * with the same article are preserved when their normalized names differ.
- */
 function offerKey(offer: SupplierOffer) {
   const article = normalizeArticle(offer.article);
   const name = normalizeText(offer.name);
@@ -56,6 +52,39 @@ function offerKey(offer: SupplierOffer) {
 
 function providerKey(provider: ProviderState) {
   return provider.id;
+}
+
+function trustedNumbers(context: OeFirstSupplierSearchContext) {
+  return new Set([
+    ...(context.oeNumbers || []),
+    ...(context.curatedOeNumbers || []),
+    ...(context.catalogArticles || []),
+    ...(context.analogArticles || []),
+  ].map(normalizeArticle).filter(Boolean));
+}
+
+function candidateHasTrustedNumber(offer: SupplierOffer, context: OeFirstSupplierSearchContext) {
+  const trusted = trustedNumbers(context);
+  if (!trusted.size) return false;
+  if (trusted.has(normalizeArticle(offer.article))) return true;
+  return (offer.oeNumbers || []).some((number) => trusted.has(normalizeArticle(number)));
+}
+
+function familyConflictDecision(offer: SupplierOffer, context: OeFirstSupplierSearchContext): StrictOfferDecision | null {
+  const requested = context.canonicalCode?.trim().toUpperCase() || "";
+  if (!requested || candidateHasTrustedNumber(offer, context)) return null;
+  const detected = resolvePartTerminology({ query: offer.name, partName: offer.name });
+  const detectedCode = detected.definition?.code?.trim().toUpperCase() || "";
+  if (!detectedCode || detected.confidence === "LOW" || detectedCode === requested) return null;
+  return {
+    accepted: false,
+    rejected: true,
+    rejectCode: "PART_FAMILY_CONFLICT",
+    evidence: "REVIEW",
+    compatibilityTier: "UNCONFIRMED",
+    score: -850,
+    reason: `Позиція відхилена: запит ${requested}, а назва товару однозначно розпізнана як ${detectedCode}.`,
+  };
 }
 
 function processOffers(
@@ -83,14 +112,25 @@ function processOffers(
   const rejected: StrictOfferDecision[] = [];
 
   for (const candidate of offers) {
+    const familyConflict = familyConflictDecision(candidate, context);
+    if (familyConflict) {
+      rejected.push(familyConflict);
+      continue;
+    }
     const result = applyStrictOfferPolicy(candidate, strictContext);
     if (!result.offer) {
       rejected.push(result.decision);
       continue;
     }
-    const key = offerKey(result.offer);
+
+    // REVIEW means no model/VIN proof exists. Do not expose fitmentExact=false
+    // as “model confirmed” in UI; reserve false for PARTIAL model-level evidence.
+    const patchedOffer = result.decision.evidence === "REVIEW"
+      ? { ...result.offer, fitmentStatus: "MANUAL_REQUIRED" as const, fitmentExact: null }
+      : result.offer;
+    const key = offerKey(patchedOffer);
     const current = accepted.get(key);
-    const next: ProcessedOffer = { offer: result.offer, decision: result.decision };
+    const next: ProcessedOffer = { offer: patchedOffer, decision: result.decision };
     if (!current || compareStrictOffers(next, current) < 0) accepted.set(key, next);
   }
 
@@ -142,7 +182,7 @@ async function resolveBmVehicle(context: OeFirstSupplierSearchContext): Promise<
       const vehicle = await adapter.resolveVehicle(identifier);
       if (vehicle) return vehicle;
     } catch {
-      // The generic supplier path still remains available below.
+      // Generic supplier search remains available.
     }
   }
   return null;
@@ -201,14 +241,6 @@ async function searchBmVehicleEvidence(
   }
 }
 
-/**
- * OE-first orchestration rules:
- * 1) Search by OE/catalog evidence first.
- * 2) Always attempt BM vehicle-scoped evidence when the vehicle can be resolved.
- * 3) Hard-reject contradictory axle/vehicle/part-family rows.
- * 4) If strong OE/cross evidence exists, suppress fuzzy REVIEW rows.
- * 5) Only when evidence search yields no strong rows, run the free-text fallback.
- */
 export async function searchConfiguredSuppliersOeFirst(
   query: string,
   limitPerSupplier = 20,
