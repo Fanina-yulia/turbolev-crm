@@ -1,0 +1,38 @@
+name: Parts V3 Integration Patch
+
+on:
+  push:
+    branches:
+      - feature/parts-search-v3-standard
+    paths:
+      - scripts/apply-parts-v3-integration-patches.mjs
+      - .github/workflows/parts-v3-integration-patch.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: ${{ !contains(github.event.head_commit.message, '[parts-v3-patched]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/parts-search-v3-standard
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Apply controlled patches
+        run: node scripts/apply-parts-v3-integration-patches.mjs
+      - name: Commit patches
+        run: |
+          if git diff --quiet; then
+            echo "No patch changes"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src app package.json docs/modules/module-path-overrides.json
+          git commit -m "feat(parts): finish V3 integration [parts-v3-patched]"
+          git push origin HEAD:feature/parts-search-v3-standard
