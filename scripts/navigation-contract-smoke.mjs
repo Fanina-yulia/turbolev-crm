@@ -59,9 +59,10 @@ assertIncludes("app/crm-route.ts", [
 ]);
 
 assertIncludes("app/crm-navigation.ts", [
+  '{ label: "Роботи", slug: "work-journal" },',
   '{ label: "Комерційна пропозиція", slug: "work-orders" },',
   '{ label: "Гарантії", slug: "warranties" },',
-  '{ label: "Сервіс", items: navItems("diagnostics", "parts", "work-orders") },',
+  '{ label: "Сервіс", items: navItems("diagnostics", "work-journal", "parts", "work-orders") },',
   'if (value === "warranties") return "Гарантії";',
   'if (value === "Гарантії") return "warranties";',
 ]);
@@ -182,6 +183,7 @@ assertIncludes("app/settings-route-focus-bridge.tsx", [
 
 assertIncludes("app/crm-shell.tsx", [
   "<PlannerWorkspace/>",
+  "<WorkJournal/>",
   "<AnalyticsWorkspace/>",
 ]);
 assertIncludesOneOf("app/crm-shell.tsx", [
