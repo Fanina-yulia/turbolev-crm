@@ -11,7 +11,9 @@ import { resolvePartKnowledge } from "@/src/services/parts-knowledge.service";
 import { enrichOffersWithSellPrice } from "@/src/services/suppliers/order.service";
 import { decorateSupplierOffersWithPackaging, getPartPackageRule } from "@/src/services/part-operation-catalog.service";
 import { mergeOeNumbers, resolveCuratedOeEvidence } from "@/src/services/parts-oe-evidence.service";
-import { searchConfiguredSuppliersOeFirst } from "@/src/services/strict-parts-search.service";
+import { resolvePositionPolicyV3 } from "@/src/services/part-search-intent-v3.service";
+import { searchPartsV3 } from "@/src/services/parts-search-v3.service";
+import { aggregatePartCandidates } from "@/src/services/parts-candidate-aggregator.service";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -55,7 +57,6 @@ export async function GET(request: Request) {
     }
   };
 
-  // Normalize intent before fitment so REAR/FRONT is never lost between UI and provider search.
   const normalization = await normalizePartNeed({
     query: q,
     partName,
@@ -81,18 +82,29 @@ export async function GET(request: Request) {
   ]);
 
   const resolvedGenericArticleId = genericArticleId || normalization.genericArticle?.id || knowledge.genericArticleId || null;
-  const resolvedCanonicalCode = canonicalCode
+  const preliminaryCanonicalCode = canonicalCode
     || normalization.genericArticle?.code
     || normalization.canonicalCode
     || knowledge.definition?.code
     || null;
-  const resolvedPartName = normalization.genericArticle?.name
+  const preliminaryPartName = normalization.genericArticle?.name
     || knowledge.definition?.canonicalName
     || normalization.canonicalName
     || partName;
-  const resolvedAxis = axis || normalization.axis || knowledge.attributes.axis || null;
-  const resolvedSide = side || normalization.side || knowledge.attributes.side || null;
-  const resolvedSubPosition = subPosition || normalization.subPosition || knowledge.attributes.subPosition || null;
+  const positionPolicy = resolvePositionPolicyV3({
+    canonicalCode: preliminaryCanonicalCode,
+    partName: preliminaryPartName,
+    axis: axis || normalization.axis || knowledge.attributes.axis,
+    side: side || normalization.side || knowledge.attributes.side,
+    subPosition: subPosition || normalization.subPosition || knowledge.attributes.subPosition,
+    position: position || normalization.position,
+    quantity: quantityHint,
+  });
+  const resolvedCanonicalCode = positionPolicy.canonicalCode;
+  const resolvedPartName = positionPolicy.canonicalName || preliminaryPartName;
+  const resolvedAxis = positionPolicy.axis;
+  const resolvedSide = positionPolicy.side;
+  const resolvedSubPosition = positionPolicy.subPosition;
   const resolvedPosition = position || normalization.position || null;
 
   const fitment = await resolvePartFitment({
@@ -142,7 +154,7 @@ export async function GET(request: Request) {
       : null;
 
   const supplierPromise = includeSuppliers
-    ? searchConfiguredSuppliersOeFirst(q, 20, {
+    ? searchPartsV3(q, 20, {
         vehicleId,
         vin: rawVin,
         plate,
@@ -158,6 +170,7 @@ export async function GET(request: Request) {
         axis: resolvedAxis,
         requestedAxis: resolvedAxis,
         side: resolvedSide,
+        requestedSide: resolvedSide,
         subPosition: resolvedSubPosition,
         position: resolvedPosition,
         genericArticleId: resolvedGenericArticleId,
@@ -170,6 +183,9 @@ export async function GET(request: Request) {
         vehicleBrand: fitment.vehicle?.brand || null,
         vehicleModel: fitment.vehicle?.model || null,
         vehicleYear: fitment.vehicle?.year || null,
+        quantity: quantityHint || 1,
+        sourceType: findingId || manualPartId ? "DIAGNOSTIC" : "MANUAL_SEARCH",
+        sourceId: findingId || manualPartId,
       })
     : null;
 
@@ -201,6 +217,7 @@ export async function GET(request: Request) {
         quantityHint,
       })
     : null;
+  const candidates = supplierOffers ? aggregatePartCandidates(supplierOffers) : [];
   const packaging = getPartPackageRule({
     genericArticleId: resolvedGenericArticleId,
     canonicalCode: resolvedCanonicalCode,
@@ -224,6 +241,9 @@ export async function GET(request: Request) {
   return NextResponse.json({
     status: "OK",
     query: q,
+    searchId: supplierSearch?.searchId || null,
+    algorithm: supplierSearch?.algorithm || "EVIDENCE_FIRST_V3",
+    intent: supplierSearch?.intent || null,
     context: {
       vehicleId,
       vin: rawVin || null,
@@ -237,6 +257,8 @@ export async function GET(request: Request) {
       side: resolvedSide,
       subPosition: resolvedSubPosition,
       position: resolvedPosition,
+      packageScope: positionPolicy.packageRule.coverage,
+      sideIgnoredByCommercialScope: positionPolicy.sideIgnoredByCommercialScope,
     },
     vehicle: displayVehicle ? {
       id: fitment.vehicle?.id || vehicleId,
@@ -291,12 +313,15 @@ export async function GET(request: Request) {
         : null,
     },
     parts,
+    candidates,
     fitmentPolicy: {
       level: fitment.status,
       canAutoApprove: fitment.confirmed,
       requiredForOrder: fitment.confirmed ? "NONE" : "MANUAL_CONFIRMATION_OR_CATALOG",
       message: curatedOe?.reason || fitment.reason,
-      algorithm: "OE_FIRST_V2",
+      algorithm: "EVIDENCE_FIRST_V3",
+      hardRejectsCannotBeManuallyOverridden: true,
+      supplierIsCompatibilityAuthority: false,
     },
     providers: supplierSearch?.providers || [
       {
@@ -333,11 +358,13 @@ export async function GET(request: Request) {
       supplierPricing: {
         basis: "SUPPLIER_DEFAULT_MARKUP",
         defaultMarkupPercent: 40,
-        message: "Ціна продажу розраховується від закупівельної ціни за правилом постачальника; нульова ціна вважається відсутньою.",
+        message: "Ціна продажу розраховується тільки після compatibility policy; нульова ціна вважається відсутньою.",
       },
       supplierSearchBlocked: supplierSearch.blocked,
       supplierSearchBlockReason: supplierSearch.blockReason,
       supplierSearchMode: supplierSearch.searchMode,
+      searchPolicy: supplierSearch.policy,
+      timings: supplierSearch.timings,
     } : {}),
   });
 }
