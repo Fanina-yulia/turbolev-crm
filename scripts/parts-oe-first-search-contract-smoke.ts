@@ -70,7 +70,7 @@ const wrongVehicle = evaluateStrictOffer(offer({
   brand: "FAG",
 }), strictContext);
 assert.equal(wrongVehicle.rejected, true);
-assert.equal(wrongVehicle.rejectCode, "VEHICLE_CONFLICT");
+assert.equal(wrongVehicle.rejectCode, "VEHICLE_MAKE_CONFLICT");
 
 const exactOe = evaluateStrictOffer(offer({
   name: "Втулка стабілізатора заднього Geely Emgrand X7",
@@ -109,4 +109,4 @@ const applied = applyStrictOfferPolicy(offer({
 assert.ok(applied.offer);
 assert.equal(applied.offer?.purchasePrice, null, "zero-priced OE offer must be non-orderable until a real price arrives");
 
-console.log("[parts-oe-first] curated OE, hard reject, evidence tier and zero-price contracts OK");
+console.log("[parts-oe-first] curated OE, V3 hard reject, evidence tier and zero-price contracts OK");

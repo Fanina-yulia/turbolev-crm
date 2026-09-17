@@ -318,7 +318,7 @@ async function vehicleScopedSearch(adapter: SupplierAdapter, query: string, limi
       query: query.trim(),
       vehicle: context.providerVehicle,
       limit: Math.min(Math.max(limit, 1), 50),
-      position: null,
+      position: context.position || context.axis || null,
       canonicalPart: context.canonicalCode || context.partName
         ? { code: context.canonicalCode || null, name: context.partName || query, genericArticleId: context.genericArticleId || null }
         : null,

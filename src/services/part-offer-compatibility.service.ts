@@ -1,23 +1,42 @@
 import type { SupplierCompatibilityTier, SupplierOffer } from "@/src/services/suppliers/types";
 import { normalizeSearchAxis } from "@/src/services/parts-oe-evidence.service";
+import {
+  detectOfferAxis,
+  detectOfferSide,
+  evaluatePartFamily,
+  evaluateVehicleMakeEvidence,
+} from "@/src/services/part-family-policy.service";
+import { resolvePositionPolicyV3 } from "@/src/services/part-search-intent-v3.service";
 
 export type StrictOfferEvidence = "EXACT_OE" | "CATALOG_CROSS" | "MODEL_MATCH" | "REVIEW";
-export type StrictRejectCode = "AXIS_CONFLICT" | "VEHICLE_CONFLICT" | "PART_FAMILY_CONFLICT";
+export type StrictRejectCode =
+  | "PART_FAMILY_CONFLICT"
+  | "AXIS_CONFLICT"
+  | "SIDE_CONFLICT"
+  | "VEHICLE_MAKE_CONFLICT"
+  | "VEHICLE_MODEL_CONFLICT"
+  | "YEAR_CONFLICT"
+  | "ENGINE_CONFLICT"
+  | "OE_CONFLICT"
+  | "KNOWN_REJECTED_MATCH";
 
 export type StrictOfferContext = {
   query?: string | null;
   partName?: string | null;
   canonicalCode?: string | null;
   axis?: string | null;
+  side?: string | null;
   position?: string | null;
   vehicleBrand?: string | null;
   vehicleModel?: string | null;
+  vehicleYear?: number | null;
   fitmentConfirmed?: boolean | null;
   fitmentExact?: boolean | null;
   oeNumbers?: string[];
   curatedOeNumbers?: string[];
   catalogArticles?: string[];
   analogArticles?: string[];
+  knownRejectedArticles?: string[];
 };
 
 export type StrictOfferDecision = {
@@ -28,45 +47,9 @@ export type StrictOfferDecision = {
   compatibilityTier: SupplierCompatibilityTier;
   score: number;
   reason: string;
+  detectedCanonicalCode: string | null;
+  detectedCanonicalCodes: string[];
 };
-
-const VEHICLE_MAKES: Array<{ canonical: string; aliases: RegExp[] }> = [
-  { canonical: "GEELY", aliases: [/\bGEELY\b/iu, /\bДЖИЛ[ІИ]\b/iu] },
-  { canonical: "AUDI", aliases: [/\bAUDI\b/iu] },
-  { canonical: "VOLKSWAGEN", aliases: [/\bVOLKSWAGEN\b/iu, /\bVW\b/iu] },
-  { canonical: "SKODA", aliases: [/\bSKODA\b/iu, /\bŠKODA\b/iu] },
-  { canonical: "MERCEDES", aliases: [/\bMERCEDES(?:\s*BENZ)?\b/iu, /\bMB\b/iu, /\bSPRINTER\b/iu] },
-  { canonical: "RENAULT", aliases: [/\bRENAULT\b/iu] },
-  { canonical: "FIAT", aliases: [/\bFIAT\b/iu] },
-  { canonical: "HYUNDAI", aliases: [/\bHYUNDAI\b/iu] },
-  { canonical: "KIA", aliases: [/\bKIA\b/iu] },
-  { canonical: "TOYOTA", aliases: [/\bTOYOTA\b/iu] },
-  { canonical: "LEXUS", aliases: [/\bLEXUS\b/iu] },
-  { canonical: "BMW", aliases: [/\bBMW\b/iu] },
-  { canonical: "FORD", aliases: [/\bFORD\b/iu] },
-  { canonical: "OPEL", aliases: [/\bOPEL\b/iu] },
-  { canonical: "PEUGEOT", aliases: [/\bPEUGEOT\b/iu] },
-  { canonical: "CITROEN", aliases: [/\bCITRO[EË]N\b/iu] },
-  { canonical: "NISSAN", aliases: [/\bNISSAN\b/iu] },
-  { canonical: "MITSUBISHI", aliases: [/\bMITSUBISHI\b/iu] },
-  { canonical: "HONDA", aliases: [/\bHONDA\b/iu] },
-  { canonical: "MAZDA", aliases: [/\bMAZDA\b/iu] },
-  { canonical: "SUBARU", aliases: [/\bSUBARU\b/iu] },
-  { canonical: "CHEVROLET", aliases: [/\bCHEVROLET\b/iu] },
-  { canonical: "DAEWOO", aliases: [/\bDAEWOO\b/iu] },
-  { canonical: "VOLVO", aliases: [/\bVOLVO\b/iu] },
-  { canonical: "LAND ROVER", aliases: [/\bLAND\s+ROVER\b/iu] },
-  { canonical: "JEEP", aliases: [/\bJEEP\b/iu] },
-  { canonical: "DODGE", aliases: [/\bDODGE\b/iu] },
-  { canonical: "CHERY", aliases: [/\bCHERY\b/iu] },
-  { canonical: "GREAT WALL", aliases: [/\bGREAT\s+WALL\b/iu] },
-  { canonical: "HAVAL", aliases: [/\bHAVAL\b/iu] },
-  { canonical: "BYD", aliases: [/\bBYD\b/iu] },
-  { canonical: "JAC", aliases: [/\bJAC\b/iu] },
-  { canonical: "SUZUKI", aliases: [/\bSUZUKI\b/iu] },
-  { canonical: "PORSCHE", aliases: [/\bPORSCHE\b/iu] },
-  { canonical: "SEAT", aliases: [/\bSEAT\b/iu] },
-];
 
 function clean(value: unknown, max = 360) {
   return typeof value === "string" ? value.trim().slice(0, max) : "";
@@ -86,21 +69,6 @@ function normalizeText(value: unknown) {
     .trim();
 }
 
-function requestedVehicleMake(value: unknown) {
-  const text = clean(value);
-  for (const make of VEHICLE_MAKES) {
-    if (make.aliases.some((pattern) => pattern.test(text))) return make.canonical;
-  }
-  return normalizeText(value);
-}
-
-function detectedVehicleMakes(value: unknown) {
-  const text = clean(value);
-  return [...new Set(VEHICLE_MAKES
-    .filter((make) => make.aliases.some((pattern) => pattern.test(text)))
-    .map((make) => make.canonical))];
-}
-
 function setOf(values: string[] | undefined) {
   return new Set((values || []).map(normalizeArticle).filter(Boolean));
 }
@@ -117,66 +85,102 @@ function intersects(left: Set<string>, right: Set<string>) {
   return false;
 }
 
-function isStabilizerBushingName(value: string) {
-  const text = value.toLocaleLowerCase("uk-UA");
-  const bushing = /(?:втулк\w*|bushing\w*|\bbush\b)/u.test(text);
-  const stabilizer = /(?:стабіл\w*|стабилиз\w*|sway\s*bar|anti\s*roll|stabili[sz]er)/u.test(text);
-  return bushing && stabilizer;
+function emptyDetected(family: ReturnType<typeof evaluatePartFamily>) {
+  return {
+    detectedCanonicalCode: family.matchedCanonicalCode,
+    detectedCanonicalCodes: family.detectedCanonicalCodes,
+  };
+}
+
+function rejected(
+  family: ReturnType<typeof evaluatePartFamily>,
+  rejectCode: StrictRejectCode,
+  reason: string,
+  score: number,
+): StrictOfferDecision {
+  return {
+    accepted: false,
+    rejected: true,
+    rejectCode,
+    evidence: "REVIEW",
+    compatibilityTier: "UNCONFIRMED",
+    score,
+    reason,
+    ...emptyDetected(family),
+  };
 }
 
 function vehicleModelMatch(offer: SupplierOffer, context: StrictOfferContext) {
-  const brand = requestedVehicleMake(context.vehicleBrand);
-  if (!brand) return false;
-  const evidence = `${offer.vehicleMatch || ""} ${offer.name || ""}`;
-  const makes = detectedVehicleMakes(evidence);
-  if (!makes.includes(brand)) return false;
-
   const model = normalizeText(context.vehicleModel)
     .replace(/\bEX7\b/gu, "X7")
     .replace(/\bEMGRAND\s+EX7\b/gu, "EMGRAND X7");
-  if (!model) return true;
-  const source = normalizeText(evidence)
+  if (!model) return false;
+  const source = normalizeText(`${offer.vehicleMatch || ""} ${offer.name || ""}`)
     .replace(/\bEX7\b/gu, "X7")
     .replace(/\bEMGRAND\s+EX7\b/gu, "EMGRAND X7");
-  const usefulTokens = model.split(" ").filter((token) => token.length >= 2 && token !== brand);
-  return usefulTokens.length === 0 || usefulTokens.every((token) => source.includes(token));
+  if (!source) return false;
+  const usefulTokens = model.split(" ").filter((token) => token.length >= 2);
+  return usefulTokens.length > 0 && usefulTokens.every((token) => source.includes(token));
 }
 
 export function evaluateStrictOffer(offer: SupplierOffer, context: StrictOfferContext): StrictOfferDecision {
+  const family = evaluatePartFamily(offer, context.canonicalCode);
+
+  // V3 invariant: an explicit canonical-family contradiction can never be
+  // rescued by price, supplier ranking or a manual checkbox.
+  if (family.conflict) {
+    return rejected(family, "PART_FAMILY_CONFLICT", `Позиція відхилена: ${family.reason}`, -1400);
+  }
+
   const titleEvidence = `${offer.name || ""} ${offer.vehicleMatch || ""}`;
   const requestedAxis = normalizeSearchAxis(context.axis)
     || normalizeSearchAxis(context.position)
     || normalizeSearchAxis(context.partName)
     || normalizeSearchAxis(context.query);
-  const offeredAxis = normalizeSearchAxis(titleEvidence);
-
+  const offeredAxis = detectOfferAxis(titleEvidence);
   if (requestedAxis && offeredAxis && requestedAxis !== offeredAxis) {
-    return {
-      accepted: false,
-      rejected: true,
-      rejectCode: "AXIS_CONFLICT",
-      evidence: "REVIEW",
-      compatibilityTier: "UNCONFIRMED",
-      score: -1000,
-      reason: `Позиція відхилена: запит ${requestedAxis}, а товар явно позначений як ${offeredAxis}.`,
-    };
+    return rejected(
+      family,
+      "AXIS_CONFLICT",
+      `Позиція відхилена: запит ${requestedAxis}, а товар явно позначений як ${offeredAxis}.`,
+      -1300,
+    );
   }
 
-  const requestedMake = requestedVehicleMake(context.vehicleBrand);
-  const explicitMakes = detectedVehicleMakes(titleEvidence);
-  if (requestedMake && explicitMakes.length && !explicitMakes.includes(requestedMake)) {
-    return {
-      accepted: false,
-      rejected: true,
-      rejectCode: "VEHICLE_CONFLICT",
-      evidence: "REVIEW",
-      compatibilityTier: "UNCONFIRMED",
-      score: -900,
-      reason: `Позиція відхилена: у назві/fitment вказано ${explicitMakes.join(", ")}, а автомобіль — ${requestedMake}.`,
-    };
+  const positionPolicy = resolvePositionPolicyV3({
+    canonicalCode: context.canonicalCode,
+    partName: context.partName || context.query,
+    axis: context.axis,
+    side: context.side,
+    position: context.position,
+  });
+  const requestedSide = positionPolicy.side;
+  const offeredSide = detectOfferSide(titleEvidence);
+  if (positionPolicy.sideSensitive && requestedSide && offeredSide && requestedSide !== offeredSide) {
+    return rejected(
+      family,
+      "SIDE_CONFLICT",
+      `Позиція відхилена: потрібна сторона ${requestedSide}, а товар явно позначений як ${offeredSide}.`,
+      -1250,
+    );
+  }
+
+  const makeEvidence = evaluateVehicleMakeEvidence(offer, context.vehicleBrand);
+  if (makeEvidence.conflict) {
+    return rejected(family, "VEHICLE_MAKE_CONFLICT", `Позиція відхилена: ${makeEvidence.reason}`, -1200);
   }
 
   const numbers = offerNumberSet(offer);
+  const knownRejected = setOf(context.knownRejectedArticles);
+  if (knownRejected.size && intersects(numbers, knownRejected)) {
+    return rejected(
+      family,
+      "KNOWN_REJECTED_MATCH",
+      "Позиція відхилена: цей артикул раніше підтверджено як несумісний для цієї canonical family.",
+      -1500,
+    );
+  }
+
   const oeNumbers = setOf(context.oeNumbers);
   const curatedOeNumbers = setOf(context.curatedOeNumbers);
   const catalogArticles = setOf(context.catalogArticles);
@@ -191,19 +195,6 @@ export function evaluateStrictOffer(offer: SupplierOffer, context: StrictOfferCo
       || analogArticles.has(normalizeArticle(offer.analogOfArticle))
     ));
 
-  const canonicalCode = normalizeText(context.canonicalCode);
-  if (canonicalCode === "STABILIZER_BUSHING" && !exactOe && !curatedOe && !catalogCross && !isStabilizerBushingName(offer.name || "")) {
-    return {
-      accepted: false,
-      rejected: true,
-      rejectCode: "PART_FAMILY_CONFLICT",
-      evidence: "REVIEW",
-      compatibilityTier: "UNCONFIRMED",
-      score: -800,
-      reason: "Позиція відхилена: назва не підтверджує, що це саме втулка стабілізатора.",
-    };
-  }
-
   if (exactOe || curatedOe) {
     const exact = context.fitmentConfirmed === true && context.fitmentExact !== false && !curatedOe;
     return {
@@ -214,10 +205,11 @@ export function evaluateStrictOffer(offer: SupplierOffer, context: StrictOfferCo
       compatibilityTier: exact ? "CONFIRMED" : "PARTIAL",
       score: exact ? 1100 : 1000,
       reason: exact
-        ? "OE-номер підтверджений точним VIN/каталожним fitment."
+        ? "OE-номер підтверджений точним VIN/VehicleFitment evidence."
         : curatedOe
-          ? "OE-номер підтверджений моделлю, роком і позицією з curated OE reference; точний VIN-fitment ще не доведений."
+          ? "OE-номер підтверджений моделлю, роком і позицією; exact VIN-fitment ще не доведений."
           : "OE-номер збігається з каталогом автомобіля; точну модифікацію потрібно перевірити.",
+      ...emptyDetected(family),
     };
   }
 
@@ -229,7 +221,8 @@ export function evaluateStrictOffer(offer: SupplierOffer, context: StrictOfferCo
       evidence: "CATALOG_CROSS",
       compatibilityTier: context.fitmentConfirmed === true && context.fitmentExact !== false ? "CONFIRMED" : "PARTIAL",
       score: context.fitmentConfirmed === true && context.fitmentExact !== false ? 1000 : 900,
-      reason: "Артикул отриманий через OE/cross-граф і не має конфлікту автомобіля або осі.",
+      reason: "Артикул отриманий через OE/cross-граф і пройшов family/vehicle/position guards.",
+      ...emptyDetected(family),
     };
   }
 
@@ -241,7 +234,8 @@ export function evaluateStrictOffer(offer: SupplierOffer, context: StrictOfferCo
       evidence: "MODEL_MATCH",
       compatibilityTier: "PARTIAL",
       score: 700,
-      reason: "Постачальник підтверджує модель автомобіля; точну модифікацію потрібно перевірити.",
+      reason: "Постачальник підтверджує модель автомобіля; exact VIN/OE доказ ще потрібен.",
+      ...emptyDetected(family),
     };
   }
 
@@ -252,7 +246,8 @@ export function evaluateStrictOffer(offer: SupplierOffer, context: StrictOfferCo
     evidence: "REVIEW",
     compatibilityTier: "REVIEW_REQUIRED",
     score: 100,
-    reason: "Знайдено лише за назвою/артикулом без достатнього доказу застосовності.",
+    reason: "Знайдено лише за назвою/артикулом без достатнього OE/cross/vehicle evidence.",
+    ...emptyDetected(family),
   };
 }
 

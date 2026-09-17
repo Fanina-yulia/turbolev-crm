@@ -58,7 +58,21 @@
     "src/services/suppliers/bm-parts.adapter.ts",
     "src/services/suppliers/registry.ts",
     "src/services/suppliers/types.ts",
-    "src/services/suppliers/cascade-search.ts"
+    "src/services/suppliers/cascade-search.ts",
+    "app/api/parts/search/**",
+    "app/api/parts/suppliers/**",
+    "app/parts-selection-workspace-v4.tsx",
+    "src/services/part-offer-compatibility.service.ts",
+    "src/services/part-relevance.service.ts",
+    "src/services/parts-oe-evidence.service.ts",
+    "src/services/strict-parts-search.service.ts",
+    "src/services/part-search-intent-v3.service.ts",
+    "src/services/part-family-policy.service.ts",
+    "src/services/parts-candidate-aggregator.service.ts",
+    "src/services/parts-search-audit-v3.service.ts",
+    "src/services/parts-search-v3.service.ts",
+    "src/services/parts-selection.service.ts",
+    "src/services/diagnostic-part-selection-draft.service.ts"
   ],
   "work-orders": [
     "app/work-journal*",

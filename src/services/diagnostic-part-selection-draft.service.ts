@@ -3,7 +3,8 @@ import { toPrismaJson } from "@/src/lib/prisma-json";
 import { getStructuredDiagnostic } from "@/src/services/structured-diagnostics.service";
 import { getDiagnosticCommercialHandoff } from "@/src/services/diagnostic-commercial-handoff.service";
 import { normalizeCatalogNumber, resolvePartFitment } from "@/src/services/parts-fitment.service";
-import { searchConfiguredSuppliers } from "@/src/services/suppliers/registry";
+import { searchPartsV3 } from "@/src/services/parts-search-v3.service";
+import { mergeOeNumbers, resolveCuratedOeEvidence } from "@/src/services/parts-oe-evidence.service";
 import { enrichOffersWithSellPrice, ensureSupplierRecord } from "@/src/services/suppliers/order.service";
 import { getPartPackageRule, resolveSupplierOfferQuantity } from "@/src/services/part-operation-catalog.service";
 import { ensurePartsRequestTx } from "@/src/services/work-order-commercial.service";
@@ -268,25 +269,42 @@ export async function stageDiagnosticPartOffer(input: StageInput) {
     throw new DiagnosticPartSelectionDraftError("CATALOG_FITMENT_REQUIRED", "Обрана пропозиція не має підтвердженого зв’язку з точною модифікацією автомобіля.", 409);
   }
 
-  const search = await searchConfiguredSuppliers(wantedArticle || String(suggestion.description || ""), 50, {
+  const curatedOe = resolveCuratedOeEvidence({
+    vehicle: fitment.vehicle,
+    canonicalCode: input.canonicalCode || null,
+    partName: input.partName || String(suggestion.description || ""),
+    axis: input.axis || null,
+    position: input.position || null,
+  });
+  const search = await searchPartsV3(wantedArticle || String(suggestion.description || ""), 50, {
     vehicleId: clean(input.vehicleId, 160) || null,
     vin: clean(input.vehicleVin, 24) || null,
     fitmentStatus: fitment.status,
     fitmentConfidence: fitment.confidence,
     fitmentExact: fitment.exact,
-    fitmentSource: fitment.catalog?.source || input.fitmentSource || null,
+    fitmentSource: fitment.catalog?.source || curatedOe?.source || input.fitmentSource || null,
     fitmentReason: fitment.reason,
     providerVehicle: fitment.providerVehicle,
     canonicalCode: input.canonicalCode || null,
     axis: input.axis || null,
+    requestedAxis: input.axis || null,
     side: input.side || null,
+    requestedSide: input.side || null,
     subPosition: input.subPosition || null,
     partName: input.partName || String(suggestion.description || ""),
     position: input.position || null,
     genericArticleId: fitment.genericArticle?.id || clean(input.genericArticleId, 160) || String(suggestion.genericArticleId || "") || null,
     catalogArticles: fitment.catalogArticles,
     analogArticles: fitment.analogArticles,
-    oeNumbers: fitment.oeNumbers,
+    oeNumbers: mergeOeNumbers(fitment.oeNumbers, curatedOe?.oeNumbers),
+    curatedOeNumbers: curatedOe?.oeNumbers || [],
+    analogReferences: fitment.matches.map((match) => ({ brand: match.brand, article: match.article })).slice(0, 8),
+    vehicleBrand: fitment.vehicle?.brand || null,
+    vehicleModel: fitment.vehicle?.model || null,
+    vehicleYear: fitment.vehicle?.year || null,
+    quantity,
+    sourceType: "DIAGNOSTIC",
+    sourceId: findingId || manualPartId,
   });
   const liveOffer = search.offers.find((offer) => {
     if (offer.supplierId !== supplierProvider) return false;

@@ -5,7 +5,9 @@ import { enrichOffersWithSellPrice } from "@/src/services/suppliers/order.servic
 import { resolvePartFitment } from "@/src/services/parts-fitment.service";
 import { normalizePartNeed } from "@/src/services/part-normalization.service";
 import { mergeOeNumbers, resolveCuratedOeEvidence } from "@/src/services/parts-oe-evidence.service";
-import { searchConfiguredSuppliersOeFirst } from "@/src/services/strict-parts-search.service";
+import { resolvePositionPolicyV3 } from "@/src/services/part-search-intent-v3.service";
+import { searchPartsV3 } from "@/src/services/parts-search-v3.service";
+import { aggregatePartCandidates } from "@/src/services/parts-candidate-aggregator.service";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -24,6 +26,8 @@ export async function GET(request: Request) {
   const subPosition = searchParams.get("subPosition")?.trim() || null;
   const position = searchParams.get("position")?.trim() || null;
   const genericArticleId = searchParams.get("genericArticleId")?.trim() || null;
+  const quantity = Number(searchParams.get("quantity") || 1);
+  const sourceId = searchParams.get("findingId")?.trim() || searchParams.get("manualPartId")?.trim() || null;
   const requestedOeNumbers = [...new Set((searchParams.get("oeNumbers") || "")
     .split(",")
     .map((value) => value.trim())
@@ -37,7 +41,6 @@ export async function GET(request: Request) {
     return NextResponse.json({ status: "INVALID_QUERY", message: "Введіть артикул або назву деталі." }, { status: 400 });
   }
 
-  // Normalize first so axis/position are part of fitment, not merely UI text.
   const normalization = await normalizePartNeed({
     query: q,
     partName,
@@ -49,11 +52,22 @@ export async function GET(request: Request) {
     subPosition,
   });
   const resolvedGenericArticleId = genericArticleId || normalization.genericArticle?.id || null;
-  const resolvedCanonicalCode = canonicalCode || normalization.genericArticle?.code || normalization.canonicalCode || null;
-  const resolvedPartName = normalization.genericArticle?.name || normalization.canonicalName || partName;
-  const resolvedAxis = axis || normalization.axis || null;
-  const resolvedSide = side || normalization.side || null;
-  const resolvedSubPosition = subPosition || normalization.subPosition || null;
+  const preliminaryCanonicalCode = canonicalCode || normalization.genericArticle?.code || normalization.canonicalCode || null;
+  const preliminaryPartName = normalization.genericArticle?.name || normalization.canonicalName || partName;
+  const positionPolicy = resolvePositionPolicyV3({
+    canonicalCode: preliminaryCanonicalCode,
+    partName: preliminaryPartName,
+    axis: axis || normalization.axis,
+    side: side || normalization.side,
+    subPosition: subPosition || normalization.subPosition,
+    position: position || normalization.position,
+    quantity,
+  });
+  const resolvedCanonicalCode = positionPolicy.canonicalCode;
+  const resolvedPartName = positionPolicy.canonicalName || preliminaryPartName;
+  const resolvedAxis = positionPolicy.axis;
+  const resolvedSide = positionPolicy.side;
+  const resolvedSubPosition = positionPolicy.subPosition;
   const resolvedPosition = position || normalization.position || null;
 
   const fitment = await resolvePartFitment({
@@ -96,7 +110,7 @@ export async function GET(request: Request) {
     normalization,
   };
 
-  const result = await searchConfiguredSuppliersOeFirst(q, 20, {
+  const result = await searchPartsV3(q, 20, {
     vehicleId,
     vin,
     plate,
@@ -112,6 +126,7 @@ export async function GET(request: Request) {
     axis: resolvedAxis,
     requestedAxis: resolvedAxis,
     side: resolvedSide,
+    requestedSide: resolvedSide,
     subPosition: resolvedSubPosition,
     position: resolvedPosition,
     genericArticleId: resolvedGenericArticleId,
@@ -124,8 +139,12 @@ export async function GET(request: Request) {
     vehicleBrand: fitment.vehicle?.brand || null,
     vehicleModel: fitment.vehicle?.model || null,
     vehicleYear: fitment.vehicle?.year || null,
+    quantity,
+    sourceType: sourceId ? "DIAGNOSTIC" : "MANUAL_SEARCH",
+    sourceId,
   });
   const offers = await enrichOffersWithSellPrice(result.offers);
+  const candidates = aggregatePartCandidates(offers);
   const supplierStatuses = result.supplierStatuses;
   const configuredCount = result.configuredSuppliers.length;
   const respondedCount = result.providers.filter((provider) => provider.ok).length;
@@ -133,6 +152,9 @@ export async function GET(request: Request) {
   return NextResponse.json({
     status: "OK",
     query: q,
+    searchId: result.searchId,
+    algorithm: result.algorithm,
+    intent: result.intent,
     context: {
       vehicleId,
       vin,
@@ -144,6 +166,9 @@ export async function GET(request: Request) {
       side: resolvedSide,
       subPosition: resolvedSubPosition,
       position: resolvedPosition,
+      quantity,
+      packageScope: positionPolicy.packageRule.coverage,
+      sideIgnoredByCommercialScope: positionPolicy.sideIgnoredByCommercialScope,
     },
     fitment: fitmentPayload,
     catalogMatches: fitment.matches,
@@ -151,10 +176,15 @@ export async function GET(request: Request) {
     catalogArticles: fitment.catalogArticles,
     analogArticles: fitment.analogArticles,
     oeResolution: curatedOe,
-    ...result,
+    candidates,
     offers,
     suppliers: supplierStatuses,
     supplierStatuses,
+    configuredSuppliers: result.configuredSuppliers,
+    providers: result.providers,
+    supplierResultSummary: result.resultSummary,
+    supplierCascade: result.cascade,
+    strictSearch: result.strictSearch,
     supplierSummary: {
       added: supplierStatuses.length,
       configured: configuredCount,
@@ -166,17 +196,19 @@ export async function GET(request: Request) {
     pricing: {
       basis: "SUPPLIER_DEFAULT_MARKUP",
       defaultMarkupPercent: 40,
-      message: "Ціна продажу розраховується від закупівельної ціни за правилом постачальника; нульова закупівельна ціна вважається відсутньою. Ручний override фіксується в аудиті.",
+      message: "Ціна застосовується тільки після compatibility policy; нульова закупівельна ціна вважається відсутньою.",
     },
     supplierSearchBlocked: result.blocked,
     supplierSearchBlockReason: result.blockReason,
     supplierSearchMode: result.searchMode,
     policy: {
-      algorithm: "OE_FIRST_V2",
+      ...result.policy,
+      algorithm: result.algorithm,
       priceType: "PURCHASE_PRICE",
       fitmentConfirmed: fitment.confirmed,
       supplierSearchAllowed: !result.blocked,
       message: curatedOe?.reason || fitment.reason,
     },
+    timings: result.timings,
   }, { headers: { "Cache-Control": "no-store" } });
 }
