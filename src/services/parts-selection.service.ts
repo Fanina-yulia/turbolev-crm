@@ -5,7 +5,8 @@ import { getDiagnosticCommercialHandoff } from "@/src/services/diagnostic-commer
 import { createWorkOrderLine, updateWorkOrderLine } from "@/src/services/work-order-lines.service";
 import { ensurePartsRequestTx } from "@/src/services/work-order-commercial.service";
 import { enrichOffersWithSellPrice, ensureSupplierRecord } from "@/src/services/suppliers/order.service";
-import { searchConfiguredSuppliers } from "@/src/services/suppliers/registry";
+import { searchPartsV3 } from "@/src/services/parts-search-v3.service";
+import { mergeOeNumbers, resolveCuratedOeEvidence } from "@/src/services/parts-oe-evidence.service";
 import { normalizeCatalogNumber, resolvePartFitment, type PartFitmentStatus } from "@/src/services/parts-fitment.service";
 import { calculateCatalogLaborPrice, isReplacementLabor } from "@/src/services/labor-pricing.service";
 import { findReplacementOperation, getPartPackageRule, resolveSupplierOfferQuantity } from "@/src/services/part-operation-catalog.service";
@@ -266,29 +267,44 @@ export async function selectDiagnosticPartOffer(input: {
       409,
     );
   }
-  // Re-query by the selected article when possible. A finding description is
-  // often a human label, while the supplier adapter indexes the catalogue by
-  // its article; using the article prevents a valid selected offer from being
-  // rejected as stale during the second server-side verification.
-  const search = await searchConfiguredSuppliers(wantedArticle || suggestion.description, 50, {
+  // Re-query through the same Evidence First V3 engine used by the picker.
+  // A manual checkbox can approve REVIEW_REQUIRED, but can never recover a V3 hard reject.
+  const curatedOe = resolveCuratedOeEvidence({
+    vehicle: fitment.vehicle,
+    canonicalCode: input.canonicalCode || null,
+    partName: input.partName || suggestion.description,
+    axis: input.axis || null,
+    position: input.position || null,
+  });
+  const search = await searchPartsV3(wantedArticle || suggestion.description, 50, {
     vehicleId: clean(input.vehicleId, 160) || null,
     vin: clean(input.vehicleVin, 24) || null,
     fitmentStatus: fitment.status,
     fitmentConfidence: fitment.confidence,
     fitmentExact: fitment.exact,
-    fitmentSource: fitment.catalog?.source || input.fitmentSource || null,
+    fitmentSource: fitment.catalog?.source || curatedOe?.source || input.fitmentSource || null,
     fitmentReason: fitment.reason,
     providerVehicle: fitment.providerVehicle,
     canonicalCode: input.canonicalCode || null,
     axis: input.axis || null,
+    requestedAxis: input.axis || null,
     side: input.side || null,
+    requestedSide: input.side || null,
     subPosition: input.subPosition || null,
     partName: input.partName || suggestion.description,
     position: input.position || null,
     genericArticleId: fitment.genericArticle?.id || clean(input.genericArticleId, 160) || suggestion.genericArticleId || null,
     catalogArticles: fitment.catalogArticles,
     analogArticles: fitment.analogArticles,
-    oeNumbers: fitment.oeNumbers,
+    oeNumbers: mergeOeNumbers(fitment.oeNumbers, curatedOe?.oeNumbers),
+    curatedOeNumbers: curatedOe?.oeNumbers || [],
+    analogReferences: fitment.matches.map((match) => ({ brand: match.brand, article: match.article })).slice(0, 8),
+    vehicleBrand: fitment.vehicle?.brand || null,
+    vehicleModel: fitment.vehicle?.model || null,
+    vehicleYear: fitment.vehicle?.year || null,
+    quantity,
+    sourceType: "DIAGNOSTIC",
+    sourceId: findingId || manualPartId,
   });
   const liveOffer = search.offers.find((offer) => {
     if (offer.supplierId !== supplierId) return false;

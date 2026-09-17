@@ -31,6 +31,8 @@ type SupplierOffer = {
   sourceKind?: "DIRECT" | "OEM" | "ANALOG" | "NAME" | "ASSEMBLY";
   requiresManualConfirmation?: boolean;
   deliveryEstimate?: string | null;
+  oeNumbers?: string[];
+  analogOfArticle?: string | null;
 };
 
 type SupplierProvider = { id: string; ok: boolean; message?: string };
@@ -180,7 +182,7 @@ function isReviewOffer(offer: SupplierOffer) {
 function compatibilityLabel(offer: SupplierOffer) {
   if (offer.resultType === "ASSEMBLY") return "Комплект · перевірити";
   if (offer.compatibilityTier === "CONFIRMED" && offer.fitmentStatus === "VERIFIED" && offer.fitmentExact !== false) return "✓ підтверджено VIN";
-  if (offer.compatibilityTier === "PARTIAL" || offer.fitmentExact === false) return "◐ модель · перевірити";
+  if (offer.compatibilityTier === "PARTIAL" || offer.fitmentExact === false) return "◐ підтримано OE/крос · перевірити";
   return "! сумісність не підтверджена";
 }
 
@@ -354,9 +356,8 @@ export function PartsSelectionWorkspaceV4() {
     const assemblies: SupplierOffer[] = [];
     for (const offer of filteredOffers) {
       if (offer.resultType === "ASSEMBLY" || offer.sourceKind === "ASSEMBLY") assemblies.push(offer);
-      else if (isReviewOffer(offer)) review.push(offer);
       else if (offer.resultType === "ORIGINAL" || offer.resultType === "OEM_REPLACEMENT") originals.push(offer);
-      else if (offer.resultType === "ANALOG") analogs.push(offer);
+      else if (offer.resultType === "ANALOG" || offer.sourceKind === "ANALOG") analogs.push(offer);
       else review.push(offer);
     }
     return [
@@ -685,7 +686,7 @@ export function PartsSelectionWorkspaceV4() {
             <div className={styles.offerIdentity}>{offer.imageUrl ? <img src={offer.imageUrl} alt="" onError={(event) => { event.currentTarget.style.display = "none"; }}/> : <span className={styles.noImage}>⚙</span>}<div><b>{offer.name}</b><small>{offer.offerReason || offer.fitmentReason || "Пропозиція постачальника"}</small></div></div>
             <details className={styles.stockDetails}><summary>{offer.available ? "Наявність ⓘ" : "Уточнити ⓘ"}</summary><div>{offer.stock.length ? offer.stock.map((stock, stockIndex) => <span key={`${stock.warehouse}-${stockIndex}`}><b>{stock.warehouse}</b> · {stock.quantity}</span>) : <span>Постачальник не передав складські залишки.</span>}</div></details>
             <div className={styles.providerCell}><b>{supplierCode(offer)}</b><small>{offer.supplierName}</small></div>
-            <div className={styles.brandCell}><span>{offer.brand || "Бренд —"}</span><b>{offer.article}</b></div>
+            <div className={styles.brandCell}><span>{offer.brand || "Бренд —"}</span><b>{offer.article}</b>{offer.analogOfArticle ? <small>крос від {offer.analogOfArticle}</small> : offer.oeNumbers?.length ? <small>OE {offer.oeNumbers[0]}</small> : null}</div>
             <div className={review ? styles.compatWarn : styles.compatOk}>{compatibilityLabel(offer)}</div>
             <div className={styles.priceCell}><b>{money(offer.purchasePrice, offer.currency)}</b>{offer.sellPrice != null ? <small>продаж {money(offer.sellPrice, offer.currency)}</small> : null}</div>
             <button type="button" className={styles.addOffer} disabled={!canAdd} onClick={() => void selectOffer(offer)}>{selectingKey === key ? "Зберігаю…" : selected ? "Вибрано" : review && !manualConfirmation ? "Перевірити" : "Додати"}</button>
