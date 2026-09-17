@@ -12,6 +12,7 @@ import { enrichOffersWithSellPrice } from "@/src/services/suppliers/order.servic
 import { decorateSupplierOffersWithPackaging, getPartPackageRule } from "@/src/services/part-operation-catalog.service";
 import { mergeOeNumbers, resolveCuratedOeEvidence } from "@/src/services/parts-oe-evidence.service";
 import { searchConfiguredSuppliersOeFirst } from "@/src/services/strict-parts-search.service";
+import { resolvePartSearchIntent } from "@/src/services/parts-search-intent.service";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -55,8 +56,7 @@ export async function GET(request: Request) {
     }
   };
 
-  // Normalize intent before fitment so REAR/FRONT is never lost between UI and provider search.
-  const normalization = await normalizePartNeed({
+  const intent = resolvePartSearchIntent({
     query: q,
     partName,
     canonicalCode,
@@ -66,22 +66,33 @@ export async function GET(request: Request) {
     side,
     subPosition,
   });
+
+  const normalization = await normalizePartNeed({
+    query: q,
+    partName: intent.partName,
+    canonicalCode: intent.canonicalCode,
+    genericArticleId: intent.genericArticleId,
+    position: intent.position,
+    axis: intent.axis,
+    side: intent.side,
+    subPosition: intent.subPosition,
+  });
   const [knowledge, reference, rawVehicleContext] = await Promise.all([
     resolvePartKnowledge({
       query: q,
-      partName,
-      canonicalCode,
-      genericArticleId,
-      position,
-      side,
-      subPosition,
+      partName: intent.partName,
+      canonicalCode: intent.canonicalCode,
+      genericArticleId: intent.genericArticleId,
+      position: intent.position,
+      side: intent.side,
+      subPosition: intent.subPosition,
     }),
     searchReferenceParts(q, 50),
     decodeVehicleContext(rawVin),
   ]);
 
-  const resolvedGenericArticleId = genericArticleId || normalization.genericArticle?.id || knowledge.genericArticleId || null;
-  const resolvedCanonicalCode = canonicalCode
+  const resolvedGenericArticleId = intent.genericArticleId || normalization.genericArticle?.id || knowledge.genericArticleId || null;
+  const resolvedCanonicalCode = intent.canonicalCode
     || normalization.genericArticle?.code
     || normalization.canonicalCode
     || knowledge.definition?.code
@@ -89,11 +100,11 @@ export async function GET(request: Request) {
   const resolvedPartName = normalization.genericArticle?.name
     || knowledge.definition?.canonicalName
     || normalization.canonicalName
-    || partName;
-  const resolvedAxis = axis || normalization.axis || knowledge.attributes.axis || null;
-  const resolvedSide = side || normalization.side || knowledge.attributes.side || null;
-  const resolvedSubPosition = subPosition || normalization.subPosition || knowledge.attributes.subPosition || null;
-  const resolvedPosition = position || normalization.position || null;
+    || intent.partName;
+  const resolvedAxis = intent.axis || normalization.axis || knowledge.attributes.axis || null;
+  const resolvedSide = intent.side || normalization.side || knowledge.attributes.side || null;
+  const resolvedSubPosition = intent.subPosition || normalization.subPosition || knowledge.attributes.subPosition || null;
+  const resolvedPosition = intent.position || normalization.position || resolvedAxis || null;
 
   const fitment = await resolvePartFitment({
     query: q,
@@ -238,6 +249,7 @@ export async function GET(request: Request) {
       subPosition: resolvedSubPosition,
       position: resolvedPosition,
     },
+    searchIntent: intent,
     vehicle: displayVehicle ? {
       id: fitment.vehicle?.id || vehicleId,
       vin: displayVehicle.vin,
@@ -295,8 +307,8 @@ export async function GET(request: Request) {
       level: fitment.status,
       canAutoApprove: fitment.confirmed,
       requiredForOrder: fitment.confirmed ? "NONE" : "MANUAL_CONFIRMATION_OR_CATALOG",
-      message: curatedOe?.reason || fitment.reason,
-      algorithm: "OE_FIRST_V2",
+      message: intent.metadataConflict ? intent.reason : curatedOe?.reason || fitment.reason,
+      algorithm: "OE_FIRST_V3",
     },
     providers: supplierSearch?.providers || [
       {
