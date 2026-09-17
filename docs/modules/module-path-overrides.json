@@ -59,5 +59,9 @@
     "src/services/suppliers/registry.ts",
     "src/services/suppliers/types.ts",
     "src/services/suppliers/cascade-search.ts"
+  ],
+  "work-orders": [
+    "app/work-journal*",
+    "app/api/work-journal/**"
   ]
 }
