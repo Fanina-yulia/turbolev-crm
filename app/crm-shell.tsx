@@ -26,9 +26,7 @@ const PLANNER_RECOVERY_KEY = "turbolev:planner-error-recovery";
 function SectionLoading() {
   return <div className={shellStyles.sectionLoading} role="status" aria-live="polite" aria-label="Завантаження розділу">
     <div className={shellStyles.sectionLoadingTitle}/>
-    <div className={shellStyles.sectionLoadingGrid}>
-      <div/><div/><div/>
-    </div>
+    <div className={shellStyles.sectionLoadingGrid}><div/><div/><div/></div>
     <span className={shellStyles.srOnly}>Завантаження розділу…</span>
   </div>;
 }
@@ -44,6 +42,7 @@ const PartsCatalog = dynamic(() => import("./parts-catalog").then((mod) => mod.P
 const PartsProcurementWorkspace = dynamic(() => import("./parts-procurement-workspace").then((mod) => mod.PartsProcurementWorkspace), { loading: SectionLoading });
 const PlannerWorkspace = dynamic(() => import("./planner-workspace").then((mod) => mod.PlannerWorkspace), { loading: SectionLoading });
 const Diagnostics = dynamic(() => import("./diagnostics").then((mod) => mod.Diagnostics), { loading: SectionLoading });
+const WorkJournal = dynamic(() => import("./work-journal").then((mod) => mod.WorkJournal), { loading: SectionLoading });
 const WorkOrders = dynamic(() => import("./work-orders").then((mod) => mod.WorkOrders), { loading: SectionLoading });
 const ProductionBoard = dynamic(() => import("./production-board").then((mod) => mod.ProductionBoard), { loading: SectionLoading });
 const QcQueue = dynamic(() => import("./qc-queue").then((mod) => mod.QcQueue), { loading: SectionLoading });
@@ -297,7 +296,7 @@ export function CrmShell({ initialSection, initialSettingsTab }: { initialSectio
       <div className={active==="Огляд станції"&&!newRequestOpen?shellStyles.globalNewRequest:undefined}>
         <NewRequestLauncher showButton={active==="Огляд станції"&&!newRequestOpen&&canCreateRequest} onOpenChange={setNewRequestOpen}/>
       </div>
-      {!newRequestOpen&&(!activeAllowed?accessDenied:<>{active!=="Огляд станції"&&active!=="Налаштування"&&filterBanner}{active==="Мої задачі"?<MyTasks/>:active==="Нові звернення"?<NewInquiries/>:active==="Комунікації"?<CommunicationsHub/>:active==="Активні"?<LeadsBoardV2/>:active==="Клієнти"?<ClientsDirectory/>:active==="Авто"?<VehiclesDirectory/>:active==="Планувальник"?<PlannerWorkspace/>:active==="Діагностика"?<Diagnostics/>:active==="Комерційна пропозиція"?<WorkOrders/>:active==="Виробництво"?<ProductionBoard/>:active==="Контроль якості"?<QcQueue/>:active==="Підбір запчастин"?<PartsCatalog/>:active==="Закупівлі та склад"?<PartsProcurementWorkspace/>:active==="Фінансовий центр"?<FinancialCenter/>:active==="Оплати"?<PaymentsQueue/>:active==="Гарантії"?<WarrantyCenter/>:active==="Аналітика"?<AnalyticsWorkspace/>:active==="Налаштування"?<SettingsPage tab={settingsTab}/>:active==="Огляд станції"?<RoleAwareOverview access={access.snapshot}/>:<div className="comingSoon"><p className="eyebrow">TURBO LEV CRM</p><h1>{active}</h1><p>Розділ тимчасово недоступний.</p></div>}</>) }
+      {!newRequestOpen&&(!activeAllowed?accessDenied:<>{active!=="Огляд станції"&&active!=="Налаштування"&&filterBanner}{active==="Мої задачі"?<MyTasks/>:active==="Нові звернення"?<NewInquiries/>:active==="Комунікації"?<CommunicationsHub/>:active==="Активні"?<LeadsBoardV2/>:active==="Клієнти"?<ClientsDirectory/>:active==="Авто"?<VehiclesDirectory/>:active==="Планувальник"?<PlannerWorkspace/>:active==="Діагностика"?<Diagnostics/>:active==="Роботи"?<WorkJournal/>:active==="Комерційна пропозиція"?<WorkOrders/>:active==="Виробництво"?<ProductionBoard/>:active==="Контроль якості"?<QcQueue/>:active==="Підбір запчастин"?<PartsCatalog/>:active==="Закупівлі та склад"?<PartsProcurementWorkspace/>:active==="Фінансовий центр"?<FinancialCenter/>:active==="Оплати"?<PaymentsQueue/>:active==="Гарантії"?<WarrantyCenter/>:active==="Аналітика"?<AnalyticsWorkspace/>:active==="Налаштування"?<SettingsPage tab={settingsTab}/>:active==="Огляд станції"?<RoleAwareOverview access={access.snapshot}/>:<div className="comingSoon"><p className="eyebrow">TURBO LEV CRM</p><h1>{active}</h1><p>Розділ тимчасово недоступний.</p></div>}</>) }
     </section>
   </main>;
 }
