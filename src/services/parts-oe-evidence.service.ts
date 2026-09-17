@@ -36,7 +36,7 @@ type CuratedOeRow = {
   evidenceRefs: string[];
 };
 
-const CURATED_OE_VERSION = "oe-curated-v1";
+const CURATED_OE_VERSION = "oe-curated-v2";
 
 /**
  * Curated evidence is deliberately small and auditable. It is a bridge for
@@ -56,6 +56,34 @@ const CURATED_OE_ROWS: CuratedOeRow[] = [
     evidenceRefs: [
       "GEELY_EMGRAND_X7_REAR_AXLE_CATALOG",
       "UA_PARTS_CATALOG_CROSSCHECK_1014012805",
+    ],
+  },
+  {
+    brands: ["GEELY"],
+    models: ["EMGRAND X7", "EMGRAND EX7", "X7", "EX7"],
+    yearFrom: 2012,
+    yearTo: 2015,
+    canonicalCode: "BRAKE_DISC",
+    axis: "REAR",
+    oeNumbers: ["1014012463"],
+    confidence: 86,
+    evidenceRefs: [
+      "GEELY_EMGRAND_X7_REAR_BRAKE_CATALOG",
+      "UA_PARTS_CATALOG_CROSSCHECK_1014012463",
+    ],
+  },
+  {
+    brands: ["GEELY"],
+    models: ["EMGRAND X7", "EMGRAND EX7", "X7", "EX7"],
+    yearFrom: 2013,
+    yearTo: 2015,
+    canonicalCode: "BRAKE_PAD",
+    axis: "REAR",
+    oeNumbers: ["101402006059"],
+    confidence: 86,
+    evidenceRefs: [
+      "GEELY_EMGRAND_X7_REAR_BRAKE_PAD_CATALOG",
+      "UA_PARTS_CATALOG_CROSSCHECK_101402006059",
     ],
   },
 ];
