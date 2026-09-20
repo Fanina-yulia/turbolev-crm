@@ -1,0 +1,8 @@
+{
+  "candidate": "example-only",
+  "configVersion": "0",
+  "runs": [
+    { "queryId": "regression-brake-pad-not-bushing", "rankedIds": ["part-brake-pad-front-synthetic"], "latencyMs": 100, "warm": true },
+    { "queryId": "exact-oe-stabilizer-bushing", "rankedIds": ["part-stabilizer-bushing-rear-1014012805"], "latencyMs": 110, "warm": true }
+  ]
+}
