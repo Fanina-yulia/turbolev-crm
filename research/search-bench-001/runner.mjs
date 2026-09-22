@@ -1,9 +1,12 @@
 import fs from 'node:fs';
+import { createHash } from 'node:crypto';
 
 const args = Object.fromEntries(process.argv.slice(2).reduce((a,v,i,arr)=>{ if(v.startsWith('--')) a.push([v.slice(2),arr[i+1]]); return a; }, []));
 if (!args.corpus || !args.results) throw new Error('Usage: node runner.mjs --corpus <file> --results <file>');
-const corpus = JSON.parse(fs.readFileSync(args.corpus,'utf8'));
+const corpusRaw = fs.readFileSync(args.corpus,'utf8');
+const corpus = JSON.parse(corpusRaw);
 const results = JSON.parse(fs.readFileSync(args.results,'utf8'));
+const corpusSha256 = createHash('sha256').update(corpusRaw).digest('hex');
 if (!Array.isArray(corpus.queries) || !Array.isArray(corpus.vehicles) || !Array.isArray(corpus.entities)) throw new Error('Invalid corpus: queries, vehicles and entities must be arrays');
 if (!Array.isArray(results.runs)) throw new Error('Invalid results: runs must be an array');
 
@@ -35,7 +38,9 @@ const metrics={queriesEvaluated:n, recallAt10:n?recallSum/n:0, ndcgAt10:n?ndcgSu
 const minimums=corpus.minimums||{};
 const families=new Set(corpus.entities.map(x=>x.family).filter(Boolean));
 const corpusGate={frozen:corpus.frozen===true, queries:corpus.queries.length, vehicles:corpus.vehicles.length, partFamilies:families.size, meetsMinimums:corpus.queries.length>=(minimums.queries||100)&&corpus.vehicles.length>=(minimums.vehicles||20)&&families.size>=(minimums.partFamilies||10)};
+const provenanceGate={corpusVersion:corpus.version, corpusSha256, versionMatches:results.corpusVersion===corpus.version, hashMatches:results.corpusSha256===corpusSha256};
+provenanceGate.valid=provenanceGate.versionMatches&&provenanceGate.hashMatches;
 const evaluationGate={complete:missingRunIds.length===0, missingRuns:missingRunIds.length, missingRunIds};
 const pass={forbiddenTop3:metrics.forbiddenTop3Count===0, exactNumberHitAt3:metrics.exactNumberHitAt3!==null&&metrics.exactNumberHitAt3>=.98, recallAt10:metrics.recallAt10>=.95, ndcgAt10:metrics.ndcgAt10>=.90, warmP95:metrics.warmP95Ms!==null&&metrics.warmP95Ms<=300};
-const decision=corpusGate.frozen&&corpusGate.meetsMinimums&&evaluationGate.complete&&Object.values(pass).every(Boolean)?'PASS':'NO-GO';
-console.log(JSON.stringify({candidate:results.candidate,configVersion:results.configVersion,corpusGate,evaluationGate,metrics,pass,decision},null,2));
+const decision=corpusGate.frozen&&corpusGate.meetsMinimums&&provenanceGate.valid&&evaluationGate.complete&&Object.values(pass).every(Boolean)?'PASS':'NO-GO';
+console.log(JSON.stringify({candidate:results.candidate,configVersion:results.configVersion,corpusGate,provenanceGate,evaluationGate,metrics,pass,decision},null,2));
