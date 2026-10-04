@@ -1,7 +1,6 @@
 /* CRM-UI-004 — One Screen First.
-   Scope is deliberately limited to CrmShell via [data-crm-screen-frame].
-   The standalone mechanic cabinet never renders this marker and is therefore
-   excluded from this contract. */
+   Applied only inside CrmShell through [data-crm-screen-frame].
+   Standalone MechanicCabinet bypasses CrmShell and is intentionally excluded. */
 
 :root {
   --crm-screen-gap: 14px;
@@ -56,51 +55,382 @@
     overflow: hidden;
   }
 
-  [data-screen-contract="one"] {
-    display: flex;
-    flex-direction: column;
+  [data-crm-screen-frame="true"] > [data-crm-scroll-region] {
+    width: 100%;
+    height: 100%;
+    min-width: 0;
+    min-height: 0;
   }
 
-  [data-screen-contract="one"] > :first-child {
-    flex: 1 1 auto;
-    min-height: 0;
-    max-height: 100%;
+  [data-screen-contract="one"] > [data-crm-scroll-mode="one"] {
     overflow: hidden;
   }
 
   [data-screen-contract="one-scroll"],
   [data-screen-contract="two-max"] {
+    overflow: hidden;
+  }
+
+  [data-screen-contract="one-scroll"] > [data-crm-scroll-region="main"],
+  [data-screen-contract="two-max"] > [data-crm-scroll-region="main"] {
     overflow-y: auto;
     overscroll-behavior: contain;
     scrollbar-gutter: stable;
     scroll-padding-top: 72px;
   }
 
-  [data-screen-contract="one-scroll"] > :first-child,
-  [data-screen-contract="two-max"] > :first-child {
-    min-height: 100%;
-  }
-
-  /* The page header remains the visual anchor while the work surface moves. */
-  [data-screen-contract="one-scroll"] > :first-child > :where(
-    header:first-child,
-    [class*="_header__"]:first-child,
-    [class*="_head__"]:first-child
-  ),
-  [data-screen-contract="two-max"] > :first-child > :where(
-    header:first-child,
-    [class*="_header__"]:first-child,
-    [class*="_head__"]:first-child
-  ) {
+  /* Default anchor for screens that use the main region as their single
+     controlled work area. More application-like screens below keep their
+     own header/toolbars fixed and move scrolling deeper. */
+  [data-crm-scroll-region="main"] > :where(
+    [class*="_page__"],
+    [class*="_root__"],
+    [class*="_shell__"]
+  ):first-child > :where(
+    [class*="_header__"],
+    [class*="_head__"]
+  ):first-child {
     position: sticky;
     top: 0;
     z-index: 25;
     background: var(--bg);
-    padding-top: 2px;
   }
 
-  /* Generic data-heavy regions: keep their own overflow contained when
-     the component already gives them a bounded flex/grid slot. */
+  /* ATTENTION CENTER — fixed page header, one scrollable work surface. */
+  [data-crm-screen="tasks"] > [data-crm-scroll-region="main"] {
+    overflow: hidden;
+  }
+  [data-crm-screen="tasks"] [class*="my-tasks_page__"] {
+    height: 100%;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    padding-bottom: 0 !important;
+  }
+  [data-crm-screen="tasks"] [class*="my-tasks_header__"],
+  [data-crm-screen="tasks"] [class*="my-tasks_kpis__"] {
+    flex: 0 0 auto;
+  }
+  [data-crm-screen="tasks"] [class*="my-tasks_grid__"] {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: auto;
+    overscroll-behavior: contain;
+    scrollbar-gutter: stable;
+    padding-bottom: 8px;
+  }
+
+  /* COMMUNICATIONS — header and channel filters stay in place; contacts and
+     message history retain their existing independent scroll areas. */
+  [data-crm-screen="communications"] > [data-crm-scroll-region="main"] {
+    overflow: hidden;
+  }
+  [data-crm-screen="communications"] [class*="communications-contact-inbox_page__"] {
+    height: 100%;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    padding-bottom: 0 !important;
+  }
+  [data-crm-screen="communications"] [class*="communications-contact-inbox_header__"],
+  [data-crm-screen="communications"] [class*="communications-contact-inbox_filters__"] {
+    flex: 0 0 auto;
+  }
+  [data-crm-screen="communications"] [class*="communications-contact-inbox_shell__"] {
+    flex: 1 1 auto;
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+  }
+  [data-crm-screen="communications"] :where(
+    [class*="communications-contact-inbox_list__"],
+    [class*="communications-contact-inbox_timeline__"],
+    [class*="communications-contact-inbox_messages__"],
+    .commsListScroll,
+    .threadMessages
+  ) {
+    min-height: 0;
+    overflow-y: auto !important;
+    overscroll-behavior: contain;
+  }
+
+  /* CLIENT / VEHICLE REGISTRIES — identity and search remain visible; only
+     the result grid consumes the remaining viewport. */
+  [data-crm-screen="clients"] > [data-crm-scroll-region="main"],
+  [data-crm-screen="vehicles"] > [data-crm-scroll-region="main"] {
+    overflow: hidden;
+  }
+  [data-crm-screen="clients"] [class*="directory-pages_page__"],
+  [data-crm-screen="vehicles"] [class*="directory-pages_page__"] {
+    height: 100%;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    padding-bottom: 0 !important;
+  }
+  [data-crm-screen="clients"] [class*="directory-pages_header__"],
+  [data-crm-screen="clients"] [class*="directory-pages_toolbar__"],
+  [data-crm-screen="clients"] [class*="directory-pages_summary__"],
+  [data-crm-screen="vehicles"] [class*="directory-pages_header__"],
+  [data-crm-screen="vehicles"] [class*="directory-pages_toolbar__"],
+  [data-crm-screen="vehicles"] [class*="directory-pages_summary__"] {
+    flex: 0 0 auto;
+  }
+  [data-crm-screen="clients"] [class*="directory-pages_grid__"],
+  [data-crm-screen="vehicles"] [class*="directory-pages_grid__"] {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-gutter: stable;
+    align-content: start;
+    padding-bottom: 8px;
+  }
+
+  /* PLANNER — the calendar is the work surface. */
+  [data-crm-screen="planner"] > [data-crm-scroll-region="main"] {
+    overflow: hidden;
+  }
+  [data-crm-screen="planner"] [class*="planner-workspace_root__"],
+  [data-crm-screen="planner"] [class*="planner-layout_calendarRoot__"] {
+    height: 100%;
+    min-height: 0;
+  }
+  [data-crm-screen="planner"] [class*="planner-v2_page__"] {
+    width: 100%;
+    height: 100%;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    padding-bottom: 0 !important;
+  }
+  [data-crm-screen="planner"] [class*="planner-v2_header__"],
+  [data-crm-screen="planner"] [class*="planner-v2_toolbar__"],
+  [data-crm-screen="planner"] [class*="planner-v2_systemMessage__"] {
+    flex: 0 0 auto;
+  }
+  [data-crm-screen="planner"] :where(
+    [class*="planner-day-view_wrap__"],
+    [class*="planner-v2_weekBoard__"]
+  ) {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: auto;
+    overscroll-behavior: contain;
+  }
+  [data-crm-screen="planner"] [class*="planner-v2_weekBoard__"] [class*="planner-v2_dayColumn__"] {
+    min-height: 0;
+    height: 100%;
+  }
+  [data-crm-screen="planner"] [class*="planner-v2_weekBoard__"] [class*="planner-v2_dayBody__"] {
+    min-height: 0;
+    overflow-y: auto;
+  }
+
+  /* DIAGNOSTICS REGISTRY. Detail/card routes resolve to two-max instead. */
+  [data-crm-screen="diagnostics"] > [data-crm-scroll-region="main"] {
+    overflow: hidden;
+  }
+  [data-crm-screen="diagnostics"] [class*="diagnostics_page__"] {
+    height: 100%;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    padding-bottom: 0 !important;
+  }
+  [data-crm-screen="diagnostics"] [class*="diagnostics_head__"] {
+    flex: 0 0 auto;
+  }
+  [data-crm-screen="diagnostics"] [class*="diagnostics_layout__"] {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: hidden;
+  }
+  [data-crm-screen="diagnostics"] [class*="diagnostics_list__"] {
+    height: 100%;
+    max-height: none !important;
+    min-height: 0;
+    overflow-y: auto !important;
+    overscroll-behavior: contain;
+    scrollbar-gutter: stable;
+  }
+
+  /* WORK JOURNAL — sticky table header already exists in the module. */
+  [data-crm-screen="work-journal"] > [data-crm-scroll-region="main"] {
+    overflow: hidden;
+  }
+  [data-crm-screen="work-journal"] [class*="work-journal_page__"] {
+    height: 100%;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    padding-bottom: 0 !important;
+  }
+  [data-crm-screen="work-journal"] [class*="work-journal_head__"] {
+    flex: 0 0 auto;
+  }
+  [data-crm-screen="work-journal"] [class*="work-journal_tableWrap__"] {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: auto;
+    overscroll-behavior: contain;
+  }
+
+  /* WORK ORDERS REGISTRY — list and selected detail are independent working
+     columns; route-focused detail remains a two-max screen. */
+  [data-crm-screen="work-orders"] > [data-crm-scroll-region="main"] {
+    overflow: hidden;
+  }
+  [data-crm-screen="work-orders"] [class*="work-orders_page__"] {
+    height: 100%;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    padding-bottom: 0 !important;
+  }
+  [data-crm-screen="work-orders"] [class*="work-orders_head__"],
+  [data-crm-screen="work-orders"] [class*="work-orders_kpis__"],
+  [data-crm-screen="work-orders"] [class*="work-orders_filters__"] {
+    flex: 0 0 auto;
+  }
+  [data-crm-screen="work-orders"] [class*="work-orders_layout__"] {
+    flex: 1 1 auto;
+    min-height: 0;
+    align-items: stretch !important;
+    overflow: hidden;
+  }
+  [data-crm-screen="work-orders"] :where(
+    [class*="work-orders_list__"],
+    [class*="work-orders_detail__"]
+  ) {
+    height: 100%;
+    max-height: none !important;
+    min-height: 0;
+    position: static !important;
+    overflow-y: auto !important;
+    overscroll-behavior: contain;
+    scrollbar-gutter: stable;
+  }
+
+  /* WARRANTY / PAYMENTS — filters and KPIs remain visible. */
+  [data-crm-screen="warranties"] > [data-crm-scroll-region="main"],
+  [data-crm-screen="payments"] > [data-crm-scroll-region="main"] {
+    overflow: hidden;
+  }
+  [data-crm-screen="warranties"] [class*="warranty-center_page__"],
+  [data-crm-screen="payments"] [class*="payments-queue_page__"] {
+    height: 100%;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    padding-bottom: 0 !important;
+  }
+  [data-crm-screen="warranties"] :where(
+    [class*="warranty-center_header__"],
+    [class*="warranty-center_toolbar__"],
+    [class*="warranty-center_tabs__"]
+  ),
+  [data-crm-screen="payments"] :where(
+    [class*="payments-queue_header__"],
+    [class*="payments-queue_toolbar__"],
+    [class*="payments-queue_kpis__"],
+    [class*="payments-queue_tabs__"]
+  ) {
+    flex: 0 0 auto;
+  }
+  [data-crm-screen="warranties"] [class*="warranty-center_list__"],
+  [data-crm-screen="payments"] [class*="payments-queue_list__"] {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-gutter: stable;
+    align-content: start;
+    padding-bottom: 8px;
+  }
+
+  /* PROCUREMENT KANBAN — horizontal board + vertical lane lists, with no
+     document growth. */
+  [data-crm-screen="procurement"] > [data-crm-scroll-region="main"] {
+    overflow: hidden;
+  }
+  [data-crm-screen="procurement"] [class*="procurement-queue_page__"] {
+    height: 100%;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    padding-bottom: 0 !important;
+  }
+  [data-crm-screen="procurement"] :where(
+    [class*="procurement-queue_header__"],
+    [class*="procurement-queue_kpis__"],
+    [class*="procurement-queue_search__"]
+  ) {
+    flex: 0 0 auto;
+  }
+  [data-crm-screen="procurement"] [class*="procurement-queue_board__"] {
+    flex: 1 1 auto;
+    min-height: 0;
+    align-items: stretch;
+    overflow-x: auto;
+    overflow-y: hidden;
+    overscroll-behavior: contain;
+  }
+  [data-crm-screen="procurement"] [class*="procurement-queue_lane__"] {
+    height: 100%;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+  [data-crm-screen="procurement"] [class*="procurement-queue_cards__"] {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-gutter: stable;
+    align-content: start;
+  }
+
+  /* SETTINGS / PERSONNEL split workspace. Other settings tabs use the single
+     registered main scroll region unless their module already owns a table. */
+  [data-crm-screen="settings-personnel"] > [data-crm-scroll-region="main"] {
+    overflow: hidden;
+  }
+  [data-crm-screen="settings-personnel"] [class*="settings-page_directPage__"],
+  [data-crm-screen="settings-personnel"] [class*="personnel-v2_page__"] {
+    height: 100%;
+    min-height: 0;
+    overflow: hidden;
+  }
+  [data-crm-screen="settings-personnel"] [class*="personnel-v2_page__"] {
+    display: flex;
+    flex-direction: column;
+  }
+  [data-crm-screen="settings-personnel"] [class*="personnel-v2_layout__"] {
+    flex: 1 1 auto;
+    min-height: 0 !important;
+  }
+  [data-crm-screen="settings-personnel"] :where(
+    [class*="personnel-v2_list__"],
+    [class*="personnel-v2_editor__"]
+  ) {
+    height: 100%;
+    min-height: 0;
+    max-height: none !important;
+    overflow-y: auto !important;
+    overscroll-behavior: contain;
+  }
+
+  /* Shared table/visual regions never widen the shell. */
   [data-crm-screen-frame="true"] :where(
     [class*="_tableWrap__"],
     [class*="_tableShell__"],
@@ -110,54 +440,11 @@
     [class*="_previewRows__"]
   ) {
     min-height: 0;
+    max-width: 100%;
     overscroll-behavior: contain;
   }
 
-  /* Communications is an application workspace: contacts and messages may
-     scroll independently while the shell itself stays fixed. */
-  [data-crm-screen="communications"] :where(
-    [class*="_list__"],
-    [class*="_timeline__"],
-    [class*="_messages__"],
-    .commsListScroll,
-    .threadMessages
-  ) {
-    min-height: 0;
-    overflow-y: auto !important;
-    overscroll-behavior: contain;
-  }
-
-  /* Planner owns the remaining viewport. Day/week grids scroll locally. */
-  [data-crm-screen="planner"] :where(
-    [class*="_calendarRoot__"],
-    [class*="_wrap__"],
-    [class*="_weekBoard__"]
-  ) {
-    min-height: 0;
-  }
-
-  [data-crm-screen="planner"] :where(
-    [class*="_board__"],
-    [class*="_weekBoard__"]
-  ) {
-    overflow: auto;
-    overscroll-behavior: contain;
-  }
-
-  /* Data registries: the shell provides the viewport, while large result
-     collections/tables remain usable without growing the body. */
-  [data-crm-screen="clients"] :where([class*="_grid__"]),
-  [data-crm-screen="vehicles"] :where([class*="_grid__"]),
-  [data-crm-screen="diagnostics"] :where([class*="_list__"]),
-  [data-crm-screen="work-journal"] :where([class*="_tableWrap__"]),
-  [data-crm-screen="work-orders"] :where([class*="_list__"]),
-  [data-crm-screen="warranties"] :where([class*="_list__"]),
-  [data-crm-screen="payments"] :where([class*="_list__"]),
-  [data-crm-screen="procurement"] :where([class*="_board__"]) {
-    min-height: 0;
-  }
-
-  /* Drawer/modal contract: actions stay reachable; only body scrolls. */
+  /* Drawer/modal contract: frame stays fixed; only the body scrolls. */
   [data-crm-screen-frame="true"] :where(
     [class*="_drawer__"],
     [class*="_modal__"],
@@ -165,7 +452,6 @@
   ) {
     max-height: min(90dvh, 900px);
   }
-
   [data-crm-screen-frame="true"] :where(
     [class*="_drawerBody__"],
     [class*="_modalBody__"]
@@ -174,7 +460,6 @@
     overflow-y: auto;
     overscroll-behavior: contain;
   }
-
   [data-crm-screen-frame="true"] :where(
     [class*="_drawerFooter__"],
     [class*="_modalFoot__"],
@@ -185,71 +470,79 @@
     z-index: 15;
     background: var(--panel);
   }
+}
 
-  /* Compact desktop density. */
-  @media (max-height: 899px) {
-    :root {
-      --crm-screen-gap: 10px;
-      --crm-screen-header-pad: 10px;
-      --crm-screen-control-height: 38px;
-      --crm-screen-footer-safe: 8px;
-    }
-
-    [data-crm-screen-frame="true"] :where(
-      [class*="_page__"],
-      [class*="_root__"],
-      [class*="_shell__"]
-    ) {
-      gap: var(--crm-screen-gap) !important;
-    }
-
-    [data-crm-screen-frame="true"] :where(
-      [class*="_header__"],
-      [class*="_head__"],
-      [class*="_toolbar__"],
-      [class*="_panel__"],
-      [class*="_card__"]
-    ) {
-      padding-top: min(12px, var(--crm-screen-header-pad));
-      padding-bottom: min(12px, var(--crm-screen-header-pad));
-    }
+/* Compact desktop / ordinary laptop height. */
+@media (min-width: 761px) and (max-height: 899px) {
+  :root {
+    --crm-screen-gap: 10px;
+    --crm-screen-header-pad: 10px;
+    --crm-screen-control-height: 38px;
+    --crm-screen-footer-safe: 8px;
   }
 
-  @media (max-height: 768px) {
-    :root {
-      --crm-screen-gap: 8px;
-      --crm-screen-header-pad: 8px;
-      --crm-screen-control-height: 36px;
-      --crm-screen-footer-safe: 6px;
-    }
+  [data-crm-screen-frame="true"] :where(
+    [class*="_page__"],
+    [class*="_root__"],
+    [class*="_shell__"]
+  ) {
+    gap: var(--crm-screen-gap) !important;
+  }
 
-    [data-crm-screen-frame="true"] :where(
-      h1,
-      [class*="_header__"] h1,
-      [class*="_head__"] h1
-    ) {
-      margin-block: 0 !important;
-      font-size: clamp(22px, 2vw, 28px) !important;
-      line-height: 1.05 !important;
-    }
-
-    [data-crm-screen-frame="true"] :where(
-      [class*="_header__"],
-      [class*="_head__"],
-      [class*="_toolbar__"]
-    ) {
-      gap: 8px !important;
-    }
-
-    [data-crm-screen-frame="true"] :where(button, input, select) {
-      min-height: var(--crm-screen-control-height);
-    }
+  [data-crm-screen-frame="true"] :where(
+    [class*="_header__"],
+    [class*="_head__"],
+    [class*="_toolbar__"]
+  ) {
+    margin-bottom: 8px !important;
   }
 }
 
-/* New request is part of the CRM shell but is rendered outside the regular
-   screen frame. Keep it one-screen on desktop with only the active step body
-   allowed to scroll. */
+/* Dense desktop, including the 1280x720 acceptance viewport. */
+@media (min-width: 761px) and (max-height: 768px) {
+  :root {
+    --crm-screen-gap: 8px;
+    --crm-screen-header-pad: 8px;
+    --crm-screen-control-height: 36px;
+    --crm-screen-footer-safe: 6px;
+  }
+
+  [data-crm-screen-frame="true"] :where(
+    h1,
+    [class*="_header__"] h1,
+    [class*="_head__"] h1
+  ) {
+    margin-block: 0 !important;
+    font-size: clamp(22px, 2vw, 28px) !important;
+    line-height: 1.05 !important;
+  }
+
+  [data-crm-screen-frame="true"] :where(
+    [class*="_header__"],
+    [class*="_head__"],
+    [class*="_toolbar__"]
+  ) {
+    gap: 8px !important;
+  }
+
+  [data-crm-screen-frame="true"] :where(button, input, select) {
+    min-height: var(--crm-screen-control-height);
+  }
+
+  [data-crm-screen="tasks"] [class*="my-tasks_page__"],
+  [data-crm-screen="clients"] [class*="directory-pages_page__"],
+  [data-crm-screen="vehicles"] [class*="directory-pages_page__"],
+  [data-crm-screen="diagnostics"] [class*="diagnostics_page__"],
+  [data-crm-screen="work-journal"] [class*="work-journal_page__"],
+  [data-crm-screen="work-orders"] [class*="work-orders_page__"],
+  [data-crm-screen="warranties"] [class*="warranty-center_page__"],
+  [data-crm-screen="payments"] [class*="payments-queue_page__"],
+  [data-crm-screen="procurement"] [class*="procurement-queue_page__"] {
+    padding-top: 6px !important;
+  }
+}
+
+/* New Request is mounted directly in workspace instead of screen frame. */
 @media (min-width: 761px) {
   [class*="workspaceRequestOpen"] {
     height: 100dvh !important;
@@ -258,37 +551,40 @@
     padding-top: 12px !important;
     padding-bottom: 12px !important;
   }
-
   [class*="workspaceRequestOpen"] .requestPage {
+    height: 100%;
     max-height: calc(100dvh - 24px);
     min-height: 0;
     overflow: hidden;
   }
-
   [class*="workspaceRequestOpen"] .requestModal {
+    height: 100%;
     max-height: calc(100dvh - 24px);
     min-height: 0;
     overflow: hidden;
     display: flex;
     flex-direction: column;
   }
-
+  [class*="workspaceRequestOpen"] .requestModalHead,
+  [class*="workspaceRequestOpen"] .requestStepper,
+  [class*="workspaceRequestOpen"] .requestModal > footer {
+    flex: 0 0 auto;
+  }
   [class*="workspaceRequestOpen"] .requestStep {
+    flex: 1 1 auto;
     min-height: 0;
     overflow-y: auto;
     overscroll-behavior: contain;
   }
 }
 
-/* Public/client surfaces use a compact document flow and are capped visually
-   without affecting the mechanic cabinet. */
+/* Public/client surfaces remain document based but obey width safety. */
 [data-crm-surface="public"] {
   min-width: 0;
   max-width: 100%;
 }
 
-/* On tablets and phones the document flow remains the safer interaction
-   model. CRM-UI-004 constrains desktop/laptop height, not mobile content. */
+/* Tablet/mobile: preserve safe document flow. */
 @media (max-width: 760px) {
   body {
     height: auto;
@@ -298,6 +594,7 @@
   .shell,
   .workspace,
   [data-crm-screen-frame="true"],
+  [data-crm-screen-frame="true"] > [data-crm-scroll-region],
   [data-screen-contract="one"],
   [data-screen-contract="one-scroll"],
   [data-screen-contract="two-max"] {
@@ -307,11 +604,27 @@
   }
 
   [data-crm-screen-frame="true"] :where(
+    [class*="_page__"],
+    [class*="_root__"],
+    [class*="_shell__"],
+    [class*="_layout__"],
+    [class*="_grid__"],
+    [class*="_list__"],
+    [class*="_detail__"],
+    [class*="_board__"],
+    [class*="_cards__"]
+  ) {
+    height: auto !important;
+    max-height: none !important;
+    overflow-y: visible !important;
+  }
+
+  [data-crm-screen-frame="true"] :where(
     [class*="_header__"],
     [class*="_head__"],
     [class*="_drawerFooter__"],
     [class*="_modalFoot__"]
   ) {
-    position: static;
+    position: static !important;
   }
 }
