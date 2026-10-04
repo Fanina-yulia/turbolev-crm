@@ -42,28 +42,27 @@ export async function GET(request: NextRequest, routeContext: RouteContext) {
   const clientScope = context.enforcementMode === "ENFORCED" ? permissionScope(context, PERMISSIONS.CLIENTS_READ) : "ALL";
   const unrestricted = context.enforcementMode !== "ENFORCED" || (analyticsScope === "ALL" && financialScope === "ALL" && clientScope === "ALL");
 
-  let scopedWorkOrderIds: string[] | null = null;
   if (!unrestricted) {
     if (!context.locationIds.length) return NextResponse.json({ ok: false, error: "Немає доступу до цього клієнта." }, { status: 403 });
-    const appointments = await prisma.serviceAppointment.findMany({
+    const accessible = await prisma.serviceAppointment.findFirst({
       where: {
         clientId,
         locationId: { in: context.locationIds },
         workOrderId: { not: null },
         NOT: { id: { startsWith: "demo_" } },
       },
-      select: { workOrderId: true },
-      distinct: ["workOrderId"],
-      take: 10000,
+      select: { id: true },
     });
-    scopedWorkOrderIds = appointments.map((row) => row.workOrderId).filter((id): id is string => Boolean(id));
-    if (!scopedWorkOrderIds.length) {
+    if (!accessible) {
       return NextResponse.json({ ok: false, error: "Немає доступу до цього клієнта у вашому station-scope." }, { status: 403 });
     }
   }
 
   try {
-    const [ltv] = await getCustomerLifetimeMetrics({ clientIds: [clientId], scopedWorkOrderIds });
+    const [ltv] = await getCustomerLifetimeMetrics({
+      clientIds: [clientId],
+      locationIds: unrestricted ? null : context.locationIds,
+    });
     return NextResponse.json({
       ok: true,
       permitted: true,
