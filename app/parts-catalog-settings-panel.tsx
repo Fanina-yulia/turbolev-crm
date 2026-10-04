@@ -34,7 +34,7 @@ export function PartsCatalogSettingsPanel() {
     finally { setSaving(false); }
   }
   const update = (key: string, value: string | boolean) => setForm((current) => ({ ...current, [key]: value }));
-  return <div className={styles.page}>
+  return <div className={styles.page} data-settings-tab="partsCatalog">
     <header className={styles.header}><p>НАЛАШТУВАННЯ · ДОВІДНИК</p><h1>Каталог запчастин</h1><span>Канонічні деталі, синоніми, комплекти ремонту та контроль сумісності.</span></header>
     {message && <div className={styles.message}>{message}</div>}
     <div className={styles.stats}><Stat label="Деталей" value={data?.stats.parts || 0}/><Stat label="На перевірці" value={data?.stats.pendingChanges || 0}/><Stat label="Невідомих термінів" value={data?.stats.unrecognizedTerms || 0}/></div>
