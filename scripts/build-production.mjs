@@ -47,6 +47,8 @@ run(["tsx", "scripts/api-security-policy-smoke.ts"]);
 run(["tsx", "scripts/parts-picker-cart-v4-smoke.ts"]);
 run(["tsx", "scripts/parts-oe-first-search-contract-smoke.ts"]);
 
+if (process.env.VERCEL_ENV === "preview") runNodeScript("scripts/neon-metadata-probe.mjs");
+
 console.log("[build] Build is read-only with respect to production data. Database release steps run separately.");
 run(["prisma", "generate"]);
 run(["next", "build"]);
