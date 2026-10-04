@@ -1,82 +1,141 @@
 import "server-only";
 
-import type { Prisma } from "@/src/generated/prisma/client";
+import { Prisma } from "@/src/generated/prisma/client";
+import { getWorkflowStatus, normalizeWorkflowStatus } from "@/src/domain/workflow";
 import { getPrisma } from "@/src/lib/prisma";
 import type { AccessContext } from "@/src/security/access-context";
 import type { AccessScopeCode } from "@/src/security/permissions";
 
-/**
- * Returns null for unrestricted ALL access, otherwise the exact WorkOrder IDs
- * visible to the current user. Visibility is derived from factual CRM links,
- * never from request-provided IDs alone.
- */
-export async function resolveVisibleWorkOrderIds(context: AccessContext, scope: AccessScopeCode | null) {
-  if (scope === "ALL") return null;
+const MAX_VISIBLE_WORK_ORDER_IDS = 10_000;
+
+type VisibleWorkOrderOptions = {
+  limit?: number;
+  status?: string | null;
+  workOrderId?: string | null;
+};
+
+function boundedLimit(value?: number) {
+  if (!Number.isFinite(value)) return MAX_VISIBLE_WORK_ORDER_IDS;
+  return Math.max(1, Math.min(MAX_VISIBLE_WORK_ORDER_IDS, Math.floor(value!)));
+}
+
+function canonicalStatus(value?: string | null) {
+  const raw = value?.trim().toUpperCase() || null;
+  if (!raw) return { requested: false, value: null as string | null };
+  const normalized = normalizeWorkflowStatus("WORK_ORDER", raw);
+  return { requested: true, value: getWorkflowStatus("WORK_ORDER", normalized) ? normalized : null };
+}
+
+async function queryVisibleWorkOrderIds(
+  context: AccessContext,
+  scope: Exclude<AccessScopeCode, "ALL">,
+  options: VisibleWorkOrderOptions = {},
+) {
   const prisma = getPrisma();
+  const limit = boundedLimit(options.limit);
+  const status = canonicalStatus(options.status);
+  if (status.requested && !status.value) return [] as string[];
+
+  const statusSql = status.value ? Prisma.sql`AND wo."status" = ${status.value}` : Prisma.sql``;
+  const idSql = options.workOrderId ? Prisma.sql`AND wo."id" = ${options.workOrderId}` : Prisma.sql``;
 
   if (scope === "LOCATION") {
     if (!context.locationIds.length) return [];
-    const appointments = await prisma.serviceAppointment.findMany({
-      where: { locationId: { in: context.locationIds }, workOrderId: { not: null } },
-      select: { workOrderId: true },
-      distinct: ["workOrderId"],
-      take: 10000,
-    });
-    return appointments.map((row) => row.workOrderId).filter((value): value is string => Boolean(value));
+    const rows = await prisma.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+      SELECT wo."id"
+      FROM "WorkOrder" wo
+      WHERE EXISTS (
+        SELECT 1
+        FROM "ServiceAppointment" sa
+        WHERE sa."workOrderId" = wo."id"
+          AND sa."locationId" IN (${Prisma.join(context.locationIds)})
+      )
+      ${statusSql}
+      ${idSql}
+      ORDER BY wo."closedAt" ASC NULLS LAST, wo."updatedAt" DESC
+      LIMIT ${limit}
+    `);
+    return rows.map((row) => row.id);
   }
 
   if (scope === "ASSIGNED" || scope === "SELF" || scope === "TEAM") {
     const userId = context.user?.id;
     if (!userId) return [];
-    const ids = new Set<string>();
+    const mechanicLocationSql = context.locationIds.length
+      ? Prisma.sql`AND sm."locationId" IN (${Prisma.join(context.locationIds)})`
+      : Prisma.sql``;
 
-    const [mechanics, assignedLeads] = await Promise.all([
-      prisma.serviceMechanic.findMany({
-        where: {
-          userId,
-          isActive: true,
-          ...(context.locationIds.length ? { locationId: { in: context.locationIds } } : {}),
-        },
-        select: { id: true },
-      }),
-      prisma.lead.findMany({
-        where: { assignedUserId: userId },
-        select: { id: true },
-        take: 10000,
-      }),
-    ]);
-    const mechanicIds = mechanics.map((row) => row.id);
-    const leadIds = assignedLeads.map((row) => row.id);
-
-    const assignmentClauses: Prisma.ServiceAppointmentWhereInput[] = [{ createdById: userId }];
-    if (leadIds.length) assignmentClauses.push({ leadId: { in: leadIds } });
-    if (mechanicIds.length) assignmentClauses.push({ mechanicId: { in: mechanicIds } });
-
-    const [appointments, diagnosticWorkOrders] = await Promise.all([
-      prisma.serviceAppointment.findMany({
-        where: { workOrderId: { not: null }, OR: assignmentClauses },
-        select: { workOrderId: true },
-        distinct: ["workOrderId"],
-        take: 10000,
-      }),
-      leadIds.length
-        ? prisma.workOrder.findMany({
-            where: { diagnosticRequest: { leadId: { in: leadIds } } },
-            select: { id: true },
-            take: 10000,
-          })
-        : Promise.resolve([] as Array<{ id: string }>),
-    ]);
-
-    for (const row of appointments) if (row.workOrderId) ids.add(row.workOrderId);
-    for (const row of diagnosticWorkOrders) ids.add(row.id);
-    return [...ids];
+    const rows = await prisma.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+      SELECT wo."id"
+      FROM "WorkOrder" wo
+      WHERE (
+        EXISTS (
+          SELECT 1
+          FROM "ServiceAppointment" sa
+          WHERE sa."workOrderId" = wo."id"
+            AND (
+              sa."createdById" = ${userId}
+              OR EXISTS (
+                SELECT 1
+                FROM "Lead" l
+                WHERE l."id" = sa."leadId"
+                  AND l."assignedUserId" = ${userId}
+              )
+              OR EXISTS (
+                SELECT 1
+                FROM "ServiceMechanic" sm
+                WHERE sm."id" = sa."mechanicId"
+                  AND sm."userId" = ${userId}
+                  AND sm."isActive" = TRUE
+                  ${mechanicLocationSql}
+              )
+            )
+        )
+        OR EXISTS (
+          SELECT 1
+          FROM "DiagnosticRequest" dr
+          JOIN "Lead" dl ON dl."id" = dr."leadId"
+          WHERE dr."id" = wo."diagnosticRequestId"
+            AND dl."assignedUserId" = ${userId}
+        )
+      )
+      ${statusSql}
+      ${idSql}
+      ORDER BY wo."closedAt" ASC NULLS LAST, wo."updatedAt" DESC
+      LIMIT ${limit}
+    `);
+    return rows.map((row) => row.id);
   }
 
   return [];
 }
 
-export async function canAccessWorkOrder(context: AccessContext, scope: AccessScopeCode | null, workOrderId: string) {
-  const visibleIds = await resolveVisibleWorkOrderIds(context, scope);
-  return visibleIds === null || visibleIds.includes(workOrderId);
+/**
+ * Returns null for unrestricted ALL access. Restricted scopes are resolved by
+ * one PostgreSQL query using EXISTS predicates, rather than DB -> Node ID lists
+ * -> DB WHERE IN(...) round-trips.
+ */
+export async function resolveVisibleWorkOrderIds(
+  context: AccessContext,
+  scope: AccessScopeCode | null,
+  options: VisibleWorkOrderOptions = {},
+) {
+  if (scope === "ALL") return null;
+  if (!scope) return [];
+  return queryVisibleWorkOrderIds(context, scope, options);
+}
+
+/**
+ * Single-row authorization probe. This deliberately never materializes the
+ * caller's complete visible WorkOrder set.
+ */
+export async function canAccessWorkOrder(
+  context: AccessContext,
+  scope: AccessScopeCode | null,
+  workOrderId: string,
+) {
+  if (scope === "ALL") return true;
+  if (!scope || !workOrderId) return false;
+  const visible = await queryVisibleWorkOrderIds(context, scope, { workOrderId, limit: 1 });
+  return visible.length === 1;
 }
