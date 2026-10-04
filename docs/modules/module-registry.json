@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated": "2026-09-12",
+  "updated": "2026-10-04",
   "rule": "Every production change must be assigned to at least one module. Start analysis from the module passport, then inspect declared dependencies only when the change can affect them.",
   "globalRules": [
     {
@@ -83,7 +83,8 @@
         "prisma/**",
         "scripts/build-production.mjs",
         "app/crm-screen-contract*",
-        "app/crm-one-screen-standard.css"
+        "app/crm-one-screen-standard.css",
+        "app/crm-shell.module.css"
       ],
       "dependencies": [],
       "smokeChecks": [
@@ -151,7 +152,9 @@
         "app/api/vehicles/**",
         "src/services/vehicle-lookup*",
         "src/services/vehicle-registry-color*",
-        "src/services/vehicle-location.service.ts"
+        "src/services/vehicle-location.service.ts",
+        "app/directory-pages.module.css",
+        "app/vehicle-record-workspace.module.css"
       ],
       "dependencies": [
         "leads-intake",
@@ -347,7 +350,9 @@
         "app/api/blockers/**",
         "src/services/operational-blockers.service.ts",
         "src/services/mixed-estimate-approval.service.ts",
-        "src/services/document-control.service.ts"
+        "src/services/document-control.service.ts",
+        "app/work-journal.module.css",
+        "app/work-orders.module.css"
       ],
       "dependencies": [
         "diagnostics",
@@ -485,7 +490,8 @@
         "src/services/*inventory*",
         "prisma/inventory-ledger.prisma",
         "app/api/inventory/**",
-        "src/services/inventory-ledger.service.ts"
+        "src/services/inventory-ledger.service.ts",
+        "app/procurement-queue.module.css"
       ],
       "dependencies": [
         "clients-vehicles",
