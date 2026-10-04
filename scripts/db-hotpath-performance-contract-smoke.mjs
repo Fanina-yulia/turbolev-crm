@@ -8,6 +8,7 @@ const management = fs.readFileSync("src/services/management-result.service.ts", 
 const locationQueries = fs.readFileSync("src/services/location-work-order-query.service.ts", "utf8");
 const importer = fs.readFileSync("scripts/import-mvs-open-data.py", "utf8");
 const generationCatalog = fs.readFileSync("src/services/vehicle-images/vehicle-generation-catalog.service.ts", "utf8");
+const registryColor = fs.readFileSync("src/services/vehicle-registry-color.service.ts", "utf8");
 
 assert.equal(/let scopedWorkOrderIds/.test(owner), false, "owner economics must not materialize all-time scoped WorkOrder IDs");
 assert.match(owner, /findLocationScopedClosedWorkOrders/);
@@ -38,8 +39,15 @@ assert.equal(
 );
 assert.match(importer, /compact registry updated/);
 
+assert.match(registryColor, /WHERE vin=\$1/);
+assert.equal(
+  /upper\(trim\(vin\)\)/i.test(registryColor),
+  false,
+  "registry VIN color lookup must preserve the VehicleRegistryCompact_vin_idx access path",
+);
+
 assert.match(generationCatalog, /pg_try_advisory_xact_lock/);
 assert.match(generationCatalog, /vehicle-model-popularity-refresh/);
 assert.match(generationCatalog, /ALREADY_RUNNING/);
 
-console.log("[db-hotpaths] LTV/owner/management scopes, MVS import and registry refresh contracts OK.");
+console.log("[db-hotpaths] LTV/owner/management scopes, indexed VIN color lookup, MVS import and registry refresh contracts OK.");
