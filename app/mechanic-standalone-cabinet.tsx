@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { startAdaptivePoller } from "@/src/lib/client/adaptive-polling";
 import styles from "./mechanic-standalone-cabinet.module.css";
 import { MechanicDiagnosticWorkspace } from "./mechanic-diagnostic-workspace";
 import { MechanicExecutionIssueForm } from "./mechanic-execution-issue-form";
@@ -539,15 +540,13 @@ export function MechanicStandaloneCabinet({ userName }: { userName?: string | nu
     void Promise.all([loadHome(), loadTasks(), loadRepairCases(), loadDiagnostics(), loadNotifications()]).catch((cause) => setError(cause instanceof Error ? cause.message : "Не вдалося завантажити кабінет"));
   }, [loadDiagnostics, loadHome, loadNotifications, loadRepairCases, loadTasks]);
 
-  useEffect(() => {
-    const timer = window.setInterval(() => void loadNotifications().catch(() => undefined), 15000);
-    const refresh = () => void loadNotifications().catch(() => undefined);
-    window.addEventListener("focus", refresh);
-    return () => {
-      window.clearInterval(timer);
-      window.removeEventListener("focus", refresh);
-    };
-  }, [loadNotifications]);
+  useEffect(() => startAdaptivePoller({
+    run: () => loadNotifications().catch(() => undefined),
+    intervalMs: 30_000,
+    immediate: false,
+    pauseWhenHidden: true,
+    runOnFocus: true,
+  }), [loadNotifications]);
 
   useEffect(() => {
     const onOpenDiagnostic = (event: Event) => {
