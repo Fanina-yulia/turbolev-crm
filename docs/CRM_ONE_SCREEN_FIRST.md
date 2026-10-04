@@ -39,7 +39,7 @@ Desktop/laptop інтерфейс працює як керований робо�
 | Аналітика | two-max |
 | Нова заявка | one-scroll |
 
-Налаштування: `schedule`, `markup`, `cameras`, `appearance` — `one`; решта вкладок — `one-scroll`.
+Налаштування: `schedule` і `markup` — `one`; `cameras`, `appearance` та решта контентно-насичених вкладок — `one-scroll`. Зміна для `cameras`/`appearance` внесена після production-аудиту 2026-10-04, щоб не обрізати конфігурацію на ноутбуках.
 
 ## 3. Кабінет механіка
 
