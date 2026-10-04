@@ -42,6 +42,7 @@ const RULES: Rule[] = [
   { match: prefix("/api/integration/v1"), resolve: () => ({ kind: "SERVICE_TOKEN", note: "Server-to-server Integration API v1 requires fail-closed Vercel Project OIDC, exact principal/environment policy and route-level service scopes/rate limits; browser sessions are not accepted." }) },
   { match: exact("/api/internal/vehicle-image-queue"), resolve: () => ({ kind: "SERVICE_TOKEN", note: "Internal vehicle-image queue worker requires VEHICLE_IMAGE_BACKFILL_TOKEN or CRON_SECRET and returns 404 when the secret is absent or invalid." }) },
   { match: exact("/api/internal/planner-no-show"), resolve: () => ({ kind: "SERVICE_TOKEN", note: "Automatic planner no-show worker requires CRON_SECRET or a trusted Vercel Cron request and returns 404 for unauthorized callers." }) },
+  { match: exact("/api/internal/database-observability-snapshot"), resolve: () => ({ kind: "SERVICE_TOKEN", note: "Daily PostgreSQL query-stat snapshot requires CRON_SECRET or a trusted Vercel Cron request and returns 404 for unauthorized callers." }) },
   { match: prefix("/api/webhooks"), resolve: () => ({ kind: "EXTERNAL_PROVIDER", note: "Inbound provider callback authenticated by provider/webhook controls, not employee session." }) },
   { match: exact("/api/integrations/telegram/webhook"), resolve: () => ({ kind: "EXTERNAL_PROVIDER", note: "Telegram Bot API callback is authenticated by X-Telegram-Bot-Api-Secret-Token before update processing." }) },
   { match: exact("/api/integrations/olx/callback"), resolve: () => ({ kind: "EXTERNAL_PROVIDER", note: "OLX OAuth callback authenticated with signed short-lived state and provider authorization code." }) },
@@ -145,6 +146,7 @@ const RULES: Rule[] = [
   { match: exact("/api/supplier-quotes"), resolve: (method) => readWrite(method, PERMISSIONS.PROCUREMENT_READ, PERMISSIONS.PROCUREMENT_WRITE, "LOCATION", "Supplier quote collection.") },
   { match: prefix("/api/suppliers"), resolve: () => internal(PERMISSIONS.SETTINGS_INTEGRATIONS, "ALL", "Supplier integration status/test contains operational integration details.") },
   { match: exact("/api/telephony/binotel-health"), resolve: () => internal(PERMISSIONS.SETTINGS_INTEGRATIONS, "ALL", "Telephony integration health is an integration-administration concern.") },
+  { match: exact("/api/settings/database-observability"), resolve: () => internal(PERMISSIONS.SETTINGS_INTEGRATIONS, "ALL", "Database workload statistics can expose internal SQL structure and require strict integration administration.", true) },
   { match: prefix("/api/settings/integrations"), resolve: () => internal(PERMISSIONS.SETTINGS_INTEGRATIONS, "ALL", "Integration configuration and credential operations.") },
   { match: exact("/api/settings/parts-knowledge"), resolve: (method) => method.toUpperCase() === "GET"
     ? internal(PERMISSIONS.SETTINGS_READ, "ALL", "Parts terminology and catalog knowledge status, including explicit dual-write operations.")

@@ -1,0 +1,16 @@
+model DatabaseQueryStatSnapshot {
+  capturedAt    DateTime @db.Timestamp(3)
+  queryId       String   @db.VarChar(64)
+  statsResetAt  DateTime? @db.Timestamp(3)
+  calls         BigInt
+  totalExecMs   Decimal  @db.Decimal(20, 3)
+  meanExecMs    Decimal  @db.Decimal(20, 3)
+  rows          BigInt
+  sharedBlksHit BigInt
+  sharedBlksRead BigInt
+  queryText     String   @db.Text
+
+  @@id([capturedAt, queryId])
+  @@index([queryId, capturedAt])
+  @@index([capturedAt])
+}
