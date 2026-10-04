@@ -1,0 +1,317 @@
+/* CRM-UI-004 — One Screen First.
+   Scope is deliberately limited to CrmShell via [data-crm-screen-frame].
+   The standalone mechanic cabinet never renders this marker and is therefore
+   excluded from this contract. */
+
+:root {
+  --crm-screen-gap: 14px;
+  --crm-screen-header-pad: 14px;
+  --crm-screen-control-height: 40px;
+  --crm-screen-footer-safe: 12px;
+}
+
+[data-crm-screen-frame="true"] {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+}
+
+@media (min-width: 761px) {
+  body:has([data-crm-screen-frame="true"]) {
+    height: 100dvh;
+    overflow: hidden;
+  }
+
+  .shell:has([data-crm-screen-frame="true"]) {
+    height: 100dvh;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .shell:has([data-crm-screen-frame="true"]) > .sidebar {
+    height: 100dvh;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .shell:has([data-crm-screen-frame="true"]) #crm-primary-navigation {
+    min-height: 0;
+    max-height: calc(100dvh - 154px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-gutter: stable;
+  }
+
+  .workspace:has([data-crm-screen-frame="true"]) {
+    height: 100dvh;
+    min-height: 0;
+    overflow: hidden !important;
+    padding-top: var(--crm-screen-header-pad) !important;
+    padding-bottom: var(--crm-screen-footer-safe) !important;
+  }
+
+  [data-crm-screen-frame="true"] {
+    height: 100%;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  [data-screen-contract="one"] {
+    display: flex;
+    flex-direction: column;
+  }
+
+  [data-screen-contract="one"] > :first-child {
+    flex: 1 1 auto;
+    min-height: 0;
+    max-height: 100%;
+    overflow: hidden;
+  }
+
+  [data-screen-contract="one-scroll"],
+  [data-screen-contract="two-max"] {
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-gutter: stable;
+    scroll-padding-top: 72px;
+  }
+
+  [data-screen-contract="one-scroll"] > :first-child,
+  [data-screen-contract="two-max"] > :first-child {
+    min-height: 100%;
+  }
+
+  /* The page header remains the visual anchor while the work surface moves. */
+  [data-screen-contract="one-scroll"] > :first-child > :where(
+    header:first-child,
+    [class*="_header__"]:first-child,
+    [class*="_head__"]:first-child
+  ),
+  [data-screen-contract="two-max"] > :first-child > :where(
+    header:first-child,
+    [class*="_header__"]:first-child,
+    [class*="_head__"]:first-child
+  ) {
+    position: sticky;
+    top: 0;
+    z-index: 25;
+    background: var(--bg);
+    padding-top: 2px;
+  }
+
+  /* Generic data-heavy regions: keep their own overflow contained when
+     the component already gives them a bounded flex/grid slot. */
+  [data-crm-screen-frame="true"] :where(
+    [class*="_tableWrap__"],
+    [class*="_tableShell__"],
+    [class*="_weekBoard__"],
+    [class*="_board__"],
+    [class*="_timeline__"],
+    [class*="_previewRows__"]
+  ) {
+    min-height: 0;
+    overscroll-behavior: contain;
+  }
+
+  /* Communications is an application workspace: contacts and messages may
+     scroll independently while the shell itself stays fixed. */
+  [data-crm-screen="communications"] :where(
+    [class*="_list__"],
+    [class*="_timeline__"],
+    [class*="_messages__"],
+    .commsListScroll,
+    .threadMessages
+  ) {
+    min-height: 0;
+    overflow-y: auto !important;
+    overscroll-behavior: contain;
+  }
+
+  /* Planner owns the remaining viewport. Day/week grids scroll locally. */
+  [data-crm-screen="planner"] :where(
+    [class*="_calendarRoot__"],
+    [class*="_wrap__"],
+    [class*="_weekBoard__"]
+  ) {
+    min-height: 0;
+  }
+
+  [data-crm-screen="planner"] :where(
+    [class*="_board__"],
+    [class*="_weekBoard__"]
+  ) {
+    overflow: auto;
+    overscroll-behavior: contain;
+  }
+
+  /* Data registries: the shell provides the viewport, while large result
+     collections/tables remain usable without growing the body. */
+  [data-crm-screen="clients"] :where([class*="_grid__"]),
+  [data-crm-screen="vehicles"] :where([class*="_grid__"]),
+  [data-crm-screen="diagnostics"] :where([class*="_list__"]),
+  [data-crm-screen="work-journal"] :where([class*="_tableWrap__"]),
+  [data-crm-screen="work-orders"] :where([class*="_list__"]),
+  [data-crm-screen="warranties"] :where([class*="_list__"]),
+  [data-crm-screen="payments"] :where([class*="_list__"]),
+  [data-crm-screen="procurement"] :where([class*="_board__"]) {
+    min-height: 0;
+  }
+
+  /* Drawer/modal contract: actions stay reachable; only body scrolls. */
+  [data-crm-screen-frame="true"] :where(
+    [class*="_drawer__"],
+    [class*="_modal__"],
+    [role="dialog"]
+  ) {
+    max-height: min(90dvh, 900px);
+  }
+
+  [data-crm-screen-frame="true"] :where(
+    [class*="_drawerBody__"],
+    [class*="_modalBody__"]
+  ) {
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  [data-crm-screen-frame="true"] :where(
+    [class*="_drawerFooter__"],
+    [class*="_modalFoot__"],
+    [class*="_detailsFoot__"]
+  ) {
+    position: sticky;
+    bottom: 0;
+    z-index: 15;
+    background: var(--panel);
+  }
+
+  /* Compact desktop density. */
+  @media (max-height: 899px) {
+    :root {
+      --crm-screen-gap: 10px;
+      --crm-screen-header-pad: 10px;
+      --crm-screen-control-height: 38px;
+      --crm-screen-footer-safe: 8px;
+    }
+
+    [data-crm-screen-frame="true"] :where(
+      [class*="_page__"],
+      [class*="_root__"],
+      [class*="_shell__"]
+    ) {
+      gap: var(--crm-screen-gap) !important;
+    }
+
+    [data-crm-screen-frame="true"] :where(
+      [class*="_header__"],
+      [class*="_head__"],
+      [class*="_toolbar__"],
+      [class*="_panel__"],
+      [class*="_card__"]
+    ) {
+      padding-top: min(12px, var(--crm-screen-header-pad));
+      padding-bottom: min(12px, var(--crm-screen-header-pad));
+    }
+  }
+
+  @media (max-height: 768px) {
+    :root {
+      --crm-screen-gap: 8px;
+      --crm-screen-header-pad: 8px;
+      --crm-screen-control-height: 36px;
+      --crm-screen-footer-safe: 6px;
+    }
+
+    [data-crm-screen-frame="true"] :where(
+      h1,
+      [class*="_header__"] h1,
+      [class*="_head__"] h1
+    ) {
+      margin-block: 0 !important;
+      font-size: clamp(22px, 2vw, 28px) !important;
+      line-height: 1.05 !important;
+    }
+
+    [data-crm-screen-frame="true"] :where(
+      [class*="_header__"],
+      [class*="_head__"],
+      [class*="_toolbar__"]
+    ) {
+      gap: 8px !important;
+    }
+
+    [data-crm-screen-frame="true"] :where(button, input, select) {
+      min-height: var(--crm-screen-control-height);
+    }
+  }
+}
+
+/* New request is part of the CRM shell but is rendered outside the regular
+   screen frame. Keep it one-screen on desktop with only the active step body
+   allowed to scroll. */
+@media (min-width: 761px) {
+  [class*="workspaceRequestOpen"] {
+    height: 100dvh !important;
+    min-height: 0 !important;
+    overflow: hidden !important;
+    padding-top: 12px !important;
+    padding-bottom: 12px !important;
+  }
+
+  [class*="workspaceRequestOpen"] .requestPage {
+    max-height: calc(100dvh - 24px);
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  [class*="workspaceRequestOpen"] .requestModal {
+    max-height: calc(100dvh - 24px);
+    min-height: 0;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+
+  [class*="workspaceRequestOpen"] .requestStep {
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+}
+
+/* Public/client surfaces use a compact document flow and are capped visually
+   without affecting the mechanic cabinet. */
+[data-crm-surface="public"] {
+  min-width: 0;
+  max-width: 100%;
+}
+
+/* On tablets and phones the document flow remains the safer interaction
+   model. CRM-UI-004 constrains desktop/laptop height, not mobile content. */
+@media (max-width: 760px) {
+  body {
+    height: auto;
+    overflow-y: auto;
+  }
+
+  .shell,
+  .workspace,
+  [data-crm-screen-frame="true"],
+  [data-screen-contract="one"],
+  [data-screen-contract="one-scroll"],
+  [data-screen-contract="two-max"] {
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+  }
+
+  [data-crm-screen-frame="true"] :where(
+    [class*="_header__"],
+    [class*="_head__"],
+    [class*="_drawerFooter__"],
+    [class*="_modalFoot__"]
+  ) {
+    position: static;
+  }
+}
