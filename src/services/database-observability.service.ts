@@ -170,7 +170,7 @@ async function snapshotCoverage(days: number) {
     ),
   ]);
 
-  let baselineAt = baseline.rows[0]?.capturedAt ?? null;
+  let baselineAt: Date | null = baseline.rows[0]?.capturedAt ?? null;
   let partialWindow = false;
   if (!baselineAt) {
     const earliest = coverage.rows[0]?.firstCapturedAt ?? null;
