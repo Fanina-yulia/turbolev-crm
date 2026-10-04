@@ -160,6 +160,13 @@ export async function refreshTopVehicleModelPopularity(limit = 100) {
   const client = await getSqlPool().connect();
   try {
     await client.query("BEGIN");
+    const lock = await client.query<{ locked: boolean }>(
+      `SELECT pg_try_advisory_xact_lock(hashtext('vehicle-model-popularity-refresh')) AS locked`,
+    );
+    if (lock.rows[0]?.locked !== true) {
+      await client.query("ROLLBACK");
+      return { refreshed: 0, limit: safeLimit, skipped: "ALREADY_RUNNING" as const };
+    }
     await client.query(`UPDATE public."VehicleModelPopularity" SET "status"='INACTIVE',"updatedAt"=CURRENT_TIMESTAMP WHERE "status"='ACTIVE'`);
     const result = await client.query(
       `WITH raw AS MATERIALIZED (
