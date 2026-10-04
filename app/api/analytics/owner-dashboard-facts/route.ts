@@ -2,6 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { getPrisma } from "@/src/lib/prisma";
 import { getAccessContext, hasPermission } from "@/src/security/access-context";
 import { PERMISSIONS, type AccessScopeCode } from "@/src/security/permissions";
+import {
+  findLocationScopedClosedClientIdsBefore,
+  findLocationScopedClosedWorkOrders,
+  findLocationScopedOpenWorkOrderIds,
+} from "@/src/services/location-work-order-query.service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -119,40 +124,23 @@ export async function GET(request: NextRequest) {
   const appointmentWhere = scopedLocationIds ? { locationId: { in: scopedLocationIds } } : {};
   const cashLocationWhere = scopedLocationIds ? { locationId: { in: scopedLocationIds } } : {};
 
-  const [liveAppointments, scopedWorkOrderRows] = await Promise.all([
-    prisma.serviceAppointment.findMany({
-      where: {
-        ...appointmentWhere,
-        NOT: { id: { startsWith: "demo_" } },
-        status: { notIn: ["CANCELLED", "RESERVE", "NO_SHOW", "COMPLETED"] },
-      },
-      select: { id: true, status: true, workOrderId: true, estimatedAmount: true, purpose: true },
-      take: 1000,
-    }),
-    scopedLocationIds
-      ? prisma.serviceAppointment.findMany({
-          where: { ...appointmentWhere, workOrderId: { not: null }, NOT: { id: { startsWith: "demo_" } } },
-          select: { workOrderId: true },
-          distinct: ["workOrderId"],
-        })
-      : Promise.resolve([]),
-  ]);
+  const liveAppointments = await prisma.serviceAppointment.findMany({
+    where: {
+      ...appointmentWhere,
+      NOT: { id: { startsWith: "demo_" } },
+      status: { notIn: ["CANCELLED", "RESERVE", "NO_SHOW", "COMPLETED"] },
+    },
+    select: { id: true, status: true, workOrderId: true, estimatedAmount: true, purpose: true },
+    take: 1000,
+  });
 
-  const scopedWorkOrderIds = scopedLocationIds
-    ? scopedWorkOrderRows.map((row) => row.workOrderId).filter((id): id is string => Boolean(id))
-    : null;
-  const openWorkOrders = scopedWorkOrderIds?.length === 0
-    ? []
-    : await prisma.workOrder.findMany({
-        where: {
-          status: { not: "CLOSED" },
-          NOT: { id: { startsWith: "demo_" } },
-          ...(scopedWorkOrderIds ? { id: { in: scopedWorkOrderIds } } : {}),
-        },
+  const openWorkOrderIds = scopedLocationIds
+    ? await findLocationScopedOpenWorkOrderIds(scopedLocationIds, 1000)
+    : (await prisma.workOrder.findMany({
+        where: { status: { not: "CLOSED" }, NOT: { id: { startsWith: "demo_" } } },
         select: { id: true },
         take: 1000,
-      });
-  const openWorkOrderIds = openWorkOrders.map((row) => row.id);
+      })).map((row) => row.id);
   const lines = openWorkOrderIds.length
     ? await prisma.workOrderLine.findMany({
         where: { workOrderId: { in: openWorkOrderIds }, status: { not: "CANCELLED" } },
@@ -235,21 +223,20 @@ export async function GET(request: NextRequest) {
     directTrendMap.set(key, (directTrendMap.get(key) || 0) + numberOf(row.amount));
   }
 
-  const workOrderScopeWhere = scopedWorkOrderIds ? { id: { in: scopedWorkOrderIds } } : {};
-  const [periodClosedOrders, priorClosedClients, priorDirectClients] = await Promise.all([
-    scopedWorkOrderIds?.length === 0
-      ? Promise.resolve([])
+  const [periodClosedOrders, priorClosedClientIds, priorDirectClients] = await Promise.all([
+    scopedLocationIds
+      ? findLocationScopedClosedWorkOrders(scopedLocationIds, from, to)
       : prisma.workOrder.findMany({
-          where: { ...workOrderScopeWhere, status: "CLOSED", closedAt: { gte: from, lt: to }, NOT: { id: { startsWith: "demo_" } } },
-          select: { clientId: true },
+          where: { status: "CLOSED", closedAt: { gte: from, lt: to }, NOT: { id: { startsWith: "demo_" } } },
+          select: { id: true, clientId: true, closedAt: true },
         }),
-    scopedWorkOrderIds?.length === 0
-      ? Promise.resolve([])
+    scopedLocationIds
+      ? findLocationScopedClosedClientIdsBefore(scopedLocationIds, from)
       : prisma.workOrder.findMany({
-          where: { ...workOrderScopeWhere, status: "CLOSED", closedAt: { lt: from }, NOT: { id: { startsWith: "demo_" } } },
+          where: { status: "CLOSED", closedAt: { lt: from }, NOT: { id: { startsWith: "demo_" } } },
           select: { clientId: true },
           distinct: ["clientId"],
-        }),
+        }).then((rows) => rows.map((row) => row.clientId)),
     prisma.cashTransaction.findMany({
       where: { ...directRevenueWhere, occurredAt: { lt: from } },
       select: { clientId: true },
@@ -259,8 +246,7 @@ export async function GET(request: NextRequest) {
   const servedClients = new Set<string>();
   for (const row of periodClosedOrders) servedClients.add(row.clientId);
   for (const row of currentDirectRevenueRows) if (row.clientId) servedClients.add(row.clientId);
-  const priorClients = new Set<string>();
-  for (const row of priorClosedClients) priorClients.add(row.clientId);
+  const priorClients = new Set<string>(priorClosedClientIds);
   for (const row of priorDirectClients) if (row.clientId) priorClients.add(row.clientId);
   const returningClients = [...servedClients].filter((clientId) => priorClients.has(clientId)).length;
 

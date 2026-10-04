@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { LeadStatus } from "@/src/generated/prisma/client";
+import { LeadStatus, Prisma } from "@/src/generated/prisma/client";
 import { getPrisma } from "@/src/lib/prisma";
 import { authorize } from "@/src/security/authorize";
 import { PERMISSIONS } from "@/src/security/permissions";
@@ -35,17 +35,18 @@ export async function GET(request: Request) {
   const leadIds = [...new Set(appointments.map((row) => row.leadId).filter((value): value is string => Boolean(value)))];
   const workOrderIds = [...new Set(appointments.map((row) => row.workOrderId).filter((value): value is string => Boolean(value)))];
 
-  let diagnosticRequestIds: string[] | null = null;
-  if (scopedLocationIds !== null) {
-    const assignments = scopedLocationIds.length
-      ? await prisma.diagnosticAssignment.findMany({
-          where: { locationId: { in: scopedLocationIds } },
-          select: { diagnosticRequestId: true },
-          take: 5000,
-        })
-      : [];
-    diagnosticRequestIds = [...new Set(assignments.map((row) => row.diagnosticRequestId))];
-  }
+  const diagnosticLocationSql = scopedLocationIds === null
+    ? Prisma.sql``
+    : scopedLocationIds.length
+      ? Prisma.sql`
+          AND EXISTS (
+            SELECT 1
+            FROM "DiagnosticAssignment" da
+            WHERE da."diagnosticRequestId" = dr."id"
+              AND da."locationId" IN (${Prisma.join(scopedLocationIds)})
+          )
+        `
+      : Prisma.sql`AND FALSE`;
 
   const [leadCounts, diagnostics, workOrderGroups, attentionRaw] = await Promise.all([
     prisma.lead.groupBy({
@@ -53,14 +54,13 @@ export async function GET(request: Request) {
       where: scopedLocationIds === null ? undefined : { id: { in: leadIds } },
       _count: { _all: true },
     }),
-    prisma.diagnosticRequest.groupBy({
-      by: ["status"],
-      where: {
-        status: { in: ["PENDING", "IN_PROGRESS"] },
-        ...(diagnosticRequestIds === null ? {} : { id: { in: diagnosticRequestIds } }),
-      },
-      _count: { _all: true },
-    }),
+    prisma.$queryRaw<Array<{ status: string; count: bigint }>>(Prisma.sql`
+      SELECT dr."status"::text AS "status", COUNT(*)::bigint AS "count"
+      FROM "DiagnosticRequest" dr
+      WHERE dr."status" IN ('PENDING', 'IN_PROGRESS')
+      ${diagnosticLocationSql}
+      GROUP BY dr."status"
+    `),
     prisma.workOrder.groupBy({
       by: ["status"],
       where: {
@@ -69,25 +69,13 @@ export async function GET(request: Request) {
       },
       _count: { _all: true },
     }),
-    listStationAttentionVehicles(),
+    listStationAttentionVehicles(new Date(), scopedLocationIds),
   ]);
 
-  let attention = attentionRaw;
-  if (scopedLocationIds !== null) {
-    const attentionIds = attentionRaw.map((row) => row.appointmentId);
-    const allowedRows = attentionIds.length && scopedLocationIds.length
-      ? await prisma.serviceAppointment.findMany({
-          where: { id: { in: attentionIds }, locationId: { in: scopedLocationIds } },
-          select: { id: true },
-          take: 500,
-        })
-      : [];
-    const allowedIds = new Set(allowedRows.map((row) => row.id));
-    attention = attentionRaw.filter((row) => allowedIds.has(row.appointmentId));
-  }
+  const attention = attentionRaw;
 
   const leadMap = Object.fromEntries(leadCounts.map((x)=>[x.status,x._count._all]));
-  const diagnosticMap = Object.fromEntries(diagnostics.map((x)=>[x.status,x._count._all]));
+  const diagnosticMap = Object.fromEntries(diagnostics.map((x)=>[x.status,Number(x.count)]));
   const workMap = Object.fromEntries(workOrderGroups.map((x)=>[x.status,x._count._all]));
   const countStatus = (...statuses: string[]) => appointments.filter((x)=>statuses.includes(x.status)).length;
   const attentionCountStatus = (...statuses: string[]) => attention.filter((x)=>statuses.includes(x.status)).length;
