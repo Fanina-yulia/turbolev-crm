@@ -25,6 +25,8 @@ const LOCAL_SCROLL_SCREENS = new Set([
   "settings-posts",
   "settings-cash",
   "settings-integrations",
+  "settings-cameras",
+  "settings-appearance",
   "settings-workflow",
   "settings-security",
   "settings-partsCatalog",
