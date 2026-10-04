@@ -41,12 +41,10 @@ runNodeScript("scripts/deployment-pipeline-contract-smoke.mjs");
 runNodeScript("scripts/access-context-cache-contract-smoke.mjs");
 runNodeScript("scripts/polling-performance-contract-smoke.mjs");
 runNodeScript("scripts/sql-scope-performance-contract-smoke.mjs");
+runNodeScript("scripts/db-hotpath-performance-contract-smoke.mjs");
 run(["tsx", "scripts/api-security-policy-smoke.ts"]);
 run(["tsx", "scripts/parts-picker-cart-v4-smoke.ts"]);
 run(["tsx", "scripts/parts-oe-first-search-contract-smoke.ts"]);
-
-console.log("[build] Running one-off read-only DB performance audit for preview validation.");
-runNodeScript("scripts/db-performance-audit.mjs");
 
 console.log("[build] Build is read-only with respect to production data. Database release steps run separately.");
 run(["prisma", "generate"]);
