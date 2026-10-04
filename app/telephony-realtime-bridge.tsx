@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { extractPhoneCandidates } from "@/src/lib/phone-copy";
+import { startAdaptivePoller } from "@/src/lib/client/adaptive-polling";
 
 type LiveCall = {
   id: string;
@@ -78,9 +79,11 @@ export function TelephonyRealtimeBridge() {
   const [transferTargets, setTransferTargets] = useState<TransferTarget[] | null>(null);
   const [transferLoading, setTransferLoading] = useState(false);
   const seenRef = useRef(new Set<string>());
+  const activeCallRef = useRef(false);
 
   const loadLive = useCallback(async () => {
     if (isMechanicCabinet()) {
+      activeCallRef.current = false;
       setEnabled(false);
       setPayload(null);
       setActive(null);
@@ -90,6 +93,7 @@ export function TelephonyRealtimeBridge() {
     try {
       const response = await fetch("/api/telephony/live", { cache: "no-store" });
       if (response.status === 401 || response.status === 403) {
+        activeCallRef.current = false;
         setEnabled(false);
         return;
       }
@@ -98,6 +102,7 @@ export function TelephonyRealtimeBridge() {
       if (!data.ok) return;
       setEnabled(true);
       setPayload(data);
+      activeCallRef.current = (data.calls || []).some((call) => call.phase === "RINGING" || call.phase === "ANSWERED");
       const incoming = (data.calls || []).find(
         (call) => call.phase === "RINGING" && !dismissed.has(call.callId),
       );
@@ -115,20 +120,18 @@ export function TelephonyRealtimeBridge() {
 
   useEffect(() => {
     if (isMechanicCabinet()) return;
-    void loadLive();
-    const timer = window.setInterval(() => void loadLive(), 2_500);
-    const onVisibility = () => { if (document.visibilityState === "visible") void loadLive(); };
-    document.addEventListener("visibilitychange", onVisibility);
-    return () => {
-      window.clearInterval(timer);
-      document.removeEventListener("visibilitychange", onVisibility);
-    };
+    return startAdaptivePoller({
+      run: loadLive,
+      intervalMs: () => activeCallRef.current ? 2_500 : 8_000,
+      immediate: true,
+      pauseWhenHidden: true,
+      runOnFocus: true,
+    });
   }, [loadLive]);
 
   useEffect(() => {
     if (isMechanicCabinet()) return;
     const reconcile = async () => {
-      if (document.visibilityState !== "visible") return;
       try {
         await fetch("/api/communications/binotel-history", {
           method: "POST",
@@ -140,9 +143,13 @@ export function TelephonyRealtimeBridge() {
         // Webhooks remain primary; REST reconciliation is best-effort recovery.
       }
     };
-    void reconcile();
-    const timer = window.setInterval(() => void reconcile(), 30 * 60_000);
-    return () => window.clearInterval(timer);
+    return startAdaptivePoller({
+      run: reconcile,
+      intervalMs: 30 * 60_000,
+      immediate: true,
+      pauseWhenHidden: true,
+      runOnFocus: false,
+    });
   }, []);
 
   const startCall = useCallback(async (target: string) => {

@@ -6,6 +6,7 @@ import { CommunicationsVehicleCardDrawer } from "./communications-vehicle-card-d
 import { VehicleBrandLogo } from "./vehicle-brand-logo";
 import { VehiclePlate } from "./vehicle-plate";
 import { readCrmRoute } from "./crm-route";
+import { startAdaptivePoller } from "@/src/lib/client/adaptive-polling";
 import styles from "./communications-contact-inbox.module.css";
 import {
   buildCommunicationConversations,
@@ -254,18 +255,20 @@ export function CommunicationsHub() {
     window.addEventListener("turbolev:data-changed", refresh);
     return () => window.removeEventListener("turbolev:data-changed", refresh);
   }, [load]);
-  useEffect(() => {
-    const timer = window.setInterval(() => {
-      if (document.visibilityState === "visible") void load(true);
-    }, 7000);
-    return () => window.clearInterval(timer);
-  }, [load]);
-  useEffect(() => {
-    const timer = window.setInterval(() => {
-      if (document.visibilityState === "visible") void pollOlx();
-    }, 55_000);
-    return () => window.clearInterval(timer);
-  }, [pollOlx]);
+  useEffect(() => startAdaptivePoller({
+    run: () => load(true),
+    intervalMs: 15_000,
+    immediate: false,
+    pauseWhenHidden: true,
+    runOnFocus: true,
+  }), [load]);
+  useEffect(() => startAdaptivePoller({
+    run: pollOlx,
+    intervalMs: 60_000,
+    immediate: false,
+    pauseWhenHidden: true,
+    runOnFocus: false,
+  }), [pollOlx]);
   useEffect(() => { if (!serverMode) try { window.localStorage.setItem(LOCAL_KEY, JSON.stringify(items)); } catch {} }, [items, serverMode]);
 
   const conversations = useMemo(() => buildCommunicationConversations(items), [items]);
