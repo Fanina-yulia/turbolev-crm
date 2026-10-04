@@ -67,7 +67,7 @@ export async function lookupRegistryVehicleColorByVin(rawVin: string | null | un
     const result = await getSqlPool().query<{ color: string | null; sourceYear: number }>(
       `SELECT color, "sourceYear"
          FROM public."VehicleRegistryCompact"
-        WHERE upper(trim(vin))=$1
+        WHERE vin=$1
           AND color IS NOT NULL
           AND btrim(color) <> ''
         ORDER BY "sourceYear" DESC
