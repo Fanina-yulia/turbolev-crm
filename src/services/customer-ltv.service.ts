@@ -1,5 +1,6 @@
 import { getPrisma } from "@/src/lib/prisma";
 import { decimalToNumber, roundMoney } from "@/src/domain/finance";
+import { findLocationScopedClosedWorkOrdersForClients } from "@/src/services/location-work-order-query.service";
 
 function pct(part: number, total: number) {
   if (total <= 0) return 100;
@@ -12,6 +13,7 @@ function daysBetween(start: Date, end: Date) {
 
 export type CustomerLifetimeMetricsInput = {
   clientIds: string[];
+  locationIds?: string[] | null;
   scopedWorkOrderIds?: string[] | null;
   now?: Date;
 };
@@ -56,22 +58,27 @@ export async function getCustomerLifetimeMetrics(input: CustomerLifetimeMetricsI
   const scoped = input.scopedWorkOrderIds === undefined || input.scopedWorkOrderIds === null
     ? null
     : new Set(input.scopedWorkOrderIds);
+  const locationIds = input.locationIds === undefined || input.locationIds === null
+    ? null
+    : [...new Set(input.locationIds.filter(Boolean))];
 
   const [clients, allOrders, leadLinks] = await Promise.all([
     prisma.client.findMany({
       where: { id: { in: clientIds } },
       select: { id: true, name: true, phone: true },
     }),
-    prisma.workOrder.findMany({
-      where: {
-        clientId: { in: clientIds },
-        status: "CLOSED",
-        closedAt: { not: null },
-        NOT: { id: { startsWith: "demo_" } },
-      },
-      select: { id: true, clientId: true, vehicleId: true, closedAt: true },
-      orderBy: { closedAt: "asc" },
-    }),
+    locationIds
+      ? findLocationScopedClosedWorkOrdersForClients(locationIds, clientIds)
+      : prisma.workOrder.findMany({
+          where: {
+            clientId: { in: clientIds },
+            status: "CLOSED",
+            closedAt: { not: null },
+            NOT: { id: { startsWith: "demo_" } },
+          },
+          select: { id: true, clientId: true, vehicleId: true, closedAt: true },
+          orderBy: { closedAt: "asc" },
+        }),
     prisma.diagnosticRequest.findMany({
       where: { clientId: { in: clientIds }, leadId: { not: null }, NOT: { id: { startsWith: "demo_" } } },
       select: { clientId: true, createdAt: true, lead: { select: { source: true } } },
@@ -79,7 +86,7 @@ export async function getCustomerLifetimeMetrics(input: CustomerLifetimeMetricsI
     }),
   ]);
 
-  const orders = scoped ? allOrders.filter((order) => scoped.has(order.id)) : allOrders;
+  const orders = scoped && !locationIds ? allOrders.filter((order) => scoped.has(order.id)) : allOrders;
   const workOrderIds = orders.map((order) => order.id);
 
   const [snapshots, claims] = await Promise.all([
