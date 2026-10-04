@@ -324,6 +324,24 @@ async function findAssetByKey(libraryKey: string): Promise<LibraryAssetRow | nul
   }
 }
 
+async function findAssetByIdentity(identity: Pick<TemplateIdentity, "libraryKey" | "templateKey" | "variantKey">): Promise<LibraryAssetRow | null> {
+  try {
+    const result = await getSqlPool().query(
+      `SELECT ${ASSET_COLUMNS}
+         FROM public."VehicleImageLibraryAsset"
+        WHERE "libraryKey"=$1
+           OR ("templateKey"=$2 AND "variantKey"=$3)
+        ORDER BY ("libraryKey"=$1) DESC, ("status"='READY') DESC, "updatedAt" DESC
+        LIMIT 1`,
+      [identity.libraryKey, identity.templateKey, identity.variantKey],
+    );
+    return result.rowCount ? result.rows[0] as LibraryAssetRow : null;
+  } catch (error) {
+    if (isMissingTableError(error)) return null;
+    throw error;
+  }
+}
+
 async function findReferenceAsset(vehicle: VehicleDescriptor, identity: TemplateIdentity, excludeAssetId?: string | null): Promise<ReferenceAssetRow | null> {
   const result = await getSqlPool().query(
     `SELECT "id","imageMimeType","imageData"
@@ -381,12 +399,12 @@ export async function getVehicleImageLibraryState(vehicleId: string, themePaint?
     normalizedColor: identity.normalizedColor,
     generationLabel: identity.generationLabel,
   };
-  const asset = await findAssetByKey(identity.libraryKey);
-  if (asset?.status === "READY") return { state: "READY", assetId: asset.id, libraryKey: identity.libraryKey, autoGenerate: config?.autoGenerate ?? false, canGenerate: Boolean(config), error: null, ...extra };
-  if (asset?.status === "GENERATING" || asset?.status === "QUEUED") return { state: "GENERATING", assetId: asset.id, libraryKey: identity.libraryKey, autoGenerate: config?.autoGenerate ?? false, canGenerate: Boolean(config), error: null, ...extra };
-  if (asset?.status === "ERROR") return { state: "ERROR", assetId: asset.id, libraryKey: identity.libraryKey, autoGenerate: config?.autoGenerate ?? false, canGenerate: Boolean(config), error: asset.lastError, ...extra };
-  if (!config) return { state: "NOT_CONFIGURED", assetId: asset?.id ?? null, libraryKey: identity.libraryKey, autoGenerate: false, canGenerate: false, error: "OpenAI API не налаштовано.", ...extra };
-  return { state: "MISSING", assetId: asset?.id ?? null, libraryKey: identity.libraryKey, autoGenerate: config.autoGenerate, canGenerate: true, error: null, ...extra };
+  const asset = await findAssetByIdentity(identity);
+  if (asset?.status === "READY") return { state: "READY", assetId: asset.id, libraryKey: asset?.libraryKey ?? identity.libraryKey, autoGenerate: config?.autoGenerate ?? false, canGenerate: Boolean(config), error: null, ...extra };
+  if (asset?.status === "GENERATING" || asset?.status === "QUEUED") return { state: "GENERATING", assetId: asset.id, libraryKey: asset?.libraryKey ?? identity.libraryKey, autoGenerate: config?.autoGenerate ?? false, canGenerate: Boolean(config), error: null, ...extra };
+  if (asset?.status === "ERROR") return { state: "ERROR", assetId: asset.id, libraryKey: asset?.libraryKey ?? identity.libraryKey, autoGenerate: config?.autoGenerate ?? false, canGenerate: Boolean(config), error: asset.lastError, ...extra };
+  if (!config) return { state: "NOT_CONFIGURED", assetId: asset?.id ?? null, libraryKey: asset?.libraryKey ?? identity.libraryKey, autoGenerate: false, canGenerate: false, error: "OpenAI API не налаштовано.", ...extra };
+  return { state: "MISSING", assetId: asset?.id ?? null, libraryKey: asset?.libraryKey ?? identity.libraryKey, autoGenerate: config.autoGenerate, canGenerate: true, error: null, ...extra };
 }
 
 /**
@@ -406,10 +424,11 @@ export async function enqueueVehicleImageGeneration(vehicleId: string, options?:
   const theme = normalizedTheme(options?.themePaint);
   const paint = getOpenAIVehiclePaint(vehicle, theme);
   const identity = await imageIdentity(vehicle, theme, paint);
-  const existing = await findAssetByKey(identity.libraryKey);
+  const existing = await findAssetByIdentity(identity);
+  const canonicalLibraryKey = existing?.libraryKey ?? identity.libraryKey;
   const base = {
     assetId: existing?.id ?? null,
-    libraryKey: identity.libraryKey,
+    libraryKey: canonicalLibraryKey,
     templateKey: identity.templateKey,
     variantKey: identity.variantKey,
     normalizedColor: identity.normalizedColor,
@@ -417,7 +436,7 @@ export async function enqueueVehicleImageGeneration(vehicleId: string, options?:
   };
 
   if (existing?.status === "READY" && existing.hasImageData) {
-    return { state: existing.status === "READY" ? "READY" as const : "GENERATING" as const, ...base, queued: false, error: null };
+    return { state: "READY" as const, ...base, queued: false, error: null };
   }
 
   const now = Date.now();
@@ -425,36 +444,114 @@ export async function enqueueVehicleImageGeneration(vehicleId: string, options?:
     return { state: "ERROR" as const, ...base, queued: false, error: existing.lastError };
   }
 
-  const assetId = existing?.id || `vimg_${randomUUID().replace(/-/g, "")}`;
   const prompt = masterPrompt(vehicle, paint, identity);
   const pool = getSqlPool();
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
-    await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [`vehicle-image-queue:${identity.libraryKey}`]);
+    await client.query(
+      "SELECT pg_advisory_xact_lock(hashtext($1))",
+      [`vehicle-image-template:${identity.templateKey}:${identity.variantKey}`],
+    );
+
+    const locked = await client.query<LibraryAssetRow>(
+      `SELECT ${ASSET_COLUMNS}
+         FROM public."VehicleImageLibraryAsset"
+        WHERE "libraryKey"=$1
+           OR ("templateKey"=$2 AND "variantKey"=$3)
+        ORDER BY ("libraryKey"=$1) DESC, ("status"='READY') DESC, "updatedAt" DESC
+        LIMIT 1
+        FOR UPDATE`,
+      [identity.libraryKey, identity.templateKey, identity.variantKey],
+    );
+    let asset = locked.rows[0] ?? null;
+
+    if (asset?.status === "READY" && asset.hasImageData) {
+      await client.query("COMMIT");
+      return {
+        state: "READY" as const,
+        assetId: asset.id,
+        libraryKey: asset.libraryKey,
+        templateKey: identity.templateKey,
+        variantKey: identity.variantKey,
+        normalizedColor: identity.normalizedColor,
+        generationLabel: identity.generationLabel,
+        queued: false,
+        error: null,
+      };
+    }
+
+    if (!asset) {
+      const candidateId = `vimg_${randomUUID().replace(/-/g, "")}`;
+      await client.query(
+        `INSERT INTO public."VehicleImageLibraryAsset"
+           ("id","libraryKey","make","model","year","bodyType","theme","provider","providerModel","promptVersion","promptText","status","lastError","templateKey","variantKey","normalizedColor","generationFrom","generationTo","sourceAssetId","generationMode","createdAt","updatedAt")
+         VALUES ($1,$2,$3,$4,$5,$6,$7,'OPENAI',$8,$9,$10,'QUEUED',NULL,$11,$12,$13,$14,$15,NULL,'PENDING',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)
+         ON CONFLICT DO NOTHING`,
+        [
+          candidateId,
+          identity.libraryKey,
+          vehicle.make,
+          vehicle.model,
+          vehicle.year,
+          vehicle.bodyType,
+          theme,
+          config.model,
+          PROMPT_VERSION,
+          prompt,
+          identity.templateKey,
+          identity.variantKey,
+          identity.normalizedColor,
+          identity.generationFrom,
+          identity.generationTo,
+        ],
+      );
+      const claimed = await client.query<LibraryAssetRow>(
+        `SELECT ${ASSET_COLUMNS}
+           FROM public."VehicleImageLibraryAsset"
+          WHERE "libraryKey"=$1
+             OR ("templateKey"=$2 AND "variantKey"=$3)
+          ORDER BY ("libraryKey"=$1) DESC, ("status"='READY') DESC, "updatedAt" DESC
+          LIMIT 1
+          FOR UPDATE`,
+        [identity.libraryKey, identity.templateKey, identity.variantKey],
+      );
+      asset = claimed.rows[0] ?? null;
+    }
+
+    if (!asset) throw new Error("Не вдалося отримати canonical запис бібліотеки зображень.");
+
     const activeJob = await client.query(
       `SELECT "id" FROM public."VehicleImageGenerationJob"
         WHERE "libraryKey"=$1 AND "vehicleId"=$2 AND "assetId"=$3 AND "status" IN ('QUEUED','PROCESSING')
         ORDER BY "createdAt" DESC LIMIT 1`,
-      [identity.libraryKey, vehicleId, assetId],
+      [asset.libraryKey, vehicleId, asset.id],
     );
     if (activeJob.rowCount) {
       await client.query("COMMIT");
-      return { state: "GENERATING" as const, ...base, assetId, queued: false, error: null };
+      return {
+        state: "GENERATING" as const,
+        assetId: asset.id,
+        libraryKey: asset.libraryKey,
+        templateKey: identity.templateKey,
+        variantKey: identity.variantKey,
+        normalizedColor: identity.normalizedColor,
+        generationLabel: identity.generationLabel,
+        queued: false,
+        error: null,
+      };
     }
+
     await client.query(
-      `INSERT INTO public."VehicleImageLibraryAsset"
-         ("id","libraryKey","make","model","year","bodyType","theme","provider","providerModel","promptVersion","promptText","status","lastError","templateKey","variantKey","normalizedColor","generationFrom","generationTo","sourceAssetId","generationMode","createdAt","updatedAt")
-       VALUES ($1,$2,$3,$4,$5,$6,$7,'OPENAI',$8,$9,$10,'QUEUED',NULL,$11,$12,$13,$14,$15,NULL,'PENDING',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)
-       ON CONFLICT ("libraryKey") DO UPDATE SET
-         "make"=EXCLUDED."make","model"=EXCLUDED."model","year"=EXCLUDED."year","bodyType"=EXCLUDED."bodyType","theme"=EXCLUDED."theme",
-         "provider"='OPENAI',"providerModel"=EXCLUDED."providerModel","promptVersion"=EXCLUDED."promptVersion","promptText"=EXCLUDED."promptText",
-         "status"='QUEUED',"lastError"=NULL,"templateKey"=EXCLUDED."templateKey","variantKey"=EXCLUDED."variantKey",
-         "normalizedColor"=EXCLUDED."normalizedColor","generationFrom"=EXCLUDED."generationFrom","generationTo"=EXCLUDED."generationTo",
-         "sourceAssetId"=NULL,"generationMode"='PENDING',"updatedAt"=CURRENT_TIMESTAMP`,
+      `UPDATE public."VehicleImageLibraryAsset"
+          SET "make"=$2,"model"=$3,"year"=$4,"bodyType"=$5,"theme"=$6,
+              "provider"='OPENAI',"providerModel"=$7,"promptVersion"=$8,"promptText"=$9,
+              "status"='QUEUED',"lastError"=NULL,"templateKey"=$10,"variantKey"=$11,
+              "normalizedColor"=$12,"generationFrom"=$13,"generationTo"=$14,
+              "sourceAssetId"=NULL,"generationMode"='PENDING',"updatedAt"=CURRENT_TIMESTAMP
+        WHERE "id"=$1`,
       [
-        assetId,
-        identity.libraryKey,
+        asset.id,
         vehicle.make,
         vehicle.model,
         vehicle.year,
@@ -475,17 +572,27 @@ export async function enqueueVehicleImageGeneration(vehicleId: string, options?:
       `INSERT INTO public."VehicleImageGenerationJob"
         ("id","libraryKey","vehicleId","assetId","status","attempts","requestedAt","createdAt","updatedAt")
        VALUES ($1,$2,$3,$4,'QUEUED',0,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)`,
-      [`vimgjob_${randomUUID().replace(/-/g, "")}`, identity.libraryKey, vehicleId, assetId],
+      [`vimgjob_${randomUUID().replace(/-/g, "")}`, asset.libraryKey, vehicleId, asset.id],
     );
     await client.query("COMMIT");
+
+    return {
+      state: "GENERATING" as const,
+      assetId: asset.id,
+      libraryKey: asset.libraryKey,
+      templateKey: identity.templateKey,
+      variantKey: identity.variantKey,
+      normalizedColor: identity.normalizedColor,
+      generationLabel: identity.generationLabel,
+      queued: true,
+      error: null,
+    };
   } catch (error) {
     await client.query("ROLLBACK").catch(() => undefined);
     throw error;
   } finally {
     client.release();
   }
-
-  return { state: "GENERATING" as const, ...base, assetId, queued: true, error: null };
 }
 
 function openAIErrorMessage(payload: unknown, fallback: string) {
@@ -609,53 +716,102 @@ export async function generateVehicleImageForVehicle(vehicleId: string, options?
   const paint = getOpenAIVehiclePaint(vehicle, theme);
   const identity = await imageIdentity(vehicle, theme, paint);
   const prompt = masterPrompt(vehicle, paint, identity);
-  const existing = await findAssetByKey(identity.libraryKey);
+  const existing = await findAssetByIdentity(identity);
   const now = Date.now();
 
   if (!options?.force && existing?.status === "READY") {
-    return { state: "READY" as const, assetId: existing.id, libraryKey: identity.libraryKey, templateKey: identity.templateKey, variantKey: identity.variantKey, normalizedColor: identity.normalizedColor, requestedColor: paint.requestedColor, reused: true };
+    return { state: "READY" as const, assetId: existing.id, libraryKey: claimed?.libraryKey ?? existing?.libraryKey ?? identity.libraryKey, templateKey: identity.templateKey, variantKey: identity.variantKey, normalizedColor: identity.normalizedColor, requestedColor: paint.requestedColor, reused: true };
   }
   if (!options?.force && existing?.status === "GENERATING" && now - new Date(existing.updatedAt).getTime() < GENERATION_LOCK_MS) {
-    return { state: "GENERATING" as const, assetId: existing.id, libraryKey: identity.libraryKey, templateKey: identity.templateKey, variantKey: identity.variantKey, requestedColor: paint.requestedColor };
+    return { state: "GENERATING" as const, assetId: existing.id, libraryKey: claimed?.libraryKey ?? existing?.libraryKey ?? identity.libraryKey, templateKey: identity.templateKey, variantKey: identity.variantKey, requestedColor: paint.requestedColor };
   }
   if (!options?.force && existing?.status === "ERROR" && now - new Date(existing.updatedAt).getTime() < ERROR_RETRY_MS) {
-    return { state: "ERROR" as const, assetId: existing.id, libraryKey: identity.libraryKey, templateKey: identity.templateKey, variantKey: identity.variantKey, error: existing.lastError, requestedColor: paint.requestedColor };
+    return { state: "ERROR" as const, assetId: existing.id, libraryKey: claimed?.libraryKey ?? existing?.libraryKey ?? identity.libraryKey, templateKey: identity.templateKey, variantKey: identity.variantKey, error: existing.lastError, requestedColor: paint.requestedColor };
   }
 
-  const assetId = existing?.id || `vimg_${randomUUID().replace(/-/g, "")}`;
   const pool = getSqlPool();
-  await pool.query(
-    `INSERT INTO public."VehicleImageLibraryAsset"
-       ("id","libraryKey","make","model","year","bodyType","theme","provider","providerModel","promptVersion","promptText","status","lastError","templateKey","variantKey","normalizedColor","generationFrom","generationTo","sourceAssetId","generationMode","createdAt","updatedAt")
-     VALUES ($1,$2,$3,$4,$5,$6,$7,'OPENAI',$8,$9,$10,'GENERATING',NULL,$11,$12,$13,$14,$15,NULL,'PENDING',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)
-     ON CONFLICT ("libraryKey") DO UPDATE SET
-       "make"=EXCLUDED."make","model"=EXCLUDED."model","year"=EXCLUDED."year","bodyType"=EXCLUDED."bodyType","theme"=EXCLUDED."theme",
-       "provider"='OPENAI',"providerModel"=EXCLUDED."providerModel","promptVersion"=EXCLUDED."promptVersion","promptText"=EXCLUDED."promptText",
-       "status"='GENERATING',"lastError"=NULL,"templateKey"=EXCLUDED."templateKey","variantKey"=EXCLUDED."variantKey",
-       "normalizedColor"=EXCLUDED."normalizedColor","generationFrom"=EXCLUDED."generationFrom","generationTo"=EXCLUDED."generationTo",
-       "sourceAssetId"=NULL,"generationMode"='PENDING',"updatedAt"=CURRENT_TIMESTAMP`,
-    [
-      assetId,
-      identity.libraryKey,
-      vehicle.make,
-      vehicle.model,
-      vehicle.year,
-      vehicle.bodyType,
-      theme,
-      config.model,
-      PROMPT_VERSION,
-      prompt,
-      identity.templateKey,
-      identity.variantKey,
-      identity.normalizedColor,
-      identity.generationFrom,
-      identity.generationTo,
-    ],
-  );
+  let claimed = existing;
+  if (claimed) {
+    await pool.query(
+      `UPDATE public."VehicleImageLibraryAsset"
+          SET "make"=$2,"model"=$3,"year"=$4,"bodyType"=$5,"theme"=$6,
+              "provider"='OPENAI',"providerModel"=$7,"promptVersion"=$8,"promptText"=$9,
+              "status"='GENERATING',"lastError"=NULL,"templateKey"=$10,"variantKey"=$11,
+              "normalizedColor"=$12,"generationFrom"=$13,"generationTo"=$14,
+              "sourceAssetId"=NULL,"generationMode"='PENDING',"updatedAt"=CURRENT_TIMESTAMP
+        WHERE "id"=$1`,
+      [
+        claimed.id,
+        vehicle.make,
+        vehicle.model,
+        vehicle.year,
+        vehicle.bodyType,
+        theme,
+        config.model,
+        PROMPT_VERSION,
+        prompt,
+        identity.templateKey,
+        identity.variantKey,
+        identity.normalizedColor,
+        identity.generationFrom,
+        identity.generationTo,
+      ],
+    );
+  } else {
+    const candidateId = `vimg_${randomUUID().replace(/-/g, "")}`;
+    await pool.query(
+      `INSERT INTO public."VehicleImageLibraryAsset"
+         ("id","libraryKey","make","model","year","bodyType","theme","provider","providerModel","promptVersion","promptText","status","lastError","templateKey","variantKey","normalizedColor","generationFrom","generationTo","sourceAssetId","generationMode","createdAt","updatedAt")
+       VALUES ($1,$2,$3,$4,$5,$6,$7,'OPENAI',$8,$9,$10,'GENERATING',NULL,$11,$12,$13,$14,$15,NULL,'PENDING',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)
+       ON CONFLICT DO NOTHING`,
+      [
+        candidateId,
+        identity.libraryKey,
+        vehicle.make,
+        vehicle.model,
+        vehicle.year,
+        vehicle.bodyType,
+        theme,
+        config.model,
+        PROMPT_VERSION,
+        prompt,
+        identity.templateKey,
+        identity.variantKey,
+        identity.normalizedColor,
+        identity.generationFrom,
+        identity.generationTo,
+      ],
+    );
+    claimed = await findAssetByIdentity(identity);
+    if (!claimed) throw new Error("Не вдалося створити canonical запис бібліотеки зображень.");
+    await pool.query(
+      `UPDATE public."VehicleImageLibraryAsset"
+          SET "make"=$2,"model"=$3,"year"=$4,"bodyType"=$5,"theme"=$6,
+              "provider"='OPENAI',"providerModel"=$7,"promptVersion"=$8,"promptText"=$9,
+              "status"='GENERATING',"lastError"=NULL,"templateKey"=$10,"variantKey"=$11,
+              "normalizedColor"=$12,"generationFrom"=$13,"generationTo"=$14,
+              "sourceAssetId"=NULL,"generationMode"='PENDING',"updatedAt"=CURRENT_TIMESTAMP
+        WHERE "id"=$1`,
+      [
+        claimed.id,
+        vehicle.make,
+        vehicle.model,
+        vehicle.year,
+        vehicle.bodyType,
+        theme,
+        config.model,
+        PROMPT_VERSION,
+        prompt,
+        identity.templateKey,
+        identity.variantKey,
+        identity.normalizedColor,
+        identity.generationFrom,
+        identity.generationTo,
+      ],
+    );
+  }
 
-  const claimed = await findAssetByKey(identity.libraryKey);
-  if (!claimed) throw new Error("Не вдалося створити запис бібліотеки зображень.");
-  const jobId = await createJob(identity.libraryKey, vehicleId, claimed.id);
+  const jobId = await createJob(claimed.libraryKey, vehicleId, claimed.id);
 
   try {
     const reference = await findReferenceAsset(vehicle, identity, claimed.id);
@@ -693,7 +849,7 @@ export async function generateVehicleImageForVehicle(vehicleId: string, options?
     return {
       state: "READY" as const,
       assetId: claimed.id,
-      libraryKey: identity.libraryKey,
+      libraryKey: claimed?.libraryKey ?? existing?.libraryKey ?? identity.libraryKey,
       templateKey: identity.templateKey,
       variantKey: identity.variantKey,
       normalizedColor: identity.normalizedColor,
