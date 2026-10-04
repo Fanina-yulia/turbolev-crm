@@ -3,6 +3,7 @@ import { getPrisma } from "@/src/lib/prisma";
 import { authorize } from "@/src/security/authorize";
 import { PERMISSIONS } from "@/src/security/permissions";
 import { writeAuditEvent } from "@/src/services/audit.service";
+import { invalidateAccessContextCache } from "@/src/security/access-context-cache";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -70,6 +71,7 @@ export async function PUT(request: Request, context: Context) {
       }
     });
     await writeAuditEvent({ entityType: "User", entityId: id, action: "SECURITY_OVERRIDES_REPLACED", after: { overrides: normalized } });
+    invalidateAccessContextCache();
     return NextResponse.json({ ok: true, count: normalized.length });
   } catch (error) {
     console.error("PUT /api/security/users/[id]/overrides", error);
