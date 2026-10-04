@@ -14,6 +14,7 @@ import {
   type PersonnelRoleCode,
 } from "@/src/security/personnel-org-structure";
 import { writeAuditEvent } from "@/src/services/audit.service";
+import { invalidateAccessContextCache } from "@/src/security/access-context-cache";
 
 export type PersonnelRoleInput = {
   roleCode: string;
@@ -394,6 +395,7 @@ export async function savePersonnelV2(input: ProfileInput, context: AccessContex
       localLoginConfigured: Boolean(result.employee.crmLogin && result.employee.crmPasswordHash),
     },
   });
+  invalidateAccessContextCache();
   return result;
 }
 
@@ -415,5 +417,6 @@ export async function deactivatePersonnelV2(employeeId: string, context: AccessC
     return employee;
   });
   await writeAuditEvent({ entityType: "EmployeeProfile", entityId: employeeId, action: "PERSONNEL_V2_DEACTIVATED", after: { isActive: false } });
+  invalidateAccessContextCache();
   return result;
 }
