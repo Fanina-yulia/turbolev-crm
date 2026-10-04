@@ -13,10 +13,10 @@
     },
     {
       "id": "CRM-UI-001",
-      "status": "ACTIVE",
-      "title": "Цілісна сторінка CRM без фіксованих робочих секцій",
-      "source": "docs/CRM_STANDARDS_TABLE.md",
-      "enforcedBy": "scripts/check-crm-page-integrity.mjs"
+      "status": "SUPERSEDED",
+      "title": "Цілісна сторінка CRM — замінено CRM-UI-004",
+      "source": "docs/CRM_ONE_SCREEN_FIRST.md",
+      "enforcedBy": "scripts/check-one-screen-contracts.mjs"
     },
     {
       "id": "CRM-UI-003",
@@ -24,6 +24,15 @@
       "title": "Адаптивність усіх сторінок CRM",
       "source": "docs/CRM_RESPONSIVE_STANDARDS.md",
       "enforcedBy": "scripts/check-responsive-contract.mjs"
+    },
+    {
+      "id": "CRM-UI-004",
+      "status": "ACTIVE",
+      "title": "One Screen First",
+      "source": "docs/CRM_ONE_SCREEN_FIRST.md",
+      "trigger": "Будь-яка внутрішня CRM-сторінка у CrmShell на desktop/laptop.",
+      "requiredScope": "1 екран / 1 екран + внутрішній scroll / максимум 2 екрани; standalone Кабінет механіка виключено.",
+      "enforcedBy": "scripts/check-one-screen-contracts.mjs"
     },
     {
       "id": "CRM-DOC-001",
@@ -72,7 +81,9 @@
         "src/lib/**",
         "src/services/attention-center*",
         "prisma/**",
-        "scripts/build-production.mjs"
+        "scripts/build-production.mjs",
+        "app/crm-screen-contract*",
+        "app/crm-one-screen-standard.css"
       ],
       "dependencies": [],
       "smokeChecks": [

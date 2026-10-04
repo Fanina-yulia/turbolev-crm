@@ -2,60 +2,33 @@ import fs from "node:fs";
 import path from "node:path";
 
 const ROOT = process.cwd();
-const standardsPath = path.join(ROOT, "docs", "CRM_STANDARDS_TABLE.md");
-const registryPath = path.join(ROOT, "docs", "modules", "module-registry.json");
-
-const protectedPages = [
-  ["app/diagnostics.module.css", [".list", ".detail", "max-height:none", "overflow:visible"]],
-  ["app/work-orders.module.css", [".list", ".detail", ".detailSticky", "max-height:none", "overflow:visible"]],
-  ["app/new-inquiries.module.css", [".queuePane", ".queueList", ".detailPane", "overflow:visible"]],
-  ["app/parts-supplier-reconciliation.module.css", [".workspace", ".queue", ".detail", "overflow:visible"]],
-  ["app/communications-contact-inbox.module.css", [".shell", ".list", ".timeline", "overflow:visible"]],
-  ["app/communications.css", [".commsLayout", ".commsListScroll", ".threadMessages", ".commsContext", "height:auto", "min-height:0", "overflow:visible", "max-height:none"]],
-  ["app/workflow-settings-panel.module.css", [".entities", "overflow:visible"]],
-  ["app/diagnostic-templates-settings-panel.module.css", [".list", "position:static"]],
-  ["app/personnel-v2.module.css", [".list", ".editor", "overflow:visible"]],
-  ["app/security-settings-panel.module.css", [".listPanel", "max-height:none", "overflow:visible"]],
-  ["app/security-settings-panel-v2.module.css", [".list", ".editor", "max-height:none", "overflow:visible"]],
-];
-
 const failures = [];
+const read = (file) => fs.readFileSync(path.join(ROOT, file), "utf8");
 
-if (!fs.existsSync(standardsPath)) {
-  failures.push("Missing canonical standards table: docs/CRM_STANDARDS_TABLE.md");
-} else {
-  const standards = fs.readFileSync(standardsPath, "utf8");
-  for (const code of ["CRM-AUDIT-001", "CRM-UI-001", "CRM-UI-002"]) {
-    if (!standards.includes(code)) failures.push(`Standards table is missing ${code}`);
-  }
+const standards = read("docs/CRM_STANDARDS_TABLE.md");
+const oneScreen = read("docs/CRM_ONE_SCREEN_FIRST.md");
+const registry = JSON.parse(read("docs/modules/module-registry.json"));
+const layout = read("app/layout.tsx");
+const shell = read("app/crm-shell.tsx");
+const css = read("app/crm-one-screen-standard.css");
+
+for (const code of ["CRM-AUDIT-001", "CRM-UI-003", "CRM-UI-004"]) {
+  if (!standards.includes(code)) failures.push(`Standards table is missing ${code}`);
 }
 
-if (!fs.existsSync(registryPath)) {
-  failures.push("Missing module registry: docs/modules/module-registry.json");
-} else {
-  const registry = JSON.parse(fs.readFileSync(registryPath, "utf8"));
-  const rules = Array.isArray(registry.globalRules) ? registry.globalRules : [];
-  for (const code of ["CRM-AUDIT-001", "CRM-UI-001"]) {
-    if (!rules.some((rule) => rule.id === code && rule.status === "ACTIVE")) {
-      failures.push(`Module registry is missing active global rule ${code}`);
-    }
-  }
+const globalRules = Array.isArray(registry.globalRules) ? registry.globalRules : [];
+if (!globalRules.some((rule) => rule.id === "CRM-UI-004" && rule.status === "ACTIVE")) {
+  failures.push("Module registry is missing active global rule CRM-UI-004");
+}
+if (!globalRules.some((rule) => rule.id === "CRM-UI-001" && rule.status === "SUPERSEDED")) {
+  failures.push("CRM-UI-001 must be marked SUPERSEDED");
 }
 
-for (const [relativeFile, markers] of protectedPages) {
-  const file = path.join(ROOT, relativeFile);
-  if (!fs.existsSync(file)) {
-    failures.push(`Protected page stylesheet is missing: ${relativeFile}`);
-    continue;
-  }
-  const source = fs.readFileSync(file, "utf8");
-  const compactSource = source.replace(/\s+/g, "");
-  for (const marker of markers) {
-    if (!compactSource.includes(marker.replace(/\s+/g, ""))) {
-      failures.push(`${relativeFile}: missing continuous-page contract marker ${marker}`);
-    }
-  }
-}
+if (!oneScreen.includes("Кабінету механіка")) failures.push("Mechanic exclusion is not documented");
+if (!layout.includes("./crm-one-screen-standard.css")) failures.push("CRM-UI-004 stylesheet is not loaded");
+if (!shell.includes("CrmScreenContractFrame")) failures.push("CRM shell is missing screen contract frame");
+if (!css.includes('[data-crm-screen-frame="true"]')) failures.push("CRM-UI-004 CSS is not shell-scoped");
+if (/mechanic-/i.test(css) || /MechanicCabinet/.test(css)) failures.push("CRM-UI-004 CSS targets mechanic scope");
 
 if (failures.length) {
   console.error("[crm-page-integrity] FAIL");
@@ -63,4 +36,4 @@ if (failures.length) {
   process.exit(1);
 }
 
-console.log(`[crm-page-integrity] OK — ${protectedPages.length} protected CRM page surfaces follow CRM-UI-001.`);
+console.log("[crm-page-integrity] OK — CRM-UI-004 is canonical; standalone mechanic cabinet is excluded.");

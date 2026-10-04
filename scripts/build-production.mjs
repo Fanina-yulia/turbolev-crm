@@ -6,6 +6,7 @@ import "./check-quality-analytics.mjs";
 import "./check-customer-ltv.mjs";
 import "./check-telephony-popup.mjs";
 import "./check-crm-page-integrity.mjs";
+import "./check-one-screen-contracts.mjs";
 import "./check-sidebar-settings-submenu.mjs";
 import "./check-visit-financial-state.mjs";
 import { spawnSync } from "node:child_process";
