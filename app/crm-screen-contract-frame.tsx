@@ -5,6 +5,31 @@ import type { CrmSectionLabel } from "./crm-navigation";
 import { resolveCrmScreenContract, resolveCrmScreenId, type CrmScreenRouteShape } from "./crm-screen-contracts";
 import type { SettingsTab } from "./settings-tabs";
 
+const LOCAL_SCROLL_SCREENS = new Set([
+  "tasks",
+  "communications",
+  "clients",
+  "vehicles",
+  "planner",
+  "diagnostics",
+  "work-journal",
+  "work-orders",
+  "warranties",
+  "procurement",
+  "payments",
+  "settings-personnel",
+  "settings-workPrices",
+  "settings-diagnosticTemplates",
+  "settings-suppliers",
+  "settings-warehouse",
+  "settings-posts",
+  "settings-cash",
+  "settings-integrations",
+  "settings-workflow",
+  "settings-security",
+  "settings-partsCatalog",
+]);
+
 function readRoute(): CrmScreenRouteShape {
   if (typeof window === "undefined") return {};
   const params = new URL(window.location.href).searchParams;
@@ -46,11 +71,13 @@ export function CrmScreenContractFrame({
     () => resolveCrmScreenId(section, settingsTab, route),
     [section, settingsTab, route],
   );
+  const scrollOwner = contract === "one-scroll" && LOCAL_SCROLL_SCREENS.has(screen) ? "page" : "frame";
 
   return <div
     data-crm-screen-frame="true"
     data-crm-screen={screen}
     data-screen-contract={contract}
+    data-crm-scroll-owner={scrollOwner}
   ><div
     data-crm-scroll-region={contract === "one" ? undefined : "main"}
     data-crm-scroll-mode={contract}
