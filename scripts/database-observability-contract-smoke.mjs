@@ -13,6 +13,7 @@ assert.match(image,/findAssetByIdentity/);
 assert.match(image,/vehicle-image-template:/);
 assert.match(image,/pg_advisory_xact_lock/);
 assert.match(image,/ON CONFLICT DO NOTHING/);
+assert.match(image,/asset\.libraryKey/,"queue jobs must use the canonical library key after template/variant deduplication");
 assert.match(image,/"templateKey"=\$2 AND "variantKey"=\$3/);
 assert.equal(
   /enqueueVehicleImageGeneration[\s\S]*ON CONFLICT \("libraryKey"\)/.test(image),
