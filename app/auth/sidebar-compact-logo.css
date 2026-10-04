@@ -95,3 +95,22 @@
     display: block !important;
   }
 }
+
+
+/* CRM-UI-004 POLISH V2 — collapsed rail never expands the brand into content. */
+@media (min-width:761px){
+  .sidebar:has(> button[aria-controls="crm-primary-navigation"][aria-expanded="false"]) .brand{
+    overflow:hidden!important;
+  }
+  .sidebar[data-rail-hover-open]:has(> button[aria-controls="crm-primary-navigation"][aria-expanded="false"]) .brandLogoWrap{
+    display:block!important;
+    width:36px!important;
+    min-width:36px!important;
+    height:36px!important;
+    opacity:0!important;
+    overflow:hidden!important;
+  }
+  .sidebar[data-rail-hover-open]:has(> button[aria-controls="crm-primary-navigation"][aria-expanded="false"]) .brandLogo{
+    display:none!important;
+  }
+}

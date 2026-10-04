@@ -27,3 +27,26 @@
 @media(max-width:1150px){.kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.twoColumns,.twoColumnsWide{grid-template-columns:1fr}.nextModules{display:none}.compare{margin-left:0}.cashGrid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:780px){.page{padding:14px}.header{flex-direction:column}.header h1{font-size:27px}.tabs{margin-left:-14px;margin-right:-14px;padding-left:10px;padding-right:10px}.filters{align-items:stretch}.presets{width:100%;overflow:auto}.filters label{flex:1;min-width:130px}.location{min-width:100%}.kpis,.kpisSix{grid-template-columns:1fr 1fr}.alertRail,.checkBand{grid-template-columns:1fr 1fr}.funnelSummary{grid-template-columns:1fr 1fr}.liveCards{grid-template-columns:1fr 1fr}.financeCards,.financeCardsWide{grid-template-columns:1fr 1fr}.compactSeries>div{grid-template-columns:52px 1fr}.compactSeries>div>div{grid-column:2}.statusPipeline{grid-template-columns:1fr 1fr}.sectionIntro{align-items:flex-start;flex-direction:column}.sectionIntro .secondaryButton{width:100%}.overdueList button{grid-template-columns:1fr auto}.overdueList button>div:nth-child(2){grid-column:1}.infoBanner{flex-direction:column}.infoBanner strong{white-space:normal}}
 @media(max-width:480px){.kpis,.kpisSix{grid-template-columns:1fr}.alertRail,.checkBand,.funnelSummary,.liveCards,.financeCards,.financeCardsWide,.statusPipeline,.cashGrid{grid-template-columns:1fr}.liveGrid{grid-template-columns:1fr 1fr}.cycleCards{grid-template-columns:1fr}.funnelStage{width:100%!important}.trendRow{grid-template-columns:54px 1fr 48px}.trendRow span{display:none}}
+
+/* CRM-UI-004 POLISH V2 */
+@media (min-width:761px){
+  .page{padding:8px 18px 14px;max-width:none}
+  .header{position:sticky;top:0;z-index:15;margin-bottom:7px;padding:3px 0 6px;background:var(--bg)}
+  .header h1{font-size:27px}
+  .tabs{position:sticky;top:58px;z-index:14;margin-bottom:8px;background:var(--bg)}
+  .tabs>button{padding:8px 11px}
+  .filters{margin-bottom:8px;padding:8px}
+  .kpis,.kpisSix{gap:7px;margin-bottom:8px}
+  .kpiCard{min-height:82px;padding:9px 10px}
+  .kpiCard>strong{margin:7px 0 4px;font-size:20px}
+  .alertRail{margin-bottom:8px}
+  .panel{padding:12px;margin-bottom:8px}
+  .panel>header{margin-bottom:9px}
+  .twoColumns,.twoColumnsWide{gap:9px}
+  .sectionIntro{margin:2px 0 8px;padding:8px 2px}
+  .sectionIntro h2{font-size:20px}
+  .liveCards,.funnelSummary,.financeCards,.financeCardsWide{gap:7px;margin-bottom:8px}
+  .tableWrap{max-height:58dvh;overflow:auto}
+  .overdueList{max-height:52dvh}
+}
+

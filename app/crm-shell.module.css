@@ -289,3 +289,30 @@
     min-height:120px;
   }
 }
+
+
+/* CRM-UI-004 POLISH V2 */
+@media (min-width:761px){
+  .workspaceWithFloatingAction{
+    position:relative;
+    display:flex;
+    flex-direction:column;
+    min-height:0;
+    padding-top:8px!important;
+  }
+  .globalNewRequest{
+    position:static;
+    flex:0 0 auto;
+    min-height:48px;
+    margin:0 0 4px;
+    display:flex;
+    align-items:center;
+    justify-content:flex-end;
+  }
+  .globalNewRequest > :global(button){min-height:42px;box-shadow:none}
+  .workspaceWithFloatingAction > :global([data-crm-screen-frame="true"]){
+    flex:1 1 auto;
+    height:auto;
+    min-height:0;
+  }
+}

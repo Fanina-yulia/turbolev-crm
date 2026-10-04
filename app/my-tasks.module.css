@@ -20,3 +20,19 @@
 @media(max-width:1200px){.grid{grid-template-columns:minmax(0,1.55fr) minmax(280px,.75fr)}.signalRow{grid-template-columns:6px minmax(0,1fr)}.signalActions{grid-column:2;max-width:none;justify-content:flex-start}.kpis{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media(max-width:900px){.page{padding:20px 18px 42px}.grid{grid-template-columns:1fr}.sideColumn{grid-template-columns:1fr 1fr}.createForm{grid-template-columns:1fr 1fr}.kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:650px){.page{padding:15px 12px 30px}.header{flex-direction:column;gap:13px}.headerActions{width:100%;justify-content:space-between}.headerActions .primary{flex:0 0 auto}.createForm{grid-template-columns:1fr}.kpis{grid-template-columns:1fr 1fr;gap:7px}.kpis button{padding:11px}.kpis strong{font-size:22px}.sideColumn{grid-template-columns:1fr}.signalRow{grid-template-columns:5px minmax(0,1fr);gap:9px;padding:12px 10px}.signalActions{grid-column:2}.panelHead{align-items:flex-start}.panelHead p{display:none}.categoryBar{margin-left:-2px;margin-right:-2px}}
+
+/* CRM-UI-004 POLISH V2 */
+@media (min-width:761px){
+  .page{height:100%;min-height:0;display:flex;flex-direction:column;overflow:hidden;padding:8px 18px 8px}
+  .header{flex:0 0 auto;margin-bottom:10px}
+  .header h1{font-size:28px}
+  .kpis{flex:0 0 auto;margin-bottom:8px}
+  .kpis button{padding:9px 11px}
+  .kpis strong{font-size:21px}
+  .categoryBar{flex:0 0 auto;margin-bottom:8px}
+  .grid{flex:1 1 auto;min-height:0;overflow:hidden;align-items:stretch}
+  .mainColumn,.sideColumn{min-height:0;overflow-y:auto;overscroll-behavior:contain;scrollbar-gutter:stable;padding-right:3px;align-content:start}
+  .panelHead{min-height:52px;padding:9px 12px}
+  .signalRow{min-height:88px;padding:10px 12px}
+}
+

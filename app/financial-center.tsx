@@ -134,6 +134,7 @@ export function FinancialCenter() {
   }, [loadAccounts]);
 
   return <>
+    <FinancialCenterBody />
     <div className={styles.shell} style={{ paddingBottom: 0 }}>
       <section className={styles.panel}>
         <div className={styles.panelHeader}>
@@ -142,7 +143,6 @@ export function FinancialCenter() {
         </div>
       </section>
     </div>
-    <FinancialCenterBody />
     {route.scope === "settings" && <div className={styles.shell}>
       {governanceError && <div className={styles.errorBox}>{governanceError}</div>}
       <FinancialGovernancePanel

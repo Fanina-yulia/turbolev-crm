@@ -54,3 +54,28 @@
 .empty strong{display:block;color:var(--text);margin-bottom:6px}
 .toast{position:fixed;right:24px;bottom:24px;z-index:1000;max-width:420px;background:var(--panel);border:1px solid var(--line);border-radius:11px;padding:12px 14px;box-shadow:0 18px 50px rgba(0,0,0,.28);font-size:12px}
 @media(max-width:800px){.summary{grid-template-columns:1fr}.formGrid{grid-template-columns:1fr}.details{grid-template-columns:repeat(2,minmax(0,1fr))}.snapshot{grid-template-columns:1fr}.header{flex-direction:column}.header .primary{width:100%}.scriptHead{align-items:flex-start;flex-direction:column}.scriptHead .primary{width:100%}}
+
+/* CRM-UI-004 POLISH V2 */
+@media (min-width:761px){
+  .page{
+    height:100%;
+    min-height:0;
+    overflow-y:auto;
+    overscroll-behavior:contain;
+    scrollbar-gutter:stable;
+    max-width:none;
+    padding:0 2px 12px;
+  }
+  .header{position:sticky;top:0;z-index:10;margin-bottom:10px;padding:3px 0 7px;background:var(--bg)}
+  .headerCopy h2{font-size:25px;margin-bottom:3px}
+  .summary{gap:8px;margin-bottom:10px}
+  .summary article{padding:10px 12px}
+  .formCard,.setupCard{padding:13px;margin-bottom:10px}
+  .list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
+  .card{padding:13px}
+  .details{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+}
+@media (max-width:1050px) and (min-width:761px){
+  .list{grid-template-columns:1fr}
+}
+

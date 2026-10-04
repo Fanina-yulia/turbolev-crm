@@ -173,3 +173,27 @@
   .left{height:auto;min-height:0}
   .right{min-height:0}
 }
+
+/* CRM-UI-004 POLISH V2 */
+@media (min-width:761px){
+  .page{height:100%;min-height:0;display:flex;flex-direction:column;overflow:hidden;padding-bottom:0}
+  .header{flex:0 0 auto;padding:2px 0 9px}
+  .header h1{font-size:28px}
+  .subtitle{margin-top:4px;font-size:12px}
+  .filters{flex:0 0 auto;padding:8px 0}
+  .filterButton{min-height:34px;padding:0 11px;font-size:12px}
+  .shell{
+    flex:1 1 auto;
+    height:auto;
+    min-height:0;
+    max-height:none;
+    overflow:hidden;
+    grid-template-columns:minmax(300px,36%) minmax(0,1fr);
+  }
+  .left,.right{height:100%;min-height:0}
+  .list{min-height:0;overflow-y:auto}
+  .timeline{min-height:0;flex:1 1 auto;overflow-y:auto}
+  .chatHead{flex:0 0 auto}
+  .composer{flex:0 0 auto}
+}
+

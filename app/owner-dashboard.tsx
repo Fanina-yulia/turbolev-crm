@@ -184,6 +184,7 @@ export function OwnerControlCenter({ userName, mode = "OWNER" }: { userName?: st
   const [error, setError] = useState("");
   const [attentionTab, setAttentionTab] = useState<"OWNER" | "TEAM">("OWNER");
   const [period, setPeriod] = useState<OwnerPeriodKey>("30D");
+  const [workspaceTab, setWorkspaceTab] = useState<"RESULT" | "SERVICE" | "RISKS" | "TRENDS">("RESULT");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -252,9 +253,16 @@ export function OwnerControlCenter({ userName, mode = "OWNER" }: { userName?: st
 
     <OwnerDashboardVisual analytics={analytics} period={period} onPeriodChange={setPeriod} loading={loading} />
 
-    <ManagementResultPanel mode={isExecutive ? "EXECUTIVE" : "OWNER"} />
+    <nav className={styles.workspaceTabs} aria-label="Розділи пульта власника">
+      <button type="button" className={workspaceTab === "RESULT" ? styles.workspaceTabActive : ""} onClick={() => setWorkspaceTab("RESULT")}>Результат</button>
+      <button type="button" className={workspaceTab === "SERVICE" ? styles.workspaceTabActive : ""} onClick={() => setWorkspaceTab("SERVICE")}>Сервіс</button>
+      <button type="button" className={workspaceTab === "RISKS" ? styles.workspaceTabActive : ""} onClick={() => setWorkspaceTab("RISKS")}>Ризики <b>{ownerAttention.length + teamAttention.length}</b></button>
+      <button type="button" className={workspaceTab === "TRENDS" ? styles.workspaceTabActive : ""} onClick={() => setWorkspaceTab("TRENDS")}>Тренди</button>
+    </nav>
 
-    <div className={styles.twoColumns}>
+    {workspaceTab === "RESULT" && <ManagementResultPanel mode={isExecutive ? "EXECUTIVE" : "OWNER"} />}
+
+    {workspaceTab === "SERVICE" && <div className={styles.twoColumns}>
       <section className={styles.panel}>
         <div className={styles.panelHead}><div><p className="eyebrow">ВІД ЗВЕРНЕННЯ ДО ЗАВЕРШЕННЯ</p><h2>Конверсія сервісного потоку</h2></div><button type="button" onClick={() => navigateCrm("Аналітика")}>Детально →</button></div>
         <div className={styles.funnel}>
@@ -278,43 +286,45 @@ export function OwnerControlCenter({ userName, mode = "OWNER" }: { userName?: st
         </div>
         <div className={styles.delayList}>{operations?.delayReasons?.length ? operations.delayReasons.slice(0, 5).map((item) => <div key={item.code}><span>{item.label}</span><strong>{item.count}</strong></div>) : <div className={styles.empty}>Критичних причин затримки зараз не зафіксовано.</div>}</div>
       </section>
-    </div>
+    </div>}
 
-    <div className={styles.twoColumns}>
-      <section className={styles.panel}>
-        <div className={styles.panelHead}><div><p className="eyebrow">КОНТРОЛЬ СЕРВІСУ</p><h2>Потрібна дія</h2></div><button type="button" onClick={() => navigateCrm("Авто")}>Усі авто →</button></div>
-        <div className={styles.attentionTabs} role="tablist" aria-label="Категорії автомобілів, які потребують уваги">
-          <button type="button" role="tab" aria-selected={attentionTab === "OWNER"} className={attentionTab === "OWNER" ? styles.attentionTabActive : ""} onClick={() => setAttentionTab("OWNER")}>{isExecutive ? "Ескалації мені" : "Моє рішення"} <b>{ownerAttention.length}</b></button>
-          <button type="button" role="tab" aria-selected={attentionTab === "TEAM"} className={attentionTab === "TEAM" ? styles.attentionTabActive : ""} onClick={() => setAttentionTab("TEAM")}>{isExecutive ? "Контроль керівників" : "Контроль команди"} <b>{teamAttention.length}</b></button>
+    {workspaceTab === "RISKS" && <section className={styles.panel}>
+      <div className={styles.panelHead}><div><p className="eyebrow">КОНТРОЛЬ СЕРВІСУ</p><h2>Потрібна дія</h2></div><button type="button" onClick={() => navigateCrm("Авто")}>Усі авто →</button></div>
+      <div className={styles.attentionTabs} role="tablist" aria-label="Категорії автомобілів, які потребують уваги">
+        <button type="button" role="tab" aria-selected={attentionTab === "OWNER"} className={attentionTab === "OWNER" ? styles.attentionTabActive : ""} onClick={() => setAttentionTab("OWNER")}>{isExecutive ? "Ескалації мені" : "Моє рішення"} <b>{ownerAttention.length}</b></button>
+        <button type="button" role="tab" aria-selected={attentionTab === "TEAM"} className={attentionTab === "TEAM" ? styles.attentionTabActive : ""} onClick={() => setAttentionTab("TEAM")}>{isExecutive ? "Контроль керівників" : "Контроль команди"} <b>{teamAttention.length}</b></button>
+      </div>
+      {selectedAttention.length ? <div className={styles.attentionCards}>{selectedAttention.map((item) => <article key={item.id} className={`${styles.attentionCard} ${item.attentionLevel === "CRITICAL" ? styles.attentionCritical : item.attentionLevel === "HIGH" ? styles.attentionHigh : ""}`}>
+        {item.vehicleId ? <VehicleRender id={item.vehicleId} brand={item.vehicle} size="mini" className={styles.attentionVehicleImage} /> : <span className={styles.attentionVehicleFallback} aria-label="Зображення автомобіля недоступне">🚗</span>}
+        <div className={styles.attentionCardBody}>
+          <div className={styles.attentionIdentity}><b>{item.plate}</b><span>{item.vehicle}</span></div>
+          <strong>{attentionIssueLabel(item)}</strong>
+          <span>{item.attentionReason}</span>
         </div>
-        {selectedAttention.length ? <div className={styles.attentionCards}>{selectedAttention.map((item) => <article key={item.id} className={`${styles.attentionCard} ${item.attentionLevel === "CRITICAL" ? styles.attentionCritical : item.attentionLevel === "HIGH" ? styles.attentionHigh : ""}`}>
-          {item.vehicleId ? <VehicleRender id={item.vehicleId} brand={item.vehicle} size="mini" className={styles.attentionVehicleImage} /> : <span className={styles.attentionVehicleFallback} aria-label="Зображення автомобіля недоступне">🚗</span>}
-          <div className={styles.attentionCardBody}>
-            <div className={styles.attentionIdentity}><b>{item.plate}</b><span>{item.vehicle}</span></div>
-            <strong>{attentionIssueLabel(item)}</strong>
-            <span>{item.attentionReason}</span>
-          </div>
-          <div className={styles.attentionCardAction}>
-            <small>{attentionDelay(item.attentionAt)}</small>
-            <button type="button" onClick={routeAttention(item)}>{item.nextAction}</button>
-          </div>
-        </article>)}</div> : <div className={styles.empty}>{attentionTab === "OWNER" ? "Зараз немає автомобілів, які очікують особистого рішення власника." : "Команда опрацювала всі автомобілі, які потребували уваги."}</div>}
-        {(attentionTab === "OWNER" ? ownerAttention : teamAttention).length > selectedAttention.length && <button type="button" className={styles.attentionMore} onClick={() => navigateCrm("Авто")}>Показати ще {(attentionTab === "OWNER" ? ownerAttention : teamAttention).length - selectedAttention.length} →</button>}
-      </section>
+        <div className={styles.attentionCardAction}>
+          <small>{attentionDelay(item.attentionAt)}</small>
+          <button type="button" onClick={routeAttention(item)}>{item.nextAction}</button>
+        </div>
+      </article>)}</div> : <div className={styles.empty}>{attentionTab === "OWNER" ? "Зараз немає автомобілів, які очікують особистого рішення власника." : "Команда опрацювала всі автомобілі, які потребували уваги."}</div>}
+      {(attentionTab === "OWNER" ? ownerAttention : teamAttention).length > selectedAttention.length && <button type="button" className={styles.attentionMore} onClick={() => navigateCrm("Авто")}>Показати ще {(attentionTab === "OWNER" ? ownerAttention : teamAttention).length - selectedAttention.length} →</button>}
+    </section>}
 
+    {workspaceTab === "TRENDS" && <div className={styles.twoColumns}>
       <section className={styles.panel}>
         <div className={styles.panelHead}><div><p className="eyebrow">ТРЕНД</p><h2>Закриті КП та виручка</h2></div><button type="button" onClick={() => navigateCrm("Аналітика")}>Періоди →</button></div>
         <div className={styles.trend}>{trend.length ? trend.map((item) => <div key={item.date}><span>{dateLabel(item.date)}</span><i><b style={{ width: `${Math.max(4, (Math.abs(item.revenue || item.closed || 0) / trendMax) * 100)}%` }} /></i><strong>{item.revenue != null ? money(item.revenue) : `${item.closed} КП`}</strong></div>) : <div className={styles.empty}>Ще немає даних для тренду за період.</div>}</div>
       </section>
-    </div>
-
-    <section className={styles.quickActions}>
-      <button type="button" onClick={() => navigateCrm("Аналітика")}><strong>Аналітика</strong><span>KPI, воронка, виробництво, фінанси →</span></button>
-      <button type="button" onClick={() => navigateCrm("Фінансовий центр")}><strong>Фінанси</strong><span>виручка, прибуток, cash flow →</span></button>
-      <button type="button" onClick={() => navigateCrm("Комерційна пропозиція")}><strong>Сервісний потік</strong><span>активні авто та блокери →</span></button>
-      <button type="button" onClick={() => navigateCrm("Закупівлі та склад")}><strong>Запчастини</strong><span>закупівлі, склад і постачання →</span></button>
-      <button type="button" onClick={() => navigateCrm("Планувальник")}><strong>Планувальник</strong><span>завантаження та майбутні записи →</span></button>
-      <button type="button" onClick={() => navigateCrm("Активні")}><strong>Активні</strong><span>поточні звернення та конверсія →</span></button>
-    </section>
+      <section className={styles.panel}>
+        <div className={styles.panelHead}><div><p className="eyebrow">ШВИДКІ ПЕРЕХОДИ</p><h2>Робочі центри</h2></div></div>
+        <div className={styles.quickActions}>
+          <button type="button" onClick={() => navigateCrm("Аналітика")}><strong>Аналітика</strong><span>KPI, воронка, виробництво, фінанси →</span></button>
+          <button type="button" onClick={() => navigateCrm("Фінансовий центр")}><strong>Фінанси</strong><span>виручка, прибуток, cash flow →</span></button>
+          <button type="button" onClick={() => navigateCrm("Комерційна пропозиція")}><strong>Сервісний потік</strong><span>активні авто та блокери →</span></button>
+          <button type="button" onClick={() => navigateCrm("Закупівлі та склад")}><strong>Запчастини</strong><span>закупівлі, склад і постачання →</span></button>
+          <button type="button" onClick={() => navigateCrm("Планувальник")}><strong>Планувальник</strong><span>завантаження та майбутні записи →</span></button>
+          <button type="button" onClick={() => navigateCrm("Активні")}><strong>Активні</strong><span>поточні звернення та конверсія →</span></button>
+        </div>
+      </section>
+    </div>}
   </>;
 }
