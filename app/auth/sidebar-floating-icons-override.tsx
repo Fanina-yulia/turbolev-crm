@@ -19,18 +19,18 @@ export function SidebarFloatingIconsOverride() {
       }
 
       /*
-       * Brand mark V9.
-       * The previous 108px compact badge contained its own dark square and felt
-       * detached from the rail. Use the transparent light/dark rail marks instead,
-       * reduce the visual size by ~30%, and keep the mark anchored near the left edge.
+       * Compact brand mark.
+       * Keep the logo fully inside the 68px floating rail so it never enters the
+       * workspace or collides with page titles. The full wordmark remains available
+       * in the expanded menu.
        */
       .crmDockBrand7{
-        width:82px!important;
-        height:82px!important;
-        min-height:82px!important;
-        flex:0 0 82px!important;
-        align-self:flex-start!important;
-        margin:2px 0 8px -4px!important;
+        width:54px!important;
+        height:54px!important;
+        min-height:54px!important;
+        flex:0 0 54px!important;
+        align-self:center!important;
+        margin:4px 0 6px!important;
         padding:0!important;
         transform:none!important;
         overflow:visible!important;
@@ -41,15 +41,15 @@ export function SidebarFloatingIconsOverride() {
       }
       .crmDockBrand7 span{
         display:block!important;
-        width:76px!important;
-        height:76px!important;
+        width:44px!important;
+        height:44px!important;
         background-image:url("/brand/turbo-lev-rail-light.png")!important;
         background-repeat:no-repeat!important;
-        background-position:left center!important;
+        background-position:center!important;
         background-size:contain!important;
         image-rendering:auto!important;
-        transform-origin:left center!important;
-        filter:drop-shadow(0 3px 8px rgba(17,21,26,.13))!important;
+        transform-origin:center!important;
+        filter:drop-shadow(0 2px 6px rgba(17,21,26,.12))!important;
         transition:transform 160ms cubic-bezier(.16,1,.3,1),filter 160ms ease!important;
       }
       :root[data-theme="dark"] .crmDockBrand7 span{
