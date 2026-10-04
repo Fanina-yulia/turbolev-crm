@@ -1,7 +1,7 @@
 # TURBO LEV CRM — Технічне завдання: SQL Scope & Hot Paths Optimization
 
 **Дата:** 2026-10-04  
-**Статус:** реалізація  
+**Статус:** реалізовано, очікує exact-commit preview validation  
 **Гілка:** `perf/sql-scope-hotpaths-20261004`  
 **Мета:** зменшити кількість DB round-trips, обсяг ID-масивів у Node.js і навантаження на PostgreSQL у найбільш активних API CRM без зміни бізнес-логіки та без міграції даних.
 
