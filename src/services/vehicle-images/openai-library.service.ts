@@ -720,13 +720,13 @@ export async function generateVehicleImageForVehicle(vehicleId: string, options?
   const now = Date.now();
 
   if (!options?.force && existing?.status === "READY") {
-    return { state: "READY" as const, assetId: existing.id, libraryKey: claimed?.libraryKey ?? existing?.libraryKey ?? identity.libraryKey, templateKey: identity.templateKey, variantKey: identity.variantKey, normalizedColor: identity.normalizedColor, requestedColor: paint.requestedColor, reused: true };
+    return { state: "READY" as const, assetId: existing.id, libraryKey: existing?.libraryKey ?? identity.libraryKey, templateKey: identity.templateKey, variantKey: identity.variantKey, normalizedColor: identity.normalizedColor, requestedColor: paint.requestedColor, reused: true };
   }
   if (!options?.force && existing?.status === "GENERATING" && now - new Date(existing.updatedAt).getTime() < GENERATION_LOCK_MS) {
-    return { state: "GENERATING" as const, assetId: existing.id, libraryKey: claimed?.libraryKey ?? existing?.libraryKey ?? identity.libraryKey, templateKey: identity.templateKey, variantKey: identity.variantKey, requestedColor: paint.requestedColor };
+    return { state: "GENERATING" as const, assetId: existing.id, libraryKey: existing?.libraryKey ?? identity.libraryKey, templateKey: identity.templateKey, variantKey: identity.variantKey, requestedColor: paint.requestedColor };
   }
   if (!options?.force && existing?.status === "ERROR" && now - new Date(existing.updatedAt).getTime() < ERROR_RETRY_MS) {
-    return { state: "ERROR" as const, assetId: existing.id, libraryKey: claimed?.libraryKey ?? existing?.libraryKey ?? identity.libraryKey, templateKey: identity.templateKey, variantKey: identity.variantKey, error: existing.lastError, requestedColor: paint.requestedColor };
+    return { state: "ERROR" as const, assetId: existing.id, libraryKey: existing?.libraryKey ?? identity.libraryKey, templateKey: identity.templateKey, variantKey: identity.variantKey, error: existing.lastError, requestedColor: paint.requestedColor };
   }
 
   const pool = getSqlPool();
@@ -849,7 +849,7 @@ export async function generateVehicleImageForVehicle(vehicleId: string, options?
     return {
       state: "READY" as const,
       assetId: claimed.id,
-      libraryKey: claimed?.libraryKey ?? existing?.libraryKey ?? identity.libraryKey,
+      libraryKey: claimed.libraryKey,
       templateKey: identity.templateKey,
       variantKey: identity.variantKey,
       normalizedColor: identity.normalizedColor,
