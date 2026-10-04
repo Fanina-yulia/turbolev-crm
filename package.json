@@ -43,7 +43,8 @@
     "parts:search:fallback:smoke": "node --import tsx scripts/parts-search-fallback-contract-smoke.ts",
     "parts:search:v3:smoke": "node --import tsx scripts/parts-search-v3-contract-smoke.ts",
     "db:release": "node scripts/release-database.mjs",
-    "optimization:smoke": "node scripts/deployment-pipeline-contract-smoke.mjs && node scripts/access-context-cache-contract-smoke.mjs && node scripts/polling-performance-contract-smoke.mjs && node scripts/sql-scope-performance-contract-smoke.mjs && node scripts/db-hotpath-performance-contract-smoke.mjs && node scripts/database-observability-contract-smoke.mjs"
+    "optimization:smoke": "node scripts/deployment-pipeline-contract-smoke.mjs && node scripts/access-context-cache-contract-smoke.mjs && node scripts/polling-performance-contract-smoke.mjs && node scripts/sql-scope-performance-contract-smoke.mjs && node scripts/db-hotpath-performance-contract-smoke.mjs && node scripts/database-observability-contract-smoke.mjs",
+    "ui:screen-contracts:check": "node scripts/check-one-screen-contracts.mjs"
   },
   "dependencies": {
     "@neondatabase/auth": "0.4.2-beta",
