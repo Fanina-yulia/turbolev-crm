@@ -5,6 +5,7 @@ import { getPrisma } from "@/src/lib/prisma";
 import { writeAuditEvent } from "@/src/services/audit.service";
 import { SecurityAdminError } from "@/src/security/security-admin.service";
 import type { AccessScopeCode } from "@/src/security/permissions";
+import { invalidateAccessContextCache } from "@/src/security/access-context-cache";
 
 const VALID_SCOPES = new Set<AccessScopeCode>(["SELF", "ASSIGNED", "TEAM", "LOCATION", "ALL"]);
 
@@ -135,6 +136,7 @@ export async function updateAccessUser(args: {
       emailChanged: result.emailChanged,
     },
   });
+  invalidateAccessContextCache();
   return result.user;
 }
 
@@ -155,6 +157,7 @@ export async function setAccessUserActive(userId: string, isActive: boolean) {
     before: { isActive: result.before.isActive },
     after: { isActive: result.user.isActive },
   });
+  invalidateAccessContextCache();
   return result.user;
 }
 
@@ -223,5 +226,6 @@ export async function updateAccessRole(args: {
       permissions: result.updated.permissions.map((grant) => ({ code: grant.permission.code, scope: grant.scope })),
     },
   });
+  invalidateAccessContextCache();
   return result.updated;
 }
