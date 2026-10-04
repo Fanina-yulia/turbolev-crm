@@ -235,3 +235,53 @@
     width: auto;
   }
 }
+
+/* CRM-UI-004 POLISH V2 */
+@media (min-width:761px){
+  .page{gap:10px;padding:0 0 12px;overflow-x:hidden}
+  .pageTopline{gap:14px}
+  .pageTopline h1{font-size:25px;margin:3px 0}
+  .pageTopline p{font-size:12px}
+  .back{padding:7px 10px;font-size:12px}
+  .header{
+    min-height:136px;
+    grid-template-columns:minmax(200px,30%) minmax(0,1fr);
+    padding:8px 12px;
+  }
+  .vehiclePhoto{min-height:120px;padding:0 10px}
+  .vehiclePhoto :global([data-vehicle-render]){
+    width:min(100%,260px)!important;
+    height:120px!important;
+    max-height:120px!important;
+  }
+  .vehicleSummary{
+    grid-template-columns:minmax(0,1fr) minmax(220px,31%);
+    gap:12px;
+    padding:8px 0 8px 14px;
+  }
+  .header h2{font-size:23px;margin:4px 0 7px}
+  .vehicleIdentifiers{gap:7px}
+  .plate{font-size:13px}
+  .vin{font-size:11px}
+  .ownerBar{padding-left:12px;gap:7px}
+  .ownerIdentity strong{font-size:13px}
+  .ownerIdentity>span:last-child{font-size:11px}
+  .tabs{
+    position:sticky;
+    top:0;
+    z-index:12;
+    justify-content:flex-start;
+    flex-wrap:nowrap;
+    overflow-x:auto;
+    padding:3px 4px 0;
+    background:var(--bg);
+  }
+  .tabs button{min-height:36px;padding:8px 10px;font-size:12px}
+  .content{gap:10px}
+}
+@media (min-width:761px) and (max-width:1180px){
+  .header{grid-template-columns:minmax(180px,28%) minmax(0,1fr)}
+  .vehicleSummary{grid-template-columns:minmax(0,1fr);padding-left:12px}
+  .ownerBar{padding:7px 0 0;border-left:0;border-top:1px solid var(--line)}
+}
+
