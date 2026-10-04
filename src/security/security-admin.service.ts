@@ -3,6 +3,7 @@ import "server-only";
 import type { Prisma } from "@/src/generated/prisma/client";
 import { getPrisma } from "@/src/lib/prisma";
 import { writeAuditEvent } from "@/src/services/audit.service";
+import { invalidateAccessContextCache } from "@/src/security/access-context-cache";
 
 const OWNER_RECENT_LOGIN_WINDOW_MS = 60 * 60 * 1000;
 
@@ -212,6 +213,7 @@ export async function provisionAccessUser(args: {
       employeeId: args.employeeId ?? null,
     },
   });
+  invalidateAccessContextCache();
   return result;
 }
 
@@ -302,6 +304,7 @@ export async function replaceUserAccessRoles(args: { userId: string; roles: Role
     action: "SECURITY_ROLES_REPLACED",
     after: { roles: result.accessRoles.map((assignment) => assignment.role.code) },
   });
+  invalidateAccessContextCache();
   return result;
 }
 
@@ -383,5 +386,6 @@ export async function setSecurityEnforcementMode(mode: "SHADOW" | "ENFORCED") {
     action: "SECURITY_ENFORCEMENT_CHANGED",
     after: { enforcementMode: config.enforcementMode, bootstrapCompleted: config.bootstrapCompleted },
   });
+  invalidateAccessContextCache();
   return config;
 }
