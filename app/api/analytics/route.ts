@@ -1,7 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
+import { Prisma } from "@/src/generated/prisma/client";
 import { getPrisma } from "@/src/lib/prisma";
 import { getAccessContext, hasPermission } from "@/src/security/access-context";
 import { PERMISSIONS, type AccessScopeCode } from "@/src/security/permissions";
+import {
+  findLocationScopedClosedClientIdsBefore,
+  findLocationScopedClosedWorkOrders,
+  findLocationScopedCompletedLaborLines,
+} from "@/src/services/location-work-order-query.service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -230,20 +236,22 @@ export async function GET(request: NextRequest) {
   const previousCompletedCount = previousAppointments.filter((row) => row.status === "COMPLETED" || Boolean(row.actualEndAt)).length;
 
   async function leadFunnelFor(start: Date, end: Date) {
-    const leads = await prisma.lead.findMany({
-      where: { createdAt: { gte: start, lt: end }, NOT: { id: { startsWith: "demo_" } } },
-      select: { id: true },
-    });
-    const leadIds = leads.map((row) => row.id);
-    const bookedRows = leadIds.length
-      ? await prisma.serviceAppointment.findMany({
-          where: { leadId: { in: leadIds }, status: { notIn: ["CANCELLED", "RESERVE"] }, NOT: { id: { startsWith: "demo_" } } },
-          select: { leadId: true },
-          distinct: ["leadId"],
-        })
-      : [];
-    const booked = bookedRows.filter((row) => row.leadId).length;
-    return { leads: leads.length, booked, conversionPct: pct(booked, leads.length) };
+    const rows = await prisma.$queryRaw<Array<{ leads: bigint; booked: bigint }>>(Prisma.sql`
+      SELECT
+        COUNT(DISTINCT l."id")::bigint AS "leads",
+        COUNT(DISTINCT sa."leadId")::bigint AS "booked"
+      FROM "Lead" l
+      LEFT JOIN "ServiceAppointment" sa
+        ON sa."leadId" = l."id"
+       AND sa."status" NOT IN ('CANCELLED', 'RESERVE')
+       AND LEFT(sa."id", 5) <> 'demo_'
+      WHERE l."createdAt" >= ${start}
+        AND l."createdAt" < ${end}
+        AND LEFT(l."id", 5) <> 'demo_'
+    `);
+    const leads = Number(rows[0]?.leads ?? 0);
+    const booked = Number(rows[0]?.booked ?? 0);
+    return { leads, booked, conversionPct: pct(booked, leads) };
   }
 
   const canShowGlobalLeadFunnel = analyticsScope === "ALL" && !selectedLocationId;
@@ -251,22 +259,10 @@ export async function GET(request: NextRequest) {
     ? await Promise.all([leadFunnelFor(from, to), leadFunnelFor(previousFrom, previousTo)])
     : [null, null];
 
-  let scopedWorkOrderIds: string[] | null = null;
-  if (effectiveLocationIds) {
-    const scopedRows = await prisma.serviceAppointment.findMany({
-      where: { locationId: { in: effectiveLocationIds }, workOrderId: { not: null }, NOT: { id: { startsWith: "demo_" } } },
-      select: { workOrderId: true },
-      distinct: ["workOrderId"],
-    });
-    scopedWorkOrderIds = scopedRows.map((row) => row.workOrderId).filter((id): id is string => Boolean(id));
-  }
-  const workOrderScopeWhere = scopedWorkOrderIds ? { id: { in: scopedWorkOrderIds } } : {};
-
   async function closedOrdersFor(start: Date, end: Date) {
-    if (scopedWorkOrderIds?.length === 0) return [];
+    if (effectiveLocationIds) return findLocationScopedClosedWorkOrders(effectiveLocationIds, start, end);
     return prisma.workOrder.findMany({
       where: {
-        ...workOrderScopeWhere,
         status: "CLOSED",
         closedAt: { gte: start, lt: end },
         NOT: { id: { startsWith: "demo_" } },
@@ -313,17 +309,19 @@ export async function GET(request: NextRequest) {
   const servedClientIds = [...new Set(closedWorkOrders.map((row) => row.clientId))];
   let returningClientIds = new Set<string>();
   if (servedClientIds.length) {
-    const priorWhere = scopedWorkOrderIds ? { id: { in: scopedWorkOrderIds } } : {};
-    const priorRows = await prisma.workOrder.findMany({
-      where: {
-        ...priorWhere,
-        clientId: { in: servedClientIds }, status: "CLOSED", closedAt: { lt: from },
-        NOT: { id: { startsWith: "demo_" } },
-      },
-      select: { clientId: true },
-      distinct: ["clientId"],
-    });
-    returningClientIds = new Set(priorRows.map((row) => row.clientId));
+    if (effectiveLocationIds) {
+      returningClientIds = new Set(await findLocationScopedClosedClientIdsBefore(effectiveLocationIds, from, servedClientIds));
+    } else {
+      const priorRows = await prisma.workOrder.findMany({
+        where: {
+          clientId: { in: servedClientIds }, status: "CLOSED", closedAt: { lt: from },
+          NOT: { id: { startsWith: "demo_" } },
+        },
+        select: { clientId: true },
+        distinct: ["clientId"],
+      });
+      returningClientIds = new Set(priorRows.map((row) => row.clientId));
+    }
   }
 
   const locationsForCapacity = effectiveLocationIds
@@ -368,18 +366,18 @@ export async function GET(request: NextRequest) {
     efficiencyPct: number | null;
   }> = [];
   if (canPersonnel) {
-    const lineScopeWhere = scopedWorkOrderIds ? { workOrderId: { in: scopedWorkOrderIds } } : {};
-    const laborLines = scopedWorkOrderIds?.length === 0 ? [] : await prisma.workOrderLine.findMany({
-      where: {
-        ...lineScopeWhere,
-        type: "LABOR",
-        status: "COMPLETED",
-        completedAt: { gte: from, lt: to },
-        mechanicId: { not: null },
-        NOT: { workOrderId: { startsWith: "demo_" } },
-      },
-      select: { mechanicId: true, workOrderId: true, laborHours: true },
-    });
+    const laborLines = effectiveLocationIds
+      ? await findLocationScopedCompletedLaborLines(effectiveLocationIds, from, to)
+      : await prisma.workOrderLine.findMany({
+          where: {
+            type: "LABOR",
+            status: "COMPLETED",
+            completedAt: { gte: from, lt: to },
+            mechanicId: { not: null },
+            NOT: { workOrderId: { startsWith: "demo_" } },
+          },
+          select: { mechanicId: true, workOrderId: true, laborHours: true },
+        });
     const mechanicIds = [...new Set(laborLines.map((row) => row.mechanicId).filter((id): id is string => Boolean(id)))];
     const mechanicRows = mechanicIds.length
       ? await prisma.serviceMechanic.findMany({ where: { id: { in: mechanicIds } }, select: { id: true, name: true } })
