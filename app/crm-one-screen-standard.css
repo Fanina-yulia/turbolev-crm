@@ -1,6 +1,6 @@
 /* CRM-UI-004 — One Screen First.
    Applied only inside CrmShell through [data-crm-screen-frame].
-   Standalone MechanicCabinet bypasses CrmShell and is intentionally excluded. */
+   The standalone role-specific cabinet bypasses CrmShell and is intentionally excluded. */
 
 :root {
   --crm-screen-gap: 14px;
