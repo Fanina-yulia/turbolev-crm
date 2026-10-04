@@ -13,6 +13,7 @@ import {
   type PersonnelRoleCode,
 } from "@/src/security/personnel-org-structure";
 import { writeAuditEvent } from "@/src/services/audit.service";
+import { invalidateAccessContextCache } from "@/src/security/access-context-cache";
 import {
   deactivateEmployeePlannerResources,
   syncEmployeeOperationalContext,
@@ -388,6 +389,7 @@ export async function configureEmployeeAccess(args: {
       userId: result.user?.id ?? null,
     },
   });
+  invalidateAccessContextCache();
   return result;
 }
 
@@ -432,5 +434,6 @@ export async function deactivateEmployeeAccess(
     entityId: employeeId,
     action: "PERSONNEL_DEACTIVATED_WITH_ACCESS",
   });
+  invalidateAccessContextCache();
   return result;
 }
