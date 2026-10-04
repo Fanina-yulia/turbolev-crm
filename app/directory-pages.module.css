@@ -347,8 +347,8 @@
   .page{
     height:100%;
     min-height:0;
-    display:grid;
-    grid-template-rows:auto auto auto minmax(0,1fr) auto;
+    display:flex;
+    flex-direction:column;
     overflow:hidden;
     padding:10px 18px 8px;
   }
@@ -367,6 +367,7 @@
   .search input{font-size:13px}
   .summary{margin:0 0 8px;font-size:12px}
   .grid{
+    flex:1 1 auto;
     min-height:0;
     overflow-y:auto;
     overflow-x:hidden;
@@ -401,7 +402,7 @@
     min-height:48px;
     background:var(--bg);
   }
-  .state,.error{margin:0;align-self:start}
+  .state,.error{flex:0 0 auto;margin:0 0 8px;align-self:stretch}
   .drawer{max-height:100dvh}
   .drawerBody{min-height:0;overflow-y:auto}
   .drawerFooter{position:sticky;bottom:0;z-index:5}
