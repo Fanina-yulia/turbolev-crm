@@ -41,7 +41,9 @@
     "parts:search:cascade:smoke": "node --import tsx scripts/parts-cascade-search-smoke.ts",
     "parts:search:cascade-ui:smoke": "node --import tsx scripts/parts-cascade-ui-contract-smoke.ts",
     "parts:search:fallback:smoke": "node --import tsx scripts/parts-search-fallback-contract-smoke.ts",
-    "parts:search:v3:smoke": "node --import tsx scripts/parts-search-v3-contract-smoke.ts"
+    "parts:search:v3:smoke": "node --import tsx scripts/parts-search-v3-contract-smoke.ts",
+    "db:release": "node scripts/release-database.mjs",
+    "optimization:smoke": "node scripts/deployment-pipeline-contract-smoke.mjs && node scripts/access-context-cache-contract-smoke.mjs && node scripts/polling-performance-contract-smoke.mjs"
   },
   "dependencies": {
     "@neondatabase/auth": "0.4.2-beta",
