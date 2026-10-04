@@ -91,3 +91,46 @@
 .requestPlannerStep{gap:8px}.requestPlannerStep .requestStepTitle{margin-bottom:0}.requestPlannerStep .fastLocationSelect{margin:0}.requestPlannerStep .requestPlannerSelection{margin-top:0;padding:8px 10px;gap:8px}.requestPlannerStep .requestPlannerSelection strong{font-size:13px}.requestPlannerStep .requestPlannerSelection select{height:36px}.requestPlannerStep .requestPlannerSelection small,.requestPlannerStep .requestPlannerSelection label>span{font-size:12px}.requestPlannerStep .requestPlannerSelection div>span{font-size:12px}.requestPlannerStep .requestMessage{padding:8px 10px;font-size:12px}
 .inlinePhoneLookup{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:stretch}.inlinePhoneLookup input{min-width:0}.inlinePhoneLookup button{min-width:104px;border:1px solid var(--orange);border-radius:10px;background:var(--orange);color:#fff;padding:0 14px;font:inherit;font-weight:800;cursor:pointer}.inlinePhoneLookup button:disabled{opacity:.65;cursor:default}.inlinePhoneLookup button.lookupState-found{background:#168b58;border-color:#168b58}.inlinePhoneLookup button.lookupState-not-found,.inlinePhoneLookup button.lookupState-unavailable{background:var(--panel-2);border-color:var(--line);color:var(--muted)}.phoneLookupHint{margin:10px 0 0;color:var(--muted);font-size:12px;line-height:1.45}
 @media(max-width:900px){.requestPlannerStep .requestStepTitle{gap:8px}.requestPlannerStep .requestStatus{font-size:12px}.requestPlannerStep .requestPlannerSelection{grid-template-columns:1fr}.requestPlannerStep .requestPlannerSelection select{height:38px}}
+
+/* CRM-UI-004 POLISH V2 */
+@media (min-width:761px){
+  .requestPage,
+  .requestPage.requestModal,
+  .requestPage.requestModalV4{
+    height:100%!important;
+    min-height:0!important;
+    max-height:100%!important;
+    overflow:hidden!important;
+    display:flex!important;
+    flex-direction:column!important;
+  }
+  .requestPage .requestModalHead,
+  .requestPage .requestStepper,
+  .requestPage .requestStepperV4{
+    flex:0 0 auto;
+  }
+  .requestPage .requestScroll{
+    flex:1 1 auto;
+    min-height:0;
+    max-height:none!important;
+    overflow-y:auto!important;
+    overflow-x:hidden!important;
+    overscroll-behavior:contain;
+    scrollbar-gutter:stable;
+  }
+  .requestPage .requestBody{
+    min-height:0;
+    overflow:visible;
+  }
+  .requestPage .requestActions{
+    position:sticky;
+    bottom:0;
+    z-index:8;
+    flex:0 0 auto;
+    margin-top:0;
+    background:var(--panel);
+    border-top:1px solid var(--line);
+    box-shadow:0 -8px 20px color-mix(in srgb,var(--bg) 22%,transparent);
+  }
+}
+
