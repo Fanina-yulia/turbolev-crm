@@ -40,6 +40,7 @@ runNodeScript("scripts/crm-hardening-smoke.mjs");
 runNodeScript("scripts/deployment-pipeline-contract-smoke.mjs");
 runNodeScript("scripts/access-context-cache-contract-smoke.mjs");
 runNodeScript("scripts/polling-performance-contract-smoke.mjs");
+runNodeScript("scripts/sql-scope-performance-contract-smoke.mjs");
 run(["tsx", "scripts/api-security-policy-smoke.ts"]);
 run(["tsx", "scripts/parts-picker-cart-v4-smoke.ts"]);
 run(["tsx", "scripts/parts-oe-first-search-contract-smoke.ts"]);
