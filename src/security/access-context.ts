@@ -7,6 +7,10 @@ import { getNeonAuthSession, isNeonAuthConfigured, type NeonAuthSession } from "
 import { getOwnerViewAsSession } from "@/src/security/owner-view-as";
 import { PERMISSIONS, type AccessScopeCode, type PermissionCode } from "@/src/security/permissions";
 import { computeEffectivePermissions } from "@/src/security/rbac-engine";
+import {
+  ACCESS_CONTEXT_CACHE_TTL_MS,
+  getAccessContextCachedValue,
+} from "@/src/security/access-context-cache";
 
 export type ProvisioningState = "ANONYMOUS" | "AUTHENTICATED_UNPROVISIONED" | "ACTIVE" | "INACTIVE";
 export type EnforcementMode = "SHADOW" | "ENFORCED";
@@ -54,7 +58,7 @@ type AppUser = {
   } | null;
 };
 
-const LAST_SEEN_TOUCH_INTERVAL_MS = 120_000;
+const LAST_SEEN_TOUCH_INTERVAL_MS = 300_000;
 const SAFE_HTTP_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 
 function emptyContext(mode: EnforcementMode, authConfigured: boolean): AccessContext {
@@ -85,15 +89,17 @@ async function resolveRequestHeaders(input?: Request | Headers) {
 }
 
 async function getSecurityMode(): Promise<EnforcementMode> {
-  try {
-    const config = await getPrisma().securityConfig.findUnique({
-      where: { id: "default" },
-      select: { enforcementMode: true },
-    });
-    return config?.enforcementMode === "ENFORCED" ? "ENFORCED" : "SHADOW";
-  } catch {
-    return "SHADOW";
-  }
+  return getAccessContextCachedValue("security:mode", ACCESS_CONTEXT_CACHE_TTL_MS.securityMode, async () => {
+    try {
+      const config = await getPrisma().securityConfig.findUnique({
+        where: { id: "default" },
+        select: { enforcementMode: true },
+      });
+      return config?.enforcementMode === "ENFORCED" ? "ENFORCED" : "SHADOW";
+    } catch {
+      return "SHADOW";
+    }
+  });
 }
 
 function requestForcesEnforcement(input?: Request | Headers) {
@@ -175,6 +181,13 @@ function safeUser(appUser: AppUser) {
   };
 }
 
+type RbacSnapshot = {
+  roles: AccessContext["roles"];
+  permissions: AccessContext["permissions"];
+  deniedPermissions: AccessContext["deniedPermissions"];
+  locationIds: AccessContext["locationIds"];
+};
+
 async function buildActiveUserContext(args: {
   appUser: AppUser;
   enforcementMode: EnforcementMode;
@@ -194,74 +207,82 @@ async function buildActiveUserContext(args: {
     };
   }
 
-  const prisma = getPrisma();
-  const now = new Date();
-  const [roleAssignments, overrides] = await Promise.all([
-    prisma.userAccessRole.findMany({
-      where: {
-        userId: appUser.id,
-        isActive: true,
-        startsAt: { lte: now },
-        OR: [{ endsAt: null }, { endsAt: { gt: now } }],
-        role: { isActive: true },
-      },
-      include: {
-        role: {
-          include: {
-            permissions: { include: { permission: true } },
+  const snapshot = await getAccessContextCachedValue<RbacSnapshot>(
+    `rbac:${appUser.id}`,
+    ACCESS_CONTEXT_CACHE_TTL_MS.rbac,
+    async () => {
+      const prisma = getPrisma();
+      const now = new Date();
+      const [roleAssignments, overrides] = await Promise.all([
+        prisma.userAccessRole.findMany({
+          where: {
+            userId: appUser.id,
+            isActive: true,
+            startsAt: { lte: now },
+            OR: [{ endsAt: null }, { endsAt: { gt: now } }],
+            role: { isActive: true },
           },
-        },
-      },
-      orderBy: [{ isPrimary: "desc" }, { createdAt: "asc" }],
-    }),
-    prisma.userPermissionOverride.findMany({
-      where: {
-        userId: appUser.id,
-        isActive: true,
-        startsAt: { lte: now },
-        OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
-      },
-      include: { permission: true },
-      orderBy: { createdAt: "asc" },
-    }),
-  ]);
+          include: {
+            role: {
+              include: {
+                permissions: { include: { permission: true } },
+              },
+            },
+          },
+          orderBy: [{ isPrimary: "desc" }, { createdAt: "asc" }],
+        }),
+        prisma.userPermissionOverride.findMany({
+          where: {
+            userId: appUser.id,
+            isActive: true,
+            startsAt: { lte: now },
+            OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+          },
+          include: { permission: true },
+          orderBy: { createdAt: "asc" },
+        }),
+      ]);
 
-  const grants = roleAssignments.flatMap((assignment) =>
-    assignment.role.permissions.map((grant) => ({
-      code: grant.permission.code,
-      scope: grant.scope as AccessScopeCode,
-    })),
-  );
-  const overrideInput = overrides.map((override) => ({
-    code: override.permission.code,
-    scope: override.scope as AccessScopeCode,
-    effect: override.effect as "ALLOW" | "DENY",
-  }));
-  const effective = computeEffectivePermissions(grants, overrideInput);
-  const locationIds = Array.from(
-    new Set([
-      ...roleAssignments.map((assignment) => assignment.locationId).filter((value): value is string => Boolean(value)),
-      ...overrides.map((override) => override.locationId).filter((value): value is string => Boolean(value)),
-    ]),
+      const grants = roleAssignments.flatMap((assignment) =>
+        assignment.role.permissions.map((grant) => ({
+          code: grant.permission.code,
+          scope: grant.scope as AccessScopeCode,
+        })),
+      );
+      const overrideInput = overrides.map((override) => ({
+        code: override.permission.code,
+        scope: override.scope as AccessScopeCode,
+        effect: override.effect as "ALLOW" | "DENY",
+      }));
+      const effective = computeEffectivePermissions(grants, overrideInput);
+      const locationIds = Array.from(
+        new Set([
+          ...roleAssignments.map((assignment) => assignment.locationId).filter((value): value is string => Boolean(value)),
+          ...overrides.map((override) => override.locationId).filter((value): value is string => Boolean(value)),
+        ]),
+      );
+
+      return {
+        roles: roleAssignments.map((assignment) => ({
+          code: assignment.role.code,
+          name: assignment.role.name,
+          locationId: assignment.locationId,
+          isPrimary: assignment.isPrimary,
+        })),
+        permissions: effective.permissions,
+        deniedPermissions: effective.deniedPermissions,
+        locationIds,
+      };
+    },
   );
 
   return {
-    enforcementMode,
-    authConfigured,
+    ...anonymous,
     authenticated: true,
     provisioningState: "ACTIVE",
     authIdentity,
     user,
-    roles: roleAssignments.map((assignment) => ({
-      code: assignment.role.code,
-      name: assignment.role.name,
-      locationId: assignment.locationId,
-      isPrimary: assignment.isPrimary,
-    })),
-    permissions: effective.permissions,
-    deniedPermissions: effective.deniedPermissions,
-    locationIds,
-    viewAs: null,
+    ...snapshot,
   };
 }
 
