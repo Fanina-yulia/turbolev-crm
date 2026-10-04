@@ -33,7 +33,7 @@ for (const value of settings) {
   if (!registry.includes(`${value}:`)) failures.push(`Missing settings contract: ${value}`);
 }
 
-for (const marker of ["data-crm-screen-frame", "data-crm-screen", "data-screen-contract"]) {
+for (const marker of ["data-crm-screen-frame", "data-crm-screen", "data-screen-contract", "data-crm-scroll-region", "data-crm-scroll-mode"]) {
   if (!frame.includes(marker)) failures.push(`Frame missing marker: ${marker}`);
 }
 if (!shell.includes("CrmScreenContractFrame")) failures.push("CrmShell does not use CrmScreenContractFrame");
