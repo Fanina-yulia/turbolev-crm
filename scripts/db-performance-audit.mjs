@@ -1,3 +1,4 @@
+// one-off preview database performance audit
 import pg from "pg";
 
 const { Client } = pg;
