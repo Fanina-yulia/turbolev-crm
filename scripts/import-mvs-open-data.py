@@ -465,10 +465,7 @@ def main():
                     try:
                         rows = import_year(conn, year, url, temp_dir, stage_table)
                         imported[year] = rows
-                        with conn.cursor() as cur:
-                            cur.execute('SELECT count(*) FROM "VehicleRegistryCompact"')
-                            indexed = cur.fetchone()[0]
-                        print(f"{year}: processed {rows:,} valid rows; compact index now {indexed:,} plates", flush=True)
+                        print(f"{year}: processed {rows:,} valid rows; compact registry updated", flush=True)
                     except Exception as exc:
                         conn.rollback()
                         failures.append((year, str(exc)))

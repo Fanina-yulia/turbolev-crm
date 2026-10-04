@@ -34,9 +34,9 @@ export async function findLocationScopedClosedWorkOrders(
   to: Date,
 ) {
   const ids = normalizeLocationIds(locationIds);
-  if (!ids.length) return [] as Array<{ id: string; clientId: string; closedAt: Date | null }>;
-  return getPrisma().$queryRaw<Array<{ id: string; clientId: string; closedAt: Date | null }>>(Prisma.sql`
-    SELECT wo."id", wo."clientId", wo."closedAt"
+  if (!ids.length) return [] as Array<{ id: string; clientId: string; vehicleId: string; closedAt: Date | null }>;
+  return getPrisma().$queryRaw<Array<{ id: string; clientId: string; vehicleId: string; closedAt: Date | null }>>(Prisma.sql`
+    SELECT wo."id", wo."clientId", wo."vehicleId", wo."closedAt"
     FROM "WorkOrder" wo
     WHERE wo."status" = 'CLOSED'
       AND wo."closedAt" >= ${from}
@@ -48,6 +48,66 @@ export async function findLocationScopedClosedWorkOrders(
         WHERE sa."workOrderId" = wo."id"
           AND sa."locationId" IN (${Prisma.join(ids)})
           AND LEFT(sa."id", 5) <> 'demo_'
+      )
+    ORDER BY wo."closedAt" DESC
+  `);
+}
+
+export async function findLocationScopedClosedWorkOrdersForClients(
+  locationIds: string[],
+  clientIds: string[],
+) {
+  const ids = normalizeLocationIds(locationIds);
+  const clients = [...new Set(clientIds.map((id) => String(id || "").trim()).filter(Boolean))];
+  if (!ids.length || !clients.length) {
+    return [] as Array<{ id: string; clientId: string; vehicleId: string; closedAt: Date | null }>;
+  }
+  return getPrisma().$queryRaw<Array<{ id: string; clientId: string; vehicleId: string; closedAt: Date | null }>>(Prisma.sql`
+    SELECT wo."id", wo."clientId", wo."vehicleId", wo."closedAt"
+    FROM "WorkOrder" wo
+    WHERE wo."clientId" IN (${Prisma.join(clients)})
+      AND wo."status" = 'CLOSED'
+      AND wo."closedAt" IS NOT NULL
+      AND LEFT(wo."id", 5) <> 'demo_'
+      AND EXISTS (
+        SELECT 1
+        FROM "ServiceAppointment" sa
+        WHERE sa."workOrderId" = wo."id"
+          AND sa."locationId" IN (${Prisma.join(ids)})
+          AND LEFT(sa."id", 5) <> 'demo_'
+      )
+    ORDER BY wo."closedAt" ASC
+  `);
+}
+
+export async function findLocationScopedCashInflows(
+  locationIds: string[],
+  from: Date,
+  to: Date,
+) {
+  const ids = normalizeLocationIds(locationIds);
+  if (!ids.length) return [] as Array<{ amount: Prisma.Decimal }>;
+  return getPrisma().$queryRaw<Array<{ amount: Prisma.Decimal }>>(Prisma.sql`
+    SELECT ct."amount"
+    FROM "CashTransaction" ct
+    WHERE ct."status" = 'POSTED'
+      AND ct."kind" = 'INFLOW'
+      AND ct."flowSection" = 'OPERATING'
+      AND ct."occurredAt" >= ${from}
+      AND ct."occurredAt" < ${to}
+      AND ct."clientId" IS NOT NULL
+      AND (
+        ct."locationId" IN (${Prisma.join(ids)})
+        OR (
+          ct."workOrderId" IS NOT NULL
+          AND EXISTS (
+            SELECT 1
+            FROM "ServiceAppointment" sa
+            WHERE sa."workOrderId" = ct."workOrderId"
+              AND sa."locationId" IN (${Prisma.join(ids)})
+              AND LEFT(sa."id", 5) <> 'demo_'
+          )
+        )
       )
   `);
 }

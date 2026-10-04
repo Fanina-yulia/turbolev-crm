@@ -2,6 +2,10 @@ import { Prisma } from "@/src/generated/prisma/client";
 import { getPrisma } from "@/src/lib/prisma";
 import { toPrismaJson } from "@/src/lib/prisma-json";
 import {
+  findLocationScopedCashInflows,
+  findLocationScopedClosedWorkOrders,
+} from "@/src/services/location-work-order-query.service";
+import {
   allocateMoneyByWeight,
   gapToPlan,
   managementGrossFromSnapshot,
@@ -454,25 +458,17 @@ export async function getWeeklyManagementResult(input: {
     ? (scopeLocationIds ? sum(scopedLocationAllocations.map((row) => currencyAmount(row.targetAmount))) : networkTarget)
     : null;
 
-  let scopedWorkOrderIds: string[] | null = null;
-  if (scopeLocationIds) {
-    const links = await prisma.serviceAppointment.findMany({
-      where: { locationId: { in: scopeLocationIds }, workOrderId: { not: null }, NOT: { id: { startsWith: "demo_" } } },
-      select: { workOrderId: true },
-      distinct: ["workOrderId"],
-    });
-    scopedWorkOrderIds = links.map((row) => row.workOrderId).filter((id): id is string => Boolean(id));
-  }
-
-  const closedOrders = scopedWorkOrderIds?.length === 0 ? [] : await prisma.workOrder.findMany({
-    where: {
-      status: "CLOSED",
-      closedAt: { gte: from, lt: to },
-      NOT: { id: { startsWith: "demo_" } },
-      ...(scopedWorkOrderIds ? { id: { in: scopedWorkOrderIds } } : {}),
-    },
-    select: { id: true, closedAt: true },
-  });
+  const closedOrders = scopeLocationIds
+    ? await findLocationScopedClosedWorkOrders(scopeLocationIds, from, to)
+    : await prisma.workOrder.findMany({
+        where: {
+          status: "CLOSED",
+          closedAt: { gte: from, lt: to },
+          NOT: { id: { startsWith: "demo_" } },
+        },
+        select: { id: true, clientId: true, vehicleId: true, closedAt: true },
+        orderBy: { closedAt: "desc" },
+      });
   const closedIds = closedOrders.map((row) => row.id);
   const actualSnapshots = closedIds.length ? await prisma.workOrderFinanceSnapshot.findMany({
     where: { workOrderId: { in: closedIds }, kind: "ACTUAL", lockedAt: { not: null } },
@@ -547,20 +543,18 @@ export async function getWeeklyManagementResult(input: {
   const baseForecast = roundMoney(fact + basePipeline);
   const optimisticForecast = roundMoney(fact + optimisticPipeline);
 
-  const cashWhere: Prisma.CashTransactionWhereInput = {
-    status: "POSTED",
-    kind: "INFLOW",
-    flowSection: "OPERATING",
-    occurredAt: { gte: from, lt: to },
-    clientId: { not: null },
-  };
-  if (scopeLocationIds) {
-    cashWhere.OR = [
-      { locationId: { in: scopeLocationIds } },
-      ...(scopedWorkOrderIds?.length ? [{ workOrderId: { in: scopedWorkOrderIds } }] : []),
-    ];
-  }
-  const cashRows = await prisma.cashTransaction.findMany({ where: cashWhere, select: { amount: true } });
+  const cashRows = scopeLocationIds
+    ? await findLocationScopedCashInflows(scopeLocationIds, from, to)
+    : await prisma.cashTransaction.findMany({
+        where: {
+          status: "POSTED",
+          kind: "INFLOW",
+          flowSection: "OPERATING",
+          occurredAt: { gte: from, lt: to },
+          clientId: { not: null },
+        },
+        select: { amount: true },
+      });
   const cashIn = sum(cashRows.map((row) => currencyAmount(row.amount)));
 
   const targetToNow = plan ? targetToNowFromDays({

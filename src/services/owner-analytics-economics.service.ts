@@ -2,6 +2,7 @@ import { getPrisma } from "@/src/lib/prisma";
 import { decimalToNumber, roundMoney } from "@/src/domain/finance";
 import { formatWorkOrderNumber } from "@/src/domain/work-order-number";
 import { getCustomerLifetimeMetrics } from "@/src/services/customer-ltv.service";
+import { findLocationScopedClosedWorkOrders } from "@/src/services/location-work-order-query.service";
 
 function pct(part: number, total: number) {
   return total > 0 ? Math.round((part / total) * 1000) / 10 : 0;
@@ -37,33 +38,17 @@ function emptyResult() {
 export async function getOwnerAnalyticsEconomics(input: Input) {
   const prisma = getPrisma();
 
-  let scopedWorkOrderIds: string[] | null = null;
-  if (input.effectiveLocationIds) {
-    const appointmentRows = await prisma.serviceAppointment.findMany({
-      where: {
-        locationId: { in: input.effectiveLocationIds },
-        workOrderId: { not: null },
-        NOT: { id: { startsWith: "demo_" } },
-      },
-      select: { workOrderId: true },
-      distinct: ["workOrderId"],
-    });
-    scopedWorkOrderIds = appointmentRows.map((row) => row.workOrderId).filter((id): id is string => Boolean(id));
-  }
-
-  if (scopedWorkOrderIds?.length === 0) return emptyResult();
-
-  const scopedWhere = scopedWorkOrderIds ? { id: { in: scopedWorkOrderIds } } : {};
-  const periodOrders = await prisma.workOrder.findMany({
-    where: {
-      ...scopedWhere,
-      status: "CLOSED",
-      closedAt: { gte: input.from, lt: input.to },
-      NOT: { id: { startsWith: "demo_" } },
-    },
-    select: { id: true, clientId: true, vehicleId: true, closedAt: true },
-    orderBy: { closedAt: "desc" },
-  });
+  const periodOrders = input.effectiveLocationIds
+    ? await findLocationScopedClosedWorkOrders(input.effectiveLocationIds, input.from, input.to)
+    : await prisma.workOrder.findMany({
+        where: {
+          status: "CLOSED",
+          closedAt: { gte: input.from, lt: input.to },
+          NOT: { id: { startsWith: "demo_" } },
+        },
+        select: { id: true, clientId: true, vehicleId: true, closedAt: true },
+        orderBy: { closedAt: "desc" },
+      });
   const periodOrderIds = periodOrders.map((row) => row.id);
   if (!periodOrderIds.length) return emptyResult();
 
@@ -139,7 +124,10 @@ export async function getOwnerAnalyticsEconomics(input: Input) {
   }).sort((a, b) => b.grossProfit - a.grossProfit || b.grossRevenue - a.grossRevenue);
 
   const cohortClientIds = [...new Set(periodOrders.map((row) => row.clientId))];
-  const clientLtv = await getCustomerLifetimeMetrics({ clientIds: cohortClientIds, scopedWorkOrderIds });
+  const clientLtv = await getCustomerLifetimeMetrics({
+    clientIds: cohortClientIds,
+    locationIds: input.effectiveLocationIds,
+  });
   const complete = clientLtv.filter((row) => row.complete);
   const allComplete = complete.length === clientLtv.length;
   const lifetimeOrders = clientLtv.reduce((sum, row) => sum + row.visits, 0);
