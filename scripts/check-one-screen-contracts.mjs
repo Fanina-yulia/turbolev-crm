@@ -40,6 +40,12 @@ const localScrollFiles = [
   "app/personnel-v2.module.css",
   "app/diagnostic-templates-settings-panel.module.css",
   "app/price-catalog-settings-panel.module.css",
+  "app/appearance-settings-panel.module.css",
+  "app/camera-settings.module.css",
+  "app/workflow-settings-panel.module.css",
+  "app/security-settings-panel-v2.module.css",
+  "app/parts-procurement-workspace.module.css",
+  "app/parts-supplier-reconciliation.module.css",
 ];
 
 for (const value of sections) {
