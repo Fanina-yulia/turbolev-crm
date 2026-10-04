@@ -51,5 +51,8 @@ export function CrmScreenContractFrame({
     data-crm-screen-frame="true"
     data-crm-screen={screen}
     data-screen-contract={contract}
-  >{children}</div>;
+  ><div
+    data-crm-scroll-region={contract === "one" ? undefined : "main"}
+    data-crm-scroll-mode={contract}
+  >{children}</div></div>;
 }
