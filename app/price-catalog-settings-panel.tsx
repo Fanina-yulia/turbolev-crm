@@ -119,6 +119,7 @@ export function PriceCatalogSettingsPanel() {
   const [draft, setDraft] = useState<EditDraft | null>(null);
   const [saving, setSaving] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [showImport, setShowImport] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true); setError("");
@@ -223,22 +224,24 @@ export function PriceCatalogSettingsPanel() {
   return <div className={styles.page}>
     <header className={styles.header}>
       <div><p>PRICE CATALOG 2.0</p><h1>Прайс робіт</h1><span>Один каталог для запису, діагностики, кошторису, ЗН, гарантій, зарплати й кузовного калькулятора.</span></div>
-      <button type="button" className={styles.refresh} onClick={() => setRefreshKey((value) => value + 1)} disabled={loading}>↻ Оновити</button>
+      <div className={styles.headerActions}><button type="button" className={styles.refresh} onClick={() => setShowImport((value) => !value)}>{showImport ? "Сховати імпорт" : "Імпорт / експорт"}</button><button type="button" className={styles.refresh} onClick={() => setRefreshKey((value) => value + 1)} disabled={loading}>↻ Оновити</button></div>
     </header>
 
     <section className={styles.kpis}>
       <Stat label="Усього" value={counts.total}/><Stat label="Активні" value={counts.active}/><Stat label="READY" value={counts.ready}/><Stat label="Перевірити" value={counts.review} warn/><Stat label="Карантин" value={counts.quarantine} danger/><Stat label="МС Мастер" value={counts.msMaster}/>
     </section>
 
-    <section className={styles.importBox}>
-      <div className={styles.importHead}><div><strong>Експорт / імпорт XLSX · МС Мастер</strong><span>Експорт завантажує діючий прайс. Нові позиції з імпорту потрапляють у staging. Ключ оновлення — «Послуга» / externalServiceId.</span></div>{latest && <small>Останній імпорт: {latest.fileName} · {dateText(latest.createdAt)}</small>}</div>
-      <div className={styles.importControls}><button type="button" className={styles.export} disabled={exporting} onClick={() => void exportActivePrice()}>{exporting ? "Формую файл…" : "Експорт діючого прайсу"}</button><input type="file" accept=".xlsx" onChange={(event) => { setFile(event.target.files?.[0] || null); setPreview(null); }}/><button type="button" disabled={!file || importing} onClick={() => void importFile("preview")}>{importing ? "Обробляю…" : "Перевірити файл"}</button>{preview?.mode === "preview" && <button type="button" className={styles.primary} disabled={importing} onClick={() => void importFile("import")}>Імпортувати у staging</button>}</div>
-      {preview && <div className={styles.preview}>
-        <div className={styles.previewStats}><Stat label="Рядків" value={preview.stats.total}/><Stat label="READY" value={preview.stats.ready}/><Stat label="Review" value={preview.stats.needsReview} warn/><Stat label="Quarantine" value={preview.stats.quarantined} danger/><Stat label="Кузовний кальк." value={preview.stats.bodyCalculatorRows}/><Stat label="Гарантія" value={preview.stats.warrantyRows}/></div>
-        {preview.warnings.map((warning) => <div className={styles.warning} key={warning}>{warning}</div>)}
-        <div className={styles.previewRows}>{preview.rows.slice(0, 12).map((row) => <div key={`${row.externalServiceId}-${row.displayName}`}><b>{row.externalServiceId}</b><span>{row.displayName}</span><em>{row.category}</em><strong>{row.basePrice == null ? "—" : `${row.basePrice} грн`}</strong><Status value={row.reviewStatus}/></div>)}</div>
-      </div>}
-    </section>
+    {showImport && <div className={styles.importDrawer}>
+      <section className={styles.importBox}>
+        <div className={styles.importHead}><div><strong>Експорт / імпорт XLSX · МС Мастер</strong><span>Експорт завантажує діючий прайс. Нові позиції з імпорту потрапляють у staging. Ключ оновлення — «Послуга» / externalServiceId.</span></div>{latest && <small>Останній імпорт: {latest.fileName} · {dateText(latest.createdAt)}</small>}</div>
+        <div className={styles.importControls}><button type="button" className={styles.export} disabled={exporting} onClick={() => void exportActivePrice()}>{exporting ? "Формую файл…" : "Експорт діючого прайсу"}</button><input type="file" accept=".xlsx" onChange={(event) => { setFile(event.target.files?.[0] || null); setPreview(null); }}/><button type="button" disabled={!file || importing} onClick={() => void importFile("preview")}>{importing ? "Обробляю…" : "Перевірити файл"}</button>{preview?.mode === "preview" && <button type="button" className={styles.primary} disabled={importing} onClick={() => void importFile("import")}>Імпортувати у staging</button>}</div>
+        {preview && <div className={styles.preview}>
+          <div className={styles.previewStats}><Stat label="Рядків" value={preview.stats.total}/><Stat label="READY" value={preview.stats.ready}/><Stat label="Review" value={preview.stats.needsReview} warn/><Stat label="Quarantine" value={preview.stats.quarantined} danger/><Stat label="Кузовний кальк." value={preview.stats.bodyCalculatorRows}/><Stat label="Гарантія" value={preview.stats.warrantyRows}/></div>
+          {preview.warnings.map((warning) => <div className={styles.warning} key={warning}>{warning}</div>)}
+          <div className={styles.previewRows}>{preview.rows.slice(0, 12).map((row) => <div key={`${row.externalServiceId}-${row.displayName}`}><b>{row.externalServiceId}</b><span>{row.displayName}</span><em>{row.category}</em><strong>{row.basePrice == null ? "—" : `${row.basePrice} грн`}</strong><Status value={row.reviewStatus}/></div>)}</div>
+        </div>}
+      </section>
+    </div>}
 
     {message && <div className={styles.message}>{message}</div>}{error && <div className={styles.error}>{error}</div>}
 
