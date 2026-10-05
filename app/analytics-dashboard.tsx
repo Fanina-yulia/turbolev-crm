@@ -2,7 +2,7 @@
 
 import { CrmPageHeader } from "./crm-page-header";
 
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { navigateCrm } from "./crm-route";
 import { AnalyticsFunnelVisuals } from "./analytics-funnel-visuals";
 import styles from "./analytics-dashboard.module.css";
@@ -200,6 +200,7 @@ function MixRows({ rows }: { rows: Array<{ label: string; value: number }> }) {
 export function AnalyticsDashboard() {
   const initial = presetRange("month");
   const [tab, setTab] = useState<AnalyticsTab>("overview");
+  const pageRef = useRef<HTMLDivElement>(null);
   const [preset, setPreset] = useState<Preset>("month");
   const [from, setFrom] = useState(initial.from);
   const [to, setTo] = useState(initial.to);
@@ -244,6 +245,21 @@ export function AnalyticsDashboard() {
   useEffect(() => { void loadCore(); }, [loadCore]);
   useEffect(() => { if (tab === "diagnostics" || tab === "finance" || tab === "parts") void loadDetail(tab); }, [tab, loadDetail]);
 
+  useLayoutEffect(() => {
+    const page = pageRef.current;
+    if (!page) return;
+    page.scrollTop = 0;
+    let parent = page.parentElement;
+    while (parent) {
+      const overflowY = window.getComputedStyle(parent).overflowY;
+      if (overflowY === "auto" || overflowY === "scroll") {
+        parent.scrollTop = 0;
+        break;
+      }
+      parent = parent.parentElement;
+    }
+  }, [tab]);
+
   const refresh = async () => { await loadCore(); if (tab === "diagnostics" || tab === "finance" || tab === "parts") await loadDetail(tab); };
   const applyPreset = (next: Preset) => {
     setPreset(next); if (next === "custom") return;
@@ -267,7 +283,7 @@ export function AnalyticsDashboard() {
   }, [funnel, from, to]);
   const funnelMax = Math.max(1, ...funnelStages.map((stage) => stage.count));
 
-  return <div className={styles.page}>
+  return <div ref={pageRef} className={styles.page}>
     <CrmPageHeader
       eyebrow="TURBO LEV · ЦЕНТР УПРАВЛІННЯ"
       title="Аналітика"
