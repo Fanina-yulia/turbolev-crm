@@ -1,5 +1,7 @@
 "use client";
 
+import { CrmPageHeader } from "./crm-page-header";
+
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { DiagnosticReportSharePanel } from "./diagnostic-report-share-panel";
 import { StructuredDiagnosticReviewPanel } from "./structured-diagnostic-review-panel";
@@ -231,7 +233,7 @@ export function Diagnostics() {
   };
 
   return <div className={`${styles.page} ${routeDiagnosticId ? styles.focusPage : ""}`}>
-    {!routeDiagnosticId && <header className={styles.head}><div><p className={styles.eyebrow}>СЕРВІС · ДІАГНОСТИКА</p><h1>Всі діагностики</h1></div><div className={styles.headActions}><label className={`${registryStyles.search} ${registryStyles.headerSearch}`}><span>⌕</span><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Номер авто, VIN, клієнт, телефон, № ДК або механік..." />{search && <button type="button" onClick={() => setSearch("")} aria-label="Очистити пошук">×</button>}</label><select className={`${registryStyles.select} ${registryStyles.headerMechanic}`} value={mechanic} onChange={(event) => setMechanic(event.target.value)} aria-label="Фільтр за механіком"><option value="ALL">Усі механіки</option>{mechanics.map((name) => <option key={name} value={name}>{name}</option>)}</select><button className={styles.refresh} onClick={() => void load()} disabled={loading}>{loading ? "Оновлюю…" : "Оновити"}</button></div></header>}
+    {!routeDiagnosticId && <CrmPageHeader eyebrow="СЕРВІС · ДІАГНОСТИКА" title="Всі діагностики" description="Реєстр діагностичних карт, їхнього стану, виконавців і наступних дій." actions={<button className={styles.refresh} onClick={() => void load()} disabled={loading}>{loading ? "Оновлюю…" : "Оновити"}</button>} controls={<><label className={`${registryStyles.search} ${registryStyles.headerSearch}`}><span>⌕</span><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Номер авто, VIN, клієнт, телефон, № ДК або механік..." />{search && <button type="button" onClick={() => setSearch("")} aria-label="Очистити пошук">×</button>}</label><select className={`${registryStyles.select} ${registryStyles.headerMechanic}`} value={mechanic} onChange={(event) => setMechanic(event.target.value)} aria-label="Фільтр за механіком"><option value="ALL">Усі механіки</option>{mechanics.map((name) => <option key={name} value={name}>{name}</option>)}</select></>} />}
 
     {!routeDiagnosticId && <section className={styles.summary} aria-label="Підсумок діагностик">
       <button type="button" className={styles.summaryCard} onClick={() => { setScope("CURRENT"); setFilter("ALL"); }}><span>Поточні</span><strong>{rows.filter((row) => !isHistory(row)).length}</strong><small>записів у роботі</small></button>
