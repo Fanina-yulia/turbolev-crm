@@ -81,7 +81,10 @@ Standalone Кабінет механіка повертається з `app/page
 - physical scale = `0.90`;
 - inverse = `1 / 0.90 = 1.1111111111`;
 - logical width = `111.111111vw`;
-- logical height = `111.111111dvh`.
+- logical height = `111.111111dvh`;
+- horizontal origin compensation = `-5.5555555vw`.
+
+CSS `zoom` масштабує елемент від верхнього центру. Тому logical canvas 111.111% перед zoom центрується відносно фізичного viewport: його ліва межа зміщується на половину додаткової ширини `(111.111% - 100%) / 2 = 5.5555%`. Це прибирає порожню смугу зліва/справа й не використовує transform-origin hack.
 
 Після рендеру:
 
