@@ -1,5 +1,7 @@
 "use client";
 
+import { CrmPageHeader } from "./crm-page-header";
+
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type {
   WorkOrderDetailContract,
@@ -281,14 +283,7 @@ export function WorkOrders() {
   const commercialView = (["overview", "works", "parts", "estimate", "qc", "payment"] as WorkOrderTab[]).includes(activeTab) ? activeTab as WorkOrderCommercialView : null;
 
   return <div className={styles.page}>
-    <header className={styles.head}>
-      <div>
-        <p className={styles.eyebrow}>СЕРВІС · ЗАМОВЛЕННЯ-НАРЯДИ</p>
-        <h1>Наряди та ремонт</h1>
-        <p>Наряд-замовлення веде автомобіль від погоджених робіт до ремонту, контролю якості, оплати та видачі. Комерційна пропозиція є окремим документом погодження.</p>
-      </div>
-      <button className={styles.refresh} type="button" onClick={() => void loadRows()} disabled={loading}>{loading ? "Оновлюю…" : "Оновити"}</button>
-    </header>
+    <CrmPageHeader eyebrow="СЕРВІС · ЗАМОВЛЕННЯ-НАРЯДИ" title="Наряди та ремонт" description="Наряд-замовлення веде автомобіль від погоджених робіт до ремонту, контролю якості, оплати та видачі. Комерційна пропозиція є окремим документом погодження." actions={<button className={styles.refresh} type="button" onClick={() => void loadRows()} disabled={loading}>{loading ? "Оновлюю…" : "Оновити"}</button>} />
 
     <section className={styles.kpis}>
       <div><span>Активні наряди та ремонти</span><strong>{counts.active}</strong></div>
