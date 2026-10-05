@@ -244,19 +244,12 @@ export function OwnerControlCenter({ userName, mode = "OWNER" }: { userName?: st
       title={isExecutive ? "Пульт виконавчого директора" : "Пульт власника"}
       description={`${userName || (isExecutive ? "Виконавчий директор" : "Власник")} · ${scopeLabel} · ${loading ? "оновлюю дані…" : "живі управлінські дані"}`}
       actions={<><button type="button" onClick={() => navigateCrm("Аналітика")}>Повна аналітика</button><button type="button" className={styles.primary} onClick={() => navigateCrm("Фінансовий центр")}>Фінансовий центр →</button></>}
-      tabs={}
+      tabs={<nav className={styles.workspaceTabs} aria-label="Розділи пульта власника"><button type="button" className={workspaceTab === "RESULT" ? styles.workspaceTabActive : ""} onClick={() => setWorkspaceTab("RESULT")}>Результат</button><button type="button" className={workspaceTab === "SERVICE" ? styles.workspaceTabActive : ""} onClick={() => setWorkspaceTab("SERVICE")}>Сервіс</button><button type="button" className={workspaceTab === "RISKS" ? styles.workspaceTabActive : ""} onClick={() => setWorkspaceTab("RISKS")}>Ризики <b>{ownerAttention.length + teamAttention.length}</b></button><button type="button" className={workspaceTab === "TRENDS" ? styles.workspaceTabActive : ""} onClick={() => setWorkspaceTab("TRENDS")}>Тренди</button></nav>}
     />
 
     {error && <div className={styles.error}><strong>{isExecutive ? "Не вдалося оновити пульт виконавчого директора" : "Не вдалося оновити пульт власника"}</strong><span>{error}</span><button type="button" onClick={() => void load()}>Повторити</button></div>}
 
     <OwnerDashboardVisual analytics={analytics} period={period} onPeriodChange={setPeriod} loading={loading} />
-
-    <nav className={styles.workspaceTabs} aria-label="Розділи пульта власника">
-      <button type="button" className={workspaceTab === "RESULT" ? styles.workspaceTabActive : ""} onClick={() => setWorkspaceTab("RESULT")}>Результат</button>
-      <button type="button" className={workspaceTab === "SERVICE" ? styles.workspaceTabActive : ""} onClick={() => setWorkspaceTab("SERVICE")}>Сервіс</button>
-      <button type="button" className={workspaceTab === "RISKS" ? styles.workspaceTabActive : ""} onClick={() => setWorkspaceTab("RISKS")}>Ризики <b>{ownerAttention.length + teamAttention.length}</b></button>
-      <button type="button" className={workspaceTab === "TRENDS" ? styles.workspaceTabActive : ""} onClick={() => setWorkspaceTab("TRENDS")}>Тренди</button>
-    </nav>
 
     {workspaceTab === "RESULT" && <ManagementResultPanel mode={isExecutive ? "EXECUTIVE" : "OWNER"} />}
 
