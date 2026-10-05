@@ -1,0 +1,65 @@
+/* CRM-UI-005 — Global CRM Scale 90
+   Browser zoom stays at 100%. The internal authenticated CRM renders at 90%
+   and receives a compensated logical canvas so the visible workspace still
+   fills the browser viewport.
+
+   Scope guard:
+   - applies only when the document contains the canonical .shell;
+   - standalone MechanicCabinet bypasses .shell and is therefore excluded;
+   - auth and public/client portals are not scaled.
+*/
+
+:root{
+  --crm-ui-scale: .9;
+  --crm-ui-inverse-scale: 1.1111111111;
+  --crm-ui-logical-width: 111.111111vw;
+  --crm-ui-logical-height: 111.111111dvh;
+}
+
+@media (min-width:761px){
+  html:has(body .shell){
+    overflow:hidden;
+  }
+
+  body:has(.shell){
+    width:var(--crm-ui-logical-width);
+    min-width:var(--crm-ui-logical-width);
+    height:var(--crm-ui-logical-height);
+    min-height:var(--crm-ui-logical-height);
+    margin:0;
+    zoom:var(--crm-ui-scale);
+    overflow:hidden;
+  }
+
+  /* CRM-UI-004 binds the main shell to the viewport. Under the 0.90 UI scale
+     the logical viewport has to be enlarged by 1/0.90 so the shell still
+     reaches the physical bottom/right edge of the browser. */
+  body:has(.shell) .shell,
+  body:has(.shell) .workspace{
+    height:var(--crm-ui-logical-height)!important;
+    min-height:0!important;
+  }
+
+  body:has(.shell) .shell>.sidebar{
+    height:var(--crm-ui-logical-height)!important;
+  }
+
+  /* Full-screen intake is mounted inside workspace and must use the same
+     compensated logical height. */
+  body:has(.shell) [class*="workspaceRequestOpen"]{
+    height:var(--crm-ui-logical-height)!important;
+  }
+}
+
+/* Touch/mobile keeps its native 1:1 scale. Mobile has a dedicated adaptive
+   layout and must not inherit the desktop density transform. */
+@media (max-width:760px){
+  body:has(.shell){
+    width:auto;
+    min-width:0;
+    height:auto;
+    min-height:100%;
+    zoom:1;
+    overflow-y:auto;
+  }
+}
