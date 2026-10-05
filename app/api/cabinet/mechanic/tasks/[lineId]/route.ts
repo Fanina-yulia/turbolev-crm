@@ -204,10 +204,10 @@ export async function PATCH(request: Request, context: { params: Promise<{ lineI
           where: { locationId: mechanic.locationId, isActive: true, role: { code: { in: ["STATION_MANAGER", "SERVICE_ADVISOR", "OWNER"] } } },
           select: { userId: true },
         });
-        const recipients = [
-          { mechanicId: mechanic.id, recipientUserId: access.context.user!.id },
-          ...managers.map((item) => ({ mechanicId: item.userId, recipientUserId: item.userId })),
-        ].filter((item, index, all) => all.findIndex((candidate) => candidate.mechanicId === item.mechanicId) === index);
+        const recipients = managers
+          .filter((item) => item.userId !== access.context.user!.id)
+          .map((item) => ({ mechanicId: item.userId, recipientUserId: item.userId }))
+          .filter((item, index, all) => all.findIndex((candidate) => candidate.mechanicId === item.mechanicId) === index);
         if (!existingIssue && recipients.length) {
           await tx.mechanicNotification.createMany({
             data: recipients.map((recipient) => ({
