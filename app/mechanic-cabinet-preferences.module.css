@@ -169,6 +169,12 @@
 .actionRow>b{color:#ff6500;font-size:22px}
 .actionRow>em{min-width:23px;height:23px;padding:0 6px;display:grid;place-items:center;border-radius:999px;background:#fff0e5;color:#e85c00;font-size:11px;font-style:normal;font-weight:900}
 .actionIcon{width:32px;height:32px;display:grid!important;place-items:center;border-radius:10px;background:#f3f5f8;color:#5f6d7c;font-size:16px;font-weight:900}
+.logoutRow{color:#b53a45}
+.logoutRow .actionIcon{background:#fff0f2;color:#b53a45}
+.logoutRow strong{color:#b53a45}
+.logoutRow>b{color:#b53a45}
+.logoutRow:disabled{opacity:.55;cursor:not-allowed}
+.logoutError{margin:8px 0 0;padding:9px 10px;border:1px solid #f0c8cd;border-radius:10px;background:#fff0f2;color:#9d2f39;font-size:11px;line-height:1.35}
 
 @media(max-width:600px){
   .settingsTrigger{width:42px;height:42px;border-radius:13px}
