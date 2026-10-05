@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { WarrantyCostCategory } from "@/src/generated/prisma/client";
 import { getPrisma } from "@/src/lib/prisma";
-import { getAccessContext, hasPermission, type AccessContext } from "@/src/security/access-context";
-import { PERMISSIONS, type AccessScopeCode } from "@/src/security/permissions";
+import { getAccessContext, hasPermission } from "@/src/security/access-context";
+import { PERMISSIONS } from "@/src/security/permissions";
+import { canAccessWarrantyWorkOrder } from "@/src/security/warranty-scope";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -12,22 +13,6 @@ const CATEGORIES = new Set(Object.values(WarrantyCostCategory));
 
 function clean(value: unknown, max = 240) {
   return typeof value === "string" ? value.trim().slice(0, max) : "";
-}
-
-function writeScope(context: AccessContext) {
-  return context.permissions[PERMISSIONS.WARRANTY_WRITE] as AccessScopeCode | undefined;
-}
-
-async function scopedWorkOrderIds(context: AccessContext) {
-  if (context.enforcementMode !== "ENFORCED" || writeScope(context) === "ALL") return null;
-  if (!context.locationIds.length) return [] as string[];
-  const rows = await getPrisma().serviceAppointment.findMany({
-    where: { locationId: { in: context.locationIds }, workOrderId: { not: null } },
-    select: { workOrderId: true },
-    distinct: ["workOrderId"],
-    take: 10000,
-  });
-  return rows.map((row) => row.workOrderId).filter((id): id is string => Boolean(id));
 }
 
 export async function POST(request: NextRequest) {
@@ -56,18 +41,17 @@ export async function POST(request: NextRequest) {
 
   const prisma = getPrisma();
   try {
-    const allowedWorkOrderIds = await scopedWorkOrderIds(context);
     const claim = await prisma.warrantyClaim.findUnique({
       where: { id: claimId },
       select: { id: true, workOrderLine: { select: { workOrderId: true } } },
     });
     if (!claim) return NextResponse.json({ ok: false, error: "Гарантійне звернення не знайдено." }, { status: 404 });
-    if (allowedWorkOrderIds && !allowedWorkOrderIds.includes(claim.workOrderLine.workOrderId)) {
+    if (!(await canAccessWarrantyWorkOrder(context, PERMISSIONS.WARRANTY_WRITE, claim.workOrderLine.workOrderId))) {
       return NextResponse.json({ ok: false, error: "Немає доступу до цього гарантійного звернення." }, { status: 403 });
     }
 
     if (correctiveWorkOrderId) {
-      if (allowedWorkOrderIds && !allowedWorkOrderIds.includes(correctiveWorkOrderId)) {
+      if (!(await canAccessWarrantyWorkOrder(context, PERMISSIONS.WARRANTY_WRITE, correctiveWorkOrderId))) {
         return NextResponse.json({ ok: false, error: "Коригувальний наряд поза вашим station-scope." }, { status: 403 });
       }
       const corrective = await prisma.workOrder.findUnique({ where: { id: correctiveWorkOrderId }, select: { id: true } });
