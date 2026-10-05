@@ -1,5 +1,7 @@
 "use client";
 
+import { CrmPageHeader } from "./crm-page-header";
+
 import { useEffect, useMemo, useState } from "react";
 import { WARRANTY_CLAIM_STATUS_CODES, WARRANTY_CLAIM_STATUS_LABELS, WARRANTY_CLAIM_TRANSITIONS, type WarrantyClaimStatusCode } from "@/src/domain/warranty/contract";
 import { navigateCrm, readCrmRoute } from "./crm-route";
@@ -223,14 +225,7 @@ export function WarrantyCenter() {
   }
 
   return <div className={styles.page}>
-    <header className={styles.header}>
-      <div>
-        <p className={styles.eyebrow}>TURBO LEV · ПІСЛЯ РЕМОНТУ</p>
-        <h1>Гарантійний центр</h1>
-        <span>Гарантія рахується окремо по кожній виконаній роботі — за датою та пробігом.</span>
-      </div>
-      <button type="button" className={styles.refresh} onClick={() => setRefreshKey((value) => value + 1)} disabled={loading}>↻ Оновити</button>
-    </header>
+    <CrmPageHeader eyebrow="TURBO LEV · ПІСЛЯ РЕМОНТУ" title="Гарантійний центр" description="Гарантія рахується окремо по кожній виконаній роботі — за датою та пробігом." actions={<button type="button" className={styles.refresh} onClick={() => setRefreshKey((value) => value + 1)} disabled={loading}>↻ Оновити</button>} />
 
     <section className={styles.kpis}>
       <article><small>Активні гарантії</small><strong>{counts.active}</strong><span>виконаних робіт</span></article>
