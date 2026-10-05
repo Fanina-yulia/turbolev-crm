@@ -1,5 +1,7 @@
 "use client";
 
+import { CrmPageHeader } from "./crm-page-header";
+
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { CabinetHomePayload, StationManagerAttentionContract, StationManagerCabinetPayload } from "@/src/lib/contracts/cabinet-home";
 import { cabinetHomePayloadMessage, parseCabinetHomePayload } from "@/src/lib/contracts/cabinet-home-payload.parsers";
@@ -130,10 +132,7 @@ function StationManagerLinkedCabinet({ data, userName }: { data: LinkedStationMa
   ];
 
   return <>
-    <header className={styles.header}>
-      <div><p className="eyebrow">TURBO LEV · КАБІНЕТ КЕРІВНИКА СТАНЦІЇ</p><h1>Операційний пульт станції</h1><span className="muted">{userName || "Керівник станції"} · {data.station.name} · усе, що зараз потребує управлінської дії</span></div>
-      <button className={styles.primaryAction} type="button" onClick={() => navigateCrm("Виробництво", { scope: "posts" })}>Виробництво зараз →</button>
-    </header>
+    <CrmPageHeader eyebrow="TURBO LEV · КАБІНЕТ КЕРІВНИКА СТАНЦІЇ" title="Операційний пульт станції" description={`${userName || "Керівник станції"} · ${data.station.name} · усе, що зараз потребує управлінської дії`} actions={<button className={styles.primaryAction} type="button" onClick={() => navigateCrm("Виробництво", { scope: "posts" })}>Виробництво зараз →</button>} />
 
     <ManagementResultPanel mode="STATION" locationId={data.station.id} />
 
