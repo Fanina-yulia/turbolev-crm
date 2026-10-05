@@ -1,5 +1,7 @@
 "use client";
 
+import { CrmPageHeader } from "./crm-page-header";
+
 import { useEffect, useMemo, useState } from "react";
 import styles from "./camera-settings.module.css";
 
@@ -328,13 +330,7 @@ export function CameraSettingsPanel() {
 
   return <div className={styles.page}>
     {toast ? <div className={styles.toast}>{toast}</div> : null}
-    <div className={styles.header}>
-      <div className={styles.headerCopy}>
-        <h2>Камери відеоспостереження</h2>
-        <p>Рекомендований режим — Email Events: Reolink надсилає фото в існуючий Gmail, а безкоштовний Apps Script передає подію в CRM. Окремий сервер не потрібен.</p>
-      </div>
-      <button className={styles.primary} type="button" onClick={() => setShowForm((value) => !value)}>{showForm ? "Закрити" : "+ Додати камеру"}</button>
-    </div>
+    <CrmPageHeader eyebrow="TURBO LEV · НАЛАШТУВАННЯ · КАМЕРИ" title="Камери відеоспостереження" description="Рекомендований режим — Email Events: Reolink надсилає фото в існуючий Gmail, а безкоштовний Apps Script передає подію в CRM. Окремий сервер не потрібен." actions={<button className={styles.primary} type="button" onClick={() => setShowForm((value) => !value)}>{showForm ? "Закрити" : "+ Додати камеру"}</button>} />
 
     <div className={styles.summary}>
       <article><span>Усього камер</span><strong>{cameras.length}</strong></article>
