@@ -14,6 +14,7 @@
   --crm-ui-inverse-scale: 1.1111111111;
   --crm-ui-logical-width: 111.111111vw;
   --crm-ui-logical-height: 111.111111dvh;
+  --crm-ui-origin-compensation-x: -5.5555555vw;
 }
 
 @media (min-width:761px){
@@ -26,6 +27,8 @@
     min-width:var(--crm-ui-logical-width);
     height:var(--crm-ui-logical-height);
     min-height:var(--crm-ui-logical-height);
+    position:relative;
+    left:var(--crm-ui-origin-compensation-x);
     margin:0;
     zoom:var(--crm-ui-scale);
     overflow:hidden;
@@ -55,6 +58,8 @@
    layout and must not inherit the desktop density transform. */
 @media (max-width:760px){
   body:has(.shell){
+    position:static;
+    left:auto;
     width:auto;
     min-width:0;
     height:auto;
