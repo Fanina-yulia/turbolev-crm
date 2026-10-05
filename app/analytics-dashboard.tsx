@@ -284,8 +284,6 @@ export function AnalyticsDashboard() {
         <label className={styles.compactFilter}><span>Від</span><input type="date" value={from} max={to} onChange={(event) => { setPreset("custom"); setFrom(event.target.value); }} /></label>
         <label className={styles.compactFilter}><span>До</span><input type="date" value={to} min={from} onChange={(event) => { setPreset("custom"); setTo(event.target.value); }} /></label>
         {(data?.locations?.length || 0) > 0 && <label className={`${styles.compactFilter} ${styles.location}`}><span>Станція</span><select value={locationId} onChange={(event) => setLocationId(event.target.value)}><option value="">Уся доступна мережа</option>{data!.locations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}</select></label>}
-        {data?.range.previousFrom && data?.range.previousTo && <div className={styles.compare}><small>Порівняння</small><b>{data.range.previousFrom} — {data.range.previousTo}</b></div>}
-        <details className={styles.moreAnalytics}><summary>Далі</summary><div><span>Персонал</span><span>Клієнти</span><span>Канали</span><span>Якість</span></div></details>
       </div>}
     />
 
