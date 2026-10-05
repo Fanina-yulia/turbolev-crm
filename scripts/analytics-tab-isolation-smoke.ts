@@ -18,6 +18,7 @@ assert.doesNotMatch(layout, /analytics-dashboard-walk-in-bridge/, "layout must n
 assert.doesNotMatch(dashboard, /Порівняння/, "Analytics toolbar must not render comparison controls");
 assert.doesNotMatch(dashboard, /moreAnalytics|<summary>Далі<\/summary>/, "Analytics toolbar must not render the secondary Далі menu");
 assert.match(dashboard, /const range = presetRange\(next\); setFrom\(range\.from\); setTo\(range\.to\);/, "period presets must immediately update From/To fields");
+assert.match(dashboard, /useLayoutEffect\(\(\) => \{[\s\S]*parent\.scrollTop = 0;[\s\S]*\}, \[tab\]\);/, "analytics tab switches must reset the page-owned scroll position");
 
 for (const tab of ["overview", "funnel", "workshop", "diagnostics", "finance", "parts"]) {
   assert.match(dashboard, new RegExp(`tab === \\"${tab}\\"`), `native dashboard must retain dedicated ${tab} analytics`);
