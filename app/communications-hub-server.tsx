@@ -1,5 +1,7 @@
 "use client";
 
+import { CrmPageHeader } from "./crm-page-header";
+
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ClientCardDrawer } from "./client-card-drawer";
 import { CommunicationsVehicleCardDrawer } from "./communications-vehicle-card-drawer";
@@ -516,10 +518,13 @@ export function CommunicationsHub() {
 
   return <div className={styles.page}>
     {toast && <div className={styles.toast}>{toast}</div>}
-    <header className={styles.header}>
-      <div><p className={styles.eyebrow}>OMNICHANNEL · CONTACT INBOX</p><h1>Комунікації</h1><p className={styles.subtitle}>Один клієнт — один діалог. Дзвінки та повідомлення зберігаються єдиною хронологією.</p></div>
-      <div className={styles.headerRight}><span className={styles.serverBadge} data-ok={serverMode}>{serverMode ? "NEON SERVER" : "LOCAL FALLBACK"}</span><div className={styles.tabs}><button className={tab === "inbox" ? styles.active : ""} onClick={() => setTab("inbox")}>Inbox</button><button className={tab === "integrations" ? styles.active : ""} onClick={() => { setTab("integrations"); void loadIntegrationStatus(); }}>Інтеграції</button></div></div>
-    </header>
+    <CrmPageHeader
+      eyebrow="TURBO LEV · КОМУНІКАЦІЇ"
+      title="Комунікації"
+      description="Один клієнт — один діалог. Дзвінки та повідомлення зберігаються єдиною хронологією."
+      actions={<span className={styles.serverBadge} data-ok={serverMode}>{serverMode ? "NEON SERVER" : "LOCAL FALLBACK"}</span>}
+      tabs={<div className={styles.tabs}><button className={tab === "inbox" ? styles.active : ""} onClick={() => setTab("inbox")}>Inbox</button><button className={tab === "integrations" ? styles.active : ""} onClick={() => { setTab("integrations"); void loadIntegrationStatus(); }}>Інтеграції</button></div>}
+    />
 
     {tab === "integrations" ? <section className={styles.integrations}>
       <div className={styles.integrationHead}><div><p className={styles.eyebrow}>КАНАЛИ</p><h2>Інтеграції комунікацій</h2></div><span>Live-стан каналів та службові дії.</span></div>

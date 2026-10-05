@@ -1,5 +1,7 @@
 "use client";
 
+import { CrmPageHeader } from "./crm-page-header";
+
 import { useEffect, useState } from "react";
 import type { VehicleCardContract, VehicleDirectoryItem, VehicleStatusSummary } from "@/src/lib/contracts/crm-core";
 import {
@@ -286,26 +288,7 @@ export function VehiclesDirectory() {
   }
 
   return <div className={`${styles.page} ${vehiclePage ? styles.pageRecord : ""}`}>
-    <header className={styles.header}>
-      <div>
-        <p className={styles.eyebrow}>TURBO LEV · CRM-АВТО</p>
-        <h1>Авто</h1>
-        <span>Автомобілі клієнтів, VIN, держномери та сервісна історія</span>
-      </div>
-      <div className={styles.headerActions}>
-        <label className={styles.search}>
-          <span>⌕</span>
-          <input value={query} onChange={(event) => changeQuery(event.target.value)} onKeyDown={(event) => {
-            if (event.key !== "Enter") return;
-            event.preventDefault();
-            setPage(1);
-            setSearchRequest((value) => value + 1);
-          }} placeholder="Пошук авто, VIN або власника..." aria-keyshortcuts="Enter" />
-          {query && <button type="button" onClick={() => changeQuery("")} aria-label="Очистити пошук">×</button>}
-        </label>
-        <button className={styles.primary} onClick={openNewRequest}>+ Додати авто</button>
-      </div>
-    </header>
+    <CrmPageHeader eyebrow="TURBO LEV · CRM-АВТО" title="Авто" description="Автомобілі клієнтів, VIN, держномери та сервісна історія" actions={<button className={styles.primary} onClick={openNewRequest}>+ Додати авто</button>} controls={<label className={styles.search}><span>⌕</span><input value={query} onChange={(event) => changeQuery(event.target.value)} onKeyDown={(event) => { if (event.key !== "Enter") return; event.preventDefault(); setPage(1); setSearchRequest((value) => value + 1); }} placeholder="Пошук авто, VIN або власника..." aria-keyshortcuts="Enter" />{query && <button type="button" onClick={() => changeQuery("")} aria-label="Очистити пошук">×</button>}</label>} />
 
     <div className={styles.summary}>Знайдено автомобілів: <b>{total}</b>{total > 0 && <span> · сторінка {page} з {pages}</span>}</div>
     {error && <div className={styles.error}>{error}</div>}

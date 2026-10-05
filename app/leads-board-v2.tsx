@@ -1,5 +1,7 @@
 "use client";
 
+import { CrmPageHeader } from "./crm-page-header";
+
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { LeadBookingModal, LeadCard, LeadKpi } from "./leads-board-v2.components";
 import {
@@ -257,14 +259,7 @@ export function LeadsBoardV2() {
 
   return <div className="leadsPage">
     {flash && <div className="leadFlash">{flash}</div>}
-    <header className="leadsHeader">
-      <div>
-        <p className="eyebrow">ЗВЕРНЕННЯ · БІЗНЕС-СТАН</p>
-        <h1>Звернення</h1>
-        <p className="leadsSubtitle">Тільки три результати: Нове → Записаний або Скасоване. Дзвінки, прорахунок і очікування лишаються діями та історією, а не окремими статусами.</p>
-      </div>
-      <button className="primary" type="button" onClick={() => void load()} disabled={loading}>{loading ? "Оновлення…" : "Оновити"}</button>
-    </header>
+    <CrmPageHeader eyebrow="TURBO LEV · ЗВЕРНЕННЯ · БІЗНЕС-СТАН" title="Звернення" description="Тільки три результати: Нове → Записаний або Скасоване. Дзвінки, прорахунок і очікування лишаються діями та історією, а не окремими статусами." actions={<button className="primary" type="button" onClick={() => void load()} disabled={loading}>{loading ? "Оновлення…" : "Оновити"}</button>} />
 
     {error && <div className="alert"><strong>Помилка</strong><span>{error}</span><button type="button" onClick={() => setError("")}>Закрити</button></div>}
 

@@ -1,6 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { CrmPageHeader } from "./crm-page-header";
+
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { formatWorkOrderNumber } from "@/src/domain/work-order-number";
 import { navigateCrm, readCrmRoute } from "./crm-route";
 import { ProcurementSupplierPanel } from "./procurement-supplier-panel";
@@ -76,7 +78,7 @@ function categoryTone(category: Category) {
   return category === "SELECTING" ? styles.blue : category === "APPROVED" ? styles.amber : category === "ORDERED" ? styles.violet : category === "PARTIAL" ? styles.orange : styles.green;
 }
 
-export function ProcurementQueue() {
+export function ProcurementQueue({ tabs }: { tabs?: ReactNode } = {}) {
   const route = readCrmRoute();
   const initialFocus = route.scope === "selecting" ? "SELECTING" : route.scope === "approved" ? "APPROVED" : route.scope === "ordered" ? "ORDERED" : route.scope === "partial" ? "PARTIAL" : route.scope === "received" ? "RECEIVED" : null;
   const [data, setData] = useState<Response | null>(null);
@@ -174,13 +176,14 @@ export function ProcurementQueue() {
   if (!data?.location) return <div className={styles.state}>{message || "Для Вашого профілю не визначена станція закупівель."}</div>;
 
   return <div className={styles.page}>
-    <header className={styles.header}>
-      <div><p>TURBO LEV · ЗАПЧАСТИНИ</p><h1>Закупівлі та склад</h1><span>{data.location.name} · одна черга від підбору до видачі деталей у ремонт</span></div>
-      <div className={styles.headerActions}>
-        {data.locations.length > 1 && <select value={locationId} onChange={(event) => void load(event.target.value)}>{data.locations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}</select>}
-        <button type="button" onClick={() => void load()} disabled={loading}>{loading ? "Оновлюю…" : "Оновити"}</button>
-      </div>
-    </header>
+    <CrmPageHeader
+      eyebrow="TURBO LEV · ЗАПЧАСТИНИ"
+      title="Закупівлі та склад"
+      description={`${data.location.name} · одна черга від підбору до видачі деталей у ремонт`}
+      actions={<button type="button" onClick={() => void load()} disabled={loading}>{loading ? "Оновлюю…" : "Оновити"}</button>}
+      tabs={tabs}
+      controls={data.locations.length > 1 ? <label><span>СТО</span><select value={locationId} onChange={(event) => void load(event.target.value)}>{data.locations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}</select></label> : null}
+    />
 
     <section className={styles.kpis}>{LANES.map(([category, label]) => <button type="button" key={category} className={focus === category ? styles.kpiActive : ""} onClick={() => setFocus((current) => current === category ? null : category)}><span>{label}</span><strong>{counts[category]}</strong></button>)}</section>
     <label className={styles.search}><span>⌕</span><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="КП, авто, VIN, артикул, деталь або постачальник…"/>{search && <button type="button" onClick={() => setSearch("")}>×</button>}</label>

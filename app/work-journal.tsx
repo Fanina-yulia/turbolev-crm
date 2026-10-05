@@ -1,5 +1,7 @@
 "use client";
 
+import { CrmPageHeader } from "./crm-page-header";
+
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { navigateCrm } from "./crm-route";
 import styles from "./work-journal.module.css";
@@ -139,10 +141,7 @@ export function WorkJournal() {
   };
 
   return <div className={styles.page}>
-    <header className={styles.head}>
-      <div><p className={styles.eyebrow}>СЕРВІС · ЄДИНИЙ ЖУРНАЛ</p><h1>Роботи</h1><p>Усі автомобілі станції в одному місці: діагностика, ремонт, оплата, завершення, видача та фінальні фото механіка після прибирання поста.</p></div>
-      <button type="button" className={styles.refresh} onClick={() => void load()} disabled={loading}>{loading ? "Оновлюю…" : "Оновити"}</button>
-    </header>
+    <CrmPageHeader eyebrow="СЕРВІС · ЄДИНИЙ ЖУРНАЛ" title="Роботи" description="Усі автомобілі станції в одному місці: діагностика, ремонт, оплата, завершення, видача та фінальні фото механіка після прибирання поста." actions={<button type="button" className={styles.refresh} onClick={() => void load()} disabled={loading}>{loading ? "Оновлюю…" : "Оновити"}</button>} />
 
     <section className={styles.kpis}>
       <div><span>Активні автомобілі</span><strong>{counts.active}</strong></div>

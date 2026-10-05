@@ -1,5 +1,7 @@
 "use client";
 
+import { CrmPageHeader } from "./crm-page-header";
+
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { navigateCrm, readCrmRoute } from "./crm-route";
 import { FinanceExpensesV2 } from "./finance-expenses-v2";
@@ -133,21 +135,17 @@ export function FinancialCenter() {
   }
 
   return <div className={styles.shell}>
-    <header className={styles.header}>
-      <div><span className={styles.eyebrow}>TURBO LEV · FINANCIAL CENTER V2</span><h1>Фінансовий центр</h1><div className={styles.muted}>{loading ? "Оновлюю фінансову картину…" : `${periodLabel} · P&L · Cash Flow · План/факт · прогноз`}</div></div>
-      <div className={styles.headerActions}><button type="button" className={styles.primaryButton} onClick={() => openOperation("EXPENSE")}>+ Додати операцію</button><button type="button" className={styles.secondaryButton} onClick={() => void load()} disabled={loading}>Оновити</button></div>
-    </header>
-
-    <section className={styles.filters}>
-      <div className={styles.presets}>{(["today", "week", "month", "quarter", "year"] as const).map((item) => <button key={item} type="button" className={preset === item ? styles.activeTab : ""} onClick={() => choosePreset(item)}>{{ today: "Сьогодні", week: "Тиждень", month: "Місяць", quarter: "Квартал", year: "Рік" }[item]}</button>)}<button type="button" className={preset === "custom" ? styles.activeTab : ""} onClick={() => setPreset("custom")}>Період</button></div>
-      {preset === "custom" && <div className={styles.filterRow}><label>Від<input type="date" value={from} onChange={(event) => { setFrom(event.target.value); route(tab, event.target.value, to); }} /></label><label>До<input type="date" value={to} onChange={(event) => { setTo(event.target.value); route(tab, from, event.target.value); }} /></label></div>}
-      <label>СТО<select value={locationId} onChange={(event) => { setLocationId(event.target.value); route(tab, from, to, event.target.value); }}><option value="">Уся мережа</option>{locations.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
-    </section>
+    <CrmPageHeader
+      eyebrow="TURBO LEV · ФІНАНСОВИЙ ЦЕНТР"
+      title="Фінансовий центр"
+      description={loading ? "Оновлюю фінансову картину…" : `${periodLabel} · P&L · Cash Flow · План/факт · прогноз`}
+      actions={<><button type="button" className={styles.secondaryButton} onClick={() => void load()} disabled={loading}>Оновити</button><button type="button" className={styles.primaryButton} onClick={() => openOperation("EXPENSE")}>+ Додати операцію</button></>}
+      tabs={<nav className={styles.tabs} aria-label="Фінансові розділи">{(Object.keys(TAB_LABEL) as Tab[]).map((item) => <button type="button" key={item} className={tab === item ? styles.activeTab : ""} onClick={() => chooseTab(item)}>{TAB_LABEL[item]}</button>)}</nav>}
+      controls={<section className={styles.filters}><div className={styles.presets}>{(["today", "week", "month", "quarter", "year"] as const).map((item) => <button key={item} type="button" className={preset === item ? styles.activeTab : ""} onClick={() => choosePreset(item)}>{{ today: "Сьогодні", week: "Тиждень", month: "Місяць", quarter: "Квартал", year: "Рік" }[item]}</button>)}<button type="button" className={preset === "custom" ? styles.activeTab : ""} onClick={() => setPreset("custom")}>Період</button></div>{preset === "custom" && <div className={styles.filterRow}><label>Від<input type="date" value={from} onChange={(event) => { setFrom(event.target.value); route(tab, event.target.value, to); }} /></label><label>До<input type="date" value={to} onChange={(event) => { setTo(event.target.value); route(tab, from, event.target.value); }} /></label></div>}<label>СТО<select value={locationId} onChange={(event) => { setLocationId(event.target.value); route(tab, from, to, event.target.value); }}><option value="">Уся мережа</option>{locations.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label></section>}
+    />
 
     {error && <div className={styles.errorBox}><strong>Фінансовий центр не оновлено.</strong> {error}</div>}
     {message && <div className={styles.success}>{message}</div>}
-
-    <nav className={styles.tabs} aria-label="Фінансові розділи">{(Object.keys(TAB_LABEL) as Tab[]).map((item) => <button type="button" key={item} className={tab === item ? styles.activeTab : ""} onClick={() => chooseTab(item)}>{TAB_LABEL[item]}</button>)}</nav>
 
     {data && <section className={styles.kpiGrid}>
       <KpiCard label="Гроші зараз" value={money(data.kpi.currentCash)} note={`${data.accounts.length} рахунків`} onClick={() => chooseTab("accounts")} />

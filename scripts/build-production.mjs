@@ -8,6 +8,7 @@ import "./check-telephony-popup.mjs";
 import "./check-crm-page-integrity.mjs";
 import "./check-one-screen-contracts.mjs";
 import "./check-crm-ui-scale.mjs";
+import "./check-unified-page-header.mjs";
 import "./check-sidebar-settings-submenu.mjs";
 import "./check-visit-financial-state.mjs";
 import { spawnSync } from "node:child_process";

@@ -1,5 +1,7 @@
 "use client";
 
+import { CrmPageHeader } from "./crm-page-header";
+
 import { useEffect, useMemo, useState } from "react";
 import { navigateCrm, readCrmRoute } from "./crm-route";
 import { VehiclePlate } from "./vehicle-plate";
@@ -218,14 +220,7 @@ export function PaymentsQueue() {
   }
 
   return <div className={styles.page}>
-    <header className={styles.header}>
-      <div>
-        <p className={styles.eyebrow}>TURBO LEV · КАСА</p>
-        <h1>Оплати</h1>
-        <span>{routeWorkOrderId ? "Відкрито конкретний комерційна пропозиція" : "Що потрібно отримати від клієнтів і що вже надійшло сьогодні"}</span>
-      </div>
-      <button className={styles.refresh} type="button" onClick={() => setRefreshKey((value) => value + 1)} disabled={loading}>↻ Оновити</button>
-    </header>
+    <CrmPageHeader eyebrow="TURBO LEV · КАСА" title="Оплати" description={routeWorkOrderId ? "Відкрито конкретну комерційну пропозицію." : "Що потрібно отримати від клієнтів і що вже надійшло сьогодні."} actions={<button className={styles.refresh} type="button" onClick={() => setRefreshKey((value) => value + 1)} disabled={loading}>↻ Оновити</button>} />
 
     <section className={styles.kpis}>
       <article><small>До отримання</small><strong>{money(outstandingTotal)}</strong><span>{rows.filter((row) => row.outstanding > 0).length} КП</span></article>

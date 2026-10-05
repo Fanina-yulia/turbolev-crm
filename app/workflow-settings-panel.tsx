@@ -1,5 +1,7 @@
 "use client";
 
+import { CrmPageHeader } from "./crm-page-header";
+
 import { useEffect, useMemo, useState } from "react";
 import styles from "./workflow-settings-panel.module.css";
 
@@ -36,7 +38,7 @@ export function WorkflowSettingsPanel(){
  if(error)return <div className={styles.error}>{error}</div>;
  if(!catalog||!entity)return <div className={styles.loading}>Завантажую процеси та статуси…</div>;
  return <div className={styles.page}>
-   <header className={styles.head}><div><p className={styles.eyebrow}>TURBO LEV · WORKFLOW ENGINE</p><h2>Процеси та статуси</h2><p>Системна логіка захищена. Тут безпечно налаштовуються назви, кольори, порядок, SLA, видимість і відповідальні ролі без зміни кодів, переходів та Hard Gates.</p></div><span className={styles.version}>Architecture v{catalog.version}</span></header>
+   <CrmPageHeader eyebrow="TURBO LEV · НАЛАШТУВАННЯ · ПРОЦЕСИ" title="Процеси та статуси" description="Системна логіка захищена. Тут безпечно налаштовуються назви, кольори, порядок, SLA, видимість і відповідальні ролі без зміни кодів, переходів та Hard Gates." actions={<span className={styles.version}>Architecture v{catalog.version}</span>} />
    <div className={styles.notice}><strong>Захищено:</strong> CODE, stage, terminal, allowed transitions, Hard Gates і actions не редагуються. Зміни нижче — presentation/SLA overrides і можуть бути скинуті до системних значень.</div>
    {message&&<div className={styles.message}>{message}</div>}
    <div className={styles.stageRail}>{catalog.masterStages.filter(s=>!["PROFILE","CLOSED"].includes(s.code)).map(stage=><span className={styles.stage} key={stage.code}>{stage.label}</span>)}</div>

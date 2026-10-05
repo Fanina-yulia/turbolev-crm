@@ -1,5 +1,7 @@
 "use client";
 
+import { CrmPageHeader } from "./crm-page-header";
+
 import { useCallback, useEffect, useState } from "react";
 import styles from "./settings-operations-page.module.css";
 
@@ -35,7 +37,7 @@ export function PartsCatalogSettingsPanel() {
   }
   const update = (key: string, value: string | boolean) => setForm((current) => ({ ...current, [key]: value }));
   return <div className={styles.page} data-settings-tab="partsCatalog">
-    <header className={styles.header}><p>НАЛАШТУВАННЯ · ДОВІДНИК</p><h1>Каталог запчастин</h1><span>Канонічні деталі, синоніми, комплекти ремонту та контроль сумісності.</span></header>
+    <CrmPageHeader eyebrow="TURBO LEV · НАЛАШТУВАННЯ · ДОВІДНИК" title="Каталог запчастин" description="Канонічні деталі, синоніми, комплекти ремонту та контроль сумісності." />
     {message && <div className={styles.message}>{message}</div>}
     <div className={styles.stats}><Stat label="Деталей" value={data?.stats.parts || 0}/><Stat label="На перевірці" value={data?.stats.pendingChanges || 0}/><Stat label="Невідомих термінів" value={data?.stats.unrecognizedTerms || 0}/></div>
     <div className={styles.topAction}><button type="button" onClick={() => setCreating((value) => !value)}>{creating ? "Сховати форму" : "+ Додати канонічну деталь"}</button></div>

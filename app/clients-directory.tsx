@@ -1,5 +1,7 @@
 "use client";
 
+import { CrmPageHeader } from "./crm-page-header";
+
 import { useEffect, useState } from "react";
 import type { ClientDirectoryItem } from "@/src/lib/contracts/crm-core";
 import {
@@ -138,14 +140,7 @@ export function ClientsDirectory() {
   }
 
   return <div className={styles.page}>
-    <header className={styles.header}>
-      <div>
-        <p className={styles.eyebrow}>TURBO LEV · CRM-КЛІЄНТІВ</p>
-        <h1>Клієнти</h1>
-        <span>Власники автомобілів, доданих у CRM. Дзвінки та звернення без авто залишаються в «Комунікаціях».</span>
-      </div>
-      <button className={styles.primary} onClick={openNewRequest}>+ Записати авто на СТО</button>
-    </header>
+    <CrmPageHeader eyebrow="TURBO LEV · CRM-КЛІЄНТІВ" title="Клієнти" description="Власники автомобілів, доданих у CRM. Дзвінки та звернення без авто залишаються в «Комунікаціях»." actions={<button className={styles.primary} onClick={openNewRequest}>+ Записати авто на СТО</button>} />
 
     <div className={styles.toolbar}>
       <label className={styles.search}>

@@ -1,5 +1,7 @@
 "use client";
 
+import { CrmPageHeader } from "./crm-page-header";
+
 import { useEffect, useMemo, useState } from "react";
 import { DocumentTemplateBuilder } from "./document-template-builder";
 import {
@@ -195,10 +197,7 @@ export function AppearanceSettingsPanel() {
   if (loading) return <section className={styles.page}><div className={styles.loading}>Завантажуємо глобальне оформлення…</div></section>;
 
   return <section className={styles.page} data-appearance-settings="true">
-    <header className={styles.header}>
-      <div><p className={styles.eyebrow}>НАЛАШТУВАННЯ · БРЕНД І UI</p><h1>Оформлення CRM</h1><span>Єдиний стиль для всіх сторінок, ролей і робочих кабінетів.</span></div>
-      <div className={styles.headerActions}><span className={dirty ? styles.dirty : styles.saved}>{dirty ? "Є незбережені зміни" : "Синхронізовано"}</span>{dirty && <button className={styles.secondary} type="button" disabled={saving} onClick={cancelChanges}>Скасувати</button>}<button className={styles.primary} type="button" disabled={!dirty || saving || Boolean(invalidColor)} onClick={() => void save()}>{saving ? "Зберігаємо…" : "Зберегти зміни"}</button></div>
-    </header>
+    <CrmPageHeader eyebrow="TURBO LEV · НАЛАШТУВАННЯ · БРЕНД І UI" title="Оформлення CRM" description="Єдиний стиль для всіх сторінок, ролей і робочих кабінетів." actions={<><span className={dirty ? styles.dirty : styles.saved}>{dirty ? "Є незбережені зміни" : "Синхронізовано"}</span>{dirty && <button className={styles.secondary} type="button" disabled={saving} onClick={cancelChanges}>Скасувати</button>}<button className={styles.primary} type="button" disabled={!dirty || saving || Boolean(invalidColor)} onClick={() => void save()}>{saving ? "Зберігаємо…" : "Зберегти зміни"}</button></>} />
     {message && <div className={styles.message} role="status">✓ {message}</div>}
     {error && <div className={styles.error} role="alert">{error}</div>}
 

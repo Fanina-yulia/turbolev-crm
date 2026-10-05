@@ -1,5 +1,7 @@
 "use client";
 
+import { CrmPageHeader } from "./crm-page-header";
+
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   parsePersonnelCatalogPayload,
@@ -94,7 +96,7 @@ export function PersonnelV2(){
  </div>}
 
  return <div className={styles.page}>
-  <header className={styles.head}><div><span className={styles.eyebrow}>НАЛАШТУВАННЯ · ПЕРСОНАЛ</span><h1>Персонал</h1><p>Працівники, категорії, посади, станції, кабінети та кадрові документи.</p></div><button type="button" className={styles.primary} onClick={newEmployee} disabled={loading||!catalog?.roles.length} title={!catalog?.roles.length?"Зачекайте, поки завантажиться каталог посад":undefined}>+ Додати працівника</button></header>
+  <CrmPageHeader eyebrow="TURBO LEV · НАЛАШТУВАННЯ · ПЕРСОНАЛ" title="Персонал" description="Працівники, категорії, посади, станції, кабінети та кадрові документи." actions={<button type="button" className={styles.primary} onClick={newEmployee} disabled={loading||!catalog?.roles.length} title={!catalog?.roles.length?"Зачекайте, поки завантажиться каталог посад":undefined}>+ Додати працівника</button>} />
   {error&&<div className={styles.error}>{error}</div>}{message&&<div className={styles.notice}>{message}</div>}
   <section className={styles.stats}><div><span>Усього</span><strong>{stats.total}</strong></div><div><span>Активні</span><strong>{stats.active}</strong></div><div><span>Механіки</span><strong>{stats.mechanics}</strong></div><div><span>Відкриті кабінети</span><strong>{stats.cabinets}</strong></div></section>
   <div className={styles.toolbar}><input placeholder="Пошук за ПІБ, телефоном, e-mail, посадою або логіном…" value={query} onChange={e=>setQuery(e.target.value)}/><select value={positionFilter} onChange={e=>setPositionFilter(e.target.value)}><option value="">Усі посади</option>{catalog?.roles.map(r=><option key={r.code} value={r.code}>{r.name}</option>)}</select><select value={categoryFilter} onChange={e=>setCategoryFilter(e.target.value)}><option value="">Усі категорії</option>{CATEGORIES.map(c=><option key={c}>{c}</option>)}</select><select value={statusFilter} onChange={e=>setStatusFilter(e.target.value)}><option value="active">Активні</option><option value="inactive">Неактивні</option><option value="all">Усі</option></select><button type="button" className={styles.secondary} onClick={()=>void load()} disabled={loading}>{loading?"Оновлюю…":"Оновити"}</button></div>

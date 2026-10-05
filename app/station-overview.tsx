@@ -1,5 +1,7 @@
 "use client";
 
+import { CrmPageHeader } from "./crm-page-header";
+
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { WorkOrderCockpit, type AttentionCar } from "@/src/components/work-order-cockpit";
 import { GlobalVehicleSearch } from "./global-vehicle-search";
@@ -140,7 +142,7 @@ export function StationOverview(){
   ];
 
   return <>
-    <header className="topbar"><div><p className="eyebrow">TURBO LEV · ОПЕРАЦІЙНИЙ ЦЕНТР</p><h1>Огляд станції</h1><span className="muted">{loading?"Синхронізую…":"живі дані Neon"}</span></div><div className="topActions"><GlobalVehicleSearch/></div></header>
+    <CrmPageHeader eyebrow="TURBO LEV · ОПЕРАЦІЙНИЙ ЦЕНТР" title="Огляд станції" description={loading ? "Синхронізую…" : "Живі операційні дані станції."} actions={<GlobalVehicleSearch/>} />
     {error&&<div className="alert"><strong>Не вдалося оновити огляд</strong><span>{error}</span><button onClick={()=>void load()}>Повторити</button></div>}
     <section className="kpis">{kpiRoutes.map(item=><article className="dashboardClickCard" key={item.name} role="button" tabIndex={0} onClick={()=>navigateCrm(item.section,item.params)} onKeyDown={e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();navigateCrm(item.section,item.params);}}}><span>{item.name}</span><strong>{item.value}</strong><small>{item.sub}</small><em>Відкрити →</em></article>)}</section>
     <section className="sectionBlock"><div className="sectionHead"><div><p className="eyebrow">ВІД ЗАЯВКИ ДО ГРОШЕЙ</p><h2>Живий маршрут станції</h2></div><span className="muted">сьогодні · Neon</span></div><div className="pipeline">{pipeline.map((item)=><button type="button" className="pipelineAction" key={item.name} onClick={()=>navigateCrm(item.section,item.params)}><span>{item.name}</span><strong>{item.value}</strong><small>{item.sub}</small><em>{item.section} →</em></button>)}</div></section>

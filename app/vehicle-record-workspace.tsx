@@ -1,5 +1,7 @@
 "use client";
 
+import { CrmPageHeader } from "./crm-page-header";
+
 import { useEffect, useState } from "react";
 import type { VehicleCardContract, WorkOrderListItemContract } from "@/src/lib/contracts/crm-core";
 import { parseWorkOrderListPayload } from "@/src/lib/contracts/work-order-payload.parsers";
@@ -57,14 +59,10 @@ export function VehicleRecordWorkspace({ vehicle, loading, page, diagnosticId, o
   ];
 
   return <div className={styles.page}>
-    <div className={styles.pageTopline}>
-      <div>
-        <span className={styles.eyebrow}>КАРТКА АВТОМОБІЛЯ</span>
-        <h1>{pageTitle(page)}</h1>
-        <p>{pageDescription(page)}</p>
-      </div>
-      <button type="button" className={styles.back} onClick={onClose}>← Карта автомобіля</button>
-    </div>
+    <CrmPageHeader eyebrow="TURBO LEV · КАРТКА АВТОМОБІЛЯ" title={pageTitle(page)} description={pageDescription(page)} actions={<button type="button" className={styles.back} onClick={onClose}>← Карта автомобіля</button>} tabs={<nav className={styles.tabs} aria-label="Розділи автомобіля">{links.map(([target, label, tab]) => {
+      const status = getVehicleTabStatus(vehicle, tab);
+      return <button type="button" key={target} className={[styles.tab, vehicleTabToneClass(status.tone, styles), page === target ? styles.activeTab : ""].filter(Boolean).join(" ")} title={label + ": " + status.label} onClick={() => navigateCrm("Авто", { vehicleId: vehicle.id, vehiclePage: target })}><i className={styles.statusDot} aria-hidden="true" />{label}</button>;
+    })}</nav>} />
 
     <header className={styles.header}>
       <div className={styles.vehiclePhoto}><VehicleRender id={vehicle.id} brand={vehicle.brand} model={vehicle.model} year={vehicle.year} updatedAt={vehicle.updatedAt} exteriorColorName={vehicle.exteriorColorName} exteriorColorHex={vehicle.exteriorColorHex} exteriorColorConfirmed={vehicle.exteriorColorConfirmed} size="hero" eager /></div>
@@ -87,10 +85,6 @@ export function VehicleRecordWorkspace({ vehicle, loading, page, diagnosticId, o
         </div>
       </div>
     </header>
-    <nav className={styles.tabs} aria-label="Розділи автомобіля">{links.map(([target, label, tab]) => {
-      const status = getVehicleTabStatus(vehicle, tab);
-      return <button type="button" key={target} className={[styles.tab, vehicleTabToneClass(status.tone, styles), page === target ? styles.activeTab : ""].filter(Boolean).join(" ")} title={label + ": " + status.label} onClick={() => navigateCrm("Авто", { vehicleId: vehicle.id, vehiclePage: target })}><i className={styles.statusDot} aria-hidden="true" />{label}</button>;
-    })}</nav>
 
     <section className={styles.content}>
       {page === "diagnostic-card" && <VehicleDiagnosticsTab vehicle={vehicle} diagnosticId={diagnosticId} />}

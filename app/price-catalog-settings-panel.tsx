@@ -1,5 +1,7 @@
 "use client";
 
+import { CrmPageHeader } from "./crm-page-header";
+
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { buildServiceDisplayName } from "@/src/services/service-catalog-name-builder.service";
 import styles from "./price-catalog-settings-panel.module.css";
@@ -222,10 +224,7 @@ export function PriceCatalogSettingsPanel() {
   }
 
   return <div className={styles.page}>
-    <header className={styles.header}>
-      <div><p>PRICE CATALOG 2.0</p><h1>Прайс робіт</h1><span>Один каталог для запису, діагностики, кошторису, ЗН, гарантій, зарплати й кузовного калькулятора.</span></div>
-      <div className={styles.headerActions}><button type="button" className={styles.refresh} onClick={() => setShowImport((value) => !value)}>{showImport ? "Сховати імпорт" : "Імпорт / експорт"}</button><button type="button" className={styles.refresh} onClick={() => setRefreshKey((value) => value + 1)} disabled={loading}>↻ Оновити</button></div>
-    </header>
+    <CrmPageHeader eyebrow="TURBO LEV · НАЛАШТУВАННЯ · ПРАЙС" title="Прайс робіт" description="Один каталог для запису, діагностики, кошторису, ЗН, гарантій, зарплати й кузовного калькулятора." actions={<><button type="button" className={styles.refresh} onClick={() => setShowImport((value) => !value)}>{showImport ? "Сховати імпорт" : "Імпорт / експорт"}</button><button type="button" className={styles.refresh} onClick={() => setRefreshKey((value) => value + 1)} disabled={loading}>↻ Оновити</button></>} />
 
     <section className={styles.kpis}>
       <Stat label="Усього" value={counts.total}/><Stat label="Активні" value={counts.active}/><Stat label="READY" value={counts.ready}/><Stat label="Перевірити" value={counts.review} warn/><Stat label="Карантин" value={counts.quarantine} danger/><Stat label="МС Мастер" value={counts.msMaster}/>

@@ -1,5 +1,7 @@
 "use client";
 
+import { CrmPageHeader } from "./crm-page-header";
+
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { navigateCrm } from "./crm-route";
 import { AnalyticsFunnelVisuals } from "./analytics-funnel-visuals";
@@ -266,23 +268,14 @@ export function AnalyticsDashboard() {
   const funnelMax = Math.max(1, ...funnelStages.map((stage) => stage.count));
 
   return <div className={styles.page}>
-    <header className={styles.header}>
-      <div><p className={styles.eyebrow}>TURBO LEV · ЦЕНТР УПРАВЛІННЯ</p><h1>Аналітика</h1><span>Показник → відхилення → причина → конкретна операційна дія.</span></div>
-      <button type="button" className={styles.refresh} onClick={() => void refresh()} disabled={loading || detailLoading}>↻ {loading || detailLoading ? "Оновлюю" : "Оновити"}</button>
-    </header>
-
-    <nav className={styles.tabs} aria-label="Розділи аналітики">
-      {(Object.keys(TAB_LABELS) as AnalyticsTab[]).map((item) => <button key={item} type="button" className={tab === item ? styles.tabActive : ""} onClick={() => setTab(item)}>{TAB_LABELS[item]}</button>)}
-      <span className={styles.nextModules}>Далі: Персонал · Клієнти · Канали · Якість</span>
-    </nav>
-
-    <section className={styles.filters}>
-      <div className={styles.presets}>{(["today", "7d", "30d", "month", "year", "custom"] as Preset[]).map((item) => <button key={item} type="button" className={preset === item ? styles.activePreset : ""} onClick={() => applyPreset(item)}>{item === "today" ? "Сьогодні" : item === "7d" ? "7 днів" : item === "30d" ? "30 днів" : item === "month" ? "Місяць" : item === "year" ? "Рік" : "Період"}</button>)}</div>
-      <label><span>Від</span><input type="date" value={from} max={to} onChange={(event) => { setPreset("custom"); setFrom(event.target.value); }} /></label>
-      <label><span>До</span><input type="date" value={to} min={from} onChange={(event) => { setPreset("custom"); setTo(event.target.value); }} /></label>
-      {(data?.locations?.length || 0) > 0 && <label className={styles.location}><span>Станція</span><select value={locationId} onChange={(event) => setLocationId(event.target.value)}><option value="">Уся доступна мережа</option>{data!.locations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}</select></label>}
-      {data?.range.previousFrom && data?.range.previousTo && <div className={styles.compare}><small>Порівнюємо з</small><b>{data.range.previousFrom} — {data.range.previousTo}</b></div>}
-    </section>
+    <CrmPageHeader
+      eyebrow="TURBO LEV · ЦЕНТР УПРАВЛІННЯ"
+      title="Аналітика"
+      description="Показник → відхилення → причина → конкретна операційна дія."
+      actions={<button type="button" className={styles.refresh} onClick={() => void refresh()} disabled={loading || detailLoading}>↻ {loading || detailLoading ? "Оновлюю" : "Оновити"}</button>}
+      tabs={<nav className={styles.tabs} aria-label="Розділи аналітики">{(Object.keys(TAB_LABELS) as AnalyticsTab[]).map((item) => <button key={item} type="button" className={tab === item ? styles.tabActive : ""} onClick={() => setTab(item)}>{TAB_LABELS[item]}</button>)}<span className={styles.nextModules}>Далі: Персонал · Клієнти · Канали · Якість</span></nav>}
+      controls={<section className={styles.filters}><div className={styles.presets}>{(["today", "7d", "30d", "month", "year", "custom"] as Preset[]).map((item) => <button key={item} type="button" className={preset === item ? styles.activePreset : ""} onClick={() => applyPreset(item)}>{item === "today" ? "Сьогодні" : item === "7d" ? "7 днів" : item === "30d" ? "30 днів" : item === "month" ? "Місяць" : item === "year" ? "Рік" : "Період"}</button>)}</div><label><span>Від</span><input type="date" value={from} max={to} onChange={(event) => { setPreset("custom"); setFrom(event.target.value); }} /></label><label><span>До</span><input type="date" value={to} min={from} onChange={(event) => { setPreset("custom"); setTo(event.target.value); }} /></label>{(data?.locations?.length || 0) > 0 && <label className={styles.location}><span>Станція</span><select value={locationId} onChange={(event) => setLocationId(event.target.value)}><option value="">Уся доступна мережа</option>{data!.locations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}</select></label>}{data?.range.previousFrom && data?.range.previousTo && <div className={styles.compare}><small>Порівнюємо з</small><b>{data.range.previousFrom} — {data.range.previousTo}</b></div>}</section>}
+    />
 
     {error && <div className={styles.error}>{error}</div>}
     {detailError && <div className={styles.error}>{detailError}</div>}

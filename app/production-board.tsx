@@ -1,5 +1,7 @@
 "use client";
 
+import { CrmPageHeader } from "./crm-page-header";
+
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { formatWorkOrderNumber } from "@/src/domain/work-order-number";
 import { navigateCrm, readCrmRoute } from "./crm-route";
@@ -201,13 +203,7 @@ export function ProductionBoard() {
   if (!data?.location) return <div className={styles.state}>{message || "Для Вашого профілю не визначена станція виробництва."}</div>;
 
   return <div className={styles.page}>
-    <header className={styles.header}>
-      <div><p>TURBO LEV · ВИРОБНИЦТВО</p><h1>{data.role === "MECHANIC" ? "Мої роботи" : "Виробнича дошка"}</h1><span>{data.location.name} · живий стан ремонтів без фінансових даних</span></div>
-      <div className={styles.headerActions}>
-        {data.locations.length > 1 && <select value={locationId} onChange={(event) => void load(event.target.value)}>{data.locations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}</select>}
-        <button type="button" onClick={() => void load()} disabled={loading}>{loading ? "Оновлюю…" : "Оновити"}</button>
-      </div>
-    </header>
+    <CrmPageHeader eyebrow="TURBO LEV · ВИРОБНИЦТВО" title={data.role === "MECHANIC" ? "Мої роботи" : "Виробнича дошка"} description={`${data.location.name} · живий стан ремонтів без фінансових даних`} actions={<button type="button" onClick={() => void load()} disabled={loading}>{loading ? "Оновлюю…" : "Оновити"}</button>} controls={data.locations.length > 1 ? <label><span>СТО</span><select value={locationId} onChange={(event) => void load(event.target.value)}>{data.locations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}</select></label> : null} />
 
     <section className={styles.kpis}>
       <button type="button" onClick={() => setFilter("READY_FOR_REPAIR")}><span>Готові до ремонту</span><strong>{counts.ready}</strong></button>

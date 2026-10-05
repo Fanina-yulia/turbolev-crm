@@ -1,5 +1,7 @@
 "use client";
 
+import { CrmPageHeader } from "./crm-page-header";
+
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { BinotelCallbacksSettings } from "./binotel-callbacks-settings";
 import { VehicleGenerationCatalogPanel } from "./vehicle-generation-catalog-panel";
@@ -195,11 +197,7 @@ export function IntegrationsSettingsHub() {
   }
 
   return <section className={styles.page}>
-    <header className={styles.pageHeader}>
-      <div className={styles.eyebrow}>НАЛАШТУВАННЯ</div>
-      <h1>Інтеграції</h1>
-      <p>Підключення зовнішніх сервісів. Натисніть сервіс, щоб відкрити його налаштування.</p>
-    </header>
+    <CrmPageHeader eyebrow="TURBO LEV · НАЛАШТУВАННЯ" title="Інтеграції" description="Підключення зовнішніх сервісів. Натисніть сервіс, щоб відкрити його налаштування." />
 
     {message && !active ? <div className={styles.notice}>{message}</div> : null}
 

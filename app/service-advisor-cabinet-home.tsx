@@ -1,5 +1,7 @@
 "use client";
 
+import { CrmPageHeader } from "./crm-page-header";
+
 import { useCallback, useEffect, useState } from "react";
 import type {
   ServiceAdvisorCabinetLinkedPayload,
@@ -104,14 +106,7 @@ function Dashboard({ data, userName }: { data: ServiceAdvisorCabinetLinkedPayloa
   }
 
   return <div className={styles.page}>
-    <header className={styles.head}>
-      <div>
-        <span className={styles.eyebrow}>TURBO LEV · КАБІНЕТ СЕРВІС-МЕНЕДЖЕРА</span>
-        <h1>Приймання та супровід ремонту</h1>
-        <p>{userName ? `${userName} · ` : ""}{data.station.name} · клієнт → діагностика → кошторис → погодження → ремонт</p>
-      </div>
-      <button className={styles.primary} onClick={() => nav("Планувальник")}>Планувальник →</button>
-    </header>
+    <CrmPageHeader eyebrow="TURBO LEV · КАБІНЕТ СЕРВІС-МЕНЕДЖЕРА" title="Приймання та супровід ремонту" description={`${userName ? `${userName} · ` : ""}${data.station.name} · клієнт → діагностика → кошторис → погодження → ремонт`} actions={<button className={styles.primary} onClick={() => nav("Планувальник")}>Планувальник →</button>} />
 
     {actionMessage && <div className={styles.actionNotice}>{actionMessage}</div>}
     {actionError && <div className={`${styles.actionNotice} ${styles.actionError}`}>{actionError}</div>}

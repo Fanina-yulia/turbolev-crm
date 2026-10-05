@@ -1,6 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { CrmPageHeader } from "./crm-page-header";
+
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import styles from "./parts-supplier-reconciliation.module.css";
 
 type Product = {
@@ -107,7 +109,7 @@ function recordIdentity(task: Task) {
   return [row.brandNormalized || row.brandRaw, row.mpnCandidateNorm || row.supplierArticleNorm || row.supplierArticleRaw, row.gtinCandidate].filter(Boolean).join(" · ") || row.supplierRecordKey;
 }
 
-export function SupplierReconciliationWorkspace() {
+export function SupplierReconciliationWorkspace({ tabs }: { tabs?: ReactNode } = {}) {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [suppliers, setSuppliers] = useState<Array<{ id: string; code: string; name: string }>>([]);
   const [selectedId, setSelectedId] = useState("");
@@ -206,14 +208,7 @@ export function SupplierReconciliationWorkspace() {
   const candidateProducts = selected?.candidates.map((candidate) => candidate.product) || [];
 
   return <div className={styles.page}>
-    <header className={styles.header}>
-      <div>
-        <p>TURBO LEV · SUPPLIER DATA</p>
-        <h1>Reconciliation постачальників</h1>
-        <span>Ручне вирішення нерозпізнаних, неоднозначних і конфліктних рядків без auto-create Product.</span>
-      </div>
-      <button type="button" onClick={() => void load()} disabled={loading || Boolean(busy)}>{loading ? "Оновлюю…" : "Оновити"}</button>
-    </header>
+    <CrmPageHeader eyebrow="TURBO LEV · ДАНІ ПОСТАЧАЛЬНИКІВ" title="Reconciliation постачальників" description="Ручне вирішення нерозпізнаних, неоднозначних і конфліктних рядків без auto-create Product." actions={<button type="button" onClick={() => void load()} disabled={loading || Boolean(busy)}>{loading ? "Оновлюю…" : "Оновити"}</button>} tabs={tabs} />
 
     <section className={styles.safety}>
       <strong>Fail-closed workspace</strong>

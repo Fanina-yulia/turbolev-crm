@@ -1,5 +1,7 @@
 "use client";
 
+import { CrmPageHeader } from "./crm-page-header";
+
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { navigateCrm } from "./crm-route";
 import { OwnerDashboardVisual, type OwnerPeriodKey } from "./owner-dashboard-visual";
@@ -237,28 +239,17 @@ export function OwnerControlCenter({ userName, mode = "OWNER" }: { userName?: st
   }, [ownerAttention.length, teamAttention.length]);
 
   return <>
-    <header className={styles.header}>
-      <div>
-        <p className="eyebrow">{isExecutive ? "TURBO LEV · EXECUTIVE CONTROL CENTER" : "TURBO LEV · OWNER CONTROL CENTER"}</p>
-        <h1>{isExecutive ? "Пульт виконавчого директора" : "Пульт власника"}</h1>
-        <span className="muted">{userName || (isExecutive ? "Виконавчий директор" : "Власник")} · {scopeLabel} · {loading ? "оновлюю дані…" : "живі управлінські дані"}</span>
-      </div>
-      <div className={styles.headerActions}>
-        <button type="button" onClick={() => navigateCrm("Аналітика")}>Повна аналітика</button>
-        <button type="button" className={styles.primary} onClick={() => navigateCrm("Фінансовий центр")}>Фінансовий центр →</button>
-      </div>
-    </header>
+    <CrmPageHeader
+      eyebrow={isExecutive ? "TURBO LEV · ВИКОНАВЧИЙ ЦЕНТР" : "TURBO LEV · ПУЛЬТ ВЛАСНИКА"}
+      title={isExecutive ? "Пульт виконавчого директора" : "Пульт власника"}
+      description={`${userName || (isExecutive ? "Виконавчий директор" : "Власник")} · ${scopeLabel} · ${loading ? "оновлюю дані…" : "живі управлінські дані"}`}
+      actions={<><button type="button" onClick={() => navigateCrm("Аналітика")}>Повна аналітика</button><button type="button" className={styles.primary} onClick={() => navigateCrm("Фінансовий центр")}>Фінансовий центр →</button></>}
+      tabs={<nav className={styles.workspaceTabs} aria-label="Розділи пульта власника"><button type="button" className={workspaceTab === "RESULT" ? styles.workspaceTabActive : ""} onClick={() => setWorkspaceTab("RESULT")}>Результат</button><button type="button" className={workspaceTab === "SERVICE" ? styles.workspaceTabActive : ""} onClick={() => setWorkspaceTab("SERVICE")}>Сервіс</button><button type="button" className={workspaceTab === "RISKS" ? styles.workspaceTabActive : ""} onClick={() => setWorkspaceTab("RISKS")}>Ризики <b>{ownerAttention.length + teamAttention.length}</b></button><button type="button" className={workspaceTab === "TRENDS" ? styles.workspaceTabActive : ""} onClick={() => setWorkspaceTab("TRENDS")}>Тренди</button></nav>}
+    />
 
     {error && <div className={styles.error}><strong>{isExecutive ? "Не вдалося оновити пульт виконавчого директора" : "Не вдалося оновити пульт власника"}</strong><span>{error}</span><button type="button" onClick={() => void load()}>Повторити</button></div>}
 
     <OwnerDashboardVisual analytics={analytics} period={period} onPeriodChange={setPeriod} loading={loading} />
-
-    <nav className={styles.workspaceTabs} aria-label="Розділи пульта власника">
-      <button type="button" className={workspaceTab === "RESULT" ? styles.workspaceTabActive : ""} onClick={() => setWorkspaceTab("RESULT")}>Результат</button>
-      <button type="button" className={workspaceTab === "SERVICE" ? styles.workspaceTabActive : ""} onClick={() => setWorkspaceTab("SERVICE")}>Сервіс</button>
-      <button type="button" className={workspaceTab === "RISKS" ? styles.workspaceTabActive : ""} onClick={() => setWorkspaceTab("RISKS")}>Ризики <b>{ownerAttention.length + teamAttention.length}</b></button>
-      <button type="button" className={workspaceTab === "TRENDS" ? styles.workspaceTabActive : ""} onClick={() => setWorkspaceTab("TRENDS")}>Тренди</button>
-    </nav>
 
     {workspaceTab === "RESULT" && <ManagementResultPanel mode={isExecutive ? "EXECUTIVE" : "OWNER"} />}
 

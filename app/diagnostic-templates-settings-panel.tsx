@@ -1,5 +1,7 @@
 "use client";
 
+import { CrmPageHeader } from "./crm-page-header";
+
 import { useEffect, useMemo, useState } from "react";
 import styles from "./diagnostic-templates-settings-panel.module.css";
 
@@ -21,7 +23,7 @@ export function DiagnosticTemplatesSettingsPanel(){
  async function createTemplate(){if(!newTemplate.name.trim()){setError("Вкажіть назву шаблону.");return}setBusy(true);setError("");try{const r=await fetch("/api/settings/diagnostic-templates",{method:"POST",credentials:"include",headers:{"Content-Type":"application/json"},body:JSON.stringify({action:"CREATE_TEMPLATE",...newTemplate})});const d=await r.json() as Api;if(!r.ok||!d.ok)throw new Error(d.message||d.error||"Не вдалося створити шаблон");const next=d.templates||[];const created=next.find(x=>x.name===newTemplate.name)||next[0];setTemplates(next);setSelectedId(created?.id||"");sync(created||null);setNewTemplate({name:"",description:"",isDefault:false});setCreating(false);setMessage("Шаблон створено.");}catch(e){setError(e instanceof Error?e.message:"Помилка");}finally{setBusy(false)}}
  if(loading&&!templates.length)return <div className={styles.state}>Завантажую шаблони діагностики…</div>;
  return <div className={styles.page}>
-  <header className={styles.head}><div><p>ДОВІДНИКИ · ДІАГНОСТИКА</p><h2>Шаблони діагностики</h2><span>Керуйте тим, що бачить механік: секції, пункти, заміри, рекомендовані роботи та деталі.</span></div><button className={styles.primary} type="button" onClick={()=>setCreating(true)}>+ Новий шаблон</button></header>
+  <CrmPageHeader eyebrow="TURBO LEV · НАЛАШТУВАННЯ · ДІАГНОСТИКА" title="Шаблони діагностики" description="Керуйте тим, що бачить механік: секції, пункти, заміри, рекомендовані роботи та деталі." actions={<button className={styles.primary} type="button" onClick={()=>setCreating(true)}>+ Новий шаблон</button>} />
   {error&&<div className={styles.error}>{error}<button type="button" onClick={()=>setError("")}>×</button></div>}{message&&<div className={styles.success}>{message}</div>}
   {creating&&<section className={styles.createCard}><div><label><span>Назва *</span><input autoFocus value={newTemplate.name} onChange={e=>setNewTemplate(v=>({...v,name:e.target.value}))} placeholder="Наприклад: Діагностика кондиціонера"/></label><label><span>Опис</span><input value={newTemplate.description} onChange={e=>setNewTemplate(v=>({...v,description:e.target.value}))}/></label><label className={styles.checkbox}><input type="checkbox" checked={newTemplate.isDefault} onChange={e=>setNewTemplate(v=>({...v,isDefault:e.target.checked}))}/><span>Додавати автоматично</span></label></div><footer><button className={styles.secondary} type="button" onClick={()=>setCreating(false)}>Скасувати</button><button className={styles.primary} type="button" disabled={busy} onClick={()=>void createTemplate()}>Створити</button></footer></section>}
   <div className={styles.layout}>
