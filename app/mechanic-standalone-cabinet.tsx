@@ -199,6 +199,15 @@ type StopReason = "PARTS_UNAVAILABLE" | "TECHNICAL_PROBLEM" | "SAFETY_RISK" | "C
 type WorksFilter = "ALL" | "OVERDUE" | "TODAY" | "FUTURE";
 type ScheduleFilter = "ALL" | "TODAY";
 
+type MechanicVehicleRow = {
+  key: string;
+  vehicle: string;
+  plate: string;
+  task: MechanicTask | null;
+  appointment: Appointment | null;
+  workCount: number;
+};
+
 const statusLabel: Record<string, string> = {
   BOOKED: "Заплановано",
   ARRIVED: "Автомобіль прибув",
@@ -340,6 +349,70 @@ function appointmentForTask(task: MechanicTask, appointments: Appointment[]) {
   return appointments.find((item) => item.workOrderId && item.workOrderId === task.workOrderId)
     ?? appointments.find((item) => item.plate === task.plate || item.vehicle === task.vehicle)
     ?? null;
+}
+
+function mechanicVehicleKey(vehicle: string, plate?: string | null) {
+  const lookalikes: Record<string, string> = {
+    А: "A", В: "B", Е: "E", І: "I", К: "K", М: "M", Н: "H",
+    О: "O", Р: "P", С: "C", Т: "T", Х: "X",
+  };
+  const normalizedPlate = (plate || "")
+    .toUpperCase()
+    .replace(/[АВЕІКМНОРСТХ]/g, (letter) => lookalikes[letter] || letter)
+    .replace(/[^A-Z0-9]/g, "");
+  if (normalizedPlate && !/^(БЕЗДЕРЖНОМЕРА|БЕЗНОМЕРА)$/.test(normalizedPlate)) return `plate:${normalizedPlate}`;
+  return `vehicle:${vehicle.toUpperCase().replace(/\s+/g, " ").trim()}`;
+}
+
+function mechanicTaskPriority(task: MechanicTask) {
+  if (task.status === "IN_PROGRESS") return 0;
+  if (task.status === "STOPPED") return 1;
+  if (task.status === "PAUSED") return 2;
+  if (task.status === "APPROVED" || task.status === "READY") return 3;
+  if (task.status === "DRAFT" || task.status === "PENDING") return 4;
+  if (isDone(task.status)) return 9;
+  return 5;
+}
+
+function groupMechanicVehicles(tasks: MechanicTask[], appointments: Appointment[]): MechanicVehicleRow[] {
+  const rows = new Map<string, MechanicVehicleRow>();
+
+  for (const task of [...tasks].sort((left, right) => mechanicTaskPriority(left) - mechanicTaskPriority(right))) {
+    const key = mechanicVehicleKey(task.vehicle, task.plate);
+    const current = rows.get(key);
+    if (current) {
+      current.workCount += 1;
+      if (mechanicTaskPriority(task) < mechanicTaskPriority(current.task ?? task)) current.task = task;
+      continue;
+    }
+    rows.set(key, {
+      key,
+      vehicle: task.vehicle,
+      plate: task.plate || "Без держномера",
+      task,
+      appointment: null,
+      workCount: 1,
+    });
+  }
+
+  for (const appointment of appointments) {
+    const key = mechanicVehicleKey(appointment.vehicle, appointment.plate);
+    const current = rows.get(key);
+    if (current) {
+      if (!current.appointment) current.appointment = appointment;
+      continue;
+    }
+    rows.set(key, {
+      key,
+      vehicle: appointment.vehicle,
+      plate: appointment.plate || "Без держномера",
+      task: null,
+      appointment,
+      workCount: 0,
+    });
+  }
+
+  return [...rows.values()];
 }
 
 function BottomNav({ screen, onChange }: { screen: Screen; onChange: (screen: Screen) => void }) {
@@ -625,6 +698,8 @@ export function MechanicStandaloneCabinet({ userName }: { userName?: string | nu
     const task = line ? tasks.find((candidate) => candidate.id === line.id) : null;
     return task ? [{ ...task, status: line?.status === "STOPPED" ? "STOPPED" : item.status === "PAUSED" ? "PAUSED" : task.status, workOrderStatus: item.status, description: `${item.progress.completed} з ${item.progress.total} робіт · ${line?.description || "Ремонт автомобіля"}` }] : [];
   });
+  const homeVehicleRows = groupMechanicVehicles(tasks, prioritizedScheduledAppointments);
+  const visibleWorkVehicleRows = groupMechanicVehicles(visibleWorkTasks, visibleWorkAppointments);
   const todayKyivKey = kyivDateKey(new Date());
   const visibleScheduleAppointments = (scheduleFilter === "TODAY"
     ? appointments.filter((item) => kyivDateKey(item.plannedStartAt) === todayKyivKey)
@@ -656,7 +731,7 @@ export function MechanicStandaloneCabinet({ userName }: { userName?: string | nu
       ? { title: "Сьогодні", description: "Усі ваші записи на поточний день.", empty: "На сьогодні робіт немає." }
       : worksFilter === "FUTURE"
         ? { title: "Майбутні", description: "Майбутні записи на діагностику та ремонт.", empty: "Майбутніх записів немає." }
-        : { title: "Мої роботи", description: "Актуальні, протерміновані та майбутні записи.", empty: "Активних робіт немає." };
+        : { title: "Мої автомобілі", description: "Один автомобіль — одна картка. Усі роботи відкриваються всередині.", empty: "Активних автомобілів немає." };
   const scheduleHeading = scheduleFilter === "TODAY"
     ? { title: "Заплановано на сьогодні", description: "Ваші закріплення на поточний день за київським часом.", empty: "На сьогодні закріплень немає." }
     : { title: "Активні закріплення", description: "Авто залишаються тут до завершення сервісного випадку.", empty: "Активних закріплень немає." };
@@ -1044,11 +1119,11 @@ export function MechanicStandaloneCabinet({ userName }: { userName?: string | nu
         </header>
         <main className={styles.content}>
           <section><div className={styles.sectionHead}><div><h2>{activeTask?.status === "IN_PROGRESS" ? "Поточна робота" : activeTask?.status === "PAUSED" ? "Робота на паузі" : nextAppointmentOverdue ? "Протермінована робота" : "Наступна робота"}</h2><p>За даними планувальника</p></div></div>{activeTask ? <article className={styles.taskHero}><div className={styles.taskTop}><div><h3>{activeTask.vehicle}</h3><p>{activeTask.plate}</p></div><span className={`${styles.pill} ${statusTone(activeTask.status)}`}>{statusLabel[activeTask.status] || activeTask.status}</span></div><strong>🔧 {activeTask.description}</strong><div className={styles.meta}><span>Пост <b>{activeTaskAppointment?.post || "—"}</b></span><span>Час <b>{time(activeTaskAppointment?.plannedStartAt)}</b></span></div><button type="button" className={styles.primary} onClick={() => openTask(activeTask)}>Відкрити роботу →</button></article> : nextScheduledAppointment ? <article className={styles.taskHero} style={nextAppointmentOverdue ? overdueCardStyle : undefined}><div className={styles.taskTop}><div><h3>{nextScheduledAppointment.vehicle}</h3><p>{nextScheduledAppointment.plate}</p></div><span className={`${styles.pill} ${nextAppointmentOverdue ? "" : styles.accentPill}`} style={nextAppointmentOverdue ? overduePillStyle : undefined}>{nextAppointmentOverdue ? "Протерміновано" : "Заплановано"}</span></div><strong>🔧 {nextScheduledAppointment.problem || "Запис на СТО"}</strong><div className={styles.meta}><span>Пост <b>{nextScheduledAppointment.post || "—"}</b></span><span>Час <b style={nextAppointmentOverdue ? { color: "var(--m-danger)" } : undefined}>{time(nextScheduledAppointment.plannedStartAt)}</b></span></div><button type="button" className={styles.primary} onClick={() => openAppointment(nextScheduledAppointment)}>{nextAppointmentOverdue ? "Відкрити роботу →" : "Почати роботу →"}</button></article> : <div className={styles.empty}>Активних робіт немає.</div>}</section>
-          <section className={styles.card}><div className={styles.sectionHead}><div><h2>Мої роботи</h2><p>Сьогодні та активні</p></div><button type="button" className={styles.textButton} onClick={() => openWorks("ALL")}>Всі ›</button></div><div className={styles.compactList}>{prioritizedScheduledAppointments.slice(0, Math.max(0, 4 - tasks.length)).map((item) => { const overdue = isAppointmentOverdue(item); return <button type="button" key={`appointment:${item.id}`} style={overdue ? overdueRowStyle : undefined} onClick={() => openAppointment(item)}><div><strong>{item.vehicle}</strong><small className={styles.plateLine}>{item.plate || "Без держномера"}</small><small style={overdue ? { color: "var(--m-danger)" } : undefined}>{notificationTime(item.plannedStartAt)} · {item.problem || "Запис на СТО"}</small></div><span className={`${styles.pill} ${overdue ? "" : styles.accentPill}`} style={overdue ? overduePillStyle : undefined}>{overdue ? "Протерміновано" : "Заплановано"}</span></button>; })}{tasks.slice(0, 4).map((task) => <button type="button" key={task.id} onClick={() => openTask(task)}><div><strong>{task.vehicle}</strong><small className={styles.plateLine}>{task.plate || "Без держномера"}</small><small>{task.description}</small></div><span className={`${styles.pill} ${statusTone(task.status)}`}>{statusLabel[task.status] || task.status}</span></button>)}</div>{!tasks.length && !scheduledAppointments.length && <div className={styles.emptyInline}>Робіт немає.</div>}</section>
+          <section className={styles.card}><div className={styles.sectionHead}><div><h2>Мої автомобілі</h2><p>Один автомобіль — одна картка</p></div><button type="button" className={styles.textButton} onClick={() => openWorks("ALL")}>Всі авто ›</button></div><div className={styles.compactList}>{homeVehicleRows.slice(0, 4).map((row) => <button type="button" key={row.key} onClick={() => row.task ? openTask(row.task) : row.appointment ? openAppointment(row.appointment) : undefined}><div><strong>{row.vehicle}</strong><small className={styles.plateLine}>{row.plate}</small>{row.workCount > 0 && <small>Робіт: {row.workCount}</small>}</div><span aria-hidden="true">›</span></button>)}</div>{!homeVehicleRows.length && <div className={styles.emptyInline}>Автомобілів у роботі немає.</div>}</section>
         </main>
       </>}
 
-      {screen === "WORKS" && <><TopBar title="Мої роботи" onBack={() => setScreen("HOME")} /><main className={styles.content}><div className={styles.pageTitle}><h1>{worksHeading.title}</h1><p>{worksHeading.description}</p></div><div className={styles.filterBar} role="group" aria-label="Фільтр робіт"><button type="button" className={worksFilter === "ALL" ? styles.filterActive : ""} aria-pressed={worksFilter === "ALL"} onClick={() => setWorksFilter("ALL")}>Усі</button><button type="button" className={worksFilter === "OVERDUE" ? styles.filterActive : ""} aria-pressed={worksFilter === "OVERDUE"} onClick={() => setWorksFilter("OVERDUE")}>Протерміновані</button><button type="button" className={worksFilter === "TODAY" ? styles.filterActive : ""} aria-pressed={worksFilter === "TODAY"} onClick={() => setWorksFilter("TODAY")}>Сьогодні</button><button type="button" className={worksFilter === "FUTURE" ? styles.filterActive : ""} aria-pressed={worksFilter === "FUTURE"} onClick={() => setWorksFilter("FUTURE")}>Майбутні</button></div><div className={styles.stack}>{visibleWorkAppointments.map((item) => { const itemStatus = appointmentStatus(item); const overdue = isAppointmentOverdue(item); return <button type="button" className={styles.listCard} style={overdue ? overdueCardStyle : undefined} key={`appointment:${item.id}`} onClick={() => openAppointment(item)}><div><h3>{item.vehicle}</h3><b style={overdue ? { color: "var(--m-danger)" } : undefined}>{item.plate}</b></div><p>{item.problem || "Запис на СТО"}</p><div className={styles.meta}><span>Час <b style={overdue ? { color: "var(--m-danger)" } : undefined}>{notificationTime(item.plannedStartAt)}</b></span><span>Пост <b>{item.post || "—"}</b></span></div><span className={`${styles.pill} ${overdue ? "" : statusTone(itemStatus)}`} style={overdue ? overduePillStyle : undefined}>{overdue ? "Протерміновано" : statusLabel[itemStatus] || itemStatus}</span></button>; })}{visibleWorkTasks.map((task) => { const itemStatus = task.workOrderStatus || task.status; const taskAppointment = appointmentForTask(task, appointments); const overdue = Boolean(taskAppointment && isAppointmentOverdue(taskAppointment)); return <button type="button" className={styles.listCard} style={overdue ? overdueCardStyle : undefined} key={task.id} onClick={() => openTask(task)}><div><h3>{task.vehicle}</h3><b style={overdue ? { color: "var(--m-danger)" } : undefined}>{task.plate}</b></div><p>{task.description}</p><div className={styles.meta}><span>Час <b style={overdue ? { color: "var(--m-danger)" } : undefined}>{taskAppointment ? notificationTime(taskAppointment.plannedStartAt) : "—"}</b></span><span>Пост <b>{taskAppointment?.post || "—"}</b></span></div><span className={`${styles.pill} ${overdue ? "" : statusTone(itemStatus)}`} style={overdue ? overduePillStyle : undefined}>{overdue ? "Протерміновано" : statusLabel[itemStatus] || itemStatus}</span></button>; })}</div>{!visibleWorkTasks.length && !visibleWorkAppointments.length && <div className={styles.empty}>{worksHeading.empty}</div>}</main></>}
+      {screen === "WORKS" && <><TopBar title="Мої автомобілі" onBack={() => setScreen("HOME")} /><main className={styles.content}><div className={styles.pageTitle}><h1>{worksHeading.title}</h1><p>{worksHeading.description}</p></div><div className={styles.filterBar} role="group" aria-label="Фільтр робіт"><button type="button" className={worksFilter === "ALL" ? styles.filterActive : ""} aria-pressed={worksFilter === "ALL"} onClick={() => setWorksFilter("ALL")}>Усі</button><button type="button" className={worksFilter === "OVERDUE" ? styles.filterActive : ""} aria-pressed={worksFilter === "OVERDUE"} onClick={() => setWorksFilter("OVERDUE")}>Протерміновані</button><button type="button" className={worksFilter === "TODAY" ? styles.filterActive : ""} aria-pressed={worksFilter === "TODAY"} onClick={() => setWorksFilter("TODAY")}>Сьогодні</button><button type="button" className={worksFilter === "FUTURE" ? styles.filterActive : ""} aria-pressed={worksFilter === "FUTURE"} onClick={() => setWorksFilter("FUTURE")}>Майбутні</button></div><div className={styles.stack}>{visibleWorkVehicleRows.map((row) => { const rowAppointment = row.appointment ?? (row.task ? appointmentForTask(row.task, appointments) : null); const overdue = Boolean(rowAppointment && isAppointmentOverdue(rowAppointment)); return <button type="button" className={styles.listCard} style={overdue ? overdueCardStyle : undefined} key={row.key} onClick={() => row.task ? openTask(row.task) : row.appointment ? openAppointment(row.appointment) : undefined}><div><h3>{row.vehicle}</h3><b style={overdue ? { color: "var(--m-danger)" } : undefined}>{row.plate}</b></div>{row.workCount > 0 && <p>Робіт: {row.workCount}</p>}</button>; })}</div>{!visibleWorkVehicleRows.length && <div className={styles.empty}>{worksHeading.empty}</div>}</main></>}
 
       {screen === "REPAIR_COMPLETION" && selectedTask && <MechanicRepairCompletion task={selectedTask} onBack={() => setScreen("WORK_DETAIL")} onCompleted={async () => { await runAction("COMPLETE", { confirm: false }); }} />}
 
