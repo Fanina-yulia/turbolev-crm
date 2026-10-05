@@ -1,6 +1,7 @@
 .root{
   width:100%;
   min-width:0;
+  flex:0 0 auto;
   display:grid;
   gap:8px;
   padding:6px 0 9px;
@@ -74,4 +75,18 @@
   .title{font-size:25px}
   .actions{max-width:none;justify-content:flex-start}
   .description{font-size:12px}
+}
+
+@media(min-width:761px){
+  .root{
+    position:sticky;
+    top:0;
+    z-index:24;
+    background:var(--bg);
+  }
+  .tabs>*{
+    margin-top:0!important;
+    margin-bottom:0!important;
+    border-bottom:0!important;
+  }
 }
