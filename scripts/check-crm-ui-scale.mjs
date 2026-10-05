@@ -16,9 +16,7 @@ for (const marker of [
   "--crm-ui-inverse-scale: 1.1111111111",
   "--crm-ui-logical-width: 111.111111vw",
   "--crm-ui-logical-height: 111.111111dvh",
-  "--crm-ui-origin-compensation-x: -5.5555555vw",
   "body:has(.shell)",
-  "left:var(--crm-ui-origin-compensation-x)",
   "zoom:var(--crm-ui-scale)",
   "@media (max-width:760px)",
   "zoom:1",
@@ -28,6 +26,10 @@ for (const marker of [
 
 if (css.includes("transform:scale(.9)") || css.includes("transform: scale(.9)")) {
   failures.push("Root CRM scaling must use CSS zoom, not transform: scale(.9)");
+}
+
+if (css.includes("--crm-ui-origin-compensation-x") || css.includes("left:var(--crm-ui-origin-compensation-x)")) {
+  failures.push("Horizontal origin compensation is prohibited: it shifts the CRM canvas left and creates a right-side gap.");
 }
 
 if (!layout.includes('import "./crm-global-ui-scale.css";')) {
@@ -55,4 +57,4 @@ if (failures.length) {
   process.exit(1);
 }
 
-console.log("[crm-ui-scale] OK — internal CRM uses compensated 0.90 design scale; mechanic/public scope excluded.");
+console.log("[crm-ui-scale] OK — internal CRM uses 0.90 design scale with logical viewport compensation and no horizontal offset; mechanic/public scope excluded.");
