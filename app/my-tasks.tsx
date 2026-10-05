@@ -422,7 +422,7 @@ export function MyTasks() {
           <div>
             {related.map((item, index) => <section key={String(item.id || index)}>
               <strong>{String(item.title || "Сигнал")}</strong>
-              {item.reason && <p>{String(item.reason)}</p>}
+              {typeof item.reason === "string" && item.reason && <p>{item.reason}</p>}
             </section>)}
           </div>
         </details>}
