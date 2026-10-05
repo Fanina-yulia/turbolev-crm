@@ -201,6 +201,35 @@ type ScheduleFilter = "ALL" | "TODAY";
 
 type MechanicVehicleCardState = "OVERDUE" | "PENDING" | "DONE";
 
+type MechanicProcessCard = {
+  id: string;
+  processType: "DIAGNOSTIC" | "REPAIR";
+  processId: string;
+  diagnosticId: string | null;
+  workOrderId: string | null;
+  appointmentId: string | null;
+  vehicle: string;
+  plate: string;
+  plannedStartAt: string | null;
+  plannedEndAt: string | null;
+  completedAt: string | null;
+  state: MechanicVehicleCardState;
+  statusLabel: string;
+  summary: string;
+  workCount: number;
+  taskId: string | null;
+  routePending: boolean;
+  updatedAt: string;
+};
+
+type MechanicProcessFeed = {
+  ok: boolean;
+  linked: boolean;
+  items?: MechanicProcessCard[];
+  message?: string;
+  error?: string;
+};
+
 type MechanicVehicleRow = {
   key: string;
   vehicle: string;
@@ -613,7 +642,7 @@ export function MechanicStandaloneCabinet({ userName }: { userName?: string | nu
   const [repairCases, setRepairCases] = useState<RepairCase[]>([]);
   const [repairCaseKpis, setRepairCaseKpis] = useState<RepairCaseFeed["kpis"] | null>(null);
   const [taskKpis, setTaskKpis] = useState<TaskFeed["kpis"] | null>(null);
-  const [diagnostics, setDiagnostics] = useState<DiagnosticItem[]>([]);
+  const [diagnostics, setDiagnostics] = useState<DiagnosticItem[]>([]);\n  const [processCards, setProcessCards] = useState<MechanicProcessCard[]>([]);
   const [clarifications, setClarifications] = useState<Clarification[]>([]);
   const [notificationFeed, setNotificationFeed] = useState<NotificationFeed | null>(null);
   const [screen, setScreen] = useState<Screen>("HOME");
@@ -676,6 +705,13 @@ export function MechanicStandaloneCabinet({ userName }: { userName?: string | nu
     if (response.ok && body?.ok) setDiagnostics(body.items ?? []);
   }, []);
 
+  const loadProcessCards = useCallback(async () => {
+    const response = await fetch("/api/cabinet/mechanic/process-cards", { cache: "no-store", credentials: "include" });
+    const body = await response.json().catch(() => null) as MechanicProcessFeed | null;
+    if (!response.ok || !body?.ok) throw new Error(body?.message || body?.error || "Не вдалося оновити історію діагностик і ремонтів");
+    if (body.linked) setProcessCards(body.items ?? []);
+  }, []);
+
   const loadNotifications = useCallback(async () => {
     const [notificationsResponse, findingsResponse] = await Promise.all([
       fetch("/api/cabinet/mechanic/notifications", { cache: "no-store", credentials: "include" }),
@@ -695,8 +731,8 @@ export function MechanicStandaloneCabinet({ userName }: { userName?: string | nu
   useEffect(() => {
     const stored = window.localStorage.getItem("turbolev:mechanic-theme");
     if (stored === "light" || stored === "dark" || stored === "system") setThemeChoice(stored);
-    void Promise.all([loadHome(), loadTasks(), loadRepairCases(), loadDiagnostics(), loadNotifications()]).catch((cause) => setError(cause instanceof Error ? cause.message : "Не вдалося завантажити кабінет"));
-  }, [loadDiagnostics, loadHome, loadNotifications, loadRepairCases, loadTasks]);
+    void Promise.all([loadHome(), loadTasks(), loadRepairCases(), loadDiagnostics(), loadProcessCards(), loadNotifications()]).catch((cause) => setError(cause instanceof Error ? cause.message : "Не вдалося завантажити кабінет"));
+  }, [loadDiagnostics, loadHome, loadNotifications, loadProcessCards, loadRepairCases, loadTasks]);
 
   useEffect(() => startAdaptivePoller({
     run: () => loadNotifications().catch(() => undefined),
@@ -729,7 +765,7 @@ export function MechanicStandaloneCabinet({ userName }: { userName?: string | nu
       openTask(task);
       void resumeTaskAfterScan(task, detail?.recognizedPlate || task.plate);
     };
-    const onRefresh = () => { void Promise.all([loadHome(), loadTasks(), loadRepairCases(), loadDiagnostics()]).catch(() => undefined); };
+    const onRefresh = () => { void Promise.all([loadHome(), loadTasks(), loadRepairCases(), loadDiagnostics(), loadProcessCards()]).catch(() => undefined); };
     window.addEventListener("turbolev:mechanic-open-diagnostic", onOpenDiagnostic);
     window.addEventListener("turbolev:mechanic-open-task", onOpenTask);
     window.addEventListener("turbolev:mechanic-resume-task", onResumeTask);
@@ -740,7 +776,7 @@ export function MechanicStandaloneCabinet({ userName }: { userName?: string | nu
       window.removeEventListener("turbolev:mechanic-resume-task", onResumeTask);
       window.removeEventListener("turbolev:mechanic-refresh", onRefresh);
     };
-  }, [loadDiagnostics, loadHome, loadRepairCases, loadTasks, tasks]);
+  }, [loadDiagnostics, loadHome, loadProcessCards, loadRepairCases, loadTasks, tasks]);
 
   const appointments = home?.appointments ?? [];
   const mechanicActionableAppointmentStatuses = new Set(["BOOKED", "ARRIVED", "DIAGNOSTICS", "WAITING_PARTS_SELECTION", "WAITING_CALCULATION", "WAITING_APPROVAL", "WAITING_PARTS", "READY_FOR_REPAIR", "IN_REPAIR", "WAITING_QC", "PAUSED"]);
@@ -774,9 +810,16 @@ export function MechanicStandaloneCabinet({ userName }: { userName?: string | nu
   const completed = repairCaseKpis?.completedToday ?? taskKpis?.completedToday ?? tasks.filter((item) => isDone(item.status)).length;
   const notificationCount = notificationFeed?.unreadCount ?? 0;
   const mechanicName = userName || home?.mechanic?.name || "Автомеханік";
-  const allVehicleRows = groupMechanicVehicles(tasks, prioritizedScheduledAppointments, diagnostics, repairCases);
-  const homeVehicleRows = allVehicleRows;
-  const visibleWorkVehicleRows = allVehicleRows.filter((row) => matchesVehicleRowFilter(row, worksFilter));
+  const homeProcessCards = processCards;
+  const visibleProcessCards = processCards.filter((card) => {
+    if (worksFilter === "ALL") return true;
+    if (worksFilter === "OVERDUE") return card.state === "OVERDUE";
+    if (!card.plannedStartAt) return false;
+    const today = kyivDateKey(new Date());
+    const planned = kyivDateKey(card.plannedStartAt);
+    if (worksFilter === "TODAY") return planned === today;
+    return card.state !== "OVERDUE" && planned > today;
+  });
   const todayKyivKey = kyivDateKey(new Date());
   const visibleScheduleAppointments = (scheduleFilter === "TODAY"
     ? appointments.filter((item) => kyivDateKey(item.plannedStartAt) === todayKyivKey)
@@ -803,7 +846,7 @@ export function MechanicStandaloneCabinet({ userName }: { userName?: string | nu
       ? { title: "Сьогодні", description: "Автомобілі із запланованими діями на сьогодні.", empty: "На сьогодні автомобілів немає." }
       : worksFilter === "FUTURE"
         ? { title: "Майбутні", description: "Автомобілі із запланованими діями після сьогодні.", empty: "Майбутніх автомобілів немає." }
-        : { title: "Мої автомобілі", description: "Один автомобіль — одна картка. Усі роботи відкриваються всередині.", empty: "Активних автомобілів немає." };
+        : { title: "Мої автомобілі", description: "Кожна діагностика та кожен ремонт — окрема картка зі своєю історією.", empty: "Записів по автомобілях немає." };
   const scheduleHeading = scheduleFilter === "TODAY"
     ? { title: "Заплановано на сьогодні", description: "Ваші закріплення на поточний день за київським часом.", empty: "На сьогодні закріплень немає." }
     : { title: "Активні закріплення", description: "Авто залишаються тут до завершення сервісного випадку.", empty: "Активних закріплень немає." };
@@ -846,16 +889,29 @@ export function MechanicStandaloneCabinet({ userName }: { userName?: string | nu
     else openScannedVehicle(appointment.plate);
   }
 
-  function openVehicleRow(row: MechanicVehicleRow) {
-    if (row.task) {
-      openTask(row.task);
+  function openProcessCard(card: MechanicProcessCard) {
+    if (card.processType === "DIAGNOSTIC" && card.diagnosticId) {
+      openDiagnostic(card.diagnosticId);
       return;
     }
-    if (row.diagnostic) {
-      openDiagnostic(row.diagnostic.id);
-      return;
+
+    if (card.processType === "REPAIR") {
+      const directTask = card.taskId ? tasks.find((item) => item.id === card.taskId) : null;
+      const orderTask = card.workOrderId ? tasks.find((item) => item.workOrderId === card.workOrderId && !isDone(item.status))
+        ?? tasks.find((item) => item.workOrderId === card.workOrderId) : null;
+      if (directTask || orderTask) {
+        openTask(directTask || orderTask!);
+        return;
+      }
+      const repairCase = card.workOrderId ? repairCases.find((item) => item.workOrderId === card.workOrderId) : null;
+      if (repairCase) {
+        openRepairCase(repairCase);
+        return;
+      }
+      setMessage(card.state === "DONE"
+        ? "Цей ремонт уже завершено. Картка збережена в історії."
+        : "Ремонт заплановано, але окрема операція механіку ще не призначена.");
     }
-    if (row.appointment) openAppointment(row.appointment);
   }
 
   function openScannedVehicle(plate: string | null | undefined, resumeTaskId?: string) {
@@ -895,7 +951,7 @@ export function MechanicStandaloneCabinet({ userName }: { userName?: string | nu
     setScreen("HOME");
     setError("");
     setMessage("");
-    void Promise.all([loadDiagnostics(), loadHome(), loadTasks(), loadRepairCases()]).catch(() => undefined);
+    void Promise.all([loadDiagnostics(), loadProcessCards(), loadHome(), loadTasks(), loadRepairCases()]).catch(() => undefined);
   }
 
   async function runAction(action: WorkAction, options: {
@@ -1219,7 +1275,7 @@ export function MechanicStandaloneCabinet({ userName }: { userName?: string | nu
 
       {screen === "DIAGNOSTICS" && <><TopBar title="Діагностика" onBack={() => setScreen("HOME")} /><main className={styles.content}><div className={styles.pageTitle}><h1>Мої діагностики</h1><p>Лише автомобілі, призначені вам.</p></div><div className={styles.stack}>{diagnostics.map((item) => <button type="button" className={styles.listCard} key={item.id} onClick={() => openDiagnostic(item.id)}><div><h3>{item.vehicle.label}</h3><b>{item.vehicle.plateNumber || "Без номера"}</b></div><p>{item.problem || "Планова діагностика"}</p><div className={styles.meta}><span>Час <b>{time(item.plannedStartAt)}</b></span><span>Пост <b>{item.post || "—"}</b></span></div><span className={`${styles.pill} ${statusTone(item.workflowState)}`}>{item.requiresDiagnosticFirst ? "Діагностика → ремонт" : statusLabel[item.workflowState] || item.workflowState}</span></button>)}</div>{!diagnostics.length && <div className={styles.empty}>{scheduledAppointments.length ? "Діагностика з’явиться після відмітки «Приїхав»." : "Призначених діагностик немає."}</div>}</main></>}
 
-      {screen === "DIAGNOSTIC_DETAIL" && selectedDiagnosticId && <MechanicDiagnosticWorkspace diagnosticId={selectedDiagnosticId} onBack={() => { setSelectedDiagnosticId(null); setScreen("DIAGNOSTICS"); }} onChanged={() => { void Promise.all([loadDiagnostics(), loadHome(), loadTasks()]).catch(() => undefined); }} onFinished={returnToHomeAfterDiagnostic} />}
+      {screen === "DIAGNOSTIC_DETAIL" && selectedDiagnosticId && <MechanicDiagnosticWorkspace diagnosticId={selectedDiagnosticId} onBack={() => { setSelectedDiagnosticId(null); setScreen("DIAGNOSTICS"); }} onChanged={() => { void Promise.all([loadDiagnostics(), loadProcessCards(), loadHome(), loadTasks()]).catch(() => undefined); }} onFinished={returnToHomeAfterDiagnostic} />}
 
       {screen === "NOTIFICATIONS" && <>
         <TopBar title="Сповіщення" onBack={() => setScreen("HOME")} />
