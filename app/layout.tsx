@@ -45,6 +45,7 @@ import "./appearance-global.css";
 import "@/src/lib/global-phone-copy.css";
 import "./crm-responsive-standard.css";
 import "./crm-one-screen-standard.css";
+import "./crm-global-ui-scale.css";
 import "./communications-visual-polish.css";
 import "./communications-workspace-v3.css";
 import "./vehicle-directory-brand-badge-fix.css";

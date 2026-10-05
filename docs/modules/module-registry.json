@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated": "2026-10-04",
+  "updated": "2026-10-05",
   "rule": "Every production change must be assigned to at least one module. Start analysis from the module passport, then inspect declared dependencies only when the change can affect them.",
   "globalRules": [
     {
@@ -33,6 +33,15 @@
       "trigger": "Будь-яка внутрішня CRM-сторінка у CrmShell на desktop/laptop.",
       "requiredScope": "1 екран / 1 екран + внутрішній scroll / максимум 2 екрани; standalone Кабінет механіка виключено.",
       "enforcedBy": "scripts/check-one-screen-contracts.mjs"
+    },
+    {
+      "id": "CRM-UI-005",
+      "status": "ACTIVE",
+      "title": "Global CRM Scale 90",
+      "source": "docs/TZ_CRM_GLOBAL_UI_SCALE_90.md",
+      "trigger": "Усі внутрішні CRM-сторінки, що рендеряться через canonical .shell на viewport >760px.",
+      "requiredScope": "Browser 100% -> internal CRM design scale 0.90; compensated logical viewport 111.111%; standalone Mechanic Cabinet, auth і public/client surfaces не масштабуються.",
+      "enforcedBy": "scripts/check-crm-ui-scale.mjs"
     },
     {
       "id": "CRM-DOC-001",
@@ -84,7 +93,8 @@
         "scripts/build-production.mjs",
         "app/crm-screen-contract*",
         "app/crm-one-screen-standard.css",
-        "app/crm-shell.module.css"
+        "app/crm-shell.module.css",
+        "app/crm-global-ui-scale.css"
       ],
       "dependencies": [],
       "smokeChecks": [
