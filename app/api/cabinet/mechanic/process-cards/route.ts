@@ -195,7 +195,7 @@ export async function GET(request: Request) {
       const lines = appointment.workOrderId ? workLines.filter((line) => line.workOrderId === appointment.workOrderId) : [];
       const assignedLines = lines.filter((line) => !line.mechanicId || mechanicIds.includes(line.mechanicId));
       const relevantLines = assignedLines.length ? assignedLines : lines;
-      const allLinesDone = relevantLines.length > 0 && relevantLines.every((line) => line.status === "COMPLETED" || line.status === "DONE");
+      const allLinesDone = relevantLines.length > 0 && relevantLines.every((line) => line.status === "COMPLETED");
       const done = Boolean(
         appointment.actualEndAt
         || REPAIR_DONE_STATUSES.has(appointment.status)
