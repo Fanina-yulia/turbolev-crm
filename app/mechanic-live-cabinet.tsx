@@ -4,7 +4,6 @@ import dynamic from "next/dynamic";
 import { MechanicStandaloneCabinet } from "./mechanic-standalone-cabinet";
 import { MechanicCabinetPreferences } from "./mechanic-cabinet-preferences";
 import { MechanicWorkActionVisibilityGuard } from "./mechanic-work-action-visibility-guard";
-import { MechanicVehicleListBridge } from "./mechanic-vehicle-list-bridge";
 import compactStyles from "./mechanic-mobile-compact.module.css";
 import polishStyles from "./mechanic-mobile-polish.module.css";
 import statusLayoutStyles from "./mechanic-mobile-status-layout.module.css";
@@ -32,7 +31,6 @@ export function MechanicLiveCabinet({ userName }: { userName?: string | null }) 
   return <div className={`${compactStyles.compactViewport} ${polishStyles.polishViewport} ${statusLayoutStyles.statusLayoutViewport} ${mobileFirstStyles.mobileFirstV3}`}>
     <MechanicStandaloneCabinet userName={userName} />
     <MechanicWorkActionVisibilityGuard />
-    <MechanicVehicleListBridge />
     <MechanicCabinetPreferences />
     <MechanicVehicleScanner />
     <MechanicDiagnosticsArrivalBridge />
