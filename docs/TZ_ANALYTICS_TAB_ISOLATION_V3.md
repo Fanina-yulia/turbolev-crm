@@ -233,3 +233,16 @@ API повертає для `awaitingPayment` та `awaitingRoute` конкре�
 8. TypeScript/build/contracts smoke проходять.
 9. Зміни merged у `main`.
 10. Vercel production deployment має `READY`, після публікації немає нових runtime error/fatal.
+
+## Amendment 2026-10-05 — WALK-IN presentation removed
+
+За рішенням власника CRM окремий UI-блок **«ПОЗАПЛАНОВІ ЗАЇЗДИ / WALK-IN»** повністю прибрано зі сторінки «Аналітика».
+
+- `AnalyticsDashboardWalkInBridge` більше не монтується у root layout;
+- API `/api/analytics/walk-in` та бізнес-істина можуть залишатися для майбутніх сценаріїв/інтеграцій;
+- на вкладках «Загальне» і «Воронка» немає окремого WALK-IN presentation block;
+- після canonical Analytics toolbar одразу починається нативний KPI-контент активної вкладки;
+- фільтри періоду, дат, станції та порівняння зведені в одну компактну toolbar разом з primary analytics tabs.
+
+Ця amendment має пріоритет над попередніми пунктами документа, де описувався tab-aware WALK-IN bridge.
+
