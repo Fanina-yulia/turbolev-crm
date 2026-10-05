@@ -273,8 +273,20 @@ export function AnalyticsDashboard() {
       title="Аналітика"
       description="Показник → відхилення → причина → конкретна операційна дія."
       actions={<button type="button" className={styles.refresh} onClick={() => void refresh()} disabled={loading || detailLoading}>↻ {loading || detailLoading ? "Оновлюю" : "Оновити"}</button>}
-      tabs={<nav className={styles.tabs} aria-label="Розділи аналітики">{(Object.keys(TAB_LABELS) as AnalyticsTab[]).map((item) => <button key={item} type="button" className={tab === item ? styles.tabActive : ""} onClick={() => setTab(item)}>{TAB_LABELS[item]}</button>)}<span className={styles.nextModules}>Далі: Персонал · Клієнти · Канали · Якість</span></nav>}
-      controls={<section className={styles.filters}><div className={styles.presets}>{(["today", "7d", "30d", "month", "year", "custom"] as Preset[]).map((item) => <button key={item} type="button" className={preset === item ? styles.activePreset : ""} onClick={() => applyPreset(item)}>{item === "today" ? "Сьогодні" : item === "7d" ? "7 днів" : item === "30d" ? "30 днів" : item === "month" ? "Місяць" : item === "year" ? "Рік" : "Період"}</button>)}</div><label><span>Від</span><input type="date" value={from} max={to} onChange={(event) => { setPreset("custom"); setFrom(event.target.value); }} /></label><label><span>До</span><input type="date" value={to} min={from} onChange={(event) => { setPreset("custom"); setTo(event.target.value); }} /></label>{(data?.locations?.length || 0) > 0 && <label className={styles.location}><span>Станція</span><select value={locationId} onChange={(event) => setLocationId(event.target.value)}><option value="">Уся доступна мережа</option>{data!.locations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}</select></label>}{data?.range.previousFrom && data?.range.previousTo && <div className={styles.compare}><small>Порівнюємо з</small><b>{data.range.previousFrom} — {data.range.previousTo}</b></div>}</section>}
+      tabs={<div className={styles.analyticsToolbar}>
+        <nav className={styles.tabs} aria-label="Розділи аналітики">
+          {(Object.keys(TAB_LABELS) as AnalyticsTab[]).map((item) => <button key={item} type="button" className={tab === item ? styles.tabActive : ""} onClick={() => setTab(item)}>{TAB_LABELS[item]}</button>)}
+        </nav>
+        <span className={styles.toolbarDivider} aria-hidden="true" />
+        <div className={styles.presets} aria-label="Період аналітики">
+          {(["today", "7d", "30d", "month", "year", "custom"] as Preset[]).map((item) => <button key={item} type="button" className={preset === item ? styles.activePreset : ""} onClick={() => applyPreset(item)}>{item === "today" ? "Сьогодні" : item === "7d" ? "7 днів" : item === "30d" ? "30 днів" : item === "month" ? "Місяць" : item === "year" ? "Рік" : "Період"}</button>)}
+        </div>
+        <label className={styles.compactFilter}><span>Від</span><input type="date" value={from} max={to} onChange={(event) => { setPreset("custom"); setFrom(event.target.value); }} /></label>
+        <label className={styles.compactFilter}><span>До</span><input type="date" value={to} min={from} onChange={(event) => { setPreset("custom"); setTo(event.target.value); }} /></label>
+        {(data?.locations?.length || 0) > 0 && <label className={`${styles.compactFilter} ${styles.location}`}><span>Станція</span><select value={locationId} onChange={(event) => setLocationId(event.target.value)}><option value="">Уся доступна мережа</option>{data!.locations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}</select></label>}
+        {data?.range.previousFrom && data?.range.previousTo && <div className={styles.compare}><small>Порівняння</small><b>{data.range.previousFrom} — {data.range.previousTo}</b></div>}
+        <details className={styles.moreAnalytics}><summary>Далі</summary><div><span>Персонал</span><span>Клієнти</span><span>Канали</span><span>Якість</span></div></details>
+      </div>}
     />
 
     {error && <div className={styles.error}>{error}</div>}

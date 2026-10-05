@@ -7,18 +7,13 @@ const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, "..");
 const read = (path: string) => readFileSync(resolve(root, path), "utf8");
 
-const bridge = read("app/analytics-dashboard-walk-in-bridge.tsx");
+const layout = read("app/layout.tsx");
 const walkInApi = read("app/api/analytics/walk-in/route.ts");
 const dashboard = read("app/analytics-dashboard.tsx");
 const spec = read("docs/TZ_ANALYTICS_TAB_ISOLATION_V3.md");
 
-assert.match(bridge, /data-walk-in-mode="overview-summary"/, "overview must use compact WALK-IN summary");
-assert.match(bridge, /data-walk-in-mode="funnel-detail"/, "funnel must own the full WALK-IN detail panel");
-assert.match(bridge, /tab !== "overview" && tab !== "funnel"/, "WALK-IN bridge must be hidden outside overview/funnel");
-assert.match(bridge, /insertAdjacentElement\("afterend", host\)/, "WALK-IN host must be placed directly after shared filters");
-assert.match(bridge, /Детально у воронці →/, "overview summary must lead to the funnel");
-assert.match(bridge, /Конкретні завислі заїзди/, "funnel must expose actionable stuck visits");
-assert.doesNotMatch(bridge, /↻ Оновити/, "WALK-IN must not duplicate the global refresh button");
+assert.doesNotMatch(layout, /AnalyticsDashboardWalkInBridge/, "WALK-IN presentation block must not be mounted in the analytics UI");
+assert.doesNotMatch(layout, /analytics-dashboard-walk-in-bridge/, "layout must not import the retired WALK-IN bridge");
 
 for (const tab of ["overview", "funnel", "workshop", "diagnostics", "finance", "parts"]) {
   assert.match(dashboard, new RegExp(`tab === \\"${tab}\\"`), `native dashboard must retain dedicated ${tab} analytics`);
