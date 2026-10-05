@@ -15,6 +15,10 @@ const spec = read("docs/TZ_ANALYTICS_TAB_ISOLATION_V3.md");
 assert.doesNotMatch(layout, /AnalyticsDashboardWalkInBridge/, "WALK-IN presentation block must not be mounted in the analytics UI");
 assert.doesNotMatch(layout, /analytics-dashboard-walk-in-bridge/, "layout must not import the retired WALK-IN bridge");
 
+assert.doesNotMatch(dashboard, /Порівняння/, "Analytics toolbar must not render comparison controls");
+assert.doesNotMatch(dashboard, /moreAnalytics|<summary>Далі<\/summary>/, "Analytics toolbar must not render the secondary Далі menu");
+assert.match(dashboard, /const range = presetRange\(next\); setFrom\(range\.from\); setTo\(range\.to\);/, "period presets must immediately update From/To fields");
+
 for (const tab of ["overview", "funnel", "workshop", "diagnostics", "finance", "parts"]) {
   assert.match(dashboard, new RegExp(`tab === \\"${tab}\\"`), `native dashboard must retain dedicated ${tab} analytics`);
 }
