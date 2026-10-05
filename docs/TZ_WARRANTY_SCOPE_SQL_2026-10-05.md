@@ -85,3 +85,6 @@ Warranty cost recording uses WARRANTY_WRITE scope.
 8. exact-commit Vercel preview is READY;
 9. merged production deployment is READY;
 10. new deployment has no error/fatal regression.
+
+
+**Validation:** exact-commit preview required before merge.
