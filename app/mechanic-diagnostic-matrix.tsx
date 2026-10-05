@@ -297,7 +297,7 @@ function buildSectionPairs(section: SystemSection): PairedPart[] {
   return Array.from(pairMap.values());
 }
 
-function systemChoices(section: SystemSection, item: Check): StateChoice[] {
+function systemChoices(section: SystemSection): StateChoice[] {
   if (section.code === "ENGINE_LEAKS" || section.code === "TRANSMISSION_LEAKS") {
     return [
       { state: "OK", label: "Норма" },
@@ -314,19 +314,11 @@ function systemChoices(section: SystemSection, item: Check): StateChoice[] {
     ];
   }
 
-  const name = lower(item.name);
-  if (/рівень моторної оливи/u.test(name)) {
+  if (section.code === "FLUIDS_EXTENDED") {
     return [
       { state: "OK", label: "Норма" },
-      { state: "ATTENTION", label: "Низький", findingSuffix: "низький рівень", action: "ADDITIONAL_DIAGNOSTICS", urgency: "INFO" },
-      { state: "DEFECT", label: "Високий", findingSuffix: "високий рівень", action: "ADDITIONAL_DIAGNOSTICS", urgency: "INFO" },
-    ];
-  }
-  if (/рівень/u.test(name)) {
-    return [
-      { state: "OK", label: "Норма" },
-      { state: "ATTENTION", label: "Низький", findingSuffix: "низький рівень", action: "ADDITIONAL_DIAGNOSTICS", urgency: "INFO" },
-      { state: "DEFECT", label: "Критично", findingSuffix: "критично низький рівень", action: "ADDITIONAL_DIAGNOSTICS", urgency: "CRITICAL" },
+      { state: "ATTENTION", label: "Низький", findingSuffix: "низький рівень / потребує уваги", action: "ADDITIONAL_DIAGNOSTICS", urgency: "INFO" },
+      { state: "DEFECT", label: "Заміна", findingSuffix: "потребує заміни", action: "REPLACE", urgency: "INFO" },
     ];
   }
 
@@ -754,7 +746,7 @@ export function MechanicDiagnosticMatrix({ diagnosticId, onBack, onChanged, onFi
           const photoUpload = item.id ? photoUploads[item.id] : undefined;
           const uploading = photoUpload?.status === "uploading";
           const mediaCount = item.finding?.media?.length || 0;
-          const choices = systemChoices(section, item);
+          const choices = systemChoices(section);
           return <div className={styles.systemRow} key={item.id || item.templateItemId}>
             <div className={photoStyles.systemItemHeader}>
               <strong>{item.name}</strong>
