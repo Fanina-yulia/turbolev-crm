@@ -1,5 +1,7 @@
 "use client";
 
+import { CrmPageHeader } from "./crm-page-header";
+
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { WorkOrderListItemContract } from "@/src/lib/contracts/crm-core";
 import type { InquiryItemContract as Inquiry, InquiryStatsContract } from "@/src/lib/contracts/inquiries";
@@ -256,10 +258,7 @@ export function NewInquiries() {
   }
 
   return <div className={styles.page}>
-    <header className={styles.header}>
-      <div><p className={styles.eyebrow}>ЗВЕРНЕННЯ · РОБОЧЕ МІСЦЕ ДИСПЕТЧЕРА</p><h1>Нові звернення</h1><p>Оберіть звернення в черзі, швидко зрозумійте контекст і виконайте наступну дію.</p></div>
-      <button type="button" className={styles.refresh} onClick={() => void load()} disabled={loading}>{loading ? "Оновлюю…" : "Оновити"}</button>
-    </header>
+    <CrmPageHeader eyebrow="TURBO LEV · ЗВЕРНЕННЯ" title="Нові звернення" description="Оберіть звернення в черзі, швидко зрозумійте контекст і виконайте наступну дію." actions={<button type="button" className={styles.refresh} onClick={() => void load()} disabled={loading}>{loading ? "Оновлюю…" : "Оновити"}</button>} />
     {error && <div className={styles.error}>{error}</div>}
 
     <section className={styles.summary} aria-label="Показники черги">
