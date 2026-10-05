@@ -1,5 +1,7 @@
 "use client";
 
+import { CrmPageHeader } from "./crm-page-header";
+
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { isCrmSection } from "./crm-navigation";
 import { navigateCrm, type CrmRouteParams } from "./crm-route";
@@ -411,20 +413,7 @@ export function MyTasks() {
   };
 
   return <div className={styles.page}>
-    <header className={styles.header}>
-      <div>
-        <p className={styles.eyebrow}>ОПЕРАЦІЙНИЙ КОНТРОЛЬ</p>
-        <h1>Центр уваги</h1>
-        <p>Єдина черга всього, що прострочено, зависло, відхилилося від норми або потребує рішення.</p>
-      </div>
-      <div className={styles.headerActions}>
-        <div className={styles.headerTools}>
-          <button className={viewFilter === "ARCHIVE" ? styles.archiveActive : styles.archiveButton} type="button" onClick={() => setViewFilter((current) => current === "ARCHIVE" ? "ALL" : "ARCHIVE")}>Архів ({archivedTasks.length})</button>
-          <span className={styles.refreshState}>{refreshing ? "Оновлюю…" : `Сигналів: ${attention.summary.total}`}</span>
-        </div>
-        <button className={styles.primary} type="button" onClick={() => setShowCreate((value) => !value)}>+ Створити задачу</button>
-      </div>
-    </header>
+    <CrmPageHeader eyebrow="ОПЕРАЦІЙНИЙ КОНТРОЛЬ" title="Центр уваги" description="Єдина черга всього, що прострочено, зависло, відхилилося від норми або потребує рішення." actions={<><div className={styles.headerTools}><button className={viewFilter === "ARCHIVE" ? styles.archiveActive : styles.archiveButton} type="button" onClick={() => setViewFilter((current) => current === "ARCHIVE" ? "ALL" : "ARCHIVE")}>Архів ({archivedTasks.length})</button><span className={styles.refreshState}>{refreshing ? "Оновлюю…" : `Сигналів: ${attention.summary.total}`}</span></div><button className={styles.primary} type="button" onClick={() => setShowCreate((value) => !value)}>+ Створити задачу</button></>} />
 
     {error && <div className={styles.error}>{error}</div>}
     {showCreate && <form className={styles.createForm} onSubmit={createTask}>
