@@ -52,7 +52,11 @@ const required=[
   "app/service-advisor-cabinet-home.tsx",
   "app/parts-role-cabinet-home.tsx",
   "app/leads-sales-role-cabinet-home.tsx",
-  "app/vehicle-record-workspace.tsx"
+  "app/vehicle-record-workspace.tsx",
+  "app/new-inquiries.tsx",
+  "app/leads-board-v2.tsx",
+  "app/production-board.tsx",
+  "app/qc-queue.tsx"
 ];
 
 for(const file of required){
