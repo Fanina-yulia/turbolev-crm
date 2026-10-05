@@ -175,7 +175,8 @@
         "src/services/vehicle-registry-color*",
         "src/services/vehicle-location.service.ts",
         "app/directory-pages.module.css",
-        "app/vehicle-record-workspace.module.css"
+        "app/vehicle-record-workspace.module.css",
+        "app/vehicle-record-workspace.tsx"
       ],
       "dependencies": [
         "leads-intake",
@@ -373,7 +374,8 @@
         "src/services/mixed-estimate-approval.service.ts",
         "src/services/document-control.service.ts",
         "app/work-journal.module.css",
-        "app/work-orders.module.css"
+        "app/work-orders.module.css",
+        "app/work-journal.tsx"
       ],
       "dependencies": [
         "diagnostics",
@@ -512,7 +514,8 @@
         "prisma/inventory-ledger.prisma",
         "app/api/inventory/**",
         "src/services/inventory-ledger.service.ts",
-        "app/procurement-queue.module.css"
+        "app/procurement-queue.module.css",
+        "app/procurement-queue.tsx"
       ],
       "dependencies": [
         "clients-vehicles",
