@@ -1,5 +1,7 @@
 "use client";
 
+import { CrmPageHeader } from "./crm-page-header";
+
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { BinotelCallbacksSettings } from "./binotel-callbacks-settings";
 import { AppearanceSettingsPanel } from "./appearance-settings-panel";
@@ -162,7 +164,7 @@ export function SettingsOperationsPage({ tab }: { tab: OperationalTab }) {
   return <SettingsFrame screen={tab} title="Налаштування" description="Розділ недоступний."><div className={styles.empty}>Невідомий розділ.</div></SettingsFrame>;
 }
 
-function SettingsFrame({ title, description, message, children, screen }: { title: string; description: string; message?: string; children: React.ReactNode; screen?: string }) { return <div className={styles.page} data-settings-tab={screen}><header className={styles.header}><p>НАЛАШТУВАННЯ</p><h1>{title}</h1><span>{description}</span></header>{message && <div className={styles.message}>{message}</div>}{children}</div>; }
+function SettingsFrame({ title, description, message, children, screen }: { title: string; description: string; message?: string; children: React.ReactNode; screen?: string }) { return <div className={styles.page} data-settings-tab={screen}><CrmPageHeader eyebrow="TURBO LEV · НАЛАШТУВАННЯ" title={title} description={description}/>{message && <div className={styles.message}>{message}</div>}{children}</div>; }
 function SectionTitle({ children }: { children: React.ReactNode }) { return <h2 className={styles.sectionTitle}>{children}</h2>; }
 function FormBox({ children }: { children: React.ReactNode }) { return <div className={styles.formBox}>{children}</div>; }
 function Field({ label, value, onChange }: { label: string; value: unknown; onChange: (value: string) => void }) { return <label><span>{label}</span><input value={String(value ?? "")} onChange={(event) => onChange(event.target.value)}/></label>; }
