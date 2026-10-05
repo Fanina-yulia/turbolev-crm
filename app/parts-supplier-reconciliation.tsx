@@ -2,7 +2,7 @@
 
 import { CrmPageHeader } from "./crm-page-header";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import styles from "./parts-supplier-reconciliation.module.css";
 
 type Product = {
@@ -109,7 +109,7 @@ function recordIdentity(task: Task) {
   return [row.brandNormalized || row.brandRaw, row.mpnCandidateNorm || row.supplierArticleNorm || row.supplierArticleRaw, row.gtinCandidate].filter(Boolean).join(" · ") || row.supplierRecordKey;
 }
 
-export function SupplierReconciliationWorkspace({ tabs }: { tabs?: React.ReactNode } = {}) {
+export function SupplierReconciliationWorkspace({ tabs }: { tabs?: ReactNode } = {}) {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [suppliers, setSuppliers] = useState<Array<{ id: string; code: string; name: string }>>([]);
   const [selectedId, setSelectedId] = useState("");
