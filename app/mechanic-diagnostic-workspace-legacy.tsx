@@ -39,6 +39,14 @@ type DiagnosticPayload = {
 
 const stateLabel: Record<CheckState, string> = { NOT_CHECKED: "Не перевірено", OK: "Норма", ATTENTION: "Увага", DEFECT: "Дефект" };
 
+function checkStateLabel(state: CheckState, sectionCode: string) {
+  if (sectionCode === "FLUIDS" || sectionCode === "FLUIDS_EXTENDED") {
+    if (state === "ATTENTION") return "Низький";
+    if (state === "DEFECT") return "Заміна";
+  }
+  return stateLabel[state];
+}
+
 export function MechanicDiagnosticWorkspace({ diagnosticId, onBack, onChanged, onFinished }: { diagnosticId: string; onBack: () => void; onChanged?: () => void; onFinished?: () => void }) {
   const [data, setData] = useState<DiagnosticPayload | null>(null);
   const [busy, setBusy] = useState("");
@@ -171,7 +179,7 @@ export function MechanicDiagnosticWorkspace({ diagnosticId, onBack, onChanged, o
             const draft = item.id ? drafts[item.id] || { note: "", measurement: "", urgency: "INFO" } : { note: "", measurement: "", urgency: "INFO" };
             const problem = item.state === "ATTENTION" || item.state === "DEFECT";
             return <div className={styles.check} key={id} data-state={item.state}>
-              <div className={styles.checkTitle}><div><strong>{item.name}</strong>{item.position && <small>{item.position}</small>}</div><span>{stateLabel[item.state]}</span></div>
+              <div className={styles.checkTitle}><div><strong>{item.name}</strong>{item.position && <small>{item.position}</small>}</div><span>{checkStateLabel(item.state, section.code)}</span></div>
               {!locked && item.id && <>
                 <div className={styles.states}>
                   <button type="button" className={item.state === "OK" ? styles.activeOk : ""} disabled={Boolean(busy)} onClick={() => void updateCheck(item, "OK", section.code)}>{section.code === "FLUIDS" || section.code === "FLUIDS_EXTENDED" ? "Норма" : "✓ Норма"}</button>
