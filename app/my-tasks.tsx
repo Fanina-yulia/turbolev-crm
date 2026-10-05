@@ -278,8 +278,7 @@ export function MyTasks() {
   }), [attention.signals, categoryFilter, viewFilter]);
 
   const archivedTasks = useMemo(() => tasks
-    .filter((task) => task.status === "DONE" || task.status === "CANCELLED")
-    .slice(0, 100), [tasks]);
+    .filter((task) => task.status === "DONE" || task.status === "CANCELLED"), [tasks]);
 
   const upcoming = useMemo(() => {
     const now = Date.now();
@@ -453,18 +452,18 @@ export function MyTasks() {
       </button>)}
     </section>
 
-    {loading ? <div className={styles.loading}>Збираємо всі сигнали CRM…</div> : viewFilter === "ARCHIVE" ? <section className={styles.panel}>
+    {loading ? <div className={styles.loading}>Збираємо всі сигнали CRM…</div> : viewFilter === "ARCHIVE" ? <section className={`${styles.panel} ${styles.archivePanel}`}>
       <div className={styles.panelHead}><div><h2>Архів рішень</h2><p>Завершені або скасовані задачі зберігаються для історії.</p></div><span>{archivedTasks.length}</span></div>
-      {archivedTasks.length ? <div className={styles.archiveList}>{archivedTasks.map((task) => <article className={styles.archiveRow} key={task.id}><div><strong>{task.title}</strong>{task.description && <p>{task.description}</p>}<small>{task.status === "DONE" ? "Виконано" : "Скасовано"} · {formatDateTime(task.dueAt)}</small></div><span>{task.priority}</span></article>)}</div> : <div className={styles.empty}><strong>Архів поки порожній.</strong><span>Після рішення повідомлення залишатимуться тут як історія.</span></div>}
+      {archivedTasks.length ? <div className={styles.archiveList} role="region" aria-label="Архів рішень" tabIndex={0}>{archivedTasks.map((task) => <article className={styles.archiveRow} key={task.id}><div><strong>{task.title}</strong>{task.description && <p>{task.description}</p>}<small>{task.status === "DONE" ? "Виконано" : "Скасовано"} · {formatDateTime(task.dueAt)}</small></div><span>{task.priority}</span></article>)}</div> : <div className={styles.empty}><strong>Архів поки порожній.</strong><span>Після рішення повідомлення залишатимуться тут як історія.</span></div>}
     </section> : <div className={styles.grid}>
       <main className={styles.mainColumn}>
-        <section className={styles.panel}>
+        <section className={`${styles.panel} ${styles.signalPanel}`}>
           <div className={styles.panelHead}>
             <div><h2>Потребує уваги зараз</h2><p>Сигнали з клієнтів, СТО, запчастин, постачальників, фінансів і персоналу.</p></div>
             <span>{filteredSignals.length}</span>
           </div>
           {filteredSignals.length
-            ? <div className={styles.signalList}>{filteredSignals.map(renderSignal)}</div>
+            ? <div className={styles.signalList} key={`${viewFilter}:${categoryFilter}`} role="region" aria-label="Події, що потребують уваги" tabIndex={0}>{filteredSignals.map(renderSignal)}</div>
             : <div className={styles.empty}><strong>За цим фільтром проблем немає.</strong><span>Система продовжує контролювати бізнес-процеси автоматично.</span></div>}
         </section>
       </main>
