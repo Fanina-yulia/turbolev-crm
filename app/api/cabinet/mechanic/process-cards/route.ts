@@ -37,7 +37,7 @@ function stateLabel(state: ProcessState, plannedStartAt: Date | null, type: Proc
 
 export async function GET(request: Request) {
   try {
-    const access = await authorize(PERMISSIONS.PRODUCTION_READ, { request, minimumScope: "ASSIGNED" });
+    const access = await authorize(PERMISSIONS.PRODUCTION_READ, { request, minimumScope: "ASSIGNED", strict: true });
     if (!access.allowed) return access.response!;
     if (!access.context.user || !access.context.roles.some((role) => role.code === "MECHANIC")) {
       return NextResponse.json({ ok: false, error: "MECHANIC_ROLE_REQUIRED", message: "Доступ доступний лише механіку." }, { status: 403 });
