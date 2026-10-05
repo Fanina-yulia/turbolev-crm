@@ -7,6 +7,11 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
 
+// These events echo actions the mechanic just performed in their own cabinet.
+// They are intentionally excluded from the mechanic feed; assignment, schedule,
+// post and manager-response notifications remain visible.
+const MECHANIC_SELF_ACTION_NOTIFICATION_TYPES = ["STATUS_CHANGED", "WORK_STOP"] as const;
+
 function fail(message: string, error: string, status = 400) {
   return NextResponse.json({ ok: false, error, message }, { status });
 }
@@ -42,12 +47,12 @@ export async function GET(request: Request) {
     const prisma = getPrisma();
     const [items, unreadCount] = await Promise.all([
       prisma.mechanicNotification.findMany({
-        where: { mechanicId: auth.mechanic.id },
+        where: { mechanicId: auth.mechanic.id, type: { notIn: [...MECHANIC_SELF_ACTION_NOTIFICATION_TYPES] } },
         orderBy: [{ createdAt: "desc" }, { id: "desc" }],
         take: 100,
       }),
       prisma.mechanicNotification.count({
-        where: { mechanicId: auth.mechanic.id, readAt: null },
+        where: { mechanicId: auth.mechanic.id, readAt: null, type: { notIn: [...MECHANIC_SELF_ACTION_NOTIFICATION_TYPES] } },
       }),
     ]);
 
@@ -93,7 +98,7 @@ export async function PATCH(request: Request) {
       where: {
         mechanicId: auth.mechanic.id,
         readAt: null,
-        ...(markAll ? {} : { id: notificationId }),
+        ...(markAll ? { type: { notIn: [...MECHANIC_SELF_ACTION_NOTIFICATION_TYPES] } } : { id: notificationId }),
       },
       data: { readAt: new Date() },
     });
@@ -107,7 +112,7 @@ export async function PATCH(request: Request) {
     }
 
     const unreadCount = await prisma.mechanicNotification.count({
-      where: { mechanicId: auth.mechanic.id, readAt: null },
+      where: { mechanicId: auth.mechanic.id, readAt: null, type: { notIn: [...MECHANIC_SELF_ACTION_NOTIFICATION_TYPES] } },
     });
     return NextResponse.json({ ok: true, updated: result.count, unreadCount });
   } catch (error) {
@@ -131,7 +136,7 @@ export async function DELETE(request: Request) {
     if (result.count === 0) return fail("Сповіщення не знайдено.", "NOTIFICATION_NOT_FOUND", 404);
 
     const unreadCount = await prisma.mechanicNotification.count({
-      where: { mechanicId: auth.mechanic.id, readAt: null },
+      where: { mechanicId: auth.mechanic.id, readAt: null, type: { notIn: [...MECHANIC_SELF_ACTION_NOTIFICATION_TYPES] } },
     });
     return NextResponse.json({ ok: true, deleted: result.count, unreadCount });
   } catch (error) {
