@@ -85,8 +85,17 @@
     background:var(--bg);
   }
   .tabs>*{
+    position:static!important;
+    top:auto!important;
+    z-index:auto!important;
     margin-top:0!important;
     margin-bottom:0!important;
     border-bottom:0!important;
+  }
+  .controls>*{
+    position:static!important;
+    top:auto!important;
+    margin-top:0!important;
+    margin-bottom:0!important;
   }
 }
