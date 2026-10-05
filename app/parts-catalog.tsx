@@ -23,14 +23,7 @@ export function PartsCatalog() {
 
   if (route.diagnosticId) {
     return <div className={styles.focusPage}>
-      <div className={styles.focusHeading}>
-        <button type="button" className={styles.backToCenter} onClick={() => navigateCrm("Підбір запчастин", {})}>← Центр запчастин</button>
-        <div className={styles.focusHeadingCopy}>
-          <span>ПІДБІР ЗАПЧАСТИН</span>
-          <b>VIN → OE/OEM → аналоги → постачальник → вибір</b>
-        </div>
-        <span className={styles.focusBadge}>Дані з Діагностичної карти</span>
-      </div>
+      <CrmPageHeader eyebrow="СЕРВІС · ЗАПЧАСТИНИ" title="Підбір запчастин" description="VIN → OE/OEM → аналоги → постачальник → вибір." actions={<button type="button" className={styles.backToCenter} onClick={() => navigateCrm("Підбір запчастин", {})}>← Центр запчастин</button>} controls={<span className={styles.focusBadge}>Дані з Діагностичної карти</span>} />
       <div className={styles.legacyFocus}><LegacyPartsCatalog key={refreshKey}/></div>
     </div>;
   }
