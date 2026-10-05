@@ -44,7 +44,15 @@ const required=[
   "app/camera-settings-panel.tsx",
   "app/integrations-settings-hub.tsx",
   "app/parts-catalog-settings-panel.tsx",
-  "app/price-catalog-settings-panel.tsx"
+  "app/price-catalog-settings-panel.tsx",
+  "app/parts-catalog.tsx",
+  "app/owner-dashboard.tsx",
+  "app/role-cabinet.tsx",
+  "app/station-overview.tsx",
+  "app/service-advisor-cabinet-home.tsx",
+  "app/parts-role-cabinet-home.tsx",
+  "app/leads-sales-role-cabinet-home.tsx",
+  "app/vehicle-record-workspace.tsx"
 ];
 
 for(const file of required){
