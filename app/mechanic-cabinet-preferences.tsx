@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
+import { neonAuthClient } from "@/src/security/neon-auth-client";
 import styles from "./mechanic-cabinet-preferences.module.css";
 
 type ThemePreference = "system" | "light" | "dark";
@@ -144,6 +145,8 @@ export function MechanicCabinetPreferences() {
   const [header, setHeader] = useState<HTMLElement | null>(null);
   const [sourceButton, setSourceButton] = useState<HTMLButtonElement | null>(null);
   const [notificationCount, setNotificationCount] = useState(0);
+  const [loggingOut, setLoggingOut] = useState(false);
+  const [logoutError, setLogoutError] = useState("");
   const accentEntries = useMemo(() => Object.entries(ACCENTS) as Array<[AccentPreference, { label: string; color: string }]>, []);
 
   useEffect(() => {
@@ -238,6 +241,22 @@ export function MechanicCabinetPreferences() {
     window.requestAnimationFrame(() => sourceButton?.click());
   }
 
+  async function signOut() {
+    if (loggingOut) return;
+    setLoggingOut(true);
+    setLogoutError("");
+    try {
+      await Promise.allSettled([
+        fetch("/api/auth/local/sign-out", { method: "POST", credentials: "include" }),
+        neonAuthClient.signOut(),
+      ]);
+      window.location.assign("/auth/sign-in?next=/");
+    } catch (cause) {
+      setLogoutError(cause instanceof Error ? cause.message : "Не вдалося вийти з акаунту.");
+      setLoggingOut(false);
+    }
+  }
+
   const trigger = header ? createPortal(
     <button type="button" className={styles.settingsTrigger} aria-label="Налаштування кабінету" onClick={() => setOpen(true)}>
       <GearIcon />
@@ -286,6 +305,8 @@ export function MechanicCabinetPreferences() {
           <section className={styles.settingSection}>
             <button type="button" className={styles.actionRow} onClick={openNotifications}><span className={styles.actionIcon}>●</span><span><strong>Сповіщення</strong><small>Призначення, зміни робіт та системні повідомлення</small></span>{notificationCount > 0 && <em>{notificationCount}</em>}<b>›</b></button>
             <button type="button" className={styles.actionRow} onClick={reset}><span className={styles.actionIcon}>↺</span><span><strong>Скинути оформлення</strong><small>Повернути стандартний вигляд TURBO ЛЕВ</small></span><b>›</b></button>
+            <button type="button" className={`${styles.actionRow} ${styles.logoutRow}`} onClick={() => void signOut()} disabled={loggingOut}><span className={styles.actionIcon}>↪</span><span><strong>{loggingOut ? "Вихід..." : "Вийти з акаунту"}</strong><small>Завершити поточний сеанс на цьому пристрої</small></span><b>›</b></button>
+            {logoutError && <p className={styles.logoutError} role="alert">{logoutError}</p>}
           </section>
         </div>
       </section>
