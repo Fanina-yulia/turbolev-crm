@@ -9,6 +9,8 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
 
+const MECHANIC_SELF_ACTION_NOTIFICATION_TYPES = ["STATUS_CHANGED", "WORK_STOP"] as const;
+
 function record(value: unknown): Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
 }
@@ -104,11 +106,11 @@ export async function GET(request: Request) {
       listActiveMechanicAssignments(mechanic.id),
       listMechanicDiagnosticsForSnapshot(mechanic.id),
       prisma.mechanicNotification.findMany({
-        where: { mechanicId: mechanic.id },
+        where: { mechanicId: mechanic.id, type: { notIn: [...MECHANIC_SELF_ACTION_NOTIFICATION_TYPES] } },
         orderBy: [{ createdAt: "desc" }, { id: "desc" }],
         take: 100,
       }),
-      prisma.mechanicNotification.count({ where: { mechanicId: mechanic.id, readAt: null } }),
+      prisma.mechanicNotification.count({ where: { mechanicId: mechanic.id, readAt: null, type: { notIn: [...MECHANIC_SELF_ACTION_NOTIFICATION_TYPES] } } }),
       prisma.mechanicWorkFinding.findMany({
         where: {
           OR: [
