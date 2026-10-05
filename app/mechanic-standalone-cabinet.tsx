@@ -642,7 +642,8 @@ export function MechanicStandaloneCabinet({ userName }: { userName?: string | nu
   const [repairCases, setRepairCases] = useState<RepairCase[]>([]);
   const [repairCaseKpis, setRepairCaseKpis] = useState<RepairCaseFeed["kpis"] | null>(null);
   const [taskKpis, setTaskKpis] = useState<TaskFeed["kpis"] | null>(null);
-  const [diagnostics, setDiagnostics] = useState<DiagnosticItem[]>([]);\n  const [processCards, setProcessCards] = useState<MechanicProcessCard[]>([]);
+  const [diagnostics, setDiagnostics] = useState<DiagnosticItem[]>([]);
+  const [processCards, setProcessCards] = useState<MechanicProcessCard[]>([]);
   const [clarifications, setClarifications] = useState<Clarification[]>([]);
   const [notificationFeed, setNotificationFeed] = useState<NotificationFeed | null>(null);
   const [screen, setScreen] = useState<Screen>("HOME");
