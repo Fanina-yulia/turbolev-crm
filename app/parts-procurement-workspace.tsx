@@ -46,15 +46,12 @@ export function PartsProcurementWorkspace() {
   const showReconciliation = loaded && canReadGlobalReconciliation;
   const effectiveView = showReconciliation && view === "reconciliation" ? "reconciliation" : "operations";
 
+  const modeTabs = <nav className={styles.tabs} aria-label="Режим закупівель">
+    <button type="button" className={effectiveView === "operations" ? styles.active : ""} onClick={() => changeView("operations")}><span>Операційна черга</span><small>підбір → замовлення → отримання</small></button>
+    {showReconciliation && <button type="button" className={effectiveView === "reconciliation" ? styles.active : ""} onClick={() => changeView("reconciliation")}><span>Reconciliation</span><small>нерозпізнані та конфліктні supplier rows</small></button>}
+  </nav>;
+
   return <div className={styles.page}>
-    <nav className={styles.tabs} aria-label="Режим закупівель">
-      <button type="button" className={effectiveView === "operations" ? styles.active : ""} onClick={() => changeView("operations")}>
-        <span>Операційна черга</span><small>підбір → замовлення → отримання</small>
-      </button>
-      {showReconciliation && <button type="button" className={effectiveView === "reconciliation" ? styles.active : ""} onClick={() => changeView("reconciliation")}>
-        <span>Reconciliation</span><small>нерозпізнані та конфліктні supplier rows</small>
-      </button>}
-    </nav>
-    {effectiveView === "reconciliation" ? <SupplierReconciliationWorkspace/> : <ProcurementQueue/>}
+    {effectiveView === "reconciliation" ? <SupplierReconciliationWorkspace tabs={modeTabs}/> : <ProcurementQueue tabs={modeTabs}/>}
   </div>;
 }
