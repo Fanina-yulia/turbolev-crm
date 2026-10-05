@@ -185,6 +185,46 @@ button.listCard{appearance:none}
 .listCard>div:first-child{display:flex;align-items:center;justify-content:space-between;gap:10px}
 .listCard h3{margin:0;font-size:16px}.listCard>div:first-child>b{font-size:12px;color:var(--m-muted)}
 .listCard>p{margin:10px 0;color:var(--m-muted);font-size:14px;line-height:1.45}
+
+.vehicleRow{
+  position:relative;
+  overflow:hidden;
+  transition:background .15s ease,border-color .15s ease,box-shadow .15s ease,transform .15s ease;
+}
+.vehicleRow:active{transform:scale(.995)}
+.vehicleCardOverdue{
+  background:var(--m-danger-soft)!important;
+  border:1px solid color-mix(in srgb,var(--m-danger) 52%,var(--m-border))!important;
+  box-shadow:inset 4px 0 0 var(--m-danger),0 7px 22px rgba(18,31,44,.055)!important;
+}
+.vehicleCardPending{
+  background:var(--m-warn-soft)!important;
+  border:1px solid color-mix(in srgb,var(--m-warn) 40%,var(--m-border))!important;
+  box-shadow:inset 4px 0 0 color-mix(in srgb,var(--m-warn) 78%,var(--m-border)),0 7px 22px rgba(18,31,44,.045)!important;
+}
+.vehicleCardDone{
+  background:var(--m-green-soft)!important;
+  border:1px solid color-mix(in srgb,var(--m-green) 38%,var(--m-border))!important;
+  box-shadow:inset 4px 0 0 var(--m-green),0 7px 22px rgba(18,31,44,.04)!important;
+}
+.vehicleStatusOverdue{
+  background:var(--m-danger-soft)!important;
+  color:var(--m-danger)!important;
+  border:1px solid color-mix(in srgb,var(--m-danger) 42%,var(--m-border))!important;
+}
+.vehicleRowStatus{white-space:nowrap}
+.compactList{gap:8px}
+.compactList>button.vehicleRow{
+  min-height:64px;
+  padding:9px 10px;
+  border-radius:13px;
+}
+.compactList>button.vehicleRow:first-child{border-top-width:1px}
+.compactList>button.vehicleRow>div{min-width:0}
+.compactList>button.vehicleRow [data-vehicle-title="true"]{font-weight:850}
+.compactList>button.vehicleRow [data-vehicle-summary="true"]{color:var(--m-muted)}
+.listCard.vehicleRow [data-vehicle-summary="true"]{margin:7px 0 0;color:var(--m-muted);font-size:12px;font-weight:700}
+
 .orderLines{display:grid}
 .orderLines>div{display:grid;grid-template-columns:20px minmax(0,1fr) auto;gap:8px;align-items:center;padding:12px 0;border-top:1px solid var(--m-border)}
 .orderLines>div:first-child{border-top:0}.orderLines i{font-style:normal}.orderLines strong,.orderLines small{display:block}.orderLines small{margin-top:2px;color:var(--m-muted);font-size:11px}.orderLines>div>span{max-width:130px;color:var(--m-muted);font-size:11px;text-align:right}
