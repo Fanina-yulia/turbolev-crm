@@ -2,7 +2,7 @@
 
 import { CrmPageHeader } from "./crm-page-header";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { formatWorkOrderNumber } from "@/src/domain/work-order-number";
 import { navigateCrm, readCrmRoute } from "./crm-route";
 import { ProcurementSupplierPanel } from "./procurement-supplier-panel";
@@ -78,7 +78,7 @@ function categoryTone(category: Category) {
   return category === "SELECTING" ? styles.blue : category === "APPROVED" ? styles.amber : category === "ORDERED" ? styles.violet : category === "PARTIAL" ? styles.orange : styles.green;
 }
 
-export function ProcurementQueue({ tabs }: { tabs?: React.ReactNode } = {}) {
+export function ProcurementQueue({ tabs }: { tabs?: ReactNode } = {}) {
   const route = readCrmRoute();
   const initialFocus = route.scope === "selecting" ? "SELECTING" : route.scope === "approved" ? "APPROVED" : route.scope === "ordered" ? "ORDERED" : route.scope === "partial" ? "PARTIAL" : route.scope === "received" ? "RECEIVED" : null;
   const [data, setData] = useState<Response | null>(null);
