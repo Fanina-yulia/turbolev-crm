@@ -987,7 +987,7 @@ export function MechanicStandaloneCabinet({ userName }: { userName?: string | nu
       });
       const body = await response.json().catch(() => null);
       if (!response.ok || !body?.ok) throw new Error(body?.message || body?.error || "Не вдалося оновити роботу");
-      await Promise.all([loadTasks(), loadRepairCases(), loadHome()]);
+      await Promise.all([loadTasks(), loadRepairCases(), loadProcessCards(), loadHome()]);
       setMessage(action === "START"
         ? "Роботу розпочато."
         : action === "PAUSE"
@@ -1025,7 +1025,7 @@ export function MechanicStandaloneCabinet({ userName }: { userName?: string | nu
       });
       const body = await response.json().catch(() => null);
       if (!response.ok || !body?.ok) throw new Error(body?.message || body?.error || "Не вдалося продовжити роботу.");
-      await Promise.all([loadTasks(), loadRepairCases(), loadHome(), loadNotifications()]);
+      await Promise.all([loadTasks(), loadRepairCases(), loadProcessCards(), loadHome(), loadNotifications()]);
       setMessage("Автомобіль підтверджено. Роботу продовжено.");
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Не вдалося продовжити роботу.");
@@ -1058,7 +1058,7 @@ export function MechanicStandaloneCabinet({ userName }: { userName?: string | nu
       setAdditionalWorkDescription("");
       setAdditionalWorkHours("");
       setAdditionalWorkNote("");
-      await Promise.all([loadTasks(), loadRepairCases(), loadHome(), loadNotifications()]);
+      await Promise.all([loadTasks(), loadRepairCases(), loadProcessCards(), loadHome(), loadNotifications()]);
       setScreen("WORK_DETAIL");
       setMessage(body.message || "Додаткову роботу передано на погодження.");
     } catch (cause) {
@@ -1108,7 +1108,7 @@ export function MechanicStandaloneCabinet({ userName }: { userName?: string | nu
         });
         const statusBody = await statusResponse.json().catch(() => null);
         if (!statusResponse.ok || !statusBody?.ok) throw new Error(statusBody?.message || statusBody?.error || "Запит передано, але статус не оновлено");
-        await Promise.all([loadTasks(), loadRepairCases(), loadHome()]);
+        await Promise.all([loadTasks(), loadRepairCases(), loadProcessCards(), loadHome()]);
       }
       setSupportText(""); setScreen("WORK_DETAIL"); setMessage(supportKind === "PART_REQUEST" ? "Запчастину запитано. Роботу переведено в очікування." : body.message || "Запит передано.");
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Не вдалося передати запит"); }
