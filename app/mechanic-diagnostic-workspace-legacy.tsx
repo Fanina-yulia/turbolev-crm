@@ -100,7 +100,7 @@ export function MechanicDiagnosticWorkspace({ diagnosticId, onBack, onChanged, o
     if (next) setMessage("Розділ відмічено як «Норма».");
   }
 
-  async function updateCheck(item: Check, state: CheckState) {
+  async function updateCheck(item: Check, state: CheckState, sectionCode?: string) {
     if (!item.id) return;
     const draft = drafts[item.id] || { note: "", measurement: "", urgency: "INFO" };
     setBusy(`check:${item.id}`); setError(""); setMessage("");
@@ -114,9 +114,15 @@ export function MechanicDiagnosticWorkspace({ diagnosticId, onBack, onChanged, o
           measurementValue: item.measurementUnit && draft.measurement.trim() && /^-?\d+(?:[.,]\d+)?$/.test(draft.measurement.trim()) ? draft.measurement.replace(",", ".") : null,
           measurementText: item.measurementUnit ? null : draft.measurement.trim() || null,
           note: draft.note.trim() || null,
-          findingText: state === "ATTENTION" || state === "DEFECT" ? draft.note.trim() || `${item.name}: потребує уваги` : null,
+          findingText: state === "ATTENTION" || state === "DEFECT"
+            ? draft.note.trim() || (sectionCode === "FLUIDS" || sectionCode === "FLUIDS_EXTENDED"
+              ? `${item.name}: ${state === "ATTENTION" ? "низький рівень / потребує уваги" : "потребує заміни"}`
+              : `${item.name}: потребує уваги`)
+            : null,
           urgency: state === "DEFECT" ? draft.urgency || "SOON" : draft.urgency || "INFO",
-          action: "NONE",
+          action: (sectionCode === "FLUIDS" || sectionCode === "FLUIDS_EXTENDED")
+            ? state === "DEFECT" ? "REPLACE" : state === "ATTENTION" ? "ADDITIONAL_DIAGNOSTICS" : "NONE"
+            : "NONE",
         }),
       });
       const next = await response.json().catch(() => null) as DiagnosticPayload | null;
@@ -168,15 +174,15 @@ export function MechanicDiagnosticWorkspace({ diagnosticId, onBack, onChanged, o
               <div className={styles.checkTitle}><div><strong>{item.name}</strong>{item.position && <small>{item.position}</small>}</div><span>{stateLabel[item.state]}</span></div>
               {!locked && item.id && <>
                 <div className={styles.states}>
-                  <button type="button" className={item.state === "OK" ? styles.activeOk : ""} disabled={Boolean(busy)} onClick={() => void updateCheck(item, "OK")}>✓ Норма</button>
-                  <button type="button" className={item.state === "ATTENTION" ? styles.activeAttention : ""} disabled={Boolean(busy)} onClick={() => void updateCheck(item, "ATTENTION")}>! Увага</button>
-                  <button type="button" className={item.state === "DEFECT" ? styles.activeDefect : ""} disabled={Boolean(busy)} onClick={() => void updateCheck(item, "DEFECT")}>× Дефект</button>
+                  <button type="button" className={item.state === "OK" ? styles.activeOk : ""} disabled={Boolean(busy)} onClick={() => void updateCheck(item, "OK", section.code)}>{section.code === "FLUIDS" || section.code === "FLUIDS_EXTENDED" ? "Норма" : "✓ Норма"}</button>
+                  <button type="button" className={item.state === "ATTENTION" ? styles.activeAttention : ""} disabled={Boolean(busy)} onClick={() => void updateCheck(item, "ATTENTION", section.code)}>{section.code === "FLUIDS" || section.code === "FLUIDS_EXTENDED" ? "Низький" : "! Увага"}</button>
+                  <button type="button" className={item.state === "DEFECT" ? styles.activeDefect : ""} disabled={Boolean(busy)} onClick={() => void updateCheck(item, "DEFECT", section.code)}>{section.code === "FLUIDS" || section.code === "FLUIDS_EXTENDED" ? "Заміна" : "× Дефект"}</button>
                 </div>
                 {(problem || draft.note || item.measurementUnit) && <div className={styles.details}>
                   {item.measurementUnit && <label><span>Замір, {item.measurementUnit}</span><input inputMode="decimal" value={draft.measurement} onChange={(event) => item.id && setDrafts((current) => ({ ...current, [item.id!]: { ...draft, measurement: event.target.value } }))} /></label>}
                   <label><span>{problem ? "Що виявлено / примітка" : "Примітка"}</span><textarea rows={2} value={draft.note} onChange={(event) => item.id && setDrafts((current) => ({ ...current, [item.id!]: { ...draft, note: event.target.value } }))} placeholder={problem ? "Опишіть несправність" : "За потреби"} /></label>
                   {problem && <label><span>Терміновість</span><select value={draft.urgency} onChange={(event) => item.id && setDrafts((current) => ({ ...current, [item.id!]: { ...draft, urgency: event.target.value } }))}><option value="INFO">Рекомендація</option><option value="SOON">Найближчим часом</option><option value="CRITICAL">Критично</option></select></label>}
-                  <button type="button" className={styles.saveDetails} disabled={Boolean(busy)} onClick={() => void updateCheck(item, item.state === "NOT_CHECKED" ? "ATTENTION" : item.state)}>Зберегти деталі</button>
+                  <button type="button" className={styles.saveDetails} disabled={Boolean(busy)} onClick={() => void updateCheck(item, item.state === "NOT_CHECKED" ? "ATTENTION" : item.state, section.code)}>Зберегти деталі</button>
                 </div>}
               </>}
               {locked && item.finding?.findingText && <p className={styles.finding}>{item.finding.findingText}</p>}
