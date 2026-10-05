@@ -1,5 +1,7 @@
 "use client";
 
+import { CrmPageHeader } from "./crm-page-header";
+
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { formatWorkOrderNumber } from "@/src/domain/work-order-number";
 import { navigateCrm } from "./crm-route";
@@ -188,14 +190,7 @@ export function PartsRoleCabinetHome({ role, userName }: { role: RoleCode; userN
   const station = data.location.name;
 
   return <div className={styles.page}>
-    <header className={styles.header}>
-      <div>
-        <p className="eyebrow">TURBO LEV · {role === "PARTS_SPECIALIST" ? "ЗАПЧАСТИНИ" : "СКЛАД"}</p>
-        <h1>{roleTitle(role)}</h1>
-        <span>{userName || (role === "PARTS_SPECIALIST" ? "Менеджер з запчастин" : "Комірник")} · {station} · {roleSubtitle(role)}</span>
-      </div>
-      <button className={styles.primary} type="button" onClick={() => openProcurement()}>Відкрити всю чергу →</button>
-    </header>
+    <CrmPageHeader eyebrow={`TURBO LEV · ${role === "PARTS_SPECIALIST" ? "ЗАПЧАСТИНИ" : "СКЛАД"}`} title={roleTitle(role)} description={`${userName || (role === "PARTS_SPECIALIST" ? "Менеджер з запчастин" : "Комірник")} · ${station} · ${roleSubtitle(role)}`} actions={<button className={styles.primary} type="button" onClick={() => openProcurement()}>Відкрити всю чергу →</button>} />
 
     <section className={styles.kpis} aria-label="Стан черги запчастин">
       <button type="button" onClick={() => openProcurement("SELECTING")}><span>Підібрати</span><strong>{summary.counts.SELECTING}</strong><small>нові заявки та активний підбір</small></button>
