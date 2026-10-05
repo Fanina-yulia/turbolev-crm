@@ -1,5 +1,7 @@
 "use client";
 
+import { CrmPageHeader } from "./crm-page-header";
+
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { CrmAccessSnapshot } from "./use-crm-access";
 import { carLabel, isOverdue, leadBusinessStatus, parseLeadList, parseUserOptions, payloadMessage, readPayloadField } from "./leads-board-v2.model";
@@ -125,14 +127,7 @@ export function SalesRoleCabinetHome({ role, access }: { role: SalesRole; access
   if (error && !leads.length) return <div className={styles.state}><strong>Не вдалося відкрити кабінет продажів</strong><span>{error}</span><button type="button" onClick={() => void load()}>Повторити</button></div>;
 
   return <div className={styles.page}>
-    <header className={styles.header}>
-      <div>
-        <p className={styles.eyebrow}>TURBO LEV · {isHead ? "КЕРІВНИК ВІДДІЛУ ПРОДАЖІВ" : "МЕНЕДЖЕР З ПРОДАЖУ"}</p>
-        <h1>{isHead ? "Пульт воронки звернень" : "Моя робоча черга"}</h1>
-        <span>{access.user?.name || (isHead ? "Керівник відділу продажів" : "Менеджер з продажу")} · Нове → Записаний або Скасоване → передача в сервіс</span>
-      </div>
-      <button className={styles.primary} type="button" onClick={() => openActive(undefined, isHead ? null : currentUserId)}>Відкрити Активні →</button>
-    </header>
+    <CrmPageHeader eyebrow={`TURBO LEV · ${isHead ? "КЕРІВНИК ВІДДІЛУ ПРОДАЖІВ" : "МЕНЕДЖЕР З ПРОДАЖУ"}`} title={isHead ? "Пульт воронки звернень" : "Моя робоча черга"} description={`${access.user?.name || (isHead ? "Керівник відділу продажів" : "Менеджер з продажу")} · Нове → Записаний або Скасоване → передача в сервіс`} actions={<button className={styles.primary} type="button" onClick={() => openActive(undefined, isHead ? null : currentUserId)}>Відкрити Активні →</button>} />
 
     {error && <div className={styles.notice}>{error}</div>}
 
