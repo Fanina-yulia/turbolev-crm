@@ -1,5 +1,7 @@
 "use client";
 
+import { CrmPageHeader } from "./crm-page-header";
+
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { formatWorkOrderNumber } from "@/src/domain/work-order-number";
 import { navigateCrm, readCrmRoute } from "./crm-route";
@@ -140,13 +142,7 @@ export function QcQueue() {
   if (!data?.location) return <div className={styles.state}>{message || "Для Вашого профілю не визначена станція QC."}</div>;
 
   return <div className={styles.page}>
-    <header className={styles.header}>
-      <div><p>TURBO LEV · КОНТРОЛЬ ЯКОСТІ</p><h1>Черга QC</h1><span>{data.location.name} · одна черга поверх існуючих КП та QC-спроб</span></div>
-      <div className={styles.headerActions}>
-        {data.locations.length > 1 && <select value={locationId} onChange={(event) => void load(event.target.value)}>{data.locations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}</select>}
-        <button type="button" onClick={() => void load()} disabled={loading}>{loading ? "Оновлюю…" : "Оновити"}</button>
-      </div>
-    </header>
+    <CrmPageHeader eyebrow="TURBO LEV · КОНТРОЛЬ ЯКОСТІ" title="Черга QC" description={`${data.location.name} · одна черга поверх існуючих КП та QC-спроб`} actions={<button type="button" onClick={() => void load()} disabled={loading}>{loading ? "Оновлюю…" : "Оновити"}</button>} controls={data.locations.length > 1 ? <label><span>СТО</span><select value={locationId} onChange={(event) => void load(event.target.value)}>{data.locations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}</select></label> : null} />
 
     <section className={styles.kpis}>{LANES.map(([category, label]) => <button type="button" key={category} className={focus === category ? styles.kpiActive : ""} onClick={() => setFocus((current) => current === category ? null : category)}><span>{label}</span><strong>{counts[category]}</strong></button>)}</section>
 
