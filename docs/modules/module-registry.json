@@ -44,6 +44,15 @@
       "enforcedBy": "scripts/check-crm-ui-scale.mjs"
     },
     {
+      "id": "CRM-UI-006",
+      "status": "ACTIVE",
+      "title": "Unified Page Header",
+      "source": "docs/TZ_CRM_UNIFIED_PAGE_HEADER.md",
+      "trigger": "Усі top-level internal CRM pages у canonical CrmShell.",
+      "requiredScope": "CrmPageHeader з H1 28px, eyebrow 11px orange, description 12px, actions/tabs/controls у єдиному порядку; standalone Mechanic Cabinet та public/auth виключені.",
+      "enforcedBy": "scripts/check-unified-page-header.mjs"
+    },
+    {
       "id": "CRM-DOC-001",
       "status": "ACTIVE",
       "title": "Незмінний PDF діагностичної карти",
@@ -94,7 +103,9 @@
         "app/crm-screen-contract*",
         "app/crm-one-screen-standard.css",
         "app/crm-shell.module.css",
-        "app/crm-global-ui-scale.css"
+        "app/crm-global-ui-scale.css",
+        "app/crm-page-header.tsx",
+        "app/crm-page-header.module.css"
       ],
       "dependencies": [],
       "smokeChecks": [
