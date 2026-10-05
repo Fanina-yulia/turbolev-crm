@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { finalizeAttentionIncidents } from "@/src/domain/attention-incidents";
 import { buildRoleWorkQueues } from "@/src/domain/role-work-queues";
 import { getAccessContext, hasPermission } from "@/src/security/access-context";
 import { PERMISSIONS, type AccessScopeCode, type PermissionCode } from "@/src/security/permissions";
@@ -70,9 +71,10 @@ export async function GET(request: NextRequest) {
       canDiagnostics,
       diagnosticLocationIds,
     });
-    const attention = canPlanner
+    const rawAttention = canPlanner
       ? await appendWalkInAttention(operationalAttention, { plannerLocationIds, canSeeAmounts: canFinance })
       : operationalAttention;
+    const attention = finalizeAttentionIncidents(rawAttention);
     const roleQueues = buildRoleWorkQueues({
       roles: context.roles,
       signals: attention.signals,
