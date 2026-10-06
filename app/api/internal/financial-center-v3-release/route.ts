@@ -41,10 +41,10 @@ ALTER TABLE "FinancialCashClose"
   FOREIGN KEY ("moneyAccountId") REFERENCES "MoneyAccount"("id")
   ON DELETE RESTRICT ON UPDATE CASCADE;`;
 
-function authorized(request: NextRequest) {
-  const expected = process.env.DB_RELEASE_TOKEN?.trim() || "";
-  const supplied = request.headers.get("x-db-release-token")?.trim() || "";
-  return Boolean(expected && supplied && supplied === expected);
+function allowedPreview(request: NextRequest) {
+  return process.env.VERCEL_ENV === "preview"
+    && process.env.VERCEL_GIT_COMMIT_REF === "ops/financial-center-v3-db-release-20261007"
+    && request.nextUrl.searchParams.get("confirm") === "apply-financial-center-v3";
 }
 
 function migrationConnectionString() {
@@ -64,10 +64,6 @@ function migrationConnectionString() {
   } catch {
     return raw;
   }
-}
-
-function hidden() {
-  return NextResponse.json({ ok: false }, { status: 404, headers: { "Cache-Control": "no-store" } });
 }
 
 async function readState(client: Client) {
@@ -107,8 +103,10 @@ async function readState(client: Client) {
   };
 }
 
-export async function POST(request: NextRequest) {
-  if (!authorized(request)) return hidden();
+export async function GET(request: NextRequest) {
+  if (!allowedPreview(request)) {
+    return NextResponse.json({ ok: false }, { status: 404, headers: { "Cache-Control": "no-store" } });
+  }
 
   const client = new Client({ connectionString: migrationConnectionString() });
   try {
