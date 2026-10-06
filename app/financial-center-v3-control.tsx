@@ -177,27 +177,32 @@ export function FinanceContextKpis({ data, tab, onMetric }: { data: FinanceV3Dat
 export function FinanceOverviewControl({ data }: { data: FinanceV3Data }) {
   const control = data.control;
   if (!control) return null;
+  const persona = data.viewer?.persona || "STANDARD";
+  const fullFinance = persona === "OWNER" || persona === "FINANCE";
+  const cashOnly = persona === "CASHIER" || persona === "STANDARD";
   const statusLabel = control.reconciliation.status === "OK" ? "Фінанси узгоджені" : `Є ${control.reconciliation.issueCount} розбіжностей`;
-  return <div className={styles.twoColumns}>
+  return <div className={fullFinance ? styles.twoColumns : undefined}>
     <section className={styles.panel}>
       <div className={styles.panelHeader}><div><span>СЬОГОДНІ</span><h2>Операційна картина</h2><p>{dateText(control.today.date)} · окремо від вибраного періоду</p></div></div>
       <div className={styles.todayGrid}>
-        <div><span>Нараховано виручки</span><strong>{money(control.today.revenue)}</strong></div>
+        {!cashOnly && <div><span>Нараховано виручки</span><strong>{money(control.today.revenue)}</strong></div>}
         <div><span>Отримано</span><strong>{money(control.today.cashIn)}</strong></div>
         <div><span>Витрачено</span><strong>{money(control.today.cashOut)}</strong></div>
         <div><span>Net Cash Flow</span><strong>{money(control.today.netCashFlow)}</strong></div>
-        <div><span>Нова дебіторка</span><strong>{money(control.today.receivablesCreated)}</strong></div>
+        {!cashOnly && <div><span>Нова дебіторка</span><strong>{money(control.today.receivablesCreated)}</strong></div>}
         <div><span>Погашено дебіторки</span><strong>{money(control.today.receivablesCollected)}</strong></div>
       </div>
     </section>
-    <section className={`${styles.panel} ${styles.reconciliation} ${styles[`recon_${control.reconciliation.status.toLowerCase()}`]}`}>
+    {fullFinance && <section className={`${styles.panel} ${styles.reconciliation} ${styles[`recon_${control.reconciliation.status.toLowerCase()}`]}`}>
       <div className={styles.panelHeader}><div><span>ЗВІРКА ФІНАНСІВ</span><h2>{statusLabel}</h2><p>Перевірка зв'язків між нарахуваннями, боргами та фактичними платежами.</p></div></div>
       {control.reconciliation.issues.length ? <div className={styles.issueList}>{control.reconciliation.issues.map((issue) => <details key={issue.code}><summary><strong>{issue.title}</strong><span>{issue.count} · {money(issue.amount)}</span></summary><p>{issue.message}</p>{issue.samples.length > 0 && <small>Приклади: {issue.samples.join(", ")}</small>}</details>)}</div> : <div className={styles.okState}>✓ Критичних розбіжностей у перевірених інваріантах немає.</div>}
-    </section>
+    </section>}
   </div>;
 }
 
 export function FinanceAccrualBridge({ data }: { data: FinanceV3Data }) {
+  const persona = data.viewer?.persona || "STANDARD";
+  if (persona === "CASHIER" || persona === "STANDARD") return null;
   return <section className={styles.panel}>
     <div className={styles.panelHeader}><div><span>НАРАХОВАНО ≠ ОТРИМАНО</span><h2>Від послуги до грошей</h2><p>Прибуток і рух грошей — різні події.</p></div></div>
     <div className={styles.bridgeGrid}>
