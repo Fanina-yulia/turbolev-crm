@@ -16,6 +16,10 @@ import {
   type FinanceActor,
 } from "@/src/services/financial-center-v2.service";
 import {
+  closeFinanceCashDay,
+  getFinancialCenterV3Control,
+} from "@/src/services/financial-center-v3-control.service";
+import {
   approvalRequirementForExpense,
   approveExpense,
   listExpenseAttachments,
@@ -84,6 +88,181 @@ function actor(access: { context: { user?: { id?: string; employeeName?: string 
   };
 }
 
+function financePersona(roles: Array<{ code: string; isPrimary: boolean }>) {
+  const codes = roles.map((role) => role.code.toUpperCase());
+  const primary = roles.find((role) => role.isPrimary)?.code || roles[0]?.code || null;
+  if (codes.some((code) => ["OWNER", "EXECUTIVE", "DIRECTOR", "ADMIN", "SUPER_ADMIN", "SYSTEM_ADMIN"].includes(code))) return { code: "OWNER", primaryRole: primary };
+  if (codes.some((code) => ["CASHIER", "KASIR"].includes(code))) return { code: "CASHIER", primaryRole: primary };
+  if (codes.some((code) => ["STATION_MANAGER", "ADMINISTRATOR", "SERVICE_MANAGER", "MASTER"].includes(code))) return { code: "STATION_MANAGER", primaryRole: primary };
+  if (codes.some((code) => ["FINANCE", "ACCOUNTANT", "CHIEF_ACCOUNTANT", "FINANCIAL_MANAGER"].includes(code))) return { code: "FINANCE", primaryRole: primary };
+  return { code: "STANDARD", primaryRole: primary };
+}
+
+function isPayrollFinanceSource(value: unknown) {
+  const source = typeof value === "string" ? value.toUpperCase() : "";
+  return source.includes("PAYROLL") || source.includes("SALARY");
+}
+
+function restrictedDebtView(obligations: any[]) {
+  const visible = obligations.filter((row) => !isPayrollFinanceSource(row.sourceEntity));
+  const empty = () => ({ total: 0, overdue: 0, buckets: { "0_7": 0, "8_14": 0, "15_30": 0, "31_60": 0, "60_PLUS": 0 } as Record<string, number> });
+  const aging = { receivables: empty(), payables: empty() };
+  for (const row of visible) {
+    const target = row.direction === "RECEIVABLE" ? aging.receivables : aging.payables;
+    const amount = Number(row.outstanding || 0);
+    target.total += amount;
+    if (row.isOverdue) target.overdue += amount;
+    const days = Number(row.overdueDays || 0);
+    const bucket = days <= 7 ? "0_7" : days <= 14 ? "8_14" : days <= 30 ? "15_30" : days <= 60 ? "31_60" : "60_PLUS";
+    target.buckets[bucket] += amount;
+  }
+  return { visible, aging };
+}
+
+function redactFinanceForPersona(data: any, control: any, persona: string) {
+  if (persona === "OWNER" || persona === "FINANCE") return { data, control };
+
+  const { visible: obligations, aging } = restrictedDebtView(data.obligations || []);
+  const debtKpi = {
+    receivables: aging.receivables.total,
+    payables: aging.payables.total,
+    overdueReceivables: aging.receivables.overdue,
+    overduePayables: aging.payables.overdue,
+  };
+  const payrollSafeTransactions = (data.cashFlow?.transactions || []).filter((row: any) => !isPayrollFinanceSource(row.sourceEntity));
+
+  if (persona === "STATION_MANAGER") {
+    return {
+      data: {
+        ...data,
+        kpi: { ...data.kpi, grossProfit: 0, directCosts: 0, opex: 0, netProfit: 0, grossMarginPercent: null, ...debtKpi },
+        comparison: {
+          ...data.comparison,
+          grossProfit: { previous: 0, changePercent: null },
+          netProfit: { previous: 0, changePercent: null },
+          opex: { previous: 0, changePercent: null },
+        },
+        pnl: {
+          ...data.pnl,
+          cogs: 0, grossProfit: 0, grossMarginPercent: null, opex: 0, operatingProfit: 0,
+          otherIncome: 0, otherExpense: 0, tax: 0, netProfit: 0, netMarginPercent: null,
+          categories: [],
+          events: (data.pnl?.events || []).filter((row: any) => row.pnlSection === "REVENUE" && !isPayrollFinanceSource(row.sourceEntity)),
+        },
+        cashFlow: { ...data.cashFlow, transactions: payrollSafeTransactions },
+        obligations,
+        aging,
+        budgets: [],
+        recurring: [],
+        calendar: [],
+        breakEven: { ...data.breakEven, fixedCosts: 0, grossMarginPercent: null, breakEvenRevenue: null, remainingRevenue: null, requiredRevenuePerDay: null },
+        profitability: {
+          ...data.profitability,
+          services: [],
+          parts: [],
+          mechanics: [],
+          suppliers: [],
+        },
+        financeCompleteness: {
+          ...data.financeCompleteness,
+          issues: [],
+          checks: { missingLaborAccruals: 0, missingWalkInLabor: 0, missingPartCosts: 0, missingBaseAccrualEmployees: 0 },
+        },
+        alerts: [],
+      },
+      control: {
+        ...control,
+        reconciliation: { status: "OK", issueCount: 0, criticalCount: 0, warningCount: 0, issues: [] },
+        margins: [],
+        plan: { ...control.plan, metrics: [] },
+        profitability: {
+          ...control.profitability,
+          lowMarginParts: [],
+          lowMarginPartsCount: 0,
+          topMechanic: null,
+          topSupplier: null,
+        },
+      },
+    };
+  }
+
+  return {
+    data: {
+      ...data,
+      kpi: {
+        ...data.kpi,
+        revenue: 0, grossProfit: 0, directCosts: 0, opex: 0, netProfit: 0, grossMarginPercent: null,
+        ...debtKpi,
+      },
+      comparison: {
+        ...data.comparison,
+        revenue: { previous: 0, changePercent: null },
+        grossProfit: { previous: 0, changePercent: null },
+        netProfit: { previous: 0, changePercent: null },
+        opex: { previous: 0, changePercent: null },
+      },
+      pnl: {
+        ...data.pnl,
+        revenue: 0, cogs: 0, grossProfit: 0, grossMarginPercent: null, opex: 0, operatingProfit: 0,
+        otherIncome: 0, otherExpense: 0, tax: 0, netProfit: 0, netMarginPercent: null,
+        categories: [], events: [],
+      },
+      cashFlow: { ...data.cashFlow, transactions: payrollSafeTransactions },
+      obligations,
+      aging,
+      budgets: [],
+      recurring: [],
+      calendar: [],
+      forecast: {
+        ...data.forecast,
+        minimumReserve: 0,
+        minimumForecastCash: data.kpi.currentCash,
+        firstGap: null,
+        firstReserveWarning: null,
+        points: [],
+      },
+      breakEven: {
+        ...data.breakEven,
+        fixedCosts: 0, grossMarginPercent: null, breakEvenRevenue: null,
+        currentRevenue: 0, remainingRevenue: null, requiredRevenuePerDay: null,
+      },
+      profitability: { workOrders: [], services: [], parts: [], mechanics: [], suppliers: [] },
+      financeCompleteness: {
+        ...data.financeCompleteness,
+        issues: [],
+        checks: { missingLaborAccruals: 0, missingWalkInLabor: 0, missingPartCosts: 0, missingBaseAccrualEmployees: 0 },
+      },
+      alerts: [],
+      settings: {
+        ...data.settings,
+        fixedMonthlyCosts: 0,
+        targetGrossMarginPercent: 0,
+        warningGrossMarginPercent: 0,
+      },
+    },
+    control: {
+      ...control,
+      today: { ...control.today, revenue: 0, receivablesCreated: 0 },
+      reconciliation: { status: "OK", issueCount: 0, criticalCount: 0, warningCount: 0, issues: [] },
+      margins: [],
+      plan: { ...control.plan, metrics: [] },
+      forecast: {
+        ...control.forecast,
+        in7Days: data.kpi.currentCash,
+        in30Days: data.kpi.currentCash,
+        minimum: null,
+        firstGap: null,
+        firstReserveWarning: null,
+        drivers: [],
+      },
+      profitability: {
+        topWorkOrder: null, losingWorkOrders: [], losingCount: 0,
+        lowMarginParts: [], lowMarginPartsCount: 0, topMechanic: null, topSupplier: null,
+      },
+    },
+  };
+}
+
 function errorResponse(error: unknown) {
   if (error instanceof FinancialCenterV2Error) return NextResponse.json({ ok: false, code: error.code, error: error.message }, { status: error.status });
   console.error("[financial-center-v2]", error);
@@ -102,6 +281,13 @@ async function targetLocationForAction(action: string, body: Record<string, unkn
   if (advanceId) {
     const advance = await getPrisma().customerAdvance.findUnique({ where: { id: advanceId }, select: { locationId: true } });
     return advance?.locationId || null;
+  }
+  if (action === "CLOSE_CASH_DAY") {
+    const moneyAccountId = text(body.moneyAccountId, 64);
+    if (moneyAccountId) {
+      const account = await getPrisma().moneyAccount.findUnique({ where: { id: moneyAccountId }, select: { locationId: true } });
+      return account?.locationId || null;
+    }
   }
   return null;
 }
@@ -141,14 +327,27 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ ok: true, advances: advances.map((row) => ({ ...row, amount: Number(row.amount), appliedAmount: Number(row.appliedAmount), remainingAmount: Math.max(0, Number(row.amount) - Number(row.appliedAmount)) })) }, { headers: { "Cache-Control": "no-store" } });
     }
 
-    const data = await getFinancialCenterV2({
+    const scope = {
       from,
       to,
       currency: request.nextUrl.searchParams.get("currency") || "UAH",
       locationId: requestedLocationId,
       allowedLocationIds: access.grantedScope === "LOCATION" && !requestedLocationId ? access.allowedLocationIds : null,
-    });
-    return NextResponse.json(data, { headers: { "Cache-Control": "no-store" } });
+    };
+    const data = await getFinancialCenterV2(scope);
+    const control = await getFinancialCenterV3Control(scope, data);
+    const persona = financePersona(access.context.roles);
+    const visible = redactFinanceForPersona(data, control, persona.code);
+    return NextResponse.json({
+      ...visible.data,
+      control: visible.control,
+      viewer: {
+        roles: access.context.roles.map((role) => ({ code: role.code, name: role.name, isPrimary: role.isPrimary })),
+        primaryRole: persona.primaryRole,
+        persona: persona.code,
+        userName: access.context.user?.employeeName || access.context.user?.name || null,
+      },
+    }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
     return errorResponse(error);
   }
@@ -195,6 +394,18 @@ export async function POST(request: NextRequest) {
       case "SAVE_SETTINGS":
         result = await saveFinancialSettings({ ...body, locationId: requestedLocationId }, identity);
         break;
+      case "CLOSE_CASH_DAY": {
+        const moneyAccountId = text(body.moneyAccountId, 64);
+        if (!moneyAccountId) throw new FinancialCenterV2Error("ACCOUNT_REQUIRED", "Оберіть касу.");
+        if (access.allowedLocationIds) {
+          const account = await getPrisma().moneyAccount.findUnique({ where: { id: moneyAccountId }, select: { locationId: true } });
+          if (!account?.locationId || !access.allowedLocationIds.includes(account.locationId)) {
+            return NextResponse.json({ ok: false, code: "LOCATION_FORBIDDEN", error: "Немає доступу до цієї каси." }, { status: 403 });
+          }
+        }
+        result = await closeFinanceCashDay({ ...body, locationId: requestedLocationId }, identity);
+        break;
+      }
       case "SAVE_APPROVAL_RULE":
         result = await saveApprovalRule({ ...body, locationId: requestedLocationId }, identity);
         break;

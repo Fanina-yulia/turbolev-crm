@@ -165,3 +165,5 @@
   }
   .financeSections{flex:0 0 auto}
 }
+
+.modalWide{width:min(1180px,96vw)}
