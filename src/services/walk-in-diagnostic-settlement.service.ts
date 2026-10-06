@@ -289,7 +289,7 @@ export async function markWalkInDiagnosticCompleted(userId: string, diagnosticRe
 
   const completedAt = new Date();
   await prisma.$transaction(async (tx) => {
-    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`walk-in-complete:${diagnosticRequestId}`}))`;
+    await tx.$executeRaw`SELECT 1::int AS locked FROM pg_advisory_xact_lock(hashtext(${`walk-in-complete:${diagnosticRequestId}`}))`;
     const existingAudit = await tx.auditEvent.findFirst({
       where: { entityType: "DiagnosticRequest", entityId: diagnosticRequestId, action: "WALK_IN_DIAGNOSTIC_COMPLETED" },
       select: { id: true, createdAt: true },
@@ -466,7 +466,7 @@ export async function payWalkInDiagnostic(
   }
 
   await prisma.$transaction(async (tx) => {
-    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`walk-in-payment:${diagnosticRequestId}`}))`;
+    await tx.$executeRaw`SELECT 1::int AS locked FROM pg_advisory_xact_lock(hashtext(${`walk-in-payment:${diagnosticRequestId}`}))`;
 
     const existingPayment = await tx.cashTransaction.findFirst({
       where: { sourceEntity: PAYMENT_SOURCE, sourceEntityId: `${diagnosticRequestId}:payment`, status: "POSTED" },
@@ -564,7 +564,7 @@ export async function chooseWalkInPostPaymentRoute(
   if (!appointment) throw new WalkInDiagnosticSettlementError("NOT_WALK_IN", "Це не позаплановий заїзд.", 404);
 
   return prisma.$transaction(async (tx) => {
-    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`walk-in-route:${diagnosticRequestId}`}))`;
+    await tx.$executeRaw`SELECT 1::int AS locked FROM pg_advisory_xact_lock(hashtext(${`walk-in-route:${diagnosticRequestId}`}))`;
     const payment = await tx.cashTransaction.findFirst({
       where: { sourceEntity: PAYMENT_SOURCE, sourceEntityId: `${diagnosticRequestId}:payment`, status: "POSTED" },
     });
