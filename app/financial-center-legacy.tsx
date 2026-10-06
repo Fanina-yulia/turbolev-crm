@@ -82,6 +82,49 @@ function financeTabsForPersona(persona: FinancePersona | undefined): Tab[] {
 function canSeeFullFinance(persona: FinancePersona | undefined) { return persona === "OWNER" || persona === "FINANCE"; }
 const AGING_LABEL: Record<string, string> = { "0_7": "0–7", "8_14": "8–14", "15_30": "15–30", "31_60": "31–60", "60_PLUS": "60+" };
 
+const SECTION_META: Partial<Record<Tab, { eyebrow: string; title: string; description: string }>> = {
+  pnl: {
+    eyebrow: "PROFIT & LOSS",
+    title: "Прибуток і збитки",
+    description: "Виручка, прямі та операційні витрати, валовий і чистий прибуток за вибраний період.",
+  },
+  cash: {
+    eyebrow: "CASH FLOW",
+    title: "Рух грошей",
+    description: "Фактичні надходження, виплати, внутрішні перекази та структура руху коштів.",
+  },
+  plan: {
+    eyebrow: "PLAN / FACT",
+    title: "План / факт",
+    description: "Фінансові плани, бюджети, відхилення та контроль досягнення цілей.",
+  },
+  calendar: {
+    eyebrow: "PAYMENT CALENDAR",
+    title: "Платіжний календар і прогноз",
+    description: "Майбутні платежі, регулярні операції та прогноз залишку коштів.",
+  },
+  debts: {
+    eyebrow: "DEBTS",
+    title: "Дебіторка та кредиторка",
+    description: "Хто винен нам, кому винні ми, строки та прострочені зобов’язання.",
+  },
+  profitability: {
+    eyebrow: "PROFITABILITY",
+    title: "Прибутковість",
+    description: "Маржинальність замовлень, послуг, механіків, запчастин і постачальників.",
+  },
+  accounts: {
+    eyebrow: "MONEY ACCOUNTS",
+    title: "Рахунки та каси",
+    description: "Поточні управлінські залишки по касах, банківських рахунках і POS.",
+  },
+  settings: {
+    eyebrow: "FINANCIAL SETTINGS",
+    title: "Фінансові налаштування",
+    description: "Правила, категорії, регулярні операції та параметри фінансового управління.",
+  },
+};
+
 function money(value: number | null | undefined, currency = "UAH") { return value == null ? "—" : new Intl.NumberFormat("uk-UA", { style: "currency", currency, maximumFractionDigits: 0 }).format(value); }
 function percent(value: number | null | undefined) { return value == null ? "—" : `${new Intl.NumberFormat("uk-UA", { maximumFractionDigits: 1 }).format(value)}%`; }
 function dateText(value: string | null | undefined) { if (!value) return "—"; const date = new Date(value); return Number.isNaN(date.getTime()) ? "—" : new Intl.DateTimeFormat("uk-UA", { timeZone: "Europe/Kyiv", day: "2-digit", month: "2-digit", year: "numeric" }).format(date); }
@@ -240,9 +283,10 @@ export function FinancialCenter() {
     {error && <div className={styles.errorBox}><strong>Фінансовий центр не оновлено.</strong> {error}</div>}
     {message && <div className={styles.success}>{message}</div>}
 
-    {data && <FinanceContextKpis data={data} tab={tab} onMetric={setDrilldown} />}
+    {data && tab === "overview" && <FinanceContextKpis data={data} tab={tab} onMetric={setDrilldown} />}
 
     {!data && !loading && <div className={styles.empty}>Фінансові дані недоступні.</div>}
+    {data && tab !== "overview" && tab !== "expenses" && <FinanceSectionHero tab={tab} />}
     {data && tab === "overview" && <><FinanceOverviewControl data={data} /><FinanceAccrualBridge data={data} /><Overview data={data} onTab={chooseTab} /></>}
     {data && tab === "pnl" && <PnlView data={data} />}
     {data && tab === "cash" && <CashFlowView data={data} onOperation={openOperation} />}
@@ -288,6 +332,18 @@ export function FinancialCenter() {
     {data && settingsHubOpen && <Modal title="Налаштування фінансів" onClose={() => setSettingsHubOpen(false)} wide><SettingsView data={data} onCategory={() => { setSettingsHubOpen(false); setCategoryOpen(true); }} onRecurring={() => { setSettingsHubOpen(false); setRecurringOpen(true); }} onSettings={() => { setSettingsHubOpen(false); setSettingsOpen(true); }} /></Modal>}
     {data && <FinanceDrilldown data={data} metric={drilldown} onClose={() => setDrilldown(null)} />}
   </div>;
+}
+
+function FinanceSectionHero({ tab }: { tab: Tab }) {
+  const meta = SECTION_META[tab];
+  if (!meta) return null;
+  return <section className={styles.expenseHero}>
+    <div>
+      <span className={styles.eyebrow}>{meta.eyebrow}</span>
+      <h2>{meta.title}</h2>
+      <p>{meta.description}</p>
+    </div>
+  </section>;
 }
 
 function Overview({ data, onTab }: { data: FinanceV2; onTab: (tab: Tab) => void }) {
