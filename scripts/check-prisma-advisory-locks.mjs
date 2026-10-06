@@ -17,6 +17,8 @@ function walk(dir) {
     const relative = path.relative(ROOT, full).replaceAll("\\", "/");
     const lines = fs.readFileSync(full, "utf8").split(/\r?\n/);
     lines.forEach((line, index) => {
+      const trimmed = line.trim();
+      if (trimmed.startsWith("//") || trimmed.startsWith("*") || trimmed.startsWith("/*")) return;
       if (/SELECT\s+pg_advisory_xact_lock\s*\(/.test(line) && !line.includes("::text AS locked")) {
         failures.push(`${relative}:${index + 1} exposes PostgreSQL void from pg_advisory_xact_lock to Prisma/driver`);
       }
