@@ -51,7 +51,7 @@ runNodeScript("scripts/database-observability-contract-smoke.mjs");
 runNodeScript("scripts/warranty-scope-performance-contract-smoke.mjs");
 runNodeScript("scripts/walkin-lifecycle-finance-contract-smoke.mjs");
 run(["tsx", "scripts/api-security-policy-smoke.ts"]);
-run(["tsx", "scripts/mechanic-process-card-contract-smoke.ts"]);
+run(["tsx", "scripts/mechanic-process-card-contract-smoke.ts"]);\nrun(["tsx", "scripts/finance-expense-center-contract-smoke.ts"]);
 run(["tsx", "scripts/parts-picker-cart-v4-smoke.ts"]);
 run(["tsx", "scripts/parts-oe-first-search-contract-smoke.ts"]);
 
