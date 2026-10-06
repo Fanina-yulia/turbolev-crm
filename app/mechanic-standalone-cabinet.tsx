@@ -189,7 +189,42 @@ type NotificationFeed = {
   error?: string;
 };
 
-type Payroll = { ok: boolean; projection?: { total?: number | string; month?: string } };
+type Payroll = {
+  ok: boolean;
+  rules?: {
+    baseSalary: number;
+    minimumSalary: number;
+    workPercent: number;
+    partsSalesPercent: number;
+    partsMarginPercent: number;
+    netProfitPercent: number;
+  };
+  balance?: { accrued: number; paid: number; due: number };
+  today?: { accrued: number; paid: number; due: number };
+  week?: { accrued: number; paid: number; due: number };
+  month?: {
+    accrued: number;
+    paid: number;
+    due: number;
+    byCategory: Record<string, number>;
+    details: Array<{
+      id: string;
+      category: string;
+      amount: number;
+      occurredAt: string;
+      sourceType: string | null;
+      sourceId: string | null;
+      description: string | null;
+    }>;
+  };
+  projection?: {
+    postedAccrued: number;
+    futureBase: number;
+    estimatedProfitShare: number;
+    estimatedMinimumTopUp: number;
+    total: number;
+  };
+};
 type Screen = "HOME" | "WORKS" | "WORK_DETAIL" | "REPAIR_COMPLETION" | "STOP" | "ADDITIONAL_WORK" | "FINDING" | "DIAGNOSTICS" | "DIAGNOSTIC_DETAIL" | "NOTIFICATIONS" | "PROFILE" | "SCHEDULE" | "PAYROLL" | "SUPPORT";
 type WorkAction = "START" | "PAUSE" | "STOP" | "RESUME" | "COMPLETE" | "WAITING_PARTS";
 type ThemeChoice = "system" | "light" | "dark";
@@ -727,13 +762,21 @@ export function MechanicStandaloneCabinet({ userName }: { userName?: string | nu
     }
     setNotificationFeed(notificationsBody);
     if (findingsResponse.ok && findingsBody?.ok) setClarifications(findingsBody.items ?? []);
+  }, [])  const loadPayroll = useCallback(async () => {
+    const response = await fetch("/api/me/compensation", { cache: "no-store", credentials: "include" });
+    const body = await response.json().catch(() => null) as Payroll | null;
+    if (!response.ok || !body?.ok) throw new Error((body as { message?: string; error?: string } | null)?.message || (body as { message?: string; error?: string } | null)?.error || "Не вдалося завантажити зарплату");
+    setPayroll(body);
+    return body;
   }, []);
+
+;
 
   useEffect(() => {
     const stored = window.localStorage.getItem("turbolev:mechanic-theme");
     if (stored === "light" || stored === "dark" || stored === "system") setThemeChoice(stored);
-    void Promise.all([loadHome(), loadTasks(), loadRepairCases(), loadDiagnostics(), loadProcessCards(), loadNotifications()]).catch((cause) => setError(cause instanceof Error ? cause.message : "Не вдалося завантажити кабінет"));
-  }, [loadDiagnostics, loadHome, loadNotifications, loadProcessCards, loadRepairCases, loadTasks]);
+    void Promise.all([loadHome(), loadTasks(), loadRepairCases(), loadDiagnostics(), loadProcessCards(), loadNotifications(), loadPayroll()]).catch((cause) => setError(cause instanceof Error ? cause.message : "Не вдалося завантажити кабінет"));
+  }, [loadDiagnostics, loadHome, loadNotifications, loadPayroll, loadProcessCards, loadRepairCases, loadTasks]);
 
   useEffect(() => startAdaptivePoller({
     run: () => loadNotifications().catch(() => undefined),
@@ -1225,12 +1268,8 @@ export function MechanicStandaloneCabinet({ userName }: { userName?: string | nu
 
   async function openPayroll() {
     setScreen("PAYROLL"); setError("");
-    try {
-      const response = await fetch("/api/me/compensation", { cache: "no-store", credentials: "include" });
-      const body = await response.json().catch(() => null);
-      if (!response.ok || !body?.ok) throw new Error(body?.message || body?.error || "Не вдалося завантажити зарплату");
-      setPayroll(body as Payroll);
-    } catch (cause) { setError(cause instanceof Error ? cause.message : "Не вдалося завантажити зарплату"); }
+    try { await loadPayroll(); }
+    catch (cause) { setError(cause instanceof Error ? cause.message : "Не вдалося завантажити зарплату"); }
   }
 
   async function signOut() {
@@ -1260,7 +1299,7 @@ export function MechanicStandaloneCabinet({ userName }: { userName?: string | nu
         </header>
         <main className={styles.content}>
           <section><div className={styles.sectionHead}><div><h2>{activeTask?.status === "IN_PROGRESS" ? "Поточна робота" : activeTask?.status === "PAUSED" ? "Робота на паузі" : nextAppointmentOverdue ? "Протермінована робота" : "Наступна робота"}</h2><p>За даними планувальника</p></div></div>{activeTask ? <article className={`${styles.taskHero} ${nextAppointmentOverdue ? styles.vehicleCardOverdue : styles.vehicleCardPending}`}><div className={styles.taskTop}><div><h3>{activeTask.vehicle}</h3><p>{activeTask.plate}</p></div><span className={`${styles.pill} ${nextAppointmentOverdue ? styles.vehicleStatusOverdue : styles.warn}`}>{nextAppointmentOverdue ? "Протерміновано" : statusLabel[activeTask.status] || activeTask.status}</span></div><strong>🔧 {activeTask.description}</strong><div className={styles.meta}><span>Пост <b>{activeTaskAppointment?.post || "—"}</b></span><span>Час <b>{time(activeTaskAppointment?.plannedStartAt)}</b></span></div><button type="button" className={styles.primary} onClick={() => openTask(activeTask)}>Відкрити роботу →</button></article> : nextScheduledAppointment ? <article className={`${styles.taskHero} ${nextAppointmentOverdue ? styles.vehicleCardOverdue : styles.vehicleCardPending}`}><div className={styles.taskTop}><div><h3>{nextScheduledAppointment.vehicle}</h3><p>{nextScheduledAppointment.plate}</p></div><span className={`${styles.pill} ${nextAppointmentOverdue ? styles.vehicleStatusOverdue : styles.warn}`}>{nextAppointmentOverdue ? "Протерміновано" : kyivDateKey(nextScheduledAppointment.plannedStartAt) === kyivDateKey(new Date()) ? "Сьогодні" : "Заплановано"}</span></div><strong>🔧 {nextScheduledAppointment.problem || "Запис на СТО"}</strong><div className={styles.meta}><span>Пост <b>{nextScheduledAppointment.post || "—"}</b></span><span>Час <b>{time(nextScheduledAppointment.plannedStartAt)}</b></span></div><button type="button" className={styles.primary} onClick={() => openAppointment(nextScheduledAppointment)}>{nextAppointmentOverdue ? "Відкрити роботу →" : "Почати роботу →"}</button></article> : <div className={styles.empty}>Активних робіт немає.</div>}</section>
-          <section className={styles.card}><div className={styles.sectionHead}><div><h2>Мої автомобілі</h2><p>Діагностика і ремонт — окремі картки</p></div><button type="button" className={styles.textButton} onClick={() => openWorks("ALL")}>Всі авто ›</button></div><div className={styles.compactList}>{homeProcessCards.slice(0, 4).map((card) => <button type="button" data-vehicle-card="true" data-vehicle-state={card.state} className={`${styles.vehicleRow} ${card.state === "OVERDUE" ? styles.vehicleCardOverdue : card.state === "DONE" ? styles.vehicleCardDone : styles.vehicleCardPending}`} key={card.id} onClick={() => openProcessCard(card)}><div><strong data-vehicle-title="true">{card.vehicle}</strong><small data-vehicle-plate="true" className={styles.plateLine}>{card.plate}</small><small data-vehicle-summary="true">{card.summary}</small></div><span data-vehicle-status="true" className={`${styles.pill} ${styles.vehicleRowStatus} ${card.state === "OVERDUE" ? styles.vehicleStatusOverdue : card.state === "DONE" ? styles.good : styles.warn}`}>{card.statusLabel}</span></button>)}</div>{!homeProcessCards.length && <div className={styles.emptyInline}>Записів по автомобілях немає.</div>}</section>
+          <section className={styles.card}><div className={styles.sectionHead}><div><h2>Мій заробіток</h2><p>Нарахування оновлюються після виконаних робіт</p></div><button type="button" className={styles.textButton} onClick={() => void openPayroll()}>Детально ›</button></div><div className={styles.earningsGrid}><div><span>Сьогодні</span><strong>{money(payroll?.today?.accrued)}</strong></div><div><span>Цей місяць</span><strong>{money(payroll?.month?.accrued)}</strong></div><div><span>До виплати</span><strong>{money(payroll?.balance?.due)}</strong></div></div></section><section className={styles.card}><div className={styles.sectionHead}><div><h2>Мої автомобілі</h2><p>Діагностика і ремонт — окремі картки</p></div><button type="button" className={styles.textButton} onClick={() => openWorks("ALL")}>Всі авто ›</button></div><div className={styles.compactList}>{homeProcessCards.slice(0, 4).map((card) => <button type="button" data-vehicle-card="true" data-vehicle-state={card.state} className={`${styles.vehicleRow} ${card.state === "OVERDUE" ? styles.vehicleCardOverdue : card.state === "DONE" ? styles.vehicleCardDone : styles.vehicleCardPending}`} key={card.id} onClick={() => openProcessCard(card)}><div><strong data-vehicle-title="true">{card.vehicle}</strong><small data-vehicle-plate="true" className={styles.plateLine}>{card.plate}</small><small data-vehicle-summary="true">{card.summary}</small></div><span data-vehicle-status="true" className={`${styles.pill} ${styles.vehicleRowStatus} ${card.state === "OVERDUE" ? styles.vehicleStatusOverdue : card.state === "DONE" ? styles.good : styles.warn}`}>{card.statusLabel}</span></button>)}</div>{!homeProcessCards.length && <div className={styles.emptyInline}>Записів по автомобілях немає.</div>}</section>
         </main>
       </>}
 
@@ -1314,7 +1353,15 @@ export function MechanicStandaloneCabinet({ userName }: { userName?: string | nu
 
       {screen === "SCHEDULE" && <><TopBar title="Мій графік" onBack={() => setScreen(scheduleBackScreen)} /><main className={styles.content}><div className={styles.pageTitle}><h1>{scheduleHeading.title}</h1><p>{scheduleHeading.description}</p></div><div className={`${styles.filterBar} ${styles.filterBarTwo}`} role="group" aria-label="Фільтр графіка"><button type="button" className={scheduleFilter === "ALL" ? styles.filterActive : ""} aria-pressed={scheduleFilter === "ALL"} onClick={() => setScheduleFilter("ALL")}>Усі закріплення</button><button type="button" className={scheduleFilter === "TODAY" ? styles.filterActive : ""} aria-pressed={scheduleFilter === "TODAY"} onClick={() => setScheduleFilter("TODAY")}>На сьогодні</button></div><div className={styles.stack}>{visibleScheduleAppointments.map((item) => { const itemStatus = appointmentStatus(item); const overdue = isAppointmentOverdue(item); return <article className={styles.scheduleCard} style={overdue ? overdueCardStyle : undefined} key={item.id}><time style={overdue ? { color: "var(--m-danger)", fontWeight: 850 } : undefined}>{notificationTime(item.plannedStartAt)}–{time(item.plannedEndAt)}</time><div><strong>{item.vehicle}</strong><p>{item.plate} · {item.problem || "Запис на СТО"}</p><small style={overdue ? { color: "var(--m-danger)", fontWeight: 800 } : undefined}>{item.post || "Пост не призначено"} · {overdue ? "Протерміновано" : statusLabel[itemStatus] || itemStatus}</small></div></article>; })}</div>{!visibleScheduleAppointments.length && <div className={styles.empty}>{scheduleHeading.empty}</div>}</main></>}
 
-      {screen === "PAYROLL" && <><TopBar title="Моя зарплата" onBack={() => setScreen("PROFILE")} /><main className={styles.content}><section className={styles.payHero}><span>Прогноз за місяць</span><strong>{money(payroll?.projection?.total)}</strong><small>{payroll?.projection?.month || "Поточний місяць"}</small></section><section className={styles.card}><div className={styles.metrics}><div><b>{assignedCases}</b><span>Закріплено</span></div><div><b>{inProgress}</b><span>В роботі</span></div><div><b>{completed}</b><span>Завершено</span></div><div><b>{home.kpis?.waitingParts ?? 0}</b><span>Очікує деталей</span></div></div></section></main></>}
+      {screen === "PAYROLL" && <><TopBar title="Моя зарплата" onBack={() => setScreen("PROFILE")} /><main className={styles.content}>
+        <section className={styles.payHero}><span>Прогноз за місяць</span><strong>{money(payroll?.projection?.total)}</strong><small>Оцінка за поточними правилами мотивації</small></section>
+        <section className={styles.card}><div className={styles.sectionHead}><div><h2>Зароблено</h2><p>Тільки Ваші власні нарахування</p></div></div><div className={styles.earningsGrid}><div><span>Сьогодні</span><strong>{money(payroll?.today?.accrued)}</strong></div><div><span>Тиждень</span><strong>{money(payroll?.week?.accrued)}</strong></div><div><span>Місяць</span><strong>{money(payroll?.month?.accrued)}</strong></div></div></section>
+        <section className={styles.card}><div className={styles.sectionHead}><div><h2>Розрахунки</h2><p>Зароблено, виплачено і залишок</p></div></div><div className={styles.payBalance}><div><span>Нараховано всього</span><strong>{money(payroll?.balance?.accrued)}</strong></div><div><span>Виплачено</span><strong>{money(payroll?.balance?.paid)}</strong></div><div><span>До виплати</span><strong>{money(payroll?.balance?.due)}</strong></div></div></section>
+        <section className={styles.card}><div className={styles.sectionHead}><div><h2>З чого складається місяць</h2><p>Кожна сума має джерело</p></div></div><div className={styles.payBreakdown}><div><span>Базова ставка</span><strong>{money(payroll?.month?.byCategory?.BASE)}</strong></div><div><span>% від робіт</span><strong>{money(payroll?.month?.byCategory?.LABOR)}</strong></div><div><span>% від деталей / маржі</span><strong>{money(payroll?.month?.byCategory?.SALES)}</strong></div><div><span>Бонуси</span><strong>{money((payroll?.month?.byCategory?.BONUS || 0) + (payroll?.month?.byCategory?.KPI || 0))}</strong></div><div><span>Доплата до мінімуму</span><strong>{money(payroll?.month?.byCategory?.ADJUSTMENT)}</strong></div></div></section>
+        <section className={styles.card}><div className={styles.sectionHead}><div><h2>Мої правила оплати</h2><p>Зміни правил не перераховують уже зафіксовані нарахування</p></div></div><div className={styles.ruleGrid}><div><span>Ставка</span><strong>{money(payroll?.rules?.baseSalary)}</strong></div><div><span>Мінімум</span><strong>{money(payroll?.rules?.minimumSalary)}</strong></div><div><span>Від робіт</span><strong>{payroll?.rules?.workPercent ?? 0}%</strong></div><div><span>Від продажу деталей</span><strong>{payroll?.rules?.partsSalesPercent ?? 0}%</strong></div><div><span>Від маржі деталей</span><strong>{payroll?.rules?.partsMarginPercent ?? 0}%</strong></div><div><span>Від прибутку</span><strong>{payroll?.rules?.netProfitPercent ?? 0}%</strong></div></div></section>
+        <section className={styles.card}><div className={styles.sectionHead}><div><h2>Останні нарахування</h2><p>Розшифровка за поточний місяць</p></div></div><div className={styles.payDetails}>{(payroll?.month?.details ?? []).slice(0, 30).map((item) => <div key={item.id}><div><strong>{item.description || "Нарахування"}</strong><small>{new Intl.DateTimeFormat("uk-UA", { timeZone: "Europe/Kyiv", day: "2-digit", month: "2-digit" }).format(new Date(item.occurredAt))}</small></div><b>{money(item.amount)}</b></div>)}</div>{!(payroll?.month?.details?.length) && <div className={styles.emptyInline}>Нарахувань за цей місяць ще немає.</div>}</section>
+        <section className={styles.card}><div className={styles.sectionHead}><div><h2>Прогноз</h2><p>Не є виплатою до закриття відповідних умов</p></div></div><div className={styles.payBreakdown}><div><span>Вже нараховано</span><strong>{money(payroll?.projection?.postedAccrued)}</strong></div><div><span>Ще ставка до кінця місяця</span><strong>{money(payroll?.projection?.futureBase)}</strong></div><div><span>Орієнтовний profit-бонус</span><strong>{money(payroll?.projection?.estimatedProfitShare)}</strong></div><div><span>Орієнтовна доплата до мінімуму</span><strong>{money(payroll?.projection?.estimatedMinimumTopUp)}</strong></div></div></section>
+      </main></>}
 
       {message && <div className={styles.toastGood}><span>{message}</span><button type="button" onClick={() => setMessage("")}>×</button></div>}
       {error && <div className={styles.toastBad}><span>{error}</span><button type="button" onClick={() => setError("")}>×</button></div>}
