@@ -246,8 +246,61 @@ function CashFlowView({ data, onOperation }: { data: FinanceV2; onOperation: (ty
   return <><div className={styles.grid3}><section className={styles.panel}><div className={styles.panelHeader}><div><span className={styles.eyebrow}>CASH FLOW</span><h2><FinanceInfoTooltip term="cashFlow" label="Рух грошей" /></h2></div></div><div className={styles.summaryRow}><span><FinanceInfoTooltip term="inflow" label="Надходження" compact /></span><strong className={styles.positive}>{money(data.cashFlow.inflow)}</strong></div><div className={styles.summaryRow}><span><FinanceInfoTooltip term="outflow" label="Виплати" compact /></span><strong className={styles.negative}>{money(data.cashFlow.outflow)}</strong></div><div className={`${styles.summaryRow} ${styles.summaryTotal}`}><span><FinanceInfoTooltip term="cashFlow" label="Net Cash Flow" compact /></span><strong>{money(data.cashFlow.net)}</strong></div></section><section className={styles.panel}><div className={styles.panelHeader}><div><span className={styles.eyebrow}>BY ACTIVITY</span><h2>За видами діяльності</h2></div></div><div className={styles.summaryRow}><span><FinanceInfoTooltip term="operatingCashFlow" label="Операційна" compact /></span><strong>{money(data.cashFlow.operating)}</strong></div><div className={styles.summaryRow}><span><FinanceInfoTooltip term="investingCashFlow" label="Інвестиційна" compact /></span><strong>{money(data.cashFlow.investing)}</strong></div><div className={styles.summaryRow}><span><FinanceInfoTooltip term="financingCashFlow" label="Фінансова" compact /></span><strong>{money(data.cashFlow.financing)}</strong></div><div className={styles.summaryRow}><span><FinanceInfoTooltip term="internalTransfer" label="Внутрішні перекази" compact /></span><strong>{money(data.cashFlow.internalTransfer)}</strong></div></section><section className={styles.panel}><div className={styles.panelHeader}><div><span className={styles.eyebrow}>OPERATIONS</span><h2>Швидкі дії</h2></div></div><div className={styles.quickActions}><button className={styles.primaryButton} onClick={() => onOperation("INCOME")}>+ Надходження</button><button className={styles.secondaryButton} onClick={() => onOperation("EXPENSE")}>+ Витрата</button><button className={styles.secondaryButton} onClick={() => onOperation("TRANSFER")}>↔ Переказ</button></div><p className={styles.hint}>Внутрішній переказ не впливає на P&L і загальну суму грошей компанії.</p></section></div><section className={styles.panel}><div className={styles.panelHeader}><div><span className={styles.eyebrow}>TRANSACTIONS</span><h2>Фактичні рухи</h2></div></div><div className={styles.tableWrap}><table className={styles.table}><thead><tr><th>Дата</th><th>Тип</th><th>Секція</th><th>Опис</th><th className={styles.numberCell}>Сума</th></tr></thead><tbody>{data.cashFlow.transactions.map((tx) => <tr key={tx.id}><td>{dateText(tx.occurredAt)}</td><td>{tx.kind}</td><td>{tx.flowSection}</td><td>{tx.description || "—"}</td><td className={`${styles.numberCell} ${tx.kind === "INFLOW" ? styles.positive : tx.kind === "OUTFLOW" ? styles.negative : ""}`}>{tx.kind === "OUTFLOW" ? "−" : tx.kind === "INFLOW" ? "+" : ""}{money(tx.amount)}</td></tr>)}</tbody></table></div></section></>;
 }
 
-function BudgetCard({ item }: { item: Budget }) { const pct = Math.max(0, Math.min(160, item.completionPercent || 0)); return <div className={styles.panel}><div className={styles.sectionTitle}><h3>{item.name}</h3><span className={`${styles.badge} ${pct >= 120 ? styles.bad : pct >= 80 ? styles.warn : styles.good}`}>{item.completionPercent == null ? "—" : `${item.completionPercent.toFixed(0)}%`}</span></div><div className={styles.statPair}><span>План</span><strong>{money(item.amount)}</strong></div><div className={styles.statPair}><span>Факт</span><strong>{money(item.actual)}</strong></div><div className={styles.statPair}><span>Відхилення</span><strong className={item.variance > 0 && ["OPEX","COGS","CATEGORY"].includes(item.metric) ? styles.negative : ""}>{money(item.variance)}</strong></div><div className={styles.progress}><span style={{width:`${Math.min(100,pct)}%`}} /></div></div>; }
-function PlanFactView({ data, onNewBudget }: { data: FinanceV2; onNewBudget: () => void }) { return <><section className={styles.panel}><div className={styles.panelHeader}><div><span className={styles.eyebrow}>BUDGET CONTROL</span><h2>План / факт</h2><p>Бюджети компанії, СТО або окремої категорії.</p></div><button className={styles.primaryButton} onClick={onNewBudget}>+ Додати бюджет</button></div>{data.budgets.length ? <div className={styles.grid3}>{data.budgets.map((item) => <BudgetCard key={item.id} item={item}/>)}</div> : <div className={styles.empty}>План ще не заданий.</div>}</section><section className={styles.panel}><div className={styles.panelHeader}><div><span className={styles.eyebrow}>BREAK-EVEN</span><h2>План до беззбитковості</h2></div></div><div className={styles.miniCards}><div className={styles.miniCard}><span>Точка беззбитковості</span><strong>{money(data.breakEven.breakEvenRevenue)}</strong></div><div className={styles.miniCard}><span>Факт виручки</span><strong>{money(data.breakEven.currentRevenue)}</strong></div><div className={styles.miniCard}><span>Залишилось</span><strong>{money(data.breakEven.remainingRevenue)}</strong></div><div className={styles.miniCard}><span>Робочих днів</span><strong>{data.breakEven.remainingWorkingDays}</strong></div><div className={styles.miniCard}><span>Потрібно / день</span><strong>{money(data.breakEven.requiredRevenuePerDay)}</strong></div></div></section></>; }
+function budgetPace(item: Budget) {
+  const start = new Date(item.periodStart).getTime();
+  const end = new Date(item.periodEnd).getTime();
+  const now = Date.now();
+  const total = Math.max(1, end - start);
+  const elapsed = Math.min(total, Math.max(0, now - start));
+  const ratio = elapsed <= 0 ? 0 : elapsed / total;
+  const forecast = ratio > 0 ? item.actual / ratio : item.actual;
+  const completion = item.completionPercent;
+  const expenseLike = ["OPEX", "COGS", "CATEGORY"].includes(item.metric);
+  let status = "за планом";
+  let tone = styles.good;
+  if (completion != null) {
+    if (expenseLike && completion >= 120) { status = "перевищено"; tone = styles.bad; }
+    else if (expenseLike && completion >= 100) { status = "ризик перевищення"; tone = styles.warn; }
+    else if (!expenseLike && completion < 80 && ratio >= 0.5) { status = "відстає"; tone = styles.warn; }
+  }
+  return { forecast, status, tone };
+}
+
+function BudgetCard({ item }: { item: Budget }) {
+  const pct = Math.max(0, Math.min(160, item.completionPercent || 0));
+  const pace = budgetPace(item);
+  return <div className={styles.panel}>
+    <div className={styles.sectionTitle}><h3>{item.name}</h3><span className={`${styles.badge} ${pace.tone}`}>{pace.status}</span></div>
+    <div className={styles.statPair}><span>План</span><strong>{money(item.amount)}</strong></div>
+    <div className={styles.statPair}><span>Факт</span><strong>{money(item.actual)}</strong></div>
+    <div className={styles.statPair}><span>Відхилення</span><strong className={item.variance > 0 && ["OPEX","COGS","CATEGORY"].includes(item.metric) ? styles.negative : ""}>{money(item.variance)}</strong></div>
+    <div className={styles.statPair}><span>Прогноз за темпом</span><strong>{money(pace.forecast)}</strong></div>
+    <div className={styles.statPair}><span>Виконання</span><strong>{item.completionPercent == null ? "—" : `${item.completionPercent.toFixed(0)}%`}</strong></div>
+    <div className={styles.progress}><span style={{width:`${Math.min(100,pct)}%`}} /></div>
+  </div>;
+}
+
+function PlanFactView({ data, onNewBudget }: { data: FinanceV2; onNewBudget: () => void }) {
+  return <>
+    <section className={styles.panel}>
+      <div className={styles.panelHeader}><div><span className={styles.eyebrow}>КОНТРОЛЬ БЮДЖЕТУ</span><h2>План / факт</h2><p>План, факт, відхилення і прогноз темпу до завершення бюджетного періоду.</p></div><button className={styles.primaryButton} onClick={onNewBudget}>+ Додати бюджет</button></div>
+      {data.budgets.length
+        ? <div className={styles.grid3}>{data.budgets.map((item) => <BudgetCard key={item.id} item={item}/>)}</div>
+        : <div className={styles.emptyAction}><strong>План на цей період не заданий.</strong><span>Додайте план виручки або витрат, щоб CRM могла показувати виконання і прогноз темпу.</span><button className={styles.primaryButton} onClick={onNewBudget}>+ Створити перший план</button></div>}
+    </section>
+    <section className={styles.panel}>
+      <div className={styles.panelHeader}><div><span className={styles.eyebrow}>БЕЗЗБИТКОВІСТЬ</span><h2>План до беззбитковості</h2></div></div>
+      <div className={styles.miniCards}>
+        <div className={styles.miniCard}><span>Точка беззбитковості</span><strong>{money(data.breakEven.breakEvenRevenue)}</strong></div>
+        <div className={styles.miniCard}><span>Факт виручки</span><strong>{money(data.breakEven.currentRevenue)}</strong></div>
+        <div className={styles.miniCard}><span>Залишилось</span><strong>{money(data.breakEven.remainingRevenue)}</strong></div>
+        <div className={styles.miniCard}><span>Робочих днів</span><strong>{data.breakEven.remainingWorkingDays}</strong></div>
+        <div className={styles.miniCard}><span>Потрібно / день</span><strong>{money(data.breakEven.requiredRevenuePerDay)}</strong></div>
+      </div>
+      {data.settings.fixedMonthlyCosts <= 0 && <div className={styles.warningNote}>Постійні витрати не задані. Точка беззбитковості не може бути повноцінною, доки не задані оренда, адміністративні зарплати та інші постійні витрати.</div>}
+    </section>
+  </>;
+}
 
 function ForecastStrip({ data }: { data: FinanceV2 }) { const points = data.forecast.points.filter((_, index) => index % Math.max(1, Math.floor(data.forecast.points.length / 10)) === 0).slice(0,12); return <div className={styles.forecastLine}>{points.map((point) => <div key={point.date} className={`${styles.forecastPoint} ${point.closingCash < 0 ? styles.cashGap : point.belowReserve ? styles.belowReserve : ""}`}><span>{dateText(point.date)}</span><strong>{money(point.closingCash)}</strong><small>{point.net >= 0 ? "+" : ""}{money(point.net)}</small></div>)}</div>; }
 function CalendarView({ data, onNewRecurring }: { data: FinanceV2; onNewRecurring: () => void }) {
