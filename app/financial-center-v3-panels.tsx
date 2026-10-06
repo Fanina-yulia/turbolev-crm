@@ -184,12 +184,13 @@ export function financialControlIssues(data: FinanceV2): ControlIssue[] {
   if (!data.recurring.length) items.push({ level: "INFO", code: "NO_RECURRING", title: "Немає регулярних операцій", message: "Оренда, зарплати та інші регулярні платежі покращують точність прогнозу грошей.", tab: "calendar" });
 
   const seen = new Set<string>();
+  const priority: Record<ControlIssue["level"], number> = { CRITICAL: 0, WARNING: 1, INFO: 2 };
   return items.filter((item) => {
     const key = `${item.code}:${item.title}`;
     if (seen.has(key)) return false;
     seen.add(key);
     return true;
-  }).sort((a, b) => ({ CRITICAL: 0, WARNING: 1, INFO: 2 }[a.level] - ({ CRITICAL: 0, WARNING: 1, INFO: 2 }[b.level]));
+  }).sort((a, b) => priority[a.level] - priority[b.level]);
 }
 
 export function FinancialControlPanel({ data, onTab }: { data: FinanceV2; onTab: (tab: Tab) => void }) {
