@@ -1,4 +1,4 @@
-import type { Prisma } from "@/src/generated/prisma/client";
+import { AppointmentPurpose, type Prisma } from "@/src/generated/prisma/client";
 import { getPrisma } from "@/src/lib/prisma";
 
 export type DiagnosticVisitLinkInput = {
@@ -8,16 +8,30 @@ export type DiagnosticVisitLinkInput = {
   source: "PLANNER" | "WALK_IN" | "AUDIT_BACKFILL";
 };
 
+async function enforceDiagnosticPurpose(tx: Prisma.TransactionClient, appointmentId: string) {
+  await tx.serviceAppointment.updateMany({
+    where: { id: appointmentId, purpose: { not: AppointmentPurpose.DIAGNOSTICS } },
+    data: { purpose: AppointmentPurpose.DIAGNOSTICS },
+  });
+}
+
 export async function linkDiagnosticVisitInTransaction(tx: Prisma.TransactionClient, input: DiagnosticVisitLinkInput) {
   const existing = await tx.diagnosticVisitLink.findUnique({ where: { diagnosticRequestId: input.diagnosticRequestId } });
-  if (existing) return existing;
+  if (existing) {
+    await enforceDiagnosticPurpose(tx, existing.appointmentId);
+    return existing;
+  }
 
   const appointmentLink = await tx.diagnosticVisitLink.findUnique({ where: { appointmentId: input.appointmentId } });
   if (appointmentLink) {
-    if (appointmentLink.diagnosticRequestId === input.diagnosticRequestId) return appointmentLink;
+    if (appointmentLink.diagnosticRequestId === input.diagnosticRequestId) {
+      await enforceDiagnosticPurpose(tx, appointmentLink.appointmentId);
+      return appointmentLink;
+    }
     throw new Error(`DIAGNOSTIC_VISIT_CONFLICT:${input.appointmentId}`);
   }
 
+  await enforceDiagnosticPurpose(tx, input.appointmentId);
   return tx.diagnosticVisitLink.create({ data: input });
 }
 
@@ -33,7 +47,13 @@ type AuditVisitRow = {
 export async function ensureDiagnosticVisitLink(diagnosticRequestId: string) {
   const prisma = getPrisma();
   const existing = await prisma.diagnosticVisitLink.findUnique({ where: { diagnosticRequestId } });
-  if (existing) return existing;
+  if (existing) {
+    await prisma.serviceAppointment.updateMany({
+      where: { id: existing.appointmentId, purpose: { not: AppointmentPurpose.DIAGNOSTICS } },
+      data: { purpose: AppointmentPurpose.DIAGNOSTICS },
+    });
+    return existing;
+  }
 
   const diagnostic = await prisma.diagnosticRequest.findUnique({
     where: { id: diagnosticRequestId },
@@ -68,9 +88,12 @@ export async function ensureDiagnosticVisitLink(diagnosticRequestId: string) {
   });
   if (!appointment || appointment.vehicleId !== diagnostic.vehicleId) return null;
 
-  await prisma.diagnosticVisitLink.createMany({
-    data: [{ diagnosticRequestId, appointmentId, vehicleId: diagnostic.vehicleId, source: "AUDIT_BACKFILL" }],
-    skipDuplicates: true,
+  await prisma.$transaction(async (tx) => {
+    await tx.diagnosticVisitLink.createMany({
+      data: [{ diagnosticRequestId, appointmentId, vehicleId: diagnostic.vehicleId, source: "AUDIT_BACKFILL" }],
+      skipDuplicates: true,
+    });
+    await enforceDiagnosticPurpose(tx, appointmentId);
   });
   return prisma.diagnosticVisitLink.findUnique({ where: { diagnosticRequestId } });
 }
