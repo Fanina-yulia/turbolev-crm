@@ -380,11 +380,15 @@ async function reconcileWalkInDiagnosticsForMonth(date: Date) {
     if (!diagnosticRequestId) continue;
     const assignment = await prisma.diagnosticAssignment.findUnique({
       where: { diagnosticRequestId },
-      select: { mechanicId: true, mechanic: { select: { employeeId: true, userId: true } } },
+      select: { mechanicId: true },
     });
-    const employeeId = assignment?.mechanic.employeeId
-      || (assignment?.mechanic.userId
-        ? (await prisma.employeeProfile.findUnique({ where: { userId: assignment.mechanic.userId }, select: { id: true } }))?.id
+    const mechanicResource = assignment?.mechanicId ? await prisma.serviceMechanic.findUnique({
+      where: { id: assignment.mechanicId },
+      select: { employeeId: true, userId: true },
+    }) : null;
+    const employeeId = mechanicResource?.employeeId
+      || (mechanicResource?.userId
+        ? (await prisma.employeeProfile.findUnique({ where: { userId: mechanicResource.userId }, select: { id: true } }))?.id
         : null)
       || null;
     if (!employeeId) continue;
