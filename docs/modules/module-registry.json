@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated": "2026-10-05",
+  "updated": "2026-10-06",
   "rule": "Every production change must be assigned to at least one module. Start analysis from the module passport, then inspect declared dependencies only when the change can affect them.",
   "globalRules": [
     {
@@ -603,7 +603,10 @@
         "src/services/finance-settlement.service.ts",
         "app/api/finance/settlements/**",
         "app/api/finance/payables/**",
-        "app/api/finance/advances/**"
+        "app/api/finance/advances/**",
+        "app/payments-*",
+        "docs/TZ_PAYMENTS_REGISTER_V2.md",
+        "scripts/check-payments-register-v2.mjs"
       ],
       "dependencies": [
         "work-orders",
