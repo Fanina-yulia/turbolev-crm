@@ -242,7 +242,7 @@ export async function postMechanicLaborCompensationForLine(lineId: string, expli
     const rule = ruleOf(employee);
     const revenue = lineRevenue(line);
     const amount = laborCompensation(revenue, rule.workPercent);
-    return postAccrualTx(tx, {
+    const accrual = await postAccrualTx(tx, {
       employeeId,
       category: "LABOR",
       amount,
@@ -253,6 +253,14 @@ export async function postMechanicLaborCompensationForLine(lineId: string, expli
       rule,
       basis: { workOrderId: line.workOrderId, workOrderLineId: line.id, revenue, percent: rule.workPercent },
     });
+    const quantity = numberOf(line.actualQuantity ?? line.plannedQuantity);
+    if (amount > 0 && quantity > 0) {
+      await tx.workOrderLine.update({
+        where: { id: line.id },
+        data: { actualUnitCost: new Prisma.Decimal((amount / quantity).toFixed(2)) },
+      });
+    }
+    return accrual;
   });
 }
 
