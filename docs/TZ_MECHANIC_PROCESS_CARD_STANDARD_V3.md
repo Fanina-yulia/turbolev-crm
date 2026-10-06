@@ -93,3 +93,17 @@ Mazda:
 - WorkOrderLine.
 
 Presentation/read-model не переписує історичні бізнес-факти в БД.
+
+
+## Пріоритет класифікації legacy-записів
+
+Щоб один старий запис не створював одночасно зелену діагностику та червоний ремонт, діє жорсткий пріоритет:
+
+1. Наявність точного `DiagnosticVisitLink` завжди означає `DIAGNOSTIC` і має найвищий пріоритет — навіть якщо історично до того самого appointment був доданий `workOrderId` або помилково збережений `purpose=REPAIR`.
+2. Для записів без link використовується явний `purpose`.
+3. Для legacy `purpose=NULL`: `WALK_IN` або старий status `DIAGNOSTICS` означає діагностику; `workOrderId` без діагностичних ознак означає ремонт.
+4. Якщо доказів недостатньо, запис залишається `UNCLASSIFIED` і не створює вигадану картку діагностики чи ремонту в Кабінеті механіка.
+
+Створення або відновлення `DiagnosticVisitLink` одночасно нормалізує `ServiceAppointment.purpose` до `DIAGNOSTICS`.
+
+Цей контракт перевіряється `scripts/mechanic-process-card-contract-smoke.ts` при кожній production-збірці.
