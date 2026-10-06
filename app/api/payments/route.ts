@@ -236,7 +236,10 @@ export async function GET(request: NextRequest) {
       prisma.cashTransaction.findMany({
         where: {
           status: "POSTED",
-          sourceEntity: { in: [SOURCE_PAYMENT, WALK_IN_PAYMENT_SOURCE] },
+          OR: [
+            { sourceEntity: SOURCE_PAYMENT },
+            { sourceEntity: WALK_IN_PAYMENT_SOURCE },
+          ],
           occurredAt: {
             gte: kyivDateStartUtc(kyivParts().year, kyivParts().month, kyivParts().day),
             lt: addLocalDays(kyivDateStartUtc(kyivParts().year, kyivParts().month, kyivParts().day), 1),
