@@ -303,9 +303,59 @@ function PlanFactView({ data, onNewBudget }: { data: FinanceV2; onNewBudget: () 
 }
 
 function ForecastStrip({ data }: { data: FinanceV2 }) { const points = data.forecast.points.filter((_, index) => index % Math.max(1, Math.floor(data.forecast.points.length / 10)) === 0).slice(0,12); return <div className={styles.forecastLine}>{points.map((point) => <div key={point.date} className={`${styles.forecastPoint} ${point.closingCash < 0 ? styles.cashGap : point.belowReserve ? styles.belowReserve : ""}`}><span>{dateText(point.date)}</span><strong>{money(point.closingCash)}</strong><small>{point.net >= 0 ? "+" : ""}{money(point.net)}</small></div>)}</div>; }
+function forecastAtDays(data: FinanceV2, days: number) {
+  if (!data.forecast.points.length) return null;
+  const target = new Date();
+  target.setDate(target.getDate() + days);
+  const key = target.toISOString().slice(0, 10);
+  return data.forecast.points.find((point) => point.date >= key) || data.forecast.points[data.forecast.points.length - 1] || null;
+}
+
 function CalendarView({ data, onNewRecurring }: { data: FinanceV2; onNewRecurring: () => void }) {
-  const grouped = new Map<string, CalendarItem[]>(); data.calendar.forEach((item) => { const day = item.expectedAt.slice(0,10); grouped.set(day, [...(grouped.get(day)||[]), item]); });
-  return <><div className={styles.grid2}><section className={styles.panel}><div className={styles.panelHeader}><div><span className={styles.eyebrow}>CASH FORECAST</span><h2>Прогноз залишку</h2><p>Горизонт {data.forecast.horizonDays} днів.</p></div></div><ForecastStrip data={data}/><div className={styles.miniCards}><div className={styles.miniCard}><span>Зараз</span><strong>{money(data.kpi.currentCash)}</strong></div><div className={styles.miniCard}><span>Мінімум прогнозу</span><strong className={data.forecast.minimumForecastCash < 0 ? styles.negative : ""}>{money(data.forecast.minimumForecastCash)}</strong></div><div className={styles.miniCard}><span>Резерв</span><strong>{money(data.forecast.minimumReserve)}</strong></div>{data.forecast.firstGap && <div className={styles.miniCard}><span>Касовий розрив</span><strong className={styles.negative}>{dateText(data.forecast.firstGap.date)}</strong></div>}</div></section><section className={styles.panel}><div className={styles.panelHeader}><div><span className={styles.eyebrow}>RECURRING</span><h2>Регулярні операції</h2></div><button className={styles.primaryButton} onClick={onNewRecurring}>+ Додати</button></div>{data.recurring.length ? data.recurring.slice(0,10).map((row) => <div className={styles.summaryRow} key={row.id}><span><strong>{row.name}</strong><small>{row.frequency} · {dateText(row.nextOccurrenceAt)}</small></span><strong className={row.direction === "OUTFLOW" ? styles.negative : styles.positive}>{money(row.amount)}</strong></div>) : <div className={styles.empty}>Регулярні платежі не налаштовані.</div>}</section></div><section className={styles.panel}><div className={styles.panelHeader}><div><span className={styles.eyebrow}>PAYMENT CALENDAR</span><h2>Платіжний календар</h2><p>Зобов'язання, регулярні та прогнозні операції.</p></div></div><div className={styles.grid3}>{Array.from(grouped.entries()).slice(0,90).map(([day, items]) => { const inflow=items.filter(i=>i.direction==="INFLOW").reduce((s,i)=>s+i.weightedAmount,0); const outflow=items.filter(i=>i.direction==="OUTFLOW").reduce((s,i)=>s+i.weightedAmount,0); return <div className={styles.calendarDay} key={day}><div className={styles.calendarHeader}><strong>{dateText(day)}</strong><span className={inflow-outflow>=0?styles.positive:styles.negative}>{money(inflow-outflow)}</span></div>{items.map(item=><div className={styles.calendarItem} key={item.id}><span className={item.direction==="INFLOW"?styles.positive:styles.negative}>{item.direction==="INFLOW"?"Очікуємо":"Оплатити"}</span><span><strong>{item.counterparty||item.description||sourceLabel(item.sourceType)}</strong><small>{sourceLabel(item.sourceType)} · {item.status}</small></span><strong>{money(item.weightedAmount)}</strong></div>)}</div>; })}</div></section></>;
+  const grouped = new Map<string, CalendarItem[]>();
+  data.calendar.forEach((item) => { const day = item.expectedAt.slice(0,10); grouped.set(day, [...(grouped.get(day)||[]), item]); });
+  const day7 = forecastAtDays(data, 7);
+  const day30 = forecastAtDays(data, 30);
+  const minimum = data.forecast.points.reduce<FinanceV2["forecast"]["points"][number] | null>((best, point) => !best || point.closingCash < best.closingCash ? point : best, null);
+  const minimumItems = minimum ? data.calendar.filter((item) => item.expectedAt.slice(0,10) === minimum.date) : [];
+  const largestOutflow = minimumItems.filter((item) => item.direction === "OUTFLOW").sort((a,b) => b.weightedAmount - a.weightedAmount)[0] || null;
+
+  return <>
+    <div className={styles.grid2}>
+      <section className={styles.panel}>
+        <div className={styles.panelHeader}><div><span className={styles.eyebrow}>ПРОГНОЗ ЗАЛИШКУ</span><h2>Що буде з грошима</h2><p>Горизонт {data.forecast.horizonDays} днів. Прогноз враховує відкриті зобов'язання, регулярні та прогнозні операції.</p></div></div>
+        <ForecastStrip data={data}/>
+        <div className={styles.miniCards}>
+          <div className={styles.miniCard}><span>Зараз</span><strong>{money(data.kpi.currentCash)}</strong></div>
+          <div className={styles.miniCard}><span>Через 7 днів</span><strong>{money(day7?.closingCash)}</strong></div>
+          <div className={styles.miniCard}><span>Через 30 днів</span><strong>{money(day30?.closingCash)}</strong></div>
+          <div className={styles.miniCard}><span>Мінімум</span><strong className={data.forecast.minimumForecastCash < 0 ? styles.negative : ""}>{money(data.forecast.minimumForecastCash)}</strong><small>{minimum ? dateText(minimum.date) : "—"}</small></div>
+          <div className={styles.miniCard}><span>Резерв</span><strong>{money(data.forecast.minimumReserve)}</strong></div>
+        </div>
+        {minimum && <div className={styles.forecastReason}>
+          <strong>Найнижча прогнозна точка: {dateText(minimum.date)} · {money(minimum.closingCash)}</strong>
+          <span>{largestOutflow ? `Найбільша очікувана виплата цього дня: ${largestOutflow.counterparty || largestOutflow.description || sourceLabel(largestOutflow.sourceType)} — ${money(largestOutflow.weightedAmount)}.` : "На цю дату немає однієї визначеної великої виплати; мінімум формується сукупністю прогнозних рухів."}</span>
+        </div>}
+        {data.forecast.firstGap && <div className={styles.warningNote}>Прогнозований касовий розрив: {dateText(data.forecast.firstGap.date)} · залишок {money(data.forecast.firstGap.closingCash)}.</div>}
+      </section>
+
+      <section className={styles.panel}>
+        <div className={styles.panelHeader}><div><span className={styles.eyebrow}>РЕГУЛЯРНІ ОПЕРАЦІЇ</span><h2>Повторювані платежі</h2><p>Оренда, зарплати, зв'язок та інші регулярні платежі роблять прогноз реалістичнішим.</p></div><button className={styles.primaryButton} onClick={onNewRecurring}>+ Додати</button></div>
+        {data.recurring.length
+          ? data.recurring.slice(0,10).map((row) => <div className={styles.summaryRow} key={row.id}><span><strong>{row.name}</strong><small>{row.frequency} · наступна {dateText(row.nextOccurrenceAt)}</small></span><strong className={row.direction === "OUTFLOW" ? styles.negative : styles.positive}>{money(row.amount)}</strong></div>)
+          : <div className={styles.emptyAction}><strong>Регулярні платежі не налаштовані.</strong><span>Додайте оренду, зарплати та інші повторювані платежі, щоб прогноз залишку був точнішим.</span><button className={styles.primaryButton} onClick={onNewRecurring}>+ Додати регулярну операцію</button></div>}
+      </section>
+    </div>
+
+    <section className={styles.panel}>
+      <div className={styles.panelHeader}><div><span className={styles.eyebrow}>ПЛАТІЖНИЙ КАЛЕНДАР</span><h2>Очікувані гроші та виплати</h2><p>Зобов'язання, регулярні та прогнозні операції.</p></div></div>
+      {grouped.size ? <div className={styles.grid3}>{Array.from(grouped.entries()).slice(0,90).map(([day, items]) => {
+        const inflow=items.filter(i=>i.direction==="INFLOW").reduce((s,i)=>s+i.weightedAmount,0);
+        const outflow=items.filter(i=>i.direction==="OUTFLOW").reduce((s,i)=>s+i.weightedAmount,0);
+        return <div className={styles.calendarDay} key={day}><div className={styles.calendarHeader}><strong>{dateText(day)}</strong><span className={inflow-outflow>=0?styles.positive:styles.negative}>{money(inflow-outflow)}</span></div>{items.map(item=><div className={styles.calendarItem} key={item.id}><span className={item.direction==="INFLOW"?styles.positive:styles.negative}>{item.direction==="INFLOW"?"Очікуємо":"Оплатити"}</span><span><strong>{item.counterparty||item.description||sourceLabel(item.sourceType)}</strong><small>{sourceLabel(item.sourceType)} · {item.status}</small></span><strong>{money(item.weightedAmount)}</strong></div>)}</div>;
+      })}</div> : <div className={styles.emptyAction}><strong>На горизонті немає запланованих фінансових подій.</strong><span>Додайте регулярні платежі або сформуйте дебіторку/кредиторку, щоб CRM могла будувати платіжний календар.</span><button className={styles.primaryButton} onClick={onNewRecurring}>+ Додати регулярну операцію</button></div>}
+    </section>
+  </>;
 }
 
 function DebtView({ data }: { data: FinanceV2 }) {
