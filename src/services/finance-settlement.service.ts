@@ -1,3 +1,4 @@
+import { PRISMA_TRANSACTION_ADVISORY_LOCK_SQL } from "@/src/lib/advisory-lock";
 import { Prisma } from "@/src/generated/prisma/client";
 import { getPrisma } from "@/src/lib/prisma";
 import { outstandingAmount } from "@/src/domain/finance";
@@ -165,7 +166,7 @@ export async function postFinancialSettlement(input: FinancialSettlementInput, a
 
   return prisma.$transaction(async (tx) => {
     await tx.$queryRawUnsafe(
-      "SELECT pg_advisory_xact_lock(hashtext($1))",
+      PRISMA_TRANSACTION_ADVISORY_LOCK_SQL,
       "financial-settlement:" + sourceEntity + ":" + sourceEntityId,
     );
 
@@ -283,7 +284,7 @@ export async function reverseFinancialSettlement(settlementId: string, actor: Fi
   const prisma = getPrisma();
 
   return prisma.$transaction(async (tx) => {
-    await tx.$queryRawUnsafe("SELECT pg_advisory_xact_lock(hashtext($1))", "financial-settlement-reversal:" + id);
+    await tx.$queryRawUnsafe(PRISMA_TRANSACTION_ADVISORY_LOCK_SQL, "financial-settlement-reversal:" + id);
     const original = await tx.financialSettlement.findUnique({ where: { id }, include: { allocations: true } });
     if (!original) throw new FinanceSettlementError("SETTLEMENT_NOT_FOUND", "Платіж не знайдено.", 404);
     if (original.type === "ADVANCE_RECEIPT" || original.type === "ADVANCE_APPLY") {
@@ -312,7 +313,7 @@ export async function reverseFinancialSettlement(settlementId: string, actor: Fi
     const now = new Date();
     for (const allocation of original.allocations) {
       await tx.$queryRawUnsafe(
-        "SELECT pg_advisory_xact_lock(hashtext($1))",
+        PRISMA_TRANSACTION_ADVISORY_LOCK_SQL,
         "financial-obligation:" + allocation.obligationId,
       );
       const obligation = await tx.financialObligation.findUnique({ where: { id: allocation.obligationId } });
@@ -425,7 +426,7 @@ export async function receiveCustomerAdvance(input: FinancialSettlementInput, ac
   const prisma = getPrisma();
 
   return prisma.$transaction(async (tx) => {
-    await tx.$queryRawUnsafe("SELECT pg_advisory_xact_lock(hashtext($1))", "customer-advance:" + sourceEntityId);
+    await tx.$queryRawUnsafe(PRISMA_TRANSACTION_ADVISORY_LOCK_SQL, "customer-advance:" + sourceEntityId);
     const existingSettlement = await tx.financialSettlement.findFirst({
       where: { sourceEntity, sourceEntityId },
       include: { allocations: true },
@@ -534,7 +535,7 @@ export async function applyCustomerAdvanceSettlement(
   const prisma = getPrisma();
 
   return prisma.$transaction(async (tx) => {
-    await tx.$queryRawUnsafe("SELECT pg_advisory_xact_lock(hashtext($1))", "customer-advance-apply:" + id + ":" + woId);
+    await tx.$queryRawUnsafe(PRISMA_TRANSACTION_ADVISORY_LOCK_SQL, "customer-advance-apply:" + id + ":" + woId);
     const existing = await tx.financialSettlement.findFirst({
       where: { sourceEntity: "CUSTOMER_ADVANCE_APPLY", sourceEntityId: key },
       include: { allocations: true },
@@ -622,7 +623,7 @@ export async function refundCustomerAdvanceSettlement(advanceId: string, actor: 
   const prisma = getPrisma();
 
   return prisma.$transaction(async (tx) => {
-    await tx.$queryRawUnsafe("SELECT pg_advisory_xact_lock(hashtext($1))", "customer-advance-refund:" + id);
+    await tx.$queryRawUnsafe(PRISMA_TRANSACTION_ADVISORY_LOCK_SQL, "customer-advance-refund:" + id);
     const existingSettlement = await tx.financialSettlement.findFirst({
       where: { sourceEntity: "CUSTOMER_ADVANCE_REFUND", sourceEntityId: id },
       include: { allocations: true },
