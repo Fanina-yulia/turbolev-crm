@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { authorize } from "@/src/security/authorize";
 import { PERMISSIONS } from "@/src/security/permissions";
 import { getPrisma } from "@/src/lib/prisma";
+import { classifyMechanicProcessAppointment } from "@/src/domain/mechanic-process-classification";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -71,6 +72,7 @@ export async function GET(request: Request) {
           workOrderId: true,
           purpose: true,
           status: true,
+          source: true,
           vehicleLabel: true,
           plateNumber: true,
           plannedStartAt: true,
@@ -83,6 +85,7 @@ export async function GET(request: Request) {
     ]);
 
     const diagnosticIds = assignments.map((row) => row.diagnosticRequestId);
+    const appointmentIds = appointments.map((row) => row.id);
     const [diagnostics, reviews, links] = await Promise.all([
       diagnosticIds.length
         ? prisma.diagnosticRequest.findMany({
@@ -105,9 +108,9 @@ export async function GET(request: Request) {
             select: { diagnosticRequestId: true, state: true, submittedAt: true, confirmedAt: true, updatedAt: true },
           })
         : [],
-      diagnosticIds.length
+      appointmentIds.length
         ? prisma.diagnosticVisitLink.findMany({
-            where: { diagnosticRequestId: { in: diagnosticIds } },
+            where: { appointmentId: { in: appointmentIds } },
             select: { diagnosticRequestId: true, appointmentId: true },
           })
         : [],
@@ -116,6 +119,7 @@ export async function GET(request: Request) {
     const appointmentById = new Map(appointments.map((row) => [row.id, row]));
     const reviewByDiagnosticId = new Map(reviews.map((row) => [row.diagnosticRequestId, row]));
     const linkByDiagnosticId = new Map(links.map((row) => [row.diagnosticRequestId, row]));
+    const diagnosticAppointmentIds = new Set(links.map((row) => row.appointmentId));
     const assignmentByDiagnosticId = new Map(assignments.map((row) => [row.diagnosticRequestId, row]));
 
     const diagnosticCards = diagnostics.map((diagnostic) => {
@@ -123,7 +127,7 @@ export async function GET(request: Request) {
       const link = linkByDiagnosticId.get(diagnostic.id);
       const linkedAppointment = link ? appointmentById.get(link.appointmentId) ?? null : null;
       const legacyAppointment = linkedAppointment ?? appointments.find((row) => (
-        (row.purpose === "DIAGNOSTICS" || row.purpose == null)
+        classifyMechanicProcessAppointment(row, diagnosticAppointmentIds) === "DIAGNOSTIC"
         && row.vehicleId === diagnostic.vehicleId
         && Boolean(diagnostic.leadId && row.leadId === diagnostic.leadId)
       )) ?? null;
@@ -161,7 +165,7 @@ export async function GET(request: Request) {
 
     const repairAppointments = appointments.filter((row) => (
       !EXCLUDED_APPOINTMENT_STATUSES.has(row.status)
-      && (row.purpose === "REPAIR" || (row.purpose == null && Boolean(row.workOrderId)))
+      && classifyMechanicProcessAppointment(row, diagnosticAppointmentIds) === "REPAIR"
     ));
     const workOrderIds = Array.from(new Set(repairAppointments.flatMap((row) => row.workOrderId ? [row.workOrderId] : [])));
 
