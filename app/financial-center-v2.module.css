@@ -117,7 +117,7 @@
   padding:0 7px;
   cursor:pointer;
   font:inherit;
-  font-size:10px;
+  font-size:11px;
   white-space:nowrap;
 }
 .financeSections button:hover,
@@ -148,12 +148,12 @@
   border-radius:8px;
   padding:0 5px;
   font:inherit;
-  font-size:10px;
+  font-size:11px;
 }
 @media(max-width:1180px) and (min-width:721px){
   .financeToolbar{gap:2px}
   .financeSections,.financePeriods{gap:2px}
-  .financeSections button,.financePeriods button{padding:0 4px;font-size:9px}
+  .financeSections button,.financePeriods button{padding:0 4px;font-size:11px}
   .financeDate{width:88px}
   .financeLocation{width:94px}
 }
