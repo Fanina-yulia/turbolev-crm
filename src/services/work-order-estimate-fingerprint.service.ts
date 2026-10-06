@@ -11,7 +11,7 @@ export async function normalizeApprovedEstimateFingerprint(
 ) {
   const prisma = getPrisma();
   const normalized = await prisma.$transaction(async (tx) => {
-    await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`wo-commercial:${workOrderId}`}))`;
+    await tx.$queryRaw`SELECT 1::int AS locked FROM pg_advisory_xact_lock(hashtext(${`wo-commercial:${workOrderId}`}))`;
     const estimate = await tx.workOrderEstimate.findFirst({
       where: { id: estimateId, workOrderId, status: "APPROVED" },
     });
