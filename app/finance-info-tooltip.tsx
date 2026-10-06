@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useId, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
-import { FINANCE_GLOSSARY, type FinanceGlossaryKey } from "@/src/domain/finance-glossary";
+import { FINANCE_GLOSSARY, type FinanceGlossaryEntry, type FinanceGlossaryKey } from "@/src/domain/finance-glossary";
 import styles from "./finance-info-tooltip.module.css";
 
 type FinanceInfoTooltipProps = {
@@ -12,7 +12,7 @@ type FinanceInfoTooltipProps = {
 };
 
 export function FinanceInfoTooltip({ term, label, className = "", compact = false }: FinanceInfoTooltipProps) {
-  const entry = FINANCE_GLOSSARY[term];
+  const entry: FinanceGlossaryEntry = FINANCE_GLOSSARY[term];
   const tooltipId = useId();
   const rootRef = useRef<HTMLSpanElement>(null);
   const [hovered, setHovered] = useState(false);
