@@ -1,6 +1,7 @@
 "use client";
 
 import { CrmPageHeader } from "./crm-page-header";
+import { FinanceInfoTooltip } from "./finance-info-tooltip";
 
 import { useEffect, useMemo, useState } from "react";
 import { navigateCrm, readCrmRoute } from "./crm-route";
@@ -223,9 +224,9 @@ export function PaymentsQueue() {
     <CrmPageHeader eyebrow="TURBO LEV · КАСА" title="Оплати" description={routeWorkOrderId ? "Відкрито конкретну комерційну пропозицію." : "Що потрібно отримати від клієнтів і що вже надійшло сьогодні."} actions={<button className={styles.refresh} type="button" onClick={() => setRefreshKey((value) => value + 1)} disabled={loading}>↻ Оновити</button>} />
 
     <section className={styles.kpis}>
-      <article><small>До отримання</small><strong>{money(outstandingTotal)}</strong><span>{rows.filter((row) => row.outstanding > 0).length} КП</span></article>
-      <article><small>Оплачено сьогодні</small><strong>{money(paidTodayTotal)}</strong><span>{counts.paidToday} КП</span></article>
-      <article className={debtTotal > 0 ? styles.dangerKpi : ""}><small>Прострочений борг</small><strong>{money(debtTotal)}</strong><span>{counts.debt} КП</span></article>
+      <article><small><FinanceInfoTooltip term="duePayments" label="До отримання" compact /></small><strong>{money(outstandingTotal)}</strong><span>{rows.filter((row) => row.outstanding > 0).length} КП</span></article>
+      <article><small><FinanceInfoTooltip term="paidToday" label="Оплачено сьогодні" compact /></small><strong>{money(paidTodayTotal)}</strong><span>{counts.paidToday} КП</span></article>
+      <article className={debtTotal > 0 ? styles.dangerKpi : ""}><small><FinanceInfoTooltip term="overdueDebt" label="Прострочений борг" compact /></small><strong>{money(debtTotal)}</strong><span>{counts.debt} КП</span></article>
     </section>
 
     <div className={styles.toolbar}>
@@ -252,9 +253,9 @@ export function PaymentsQueue() {
             <small>{row.client.name || "Клієнт без імені"} · {row.client.phone}</small>
           </div>
           <div className={styles.amounts}>
-            <span><small>Сума</small><b>{money(row.total, row.currency)}</b></span>
-            <span><small>Сплачено</small><b>{money(row.paid, row.currency)}</b></span>
-            <span className={row.outstanding > 0 ? styles.balance : ""}><small>Залишок</small><strong>{money(row.outstanding, row.currency)}</strong></span>
+            <span><small><FinanceInfoTooltip term="paymentTotal" label="Сума" compact /></small><b>{money(row.total, row.currency)}</b></span>
+            <span><small><FinanceInfoTooltip term="paymentPaid" label="Сплачено" compact /></small><b>{money(row.paid, row.currency)}</b></span>
+            <span className={row.outstanding > 0 ? styles.balance : ""}><small><FinanceInfoTooltip term="paymentOutstanding" label="Залишок" compact /></small><strong>{money(row.outstanding, row.currency)}</strong></span>
           </div>
         </div>
         <div className={styles.meta}>
@@ -273,7 +274,7 @@ export function PaymentsQueue() {
       <form className={styles.modal} onSubmit={submitPayment}>
         <header><div><small>ПРИЙНЯТИ ОПЛАТУ</small><h2>{paymentRow.workOrderLabel} · {paymentRow.vehicle.plateNumber || carTitle(paymentRow)}</h2></div><button type="button" onClick={closePayment} disabled={submitting}>×</button></header>
         <div className={styles.modalBody}>
-          <div className={styles.paymentSummary}><span>До сплати</span><strong>{money(paymentRow.outstanding, paymentRow.currency)}</strong></div>
+          <div className={styles.paymentSummary}><span><FinanceInfoTooltip term="paymentOutstanding" label="До сплати" compact /></span><strong>{money(paymentRow.outstanding, paymentRow.currency)}</strong></div>
           <label><span>Сума оплати</span><input inputMode="decimal" value={amount} onChange={(event) => setAmount(event.target.value)} autoFocus /></label>
           <label><span>Куди прийнято кошти</span><select value={accountId} onChange={(event) => setAccountId(event.target.value)}><option value="">Оберіть рахунок</option>{accounts.map((account) => <option key={account.id} value={account.id}>{ACCOUNT_LABELS[account.type]} · {account.name}</option>)}</select></label>
           {!accounts.length && <div className={styles.warning}>У фінансових налаштуваннях немає активного UAH-рахунку. Спочатку додайте касу/банк/еквайринг.</div>}
