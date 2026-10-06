@@ -362,9 +362,23 @@ export async function finalizeWorkOrderFinance(
       });
     }
 
+    const liveLaborCompensation = await tx.financialEvent.aggregate({
+      where: {
+        status: "POSTED",
+        workOrderId,
+        sourceEntity: "SALARY_ACCRUAL",
+        category: { code: "COGS_LABOR" },
+      },
+      _sum: { amount: true },
+    });
+    const liveLaborAmount = toDecimal(liveLaborCompensation._sum.amount);
+    const residualLaborCost = calculation.laborCost.greaterThan(liveLaborAmount)
+      ? calculation.laborCost.minus(liveLaborAmount)
+      : new Prisma.Decimal(0);
+
     const costLines = [
       ["COGS_PARTS", "Собівартість запчастин", calculation.partsCost],
-      ["COGS_LABOR", "Пряма вартість праці", calculation.laborCost],
+      ["COGS_LABOR", "Пряма вартість праці (залишок після live-нарахувань)", residualLaborCost],
       ["COGS_EXTERNAL", "Сторонні роботи", calculation.externalCost],
       ["COGS_CONSUMABLES", "Витратні матеріали", calculation.consumablesCost],
       ["COGS_OTHER", "Інші прямі витрати", calculation.otherDirectCost],
