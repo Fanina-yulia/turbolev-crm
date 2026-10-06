@@ -107,7 +107,7 @@ export function StationOverview(){
   const kpiRoutes=useMemo<WorkflowRoute[]>(()=>[
     {name:"Авто сьогодні",value:data?.kpis.carsToday??"—",sub:`${data?.kpis.booked??0} ще записані`,section:"Планувальник"},
     {name:"В роботі",value:data?.kpis.inRepair??"—",sub:`${data?.kpis.postsOccupied??0} постів зайнято`,section:"Комерційна пропозиція",params:{status:"IN_REPAIR"}},
-    {name:"Виручка сьогодні",value:money(data?.kpis.revenue??null),sub:"проведені платежі за сьогодні",section:"Фінансовий центр"},
+    {name:"Виручка сьогодні",value:money(data?.kpis.revenue??null),sub:"визнана виручка за сьогодні",section:"Фінансовий центр"},
     {name:"Валовий прибуток",value:money(data?.kpis.grossProfit??null),sub:"виручка мінус прямі витрати",section:"Фінансовий центр"},
   ],[data]);
 
