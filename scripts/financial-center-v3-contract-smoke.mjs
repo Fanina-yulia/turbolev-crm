@@ -10,6 +10,16 @@ const migration = fs.readFileSync("prisma/migrations/20261006233000_financial_ce
 
 assert.equal(/settings:\s*"Налаштування"/.test(ui), false, "Settings must not return to the main finance tab bar");
 assert.match(ui,/FinanceContextKpis/);
+assert.equal(/plan:\s*"План \/ факт"/.test(ui), false, "standalone Plan / fact tab must be removed");
+assert.equal(/tab === "plan"/.test(ui), false, "Plan / fact must not render as a standalone screen");
+assert.match(ui,/OwnerOverview/);
+assert.match(ui,/Оборотка з послуг/);
+assert.match(ui,/Маржа по деталях/);
+assert.match(ui,/ЗП персоналу/);
+assert.match(ui,/Валовий дохід/);
+assert.match(ui,/Всі витрати/);
+assert.match(ui,/Грошей у касі/);
+assert.match(ui,/Планування тепер частина «Огляду»/);
 assert.equal(/data && <section className=\{styles\.kpiGrid\}>[\s\S]*currentCash/.test(ui), false, "global eight-KPI block must not be rendered outside tab context");
 assert.match(ui,/tab !== "accounts"/,"Accounts must not inherit period controls");
 assert.match(ui,/⚙ Налаштування/);
@@ -19,7 +29,6 @@ assert.match(ui,/\["overview", "cash", "debts", "accounts"\]/);
 assert.match(ui,/\["overview", "cash", "debts", "profitability", "expenses", "accounts"\]/);
 assert.match(ui,/FinanceOverviewControl/);
 assert.match(ui,/FinanceAccrualBridge/);
-assert.match(ui,/FinancePlanPace/);
 assert.match(ui,/FinanceForecastReasons/);
 assert.match(ui,/FinanceMarginControl/);
 assert.match(ui,/FinanceProfitabilityHighlights/);
