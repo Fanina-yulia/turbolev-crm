@@ -216,18 +216,38 @@ export function FinancialCenter() {
 }
 
 function Overview({ data, onTab }: { data: FinanceV2; onTab: (tab: Tab) => void }) {
-  const topAlerts = data.alerts.slice(0, 5);
   return <>
     <div className={styles.grid2}>
-      <section className={styles.panel}><div className={styles.panelHeader}><div><span className={styles.eyebrow}>ФІНАНСОВИЙ ПУЛЬС</span><h2>Що потребує уваги</h2><p>Найкритичніші фінансові сигнали за поточними даними.</p></div></div><div className={styles.alertStack}>{topAlerts.length ? topAlerts.map((alert) => <div key={`${alert.code}:${alert.date || ""}`} className={`${styles.alert} ${alert.level === "CRITICAL" ? styles.alertCritical : alert.level === "WARNING" ? styles.alertWarning : styles.alertInfo}`}><span className={styles.alertDot}/><div><strong>{alert.title}</strong><div className={styles.hint}>{alert.message}{alert.date ? ` · ${dateText(alert.date)}` : ""}</div></div>{alert.amount != null && <strong>{money(alert.amount)}</strong>}</div>) : <div className={styles.empty}>Критичних фінансових сигналів немає.</div>}</div></section>
-      <section className={styles.panel}><div className={styles.panelHeader}><div><span className={styles.eyebrow}>БЕЗЗБИТКОВІСТЬ</span><h2><FinanceInfoTooltip term="breakEven" label="Точка беззбитковості" /></h2><p>Скільки виручки потрібно для покриття постійних витрат.</p></div></div><div className={styles.summaryRow}><span>Постійні витрати</span><strong>{money(data.breakEven.fixedCosts)}</strong></div><div className={styles.summaryRow}><span>Валова маржа</span><strong>{percent(data.breakEven.grossMarginPercent)}</strong></div><div className={`${styles.summaryRow} ${styles.summaryTotal}`}><span>Точка беззбитковості</span><strong>{money(data.breakEven.breakEvenRevenue)}</strong></div><div className={styles.summaryRow}><span>Поточна виручка</span><strong>{money(data.breakEven.currentRevenue)}</strong></div><div className={styles.summaryRow}><span>Залишилося</span><strong>{money(data.breakEven.remainingRevenue)}</strong></div><div className={styles.summaryRow}><span>Потрібно на робочий день</span><strong>{money(data.breakEven.requiredRevenuePerDay)}</strong></div></section>
+      <section className={styles.panel}>
+        <div className={styles.panelHeader}><div><span className={styles.eyebrow}>НАРАХОВАНО VS ОТРИМАНО</span><h2>Що заробили і що реально зайшло</h2><p>P&L і рух грошей відповідають на різні питання, тому їхні суми можуть відрізнятися.</p></div></div>
+        <div className={styles.summaryRow}><span>Визнана виручка за період</span><strong>{money(data.pnl.revenue)}</strong></div>
+        <div className={styles.summaryRow}><span>Фактично отримано грошей</span><strong className={styles.positive}>{money(data.cashFlow.inflow)}</strong></div>
+        <div className={styles.summaryRow}><span>Фактично сплачено грошей</span><strong className={styles.negative}>{money(data.cashFlow.outflow)}</strong></div>
+        <div className={`${styles.summaryRow} ${styles.summaryTotal}`}><span>Дебіторка зараз</span><strong>{money(data.kpi.receivables)}</strong></div>
+        <div className={styles.hint}>Виручка визнається за фактом послуги/операції, а Cash Flow — у момент фактичного отримання або виплати грошей.</div>
+      </section>
+      <section className={styles.panel}>
+        <div className={styles.panelHeader}><div><span className={styles.eyebrow}>БЕЗЗБИТКОВІСТЬ</span><h2><FinanceInfoTooltip term="breakEven" label="Точка беззбитковості" /></h2><p>Скільки виручки потрібно для покриття постійних витрат.</p></div></div>
+        <div className={styles.summaryRow}><span>Постійні витрати</span><strong>{money(data.breakEven.fixedCosts)}</strong></div>
+        <div className={styles.summaryRow}><span>Валова маржа</span><strong>{percent(data.breakEven.grossMarginPercent)}</strong></div>
+        <div className={`${styles.summaryRow} ${styles.summaryTotal}`}><span>Точка беззбитковості</span><strong>{money(data.breakEven.breakEvenRevenue)}</strong></div>
+        <div className={styles.summaryRow}><span>Поточна виручка</span><strong>{money(data.breakEven.currentRevenue)}</strong></div>
+        <div className={styles.summaryRow}><span>Залишилося</span><strong>{money(data.breakEven.remainingRevenue)}</strong></div>
+        <div className={styles.summaryRow}><span>Потрібно на робочий день</span><strong>{money(data.breakEven.requiredRevenuePerDay)}</strong></div>
+      </section>
     </div>
+
     <FinancialControlPanel data={data} onTab={onTab} />
+
     <div className={styles.grid2}>
-      <section className={styles.panel}><div className={styles.panelHeader}><div><span className={styles.eyebrow}>P&L</span><h2><FinanceInfoTooltip term="pnl" label="Прибуток за період" /></h2></div><button className={styles.secondaryButton} onClick={() => onTab("pnl")}>Детально</button></div><PnlSummary data={data} /></section>
+      <section className={styles.panel}><div className={styles.panelHeader}><div><span className={styles.eyebrow}>ПРИБУТОК</span><h2><FinanceInfoTooltip term="pnl" label="Прибуток за період" /></h2></div><button className={styles.secondaryButton} onClick={() => onTab("pnl")}>Детально</button></div><PnlSummary data={data} /></section>
       <section className={styles.panel}><div className={styles.panelHeader}><div><span className={styles.eyebrow}>ПРОГНОЗ ГРОШЕЙ</span><h2>Що буде з грошима</h2><p>Зобов'язання + регулярні платежі + прогнозні операції.</p></div><button className={styles.secondaryButton} onClick={() => onTab("calendar")}>Календар</button></div><ForecastStrip data={data} /></section>
     </div>
-    <section className={styles.panel}><div className={styles.panelHeader}><div><span className={styles.eyebrow}>ПЛАН / ФАКТ</span><h2><FinanceInfoTooltip term="planFact" label="Виконання фінансового плану" /></h2></div><button className={styles.secondaryButton} onClick={() => onTab("plan")}>Усі бюджети</button></div>{data.budgets.length ? <div className={styles.grid3}>{data.budgets.slice(0, 6).map((item) => <BudgetCard item={item} key={item.id} />)}</div> : <div className={styles.empty}>Бюджети ще не задані. Додайте план у розділі «План / факт».</div>}</section>
+
+    <section className={styles.panel}>
+      <div className={styles.panelHeader}><div><span className={styles.eyebrow}>ПЛАН / ФАКТ</span><h2><FinanceInfoTooltip term="planFact" label="Виконання фінансового плану" /></h2></div><button className={styles.secondaryButton} onClick={() => onTab("plan")}>Усі бюджети</button></div>
+      {data.budgets.length ? <div className={styles.grid3}>{data.budgets.slice(0, 6).map((item) => <BudgetCard item={item} key={item.id} />)}</div> : <div className={styles.emptyAction}><strong>Бюджети ще не задані.</strong><span>Створіть план у розділі «План / факт», щоб бачити виконання і прогноз темпу.</span><button className={styles.primaryButton} onClick={() => onTab("plan")}>Відкрити План / факт</button></div>}
+    </section>
   </>;
 }
 
