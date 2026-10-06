@@ -763,22 +763,6 @@ export async function getFinancialCenterV2(scope: FinancialCenterScope) {
     count: missingWalkInLabor,
   });
 
-  const missingPartCosts = completedFinancialLines.filter((line) => {
-    if (line.type !== "PART") return false;
-    const qty = decimalToNumber(line.actualQuantity ?? line.plannedQuantity);
-    const price = decimalToNumber(line.actualUnitPrice ?? line.plannedUnitPrice);
-    const cost = decimalToNumber(line.actualUnitCost ?? line.plannedUnitCost);
-    const discount = decimalToNumber(line.actualDiscount ?? line.plannedDiscount);
-    return Math.max(0, qty * price - discount) > 0 && qty * cost <= 0;
-  }).length;
-  if (missingPartCosts > 0) qualityIssues.push({
-    code: "MISSING_PART_COST",
-    level: "WARNING",
-    title: "Продані деталі без закупівельної собівартості",
-    message: `${missingPartCosts} завершених позицій деталей мають продаж, але нульову/відсутню собівартість.`,
-    count: missingPartCosts,
-  });
-
   const currentMonthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
   const currentMonthNext = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
   let missingBaseAccrualEmployees = 0;
