@@ -38,7 +38,7 @@ export async function GET() {
   const [totalAppointments, totalLinks, beforeConflicts, beforeNullPurpose] = await Promise.all([
     prisma.serviceAppointment.count(),
     prisma.diagnosticVisitLink.count(),
-    prisma.$queryRaw<ConflictRow[]>\`
+    prisma.$queryRaw<ConflictRow[]>`
       SELECT
         a.id AS "appointmentId",
         trim(coalesce(v."brand",'') || ' ' || coalesce(v."model",'')) AS vehicle,
@@ -52,12 +52,12 @@ export async function GET() {
       LEFT JOIN "Vehicle" v ON v.id = a."vehicleId"
       WHERE a."purpose" IS DISTINCT FROM 'DIAGNOSTICS'::"AppointmentPurpose"
       ORDER BY a."plannedStartAt" DESC
-    \`,
+    `,
     prisma.serviceAppointment.count({ where: { purpose: null } }),
   ]);
 
   const corrected = await prisma.$transaction(async (tx) => {
-    const linkedToDiagnostic = await tx.$executeRaw\`
+    const linkedToDiagnostic = await tx.$executeRaw`
       UPDATE "ServiceAppointment" AS a
       SET "purpose" = 'DIAGNOSTICS'::"AppointmentPurpose"
       WHERE EXISTS (
@@ -65,16 +65,16 @@ export async function GET() {
         WHERE dvl."appointmentId" = a.id
       )
       AND a."purpose" IS DISTINCT FROM 'DIAGNOSTICS'::"AppointmentPurpose"
-    \`;
+    `;
 
-    const legacyDiagnostics = await tx.$executeRaw\`
+    const legacyDiagnostics = await tx.$executeRaw`
       UPDATE "ServiceAppointment" AS a
       SET "purpose" = 'DIAGNOSTICS'::"AppointmentPurpose"
       WHERE a."purpose" IS NULL
         AND (a."source" = 'WALK_IN' OR a."status" = 'DIAGNOSTICS')
-    \`;
+    `;
 
-    const legacyRepairs = await tx.$executeRaw\`
+    const legacyRepairs = await tx.$executeRaw`
       UPDATE "ServiceAppointment" AS a
       SET "purpose" = 'REPAIR'::"AppointmentPurpose"
       WHERE a."purpose" IS NULL
@@ -85,13 +85,13 @@ export async function GET() {
           SELECT 1 FROM "DiagnosticVisitLink" dvl
           WHERE dvl."appointmentId" = a.id
         )
-    \`;
+    `;
 
     return { linkedToDiagnostic, legacyDiagnostics, legacyRepairs };
   });
 
   const [afterConflicts, afterNullPurpose, highlander] = await Promise.all([
-    prisma.$queryRaw<ConflictRow[]>\`
+    prisma.$queryRaw<ConflictRow[]>`
       SELECT
         a.id AS "appointmentId",
         trim(coalesce(v."brand",'') || ' ' || coalesce(v."model",'')) AS vehicle,
@@ -105,9 +105,9 @@ export async function GET() {
       LEFT JOIN "Vehicle" v ON v.id = a."vehicleId"
       WHERE a."purpose" IS DISTINCT FROM 'DIAGNOSTICS'::"AppointmentPurpose"
       ORDER BY a."plannedStartAt" DESC
-    \`,
+    `,
     prisma.serviceAppointment.count({ where: { purpose: null } }),
-    prisma.$queryRaw<HighlanderRow[]>\`
+    prisma.$queryRaw<HighlanderRow[]>`
       SELECT
         a.id AS "appointmentId",
         trim(coalesce(v."brand",'') || ' ' || coalesce(v."model",'')) AS vehicle,
@@ -123,7 +123,7 @@ export async function GET() {
       WHERE lower(coalesce(v."brand",'')) = 'toyota'
         AND lower(coalesce(v."model",'')) LIKE '%highlander%'
       ORDER BY a."plannedStartAt" DESC
-    \`,
+    `,
   ]);
 
   return NextResponse.json({
