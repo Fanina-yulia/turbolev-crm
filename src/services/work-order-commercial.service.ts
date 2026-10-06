@@ -389,7 +389,7 @@ export async function getWorkOrderGateStateTx(tx: Tx, workOrderId: string) {
 export async function sendEstimate(workOrderId: string, actorName = "CRM / Сервіс-менеджер") {
   const prisma = getPrisma();
   return prisma.$transaction(async (tx) => {
-    await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`wo-commercial:${workOrderId}`}))`;
+    await tx.$queryRaw`SELECT 1::int AS locked FROM pg_advisory_xact_lock(hashtext(${`wo-commercial:${workOrderId}`}))`;
     return ensureEstimateSnapshotTx(tx, workOrderId, { send: true, actorName });
   });
 }
@@ -401,7 +401,7 @@ export async function decideEstimate(
 ) {
   const prisma = getPrisma();
   return prisma.$transaction(async (tx) => {
-    await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`wo-commercial:${workOrderId}`}))`;
+    await tx.$queryRaw`SELECT 1::int AS locked FROM pg_advisory_xact_lock(hashtext(${`wo-commercial:${workOrderId}`}))`;
     const workOrder = await ensureWorkOrder(tx, workOrderId);
     const lines = await activeLines(tx, workOrderId);
     const directRepair = await getDirectRepairPartContextTx(tx, workOrderId, lines);
@@ -475,7 +475,7 @@ export async function decideEstimate(
 export async function openPartsRequest(workOrderId: string, actorName = "CRM / Підбір запчастин") {
   const prisma = getPrisma();
   return prisma.$transaction(async (tx) => {
-    await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`wo-commercial:${workOrderId}`}))`;
+    await tx.$queryRaw`SELECT 1::int AS locked FROM pg_advisory_xact_lock(hashtext(${`wo-commercial:${workOrderId}`}))`;
     return ensurePartsRequestTx(tx, workOrderId, actorName);
   });
 }
@@ -487,7 +487,7 @@ export async function transitionPartsRequest(
 ) {
   const prisma = getPrisma();
   return prisma.$transaction(async (tx) => {
-    await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`parts-request:${partsRequestId}`}))`;
+    await tx.$queryRaw`SELECT 1::int AS locked FROM pg_advisory_xact_lock(hashtext(${`parts-request:${partsRequestId}`}))`;
     const request = await tx.partsRequest.findUnique({ where: { id: partsRequestId }, include: { items: true, estimate: true } });
     if (!request) throw new WorkOrderCommercialError("PARTS_REQUEST_NOT_FOUND", "PartsRequest not found");
     const target = text(toStatus, 40).toUpperCase();
@@ -544,7 +544,7 @@ export async function updatePartsRequest(
 ) {
   const prisma = getPrisma();
   return prisma.$transaction(async (tx) => {
-    await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`parts-request:${partsRequestId}`}))`;
+    await tx.$queryRaw`SELECT 1::int AS locked FROM pg_advisory_xact_lock(hashtext(${`parts-request:${partsRequestId}`}))`;
     const before = await tx.partsRequest.findUnique({ where: { id: partsRequestId }, include: { items: true, estimate: true } });
     if (!before) throw new WorkOrderCommercialError("PARTS_REQUEST_NOT_FOUND", "PartsRequest not found");
     const after = await tx.partsRequest.update({
@@ -568,7 +568,7 @@ export async function updatePartsRequestItem(
 ) {
   const prisma = getPrisma();
   return prisma.$transaction(async (tx) => {
-    await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`parts-request:${partsRequestId}`}))`;
+    await tx.$queryRaw`SELECT 1::int AS locked FROM pg_advisory_xact_lock(hashtext(${`parts-request:${partsRequestId}`}))`;
     const before = await tx.partsRequestItem.findFirst({ where: { id: itemId, partsRequestId } });
     if (!before) throw new WorkOrderCommercialError("PARTS_ITEM_NOT_FOUND", "PartsRequest item not found");
 
