@@ -178,7 +178,7 @@ export function FinancialCenter() {
     {error && <div className={styles.errorBox}><strong>Фінансовий центр не оновлено.</strong> {error}</div>}
     {message && <div className={styles.success}>{message}</div>}
 
-    {data && tab !== "expenses" && <section className={styles.kpiGrid}>}
+    {data && tab !== "expenses" && <section className={styles.kpiGrid}>
       <KpiCard term="currentCash" label="Залишок коштів зараз" value={money(data.kpi.currentCash)} note={currentCashNote(data)} onClick={() => chooseTab("accounts")} />
       <KpiCard term="revenue" label="Виручка" value={money(data.kpi.revenue)} delta={data.comparison.revenue.changePercent} note="до попереднього періоду" onClick={() => chooseTab("pnl")} />
       <KpiCard term="cogs" label="Прямі витрати" value={money(data.kpi.directCosts)} note="роботи · деталі · матеріали" onClick={() => chooseTab("pnl")} />
