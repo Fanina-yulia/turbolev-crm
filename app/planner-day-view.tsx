@@ -674,7 +674,7 @@ export function PlannerDayView<TAppointment extends AppointmentBase>({ day, loca
           const row = rows[rowIndex];
           const status = STATUS_META[item.status] || { label: item.status, tone: "gray" as const };
           const collision = collisionLayout(item);
-          const collisionStyle = collision.count > 1
+          const collisionStyle: CSSProperties = collision.count > 1
             ? {
                 width: `calc((100% - ${(collision.count - 1) * 4}px) / ${collision.count})`,
                 marginLeft: `calc(${(100 / collision.count) * collision.lane}% + ${collision.lane * 4}px)`,
