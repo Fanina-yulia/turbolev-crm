@@ -153,7 +153,7 @@
 @media(max-width:1180px) and (min-width:721px){
   .financeToolbar{gap:2px}
   .financeSections,.financePeriods{gap:2px}
-  .financeSections button,.financePeriods button{padding:0 2px;font-size:11px}
+  .financeSections button,.financePeriods button{padding:0 4px;font-size:11px}
   .financeDate{width:88px}
   .financeLocation{width:94px}
 }
