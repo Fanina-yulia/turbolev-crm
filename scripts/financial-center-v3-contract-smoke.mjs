@@ -13,6 +13,10 @@ assert.match(ui,/FinanceContextKpis/);
 assert.equal(/data && <section className=\{styles\.kpiGrid\}>[\s\S]*currentCash/.test(ui), false, "global eight-KPI block must not be rendered outside tab context");
 assert.match(ui,/tab !== "accounts"/,"Accounts must not inherit period controls");
 assert.match(ui,/⚙ Налаштування/);
+assert.match(ui,/financeTabsForPersona/);
+assert.match(ui,/canSeeFullFinance/);
+assert.match(ui,/\["overview", "cash", "debts", "accounts"\]/);
+assert.match(ui,/\["overview", "cash", "debts", "profitability", "expenses", "accounts"\]/);
 assert.match(ui,/FinanceOverviewControl/);
 assert.match(ui,/FinanceAccrualBridge/);
 assert.match(ui,/FinancePlanPace/);
@@ -41,6 +45,8 @@ for (const marker of [
 
 assert.match(controlUi,/persona === "CASHIER"/);
 assert.match(controlUi,/persona === "STATION_MANAGER"/);
+assert.match(controlUi,/const fullFinance = persona === "OWNER" \|\| persona === "FINANCE"/);
+assert.match(controlUi,/if \(persona === "CASHIER" \|\| persona === "STANDARD"\) return null/);
 assert.match(controlUi,/Net Cash Flow/);
 assert.match(controlUi,/Очікувані надходження/);
 assert.match(controlUi,/Майбутні виплати/);
@@ -62,6 +68,12 @@ assert.match(api,/getFinancialCenterV3Control/);
 assert.match(api,/CLOSE_CASH_DAY/);
 assert.match(api,/LOCATION_FORBIDDEN/);
 assert.match(api,/financePersona/);
+assert.match(api,/redactFinanceForPersona/);
+assert.match(api,/isPayrollFinanceSource/);
+assert.match(api,/STATION_MANAGER/);
+assert.match(api,/CASHIER/);
+assert.match(api,/grossProfit: 0/);
+assert.match(api,/obligations,/);
 
 assert.match(schema,/model FinancialCashClose/);
 assert.match(schema,/@@unique\(\[moneyAccountId, businessDate\]/);
