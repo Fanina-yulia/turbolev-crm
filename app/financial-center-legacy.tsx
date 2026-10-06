@@ -38,6 +38,7 @@ type Alert = { level: "INFO" | "WARNING" | "CRITICAL"; code: string; title: stri
 type FinanceV2 = {
   ok: boolean;
   currency: string;
+  viewer?: { persona: "OWNER" | "CASHIER" | "STATION_MANAGER" | "FINANCE" | "STANDARD"; primaryRole: string | null; userName: string | null; roles: Array<{ code: string; name: string; isPrimary: boolean }> };
   range: { from: string; to: string; timezone: string };
   settings: { scopeKey: string; locationId: string | null; defaultCurrency: string; minimumCashReserve: number; fixedMonthlyCosts: number; targetGrossMarginPercent: number; warningGrossMarginPercent: number; forecastHorizonDays: number };
   kpi: { currentCash: number; revenue: number; grossProfit: number; directCosts: number; opex: number; netProfit: number; cashFlow: number; grossMarginPercent: number | null; receivables: number; payables: number; overdueReceivables: number; overduePayables: number };
@@ -72,6 +73,12 @@ type FinanceV2 = {
 };
 
 const TAB_LABEL: Record<Tab, string> = { overview: "Огляд", pnl: "Прибуток (P&L)", cash: "Рух грошей", plan: "План / факт", calendar: "Платіжний календар", debts: "Борги", profitability: "Прибутковість", expenses: "Витрати", accounts: "Рахунки" };
+function financeTabsForPersona(persona: FinanceV2["viewer"] extends infer V ? V extends { persona: infer P } ? P : never : never): Tab[] {
+  if (persona === "CASHIER" || persona === "STANDARD") return ["overview", "cash", "debts", "accounts"];
+  if (persona === "STATION_MANAGER") return ["overview", "cash", "debts", "profitability", "expenses", "accounts"];
+  return Object.keys(TAB_LABEL) as Tab[];
+}
+function canSeeFullFinance(persona: FinanceV2["viewer"]?.persona) { return persona === "OWNER" || persona === "FINANCE"; }
 const AGING_LABEL: Record<string, string> = { "0_7": "0–7", "8_14": "8–14", "15_30": "15–30", "31_60": "31–60", "60_PLUS": "60+" };
 
 function money(value: number | null | undefined, currency = "UAH") { return value == null ? "—" : new Intl.NumberFormat("uk-UA", { style: "currency", currency, maximumFractionDigits: 0 }).format(value); }
@@ -166,6 +173,13 @@ export function FinancialCenter() {
     data?.costCenters.forEach((item) => { if (item.locationId) map.set(item.locationId, item.name); });
     return Array.from(map.entries()).map(([id, name]) => ({ id, name }));
   }, [data]);
+  const visibleTabs = useMemo(() => financeTabsForPersona(data?.viewer?.persona), [data?.viewer?.persona]);
+  const fullFinance = canSeeFullFinance(data?.viewer?.persona);
+  useEffect(() => {
+    if (!data || visibleTabs.includes(tab)) return;
+    setTab("overview");
+    navigateCrm("Фінансовий центр", { from, to, scope: "overview", ...(locationId ? { locationId } : {}) });
+  }, [data, tab, visibleTabs, from, to, locationId]);
   const periodLabel = `${dateText(`${from}T12:00:00+03:00`)} — ${dateText(`${to}T12:00:00+03:00`)}`;
 
   function route(nextTab = tab, nextFrom = from, nextTo = to, nextLocation = locationId) { navigateCrm("Фінансовий центр", { from: nextFrom, to: nextTo, scope: nextTab, ...(nextLocation ? { locationId: nextLocation } : {}) }); }
@@ -184,8 +198,8 @@ export function FinancialCenter() {
       eyebrow="TURBO LEV · ФІНАНСОВИЙ ЦЕНТР"
       title="Фінансовий центр"
       description={loading ? "Оновлюю фінансову картину…" : `${tab === "accounts" ? "Поточні залишки" : periodLabel} · прибуток · рух грошей · план/факт · прогноз`}
-      actions={<><button type="button" className={styles.secondaryButton} onClick={() => setSettingsHubOpen(true)}>⚙ Налаштування</button><button type="button" className={styles.secondaryButton} onClick={() => void load()} disabled={loading}>Оновити</button><button type="button" className={styles.primaryButton} onClick={() => openOperation("EXPENSE")}>+ Додати операцію</button></>}
-      tabs={<nav className={styles.tabs} aria-label="Фінансові розділи">{(Object.keys(TAB_LABEL) as Tab[]).map((item) => <button type="button" key={item} className={tab === item ? styles.activeTab : ""} onClick={() => chooseTab(item)}>{TAB_LABEL[item]}</button>)}</nav>}
+      actions={<>{fullFinance && <button type="button" className={styles.secondaryButton} onClick={() => setSettingsHubOpen(true)}>⚙ Налаштування</button>}<button type="button" className={styles.secondaryButton} onClick={() => void load()} disabled={loading}>Оновити</button>{data?.viewer?.persona !== "CASHIER" && data?.viewer?.persona !== "STANDARD" && <button type="button" className={styles.primaryButton} onClick={() => openOperation("EXPENSE")}>+ Додати операцію</button>}</>}
+      tabs={<nav className={styles.tabs} aria-label="Фінансові розділи">{visibleTabs.map((item) => <button type="button" key={item} className={tab === item ? styles.activeTab : ""} onClick={() => chooseTab(item)}>{TAB_LABEL[item]}</button>)}</nav>}
       controls={<section className={styles.filters}>{tab !== "accounts" && <><div className={styles.presets}>{(["today", "week", "month", "quarter", "year"] as const).map((item) => <button key={item} type="button" className={preset === item ? styles.activeTab : ""} onClick={() => choosePreset(item)}>{{ today: "Сьогодні", week: "Тиждень", month: "Місяць", quarter: "Квартал", year: "Рік" }[item]}</button>)}<button type="button" className={preset === "custom" ? styles.activeTab : ""} onClick={() => setPreset("custom")}>Період</button></div>{preset === "custom" && <div className={styles.filterRow}><label>Від<input type="date" value={from} onChange={(event) => { setFrom(event.target.value); route(tab, event.target.value, to); }} /></label><label>До<input type="date" value={to} onChange={(event) => { setTo(event.target.value); route(tab, from, event.target.value); }} /></label></div>}</>}<label>СТО<select value={locationId} onChange={(event) => { setLocationId(event.target.value); route(tab, from, to, event.target.value); }}><option value="">Уся мережа</option>{locations.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label></section>}
     />
 
@@ -218,7 +232,7 @@ export function FinancialCenter() {
 function Overview({ data, onTab }: { data: FinanceV2; onTab: (tab: Tab) => void }) {
   const topAlerts = data.alerts.slice(0, 5);
   return <>
-    <section className={styles.panel}>
+    {canSeeFullFinance(data.viewer?.persona) && <section className={styles.panel}>
       <div className={styles.panelHeader}><div><span className={styles.eyebrow}>DATA QUALITY</span><h2>Повнота фінансових даних</h2><p>CRM перевіряє, чи всі витрати, що впливають на прибуток, потрапили у фінансовий результат.</p></div><span className={`${styles.completenessBadge} ${data.financeCompleteness.status === "COMPLETE" ? styles.completenessGood : data.financeCompleteness.status === "LOW" ? styles.completenessBad : styles.completenessWarn}`}>{data.financeCompleteness.score}%</span></div>
       <div className={styles.completenessBar}><span style={{ width: `${data.financeCompleteness.score}%` }} /></div>
       {data.financeCompleteness.issues.length ? <div className={styles.qualityIssues}>{data.financeCompleteness.issues.map((issue) => <div key={issue.code} className={issue.level === "CRITICAL" ? styles.qualityCritical : styles.qualityWarning}><strong>{issue.title}</strong><span>{issue.message}</span></div>)}</div> : <div className={styles.qualityComplete}>✓ Фінансові дані за доступними контрольними правилами повні.</div>}
