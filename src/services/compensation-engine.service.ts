@@ -1,6 +1,7 @@
 import { Prisma } from "@/src/generated/prisma/client";
 import { getPrisma } from "@/src/lib/prisma";
 import { toPrismaJson } from "@/src/lib/prisma-json";
+import { acquireTransactionAdvisoryLock } from "@/src/lib/advisory-lock";
 import {
   dailyBaseAmount,
   laborCompensation,
@@ -102,7 +103,7 @@ async function postAccrualTx(tx: Tx, input: {
 }) {
   const amount = roundCompensation(input.amount);
   if (!(amount > 0)) return null;
-  await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`compensation:${input.employeeId}:${input.sourceType}:${input.sourceId}`}))`;
+  await acquireTransactionAdvisoryLock(tx, `compensation:${input.employeeId}:${input.sourceType}:${input.sourceId}`);
   const existing = await tx.salaryAccrual.findFirst({
     where: {
       employeeId: input.employeeId,
