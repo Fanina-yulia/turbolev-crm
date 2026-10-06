@@ -656,6 +656,163 @@ export async function getFinancialCenterV2(scope: FinancialCenterScope) {
     marginPercent: row.revenue > 0 ? roundMoney(row.profit / row.revenue * 100) : null,
   })).sort((a, b) => b.profit - a.profit);
 
+  const qualityIssues: Array<{ code: string; level: "INFO" | "WARNING" | "CRITICAL"; title: string; message: string; count: number }> = [];
+  const completedFinancialLines = await prisma.workOrderLine.findMany({
+    where: {
+      status: "COMPLETED",
+      completedAt: { gte: scope.from, lt: scope.to },
+      type: { in: ["LABOR", "PART"] },
+    },
+    select: {
+      id: true,
+      type: true,
+      mechanicId: true,
+      actualQuantity: true,
+      plannedQuantity: true,
+      actualUnitPrice: true,
+      plannedUnitPrice: true,
+      actualUnitCost: true,
+      plannedUnitCost: true,
+      actualDiscount: true,
+      plannedDiscount: true,
+    },
+    take: 5000,
+  });
+  const laborLinesForQuality = completedFinancialLines.filter((line) => line.type === "LABOR" && line.mechanicId);
+  const laborSourceIds = laborLinesForQuality.map((line) => line.id);
+  const existingLaborAccruals = laborSourceIds.length ? await prisma.salaryAccrual.findMany({
+    where: { status: "POSTED", sourceType: "WORK_ORDER_LABOR", sourceId: { in: laborSourceIds } },
+    select: { sourceId: true },
+  }) : [];
+  const existingLaborIds = new Set(existingLaborAccruals.map((row) => row.sourceId).filter(Boolean));
+
+  const mechanicRefs = Array.from(new Set(laborLinesForQuality.map((line) => line.mechanicId).filter(Boolean) as string[]));
+  const mechanicResources = mechanicRefs.length ? await prisma.serviceMechanic.findMany({
+    where: { OR: [{ id: { in: mechanicRefs } }, { userId: { in: mechanicRefs } }, { employeeId: { in: mechanicRefs } }] },
+    select: { id: true, userId: true, employeeId: true },
+  }) : [];
+  const candidateEmployeeIds = Array.from(new Set([
+    ...mechanicRefs,
+    ...(mechanicResources.map((row) => row.employeeId).filter(Boolean) as string[]),
+  ]));
+  const mechanicEmployees = candidateEmployeeIds.length || mechanicRefs.length ? await prisma.employeeProfile.findMany({
+    where: {
+      OR: [
+        ...(candidateEmployeeIds.length ? [{ id: { in: candidateEmployeeIds } }] : []),
+        ...(mechanicRefs.length ? [{ userId: { in: mechanicRefs } }] : []),
+      ],
+    },
+    select: { id: true, userId: true, workPercent: true },
+  }) : [];
+  const employeePercent = new Map(mechanicEmployees.map((row) => [row.id, decimalToNumber(row.workPercent || 0)]));
+  const refToEmployee = new Map<string, string>();
+  for (const employee of mechanicEmployees) {
+    refToEmployee.set(employee.id, employee.id);
+    if (employee.userId) refToEmployee.set(employee.userId, employee.id);
+  }
+  for (const resource of mechanicResources) {
+    if (!resource.employeeId) continue;
+    refToEmployee.set(resource.id, resource.employeeId);
+    if (resource.userId) refToEmployee.set(resource.userId, resource.employeeId);
+    refToEmployee.set(resource.employeeId, resource.employeeId);
+  }
+
+  const missingLaborAccruals = laborLinesForQuality.filter((line) => {
+    if (existingLaborIds.has(line.id)) return false;
+    const employeeId = line.mechanicId ? refToEmployee.get(line.mechanicId) : null;
+    if (!employeeId || (employeePercent.get(employeeId) || 0) <= 0) return false;
+    const qty = decimalToNumber(line.actualQuantity ?? line.plannedQuantity);
+    const price = decimalToNumber(line.actualUnitPrice ?? line.plannedUnitPrice);
+    const discount = decimalToNumber(line.actualDiscount ?? line.plannedDiscount);
+    return Math.max(0, qty * price - discount) > 0;
+  }).length;
+  if (missingLaborAccruals > 0) qualityIssues.push({
+    code: "MISSING_LABOR_COMPENSATION",
+    level: "CRITICAL",
+    title: "Не врахована пряма оплата праці",
+    message: `${missingLaborAccruals} виконаних робіт мають % працівника, але ще не мають зарплатного нарахування.`,
+    count: missingLaborAccruals,
+  });
+
+  const walkInRevenueEvents = events.filter((event) => event.sourceEntity === "WALK_IN_DIAGNOSTIC" && String(event.sourceEntityId || "").endsWith(":revenue"));
+  const diagnosticIds = walkInRevenueEvents.map((event) => String(event.sourceEntityId).replace(/:revenue$/, ""));
+  const walkInAccruals = diagnosticIds.length ? await prisma.salaryAccrual.findMany({
+    where: { status: "POSTED", sourceType: "WALK_IN_DIAGNOSTIC_LABOR", sourceId: { in: diagnosticIds } },
+    select: { sourceId: true },
+  }) : [];
+  const walkInAccrualIds = new Set(walkInAccruals.map((row) => row.sourceId).filter(Boolean));
+  const missingWalkInLabor = diagnosticIds.filter((id) => !walkInAccrualIds.has(id)).length;
+  if (missingWalkInLabor > 0) qualityIssues.push({
+    code: "MISSING_WALK_IN_LABOR",
+    level: "CRITICAL",
+    title: "Діагностика без собівартості механіка",
+    message: `${missingWalkInLabor} діагностик мають виручку, але не мають live-нарахування виконавцю.`,
+    count: missingWalkInLabor,
+  });
+
+  const missingPartCosts = completedFinancialLines.filter((line) => {
+    if (line.type !== "PART") return false;
+    const qty = decimalToNumber(line.actualQuantity ?? line.plannedQuantity);
+    const price = decimalToNumber(line.actualUnitPrice ?? line.plannedUnitPrice);
+    const cost = decimalToNumber(line.actualUnitCost ?? line.plannedUnitCost);
+    const discount = decimalToNumber(line.actualDiscount ?? line.plannedDiscount);
+    return Math.max(0, qty * price - discount) > 0 && qty * cost <= 0;
+  }).length;
+  if (missingPartCosts > 0) qualityIssues.push({
+    code: "MISSING_PART_COST",
+    level: "WARNING",
+    title: "Продані деталі без закупівельної собівартості",
+    message: `${missingPartCosts} завершених позицій деталей мають продаж, але нульову/відсутню собівартість.`,
+    count: missingPartCosts,
+  });
+
+  const currentMonthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+  const currentMonthNext = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
+  let missingBaseAccrualEmployees = 0;
+  if (scope.to > currentMonthStart && scope.from < currentMonthNext) {
+    const baseEmployees = await prisma.employeeProfile.findMany({
+      where: { isActive: true, baseSalary: { gt: 0 } },
+      select: { id: true },
+    });
+    const baseIds = baseEmployees.map((row) => row.id);
+    const currentBaseAccruals = baseIds.length ? await prisma.salaryAccrual.findMany({
+      where: {
+        employeeId: { in: baseIds },
+        status: "POSTED",
+        sourceType: "BASE_DAILY",
+        occurredAt: { gte: currentMonthStart, lt: currentMonthNext },
+      },
+      select: { employeeId: true },
+      distinct: ["employeeId"],
+    }) : [];
+    const basePosted = new Set(currentBaseAccruals.map((row) => row.employeeId));
+    missingBaseAccrualEmployees = baseIds.filter((id) => !basePosted.has(id)).length;
+    if (missingBaseAccrualEmployees > 0) qualityIssues.push({
+      code: "MISSING_BASE_ACCRUAL",
+      level: "WARNING",
+      title: "Не нарахована базова ставка",
+      message: `${missingBaseAccrualEmployees} активних працівників зі ставкою ще не мають live-нарахування за поточний місяць.`,
+      count: missingBaseAccrualEmployees,
+    });
+  }
+
+  if (pnl.revenue > 0 && (pnl.grossMarginPercent ?? 0) >= 99.5) qualityIssues.push({
+    code: "SUSPICIOUS_FULL_MARGIN",
+    level: "CRITICAL",
+    title: "Підозріло висока валова маржа",
+    message: "Маржа близька до 100%: перевірте оплату праці, закупівельну собівартість деталей та інші прямі витрати.",
+    count: 1,
+  });
+
+  const qualityPenalty = qualityIssues.reduce((sum, issue) => sum + (issue.level === "CRITICAL" ? 25 : issue.level === "WARNING" ? 12 : 5), 0);
+  const financeCompleteness = {
+    score: Math.max(0, 100 - qualityPenalty),
+    status: qualityIssues.some((issue) => issue.level === "CRITICAL") ? "LOW" as const : qualityIssues.length ? "PARTIAL" as const : "COMPLETE" as const,
+    preliminaryNetProfit: qualityIssues.length > 0,
+    issues: qualityIssues,
+    checks: { missingLaborAccruals, missingWalkInLabor, missingPartCosts, missingBaseAccrualEmployees },
+  };
+
   const alerts: Array<{ level: "INFO" | "WARNING" | "CRITICAL"; code: string; title: string; message: string; amount?: number; date?: string }> = [];
   if (firstGap) alerts.push({ level: "CRITICAL", code: "CASH_GAP", title: "Прогнозований касовий розрив", message: `Прогнозований залишок ${firstGap.closingCash.toFixed(0)} грн.`, amount: firstGap.closingCash, date: firstGap.date });
   else if (firstReserveWarning) alerts.push({ level: "WARNING", code: "CASH_RESERVE", title: "Залишок нижче резерву", message: `Прогнозований залишок знизиться нижче резерву ${settingsView.minimumCashReserve.toFixed(0)} грн.`, amount: firstReserveWarning.closingCash, date: firstReserveWarning.date });
@@ -669,7 +826,8 @@ export async function getFinancialCenterV2(scope: FinancialCenterScope) {
   if (previousPnl.opex > 0 && pnl.opex > previousPnl.opex && changePercent(pnl.opex, previousPnl.opex)! > 20) {
     alerts.push({ level: "WARNING", code: "OPEX_GROWTH", title: "Операційні витрати зросли", message: `OPEX зріс на ${changePercent(pnl.opex, previousPnl.opex)!.toFixed(1)}% до попереднього аналогічного періоду.` });
   }
-  alerts.sort((a, b) => ({ CRITICAL: 0, WARNING: 1, INFO: 2 }[a.level] - ({ CRITICAL: 0, WARNING: 1, INFO: 2 }[b.level])));
+  for (const issue of qualityIssues) alerts.push({ level: issue.level, code: issue.code, title: issue.title, message: issue.message });
+  alerts.sort((a, b) => ({ CRITICAL: 0, WARNING: 1, INFO: 2 }[a.level] - ({ CRITICAL: 0, WARNING: 1, INFO: 2 }[b.level]));
 
   const periodCashFlow = roundMoney(cashSection.inflow - cashSection.outflow);
   return {
@@ -681,6 +839,8 @@ export async function getFinancialCenterV2(scope: FinancialCenterScope) {
       currentCash,
       revenue: pnl.revenue,
       grossProfit: pnl.grossProfit,
+      directCosts: pnl.cogs,
+      opex: pnl.opex,
       netProfit: pnl.netProfit,
       cashFlow: periodCashFlow,
       grossMarginPercent: pnl.grossMarginPercent,
@@ -743,6 +903,7 @@ export async function getFinancialCenterV2(scope: FinancialCenterScope) {
       mechanics,
       suppliers: supplierProfitability,
     },
+    financeCompleteness,
     alerts: alerts.slice(0, 20),
   };
 }
