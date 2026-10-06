@@ -142,7 +142,22 @@ payrollDue = POSTED SalaryAccrual - SalaryPayment
 
 Кредиторка входить у Financial Center.
 
-## 9. Daily reconciliation
+## 9. Event-driven recalculation + safety reconciliation
+
+Основний режим роботи — **event-driven**, без очікування нічного job.
+
+Одразу після бізнес-події:
+- оплата/проведення walk-in діагностики → SalaryAccrual механіку → FinancialEvent COGS → payroll payable;
+- завершення LABOR line → SalaryAccrual → COGS;
+- створення DIRECT PARTS_REVENUE / PARTS_MARGIN attribution → відповідна комісія працівнику;
+- SalaryPayment → одразу оновлює payroll payable;
+- POSTED фінансові операції одразу доступні Financial Center на наступному читанні.
+
+Відкритий Financial Center автоматично підтягує свіжі дані кожні 5 секунд, при поверненні фокусу/видимості та після локальної події turbolev:data-changed.
+
+Щоденний reconciliation залишається лише страховкою для старих записів, міграцій або пропущених інтеграційних подій.
+
+### 9.1. Safety reconciliation
 
 Щоденний maintenance:
 - донараховує baseSalary;
