@@ -555,6 +555,7 @@ export async function payWalkInDiagnostic(
   await postWalkInDiagnosticCompensation({
     diagnosticRequestId,
     employeeId: mechanic.employeeId,
+    mechanicRef: mechanic.id,
     amount: Number(amount),
     occurredAt: recognizedAt,
     appointmentId: appointment.id,
