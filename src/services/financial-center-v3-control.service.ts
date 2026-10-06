@@ -560,6 +560,7 @@ export async function closeFinanceCashDay(
     ? input.businessDate
     : zonedDateKey(new Date(), KYIV_TZ);
   const businessDate = new Date(`${businessDateKey}T00:00:00.000Z`);
+  const businessRange = zonedDayRange(businessDateKey, KYIV_TZ);
   const note = typeof input.note === "string" && input.note.trim() ? input.note.trim().slice(0, 4000) : null;
 
   return prisma.$transaction(async (tx) => {
@@ -584,6 +585,7 @@ export async function closeFinanceCashDay(
       FROM "MoneyAccount" ma
       LEFT JOIN "CashTransaction" ct
         ON ct."status"::text = 'POSTED'
+       AND ct."occurredAt" < ${businessRange.to}
        AND (ct."fromAccountId" = ma."id" OR ct."toAccountId" = ma."id")
       WHERE ma."id" = ${moneyAccountId}
       GROUP BY ma."id", ma."openingBalance"
