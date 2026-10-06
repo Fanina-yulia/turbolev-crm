@@ -372,29 +372,29 @@ export function PaymentsQueue() {
         <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Авто, ПІБ, телефон, VIN, КП або ЗН..." />
         {query && <button type="button" onClick={() => setQuery("")} aria-label="Очистити пошук">×</button>}
       </label>
-      <div className={styles.presets} aria-label="Період">
+
+      <nav className={styles.tabs} aria-label="Статуси оплат">
+        {TABS.map((item) => {
+          const count = query ? filteredCounts[item.id] : counts[item.id];
+          return <button type="button" key={item.id} className={tab === item.id && !routeWorkOrderId ? styles.activeTab : ""} onClick={() => selectTab(item.id)}>
+            <span className={item.id === "paid" ? styles.greenDot : item.id === "partial" ? styles.yellowDot : item.id === "due" || item.id === "overdue" ? styles.redDot : ""} />
+            {item.label}<b>{count}</b>
+          </button>;
+        })}
+      </nav>
+
+      <div className={styles.presets} aria-label="Швидкий вибір періоду">
         {([
           ["today", "Сьогодні"],
           ["7d", "7 днів"],
           ["30d", "30 днів"],
           ["month", "Місяць"],
-          ["custom", "Період"],
         ] as Array<[Preset, string]>).map(([id, label]) => <button key={id} type="button" className={preset === id ? styles.activePreset : ""} onClick={() => applyPreset(id)}>{label}</button>)}
       </div>
       <label className={styles.dateField}><input aria-label="Від" title="Від" type="date" value={from} max={to} onChange={(event) => { setPreset("custom"); setFrom(event.target.value); }} /></label>
       <label className={styles.dateField}><input aria-label="До" title="До" type="date" value={to} min={from} onChange={(event) => { setPreset("custom"); setTo(event.target.value); }} /></label>
-      {locations.length > 0 && <label className={styles.locationField}><select aria-label="СТО" title="СТО" value={locationId} onChange={(event) => setLocationId(event.target.value)}><option value="">Уся доступна мережа</option>{locations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}</select></label>}
+      {locations.length > 0 && <label className={styles.locationField}><select aria-label="СТО" title="СТО" value={locationId} onChange={(event) => setLocationId(event.target.value)}><option value="">Уся мережа</option>{locations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}</select></label>}
     </section>
-
-    <nav className={styles.tabs} aria-label="Статуси оплат">
-      {TABS.map((item) => {
-        const count = query ? filteredCounts[item.id] : counts[item.id];
-        return <button type="button" key={item.id} className={tab === item.id && !routeWorkOrderId ? styles.activeTab : ""} onClick={() => selectTab(item.id)}>
-          <span className={item.id === "paid" ? styles.greenDot : item.id === "partial" ? styles.yellowDot : item.id === "due" || item.id === "overdue" ? styles.redDot : ""} />
-          {item.label}<b>{count}</b>
-        </button>;
-      })}
-    </nav>
 
     {error && <div className={styles.error}>{error}</div>}
     {notice && <div className={styles.notice}>{notice}</div>}
