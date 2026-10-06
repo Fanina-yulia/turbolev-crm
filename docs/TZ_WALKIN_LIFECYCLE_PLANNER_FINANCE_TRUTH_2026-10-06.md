@@ -189,3 +189,5 @@ Production-аудит виявив п'ять WALK-IN, де factual day != planne
 
 
 **Release validation:** exact-commit preview required before merge.
+
+**Merge resolution:** rebased onto the Finance Glossary version of current main.
