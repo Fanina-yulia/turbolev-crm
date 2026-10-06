@@ -436,15 +436,15 @@ export function FinanceExpensesV2({ from, to, locationId, categories, accounts, 
       <div>
         <span className={styles.eyebrow}>EXPENSE CONTROL CENTER</span>
         <h2>Витрати і собівартість</h2>
-        <p>Одна сторінка для руху грошей, P&L, зарплат, закупівель, кредиторки й бюджету. Закупівля на склад не зменшує прибуток до моменту списання деталі в ремонт.</p>
+        <p>Одна сторінка для руху грошей, P&amp;L, зарплат, закупівель, кредиторки й бюджету. Закупівля на склад не зменшує прибуток до моменту списання деталі в ремонт.</p>
       </div>
       <button type="button" className={styles.primaryButton} onClick={onCreate}>+ Додати витрату</button>
     </section>
 
     <section className={styles.expenseKpiGrid}>
       <div className={styles.expenseKpi}><span>Усі грошові витрати</span><strong>{money(finance.cashOutflow)}</strong><small>фактичні OUTFLOW за період</small></div>
-      <div className={styles.expenseKpi}><span>Операційні витрати</span><strong>{money(finance.opex)}</strong><small>P&L · OPEX</small></div>
-      <div className={styles.expenseKpi}><span>Зарплати</span><strong>{money(payroll)}</strong><small>нараховані у P&L</small></div>
+      <div className={styles.expenseKpi}><span>Операційні витрати</span><strong>{money(finance.opex)}</strong><small>P&amp;L · OPEX</small></div>
+      <div className={styles.expenseKpi}><span>Зарплати</span><strong>{money(payroll)}</strong><small>нараховані у P&amp;L</small></div>
       <div className={styles.expenseKpi}><span>Оплачено постачальникам</span><strong>{money(supplierPaid)}</strong><small>фактичні платежі закупівель</small></div>
       <div className={styles.expenseKpi}><span>Собівартість деталей</span><strong>{money(partsCogs)}</strong><small>використано/продано в ремонтах</small></div>
       <div className={styles.expenseKpi}><span>Надійшло на склад</span><strong>{inventoryLoading ? "…" : money(inventoryFacts?.period.receiptValue || 0)}</strong><small>{inventoryFacts ? `${inventoryFacts.period.receiptCount} складських приходів` : "дані складу недоступні"}</small></div>
@@ -455,7 +455,7 @@ export function FinanceExpensesV2({ from, to, locationId, categories, accounts, 
     <section className={styles.expenseGuide}>
       <div><strong>Закупили деталь</strong><span>Гроші пішли → Cash Flow</span></div>
       <b>→</b>
-      <div><strong>Деталь на складі</strong><span>Запас / актив, не P&L-витрата</span></div>
+      <div><strong>Деталь на складі</strong><span>Запас / актив, не P&amp;L-витрата</span></div>
       <b>→</b>
       <div><strong>Встановили клієнту</strong><span>Собівартість → COGS</span></div>
       <b>→</b>
@@ -496,8 +496,8 @@ export function FinanceExpensesV2({ from, to, locationId, categories, accounts, 
       </div>}
 
       {section === "PAYROLL" && <div className={styles.grid2}>
-        <section className={styles.panel}><div className={styles.panelHeader}><div><span className={styles.eyebrow}>PAYROLL</span><h2>Нарахування і виплати</h2><p>Нарахування впливає на P&L; виплата — на Cash Flow.</p></div></div>
-          <div className={styles.summaryRow}><span>Нараховано у P&L</span><strong>{money(payroll)}</strong></div>
+        <section className={styles.panel}><div className={styles.panelHeader}><div><span className={styles.eyebrow}>PAYROLL</span><h2>Нарахування і виплати</h2><p>Нарахування впливає на P&amp;L; виплата — на Cash Flow.</p></div></div>
+          <div className={styles.summaryRow}><span>Нараховано у P&amp;L</span><strong>{money(payroll)}</strong></div>
           <div className={styles.summaryRow}><span>До виплати</span><strong>{money(salaryPayable)}</strong></div>
           <div className={styles.summaryRow}><span>Не враховані нарахування робіт</span><strong className={finance.financeCompleteness.checks.missingLaborAccruals ? styles.negative : styles.positive}>{finance.financeCompleteness.checks.missingLaborAccruals}</strong></div>
           <div className={styles.summaryRow}><span>Працівники без базового нарахування</span><strong className={finance.financeCompleteness.checks.missingBaseAccrualEmployees ? styles.negative : styles.positive}>{finance.financeCompleteness.checks.missingBaseAccrualEmployees}</strong></div>
@@ -557,7 +557,7 @@ export function FinanceExpensesV2({ from, to, locationId, categories, accounts, 
     </section>}
 
     {section === "ANALYTICS" && <div className={styles.grid2}>
-      <section className={styles.panel}><div className={styles.panelHeader}><div><span className={styles.eyebrow}>EXPENSE STRUCTURE</span><h2>Структура витрат у P&L</h2></div></div><div className={styles.expenseStructure}>{pnlCategoryRows.length ? pnlCategoryRows.slice(0, 14).map((item) => <div key={item.name}><div><span>{item.name}</span><strong>{money(item.amount)}</strong></div><div className={styles.structureBar}><span style={{ width: `${Math.max(2, item.amount / maxCategory * 100)}%` }} /></div><small>{item.count} проведень</small></div>) : <div className={styles.empty}>Немає визнаних витрат.</div>}</div></section>
+      <section className={styles.panel}><div className={styles.panelHeader}><div><span className={styles.eyebrow}>EXPENSE STRUCTURE</span><h2>Структура витрат у P&amp;L</h2></div></div><div className={styles.expenseStructure}>{pnlCategoryRows.length ? pnlCategoryRows.slice(0, 14).map((item) => <div key={item.name}><div><span>{item.name}</span><strong>{money(item.amount)}</strong></div><div className={styles.structureBar}><span style={{ width: `${Math.max(2, item.amount / maxCategory * 100)}%` }} /></div><small>{item.count} проведень</small></div>) : <div className={styles.empty}>Немає визнаних витрат.</div>}</div></section>
       <section className={styles.panel}><div className={styles.panelHeader}><div><span className={styles.eyebrow}>CONTROL</span><h2>Потребує уваги</h2><p>Аномалії, пропущена собівартість і перевитрата.</p></div><span className={`${styles.completenessBadge} ${finance.financeCompleteness.status === "COMPLETE" ? styles.completenessGood : finance.financeCompleteness.status === "LOW" ? styles.completenessBad : styles.completenessWarn}`}>{finance.financeCompleteness.score}%</span></div>
         {relevantAlerts.length ? <div className={styles.alertStack}>{relevantAlerts.map((alert) => <div key={alert.code} className={`${styles.alert} ${alert.level === "CRITICAL" ? styles.alertCritical : alert.level === "WARNING" ? styles.alertWarning : styles.alertInfo}`}><span className={styles.alertDot}/><div><strong>{alert.title}</strong><div className={styles.hint}>{alert.message}</div></div>{alert.amount != null && <strong>{money(alert.amount)}</strong>}</div>)}</div> : <div className={styles.qualityComplete}>✓ За доступними правилами критичних відхилень немає.</div>}
         {inventoryFacts && (inventoryFacts.period.missingReceiptCostCount > 0 || inventoryFacts.period.missingIssueCostCount > 0) && <div className={styles.qualityIssues}><div className={styles.qualityWarning}><strong>Складські рухи без собівартості</strong><span>Приходи без ціни: {inventoryFacts.period.missingReceiptCostCount}. Списання без ціни: {inventoryFacts.period.missingIssueCostCount}.</span></div></div>}
