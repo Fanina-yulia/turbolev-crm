@@ -3,7 +3,7 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import styles from "./financial-center-v2.module.css";
 
-type Category = { id: string; name: string; code: string; pnlSection: string | null; parentId: string | null };
+type Category = { id: string; name: string; code: string; pnlSection: string | null; cashFlowSection?: string | null; parentId: string | null };
 type Account = { id: string; name: string; type: string; balance: number };
 type ExpenseRow = {
   id: string;
