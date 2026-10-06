@@ -46,7 +46,8 @@
     "optimization:smoke": "node scripts/deployment-pipeline-contract-smoke.mjs && node scripts/access-context-cache-contract-smoke.mjs && node scripts/polling-performance-contract-smoke.mjs && node scripts/sql-scope-performance-contract-smoke.mjs && node scripts/db-hotpath-performance-contract-smoke.mjs && node scripts/database-observability-contract-smoke.mjs && node scripts/warranty-scope-performance-contract-smoke.mjs && node scripts/walkin-lifecycle-finance-contract-smoke.mjs",
     "ui:screen-contracts:check": "node scripts/check-one-screen-contracts.mjs",
     "ui:scale:check": "node scripts/check-crm-ui-scale.mjs",
-    "ui:header:check": "node scripts/check-unified-page-header.mjs"
+    "ui:header:check": "node scripts/check-unified-page-header.mjs",
+    "payments:v2:check": "node scripts/check-payments-register-v2.mjs"
   },
   "dependencies": {
     "@neondatabase/auth": "0.4.2-beta",
