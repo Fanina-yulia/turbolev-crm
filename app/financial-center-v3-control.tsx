@@ -7,7 +7,7 @@ import styles from "./financial-center-v3-control.module.css";
 export type FinanceV3Tab = "overview" | "pnl" | "cash" | "plan" | "calendar" | "debts" | "profitability" | "expenses" | "accounts";
 export type FinanceDrilldownMetric =
   | "currentCash" | "revenue" | "grossProfit" | "netProfit"
-  | "cashIn" | "cashOut" | "receivables" | "payables"
+  | "cashIn" | "cashOut" | "cashNet" | "receivables" | "payables"
   | "cogs" | "opex" | "overdueReceivables" | "overduePayables";
 
 type Account = { id: string; name: string; type: string; balance: number; openingBalance: number; locationId: string | null };
@@ -64,6 +64,7 @@ export type FinanceV3Data = {
   accounts: Account[];
   obligations: Obligation[];
   forecast: { minimumForecastCash: number; minimumReserve: number; horizonDays: number };
+  calendar: Array<{ id: string; sourceType: string; direction: "INFLOW" | "OUTFLOW"; amount: number; weightedAmount: number; expectedAt: string; status: string; counterparty: string | null; description: string | null; sourceId: string | null }>;
   settings: { warningGrossMarginPercent: number; targetGrossMarginPercent: number };
 };
 
@@ -121,6 +122,7 @@ export function FinanceContextKpis({ data, tab, onMetric }: { data: FinanceV3Dat
   if (tab === "cash") items = [
     { key: "cashIn", label: "Надійшло", value: data.cashFlow.inflow },
     { key: "cashOut", label: "Витрачено", value: data.cashFlow.outflow },
+    { key: "cashNet", label: "Net Cash Flow", value: data.cashFlow.net },
     { key: "currentCash", label: "Залишок зараз", value: data.kpi.currentCash, note: "не залежить від періоду" },
   ];
   if (tab === "plan") {
@@ -132,12 +134,16 @@ export function FinanceContextKpis({ data, tab, onMetric }: { data: FinanceV3Dat
       note: row.plan > 0 ? `план ${money(row.plan)} · ${row.completionPercent == null ? "—" : percent(row.completionPercent)}` : "план ще не визначено",
     })) as typeof items;
   }
-  if (tab === "calendar") items = [
-    { key: "currentCash", label: "Залишок зараз", value: data.kpi.currentCash },
-    { key: "cashIn", label: "Очікувано через 7 днів", value: control?.forecast.in7Days ?? data.kpi.currentCash },
-    { key: "cashOut", label: "Очікувано через 30 днів", value: control?.forecast.in30Days ?? data.kpi.currentCash },
-    { key: "currentCash", label: "Мінімальний прогноз", value: data.forecast.minimumForecastCash, note: control?.forecast.minimum ? dateText(control.forecast.minimum.date) : `${data.forecast.horizonDays} днів`, tone: data.forecast.minimumForecastCash < data.forecast.minimumReserve ? "warn" : "default" },
-  ];
+  if (tab === "calendar") {
+    const expectedIn = data.calendar.filter((item) => item.direction === "INFLOW").reduce((sum, item) => sum + item.weightedAmount, 0);
+    const expectedOut = data.calendar.filter((item) => item.direction === "OUTFLOW").reduce((sum, item) => sum + item.weightedAmount, 0);
+    items = [
+      { key: "currentCash", label: "Залишок зараз", value: data.kpi.currentCash },
+      { key: "cashIn", label: "Очікувані надходження", value: expectedIn },
+      { key: "cashOut", label: "Майбутні виплати", value: expectedOut },
+      { key: "currentCash", label: "Мінімальний прогноз", value: data.forecast.minimumForecastCash, note: control?.forecast.minimum ? dateText(control.forecast.minimum.date) : `${data.forecast.horizonDays} днів`, tone: data.forecast.minimumForecastCash < data.forecast.minimumReserve ? "warn" : "default" },
+    ];
+  }
   if (tab === "debts") items = [
     { key: "receivables", label: "Дебіторка", value: data.kpi.receivables },
     { key: "overdueReceivables", label: "Прострочена дебіторка", value: data.kpi.overdueReceivables, tone: data.kpi.overdueReceivables > 0 ? "warn" : "good" },
@@ -297,7 +303,7 @@ export function FinanceDrilldown({ data, metric, onClose }: { data: FinanceV3Dat
   if (!metric) return null;
   const titles: Record<FinanceDrilldownMetric, string> = {
     currentCash: "Залишок коштів зараз", revenue: "Виручка", grossProfit: "Валовий прибуток", netProfit: "Чистий прибуток",
-    cashIn: "Надходження", cashOut: "Виплати", receivables: "Дебіторка", payables: "Кредиторка",
+    cashIn: "Надходження", cashOut: "Виплати", cashNet: "Net Cash Flow", receivables: "Дебіторка", payables: "Кредиторка",
     cogs: "Собівартість", opex: "Операційні витрати", overdueReceivables: "Прострочена дебіторка", overduePayables: "Прострочена кредиторка",
   };
   const eventSections = metric === "revenue" ? ["REVENUE"] : metric === "cogs" ? ["COGS"] : metric === "opex" ? ["OPEX","OTHER_EXPENSE","TAX"] : [];
@@ -313,6 +319,7 @@ export function FinanceDrilldown({ data, metric, onClose }: { data: FinanceV3Dat
     <aside className={styles.drawer}>
       <header><div><span>ДЕТАЛІЗАЦІЯ</span><h2>{titles[metric]}</h2></div><button type="button" onClick={onClose}>✕</button></header>
       {metric === "currentCash" && <div className={styles.drawerList}>{data.accounts.map((row) => <div key={row.id}><span><strong>{row.name}</strong><small>{row.type} · початково {money(row.openingBalance)}</small></span><strong>{money(row.balance)}</strong></div>)}</div>}
+      {metric === "cashNet" && <div className={styles.drawerList}><div><span>Надійшло</span><strong>{money(data.cashFlow.inflow)}</strong></div><div><span>− Витрачено</span><strong>{money(data.cashFlow.outflow)}</strong></div><div><span>= Net Cash Flow</span><strong>{money(data.cashFlow.net)}</strong></div></div>}
       {(metric === "grossProfit" || metric === "netProfit") && <div className={styles.drawerList}>
         <div><span>Виручка</span><strong>{money(data.pnl.revenue)}</strong></div>
         <div><span>− Собівартість</span><strong>{money(data.pnl.cogs)}</strong></div>
@@ -322,7 +329,7 @@ export function FinanceDrilldown({ data, metric, onClose }: { data: FinanceV3Dat
       {events.length > 0 && <div className={styles.drawerList}>{events.map((row) => <button type="button" key={row.id} onClick={() => row.workOrderId && navigateCrm("Замовлення-наряди", { workOrderId: row.workOrderId })}><span><strong>{row.category?.name || row.pnlSection}</strong><small>{dateText(row.recognizedAt)} · {row.description || "без опису"}{row.workOrderId ? ` · ЗН ${row.workOrderId}` : ""}</small></span><strong>{money(row.amount)}</strong></button>)}</div>}
       {cash.length > 0 && <div className={styles.drawerList}>{cash.map((row) => <div key={row.id}><span><strong>{row.description || row.flowSection}</strong><small>{dateText(row.occurredAt)}</small></span><strong>{money(row.amount)}</strong></div>)}</div>}
       {obligations.length > 0 && <div className={styles.drawerList}>{obligations.map((row) => <button type="button" key={row.id} onClick={() => row.workOrderId && navigateCrm("Замовлення-наряди", { workOrderId: row.workOrderId })}><span><strong>{row.counterpartyName || row.description || "Зобов'язання"}</strong><small>{row.status} · до {dateText(row.dueAt)}{row.isOverdue ? ` · прострочено ${row.overdueDays} дн.` : ""}</small></span><strong>{money(row.outstanding)}</strong></button>)}</div>}
-      {!events.length && !cash.length && !obligations.length && metric !== "currentCash" && metric !== "grossProfit" && metric !== "netProfit" && <div className={styles.empty}>Для цього показника немає окремих фактичних рядків у вибраному періоді.</div>}
+      {!events.length && !cash.length && !obligations.length && metric !== "currentCash" && metric !== "grossProfit" && metric !== "netProfit" && metric !== "cashNet" && <div className={styles.empty}>Для цього показника немає окремих фактичних рядків у вибраному періоді.</div>}
     </aside>
   </div>;
 }
