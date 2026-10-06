@@ -229,7 +229,7 @@ export function FinancialCenter() {
       tabs={<div className={styles.financeToolbar}>
         <nav className={styles.financeSections} aria-label="Фінансові розділи">{visibleTabs.map((item) => <button type="button" key={item} className={tab === item ? styles.activeTab : ""} onClick={() => chooseTab(item)}>{TAB_LABEL[item]}</button>)}</nav>
         {tab !== "accounts" && <>
-          <div className={styles.financePeriods}>{(["today", "week", "month", "quarter", "year"] as const).map((item) => <button key={item} type="button" className={preset === item ? styles.activeTab : ""} onClick={() => choosePreset(item)}>{{ today: "Сьогодні", week: "Тиждень", month: "Місяць", quarter: "Квартал", year: "Рік" }[item]}</button>)}</div>
+          <div className={styles.financePeriods}>{(["today", "week", "month"] as const).map((item) => <button key={item} type="button" className={preset === item ? styles.activeTab : ""} onClick={() => choosePreset(item)}>{{ today: "Сьогодні", week: "Тиждень", month: "Місяць" }[item]}</button>)}</div>
           <label className={styles.financeDate}><input aria-label="Від" title="Від" type="date" value={from} max={to} onChange={(event) => { setPreset("custom"); setFrom(event.target.value); route(tab, event.target.value, to); }} /></label>
           <label className={styles.financeDate}><input aria-label="До" title="До" type="date" value={to} min={from} onChange={(event) => { setPreset("custom"); setTo(event.target.value); route(tab, from, event.target.value); }} /></label>
         </>}
