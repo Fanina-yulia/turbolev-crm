@@ -9,12 +9,12 @@ import type { Prisma } from "@/src/generated/prisma/client";
  * function instead keeps the exact locking semantics while returning only an
  * integer column to Prisma.
  */
-export async function acquireTransactionAdvisoryLock(
+export const PRISMA_TRANSACTION_ADVISORY_LOCK_SQL =\n  "SELECT 1::int AS locked FROM pg_advisory_xact_lock(hashtext($1))";\n\nexport async function acquireTransactionAdvisoryLock(
   tx: Prisma.TransactionClient,
   key: string,
 ) {
   await tx.$queryRawUnsafe<Array<{ locked: number }>>(
-    "SELECT 1::int AS locked FROM pg_advisory_xact_lock(hashtext($1))",
+    PRISMA_TRANSACTION_ADVISORY_LOCK_SQL,
     key,
   );
 }
