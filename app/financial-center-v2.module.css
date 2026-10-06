@@ -39,8 +39,6 @@
 .qualityComplete{padding:10px 12px;border-radius:10px;background:color-mix(in srgb,#16a34a 8%,var(--panel));color:#15803d;font-size:12px;font-weight:800}
 
 
-.modalWide{width:min(1180px,96vw)}
-
 /* FINANCE EXPENSE CONTROL CENTER V4 */
 .expenseCenter{display:grid;gap:12px;min-width:0}
 .expenseHero{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;padding:14px;border:1px solid var(--line,#e1e4ea);border-radius:16px;background:linear-gradient(135deg,color-mix(in srgb,var(--accent,#1f6feb) 7%,var(--surface,#fff)),var(--surface,#fff))}
@@ -86,3 +84,86 @@
 @media(max-width:460px){
   .expenseKpiGrid,.expenseBudgetGrid{grid-template-columns:1fr}
 }
+
+
+/* Finance header: sections + period controls in one compact row. */
+.financeToolbar{
+  width:100%;
+  min-width:0;
+  display:flex;
+  align-items:center;
+  gap:4px;
+  flex-wrap:nowrap;
+  overflow:visible;
+  white-space:nowrap;
+}
+.financeSections,
+.financePeriods{
+  display:flex;
+  align-items:center;
+  gap:3px;
+  flex-wrap:nowrap;
+  min-width:0;
+}
+.financeSections{flex:1 1 auto}
+.financePeriods{flex:0 0 auto}
+.financeSections button,
+.financePeriods button{
+  min-height:32px;
+  border:1px solid var(--line,#d9dce3);
+  background:var(--surface,#fff);
+  color:inherit;
+  border-radius:8px;
+  padding:0 7px;
+  cursor:pointer;
+  font:inherit;
+  font-size:10px;
+  white-space:nowrap;
+}
+.financeSections button:hover,
+.financePeriods button:hover{background:rgba(127,127,127,.08)}
+.financeSections .activeTab,
+.financePeriods .activeTab{
+  border-color:var(--accent,#1f6feb);
+  box-shadow:inset 0 0 0 1px var(--accent,#1f6feb);
+  font-weight:700;
+}
+.financeDate,
+.financeLocation{
+  flex:0 0 auto;
+  min-width:0;
+  display:flex;
+  align-items:center;
+}
+.financeDate{width:96px}
+.financeLocation{width:104px}
+.financeDate input,
+.financeLocation select{
+  width:100%;
+  height:32px;
+  min-width:0;
+  border:1px solid var(--line,#d9dce3);
+  background:var(--surface,#fff);
+  color:inherit;
+  border-radius:8px;
+  padding:0 5px;
+  font:inherit;
+  font-size:10px;
+}
+@media(max-width:1180px) and (min-width:721px){
+  .financeToolbar{gap:2px}
+  .financeSections,.financePeriods{gap:2px}
+  .financeSections button,.financePeriods button{padding:0 4px;font-size:9px}
+  .financeDate{width:88px}
+  .financeLocation{width:94px}
+}
+@media(max-width:720px){
+  .financeToolbar{
+    overflow-x:auto;
+    overflow-y:hidden;
+    scrollbar-width:thin;
+  }
+  .financeSections{flex:0 0 auto}
+}
+
+.modalWide{width:min(1180px,96vw)}
