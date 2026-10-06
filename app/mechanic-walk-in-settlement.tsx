@@ -161,7 +161,7 @@ export function MechanicWalkInSettlement({ diagnosticId, data, onRefresh, onBack
           <span>Сума діагностики, грн</span>
           <input type="number" inputMode="decimal" min="0.01" step="0.01" value={amount} onChange={(event) => setAmount(event.target.value)} placeholder={view.price?.amount || "Введіть суму"} disabled={!view.canPay || Boolean(busy)} />
         </label>
-        <small>{view.price?.label || "Механік вносить фактично прийняту суму."}</small>
+        <small>{view.price?.label || "Механік вносить фактичну суму діагностики."} · Дохід за послугу фіксується після завершення діагностики, тут фіксується факт отримання грошей.</small>
         <div className={styles.methods}>
           <button type="button" disabled={!view.canPay || Boolean(busy)} onClick={() => void pay("CASH")}><b>💵</b><strong>Готівка</strong><span>{busy === "PAYCASH" ? "Фіксую оплату…" : "Прийняти оплату"}</span></button>
           <button type="button" disabled={!view.canPay || Boolean(busy)} onClick={() => void pay("TERMINAL")}><b>💳</b><strong>POS-термінал</strong><span>{busy === "PAYTERMINAL" ? "Фіксую оплату…" : "Оплата карткою"}</span></button>
