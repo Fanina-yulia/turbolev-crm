@@ -294,6 +294,7 @@ export async function GET(request: NextRequest) {
         issuedAt: obligation.issuedAt,
         dueAt: obligation.dueAt,
         settledAt: obligation.settledAt,
+        locationId: obligation.locationId,
         overdue,
         lastPaymentAt: latest?.occurredAt ?? null,
         lastPaymentAmount: latest?.amount ?? 0,
