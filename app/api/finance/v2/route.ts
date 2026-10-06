@@ -228,9 +228,18 @@ export async function POST(request: NextRequest) {
       case "SAVE_SETTINGS":
         result = await saveFinancialSettings({ ...body, locationId: requestedLocationId }, identity);
         break;
-      case "CLOSE_CASH_DAY":
+      case "CLOSE_CASH_DAY": {
+        const moneyAccountId = text(body.moneyAccountId, 64);
+        if (!moneyAccountId) throw new FinancialCenterV2Error("ACCOUNT_REQUIRED", "Оберіть касу.");
+        if (access.allowedLocationIds) {
+          const account = await getPrisma().moneyAccount.findUnique({ where: { id: moneyAccountId }, select: { locationId: true } });
+          if (!account?.locationId || !access.allowedLocationIds.includes(account.locationId)) {
+            return NextResponse.json({ ok: false, code: "LOCATION_FORBIDDEN", error: "Немає доступу до цієї каси." }, { status: 403 });
+          }
+        }
         result = await closeFinanceCashDay({ ...body, locationId: requestedLocationId }, identity);
         break;
+      }
       case "SAVE_APPROVAL_RULE":
         result = await saveApprovalRule({ ...body, locationId: requestedLocationId }, identity);
         break;
