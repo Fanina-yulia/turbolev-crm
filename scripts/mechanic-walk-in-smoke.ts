@@ -75,6 +75,7 @@ export async function runMechanicWalkInSmoke() {
     paymentMethod: "CASH" | "TERMINAL";
     route: "COMPLETE_VISIT" | "SEND_TO_REPAIR_FLOW";
     expectedClientId?: string;
+    expectedPostId: string | null;
   }) {
     const created = await startMechanicWalkInDiagnostic(mechanicUserId, {
       plate: input.plate,
@@ -95,10 +96,15 @@ export async function runMechanicWalkInSmoke() {
     assert(appointment);
     assert.equal(appointment.source, "WALK_IN");
     assert.equal(appointment.status, "DIAGNOSTICS");
-    assert.equal(appointment.postId, postId, "walk-in must reserve the first available planner post");
+    assert.equal(appointment.postId, input.expectedPostId, "walk-in must use a free post now or fall back to reception without moving into the future");
     assert.equal((appointment.plannedEndAt.getTime() - appointment.plannedStartAt.getTime()) / 60000, 60);
-    const slotMinute = Number(new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/Kyiv", minute: "2-digit" }).format(appointment.plannedStartAt));
-    assert([0, 30].includes(slotMinute), "walk-in planner slot must start on a 30-minute boundary");
+    assert(appointment.actualArrivalAt, "walk-in must record actual arrival immediately");
+    assert(appointment.actualStartAt, "walk-in must start diagnostics immediately");
+    assert(Math.abs(appointment.plannedStartAt.getTime() - appointment.actualArrivalAt.getTime()) < 10_000, "walk-in planned window must reflect the factual arrival time");
+    assert(Math.abs(appointment.plannedStartAt.getTime() - appointment.actualStartAt.getTime()) < 15_000, "walk-in planned window must stay on the factual diagnostic start, never a future day");
+    const plannedDay = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Kyiv", year: "numeric", month: "2-digit", day: "2-digit" }).format(appointment.plannedStartAt);
+    const actualDay = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Kyiv", year: "numeric", month: "2-digit", day: "2-digit" }).format(appointment.actualStartAt);
+    assert.equal(plannedDay, actualDay, "walk-in planner day must equal the factual diagnostic day");
     assert.equal(appointment.mechanicId, mechanicId);
     assert.equal(appointment.phone, input.phone, "walk-in visit keeps the phone actually provided at intake");
 
@@ -134,12 +140,45 @@ export async function runMechanicWalkInSmoke() {
     assert.equal(waiting?.status, "WAITING_PAYMENT");
     assert.equal(await prisma.workOrder.count({ where: { diagnosticRequestId: created.diagnosticRequestId } }), 0, "walk-in submit/payment gate must not create WorkOrder");
 
+    const chargeBeforePayment = await prisma.financialEvent.findFirst({
+      where: { sourceEntity: "WALK_IN_DIAGNOSTIC", sourceEntityId: `${created.diagnosticRequestId}:revenue`, status: "POSTED" },
+    });
+    const receivableBeforePayment = await prisma.financialObligation.findFirst({
+      where: { sourceEntity: "WALK_IN_DIAGNOSTIC", sourceEntityId: `${created.diagnosticRequestId}:receivable`, direction: "RECEIVABLE" },
+    });
+    assert(chargeBeforePayment, "completed diagnostic must recognize revenue before payment");
+    assert(receivableBeforePayment, "completed diagnostic must create receivable before payment");
+    assert.equal(Number(chargeBeforePayment.amount), 600, "configured diagnostic revenue is recognized at completion");
+    assert.equal(Number(receivableBeforePayment.amount), 600);
+    assert.equal(Number(receivableBeforePayment.settledAmount), 0);
+    assert.equal(receivableBeforePayment.status, "OPEN");
+    assert.equal(
+      await prisma.cashTransaction.count({ where: { sourceEntity: "WALK_IN_DIAGNOSTIC_PAYMENT", sourceEntityId: `${created.diagnosticRequestId}:payment`, status: "POSTED" } }),
+      0,
+      "diagnostic completion must not create Cash Flow before actual payment",
+    );
+    const recognizedAt = chargeBeforePayment.recognizedAt.getTime();
+
     const paid = await payWalkInDiagnostic(mechanicUserId, created.diagnosticRequestId, input.paymentMethod, input.paymentMethod === "CASH" ? "600" : "725.50");
     assert.equal(paid.paid, true);
     assert(paid.payment, "payment must create a posted CashTransaction");
     assert.equal(paid.payment?.account?.type, input.paymentMethod === "CASH" ? "CASH" : "ACQUIRING");
     assert.equal(paid.payment?.amount, input.paymentMethod === "CASH" ? "600.00" : "725.50");
-    assert.equal(await prisma.cashTransaction.count({ where: { sourceEntity: "WALK_IN_DIAGNOSTIC_PAYMENT", sourceEntityId: `${created.diagnosticRequestId}:payment`, status: "POSTED" } }), 1);
+    assert.equal(await prisma.cashTransaction.count({ where: { sourceEntity: "WALK_IN_DIAGNOSTIC_PAYMENT", sourceEntityId: { equals: `${created.diagnosticRequestId}:payment` }, status: "POSTED" } }), 1);
+    const chargeAfterPayment = await prisma.financialEvent.findFirst({
+      where: { sourceEntity: "WALK_IN_DIAGNOSTIC", sourceEntityId: `${created.diagnosticRequestId}:revenue`, status: "POSTED" },
+    });
+    const obligationAfterPayment = await prisma.financialObligation.findFirst({
+      where: { sourceEntity: "WALK_IN_DIAGNOSTIC", sourceEntityId: `${created.diagnosticRequestId}:receivable`, direction: "RECEIVABLE" },
+    });
+    const expectedAmount = input.paymentMethod === "CASH" ? 600 : 725.5;
+    assert(chargeAfterPayment);
+    assert(obligationAfterPayment);
+    assert.equal(Number(chargeAfterPayment.amount), expectedAmount, "final paid amount may update the charge but not its recognition date");
+    assert.equal(Number(obligationAfterPayment.amount), expectedAmount);
+    assert.equal(Number(obligationAfterPayment.settledAmount), expectedAmount);
+    assert.equal(obligationAfterPayment.status, "PAID");
+    assert.equal(chargeAfterPayment.recognizedAt.getTime(), recognizedAt, "payment must not move P&L recognition to payment time");
 
     await chooseWalkInPostPaymentRoute(mechanicUserId, created.diagnosticRequestId, input.route);
     const routed = await prisma.serviceAppointment.findUnique({ where: { id: created.appointmentId } });
@@ -204,6 +243,7 @@ export async function runMechanicWalkInSmoke() {
       paymentMethod: "CASH",
       route: "SEND_TO_REPAIR_FLOW",
       expectedClientId: existingClientId,
+      expectedPostId: postId,
     });
     await runOne({
       plate: `WO${String(Date.now() + 1).slice(-6)}`,
@@ -212,6 +252,7 @@ export async function runMechanicWalkInSmoke() {
       mileage: 65432,
       paymentMethod: "TERMINAL",
       route: "COMPLETE_VISIT",
+      expectedPostId: null,
     });
 
     console.log("Mechanic walk-in diagnostic smoke: PASS");
@@ -220,7 +261,8 @@ export async function runMechanicWalkInSmoke() {
       clientDedup: "primary and additional phone identities reuse Client",
       idempotency: "double submit reuses appointment and diagnostic",
       diagnosticCard: "submit creates standard REVIEW revision",
-      payment: "cash and terminal create diagnostic CashTransaction",
+      recognition: "diagnostic completion posts revenue + receivable before payment",
+      payment: "cash and terminal create CashTransaction only when money is received",
       hardGate: "no WorkOrder before confirmed diagnostic card",
       routes: "complete visit or send to repair calculation",
     }, null, 2));
