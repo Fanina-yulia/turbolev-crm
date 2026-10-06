@@ -163,7 +163,7 @@ export async function assertEstimateMarginApprovedBeforeSend(workOrderId: string
 export async function approveEstimateMargin(workOrderId: string, note: unknown, actor: FinanceActor) {
   const prisma = getPrisma();
   return prisma.$transaction(async (tx) => {
-    await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`estimate-margin:${workOrderId}`}))`;
+    await tx.$queryRaw`SELECT 1::int AS locked FROM pg_advisory_xact_lock(hashtext(${`estimate-margin:${workOrderId}`}))`;
     const state = await calculateMarginState(workOrderId);
     if (!state.approvalRequired) return { ...state, approved: true, reused: true };
     const existing = await tx.auditEvent.findFirst({ where: { entityType: ENTITY_TYPE, entityId: state.entityId, action: APPROVED }, orderBy: { createdAt: "desc" } });
