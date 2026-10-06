@@ -1,6 +1,7 @@
 import { DiagnosticRequestStatus, Prisma } from "@/src/generated/prisma/client";
 import { getPrisma } from "@/src/lib/prisma";
 import { toPrismaJson } from "@/src/lib/prisma-json";
+import { addDateKey, zonedDateKey, zonedDateTimeToDate } from "@/src/lib/zoned-time";
 import { linkDiagnosticVisit } from "@/src/services/diagnostic-visit-link.service";
 import { startStructuredDiagnostic } from "@/src/services/structured-diagnostics.service";
 
@@ -73,6 +74,14 @@ function diagnosticIdFromWalkInComment(comment: string | null | undefined) {
 
 function overlaps(start: Date, end: Date, otherStart: Date, otherEnd: Date) {
   return start < otherEnd && end > otherStart;
+}
+
+function activeAppointmentWindow(now: Date, timezone: string) {
+  const centerDay = zonedDateKey(now, timezone);
+  return {
+    from: zonedDateTimeToDate(addDateKey(centerDay, -5), "00:00", timezone),
+    to: zonedDateTimeToDate(addDateKey(centerDay, 6), "00:00", timezone),
+  };
 }
 
 async function findCurrentWalkInPlacement(tx: Prisma.TransactionClient, locationId: string, now: Date) {
