@@ -22,6 +22,7 @@
 }
 
 
+.modalWide{width:min(1180px,96vw)}
 
 /* Finance completeness V3 */
 .completenessBadge{display:inline-flex;align-items:center;justify-content:center;min-width:58px;padding:7px 10px;border-radius:999px;font-size:13px;font-weight:900}
