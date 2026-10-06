@@ -186,3 +186,6 @@ Production-аудит виявив п'ять WALK-IN, де factual day != planne
 15. Exact-commit preview READY.
 16. Production deploy READY.
 17. Post-deploy runtime error/fatal scan clean.
+
+
+**Release validation:** exact-commit preview required before merge.
