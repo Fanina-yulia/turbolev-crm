@@ -11,6 +11,8 @@ export const maxDuration = 30;
 
 const KYIV_TZ = "Europe/Kyiv";
 const SOURCE_PAYMENT = "WORK_ORDER_PAYMENT";
+const WALK_IN_FINANCE_SOURCE = "WALK_IN_DIAGNOSTIC";
+const WALK_IN_PAYMENT_SOURCE = "WALK_IN_DIAGNOSTIC_PAYMENT";
 const OPEN_STATUSES = ["OPEN", "PARTIALLY_PAID", "OVERDUE"] as const;
 
 function decimal(value: unknown) {
@@ -125,7 +127,6 @@ export async function GET(request: NextRequest) {
 
     const baseWhere = {
       direction: "RECEIVABLE" as const,
-      workOrderId: { not: null },
       status: { not: "CANCELLED" as const },
       ...scopedLocation,
     };
@@ -137,9 +138,19 @@ export async function GET(request: NextRequest) {
           ...(requestedWorkOrderId
             ? { workOrderId: requestedWorkOrderId }
             : {
-                OR: [
-                  { status: { in: [...OPEN_STATUSES] } },
-                  { status: "PAID", settledAt: { gte: range.from, lt: range.to } },
+                AND: [
+                  {
+                    OR: [
+                      { workOrderId: { not: null } },
+                      { sourceEntity: WALK_IN_FINANCE_SOURCE },
+                    ],
+                  },
+                  {
+                    OR: [
+                      { status: { in: [...OPEN_STATUSES] } },
+                      { status: "PAID", settledAt: { gte: range.from, lt: range.to } },
+                    ],
+                  },
                 ],
               }),
         },
@@ -162,12 +173,16 @@ export async function GET(request: NextRequest) {
     const obligations = Array.from(obligationMap.values());
     const baseIds = new Set(baseObligations.map((row) => row.id));
     const workOrderIds = Array.from(new Set(obligations.map((row) => row.workOrderId).filter((id): id is string => Boolean(id))));
+    const diagnosticIds = Array.from(new Set(obligations
+      .filter((row) => !row.workOrderId && row.sourceEntity === WALK_IN_FINANCE_SOURCE)
+      .map((row) => row.sourceEntityId?.replace(/:receivable$/, "") || "")
+      .filter(Boolean)));
 
     const allowedLocationWhere = access.grantedScope === "LOCATION"
       ? { id: { in: access.allowedLocationIds || [] } }
       : {};
 
-    const [workOrders, numberRows, paymentRows, todayPayments, accounts, locations] = await Promise.all([
+    const [workOrders, numberRows, diagnostics, paymentRows, todayPayments, accounts, locations] = await Promise.all([
       workOrderIds.length
         ? prisma.workOrder.findMany({
             where: { id: { in: workOrderIds } },
@@ -185,12 +200,22 @@ export async function GET(request: NextRequest) {
             select: { workOrderId: true, number: true },
           })
         : Promise.resolve([]),
-      workOrderIds.length
+      diagnosticIds.length
+        ? prisma.diagnosticRequest.findMany({
+            where: { id: { in: diagnosticIds } },
+            select: {
+              id: true,
+              client: { select: { id: true, name: true, phone: true } },
+              vehicle: { select: { id: true, plateNumber: true, vin: true, brand: true, model: true, year: true } },
+            },
+          })
+        : Promise.resolve([]),
+      obligations.length
         ? prisma.cashTransaction.findMany({
             where: {
               status: "POSTED",
-              sourceEntity: SOURCE_PAYMENT,
-              workOrderId: { in: workOrderIds },
+              sourceEntity: { in: [SOURCE_PAYMENT, WALK_IN_PAYMENT_SOURCE] },
+              obligationId: { in: obligations.map((row) => row.id) },
               ...scopedLocation,
             },
             orderBy: { occurredAt: "desc" },
@@ -198,6 +223,7 @@ export async function GET(request: NextRequest) {
             select: {
               id: true,
               workOrderId: true,
+              obligationId: true,
               amount: true,
               occurredAt: true,
               toAccountId: true,
@@ -210,7 +236,7 @@ export async function GET(request: NextRequest) {
       prisma.cashTransaction.findMany({
         where: {
           status: "POSTED",
-          sourceEntity: SOURCE_PAYMENT,
+          sourceEntity: { in: [SOURCE_PAYMENT, WALK_IN_PAYMENT_SOURCE] },
           occurredAt: {
             gte: kyivDateStartUtc(kyivParts().year, kyivParts().month, kyivParts().day),
             lt: addLocalDays(kyivDateStartUtc(kyivParts().year, kyivParts().month, kyivParts().day), 1),
@@ -238,8 +264,9 @@ export async function GET(request: NextRequest) {
     ]);
 
     const workOrderMap = new Map(workOrders.map((row) => [row.id, row]));
+    const diagnosticMap = new Map(diagnostics.map((row) => [row.id, row]));
     const numbers = new Map(numberRows.map((row) => [row.workOrderId, row.number]));
-    const historyByWorkOrder = new Map<string, Array<{
+    const historyByObligation = new Map<string, Array<{
       id: string;
       amount: number;
       occurredAt: Date;
@@ -250,8 +277,8 @@ export async function GET(request: NextRequest) {
     }>>();
 
     for (const payment of paymentRows) {
-      if (!payment.workOrderId) continue;
-      const history = historyByWorkOrder.get(payment.workOrderId) || [];
+      if (!payment.obligationId) continue;
+      const history = historyByObligation.get(payment.obligationId) || [];
       if (history.length < 12) {
         history.push({
           id: payment.id,
@@ -262,30 +289,65 @@ export async function GET(request: NextRequest) {
           accountType: payment.toAccount?.type || null,
           description: payment.description,
         });
-        historyByWorkOrder.set(payment.workOrderId, history);
+        historyByObligation.set(payment.obligationId, history);
       }
     }
 
     const now = new Date();
     const builtRows = obligations.flatMap((obligation) => {
-      const workOrderId = obligation.workOrderId;
-      if (!workOrderId) return [];
-      const workOrder = workOrderMap.get(workOrderId);
-      if (!workOrder) return [];
       const total = decimal(obligation.amount);
       const paid = decimal(obligation.settledAmount);
       const outstanding = Math.max(0, Math.round((total - paid) * 100) / 100);
       const status = paymentStatus(total, paid, outstanding);
       const overdue = outstanding > 0 && (obligation.status === "OVERDUE" || Boolean(obligation.dueAt && obligation.dueAt < now));
-      const history = historyByWorkOrder.get(workOrderId) || [];
+      const history = historyByObligation.get(obligation.id) || [];
       const latest = history[0] || null;
-      const row = {
+
+      if (obligation.workOrderId) {
+        const workOrderId = obligation.workOrderId;
+        const workOrder = workOrderMap.get(workOrderId);
+        if (!workOrder) return [];
+        return [{
+          rowKind: "WORK_ORDER" as const,
+          obligationId: obligation.id,
+          workOrderId,
+          diagnosticRequestId: null,
+          workOrderNumber: numbers.get(workOrderId) ?? null,
+          workOrderLabel: formatWorkOrderNumber(numbers.get(workOrderId)),
+          workOrderStatus: workOrder.status,
+          workOrderStatusLabel: getWorkflowStatusLabel("WORK_ORDER", workOrder.status),
+          paymentStatus: status,
+          currency: obligation.currency,
+          total,
+          paid,
+          outstanding,
+          issuedAt: obligation.issuedAt,
+          dueAt: obligation.dueAt,
+          settledAt: obligation.settledAt,
+          locationId: obligation.locationId,
+          overdue,
+          lastPaymentAt: latest?.occurredAt ?? null,
+          lastPaymentAmount: latest?.amount ?? 0,
+          client: workOrder.client,
+          vehicle: workOrder.vehicle,
+          history,
+          _base: baseIds.has(obligation.id),
+        }];
+      }
+
+      if (obligation.sourceEntity !== WALK_IN_FINANCE_SOURCE) return [];
+      const diagnosticRequestId = obligation.sourceEntityId?.replace(/:receivable$/, "") || "";
+      const diagnostic = diagnosticMap.get(diagnosticRequestId);
+      if (!diagnostic) return [];
+      return [{
+        rowKind: "DIAGNOSTIC" as const,
         obligationId: obligation.id,
-        workOrderId,
-        workOrderNumber: numbers.get(workOrderId) ?? null,
-        workOrderLabel: formatWorkOrderNumber(numbers.get(workOrderId)),
-        workOrderStatus: workOrder.status,
-        workOrderStatusLabel: getWorkflowStatusLabel("WORK_ORDER", workOrder.status),
+        workOrderId: null,
+        diagnosticRequestId,
+        workOrderNumber: null,
+        workOrderLabel: "Діагностика",
+        workOrderStatus: "DIAGNOSTIC",
+        workOrderStatusLabel: "Окрема діагностика",
         paymentStatus: status,
         currency: obligation.currency,
         total,
@@ -298,12 +360,11 @@ export async function GET(request: NextRequest) {
         overdue,
         lastPaymentAt: latest?.occurredAt ?? null,
         lastPaymentAmount: latest?.amount ?? 0,
-        client: workOrder.client,
-        vehicle: workOrder.vehicle,
+        client: diagnostic.client,
+        vehicle: diagnostic.vehicle,
         history,
         _base: baseIds.has(obligation.id),
-      };
-      return [row];
+      }];
     });
 
     const metricRows = builtRows.filter((row) => row._base);
