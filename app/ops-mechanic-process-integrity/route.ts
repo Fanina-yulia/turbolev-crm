@@ -28,6 +28,17 @@ type HighlanderRow = {
   hasWorkOrder: boolean;
 };
 
+type NullPurposeRow = {
+  appointmentId: string;
+  vehicle: string;
+  plate: string | null;
+  status: string;
+  source: string | null;
+  plannedStartAt: Date;
+  workOrderId: string | null;
+  hasDiagnosticLink: boolean;
+};
+
 export async function GET() {
   if (process.env.VERCEL_ENV !== "preview" || process.env.VERCEL_GIT_COMMIT_REF !== EXPECTED_REF) {
     return new NextResponse("Not found", { status: 404 });
@@ -90,7 +101,7 @@ export async function GET() {
     return { linkedToDiagnostic, legacyDiagnostics, legacyRepairs };
   });
 
-  const [afterConflicts, afterNullPurpose, highlander] = await Promise.all([
+  const [afterConflicts, afterNullPurpose, highlander, remainingNullPurpose] = await Promise.all([
     prisma.$queryRaw<ConflictRow[]>`
       SELECT
         a.id AS "appointmentId",
@@ -124,6 +135,22 @@ export async function GET() {
         AND lower(coalesce(v."model",'')) LIKE '%highlander%'
       ORDER BY a."plannedStartAt" DESC
     `,
+    prisma.$queryRaw<NullPurposeRow[]>`
+      SELECT
+        a.id AS "appointmentId",
+        trim(coalesce(v."brand",'') || ' ' || coalesce(v."model",'')) AS vehicle,
+        coalesce(v."plateNumber", a."plateNumber") AS plate,
+        a."status"::text AS status,
+        a."source"::text AS source,
+        a."plannedStartAt" AS "plannedStartAt",
+        a."workOrderId" AS "workOrderId",
+        (dvl.id IS NOT NULL) AS "hasDiagnosticLink"
+      FROM "ServiceAppointment" a
+      LEFT JOIN "Vehicle" v ON v.id = a."vehicleId"
+      LEFT JOIN "DiagnosticVisitLink" dvl ON dvl."appointmentId" = a.id
+      WHERE a."purpose" IS NULL
+      ORDER BY a."plannedStartAt" DESC
+    `,
   ]);
 
   return NextResponse.json({
@@ -140,6 +167,10 @@ export async function GET() {
     correctedConflicts: beforeConflicts,
     remainingConflicts: afterConflicts,
     toyotaHighlander: highlander.map((row) => ({
+      ...row,
+      plannedStartAt: row.plannedStartAt.toISOString(),
+    })),
+    remainingNullPurpose: remainingNullPurpose.map((row) => ({
       ...row,
       plannedStartAt: row.plannedStartAt.toISOString(),
     })),
