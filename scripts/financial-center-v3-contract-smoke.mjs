@@ -49,7 +49,7 @@ assert.match(service,/zonedDayRange/);
 assert.match(service,/marginRow\("Діагностика"[\s\S]*false\)/);
 assert.match(service,/closeFinanceCashDay/);
 assert.match(service,/FINANCE_CASH_DAY_CLOSED/);
-assert.match(service,/pg_advisory_xact_lock/);
+assert.match(service,/acquireTransactionAdvisoryLock/);
 assert.equal(/closeFinanceCashDay[\s\S]*cashTransaction\.create/.test(service),false,"cash close must never mutate ledger with an automatic cash transaction");
 
 assert.match(api,/getFinancialCenterV3Control/);
