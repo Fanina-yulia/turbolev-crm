@@ -30,8 +30,8 @@ type FinanceV2 = {
   settings: { scopeKey: string; locationId: string | null; defaultCurrency: string; minimumCashReserve: number; fixedMonthlyCosts: number; targetGrossMarginPercent: number; warningGrossMarginPercent: number; forecastHorizonDays: number };
   kpi: { currentCash: number; revenue: number; grossProfit: number; directCosts: number; opex: number; netProfit: number; cashFlow: number; grossMarginPercent: number | null; receivables: number; payables: number; overdueReceivables: number; overduePayables: number };
   comparison: { revenue: { previous: number; changePercent: number | null }; grossProfit: { previous: number; changePercent: number | null }; netProfit: { previous: number; changePercent: number | null }; opex: { previous: number; changePercent: number | null } };
-  pnl: { revenue: number; cogs: number; grossProfit: number; grossMarginPercent: number | null; opex: number; operatingProfit: number; otherIncome: number; otherExpense: number; tax: number; netProfit: number; netMarginPercent: number | null; categories: Array<{ id: string; code: string; name: string; section: string; amount: number; count: number }>; events: Array<{ id: string; pnlSection: string; amount: number; recognizedAt: string; description: string | null; workOrderId: string | null; category: { name: string } | null }> };
-  cashFlow: { inflow: number; outflow: number; net: number; operating: number; investing: number; financing: number; internalTransfer: number; transactions: Array<{ id: string; kind: string; flowSection: string; amount: number; occurredAt: string; description: string | null; fromAccountId: string | null; toAccountId: string | null }> };
+  pnl: { revenue: number; cogs: number; grossProfit: number; grossMarginPercent: number | null; opex: number; operatingProfit: number; otherIncome: number; otherExpense: number; tax: number; netProfit: number; netMarginPercent: number | null; categories: Array<{ id: string; code: string; name: string; section: string; amount: number; count: number }>; events: Array<{ id: string; pnlSection: string; amount: number; recognizedAt: string; description: string | null; workOrderId: string | null; categoryId?: string | null; supplierId?: string | null; employeeId?: string | null; sourceEntity?: string | null; sourceEntityId?: string | null; category: { name: string } | null }> };
+  cashFlow: { inflow: number; outflow: number; net: number; operating: number; investing: number; financing: number; internalTransfer: number; transactions: Array<{ id: string; kind: string; flowSection: string; amount: number; occurredAt: string; description: string | null; fromAccountId: string | null; toAccountId: string | null; categoryId?: string | null; supplierId?: string | null; workOrderId?: string | null; sourceEntity?: string | null; sourceEntityId?: string | null }> };
   accounts: Account[];
   obligations: Obligation[];
   aging: { receivables: { total: number; overdue: number; buckets: Record<string, number> }; payables: { total: number; overdue: number; buckets: Record<string, number> } };
@@ -178,7 +178,7 @@ export function FinancialCenter() {
     {error && <div className={styles.errorBox}><strong>Фінансовий центр не оновлено.</strong> {error}</div>}
     {message && <div className={styles.success}>{message}</div>}
 
-    {data && <section className={styles.kpiGrid}>
+    {data && tab !== "expenses" && <section className={styles.kpiGrid}>}
       <KpiCard term="currentCash" label="Залишок коштів зараз" value={money(data.kpi.currentCash)} note={currentCashNote(data)} onClick={() => chooseTab("accounts")} />
       <KpiCard term="revenue" label="Виручка" value={money(data.kpi.revenue)} delta={data.comparison.revenue.changePercent} note="до попереднього періоду" onClick={() => chooseTab("pnl")} />
       <KpiCard term="cogs" label="Прямі витрати" value={money(data.kpi.directCosts)} note="роботи · деталі · матеріали" onClick={() => chooseTab("pnl")} />
@@ -199,7 +199,34 @@ export function FinancialCenter() {
     {data && tab === "calendar" && <CalendarView data={data} onNewRecurring={() => setRecurringOpen(true)} />}
     {data && tab === "debts" && <DebtView data={data} />}
     {data && tab === "profitability" && <ProfitabilityView data={data} active={profitTab} onChange={setProfitTab} />}
-    {data && tab === "expenses" && <FinanceExpensesV2 from={from} to={to} locationId={locationId} categories={data.categories} accounts={data.accounts} onCreate={() => openOperation("EXPENSE")} onChanged={() => void load()} />}
+    {data && tab === "expenses" && <FinanceExpensesV2
+      from={from}
+      to={to}
+      locationId={locationId}
+      categories={data.categories}
+      accounts={data.accounts}
+      finance={{
+        revenue: data.pnl.revenue,
+        cogs: data.pnl.cogs,
+        opex: data.pnl.opex,
+        otherExpense: data.pnl.otherExpense,
+        tax: data.pnl.tax,
+        operatingProfit: data.pnl.operatingProfit,
+        netProfit: data.pnl.netProfit,
+        events: data.pnl.events,
+        cashOutflow: data.cashFlow.outflow,
+        cashInflow: data.cashFlow.inflow,
+        cashNet: data.cashFlow.net,
+        transactions: data.cashFlow.transactions,
+        obligations: data.obligations,
+        budgets: data.budgets,
+        alerts: data.alerts,
+        financeCompleteness: data.financeCompleteness,
+        profitabilityParts: data.profitability.parts,
+      }}
+      onCreate={() => openOperation("EXPENSE")}
+      onChanged={() => void load()}
+    />}
     {data && tab === "accounts" && <AccountsView data={data} onOperation={openOperation} />}
     {data && tab === "settings" && <SettingsView data={data} onCategory={() => setCategoryOpen(true)} onRecurring={() => setRecurringOpen(true)} onSettings={() => setSettingsOpen(true)} />}
 
