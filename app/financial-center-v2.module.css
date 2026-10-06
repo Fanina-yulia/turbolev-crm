@@ -21,3 +21,19 @@
   .modalActions{flex:0 0 auto}
 }
 
+
+/* FINANCIAL CENTER UX CONTROL V3 */
+.contextKpiGrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:8px}
+.kpiButton{width:100%;text-align:left;color:inherit;font:inherit;cursor:pointer}
+.kpiButton:hover{border-color:var(--accent,#1f6feb);box-shadow:0 5px 18px rgba(15,23,42,.06)}
+.controlStatus{display:inline-flex;align-items:center;border-radius:999px;padding:6px 10px;font-size:12px;font-weight:750;white-space:nowrap}
+.controlIssue{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:10px;align-items:start;width:100%;border:1px solid var(--line,#e1e4ea);border-radius:12px;padding:10px 12px;background:var(--surface,#fff);color:inherit;font:inherit;text-align:left;cursor:pointer}
+.controlIssue:hover{border-color:var(--accent,#1f6feb)}
+.controlIssue small{display:block;margin-top:3px;opacity:.68;line-height:1.35}
+.emptyAction{display:grid;place-items:center;gap:8px;padding:28px;text-align:center;border:1px dashed var(--line,#d9dce3);border-radius:12px;background:rgba(127,127,127,.025)}
+.emptyAction span{max-width:680px;font-size:12px;opacity:.7}
+.warningNote{margin-top:12px;border:1px solid #f1cf83;border-radius:10px;padding:10px 12px;background:rgba(181,119,0,.06);color:#755000;font-size:12px}
+.forecastReason{display:grid;gap:4px;margin-top:12px;border:1px solid var(--line,#e1e4ea);border-radius:10px;padding:10px 12px;background:rgba(31,111,235,.04)}
+.forecastReason span{font-size:12px;opacity:.72;line-height:1.4}
+@media(max-width:720px){.contextKpiGrid{grid-template-columns:1fr 1fr}.controlIssue{grid-template-columns:auto 1fr}.controlIssue>span:last-child{grid-column:2}}
+@media(max-width:480px){.contextKpiGrid{grid-template-columns:1fr}}
