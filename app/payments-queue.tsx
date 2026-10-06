@@ -52,7 +52,7 @@ type QueueResponse = {
   counts?: { all: number; paid: number; partial: number; due: number; overdue: number };
   kpis?: {
     toReceive: number;
-    paidToday: number;
+    paidPeriod: number;
     partialCount: number;
     partialOutstanding: number;
     dueCount: number;
@@ -174,7 +174,7 @@ export function PaymentsQueue() {
     accounts: [],
     locations: [],
     counts: { all: 0, paid: 0, partial: 0, due: 0, overdue: 0 },
-    kpis: { toReceive: 0, paidToday: 0, partialCount: 0, partialOutstanding: 0, dueCount: 0, dueOutstanding: 0, overdueCount: 0, overdueOutstanding: 0 },
+    kpis: { toReceive: 0, paidPeriod: 0, partialCount: 0, partialOutstanding: 0, dueCount: 0, dueOutstanding: 0, overdueCount: 0, overdueOutstanding: 0 },
   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -233,7 +233,7 @@ export function PaymentsQueue() {
   const accounts = data.accounts || [];
   const locations = data.locations || [];
   const counts = data.counts || { all: 0, paid: 0, partial: 0, due: 0, overdue: 0 };
-  const kpis = data.kpis || { toReceive: 0, paidToday: 0, partialCount: 0, partialOutstanding: 0, dueCount: 0, dueOutstanding: 0, overdueCount: 0, overdueOutstanding: 0 };
+  const kpis = data.kpis || { toReceive: 0, paidPeriod: 0, partialCount: 0, partialOutstanding: 0, dueCount: 0, dueOutstanding: 0, overdueCount: 0, overdueOutstanding: 0 };
 
   const filteredCounts = useMemo(() => ({
     all: rows.length,
@@ -350,9 +350,9 @@ export function PaymentsQueue() {
         <span>{counts.partial + counts.due} КП із залишком</span>
       </article>
       <article>
-        <small><FinanceInfoTooltip term="paidToday" label="Оплачено сьогодні" compact /></small>
-        <strong>{money(kpis.paidToday)}</strong>
-        <span>фактичні POSTED платежі</span>
+        <small><FinanceInfoTooltip term="paidToday" label="Оплачено за період" compact /></small>
+        <strong>{money(kpis.paidPeriod)}</strong>
+        <span>{from} — {to} · фактичні POSTED платежі</span>
       </article>
       <article className={styles.partialKpi}>
         <small>Є передплата</small>
