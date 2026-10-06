@@ -480,7 +480,7 @@ model FinancialApprovalRule {
 model FinancialCashClose {
   id             String   @id @default(cuid())
   businessDate   DateTime @db.Date
-  moneyAccountId String   @db.VarChar(64)
+  moneyAccountId String
   locationId     String?  @db.VarChar(64)
   currency       String   @default("UAH") @db.VarChar(3)
   systemAmount   Decimal  @db.Decimal(14, 2)
