@@ -356,3 +356,31 @@ button.listCard{appearance:none}
   .metrics b{width:31px;height:31px;font-size:15px}
   .bottomNav button span{font-size:16px}
 }
+
+
+/* Compensation V3 */
+.earningsGrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.earningsGrid>div,.payBalance>div,.payBreakdown>div,.ruleGrid>div{
+  min-width:0;padding:12px;border:1px solid var(--m-border);border-radius:13px;background:var(--m-surface-2)
+}
+.earningsGrid span,.payBalance span,.payBreakdown span,.ruleGrid span{display:block;color:var(--m-muted);font-size:11px;line-height:1.3}
+.earningsGrid strong,.payBalance strong,.payBreakdown strong,.ruleGrid strong{display:block;margin-top:5px;font-size:17px;line-height:1.2}
+.payBalance{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.payBalance>div:last-child{border-color:color-mix(in srgb,var(--m-orange) 44%,var(--m-border));background:var(--m-orange-soft)}
+.payBreakdown{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.ruleGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.payDetails{display:grid;gap:8px}
+.payDetails>div{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:10px 0;border-bottom:1px solid var(--m-border)}
+.payDetails>div:last-child{border-bottom:0}
+.payDetails>div>div{min-width:0}
+.payDetails strong,.payDetails small{display:block}
+.payDetails strong{font-size:13px;overflow-wrap:anywhere}
+.payDetails small{margin-top:3px;color:var(--m-muted);font-size:11px}
+.payDetails b{flex:0 0 auto;font-size:14px}
+@media(max-width:520px){
+  .earningsGrid,.payBalance{grid-template-columns:1fr}
+  .payBreakdown,.ruleGrid{grid-template-columns:1fr 1fr}
+}
+@media(max-width:350px){
+  .payBreakdown,.ruleGrid{grid-template-columns:1fr}
+}
