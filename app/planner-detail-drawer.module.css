@@ -13,3 +13,114 @@
 .footer{flex:0 0 auto;display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:12px 14px 16px;border-top:1px solid var(--line);background:var(--panel)}.footer button{min-height:40px;border-radius:9px;font-size:12px;font-weight:850;cursor:pointer}.footer button:disabled{opacity:.45;cursor:not-allowed}.primary{border:1px solid var(--orange);background:var(--orange);color:#fff}.secondary{border:1px solid var(--line);background:var(--panel);color:var(--text)}
 .more{position:relative}.more>.secondary{width:100%}.menu{position:absolute;right:0;bottom:48px;z-index:5;width:210px;padding:6px;border:1px solid var(--line);border-radius:10px;background:var(--panel);box-shadow:0 16px 40px rgba(15,23,42,.2)}.menu button{width:100%;min-height:34px;border:0;background:transparent;text-align:left;padding:0 9px;color:var(--text);border-radius:7px}.menu button:hover{background:var(--panel-2)}.menu .danger{color:#dc2626}
 @media(max-width:760px){.drawer{width:100vw}.header{grid-template-columns:38px minmax(0,1fr) auto 30px;padding:12px}.title strong{font-size:16px}.body{padding:10px}.footer{padding:10px}.rows>div{grid-template-columns:78px minmax(0,1fr)}}
+
+
+/* APPROVED PLANNER MOCKUP — inline operational inspector on wide screens */
+.drawer{
+  border-left:1px solid color-mix(in srgb,var(--line) 88%,transparent);
+  background:var(--panel);
+}
+.header{
+  padding:18px 16px 15px;
+}
+.vehicleGlyph{
+  width:42px;
+  height:42px;
+  border-radius:12px;
+  background:color-mix(in srgb,#2f80ed 10%,var(--panel));
+  color:#2f80ed;
+  font-size:18px;
+}
+.title strong{
+  font-size:18px;
+  font-weight:900;
+}
+.status{
+  padding:7px 10px;
+  background:color-mix(in srgb,#f59e0b 14%,var(--panel));
+  color:#b56b00;
+  font-size:11px;
+  font-weight:900;
+  text-transform:uppercase;
+}
+.tabs{
+  padding:0 8px;
+}
+.tabs button{
+  height:46px;
+  font-size:12px;
+}
+.body{
+  padding:15px;
+  gap:13px;
+}
+.rows{
+  border:0;
+  border-radius:0;
+  overflow:visible;
+}
+.rows>div{
+  grid-template-columns:94px minmax(0,1fr);
+  min-height:58px;
+  padding:10px 2px;
+  border-bottom:1px solid color-mix(in srgb,var(--line) 84%,transparent);
+}
+.rows>div:last-child{border-bottom:1px solid color-mix(in srgb,var(--line) 84%,transparent)}
+.rows span{
+  color:var(--muted);
+  font-size:11px;
+  font-weight:800;
+}
+.rows strong{
+  font-size:12px;
+  font-weight:850;
+}
+.finance{
+  gap:10px;
+  padding:12px;
+  border-radius:11px;
+  background:color-mix(in srgb,var(--panel-2) 80%,var(--panel));
+}
+.finance button{
+  min-height:38px;
+  color:var(--text);
+  font-weight:850;
+}
+.note,.panel{
+  border-radius:11px;
+}
+.footer{
+  gap:9px;
+  padding:13px 14px 15px;
+}
+.footer button{
+  min-height:42px;
+  font-size:12px;
+}
+@media(min-width:1500px){
+  .drawer{
+    position:sticky;
+    z-index:20;
+    top:0;
+    right:auto;
+    width:390px;
+    height:100%;
+    min-height:0;
+    max-height:none;
+    align-self:stretch;
+    border:1px solid var(--line);
+    border-radius:14px;
+    box-shadow:0 10px 30px rgba(15,23,42,.07);
+    overflow:hidden;
+  }
+  .body{
+    min-height:0;
+  }
+}
+@media(max-width:1499px) and (min-width:761px){
+  .drawer{
+    top:0;
+    width:min(410px,88vw);
+    box-shadow:-24px 0 60px rgba(15,23,42,.22);
+  }
+}

@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent as ReactDragEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { zonedDateTimeToDate } from "@/src/lib/zoned-time";
-import { VehiclePlate } from "./vehicle-plate";
 import styles from "./planner-day-view.module.css";
 import compactStyles from "./planner-day-view-compact.module.css";
 
@@ -174,10 +173,11 @@ function currency(value: number) {
   return new Intl.NumberFormat("uk-UA", { style: "currency", currency: "UAH", maximumFractionDigits: 0 }).format(value);
 }
 
-export function PlannerDayView<TAppointment extends AppointmentBase>({ day, location, appointments, onOpen, onCreate, onSelection, onResize, onMove, onMetrics, onPostMenu, showMetrics = true, compact = false }: {
+export function PlannerDayView<TAppointment extends AppointmentBase>({ day, location, appointments, selectedAppointmentId, onOpen, onCreate, onSelection, onResize, onMove, onMetrics, onPostMenu, showMetrics = true, compact = false }: {
   day: string;
   location: Location;
   appointments: TAppointment[];
+  selectedAppointmentId?: string | null;
   onOpen: (appointment: TAppointment) => void;
   onCreate: (day: string, time: string, postId: string) => void;
   onSelection?: (selection: PlannerTimeSelection) => void;
@@ -609,7 +609,7 @@ export function PlannerDayView<TAppointment extends AppointmentBase>({ day, loca
     finishSelection(row, slotIndex, { rowId: row.id, startIndex: slotIndex, endIndex: slotIndex });
   }
 
-  const resourceWidth = 164;
+  const resourceWidth = 184;
   const gridStyle = { gridTemplateColumns: `${resourceWidth}px repeat(${slots.length}, minmax(0, 1fr))` } as CSSProperties;
   const now = new Date();
   const nowParts = localParts(now.toISOString(), timeZone);
@@ -717,7 +717,7 @@ export function PlannerDayView<TAppointment extends AppointmentBase>({ day, loca
           return <button
             type="button"
             key={item.id}
-            className={`${styles.event} ${styles[`event_${status.tone}`]} ${done ? styles.eventDone : ""} ${lateMinutes > 0 ? styles.eventLate : ""} ${compact ? compactStyles.event : ""} ${preview ? styles.eventResizing : ""} ${preview && !preview.valid ? styles.eventResizeInvalid : ""} ${draggingAppointmentId === item.id ? styles.eventDragging : ""}`}
+            className={`${styles.event} ${styles[`event_${status.tone}`]} ${done ? styles.eventDone : ""} ${lateMinutes > 0 ? styles.eventLate : ""} ${selectedAppointmentId===item.id ? styles.eventSelected : ""} ${compact ? compactStyles.event : ""} ${preview ? styles.eventResizing : ""} ${preview && !preview.valid ? styles.eventResizeInvalid : ""} ${draggingAppointmentId === item.id ? styles.eventDragging : ""}`}
             style={{ gridColumn: `${startIndex + 2} / span ${span}`, gridRow: rowIndex + 2, "--event-color": statusColor, "--resource-color": row.color, ...collisionStyle } as CSSProperties}
             draggable={Boolean(onMove) && !NON_DRAGGABLE.has(item.status) && !isActualWalkIn(item)}
             onDragStart={(event) => dragAppointment(event, item)}
@@ -751,11 +751,21 @@ export function PlannerDayView<TAppointment extends AppointmentBase>({ day, loca
                 onClick={(event) => event.stopPropagation()}
               />
             </>}
-            <div className={styles.eventHead}><small className={styles.eventTime}>{isActualWalkIn(item) ? "ПОЗАПЛАНОВИЙ · " : ""}{minuteLabel(start)}–{minuteLabel(Math.min(end, 24 * 60))}</small><span className={styles.eventFlags}>{lateMinutes > 0 ? "!" : ""}{item.payment?.status === "PAID" ? " ₴✓" : item.payment?.status === "PARTIAL" ? " ₴½" : item.payment?.status === "UNPAID" ? " ₴" : ""}</span></div>
-            <VehiclePlate value={item.plateNumber} size="xs" />
-            <b>{item.vehicleLabel || (item.status === "RESERVE" ? "Пост недоступний" : "Автомобіль")}</b>
-            <span>{item.problem || item.customerName || item.mechanic?.name || "Запис на СТО"}</span>
-            <em><i/>{lateMinutes > 0 ? `Прострочено +${lateMinutes} хв` : status.label}</em>
+            <div className={styles.eventHead}>
+              <small className={styles.eventTime}>{isActualWalkIn(item) ? "ПОЗАПЛАНОВИЙ · " : ""}{minuteLabel(start)}–{minuteLabel(Math.min(end, 24 * 60))}</small>
+              <em className={styles.eventStatus}><i/>{lateMinutes > 0 ? `+${lateMinutes} хв` : status.label}</em>
+            </div>
+            <div className={styles.eventVehicle}>
+              <span className={styles.eventCarIcon}>▰</span>
+              <b>{item.vehicleLabel || (item.status === "RESERVE" ? "Пост недоступний" : "Автомобіль")}</b>
+              {item.plateNumber&&<strong>· {item.plateNumber}</strong>}
+            </div>
+            <span className={styles.eventProblem}>{item.problem || item.customerName || "Запис на СТО"}</span>
+            <div className={styles.eventFoot}>
+              <span className={styles.eventAvatar}>{(item.mechanic?.name||item.customerName||"СТО").trim().slice(0,1).toUpperCase()}</span>
+              <span className={styles.eventMechanic}>{item.mechanic?.name||"Без майстра"}</span>
+              <span className={styles.eventFlags}>{lateMinutes > 0 ? "!" : ""}{item.payment?.status === "PAID" ? " ₴✓" : item.payment?.status === "PARTIAL" ? " ₴½" : item.payment?.status === "UNPAID" ? " ₴" : ""}</span>
+            </div>
           </button>;
         })}
         {showNow && <div className={styles.now} style={nowStyle} aria-hidden="true"><span>{minuteLabel(nowMinute)}</span></div>}
