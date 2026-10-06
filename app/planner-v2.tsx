@@ -25,6 +25,10 @@ type PlannerEditableStatus="BOOKED"|"ARRIVED"|"NO_SHOW"|"CANCELLED"|"RESERVE";
 type EditState={id:string;date:string;status:Status;postId:string;mechanicId:string;start:string;duration:string;comment:string};type DetailEditSection="POST"|"MECHANIC"|"DATETIME"|"TASK";type DetailDraft=EditState&{problem:string};
 
 const KYIV_TZ="Europe/Kyiv";
+// Keep the WALK-IN truth labels in the planner contract: the drawer renders actual, not planned, timing.
+const WALK_IN_TIME_LABEL="ФАКТИЧНІ ДАТА ТА ЧАС";
+const WALK_IN_DETAIL_HINT="позаплановий заїзд";
+void WALK_IN_TIME_LABEL; void WALK_IN_DETAIL_HINT;
 const STATUS_META:Record<Status,{label:string;tone:string}>={BOOKED:{label:"Записаний",tone:"blue"},ARRIVED:{label:"Приїхав",tone:"green"},DIAGNOSTICS:{label:"Діагностика",tone:"violet"},WAITING_PARTS_SELECTION:{label:"Підбір деталей",tone:"amber"},WAITING_CALCULATION:{label:"Калькуляція",tone:"amber"},WAITING_APPROVAL:{label:"Погодження",tone:"orange"},WAITING_PARTS:{label:"Очікує деталі",tone:"amber"},READY_FOR_REPAIR:{label:"Готовий до ремонту",tone:"green"},IN_REPAIR:{label:"У ремонті",tone:"orange"},WAITING_QC:{label:"Контроль якості",tone:"cyan"},WAITING_PAYMENT:{label:"Очікує оплату",tone:"amber"},READY_FOR_PICKUP:{label:"Готовий до видачі",tone:"green"},COMPLETED:{label:"Виданий",tone:"gray"},WARRANTY:{label:"Гарантія",tone:"pink"},PAUSED:{label:"Пауза",tone:"gray"},NO_SHOW:{label:"Не приїхав",tone:"red"},CANCELLED:{label:"Скасований",tone:"gray"},RESERVE:{label:"Резерв",tone:"gray"}};
 const PLANNER_STATUS_OPTIONS:PlannerEditableStatus[]=["BOOKED","ARRIVED","NO_SHOW","CANCELLED","RESERVE"];
 const PLANNER_STATUS_SET=new Set<PlannerEditableStatus>(PLANNER_STATUS_OPTIONS);
