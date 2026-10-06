@@ -36,6 +36,12 @@ type AppointmentBase = {
   actualEndAt?: string | null;
   post?: Post | null;
   mechanic?: Mechanic | null;
+  payment?: {
+    status?: string | null;
+    amount?: string | number | null;
+    paid?: string | number | null;
+    outstanding?: string | number | null;
+  } | null;
 };
 type AvailabilitySlot = { time: string; posts: Array<{ id: string; available: boolean }> };
 type AvailabilityResponse = { status: string; slots?: AvailabilitySlot[]; message?: string };
@@ -79,6 +85,17 @@ const NON_DRAGGABLE = new Set(["COMPLETED", "NO_SHOW", "CANCELLED", "RESERVE"]);
 const IN_PROGRESS = new Set(["ARRIVED", "DIAGNOSTICS", "IN_REPAIR", "WAITING_QC"]);
 const WAITING = new Set(["WAITING_PARTS_SELECTION", "WAITING_CALCULATION", "WAITING_APPROVAL", "WAITING_PARTS", "READY_FOR_REPAIR", "READY_FOR_PICKUP", "PAUSED"]);
 const POST_COLORS = ["#ff6600", "#2f80ed", "#7c3aed", "#16a34a", "#d97706", "#0891b2"];
+const STATUS_TONE_COLOR: Record<StatusMeta["tone"], string> = {
+  blue: "#2f80ed",
+  green: "#16a34a",
+  orange: "#f97316",
+  amber: "#d97706",
+  red: "#dc2626",
+  gray: "#64748b",
+  violet: "#7c3aed",
+  cyan: "#0891b2",
+};
+
 const STATUS_META: Record<string, StatusMeta> = {
   BOOKED: { label: "Записаний", tone: "blue" },
   ARRIVED: { label: "Приїхав", tone: "green" },
@@ -157,7 +174,7 @@ function currency(value: number) {
   return new Intl.NumberFormat("uk-UA", { style: "currency", currency: "UAH", maximumFractionDigits: 0 }).format(value);
 }
 
-export function PlannerDayView<TAppointment extends AppointmentBase>({ day, location, appointments, onOpen, onCreate, onSelection, onResize, onMove, onMetrics, showMetrics = true, compact = false }: {
+export function PlannerDayView<TAppointment extends AppointmentBase>({ day, location, appointments, onOpen, onCreate, onSelection, onResize, onMove, onMetrics, onPostMenu, showMetrics = true, compact = false }: {
   day: string;
   location: Location;
   appointments: TAppointment[];
@@ -167,6 +184,7 @@ export function PlannerDayView<TAppointment extends AppointmentBase>({ day, loca
   onResize?: (appointment: TAppointment, day: string, startTime: string, endTime: string) => Promise<boolean>;
   onMetrics?: (metrics: PlannerDayMetrics) => void;
   onMove?: (appointment: TAppointment, day: string, time: string, postId: string, durationMinutes: number) => void;
+  onPostMenu?: (postId: string) => void;
   showMetrics?: boolean;
   compact?: boolean;
 }) {
@@ -600,6 +618,15 @@ export function PlannerDayView<TAppointment extends AppointmentBase>({ day, loca
   const nowRatio = showNow ? (nowMinute - openMinute) / totalDayMinutes : 0;
   const nowStyle = { left: `calc(${resourceWidth}px + (100% - ${resourceWidth}px) * ${nowRatio})` } as CSSProperties;
 
+  function nextFreeLabel(row: Row) {
+    const startIndex = Math.max(0, slots.findIndex((minute) => minute >= (nowParts.day === day ? nowMinute : openMinute)));
+    const from = startIndex < 0 ? 0 : startIndex;
+    for (let index = from; index < slots.length; index += 1) {
+      if (slotAvailable(row, index)) return `Вільний з ${minuteLabel(slots[index])}`;
+    }
+    return "Без вільних вікон";
+  }
+
   return <div className={`${styles.wrap} ${compact ? compactStyles.root : ""}`}>
     {showMetrics && <section className={styles.kpis} aria-label="Показники дня">
       <article><span className={styles.kpiIcon}>▣</span><div><strong>{metrics.total}</strong><small>Записів<br/>на сьогодні</small></div></article>
@@ -615,17 +642,18 @@ export function PlannerDayView<TAppointment extends AppointmentBase>({ day, loca
     <div className={`${styles.board} ${compact ? compactStyles.board : ""}`}>
       <div ref={gridRef} className={`${styles.grid} ${compact ? compactStyles.grid : ""}`} style={gridStyle} onMouseLeave={() => selection && setSelection(selection)}>
         <div className={`${styles.corner} ${compact ? compactStyles.corner : ""}`} style={{ gridColumn: 1, gridRow: 1 }}>Пости / ресурси</div>
-        {slots.map((minute, index) => <div className={`${styles.time} ${compact ? compactStyles.time : ""}`} key={minute} style={{ gridColumn: index + 2, gridRow: 1 }}>{minuteLabel(minute)}</div>)}
+        {slots.map((minute, index) => <div className={`${styles.time} ${minute % 60 === 0 ? styles.fullHour : ""} ${compact ? compactStyles.time : ""}`} key={minute} style={{ gridColumn: index + 2, gridRow: 1 }}>{minuteLabel(minute)}</div>)}
 
         {rows.map((row, rowIndex) => {
           const gridRow = rowIndex + 2;
           const loadPercent = resourceLoad.get(row.id) || 0;
           return <div key={row.id} style={{ display: "contents" }}>
             <div className={`${styles.resource} ${compact ? compactStyles.resource : ""}`} style={{ gridColumn: 1, gridRow, "--resource-color": row.color } as CSSProperties}>
-              <div className={styles.resourceTitle}><i/><b>{row.name}</b><button type="button" tabIndex={-1} aria-hidden="true">⋮</button></div>
+              <div className={styles.resourceTitle}><i/><b>{row.name}</b><button type="button" disabled={row.reception || !onPostMenu} onClick={() => !row.reception && onPostMenu?.(row.id)} aria-label={row.reception ? "Зона приймання" : `Дії з ресурсом ${row.name}`}>⋮</button></div>
               <span>{row.type}</span>
               <div className={styles.resourceProgress}><i style={{ width: `${loadPercent}%` }}/></div>
               <small>{loadPercent}% зайнято</small>
+              <small className={styles.resourceFree}>{nextFreeLabel(row)}</small>
             </div>
             {slots.map((minute, slotIndex) => {
               const available = slotAvailable(row, slotIndex);
@@ -640,7 +668,7 @@ export function PlannerDayView<TAppointment extends AppointmentBase>({ day, loca
                 type="button"
                 aria-label={`${row.name} ${time}: ${available || dragAvailable ? (selected ? `обрано ${selectionLabel}` : "вільно") : "зайнято"}`}
                 title={available || dragAvailable ? `${row.name} · ${time} · вільно` : `${row.name} · ${time} · зайнято`}
-                className={`${styles.cell} ${cellClass} ${selected ? styles.selected : ""} ${dropTarget?.rowId === row.id && dropTarget.slotIndex === slotIndex ? styles.dropTarget : ""} ${compact ? compactStyles.cell : ""}`}
+                className={`${styles.cell} ${cellClass} ${minute % 60 === 0 ? styles.fullHourCell : ""} ${selected ? styles.selected : ""} ${dropTarget?.rowId === row.id && dropTarget.slotIndex === slotIndex ? styles.dropTarget : ""} ${compact ? compactStyles.cell : ""}`}
                 key={`${row.id}-${minute}`}
                 style={{ gridColumn: slotIndex + 2, gridRow }}
                 aria-disabled={!available && !dragAvailable}
@@ -673,6 +701,10 @@ export function PlannerDayView<TAppointment extends AppointmentBase>({ day, loca
           const done = item.status === "COMPLETED";
           const row = rows[rowIndex];
           const status = STATUS_META[item.status] || { label: item.status, tone: "gray" as const };
+          const lateMinutes = nowParts.day === day && !["COMPLETED","NO_SHOW","CANCELLED","RESERVE"].includes(item.status)
+            ? Math.max(0, nowMinute - originalEnd)
+            : 0;
+          const statusColor = lateMinutes > 0 ? "#dc2626" : STATUS_TONE_COLOR[status.tone];
           const collision = collisionLayout(item);
           const collisionStyle: CSSProperties = collision.count > 1
             ? {
@@ -685,8 +717,8 @@ export function PlannerDayView<TAppointment extends AppointmentBase>({ day, loca
           return <button
             type="button"
             key={item.id}
-            className={`${styles.event} ${styles[`event_${status.tone}`]} ${done ? styles.eventDone : ""} ${compact ? compactStyles.event : ""} ${preview ? styles.eventResizing : ""} ${preview && !preview.valid ? styles.eventResizeInvalid : ""} ${draggingAppointmentId === item.id ? styles.eventDragging : ""}`}
-            style={{ gridColumn: `${startIndex + 2} / span ${span}`, gridRow: rowIndex + 2, "--event-color": row.color, ...collisionStyle } as CSSProperties}
+            className={`${styles.event} ${styles[`event_${status.tone}`]} ${done ? styles.eventDone : ""} ${lateMinutes > 0 ? styles.eventLate : ""} ${compact ? compactStyles.event : ""} ${preview ? styles.eventResizing : ""} ${preview && !preview.valid ? styles.eventResizeInvalid : ""} ${draggingAppointmentId === item.id ? styles.eventDragging : ""}`}
+            style={{ gridColumn: `${startIndex + 2} / span ${span}`, gridRow: rowIndex + 2, "--event-color": statusColor, "--resource-color": row.color, ...collisionStyle } as CSSProperties}
             draggable={Boolean(onMove) && !NON_DRAGGABLE.has(item.status) && !isActualWalkIn(item)}
             onDragStart={(event) => dragAppointment(event, item)}
             onDragEnd={endAppointmentDrag}
@@ -719,14 +751,14 @@ export function PlannerDayView<TAppointment extends AppointmentBase>({ day, loca
                 onClick={(event) => event.stopPropagation()}
               />
             </>}
-            <small className={styles.eventTime}>{isActualWalkIn(item) ? "ПОЗАПЛАНОВИЙ · " : ""}{minuteLabel(start)}–{minuteLabel(Math.min(end, 24 * 60))}</small>
+            <div className={styles.eventHead}><small className={styles.eventTime}>{isActualWalkIn(item) ? "ПОЗАПЛАНОВИЙ · " : ""}{minuteLabel(start)}–{minuteLabel(Math.min(end, 24 * 60))}</small><span className={styles.eventFlags}>{lateMinutes > 0 ? "!" : ""}{item.payment?.status === "PAID" ? " ₴✓" : item.payment?.status === "PARTIAL" ? " ₴½" : item.payment?.status === "UNPAID" ? " ₴" : ""}</span></div>
             <VehiclePlate value={item.plateNumber} size="xs" />
-            <b>{item.vehicleLabel || "Автомобіль"}</b>
+            <b>{item.vehicleLabel || (item.status === "RESERVE" ? "Пост недоступний" : "Автомобіль")}</b>
             <span>{item.problem || item.customerName || item.mechanic?.name || "Запис на СТО"}</span>
-            <em><i/>{status.label}</em>
+            <em><i/>{lateMinutes > 0 ? `Прострочено +${lateMinutes} хв` : status.label}</em>
           </button>;
         })}
-        {showNow && <div className={styles.now} style={nowStyle} aria-hidden="true" />}
+        {showNow && <div className={styles.now} style={nowStyle} aria-hidden="true"><span>{minuteLabel(nowMinute)}</span></div>}
       </div>
       {!location.posts.length && <div className={styles.empty}>У локації ще не створено жодного сервісного поста.</div>}
     </div>
