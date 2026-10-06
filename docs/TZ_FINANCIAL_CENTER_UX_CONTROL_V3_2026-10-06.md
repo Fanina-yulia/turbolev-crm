@@ -379,3 +379,5 @@ Summary повинен оновлюватися після:
 
 
 **Release validation:** exact-commit preview required before merge.
+
+**Rebase validation:** exact preview on current main required.
