@@ -182,7 +182,7 @@ export async function GET(request: NextRequest) {
       ? { id: { in: access.allowedLocationIds || [] } }
       : {};
 
-    const [workOrders, numberRows, diagnostics, paymentRows, todayPayments, accounts, locations] = await Promise.all([
+    const [workOrders, numberRows, diagnostics, paymentRows, periodPayments, accounts, locations] = await Promise.all([
       workOrderIds.length
         ? prisma.workOrder.findMany({
             where: { id: { in: workOrderIds } },
@@ -241,8 +241,8 @@ export async function GET(request: NextRequest) {
             { sourceEntity: WALK_IN_PAYMENT_SOURCE },
           ],
           occurredAt: {
-            gte: kyivDateStartUtc(kyivParts().year, kyivParts().month, kyivParts().day),
-            lt: addLocalDays(kyivDateStartUtc(kyivParts().year, kyivParts().month, kyivParts().day), 1),
+            gte: range.from,
+            lt: range.to,
           },
           ...scopedLocation,
         },
@@ -371,7 +371,7 @@ export async function GET(request: NextRequest) {
     });
 
     const metricRows = builtRows.filter((row) => row._base);
-    const paidTodayTotal = todayPayments.reduce((sum, row) => sum + decimal(row.amount), 0);
+    const paidPeriodTotal = periodPayments.reduce((sum, row) => sum + decimal(row.amount), 0);
     const counts = {
       all: metricRows.length,
       paid: metricRows.filter((row) => row.paymentStatus === "PAID").length,
@@ -381,7 +381,7 @@ export async function GET(request: NextRequest) {
     };
     const kpis = {
       toReceive: metricRows.reduce((sum, row) => sum + row.outstanding, 0),
-      paidToday: paidTodayTotal,
+      paidPeriod: paidPeriodTotal,
       partialCount: counts.partial,
       partialOutstanding: metricRows.filter((row) => row.paymentStatus === "PARTIAL").reduce((sum, row) => sum + row.outstanding, 0),
       dueCount: counts.due,
