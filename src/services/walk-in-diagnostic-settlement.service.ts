@@ -133,22 +133,194 @@ async function ensureCategory(
   });
 }
 
+type WalkInChargeInput = {
+  diagnosticRequestId: string;
+  appointmentId: string;
+  userId: string;
+  locationId: string;
+  clientId: string;
+  clientName: string | null;
+  vehicleId: string;
+  plateNumber: string | null;
+  amount: Prisma.Decimal;
+  currency: string;
+  recognizedAt: Date;
+  serviceCatalogItemId: string | null;
+  amountEntered: boolean;
+};
+
+async function ensureWalkInCharge(
+  tx: Prisma.TransactionClient,
+  input: WalkInChargeInput,
+  options: { allowAmountUpdate: boolean },
+) {
+  const revenueCategory = await ensureCategory(tx, "REV_DIAGNOSTIC", "Діагностика", "REVENUE", "OPERATING", 15);
+  const costCenter = await tx.costCenter.findFirst({
+    where: { isActive: true, OR: [{ locationId: input.locationId }, { code: "STO_GLEVAKHA" }] },
+    orderBy: [{ locationId: "desc" }, { sortOrder: "asc" }],
+  });
+
+  let event = await tx.financialEvent.findFirst({
+    where: { sourceEntity: FINANCE_SOURCE, sourceEntityId: `${input.diagnosticRequestId}:revenue` },
+  });
+  let obligation = await tx.financialObligation.findFirst({
+    where: {
+      sourceEntity: FINANCE_SOURCE,
+      sourceEntityId: `${input.diagnosticRequestId}:receivable`,
+      direction: "RECEIVABLE",
+      status: { not: "CANCELLED" },
+    },
+  });
+
+  const payment = await tx.cashTransaction.findFirst({
+    where: { sourceEntity: PAYMENT_SOURCE, sourceEntityId: `${input.diagnosticRequestId}:payment`, status: "POSTED" },
+    select: { id: true },
+  });
+  const amountChanged = Boolean(
+    (event && !decimal(event.amount).equals(input.amount))
+    || (obligation && !decimal(obligation.amount).equals(input.amount)),
+  );
+  if (amountChanged && (!options.allowAmountUpdate || payment)) {
+    throw new WalkInDiagnosticSettlementError(
+      "AMOUNT_CONFLICT",
+      "Сума діагностики вже зафіксована. Перевірте оплату або зверніться до сервіс-менеджера.",
+      409,
+    );
+  }
+
+  const metadata = toPrismaJson({
+    diagnosticRequestId: input.diagnosticRequestId,
+    appointmentId: input.appointmentId,
+    serviceCatalogItemId: input.serviceCatalogItemId,
+    amountEntered: input.amountEntered,
+    revenueRecognizedOnDiagnosticCompletion: true,
+  });
+
+  if (!event) {
+    event = await tx.financialEvent.create({
+      data: {
+        status: "POSTED",
+        pnlSection: "REVENUE",
+        amount: input.amount,
+        currency: input.currency,
+        recognizedAt: input.recognizedAt,
+        categoryId: revenueCategory.id,
+        costCenterId: costCenter?.id || null,
+        clientId: input.clientId,
+        vehicleId: input.vehicleId,
+        locationId: input.locationId,
+        sourceEntity: FINANCE_SOURCE,
+        sourceEntityId: `${input.diagnosticRequestId}:revenue`,
+        description: `Позапланова діагностика · ${input.plateNumber || input.diagnosticRequestId}`,
+        metadata,
+        createdById: input.userId,
+        postedAt: new Date(),
+      },
+    });
+  } else if (amountChanged && options.allowAmountUpdate) {
+    event = await tx.financialEvent.update({
+      where: { id: event.id },
+      data: {
+        amount: input.amount,
+        currency: input.currency,
+        categoryId: revenueCategory.id,
+        costCenterId: costCenter?.id || null,
+        metadata,
+      },
+    });
+  }
+
+  if (!obligation) {
+    obligation = await tx.financialObligation.create({
+      data: {
+        direction: "RECEIVABLE",
+        status: "OPEN",
+        amount: input.amount,
+        settledAmount: 0,
+        currency: input.currency,
+        issuedAt: input.recognizedAt,
+        dueAt: input.recognizedAt,
+        categoryId: revenueCategory.id,
+        costCenterId: costCenter?.id || null,
+        sourceEventId: event.id,
+        clientId: input.clientId,
+        locationId: input.locationId,
+        counterpartyName: input.clientName,
+        sourceEntity: FINANCE_SOURCE,
+        sourceEntityId: `${input.diagnosticRequestId}:receivable`,
+        description: `До оплати за позапланову діагностику ${input.plateNumber || "авто"}`,
+        metadata,
+      },
+    });
+  } else if (amountChanged && options.allowAmountUpdate) {
+    obligation = await tx.financialObligation.update({
+      where: { id: obligation.id },
+      data: {
+        amount: input.amount,
+        currency: input.currency,
+        categoryId: revenueCategory.id,
+        costCenterId: costCenter?.id || null,
+        sourceEventId: event.id,
+        metadata,
+      },
+    });
+  }
+
+  return { event, obligation, costCenter };
+}
+
 export async function markWalkInDiagnosticCompleted(userId: string, diagnosticRequestId: string) {
   const { mechanic } = await mechanicContext(userId, diagnosticRequestId);
   const prisma = getPrisma();
   const appointment = await findWalkInAppointment(diagnosticRequestId);
   if (!appointment) return { walkIn: false as const };
 
+  const [diagnostic, price] = await Promise.all([
+    prisma.diagnosticRequest.findUnique({
+      where: { id: diagnosticRequestId },
+      include: {
+        client: { select: { name: true } },
+        vehicle: { select: { plateNumber: true } },
+      },
+    }),
+    resolveDiagnosticPrice(),
+  ]);
+  if (!diagnostic) throw new WalkInDiagnosticSettlementError("DIAGNOSTIC_NOT_FOUND", "Діагностику не знайдено.", 404);
+
+  const completedAt = new Date();
   await prisma.$transaction(async (tx) => {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`walk-in-complete:${diagnosticRequestId}`}))`;
     const existingAudit = await tx.auditEvent.findFirst({
       where: { entityType: "DiagnosticRequest", entityId: diagnosticRequestId, action: "WALK_IN_DIAGNOSTIC_COMPLETED" },
-      select: { id: true },
+      select: { id: true, createdAt: true },
     });
+    const recognizedAt = existingAudit?.createdAt || completedAt;
+
     await tx.serviceAppointment.updateMany({
       where: { id: appointment.id, source: WALK_IN_SOURCE, status: { in: ["ARRIVED", "DIAGNOSTICS"] } },
       data: { status: "WAITING_PAYMENT" },
     });
+
+    let chargeFormed = false;
+    if (price?.amount && price.amount.greaterThan(0) && price.currency === "UAH") {
+      await ensureWalkInCharge(tx, {
+        diagnosticRequestId,
+        appointmentId: appointment.id,
+        userId,
+        locationId: mechanic.locationId,
+        clientId: diagnostic.clientId,
+        clientName: diagnostic.client.name,
+        vehicleId: diagnostic.vehicleId,
+        plateNumber: diagnostic.vehicle.plateNumber,
+        amount: price.amount,
+        currency: price.currency,
+        recognizedAt,
+        serviceCatalogItemId: price.itemId,
+        amountEntered: false,
+      }, { allowAmountUpdate: false });
+      chargeFormed = true;
+    }
+
     if (!existingAudit) {
       await tx.auditEvent.create({
         data: {
@@ -157,7 +329,13 @@ export async function markWalkInDiagnosticCompleted(userId: string, diagnosticRe
           entityType: "DiagnosticRequest",
           entityId: diagnosticRequestId,
           action: "WALK_IN_DIAGNOSTIC_COMPLETED",
-          metadata: toPrismaJson({ appointmentId: appointment.id, locationId: mechanic.locationId }),
+          metadata: toPrismaJson({
+            appointmentId: appointment.id,
+            locationId: mechanic.locationId,
+            completedAt,
+            chargeFormed,
+            configuredAmount: price?.amount?.toFixed(2) || null,
+          }),
         },
       });
     }
@@ -220,8 +398,7 @@ export async function getWalkInDiagnosticSettlement(userId: string, diagnosticRe
     vehicle: diagnostic.vehicle,
     client: diagnostic.client,
     mechanic: { id: mechanic.id, name: mechanic.name },
-    // The mechanic enters the final amount in the cabinet. A configured price
-    // is only a suggested default and is not a prerequisite for a walk-in.
+    chargeFormed: Boolean(obligation),
     canPay: submitted && !paid,
     canChooseRoute: submitted && paid && appointment.status === "WAITING_PAYMENT",
   };
@@ -241,31 +418,43 @@ export async function payWalkInDiagnostic(
   const appointment = await findWalkInAppointment(diagnosticRequestId);
   if (!appointment) throw new WalkInDiagnosticSettlementError("NOT_WALK_IN", "Це не позаплановий заїзд.", 404);
 
-  const [diagnostic, review, price] = await Promise.all([
+  const [diagnostic, review, price, existingObligation, completionAudit] = await Promise.all([
     prisma.diagnosticRequest.findUnique({ where: { id: diagnosticRequestId }, include: { client: true, vehicle: true } }),
     prisma.diagnosticReview.findUnique({ where: { diagnosticRequestId } }),
     resolveDiagnosticPrice(),
+    prisma.financialObligation.findFirst({
+      where: { sourceEntity: FINANCE_SOURCE, sourceEntityId: `${diagnosticRequestId}:receivable`, direction: "RECEIVABLE", status: { not: "CANCELLED" } },
+    }),
+    prisma.auditEvent.findFirst({
+      where: { entityType: "DiagnosticRequest", entityId: diagnosticRequestId, action: "WALK_IN_DIAGNOSTIC_COMPLETED" },
+      select: { createdAt: true },
+      orderBy: { createdAt: "asc" },
+    }),
   ]);
   if (!diagnostic) throw new WalkInDiagnosticSettlementError("DIAGNOSTIC_NOT_FOUND", "Діагностику не знайдено.", 404);
   if (review?.state !== "SUBMITTED" && review?.state !== "CONFIRMED") {
     throw new WalkInDiagnosticSettlementError("DIAGNOSTIC_NOT_COMPLETED", "Спочатку завершіть діагностику.", 409);
   }
+
   const enteredAmount = typeof amountInput === "number"
     ? amountInput
     : typeof amountInput === "string" && amountInput.trim()
       ? Number(amountInput.replace(",", "."))
       : null;
   const amount = enteredAmount == null
-    ? price?.amount ?? null
+    ? existingObligation
+      ? decimal(existingObligation.amount)
+      : price?.amount ?? null
     : Number.isFinite(enteredAmount) && enteredAmount > 0
       ? new Prisma.Decimal(enteredAmount.toFixed(2))
       : null;
   if (!amount || amount.lessThanOrEqualTo(0)) {
-    throw new WalkInDiagnosticSettlementError("DIAGNOSTIC_AMOUNT_REQUIRED", "Введіть суму оплати більше 0 грн.", 409);
+    throw new WalkInDiagnosticSettlementError("DIAGNOSTIC_AMOUNT_REQUIRED", "Введіть суму діагностики більше 0 грн.", 409);
   }
-  const currency = price?.currency || "UAH";
+
+  const currency = existingObligation?.currency || price?.currency || "UAH";
   if (currency !== "UAH") {
-    throw new WalkInDiagnosticSettlementError("DIAGNOSTIC_CURRENCY_UNSUPPORTED", "Оплата позапланової діагностики зараз підтримує прайс у гривні.", 409);
+    throw new WalkInDiagnosticSettlementError("DIAGNOSTIC_CURRENCY_UNSUPPORTED", "Оплата позапланової діагностики зараз підтримує суму у гривні.", 409);
   }
   const account = await resolveMoneyAccount(mechanic.locationId, method);
   if (!account) {
@@ -284,70 +473,25 @@ export async function payWalkInDiagnostic(
     });
     if (existingPayment) return;
 
-    const revenueCategory = await ensureCategory(tx, "REV_DIAGNOSTIC", "Діагностика", "REVENUE", "OPERATING", 15);
+    const recognizedAt = completionAudit?.createdAt || appointment.actualStartAt || new Date();
+    const charge = await ensureWalkInCharge(tx, {
+      diagnosticRequestId,
+      appointmentId: appointment.id,
+      userId,
+      locationId: mechanic.locationId,
+      clientId: diagnostic.clientId,
+      clientName: diagnostic.client.name,
+      vehicleId: diagnostic.vehicleId,
+      plateNumber: diagnostic.vehicle.plateNumber,
+      amount,
+      currency,
+      recognizedAt,
+      serviceCatalogItemId: price?.itemId || null,
+      amountEntered: enteredAmount != null,
+    }, { allowAmountUpdate: enteredAmount != null });
+
     const paymentCategory = await ensureCategory(tx, "CUSTOMER_PAYMENT", "Оплата клієнта", null, "OPERATING", 60);
-    const costCenter = await tx.costCenter.findFirst({
-      where: { isActive: true, OR: [{ locationId: mechanic.locationId }, { code: "STO_GLEVAKHA" }] },
-      orderBy: [{ locationId: "desc" }, { sortOrder: "asc" }],
-    });
     const now = new Date();
-
-    let event = await tx.financialEvent.findFirst({
-      where: { sourceEntity: FINANCE_SOURCE, sourceEntityId: `${diagnosticRequestId}:revenue` },
-    });
-    if (!event) {
-      event = await tx.financialEvent.create({
-        data: {
-          status: "POSTED",
-          pnlSection: "REVENUE",
-          amount,
-          currency,
-          recognizedAt: now,
-          categoryId: revenueCategory.id,
-          costCenterId: costCenter?.id || null,
-          clientId: diagnostic.clientId,
-          vehicleId: diagnostic.vehicleId,
-          locationId: mechanic.locationId,
-          sourceEntity: FINANCE_SOURCE,
-          sourceEntityId: `${diagnosticRequestId}:revenue`,
-          description: `Позапланова діагностика · ${diagnostic.vehicle.plateNumber || diagnosticRequestId}`,
-          metadata: toPrismaJson({ diagnosticRequestId, appointmentId: appointment.id, serviceCatalogItemId: price?.itemId || null, amountEntered: enteredAmount != null }),
-          createdById: userId,
-          postedAt: now,
-        },
-      });
-    }
-
-    let obligation = await tx.financialObligation.findFirst({
-      where: { sourceEntity: FINANCE_SOURCE, sourceEntityId: `${diagnosticRequestId}:receivable`, direction: "RECEIVABLE" },
-    });
-    if (!obligation) {
-      obligation = await tx.financialObligation.create({
-        data: {
-          direction: "RECEIVABLE",
-          status: "OPEN",
-          amount,
-          settledAmount: 0,
-          currency,
-          issuedAt: now,
-          dueAt: now,
-          categoryId: revenueCategory.id,
-          costCenterId: costCenter?.id || null,
-          sourceEventId: event.id,
-          clientId: diagnostic.clientId,
-          locationId: mechanic.locationId,
-          counterpartyName: diagnostic.client.name,
-          sourceEntity: FINANCE_SOURCE,
-          sourceEntityId: `${diagnosticRequestId}:receivable`,
-          description: `До оплати за позапланову діагностику ${diagnostic.vehicle.plateNumber || "авто"}`,
-          metadata: toPrismaJson({ diagnosticRequestId, appointmentId: appointment.id, serviceCatalogItemId: price?.itemId || null, amountEntered: enteredAmount != null }),
-        },
-      });
-    }
-    if (!decimal(obligation.amount).equals(amount)) {
-      throw new WalkInDiagnosticSettlementError("AMOUNT_CONFLICT", "Сума діагностики вже зафіксована. Перевірте оплату або зверніться до сервіс-менеджера.", 409);
-    }
-
     const payment = await tx.cashTransaction.create({
       data: {
         kind: "INFLOW",
@@ -358,21 +502,27 @@ export async function payWalkInDiagnostic(
         occurredAt: now,
         toAccountId: account.id,
         categoryId: paymentCategory.id,
-        costCenterId: costCenter?.id || null,
-        obligationId: obligation.id,
+        costCenterId: charge.costCenter?.id || null,
+        obligationId: charge.obligation.id,
         clientId: diagnostic.clientId,
         locationId: mechanic.locationId,
         sourceEntity: PAYMENT_SOURCE,
         sourceEntityId: `${diagnosticRequestId}:payment`,
         description: `Оплата позапланової діагностики · ${diagnostic.vehicle.plateNumber || diagnosticRequestId}`,
-        metadata: toPrismaJson({ diagnosticRequestId, appointmentId: appointment.id, paymentMethod: method === "ONLINE" ? "TERMINAL" : method, serviceCatalogItemId: price?.itemId || null }),
+        metadata: toPrismaJson({
+          diagnosticRequestId,
+          appointmentId: appointment.id,
+          paymentMethod: method === "ONLINE" ? "TERMINAL" : method,
+          serviceCatalogItemId: price?.itemId || null,
+          revenueRecognizedAt: recognizedAt,
+        }),
         createdById: userId,
         postedAt: now,
       },
     });
 
     const updatedObligation = await tx.financialObligation.update({
-      where: { id: obligation.id },
+      where: { id: charge.obligation.id },
       data: { settledAmount: amount, status: "PAID", settledAt: now },
     });
     await tx.serviceAppointment.updateMany({
@@ -386,9 +536,16 @@ export async function payWalkInDiagnostic(
         entityType: "DiagnosticRequest",
         entityId: diagnosticRequestId,
         action: "WALK_IN_DIAGNOSTIC_PAYMENT_POSTED",
-        before: toPrismaJson(obligation),
+        before: toPrismaJson(charge.obligation),
         after: toPrismaJson(updatedObligation),
-        metadata: toPrismaJson({ paymentId: payment.id, appointmentId: appointment.id, amount: amount.toFixed(2), method: method === "ONLINE" ? "TERMINAL" : method, moneyAccountId: account.id }),
+        metadata: toPrismaJson({
+          paymentId: payment.id,
+          appointmentId: appointment.id,
+          amount: amount.toFixed(2),
+          method: method === "ONLINE" ? "TERMINAL" : method,
+          moneyAccountId: account.id,
+          revenueRecognizedAt: recognizedAt,
+        }),
       },
     });
   });
