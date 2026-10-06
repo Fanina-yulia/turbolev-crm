@@ -72,13 +72,14 @@ type FinanceV2 = {
   alerts: Alert[];
 };
 
+type FinancePersona = NonNullable<FinanceV2["viewer"]>["persona"];
 const TAB_LABEL: Record<Tab, string> = { overview: "Огляд", pnl: "Прибуток (P&L)", cash: "Рух грошей", plan: "План / факт", calendar: "Платіжний календар", debts: "Борги", profitability: "Прибутковість", expenses: "Витрати", accounts: "Рахунки" };
-function financeTabsForPersona(persona: FinanceV2["viewer"] extends infer V ? V extends { persona: infer P } ? P : never : never): Tab[] {
+function financeTabsForPersona(persona: FinancePersona | undefined): Tab[] {
   if (persona === "CASHIER" || persona === "STANDARD") return ["overview", "cash", "debts", "accounts"];
   if (persona === "STATION_MANAGER") return ["overview", "cash", "debts", "profitability", "expenses", "accounts"];
   return Object.keys(TAB_LABEL) as Tab[];
 }
-function canSeeFullFinance(persona: FinanceV2["viewer"]?.persona) { return persona === "OWNER" || persona === "FINANCE"; }
+function canSeeFullFinance(persona: FinancePersona | undefined) { return persona === "OWNER" || persona === "FINANCE"; }
 const AGING_LABEL: Record<string, string> = { "0_7": "0–7", "8_14": "8–14", "15_30": "15–30", "31_60": "31–60", "60_PLUS": "60+" };
 
 function money(value: number | null | undefined, currency = "UAH") { return value == null ? "—" : new Intl.NumberFormat("uk-UA", { style: "currency", currency, maximumFractionDigits: 0 }).format(value); }
