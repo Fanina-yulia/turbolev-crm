@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import assert from "node:assert/strict";
 import {
   compensationProjection,
@@ -46,5 +47,12 @@ assert.deepEqual(projection, {
   estimatedMinimumTopUp: 2000,
   total: 25000,
 });
+
+const financeService = readFileSync(new URL("../src/services/financial-center-v2.service.ts", import.meta.url), "utf8");
+assert.equal(financeService.includes("const completedFinancialLines"), false);
+assert.equal(financeService.includes("take: 5000"), false);
+assert.match(financeService, /FROM "WorkOrderLine" wol/);
+assert.match(financeService, /FROM "ServiceAppointment" sa/);
+assert.match(financeService, /FROM "EmployeeRoleAssignment" era/);
 
 console.log("compensation-finance-contract-smoke: ok");

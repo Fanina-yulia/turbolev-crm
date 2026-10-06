@@ -658,81 +658,93 @@ export async function getFinancialCenterV2(scope: FinancialCenterScope) {
   })).sort((a, b) => b.profit - a.profit);
 
   const qualityIssues: Array<{ code: string; level: "INFO" | "WARNING" | "CRITICAL"; title: string; message: string; count: number }> = [];
-  const completedFinancialLines = await prisma.workOrderLine.findMany({
-    where: {
-      status: "COMPLETED",
-      completedAt: { gte: scope.from, lt: scope.to },
-      type: { in: ["LABOR", "PART"] },
-    },
-    select: {
-      id: true,
-      type: true,
-      mechanicId: true,
-      actualQuantity: true,
-      plannedQuantity: true,
-      actualUnitPrice: true,
-      plannedUnitPrice: true,
-      actualUnitCost: true,
-      plannedUnitCost: true,
-      actualDiscount: true,
-      plannedDiscount: true,
-    },
-    take: 5000,
-  });
-  const laborLinesForQuality = completedFinancialLines.filter((line) => line.type === "LABOR" && line.mechanicId);
-  const laborSourceIds = laborLinesForQuality.map((line) => line.id);
-  const existingLaborAccruals = laborSourceIds.length ? await prisma.salaryAccrual.findMany({
-    where: { status: "POSTED", sourceType: "WORK_ORDER_LABOR", sourceId: { in: laborSourceIds } },
-    select: { sourceId: true },
-  }) : [];
-  const existingLaborIds = new Set(existingLaborAccruals.map((row) => row.sourceId).filter(Boolean));
+  const scopedLocationIds = scope.locationId
+    ? [scope.locationId]
+    : (scope.allowedLocationIds?.filter(Boolean) || []);
+  const workOrderLocationScopeSql = scopedLocationIds.length
+    ? Prisma.sql`AND EXISTS (
+        SELECT 1
+          FROM "ServiceAppointment" sa
+         WHERE sa."workOrderId" = wol."workOrderId"
+           AND sa."locationId" IN (${Prisma.join(scopedLocationIds)})
+      )`
+    : Prisma.sql``;
 
-  const mechanicRefs = Array.from(new Set(laborLinesForQuality.map((line) => line.mechanicId).filter(Boolean) as string[]));
-  const mechanicResources = mechanicRefs.length ? await prisma.serviceMechanic.findMany({
-    where: { OR: [{ id: { in: mechanicRefs } }, { userId: { in: mechanicRefs } }, { employeeId: { in: mechanicRefs } }] },
-    select: { id: true, userId: true, employeeId: true },
-  }) : [];
-  const candidateEmployeeIds = Array.from(new Set([
-    ...mechanicRefs,
-    ...(mechanicResources.map((row) => row.employeeId).filter(Boolean) as string[]),
-  ]));
-  const mechanicEmployees = candidateEmployeeIds.length || mechanicRefs.length ? await prisma.employeeProfile.findMany({
-    where: {
-      OR: [
-        ...(candidateEmployeeIds.length ? [{ id: { in: candidateEmployeeIds } }] : []),
-        ...(mechanicRefs.length ? [{ userId: { in: mechanicRefs } }] : []),
-      ],
-    },
-    select: { id: true, userId: true, workPercent: true },
-  }) : [];
-  const employeePercent = new Map(mechanicEmployees.map((row) => [row.id, decimalToNumber(row.workPercent || 0)]));
-  const refToEmployee = new Map<string, string>();
-  for (const employee of mechanicEmployees) {
-    refToEmployee.set(employee.id, employee.id);
-    if (employee.userId) refToEmployee.set(employee.userId, employee.id);
-  }
-  for (const resource of mechanicResources) {
-    if (!resource.employeeId) continue;
-    refToEmployee.set(resource.id, resource.employeeId);
-    if (resource.userId) refToEmployee.set(resource.userId, resource.employeeId);
-    refToEmployee.set(resource.employeeId, resource.employeeId);
-  }
-
-  const missingLaborAccruals = laborLinesForQuality.filter((line) => {
-    if (existingLaborIds.has(line.id)) return false;
-    const employeeId = line.mechanicId ? refToEmployee.get(line.mechanicId) : null;
-    if (!employeeId || (employeePercent.get(employeeId) || 0) <= 0) return false;
-    const qty = decimalToNumber(line.actualQuantity ?? line.plannedQuantity);
-    const price = decimalToNumber(line.actualUnitPrice ?? line.plannedUnitPrice);
-    const discount = decimalToNumber(line.actualDiscount ?? line.plannedDiscount);
-    return Math.max(0, qty * price - discount) > 0;
-  }).length;
+  const missingLaborRows = await prisma.$queryRaw<Array<{ count: bigint }>>(Prisma.sql`
+    SELECT COUNT(*)::bigint AS "count"
+      FROM "WorkOrderLine" wol
+     WHERE wol."status"::text = 'COMPLETED'
+       AND wol."type"::text = 'LABOR'
+       AND wol."completedAt" >= ${scope.from}
+       AND wol."completedAt" < ${scope.to}
+       AND wol."mechanicId" IS NOT NULL
+       AND GREATEST(
+         0,
+         COALESCE(wol."actualQuantity", wol."plannedQuantity", 0)
+           * COALESCE(wol."actualUnitPrice", wol."plannedUnitPrice", 0)
+           - COALESCE(wol."actualDiscount", wol."plannedDiscount", 0)
+       ) > 0
+       ${workOrderLocationScopeSql}
+       AND EXISTS (
+         SELECT 1
+           FROM "EmployeeProfile" ep
+          WHERE COALESCE(ep."workPercent", 0) > 0
+            AND (
+              ep."id" = wol."mechanicId"
+              OR ep."userId" = wol."mechanicId"
+              OR EXISTS (
+                SELECT 1
+                  FROM "ServiceMechanic" sm
+                 WHERE sm."employeeId" = ep."id"
+                   AND (
+                     sm."id" = wol."mechanicId"
+                     OR sm."userId" = wol."mechanicId"
+                     OR sm."employeeId" = wol."mechanicId"
+                   )
+              )
+            )
+       )
+       AND NOT EXISTS (
+         SELECT 1
+           FROM "SalaryAccrual" a
+          WHERE a."status"::text = 'POSTED'
+            AND a."sourceType" = 'WORK_ORDER_LABOR'
+            AND a."sourceId" = wol."id"
+       )
+  `);
+  const missingLaborAccruals = Number(missingLaborRows[0]?.count || 0n);
   if (missingLaborAccruals > 0) qualityIssues.push({
     code: "MISSING_LABOR_COMPENSATION",
     level: "CRITICAL",
     title: "Не врахована пряма оплата праці",
     message: `${missingLaborAccruals} виконаних робіт мають % працівника, але ще не мають зарплатного нарахування.`,
     count: missingLaborAccruals,
+  });
+
+  const missingPartCostRows = await prisma.$queryRaw<Array<{ count: bigint }>>(Prisma.sql`
+    SELECT COUNT(*)::bigint AS "count"
+      FROM "WorkOrderLine" wol
+     WHERE wol."status"::text = 'COMPLETED'
+       AND wol."type"::text = 'PART'
+       AND wol."completedAt" >= ${scope.from}
+       AND wol."completedAt" < ${scope.to}
+       AND GREATEST(
+         0,
+         COALESCE(wol."actualQuantity", wol."plannedQuantity", 0)
+           * COALESCE(wol."actualUnitPrice", wol."plannedUnitPrice", 0)
+           - COALESCE(wol."actualDiscount", wol."plannedDiscount", 0)
+       ) > 0
+       AND COALESCE(wol."actualQuantity", wol."plannedQuantity", 0)
+           * COALESCE(wol."actualUnitCost", wol."plannedUnitCost", 0) <= 0
+       ${workOrderLocationScopeSql}
+  `);
+  const missingPartCosts = Number(missingPartCostRows[0]?.count || 0n);
+  if (missingPartCosts > 0) qualityIssues.push({
+    code: "MISSING_PART_COST",
+    level: "WARNING",
+    title: "Продані деталі без закупівельної собівартості",
+    message: `${missingPartCosts} завершених позицій деталей мають продаж, але нульову/відсутню собівартість.`,
+    count: missingPartCosts,
   });
 
   const walkInRevenueEvents = events.filter((event) => event.sourceEntity === "WALK_IN_DIAGNOSTIC" && String(event.sourceEntityId || "").endsWith(":revenue"));
@@ -751,43 +763,37 @@ export async function getFinancialCenterV2(scope: FinancialCenterScope) {
     count: missingWalkInLabor,
   });
 
-  const missingPartCosts = completedFinancialLines.filter((line) => {
-    if (line.type !== "PART") return false;
-    const qty = decimalToNumber(line.actualQuantity ?? line.plannedQuantity);
-    const price = decimalToNumber(line.actualUnitPrice ?? line.plannedUnitPrice);
-    const cost = decimalToNumber(line.actualUnitCost ?? line.plannedUnitCost);
-    const discount = decimalToNumber(line.actualDiscount ?? line.plannedDiscount);
-    return Math.max(0, qty * price - discount) > 0 && qty * cost <= 0;
-  }).length;
-  if (missingPartCosts > 0) qualityIssues.push({
-    code: "MISSING_PART_COST",
-    level: "WARNING",
-    title: "Продані деталі без закупівельної собівартості",
-    message: `${missingPartCosts} завершених позицій деталей мають продаж, але нульову/відсутню собівартість.`,
-    count: missingPartCosts,
-  });
-
   const currentMonthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
   const currentMonthNext = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
   let missingBaseAccrualEmployees = 0;
   if (scope.to > currentMonthStart && scope.from < currentMonthNext) {
-    const baseEmployees = await prisma.employeeProfile.findMany({
-      where: { isActive: true, baseSalary: { gt: 0 } },
-      select: { id: true },
-    });
-    const baseIds = baseEmployees.map((row) => row.id);
-    const currentBaseAccruals = baseIds.length ? await prisma.salaryAccrual.findMany({
-      where: {
-        employeeId: { in: baseIds },
-        status: "POSTED",
-        sourceType: "BASE_DAILY",
-        occurredAt: { gte: currentMonthStart, lt: currentMonthNext },
-      },
-      select: { employeeId: true },
-      distinct: ["employeeId"],
-    }) : [];
-    const basePosted = new Set(currentBaseAccruals.map((row) => row.employeeId));
-    missingBaseAccrualEmployees = baseIds.filter((id) => !basePosted.has(id)).length;
+    const employeeLocationScopeSql = scopedLocationIds.length
+      ? Prisma.sql`AND EXISTS (
+          SELECT 1
+            FROM "EmployeeRoleAssignment" era
+           WHERE era."employeeId" = ep."id"
+             AND era."locationId" IN (${Prisma.join(scopedLocationIds)})
+             AND era."startsAt" < ${currentMonthNext}
+             AND (era."endsAt" IS NULL OR era."endsAt" >= ${currentMonthStart})
+        )`
+      : Prisma.sql``;
+    const missingBaseRows = await prisma.$queryRaw<Array<{ count: bigint }>>(Prisma.sql`
+      SELECT COUNT(*)::bigint AS "count"
+        FROM "EmployeeProfile" ep
+       WHERE ep."isActive" = true
+         AND COALESCE(ep."baseSalary", 0) > 0
+         ${employeeLocationScopeSql}
+         AND NOT EXISTS (
+           SELECT 1
+             FROM "SalaryAccrual" a
+            WHERE a."employeeId" = ep."id"
+              AND a."status"::text = 'POSTED'
+              AND a."sourceType" = 'BASE_DAILY'
+              AND a."occurredAt" >= ${currentMonthStart}
+              AND a."occurredAt" < ${currentMonthNext}
+         )
+    `);
+    missingBaseAccrualEmployees = Number(missingBaseRows[0]?.count || 0n);
     if (missingBaseAccrualEmployees > 0) qualityIssues.push({
       code: "MISSING_BASE_ACCRUAL",
       level: "WARNING",
