@@ -123,7 +123,7 @@
   color:var(--text);
   padding:0 5px;
   font:inherit;
-  font-size:10px;
+  font-size:11px;
 }
 
 .tabs{
@@ -141,7 +141,7 @@
   align-items:center;
   gap:4px;
   padding:0 5px;
-  font-size:10px;
+  font-size:11px;
   white-space:nowrap;
 }
 .tabs button>b{
@@ -152,7 +152,7 @@
   padding:0 4px;
   border-radius:999px;
   background:color-mix(in srgb,var(--muted) 12%,transparent);
-  font-size:10px;
+  font-size:11px;
 }
 .tabs .activeTab{
   border-color:color-mix(in srgb,var(--orange) 55%,var(--line));
@@ -385,8 +385,8 @@
 
 @media(max-width:1180px) and (min-width:761px){
   .search{min-width:130px;max-width:190px}
-  .presets button{padding:0 3px;font-size:9px}
-  .tabs button{padding:0 4px;gap:3px;font-size:9px}
+  .presets button{padding:0 3px;font-size:11px}
+  .tabs button{padding:0 4px;gap:3px;font-size:11px}
   .dateField{width:88px}
   .locationField{width:94px}
   .kpis strong{font-size:16px}
