@@ -22,7 +22,7 @@ import {
 import type { FinanceGlossaryKey } from "@/src/domain/finance-glossary";
 import styles from "./financial-center-v2.module.css";
 
-type Tab = "overview" | "pnl" | "cash" | "plan" | "calendar" | "debts" | "profitability" | "expenses" | "accounts";
+type Tab = "overview" | "pnl" | "cash" | "calendar" | "debts" | "profitability" | "expenses" | "accounts";
 type ProfitTab = "workOrders" | "services" | "mechanics" | "parts" | "suppliers";
 type Preset = "today" | "week" | "month" | "quarter" | "year" | "custom";
 type OperationType = "EXPENSE" | "INCOME" | "TRANSFER";
@@ -73,7 +73,7 @@ type FinanceV2 = {
 };
 
 type FinancePersona = NonNullable<FinanceV2["viewer"]>["persona"];
-const TAB_LABEL: Record<Tab, string> = { overview: "Огляд", pnl: "Прибуток (P&L)", cash: "Рух грошей", plan: "План / факт", calendar: "Платіжний календар", debts: "Борги", profitability: "Прибутковість", expenses: "Витрати", accounts: "Рахунки" };
+const TAB_LABEL: Record<Tab, string> = { overview: "Огляд", pnl: "Прибуток (P&L)", cash: "Рух грошей", calendar: "Платіжний календар", debts: "Борги", profitability: "Прибутковість", expenses: "Витрати", accounts: "Рахунки" };
 function financeTabsForPersona(persona: FinancePersona | undefined): Tab[] {
   if (persona === "CASHIER" || persona === "STANDARD") return ["overview", "cash", "debts", "accounts"];
   if (persona === "STATION_MANAGER") return ["overview", "cash", "debts", "profitability", "expenses", "accounts"];
@@ -92,11 +92,6 @@ const SECTION_META: Partial<Record<Tab, { eyebrow: string; title: string; descri
     eyebrow: "CASH FLOW",
     title: "Рух грошей",
     description: "Фактичні надходження, виплати, внутрішні перекази та структура руху коштів.",
-  },
-  plan: {
-    eyebrow: "PLAN / FACT",
-    title: "План / факт",
-    description: "Фінансові плани, бюджети, відхилення та контроль досягнення цілей.",
   },
   calendar: {
     eyebrow: "PAYMENT CALENDAR",
@@ -207,8 +202,13 @@ export function FinancialCenter() {
     if (isIsoDate(route.to)) setTo(route.to!);
     if (isIsoDate(route.from) || isIsoDate(route.to)) setPreset("custom");
     if (route.locationId) setLocationId(route.locationId);
-    const routeTab = route.scope as Tab | undefined;
-    if (routeTab && Object.hasOwn(TAB_LABEL, routeTab)) setTab(routeTab);
+    const routeTab = route.scope as string | undefined;
+    if (routeTab === "plan") {
+      setTab("overview");
+      navigateCrm("Фінансовий центр", { from: isIsoDate(route.from) ? route.from : initial.from, to: isIsoDate(route.to) ? route.to : initial.to, scope: "overview", ...(route.locationId ? { locationId: route.locationId } : {}) });
+    } else if (routeTab && Object.hasOwn(TAB_LABEL, routeTab)) {
+      setTab(routeTab as Tab);
+    }
   }, []);
   useEffect(() => {
     void load();
@@ -278,14 +278,13 @@ export function FinancialCenter() {
     {error && <div className={styles.errorBox}><strong>Фінансовий центр не оновлено.</strong> {error}</div>}
     {message && <div className={styles.success}>{message}</div>}
 
-    {data && tab === "overview" && <FinanceContextKpis data={data} tab={tab} onMetric={setDrilldown} />}
+    {data && tab === "overview" && fullFinance && <OwnerOverview data={data} onCreatePlan={() => setBudgetOpen(true)} onMetric={setDrilldown} />}
+    {data && tab === "overview" && !fullFinance && <><FinanceContextKpis data={data} tab={tab} onMetric={setDrilldown} /><FinanceOverviewControl data={data} /><FinanceAccrualBridge data={data} /></>}
 
     {!data && !loading && <div className={styles.empty}>Фінансові дані недоступні.</div>}
     {data && tab !== "overview" && tab !== "expenses" && <FinanceSectionHero tab={tab} />}
-    {data && tab === "overview" && <><FinanceOverviewControl data={data} /><FinanceAccrualBridge data={data} /><Overview data={data} onTab={chooseTab} /></>}
     {data && tab === "pnl" && <PnlView data={data} />}
     {data && tab === "cash" && <CashFlowView data={data} onOperation={openOperation} />}
-    {data && tab === "plan" && <><FinancePlanPace data={data} onCreatePlan={() => setBudgetOpen(true)} /><PlanFactView data={data} onNewBudget={() => setBudgetOpen(true)} /></>}
     {data && tab === "calendar" && <><FinanceForecastReasons data={data} /><CalendarView data={data} onNewRecurring={() => setRecurringOpen(true)} onDebts={() => chooseTab("debts")} onSettings={() => setSettingsHubOpen(true)} /></>}
     {data && tab === "debts" && <DebtView data={data} />}
     {data && tab === "profitability" && <><FinanceMarginControl data={data} /><FinanceProfitabilityHighlights data={data} /><ProfitabilityView data={data} active={profitTab} onChange={setProfitTab} /></>}
@@ -341,6 +340,92 @@ function FinanceSectionHero({ tab }: { tab: Tab }) {
   </section>;
 }
 
+
+function isPayrollEvent(event: FinanceV2["pnl"]["events"][number]) {
+  const source = (event.sourceEntity || "").toUpperCase();
+  const description = (event.description || "").toLowerCase();
+  return source === "SALARY_ACCRUAL"
+    || source.startsWith("PAYROLL_PERIOD_EMPLOYEE")
+    || source.includes("PAYROLL")
+    || description.includes("зарплат")
+    || description.includes("нарахування працівнику");
+}
+
+function budgetFor(data: FinanceV2, ...metrics: string[]) {
+  for (const metric of metrics) {
+    const item = data.budgets.find((row) => row.metric === metric);
+    if (item) return item;
+  }
+  return null;
+}
+
+function managementFacts(data: FinanceV2) {
+  const serviceTurnover = data.profitability.workOrders.reduce((sum, row) => sum + row.laborRevenue, 0)
+    + data.pnl.events
+      .filter((row) => row.pnlSection === "REVENUE" && row.sourceEntity === "WALK_IN_DIAGNOSTIC")
+      .reduce((sum, row) => sum + row.amount, 0);
+  const partsRevenue = data.profitability.workOrders.reduce((sum, row) => sum + row.partsRevenue, 0);
+  const partsCost = data.profitability.workOrders.reduce((sum, row) => sum + row.partsCost, 0);
+  const partsMargin = partsRevenue - partsCost;
+  const payroll = data.pnl.events.filter(isPayrollEvent).reduce((sum, row) => sum + row.amount, 0);
+  const nonPartsDirectCosts = Math.max(0, data.pnl.cogs - partsCost);
+  const allExpenses = nonPartsDirectCosts + data.pnl.opex + data.pnl.otherExpense + data.pnl.tax;
+  const grossIncome = serviceTurnover + partsMargin;
+  const netIncome = grossIncome - allExpenses;
+  return { serviceTurnover, partsMargin, payroll, grossIncome, allExpenses, netIncome, cash: data.kpi.currentCash };
+}
+
+function OwnerOverview({ data, onCreatePlan, onMetric }: { data: FinanceV2; onCreatePlan: () => void; onMetric: (metric: FinanceDrilldownMetric) => void }) {
+  const facts = managementFacts(data);
+  const cards = [
+    { key: "NET_INCOME", label: "Чистий дохід", value: facts.netIncome, plan: budgetFor(data, "NET_INCOME", "NET_PROFIT"), mode: "HIGHER" as const, metric: "netProfit" as FinanceDrilldownMetric, note: "валовий дохід − всі витрати" },
+    { key: "SERVICE_REVENUE", label: "Оборотка з послуг", value: facts.serviceTurnover, plan: budgetFor(data, "SERVICE_REVENUE"), mode: "HIGHER" as const, metric: "revenue" as FinanceDrilldownMetric, note: "роботи та діагностики, без продажу деталей" },
+    { key: "PARTS_MARGIN", label: "Маржа по деталях", value: facts.partsMargin, plan: budgetFor(data, "PARTS_MARGIN"), mode: "HIGHER" as const, metric: "grossProfit" as FinanceDrilldownMetric, note: "продаж деталей − їх собівартість" },
+    { key: "PAYROLL", label: "ЗП персоналу", value: facts.payroll, plan: budgetFor(data, "PAYROLL"), mode: "LOWER" as const, metric: "opex" as FinanceDrilldownMetric, note: "усі POSTED нарахування персоналу" },
+    { key: "GROSS_INCOME", label: "Валовий дохід", value: facts.grossIncome, plan: budgetFor(data, "GROSS_INCOME", "GROSS_PROFIT"), mode: "HIGHER" as const, metric: "grossProfit" as FinanceDrilldownMetric, note: "послуги + маржа деталей" },
+    { key: "TOTAL_EXPENSES", label: "Всі витрати", value: facts.allExpenses, plan: budgetFor(data, "TOTAL_EXPENSES", "OPEX"), mode: "LOWER" as const, metric: "opex" as FinanceDrilldownMetric, note: "без повторного врахування закупівельної вартості деталей" },
+    { key: "CASH_BALANCE", label: "Грошей у касі", value: facts.cash, plan: budgetFor(data, "CASH_BALANCE"), mode: "MINIMUM" as const, metric: "currentCash" as FinanceDrilldownMetric, note: currentCashNote(data) },
+  ];
+
+  return <>
+    <section className={styles.ownerOverview}>
+      <div className={styles.ownerOverviewHeader}>
+        <div><span className={styles.eyebrow}>ГОЛОВНІ ЦИФРИ ВЛАСНИКА</span><h2>Факт і план на одному екрані</h2><p>Сім показників, які відповідають на питання: скільки заробили, де заробили, скільки витратили та скільки грошей є зараз.</p></div>
+        <button type="button" className={styles.primaryButton} onClick={onCreatePlan}>+ Задати план</button>
+      </div>
+      <div className={styles.ownerKpiGrid}>
+        {cards.map((card, index) => {
+          const planValue = card.plan?.amount ?? (card.key === "CASH_BALANCE" && data.settings.minimumCashReserve > 0 ? data.settings.minimumCashReserve : null);
+          const ratio = planValue && planValue > 0 ? card.value / planValue * 100 : null;
+          const good = ratio == null ? false : card.mode === "LOWER" ? ratio <= 100 : ratio >= 100;
+          const warning = ratio == null ? false : card.mode === "LOWER" ? ratio > 100 && ratio <= 115 : ratio >= 80 && ratio < 100;
+          const planLabel = card.key === "CASH_BALANCE" && !card.plan && planValue ? "Мінімум" : "План";
+          return <button type="button" key={card.key} className={`${styles.ownerKpi} ${index === 0 ? styles.ownerKpiPrimary : ""}`} onClick={() => onMetric(card.metric)}>
+            <span>{card.label}</span>
+            <strong className={card.key === "NET_INCOME" && card.value < 0 ? styles.negative : ""}>{money(card.value)}</strong>
+            <small>{card.note}</small>
+            <div className={styles.ownerKpiPlan}>
+              <span>{planLabel}: <b>{planValue == null ? "не задано" : money(planValue)}</b></span>
+              <span className={ratio == null ? styles.ownerPlanNeutral : good ? styles.ownerPlanGood : warning ? styles.ownerPlanWarn : styles.ownerPlanBad}>{ratio == null ? "—" : `${ratio.toFixed(0)}%`}</span>
+            </div>
+            {ratio != null && <div className={styles.ownerProgress}><i className={good ? styles.ownerProgressGood : warning ? styles.ownerProgressWarn : styles.ownerProgressBad} style={{ width: `${Math.min(100, Math.max(0, ratio))}%` }} /></div>}
+          </button>;
+        })}
+      </div>
+    </section>
+
+    <section className={styles.panel}>
+      <div className={styles.panelHeader}><div><span className={styles.eyebrow}>ПЛАН / ФАКТ</span><h2>Планування тепер частина «Огляду»</h2><p>Окремого екрана «План / факт» більше немає. Усі бюджети та відхилення контролюються тут.</p></div><button type="button" className={styles.primaryButton} onClick={onCreatePlan}>+ Додати бюджет</button></div>
+      {data.budgets.length ? <div className={styles.grid3}>{data.budgets.map((item) => <BudgetCard key={item.id} item={item}/>)}</div> : <div className={styles.empty}>План на цей період ще не заданий.<div style={{marginTop:10}}><button type="button" className={styles.primaryButton} onClick={onCreatePlan}>Створити перший план</button></div></div>}
+    </section>
+
+    <section className={styles.panel}>
+      <div className={styles.panelHeader}><div><span className={styles.eyebrow}>ТЕМП МІСЯЦЯ</span><h2>Точка беззбитковості та темп</h2><p>Скільки ще потрібно заробити, щоб перекрити постійні витрати.</p></div></div>
+      <div className={styles.miniCards}><div className={styles.miniCard}><span>Точка беззбитковості</span><strong>{money(data.breakEven.breakEvenRevenue)}</strong></div><div className={styles.miniCard}><span>Факт виручки</span><strong>{money(data.breakEven.currentRevenue)}</strong></div><div className={styles.miniCard}><span>Залишилось</span><strong>{money(data.breakEven.remainingRevenue)}</strong></div><div className={styles.miniCard}><span>Робочих днів</span><strong>{data.breakEven.remainingWorkingDays}</strong></div><div className={styles.miniCard}><span>Потрібно / день</span><strong>{money(data.breakEven.requiredRevenuePerDay)}</strong></div></div>
+    </section>
+  </>;
+}
+
 function Overview({ data, onTab }: { data: FinanceV2; onTab: (tab: Tab) => void }) {
   const topAlerts = data.alerts.slice(0, 5);
   if (!canSeeFullFinance(data.viewer?.persona)) return null;
@@ -379,7 +464,7 @@ function CashFlowView({ data, onOperation }: { data: FinanceV2; onOperation: (ty
   return <><div className={styles.grid3}><section className={styles.panel}><div className={styles.panelHeader}><div><span className={styles.eyebrow}>РУХ ГРОШЕЙ</span><h2><FinanceInfoTooltip term="cashFlow" label="Рух грошей" /></h2></div></div><div className={styles.summaryRow}><span><FinanceInfoTooltip term="inflow" label="Надходження" compact /></span><strong className={styles.positive}>{money(data.cashFlow.inflow)}</strong></div><div className={styles.summaryRow}><span><FinanceInfoTooltip term="outflow" label="Виплати" compact /></span><strong className={styles.negative}>{money(data.cashFlow.outflow)}</strong></div><div className={`${styles.summaryRow} ${styles.summaryTotal}`}><span><FinanceInfoTooltip term="cashFlow" label="Net Cash Flow" compact /></span><strong>{money(data.cashFlow.net)}</strong></div></section><section className={styles.panel}><div className={styles.panelHeader}><div><span className={styles.eyebrow}>ЗА ВИДАМИ ДІЯЛЬНОСТІ</span><h2>За видами діяльності</h2></div></div><div className={styles.summaryRow}><span><FinanceInfoTooltip term="operatingCashFlow" label="Операційна" compact /></span><strong>{money(data.cashFlow.operating)}</strong></div><div className={styles.summaryRow}><span><FinanceInfoTooltip term="investingCashFlow" label="Інвестиційна" compact /></span><strong>{money(data.cashFlow.investing)}</strong></div><div className={styles.summaryRow}><span><FinanceInfoTooltip term="financingCashFlow" label="Фінансова" compact /></span><strong>{money(data.cashFlow.financing)}</strong></div><div className={styles.summaryRow}><span><FinanceInfoTooltip term="internalTransfer" label="Внутрішні перекази" compact /></span><strong>{money(data.cashFlow.internalTransfer)}</strong></div></section><section className={styles.panel}><div className={styles.panelHeader}><div><span className={styles.eyebrow}>ОПЕРАЦІЇ</span><h2>Швидкі дії</h2></div></div><div className={styles.quickActions}><button className={styles.primaryButton} onClick={() => onOperation("INCOME")}>+ Надходження</button><button className={styles.secondaryButton} onClick={() => onOperation("EXPENSE")}>+ Витрата</button><button className={styles.secondaryButton} onClick={() => onOperation("TRANSFER")}>↔ Переказ</button></div><p className={styles.hint}>Внутрішній переказ не впливає на P&L і загальну суму грошей компанії.</p></section></div><section className={styles.panel}><div className={styles.panelHeader}><div><span className={styles.eyebrow}>ФАКТИЧНІ РУХИ</span><h2>Фактичні рухи</h2></div></div><div className={styles.tableWrap}><table className={styles.table}><thead><tr><th>Дата</th><th>Тип</th><th>Секція</th><th>Опис</th><th className={styles.numberCell}>Сума</th></tr></thead><tbody>{data.cashFlow.transactions.map((tx) => <tr key={tx.id}><td>{dateText(tx.occurredAt)}</td><td>{tx.kind}</td><td>{tx.flowSection}</td><td>{tx.description || "—"}</td><td className={`${styles.numberCell} ${tx.kind === "INFLOW" ? styles.positive : tx.kind === "OUTFLOW" ? styles.negative : ""}`}>{tx.kind === "OUTFLOW" ? "−" : tx.kind === "INFLOW" ? "+" : ""}{money(tx.amount)}</td></tr>)}</tbody></table></div></section></>;
 }
 
-function BudgetCard({ item }: { item: Budget }) { const pct = Math.max(0, Math.min(160, item.completionPercent || 0)); return <div className={styles.panel}><div className={styles.sectionTitle}><h3>{item.name}</h3><span className={`${styles.badge} ${pct >= 120 ? styles.bad : pct >= 80 ? styles.warn : styles.good}`}>{item.completionPercent == null ? "—" : `${item.completionPercent.toFixed(0)}%`}</span></div><div className={styles.statPair}><span>План</span><strong>{money(item.amount)}</strong></div><div className={styles.statPair}><span>Факт</span><strong>{money(item.actual)}</strong></div><div className={styles.statPair}><span>Відхилення</span><strong className={item.variance > 0 && ["OPEX","COGS","CATEGORY"].includes(item.metric) ? styles.negative : ""}>{money(item.variance)}</strong></div><div className={styles.progress}><span style={{width:`${Math.min(100,pct)}%`}} /></div></div>; }
+function BudgetCard({ item }: { item: Budget }) { const rawPct = item.completionPercent; const pct = Math.max(0, Math.min(160, rawPct || 0)); const isExpense = ["OPEX","COGS","CATEGORY","PAYROLL","TOTAL_EXPENSES"].includes(item.metric); const tone = rawPct == null ? "" : isExpense ? rawPct > 100 ? styles.bad : rawPct >= 90 ? styles.warn : styles.good : rawPct >= 100 ? styles.good : rawPct >= 80 ? styles.warn : ""; return <div className={styles.panel}><div className={styles.sectionTitle}><h3>{item.name}</h3><span className={`${styles.badge} ${tone}`}>{rawPct == null ? "—" : `${rawPct.toFixed(0)}%`}</span></div><div className={styles.statPair}><span>План</span><strong>{money(item.amount)}</strong></div><div className={styles.statPair}><span>Факт</span><strong>{money(item.actual)}</strong></div><div className={styles.statPair}><span>Відхилення</span><strong className={isExpense && item.variance > 0 ? styles.negative : !isExpense && item.variance >= 0 ? styles.positive : ""}>{money(item.variance)}</strong></div><div className={styles.progress}><span style={{width:`${Math.min(100,pct)}%`}} /></div></div>; }
 function PlanFactView({ data, onNewBudget }: { data: FinanceV2; onNewBudget: () => void }) { return <><section className={styles.panel}><div className={styles.panelHeader}><div><span className={styles.eyebrow}>КОНТРОЛЬ БЮДЖЕТУ</span><h2>План / факт</h2><p>Бюджети компанії, СТО або окремої категорії.</p></div><button className={styles.primaryButton} onClick={onNewBudget}>+ Додати бюджет</button></div>{data.budgets.length ? <div className={styles.grid3}>{data.budgets.map((item) => <BudgetCard key={item.id} item={item}/>)}</div> : <div className={styles.empty}>План на цей період ще не заданий. Створіть бюджет, щоб CRM могла прогнозувати виконання.<div style={{marginTop:10}}><button type="button" className={styles.primaryButton} onClick={onNewBudget}>Створити план</button></div></div>}</section><section className={styles.panel}><div className={styles.panelHeader}><div><span className={styles.eyebrow}>ТОЧКА БЕЗЗБИТКОВОСТІ</span><h2>План до беззбитковості</h2></div></div><div className={styles.miniCards}><div className={styles.miniCard}><span>Точка беззбитковості</span><strong>{money(data.breakEven.breakEvenRevenue)}</strong></div><div className={styles.miniCard}><span>Факт виручки</span><strong>{money(data.breakEven.currentRevenue)}</strong></div><div className={styles.miniCard}><span>Залишилось</span><strong>{money(data.breakEven.remainingRevenue)}</strong></div><div className={styles.miniCard}><span>Робочих днів</span><strong>{data.breakEven.remainingWorkingDays}</strong></div><div className={styles.miniCard}><span>Потрібно / день</span><strong>{money(data.breakEven.requiredRevenuePerDay)}</strong></div></div></section></>; }
 
 function ForecastStrip({ data }: { data: FinanceV2 }) { const points = data.forecast.points.filter((_, index) => index % Math.max(1, Math.floor(data.forecast.points.length / 10)) === 0).slice(0,12); return <div className={styles.forecastLine}>{points.map((point) => <div key={point.date} className={`${styles.forecastPoint} ${point.closingCash < 0 ? styles.cashGap : point.belowReserve ? styles.belowReserve : ""}`}><span>{dateText(point.date)}</span><strong>{money(point.closingCash)}</strong><small>{point.net >= 0 ? "+" : ""}{money(point.net)}</small></div>)}</div>; }
@@ -407,7 +492,7 @@ function AccountsView({data,onOperation}:{data:FinanceV2;onOperation:(type:Opera
 
 function SettingsView({data,onCategory,onRecurring,onSettings}:{data:FinanceV2;onCategory:()=>void;onRecurring:()=>void;onSettings:()=>void}) { return <><section className={styles.panel}><div className={styles.panelHeader}><div><span className={styles.eyebrow}>ФІНАНСОВІ ПРАВИЛА</span><h2>Правила управління</h2></div><button className={styles.primaryButton} onClick={onSettings}>Змінити</button></div><div className={styles.settingsGrid}><div className={styles.miniCard}><span>Мінімальний резерв</span><strong>{money(data.settings.minimumCashReserve)}</strong></div><div className={styles.miniCard}><span>Постійні витрати / міс.</span><strong>{money(data.settings.fixedMonthlyCosts)}</strong></div><div className={styles.miniCard}><span>Цільова маржа</span><strong>{percent(data.settings.targetGrossMarginPercent)}</strong></div><div className={styles.miniCard}><span>Поріг уваги</span><strong>{percent(data.settings.warningGrossMarginPercent)}</strong></div><div className={styles.miniCard}><span>Прогноз</span><strong>{data.settings.forecastHorizonDays} днів</strong></div></div></section><div className={styles.grid2}><section className={styles.panel}><div className={styles.panelHeader}><div><span className={styles.eyebrow}>КАТЕГОРІЇ</span><h2>Категорії та підкатегорії</h2></div><button className={styles.primaryButton} onClick={onCategory}>+ Категорія</button></div><div className={styles.tableWrap}><table className={styles.table}><thead><tr><th>Назва</th><th>P&L</th><th>Cash Flow</th><th>Тип</th></tr></thead><tbody>{data.categories.map(row=><tr key={row.id}><td><strong>{row.name}</strong><small>{row.code}{row.parentId?" · підкатегорія":""}</small></td><td>{row.pnlSection||"—"}</td><td>{row.cashFlowSection||"—"}</td><td>{row.isSystem?"Системна":"Власна"}</td></tr>)}</tbody></table></div></section><section className={styles.panel}><div className={styles.panelHeader}><div><span className={styles.eyebrow}>РЕГУЛЯРНІ ОПЕРАЦІЇ</span><h2>Регулярні операції</h2></div><button className={styles.primaryButton} onClick={onRecurring}>+ Правило</button></div>{data.recurring.map(row=><div className={styles.summaryRow} key={row.id}><span><strong>{row.name}</strong><small>{row.frequency} · наступна {dateText(row.nextOccurrenceAt)}</small></span><strong>{money(row.amount)}</strong></div>)}</section></div></>; }
 
-function BudgetDialog({data,locationId,onClose,onSave}:{data:FinanceV2;locationId:string;onClose:()=>void;onSave:(payload:Record<string,unknown>)=>void}) { const [name,setName]=useState(""); const [metric,setMetric]=useState("REVENUE"); const [amount,setAmount]=useState(""); const [categoryId,setCategoryId]=useState(""); const [start,setStart]=useState(data.range.from.slice(0,10)); const [end,setEnd]=useState(data.range.to.slice(0,10)); return <Modal title="Новий бюджет" onClose={onClose}><div className={styles.modalGrid}><label>Назва<input value={name} onChange={e=>setName(e.target.value)}/></label><label>Показник<select value={metric} onChange={e=>setMetric(e.target.value)}><option value="REVENUE">Виручка</option><option value="COGS">COGS</option><option value="OPEX">OPEX</option><option value="GROSS_PROFIT">Валовий прибуток</option><option value="NET_PROFIT">Чистий прибуток</option><option value="CASH_FLOW">Cash Flow</option><option value="CATEGORY">Категорія</option></select></label><label>План, грн<input value={amount} onChange={e=>setAmount(e.target.value)} inputMode="decimal"/></label>{metric==="CATEGORY"&&<label>Категорія<select value={categoryId} onChange={e=>setCategoryId(e.target.value)}><option value="">Оберіть</option>{data.categories.map(c=><option value={c.id} key={c.id}>{c.name}</option>)}</select></label>}<label>Початок<input type="date" value={start} onChange={e=>setStart(e.target.value)}/></label><label>Кінець<input type="date" value={end} onChange={e=>setEnd(e.target.value)}/></label></div><div className={styles.modalActions}><button className={styles.primaryButton} onClick={()=>onSave({name,metric,amount:Number(amount.replace(",",".")),categoryId:categoryId||null,locationId:locationId||null,periodStart:start,periodEnd:end})}>Зберегти бюджет</button></div></Modal>; }
+function BudgetDialog({data,locationId,onClose,onSave}:{data:FinanceV2;locationId:string;onClose:()=>void;onSave:(payload:Record<string,unknown>)=>void}) { const [name,setName]=useState(""); const [metric,setMetric]=useState("REVENUE"); const [amount,setAmount]=useState(""); const [categoryId,setCategoryId]=useState(""); const [start,setStart]=useState(data.range.from.slice(0,10)); const [end,setEnd]=useState(data.range.to.slice(0,10)); return <Modal title="Новий бюджет" onClose={onClose}><div className={styles.modalGrid}><label>Назва<input value={name} onChange={e=>setName(e.target.value)}/></label><label>Показник<select value={metric} onChange={e=>setMetric(e.target.value)}><option value="NET_INCOME">Чистий дохід</option><option value="SERVICE_REVENUE">Оборотка з послуг</option><option value="PARTS_MARGIN">Маржа по деталях</option><option value="PAYROLL">ЗП персоналу</option><option value="GROSS_INCOME">Валовий дохід</option><option value="TOTAL_EXPENSES">Всі витрати</option><option value="CASH_BALANCE">Грошей у касі</option><option value="REVENUE">Загальна виручка (P&L)</option><option value="COGS">COGS</option><option value="OPEX">OPEX</option><option value="GROSS_PROFIT">Валовий прибуток (P&L)</option><option value="NET_PROFIT">Чистий прибуток (P&L)</option><option value="CASH_FLOW">Cash Flow</option><option value="CATEGORY">Категорія</option></select></label><label>План, грн<input value={amount} onChange={e=>setAmount(e.target.value)} inputMode="decimal"/></label>{metric==="CATEGORY"&&<label>Категорія<select value={categoryId} onChange={e=>setCategoryId(e.target.value)}><option value="">Оберіть</option>{data.categories.map(c=><option value={c.id} key={c.id}>{c.name}</option>)}</select></label>}<label>Початок<input type="date" value={start} onChange={e=>setStart(e.target.value)}/></label><label>Кінець<input type="date" value={end} onChange={e=>setEnd(e.target.value)}/></label></div><div className={styles.modalActions}><button className={styles.primaryButton} onClick={()=>onSave({name,metric,amount:Number(amount.replace(",",".")),categoryId:categoryId||null,locationId:locationId||null,periodStart:start,periodEnd:end})}>Зберегти бюджет</button></div></Modal>; }
 function RecurringDialog({data,locationId,onClose,onSave}:{data:FinanceV2;locationId:string;onClose:()=>void;onSave:(payload:Record<string,unknown>)=>void}) { const [name,setName]=useState(""); const [direction,setDirection]=useState("OUTFLOW"); const [amount,setAmount]=useState(""); const [frequency,setFrequency]=useState("MONTHLY"); const [categoryId,setCategoryId]=useState(""); const [date,setDate]=useState(isoDate(new Date())); const [counterparty,setCounterparty]=useState(""); return <Modal title="Регулярна операція" onClose={onClose}><div className={styles.modalGrid}><label>Назва<input value={name} onChange={e=>setName(e.target.value)}/></label><label>Напрям<select value={direction} onChange={e=>setDirection(e.target.value)}><option value="OUTFLOW">Виплата</option><option value="INFLOW">Надходження</option></select></label><label>Сума<input value={amount} onChange={e=>setAmount(e.target.value)} inputMode="decimal"/></label><label>Періодичність<select value={frequency} onChange={e=>setFrequency(e.target.value)}><option value="WEEKLY">Щотижня</option><option value="MONTHLY">Щомісяця</option><option value="QUARTERLY">Щокварталу</option><option value="YEARLY">Щороку</option></select></label><label>Наступна дата<input type="date" value={date} onChange={e=>setDate(e.target.value)}/></label><label>Категорія<select value={categoryId} onChange={e=>setCategoryId(e.target.value)}><option value="">Без категорії</option>{data.categories.map(c=><option value={c.id} key={c.id}>{c.name}</option>)}</select></label><label>Контрагент<input value={counterparty} onChange={e=>setCounterparty(e.target.value)}/></label></div><div className={styles.modalActions}><button className={styles.primaryButton} onClick={()=>onSave({name,direction,amount:Number(amount.replace(",",".")),frequency,startAt:date,nextOccurrenceAt:date,categoryId:categoryId||null,counterpartyName:counterparty||null,locationId:locationId||null})}>Зберегти правило</button></div></Modal>; }
 function CategoryDialog({data,onClose,onSave}:{data:FinanceV2;onClose:()=>void;onSave:(payload:Record<string,unknown>)=>void}) { const [name,setName]=useState(""); const [pnl,setPnl]=useState("OPEX"); const [cash,setCash]=useState("OPERATING"); const [parent,setParent]=useState(""); return <Modal title="Нова категорія" onClose={onClose}><div className={styles.modalGrid}><label>Назва<input value={name} onChange={e=>setName(e.target.value)}/></label><label>Батьківська<select value={parent} onChange={e=>setParent(e.target.value)}><option value="">Немає</option>{data.categories.filter(c=>!c.parentId).map(c=><option value={c.id} key={c.id}>{c.name}</option>)}</select></label><label>Секція P&L<select value={pnl} onChange={e=>setPnl(e.target.value)}><option value="">Не впливає на P&L</option><option value="COGS">COGS</option><option value="OPEX">OPEX</option><option value="OTHER_EXPENSE">Інші витрати</option><option value="TAX">Податки</option><option value="REVENUE">Виручка</option><option value="OTHER_INCOME">Інші доходи</option></select></label><label>Секція Cash Flow<select value={cash} onChange={e=>setCash(e.target.value)}><option value="OPERATING">Operating</option><option value="INVESTING">Investing</option><option value="FINANCING">Financing</option><option value="INTERNAL_TRANSFER">Internal transfer</option></select></label></div><div className={styles.modalActions}><button className={styles.primaryButton} onClick={()=>onSave({name,pnlSection:pnl||null,cashFlowSection:cash,parentId:parent||null})}>Створити категорію</button></div></Modal>; }
 function SettingsDialog({data,locationId,onClose,onSave}:{data:FinanceV2;locationId:string;onClose:()=>void;onSave:(payload:Record<string,unknown>)=>void}) { const [reserve,setReserve]=useState(String(data.settings.minimumCashReserve)); const [fixed,setFixed]=useState(String(data.settings.fixedMonthlyCosts)); const [target,setTarget]=useState(String(data.settings.targetGrossMarginPercent)); const [warning,setWarning]=useState(String(data.settings.warningGrossMarginPercent)); const [horizon,setHorizon]=useState(String(data.settings.forecastHorizonDays)); return <Modal title="Фінансові налаштування" onClose={onClose}><div className={styles.modalGrid}><label>Мінімальний резерв<input value={reserve} onChange={e=>setReserve(e.target.value)} inputMode="decimal"/></label><label>Постійні витрати / місяць<input value={fixed} onChange={e=>setFixed(e.target.value)} inputMode="decimal"/></label><label>Цільова валова маржа, %<input value={target} onChange={e=>setTarget(e.target.value)} inputMode="decimal"/></label><label>Поріг уваги маржі, %<input value={warning} onChange={e=>setWarning(e.target.value)} inputMode="decimal"/></label><label>Горизонт прогнозу, днів<input value={horizon} onChange={e=>setHorizon(e.target.value)} inputMode="numeric"/></label></div><div className={styles.modalActions}><button className={styles.primaryButton} onClick={()=>onSave({locationId:locationId||null,minimumCashReserve:Number(reserve.replace(",",".")),fixedMonthlyCosts:Number(fixed.replace(",",".")),targetGrossMarginPercent:Number(target.replace(",",".")),warningGrossMarginPercent:Number(warning.replace(",",".")),forecastHorizonDays:Number(horizon)})}>Зберегти</button></div></Modal>; }
