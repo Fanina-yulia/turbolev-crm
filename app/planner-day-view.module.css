@@ -41,3 +41,47 @@
 .now{background:var(--orange)!important;width:2px!important;box-shadow:0 0 0 1px color-mix(in srgb,var(--orange) 14%,transparent)}
 .now::before{border-top-color:var(--orange)!important}
 .now>span{position:absolute;top:-27px;left:50%;transform:translateX(-50%);padding:4px 7px;border-radius:7px;background:var(--orange);color:#fff;font-size:11px;font-weight:900;font-variant-numeric:tabular-nums;white-space:nowrap;box-shadow:0 3px 8px rgba(249,115,22,.22)}
+
+
+/* PLANNER DESIGN PARITY — lighter schedule canvas and compact cards */
+@media(min-width:761px){
+  .time{min-height:34px}
+  .resource,.cell{min-height:84px}
+  .resource{padding:7px 9px}
+  .resource>span{margin:3px 0 5px 16px}
+  .resource>small{margin-top:3px}
+  .event{
+    min-height:68px;
+    margin:5px 3px;
+    padding:6px 7px;
+    gap:2px;
+    border:1px solid var(--line)!important;
+    border-left:4px solid var(--event-color)!important;
+    background:var(--panel)!important;
+    box-shadow:0 2px 7px rgba(15,23,42,.045);
+  }
+  .event:hover{
+    border-color:color-mix(in srgb,var(--event-color) 30%,var(--line))!important;
+    border-left-color:var(--event-color)!important;
+    box-shadow:0 6px 16px rgba(15,23,42,.09);
+  }
+  .eventLate{
+    border-color:color-mix(in srgb,#dc2626 24%,var(--line))!important;
+    border-left-color:#dc2626!important;
+    background:color-mix(in srgb,#dc2626 2.5%,var(--panel))!important;
+  }
+  .eventDone{
+    opacity:.9;
+    border-color:color-mix(in srgb,#16a34a 18%,var(--line))!important;
+    border-left-color:#16a34a!important;
+    background:color-mix(in srgb,#16a34a 2%,var(--panel))!important;
+  }
+  .eventTime{font-size:11px!important}
+  .event b{font-size:11px}
+  .event span{font-size:11px}
+  .event em{font-size:11px}
+  .resourceTitle b{font-size:12px}
+  .resource>span,.resource>small{font-size:11px}
+  .board{border-radius:11px}
+  .now{top:34px}
+}
