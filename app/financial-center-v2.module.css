@@ -39,7 +39,9 @@
 .qualityComplete{padding:10px 12px;border-radius:10px;background:color-mix(in srgb,#16a34a 8%,var(--panel));color:#15803d;font-size:12px;font-weight:800}
 
 
-.modalWide{width:min(1180px,96vw)}\n\n/* FINANCE EXPENSE CONTROL CENTER V4 */
+.modalWide{width:min(1180px,96vw)}
+
+/* FINANCE EXPENSE CONTROL CENTER V4 */
 .expenseCenter{display:grid;gap:12px;min-width:0}
 .expenseHero{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;padding:14px;border:1px solid var(--line,#e1e4ea);border-radius:16px;background:linear-gradient(135deg,color-mix(in srgb,var(--accent,#1f6feb) 7%,var(--surface,#fff)),var(--surface,#fff))}
 .expenseHero h2{margin:2px 0 5px;font-size:22px}
