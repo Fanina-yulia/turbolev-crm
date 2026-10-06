@@ -5,6 +5,15 @@ import styles from "./financial-center-v2.module.css";
 
 type Category = { id: string; name: string; code: string; pnlSection: string | null; parentId: string | null };
 type Account = { id: string; name: string; type: string; balance: number };
+export type FinanceExpenseSummary = {
+  totalAmount: number;
+  paidAmount: number;
+  outstanding: number;
+  overdueOutstanding: number;
+  pendingApprovalCount: number;
+  rowsCount: number;
+};
+
 type ExpenseRow = {
   id: string;
   number: string;
@@ -30,6 +39,7 @@ type Props = {
   accounts: Account[];
   onCreate: () => void;
   onChanged: () => void;
+  onSummary?: (summary: FinanceExpenseSummary) => void;
 };
 
 const STATUS_LABEL: Record<string, string> = {
@@ -55,7 +65,7 @@ function dateText(value: string | null) {
 }
 function fileSize(value: number | null) { if (!value) return ""; return value < 1024 * 1024 ? `${Math.ceil(value / 1024)} КБ` : `${(value / 1024 / 1024).toFixed(1)} МБ`; }
 
-export function FinanceExpensesV2({ from, to, locationId, categories, accounts, onCreate, onChanged }: Props) {
+export function FinanceExpensesV2({ from, to, locationId, categories, accounts, onCreate, onChanged, onSummary }: Props) {
   const [rows, setRows] = useState<ExpenseRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -71,6 +81,23 @@ export function FinanceExpensesV2({ from, to, locationId, categories, accounts, 
   const [uploadingId, setUploadingId] = useState<string | null>(null);
 
   const categoryById = useMemo(() => new Map(categories.map((item) => [item.id, item.name])), [categories]);
+
+  const summary = useMemo<FinanceExpenseSummary>(() => {
+    const now = Date.now();
+    return rows.reduce<FinanceExpenseSummary>((acc, row) => {
+      if (row.status !== "REVERSED" && row.status !== "REJECTED") {
+        acc.totalAmount += row.amount;
+        acc.paidAmount += row.paidAmount;
+        acc.outstanding += row.outstanding;
+        if (row.outstanding > 0 && row.dueAt && new Date(row.dueAt).getTime() < now) acc.overdueOutstanding += row.outstanding;
+        if (row.status === "PENDING_APPROVAL") acc.pendingApprovalCount += 1;
+        acc.rowsCount += 1;
+      }
+      return acc;
+    }, { totalAmount: 0, paidAmount: 0, outstanding: 0, overdueOutstanding: 0, pendingApprovalCount: 0, rowsCount: 0 });
+  }, [rows]);
+
+  useEffect(() => { onSummary?.(summary); }, [onSummary, summary]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -182,7 +209,7 @@ export function FinanceExpensesV2({ from, to, locationId, categories, accounts, 
     <div className={styles.filterRow}><label>Пошук<input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Номер, контрагент, опис" /></label><label>Статус<select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option value="">Усі</option><option value="DRAFT">Чернетка</option><option value="PENDING_APPROVAL">На погодженні</option><option value="APPROVED">Погоджено</option><option value="POSTED">Проведено</option><option value="REJECTED">Відхилено</option><option value="REVERSED">Сторновано</option></select></label><label>Оплата<select value={paymentFilter} onChange={(event) => setPaymentFilter(event.target.value)}><option value="">Усі</option><option value="UNPAID">Не оплачено</option><option value="PARTIALLY_PAID">Частково</option><option value="PAID">Оплачено</option><option value="OVERDUE">Прострочено</option></select></label><button type="button" className={styles.secondaryButton} onClick={() => void load()}>Оновити</button></div>
     {message && <div className={styles.success}>{message}</div>}{error && <div className={styles.errorBox}>{error}</div>}
     <div className={styles.tableWrap}><table className={styles.table}><thead><tr><th>Дата</th><th>Документ</th><th>Категорія / контрагент</th><th className={styles.numberCell}>Сума</th><th>Оплата</th><th>Статус</th><th>Дії</th></tr></thead><tbody>
-      {loading && <tr><td colSpan={7}>Завантаження…</td></tr>}{!loading && rows.length === 0 && <tr><td colSpan={7}>За вибраний період витрат немає.</td></tr>}
+      {loading && <tr><td colSpan={7}>Завантаження…</td></tr>}{!loading && rows.length === 0 && <tr><td colSpan={7}><div className={styles.empty}><strong>За вибраний період витрат немає.</strong><small>Додайте витрату, якщо були фактичні або очікувані витрати СТО.</small><button type="button" className={styles.primaryButton} onClick={onCreate}>+ Додати витрату</button></div></td></tr>}
       {rows.map((row) => <Fragment key={row.id}><tr><td>{dateText(row.expenseDate)}</td><td><button type="button" className={styles.linkButton} onClick={() => void toggleExpanded(row)}>{row.number}</button><small>{row.description || "—"}</small></td><td><strong>{row.category?.name || "Без категорії"}</strong><small>{row.counterpartyName || "—"}</small></td><td className={styles.numberCell}><strong>{money(row.amount)}</strong>{row.outstanding > 0 && <small>залишок {money(row.outstanding)}</small>}</td><td><span className={`${styles.badge} ${row.paymentStatus === "PAID" ? styles.good : row.paymentStatus === "OVERDUE" ? styles.bad : styles.warn}`}>{STATUS_LABEL[row.paymentStatus] || row.paymentStatus}</span>{row.dueAt && row.outstanding > 0 && <small>до {dateText(row.dueAt)}</small>}</td><td><span className={`${styles.badge} ${row.status === "POSTED" || row.status === "APPROVED" ? styles.good : row.status === "REVERSED" || row.status === "REJECTED" ? styles.bad : styles.warn}`}>{STATUS_LABEL[row.status] || row.status}</span></td><td><div className={styles.rowActions}>{(row.status === "DRAFT" || row.status === "APPROVED" || row.status === "REJECTED") && <button type="button" onClick={() => void post(row)}>{row.status === "APPROVED" ? "Провести" : "До проведення"}</button>}{row.status === "PENDING_APPROVAL" && <><button type="button" onClick={() => void approve(row)}>Погодити</button><button type="button" onClick={() => void reject(row)}>Відхилити</button></>}{row.status === "POSTED" && row.outstanding > 0 && <button type="button" onClick={() => { setPayingId(row.id); setPayAmount(String(row.outstanding)); }}>Оплатити</button>}{row.status === "POSTED" && <button type="button" onClick={() => void reverse(row)}>Сторно</button>}<button type="button" disabled={uploadingId === row.id} onClick={() => addAttachment(row)}>{uploadingId === row.id ? "Завантажую…" : "+ Документ"}</button></div></td></tr>
         {payingId === row.id && <tr className={styles.inlineRow}><td colSpan={7}><div className={styles.inlineForm}><label>Сума<input value={payAmount} onChange={(event) => setPayAmount(event.target.value)} inputMode="decimal" /></label><label>Рахунок<select value={payAccountId} onChange={(event) => setPayAccountId(event.target.value)}>{accounts.map((account) => <option key={account.id} value={account.id}>{account.name} · {money(account.balance)}</option>)}</select></label><button type="button" className={styles.primaryButton} onClick={() => void pay(row)}>Провести оплату</button><button type="button" onClick={() => setPayingId(null)}>Скасувати</button></div></td></tr>}
         {expandedId === row.id && <tr className={styles.inlineRow}><td colSpan={7}><div className={styles.lineDetails}><strong>Розподіл документа</strong>{row.lines.length ? row.lines.map((line) => <div key={line.id}><span>{line.description}</span><span>{categoryById.get(line.categoryId || "") || row.category?.name || "Без категорії"}</span><strong>{money(line.amount)}</strong></div>) : <span>Окремих рядків немає.</span>}<strong>Первинні документи</strong>{attachments[row.id]?.length ? attachments[row.id].map((file) => <div key={file.id}><a href={file.url} target="_blank" rel="noreferrer">{file.fileName}</a><span>{file.mimeType} · {fileSize(file.sizeBytes)}</span><span>{dateText(file.createdAt)}</span></div>) : <span>Документів ще немає.</span>}</div></td></tr>}
