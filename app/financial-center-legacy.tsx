@@ -125,15 +125,20 @@ export function FinancialCenter() {
   const [settingsOpen, setSettingsOpen] = useState(false);
 
   const query = useMemo(() => { const q = new URLSearchParams({ from, to }); if (locationId) q.set("locationId", locationId); return q.toString(); }, [from, to, locationId]);
-  const load = useCallback(async () => {
-    setLoading(true); setError("");
+  const load = useCallback(async (options?: { silent?: boolean }) => {
+    const silent = options?.silent === true;
+    if (!silent) { setLoading(true); setError(""); }
     try {
       const response = await fetch(`/api/finance/v2?${query}`, { cache: "no-store" });
       const next = await response.json();
       if (!response.ok || !next.ok) throw new Error(next.error || "Не вдалося завантажити фінансовий центр.");
       setData(next);
-    } catch (cause) { setError(cause instanceof Error ? cause.message : "Помилка фінансового центру."); }
-    finally { setLoading(false); }
+      if (silent) setError("");
+    } catch (cause) {
+      if (!silent) setError(cause instanceof Error ? cause.message : "Помилка фінансового центру.");
+    } finally {
+      if (!silent) setLoading(false);
+    }
   }, [query]);
 
   useEffect(() => {
@@ -145,7 +150,28 @@ export function FinancialCenter() {
     const routeTab = route.scope as Tab | undefined;
     if (routeTab && Object.hasOwn(TAB_LABEL, routeTab)) setTab(routeTab);
   }, []);
-  useEffect(() => { void load(); const handler = () => void load(); window.addEventListener("turbolev:data-changed", handler); return () => window.removeEventListener("turbolev:data-changed", handler); }, [load]);
+  useEffect(() => {
+    void load();
+
+    const refresh = () => void load({ silent: true });
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") refresh();
+    };
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === "visible") refresh();
+    }, 5000);
+
+    window.addEventListener("turbolev:data-changed", refresh);
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", onVisibility);
+
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("turbolev:data-changed", refresh);
+      window.removeEventListener("focus", refresh);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, [load]);
 
   const locations = useMemo(() => {
     const map = new Map<string, string>();

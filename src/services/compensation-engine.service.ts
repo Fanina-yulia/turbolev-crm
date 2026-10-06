@@ -267,16 +267,18 @@ export async function postMechanicLaborCompensationForLine(lineId: string, expli
 
 export async function postWalkInDiagnosticCompensation(input: {
   diagnosticRequestId: string;
-  employeeId: string | null;
+  employeeId?: string | null;
+  mechanicRef?: string | null;
   amount: number;
   occurredAt?: Date;
   appointmentId?: string | null;
   locationId?: string | null;
 }) {
-  if (!input.employeeId) return null;
   const prisma = getPrisma();
   return prisma.$transaction(async (tx) => {
-    const employee = await employeeById(tx, input.employeeId!);
+    const employeeId = input.employeeId || await resolveEmployeeIdFromMechanicRef(tx, input.mechanicRef ?? null);
+    if (!employeeId) return null;
+    const employee = await employeeById(tx, employeeId);
     if (!employee?.isActive) return null;
     const rule = ruleOf(employee);
     const revenue = roundCompensation(Math.max(0, input.amount));
@@ -299,6 +301,62 @@ export async function postWalkInDiagnosticCompensation(input: {
       },
     });
   });
+}
+
+export async function postAttributedPartsCompensation(attributionIds: string[]) {
+  const ids = Array.from(new Set(attributionIds.filter(Boolean)));
+  if (!ids.length) return { posted: 0 };
+
+  const prisma = getPrisma();
+  const rows = await prisma.attributionLedgerEntry.findMany({
+    where: {
+      id: { in: ids },
+      attributionType: "DIRECT",
+      metricCode: { in: ["PARTS_REVENUE", "PARTS_MARGIN"] },
+      economicValue: { not: null },
+      event: { status: "POSTED" },
+    },
+    select: {
+      id: true,
+      employeeId: true,
+      metricCode: true,
+      economicValue: true,
+      event: { select: { occurredAt: true, workOrderId: true } },
+    },
+  });
+
+  let posted = 0;
+  for (const row of rows) {
+    const employee = await prisma.employeeProfile.findUnique({
+      where: { id: row.employeeId },
+      select: {
+        id: true, firstName: true, lastName: true, hireDate: true, isActive: true,
+        baseSalary: true, minimumSalary: true, workPercent: true, partsSalesPercent: true,
+        partsMarginPercent: true, netProfitPercent: true,
+      },
+    });
+    if (!employee?.isActive) continue;
+    const rule = ruleOf(employee);
+    const basis = Math.max(0, numberOf(row.economicValue));
+    const pct = row.metricCode === "PARTS_REVENUE" ? rule.partsSalesPercent : rule.partsMarginPercent;
+    const amount = row.metricCode === "PARTS_REVENUE"
+      ? partsCompensation({ sales: basis, cost: 0, salesPercent: pct, marginPercent: 0 }).fromSales
+      : partsCompensation({ sales: basis, cost: 0, salesPercent: 0, marginPercent: pct }).fromMargin;
+    const sourceType = row.metricCode === "PARTS_REVENUE" ? "ATTRIBUTION_PARTS_SALES" : "ATTRIBUTION_PARTS_MARGIN";
+    const accrual = await prisma.$transaction((tx) => postAccrualTx(tx, {
+      employeeId: row.employeeId,
+      category: "SALES",
+      amount,
+      occurredAt: row.event.occurredAt,
+      sourceType,
+      sourceId: row.id,
+      description: row.metricCode === "PARTS_REVENUE" ? "% від продажу деталей" : "% від маржі деталей",
+      rule,
+      basis: { attributionId: row.id, workOrderId: row.event.workOrderId, metricCode: row.metricCode, basis, percent: pct },
+    }));
+    if (accrual) posted += 1;
+  }
+  return { posted };
 }
 
 async function reconcileBaseForMonth(date: Date, throughDate: Date) {
