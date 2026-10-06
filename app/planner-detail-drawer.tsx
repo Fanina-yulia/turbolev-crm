@@ -93,6 +93,7 @@ export function PlannerDetailDrawer({
         : "unpaid";
 
   const processLabel = appointment.processLabel || STATUS_LABEL[appointment.status] || appointment.status;
+  const isActualWalkIn = appointment.source === "WALK_IN" && Boolean(appointment.actualStartAt || appointment.actualArrivalAt);
   const isReserve = appointment.status === "RESERVE";
   const canArrive = appointment.status === "BOOKED";
   const isClosed = ["COMPLETED", "NO_SHOW", "CANCELLED"].includes(appointment.status);
@@ -130,7 +131,7 @@ export function PlannerDetailDrawer({
           <div><span>Роботи</span><strong>{appointment.problem || (isReserve ? "Блокування ресурсу" : "Опис не додано")}</strong><small>{processLabel}</small></div>
           <div><span>Пост</span><strong>{appointment.post?.name || "Зона приймання"}</strong><small>{location.name}</small></div>
           <div><span>Виконавець</span><strong>{appointment.mechanic?.name || "Не призначено"}</strong><small>{appointment.source || "CRM"}</small></div>
-          <div><span>Час</span><strong>{clock(appointment.plannedStartAt, timeZone)}–{new Intl.DateTimeFormat("uk-UA",{timeZone,hour:"2-digit",minute:"2-digit",hourCycle:"h23"}).format(new Date(appointment.plannedEndAt))}</strong><small>{durationMinutes(appointment)} хв</small></div>
+          <div><span>{isActualWalkIn ? "Фактичні дата та час" : "Час"}</span><strong>{clock(isActualWalkIn ? (appointment.actualStartAt || appointment.actualArrivalAt) : appointment.plannedStartAt, timeZone)}–{new Intl.DateTimeFormat("uk-UA",{timeZone,hour:"2-digit",minute:"2-digit",hourCycle:"h23"}).format(new Date(isActualWalkIn && appointment.actualStartAt ? new Date(+new Date(appointment.actualStartAt)+durationMinutes(appointment)*60000).toISOString() : appointment.plannedEndAt))}</strong><small>{durationMinutes(appointment)} хв{isActualWalkIn ? " · позаплановий заїзд" : ""}</small></div>
         </section>
 
         <section className={styles.finance}>
