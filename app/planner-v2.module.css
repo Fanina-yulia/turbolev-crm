@@ -50,3 +50,84 @@
 @media(max-width:1450px){.kpiBar{grid-template-columns:repeat(4,minmax(125px,1fr))}}
 @media(max-width:900px){.kpiBar{grid-template-columns:repeat(2,minmax(130px,1fr))}.bottomInsights{grid-template-columns:1fr}.pulse{grid-template-columns:repeat(2,minmax(0,1fr))}.systemBanner{justify-content:flex-start;flex-wrap:wrap}}
 @media(max-width:600px){.kpiBar{grid-template-columns:1fr 1fr}.kpiBar>button{min-height:48px}.resourceBlockForm{grid-template-columns:1fr}.resourceBlockReason{grid-column:auto}}
+
+
+/* PLANNER DESIGN PARITY — approved compact operational layout */
+.plannerTabs{width:100%;display:flex;align-items:center;gap:10px;min-width:0}
+.plannerTabs .headerDateNav{margin:0 0 0 auto}
+
+@media(min-width:1181px){
+  .toolbar{
+    display:flex;
+    align-items:center;
+    gap:7px;
+    margin-top:7px;
+    padding:6px 7px;
+    min-height:48px;
+  }
+  .toolbar label{
+    position:relative;
+    flex:0 1 190px;
+    min-width:145px;
+    display:block;
+  }
+  .toolbar label>span{
+    position:absolute;
+    width:1px;
+    height:1px;
+    padding:0;
+    margin:-1px;
+    overflow:hidden;
+    clip:rect(0,0,0,0);
+    white-space:nowrap;
+    border:0;
+  }
+  .toolbar select{width:100%;height:34px}
+  .toolbarEnd{
+    grid-column:auto;
+    flex:1 1 360px;
+    min-width:280px;
+    display:block;
+  }
+  .toolbarEnd .searchBox{width:100%;height:34px}
+  .kpiBar{
+    grid-template-columns:repeat(8,minmax(0,1fr));
+    gap:6px;
+    margin:6px 0 4px;
+  }
+  .kpiBar>button{
+    min-height:44px;
+    padding:5px 7px;
+    gap:6px;
+    border-radius:9px;
+  }
+  .kpiBar>button>i{
+    width:25px;
+    height:25px;
+    flex-basis:25px;
+    border-radius:7px;
+    font-size:12px;
+  }
+  .kpiBar b{font-size:11px}
+  .kpiBar small{font-size:11px}
+  .systemBanner{
+    min-height:18px;
+    margin:0 2px 3px;
+  }
+}
+
+@media(max-width:1180px) and (min-width:761px){
+  .toolbar{
+    display:grid;
+    grid-template-columns:repeat(3,minmax(150px,1fr));
+    gap:6px;
+    padding:7px;
+  }
+  .toolbarEnd{grid-column:1/-1}
+  .kpiBar{grid-template-columns:repeat(4,minmax(0,1fr))}
+}
+
+@media(max-width:760px){
+  .plannerTabs{align-items:stretch;flex-direction:column}
+  .plannerTabs .headerDateNav{margin:0;width:100%}
+}
