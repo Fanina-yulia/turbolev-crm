@@ -87,7 +87,13 @@ export async function postPerformanceEvent(input: PerformanceEventInput) {
     where: { idempotencyKey: input.idempotencyKey },
     include: { attributions: true },
   });
-  if (existing) return existing;
+  if (existing) {
+    const existingPartAttributionIds = existing.attributions
+      .filter((item) => item.attributionType === "DIRECT" && ["PARTS_REVENUE", "PARTS_MARGIN"].includes(item.metricCode))
+      .map((item) => item.id);
+    if (existingPartAttributionIds.length) await postAttributedPartsCompensation(existingPartAttributionIds);
+    return existing;
+  }
 
   const payrollPeriodIds = [...new Set(
     input.attributions
