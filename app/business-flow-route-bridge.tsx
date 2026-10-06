@@ -202,7 +202,7 @@ function syncFinanceRoute(lastApplied: { current: string }) {
     revenue: "Виручка",
     grossProfit: "Валовий прибуток",
     netProfit: "Чистий управлінський прибуток",
-    currentCash: "Гроші зараз",
+    currentCash: "Залишок коштів зараз",
     receivables: "Дебіторка",
     payables: "Кредиторка",
     overdueReceivables: "Дебіторка",
