@@ -803,11 +803,12 @@ export async function getFinancialCenterV2(scope: FinancialCenterScope) {
     });
   }
 
-  if (pnl.revenue > 0 && (pnl.grossMarginPercent ?? 0) >= 99.5) qualityIssues.push({
+  const hasSpecificDirectCostGap = missingLaborAccruals > 0 || missingWalkInLabor > 0 || missingPartCosts > 0;
+  if (!hasSpecificDirectCostGap && pnl.revenue > 0 && (pnl.grossMarginPercent ?? 0) >= 99.5) qualityIssues.push({
     code: "SUSPICIOUS_FULL_MARGIN",
     level: "CRITICAL",
     title: "Підозріло висока валова маржа",
-    message: "Маржа близька до 100%: перевірте оплату праці, закупівельну собівартість деталей та інші прямі витрати.",
+    message: "Маржа близька до 100% і CRM не бачить конкретної відсутньої прямої собівартості. Перевірте інші прямі витрати.",
     count: 1,
   });
 
