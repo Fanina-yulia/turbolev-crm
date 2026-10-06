@@ -20,8 +20,10 @@ type PaymentHistory = {
   description: string | null;
 };
 type PaymentRow = {
+  rowKind: "WORK_ORDER" | "DIAGNOSTIC";
   obligationId: string;
-  workOrderId: string;
+  workOrderId: string | null;
+  diagnosticRequestId: string | null;
   workOrderNumber: number | null;
   workOrderLabel: string;
   workOrderStatus: string;
@@ -272,6 +274,7 @@ export function PaymentsQueue() {
   }
 
   function openPayment(row: PaymentRow) {
+    if (!row.workOrderId) return;
     const defaultAccount = accounts.find((account) => account.locationId === row.locationId)
       || accounts.find((account) => !account.locationId)
       || accounts[0];
@@ -412,14 +415,14 @@ export function PaymentsQueue() {
               <small>{carTitle(row)}</small>
             </div>
             <div className={styles.clientCell}><strong>{row.client.name || "Клієнт без імені"}</strong><a href={`tel:${row.client.phone}`} onClick={(event) => event.stopPropagation()}>{row.client.phone}</a></div>
-            <div><button type="button" className={styles.linkButton} onClick={(event) => { event.stopPropagation(); navigateCrm("Комерційна пропозиція", { workOrderId: row.workOrderId, workOrderTab: "payment" }); }}>{row.workOrderLabel}</button><small>{row.workOrderStatusLabel}</small></div>
+            <div>{row.workOrderId ? <button type="button" className={styles.linkButton} onClick={(event) => { event.stopPropagation(); navigateCrm("Комерційна пропозиція", { workOrderId: row.workOrderId || undefined, workOrderTab: "payment" }); }}>{row.workOrderLabel}</button> : <strong>{row.workOrderLabel}</strong>}<small>{row.workOrderStatusLabel}</small></div>
             <div className={styles.moneyCell}><strong>{money(row.total, row.currency)}</strong></div>
             <div className={styles.moneyCell}><strong>{money(row.paid, row.currency)}</strong></div>
             <div className={styles.moneyCell}><strong>{money(row.outstanding, row.currency)}</strong></div>
             <div><span className={`${styles.statusBadge} ${row.paymentStatus === "PAID" ? styles.statusPaid : row.paymentStatus === "PARTIAL" ? styles.statusPartial : styles.statusDue}`}>{statusLabel(row)}</span>{row.overdue && <span className={styles.overdueBadge}>Прострочено</span>}</div>
             <div><strong>{dateTimeText(row.lastPaymentAt)}</strong>{row.lastPaymentAt && <small>{money(row.lastPaymentAmount, row.currency)}</small>}</div>
             <div className={styles.rowAction}>
-              {row.outstanding > 0 ? <button type="button" className={row.paymentStatus === "PARTIAL" ? styles.payPartial : styles.payDue} onClick={(event) => { event.stopPropagation(); openPayment(row); }}>{row.paymentStatus === "PARTIAL" ? "Доплатити" : "Прийняти оплату"}</button> : <button type="button" onClick={(event) => { event.stopPropagation(); setSelectedRow(row); }}>Відкрити</button>}
+              {row.workOrderId && row.outstanding > 0 ? <button type="button" className={row.paymentStatus === "PARTIAL" ? styles.payPartial : styles.payDue} onClick={(event) => { event.stopPropagation(); openPayment(row); }}>{row.paymentStatus === "PARTIAL" ? "Доплатити" : "Прийняти оплату"}</button> : <button type="button" onClick={(event) => { event.stopPropagation(); setSelectedRow(row); }}>{row.rowKind === "DIAGNOSTIC" ? "Деталі" : "Відкрити"}</button>}
             </div>
           </article>;
         })}
@@ -440,7 +443,7 @@ export function PaymentsQueue() {
           <section className={styles.drawerInfo}>
             <div><span>Клієнт</span><b>{selectedRow.client.name || "Клієнт без імені"}</b></div>
             <div><span>Телефон</span><b>{selectedRow.client.phone}</b></div>
-            <div><span>КП / ЗН</span><b>{selectedRow.workOrderLabel}</b></div>
+            <div><span>{selectedRow.rowKind === "DIAGNOSTIC" ? "Послуга" : "КП / ЗН"}</span><b>{selectedRow.workOrderLabel}</b></div>
             <div><span>До сплати</span><b>{dateText(selectedRow.dueAt)}</b></div>
           </section>
           <section className={styles.history}>
@@ -448,7 +451,7 @@ export function PaymentsQueue() {
             {!selectedRow.history.length ? <div className={styles.state}>Оплат ще не було.</div> : selectedRow.history.map((payment) => <div className={styles.historyRow} key={payment.id}><div><strong>+{money(payment.amount, selectedRow.currency)}</strong><span>{dateTimeText(payment.occurredAt)}</span></div><div><b>{payment.accountName || "Рахунок"}</b><small>{payment.accountType ? ACCOUNT_LABELS[payment.accountType as Account["type"]] || payment.accountType : "—"}</small></div></div>)}
           </section>
         </div>
-        <footer><button type="button" onClick={() => navigateCrm("Комерційна пропозиція", { workOrderId: selectedRow.workOrderId, workOrderTab: "payment" })}>Відкрити КП / ЗН</button>{selectedRow.outstanding > 0 && <button type="button" className={selectedRow.paymentStatus === "PARTIAL" ? styles.payPartial : styles.payDue} onClick={() => openPayment(selectedRow)}>{selectedRow.paymentStatus === "PARTIAL" ? "Доплатити" : "Прийняти оплату"}</button>}</footer>
+        <footer>{selectedRow.workOrderId && <button type="button" onClick={() => navigateCrm("Комерційна пропозиція", { workOrderId: selectedRow.workOrderId || undefined, workOrderTab: "payment" })}>Відкрити КП / ЗН</button>}{selectedRow.workOrderId && selectedRow.outstanding > 0 && <button type="button" className={selectedRow.paymentStatus === "PARTIAL" ? styles.payPartial : styles.payDue} onClick={() => openPayment(selectedRow)}>{selectedRow.paymentStatus === "PARTIAL" ? "Доплатити" : "Прийняти оплату"}</button>}</footer>
       </aside>
     </div>}
 
