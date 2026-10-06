@@ -118,11 +118,6 @@ const SECTION_META: Partial<Record<Tab, { eyebrow: string; title: string; descri
     title: "Рахунки та каси",
     description: "Поточні управлінські залишки по касах, банківських рахунках і POS.",
   },
-  settings: {
-    eyebrow: "FINANCIAL SETTINGS",
-    title: "Фінансові налаштування",
-    description: "Правила, категорії, регулярні операції та параметри фінансового управління.",
-  },
 };
 
 function money(value: number | null | undefined, currency = "UAH") { return value == null ? "—" : new Intl.NumberFormat("uk-UA", { style: "currency", currency, maximumFractionDigits: 0 }).format(value); }
