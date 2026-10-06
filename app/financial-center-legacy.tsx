@@ -77,7 +77,7 @@ function rangeFor(preset: Exclude<Preset, "custom">) {
   return { from: `${today.getFullYear()}-01-01`, to };
 }
 function deltaClass(value: number | null | undefined) { return value == null ? "" : value >= 0 ? styles.deltaUp : styles.deltaDown; }
-function sourceLabel(source: string) { return ({ OBLIGATION: "Зобов'язання", РЕГУЛЯРНІ ОПЕРАЦІЇ: "Регулярний", FORECAST: "Прогноз", WORK_ORDER_FINANCE: "Замовлення" } as Record<string, string>)[source] || source; }
+function sourceLabel(source: string) { return ({ OBLIGATION: "Зобов'язання", RECURRING: "Регулярний", FORECAST: "Прогноз", WORK_ORDER_FINANCE: "Замовлення" } as Record<string, string>)[source] || source; }
 function accountShortLabel(account: Account) {
   if (account.type === "CASH") return "Каса";
   if (["ACQUIRING", "CARD"].includes(account.type)) return "POS";
