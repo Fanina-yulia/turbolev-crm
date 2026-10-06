@@ -338,14 +338,14 @@ export async function GET(request: NextRequest) {
         }];
       }
 
-      if (obligation.sourceEntity !== WALK_IN_FINANCE_SOURCE) return [];
+      if (obligation.sourceEntity !== WALK_IN_FINANCE_SOURCE || obligation.status !== "PAID") return [];
       const diagnosticRequestId = obligation.sourceEntityId?.replace(/:receivable$/, "") || "";
       const diagnostic = diagnosticMap.get(diagnosticRequestId);
       if (!diagnostic) return [];
       return [{
         rowKind: "DIAGNOSTIC" as const,
         obligationId: obligation.id,
-        workOrderId: null,
+        workOrderId: "",
         diagnosticRequestId,
         workOrderNumber: null,
         workOrderLabel: "Діагностика",
