@@ -200,8 +200,11 @@ export async function getPlannerBoard(from: Date, to: Date, locationId?: string 
     ? await prisma.serviceAppointment.findMany({
         where: {
           locationId: activeLocationId,
-          plannedStartAt: { lt: to },
-          plannedEndAt: { gt: from },
+          OR: [
+            { plannedStartAt: { lt: to }, plannedEndAt: { gt: from } },
+            { source: "WALK_IN", actualStartAt: { gte: from, lt: to } },
+            { source: "WALK_IN", actualStartAt: null, actualArrivalAt: { gte: from, lt: to } },
+          ],
         },
         orderBy: [{ plannedStartAt: "asc" }, { priority: "desc" }],
         include: { post: true, mechanic: true },
@@ -215,10 +218,19 @@ export async function getPlannerBoard(from: Date, to: Date, locationId?: string 
     ? await prisma.diagnosticVisitLink.findMany({ where: { appointmentId: { in: appointmentIds } }, select: { appointmentId: true, diagnosticRequestId: true } })
     : [];
   const diagnosticIds = Array.from(new Set(visitLinks.map((row) => row.diagnosticRequestId)));
-  const [workOrderRows, obligations, diagnosticPayments, vehicleLocationRows] = await Promise.all([
+  const [workOrderRows, obligations, diagnosticPayments, diagnosticObligations, vehicleLocationRows] = await Promise.all([
     workOrderIds.length ? prisma.workOrder.findMany({ where: { id: { in: workOrderIds } }, select: { id: true, status: true } }) : [],
     workOrderIds.length ? prisma.financialObligation.findMany({ where: { workOrderId: { in: workOrderIds }, direction: "RECEIVABLE", status: { not: "CANCELLED" } }, select: { workOrderId: true, status: true, amount: true, settledAmount: true } }) : [],
     diagnosticIds.length ? prisma.cashTransaction.findMany({ where: { sourceEntity: "WALK_IN_DIAGNOSTIC_PAYMENT", sourceEntityId: { in: diagnosticIds.map((id) => id + ":payment") }, status: "POSTED" }, select: { sourceEntityId: true, amount: true } }) : [],
+    diagnosticIds.length ? prisma.financialObligation.findMany({
+      where: {
+        sourceEntity: "WALK_IN_DIAGNOSTIC",
+        sourceEntityId: { in: diagnosticIds.map((id) => id + ":receivable") },
+        direction: "RECEIVABLE",
+        status: { not: "CANCELLED" },
+      },
+      select: { sourceEntityId: true, status: true, amount: true, settledAmount: true },
+    }) : [],
     vehicleIds.length ? prisma.vehicleLocation.findMany({ where: { vehicleId: { in: vehicleIds } }, select: { vehicleId: true, code: true, serviceLocationId: true, servicePostId: true, updatedAt: true } }) : [],
   ]);
   const diagnosticRows = diagnosticIds.length
@@ -230,6 +242,7 @@ export async function getPlannerBoard(from: Date, to: Date, locationId?: string 
   const obligationsByWorkOrder = new Map<string, typeof obligations>();
   for (const row of obligations) if (row.workOrderId) obligationsByWorkOrder.set(row.workOrderId, [...(obligationsByWorkOrder.get(row.workOrderId) || []), row]);
   const paymentByDiagnostic = new Map(diagnosticPayments.map((row) => [row.sourceEntityId?.split(":")[0] || "", row]));
+  const obligationByDiagnostic = new Map(diagnosticObligations.map((row) => [row.sourceEntityId?.split(":")[0] || "", row]));
   const vehicleLocationByVehicleId = new Map(vehicleLocationRows.map((row) => [row.vehicleId, row]));
 
   const decoratedAppointments = appointments.map((row) => {
@@ -249,9 +262,14 @@ export async function getPlannerBoard(from: Date, to: Date, locationId?: string 
     const amountValue = workOrderObligations.reduce((sum, item) => sum + Number(item.amount), 0);
     const paidValue = workOrderObligations.reduce((sum, item) => sum + Number(item.settledAmount), 0);
     const walkInPayment = diagnosticId ? paymentByDiagnostic.get(diagnosticId) : undefined;
+    const walkInObligation = diagnosticId ? obligationByDiagnostic.get(diagnosticId) : undefined;
+    const walkInAmount = walkInObligation ? Number(walkInObligation.amount) : 0;
+    const walkInPaid = walkInObligation ? Number(walkInObligation.settledAmount) : walkInPayment ? Number(walkInPayment.amount) : 0;
     const paymentStatus: PlannerPaymentStatus = row.workOrderId
       ? !workOrderObligations.length ? "NOT_FORMED" : paidValue >= amountValue && amountValue > 0 ? "PAID" : workOrderObligations.some((item) => item.status === "OVERDUE") ? "OVERDUE" : paidValue > 0 ? "PARTIAL" : "UNPAID"
-      : walkInPayment ? "PAID" : row.estimatedAmount != null ? "UNPAID" : "NOT_FORMED";
+      : walkInObligation
+        ? walkInPaid >= walkInAmount && walkInAmount > 0 ? "PAID" : walkInObligation.status === "OVERDUE" ? "OVERDUE" : walkInPaid > 0 ? "PARTIAL" : "UNPAID"
+        : walkInPayment ? "PAID" : row.estimatedAmount != null ? "UNPAID" : "NOT_FORMED";
     return {
       ...row,
       purpose,
@@ -270,9 +288,13 @@ export async function getPlannerBoard(from: Date, to: Date, locationId?: string 
         : null,
       payment: {
         status: paymentStatus,
-        amount: row.workOrderId ? amountValue || null : row.estimatedAmount,
-        paid: row.workOrderId ? paidValue : walkInPayment ? Number(walkInPayment.amount) : 0,
-        outstanding: row.workOrderId ? Math.max(0, amountValue - paidValue) : walkInPayment ? 0 : row.estimatedAmount,
+        amount: row.workOrderId ? amountValue || null : walkInObligation ? walkInAmount : row.estimatedAmount,
+        paid: row.workOrderId ? paidValue : walkInPaid,
+        outstanding: row.workOrderId
+          ? Math.max(0, amountValue - paidValue)
+          : walkInObligation
+            ? Math.max(0, walkInAmount - walkInPaid)
+            : walkInPayment ? 0 : row.estimatedAmount,
       },
     };
   });
