@@ -79,8 +79,27 @@ export function PlannerV2(){
  function cancelDetailEdit(){setDetailEdit(null);setDetailDraft(null);}
  function updateDetailDraft(patch:Partial<DetailDraft>){setDetailDraft(current=>current?{...current,...patch}:current);}
  async function saveDetailEdit(){if(!selected||!detailDraft||!detailEdit)return;let payload:Record<string,unknown>={};if(detailEdit==="POST"){payload={postId:detailDraft.postId||null};}else if(detailEdit==="MECHANIC"){payload={mechanicId:detailDraft.mechanicId||null};}else if(detailEdit==="DATETIME"){if(!detailDraft.date||!detailDraft.start){setMessage("Оберіть дату і час початку.");return;}const start=zonedDateTimeToDate(detailDraft.date,detailDraft.start,timeZone);const end=new Date(start.getTime()+Number(detailDraft.duration||60)*60000);payload={plannedStartAt:start.toISOString(),plannedEndAt:end.toISOString()};}else{payload={problem:detailDraft.problem||null,comment:detailDraft.comment||null};}setSaving(true);const saved=await patch(selected.id,payload,"Запис оновлено.");setSaving(false);if(saved)cancelDetailEdit();}
- async function patch(id:string,payload:Record<string,unknown>,success:string):Promise<boolean>{try{const response=await fetch(`/api/planner/${id}`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});const data=await response.json() as {appointment?:Appointment;warning?:{message?:string}|null;message?:string};if(!response.ok)throw new Error(data.message||"Не вдалося змінити запис.");const updatedAppointment=data.appointment;if(updatedAppointment){setAppointments(current=>current.map(item=>item.id===updatedAppointment.id?{...item,...updatedAppointment}:item));}setMessage(data.warning?.message?`${success} ⚠ ${data.warning.message}`:success);return true;}catch(error){setMessage(error instanceof Error?error.message:"Не вдалося змінити запис.");return false;}}
+ async function patch(id:string,payload:Record<string,unknown>,success:string):Promise<boolean>{try{const response=await fetch(`/api/planner/${id}`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});const data=await response.json() as {appointment?:Appointment;warning?:{message?:string}|null;message?:string};if(!response.ok)throw new Error(data.message||"Не вдалося змінити запис.");const updatedAppointment=data.appointment;if(updatedAppointment){setAppointments(current=>current.map(item=>item.id===updatedAppointment.id?{...item,...updatedAppointment}:item));setSelected(current=>current?.id===updatedAppointment.id?{...current,...updatedAppointment}:current);}setMessage(data.warning?.message?`${success} ⚠ ${data.warning.message}`:success);return true;}catch(error){setMessage(error instanceof Error?error.message:"Не вдалося змінити запис.");return false;}}
  async function resizeAppointment(item:Appointment,day:string,startTime:string,endTime:string){const start=zonedDateTimeToDate(day,startTime,timeZone);const end=zonedDateTimeToDate(day,endTime,timeZone);return patch(item.id,{plannedStartAt:start.toISOString(),plannedEndAt:end.toISOString()},`Запис змінено: ${startTime}–${endTime}.`);}
+ async function suggestAlternative(item:Appointment,targetDay:string,targetTime:string,durationMinutes:number,preferredPostId:string|null){
+  if(!location)return;
+  try{
+   const params=new URLSearchParams({date:targetDay,locationId:location.id,durationMinutes:String(durationMinutes),excludeAppointmentId:item.id});
+   const response=await fetch("/api/planner/availability?"+params.toString(),{cache:"no-store"});
+   const data=await response.json() as {slots?:Array<{time:string;posts:Array<{id:string;name:string;available:boolean}>;mechanics:Array<{id:string;available:boolean}>}>};
+   if(!response.ok||!data.slots)return;
+   const targetMinutes=Number(targetTime.slice(0,2))*60+Number(targetTime.slice(3,5));
+   for(const slot of data.slots){
+    const slotMinutes=Number(slot.time.slice(0,2))*60+Number(slot.time.slice(3,5));
+    if(slotMinutes<targetMinutes)continue;
+    const mechanicOk=!item.mechanicId||slot.mechanics.some(m=>m.id===item.mechanicId&&m.available);
+    if(!mechanicOk)continue;
+    const same=preferredPostId?slot.posts.find(p=>p.id===preferredPostId&&p.available):null;
+    const post=same||slot.posts.find(p=>p.available);
+    if(post){setSuggestion({appointmentId:item.id,day:targetDay,time:slot.time,postId:post.id,postName:post.name,durationMinutes});setMessage("Є найближчий вільний варіант: "+post.name+", "+slot.time+".");return;}
+   }
+  }catch{}
+ }
  async function moveAppointment(item:Appointment,targetDay:string,targetTime:string,postId:string|null,durationMinutes=duration(item)){
   const start=zonedDateTimeToDate(targetDay,targetTime,timeZone);const end=new Date(start.getTime()+durationMinutes*60000);
   const previous=appointments.find(candidate=>candidate.id===item.id)||item;
@@ -88,9 +107,9 @@ export function PlannerV2(){
   const nextAppointment={...previous,plannedStartAt:start.toISOString(),plannedEndAt:end.toISOString(),postId,post:nextPost};
   const mutation=moveMutationRef.current+1;moveMutationRef.current=mutation;
   setAppointments(current=>current.map(candidate=>candidate.id===item.id?nextAppointment:candidate));
-  setMessage("Зберігаю переміщення…");
+  setMessage("Зберігаю переміщення…");setSuggestion(null);
   const saved=await patch(item.id,{plannedStartAt:start.toISOString(),plannedEndAt:end.toISOString(),postId},"Запис переміщено та збережено.");
-  if(!saved&&moveMutationRef.current===mutation)setAppointments(current=>current.map(candidate=>candidate.id===previous.id?previous:candidate));
+  if(!saved&&moveMutationRef.current===mutation){setAppointments(current=>current.map(candidate=>candidate.id===previous.id?previous:candidate));void suggestAlternative(previous,targetDay,targetTime,durationMinutes,postId);}
  }
  async function drop(event:DragEvent,targetDay:string){event.preventDefault();const id=event.dataTransfer.getData("text/planner-appointment");const item=appointments.find(x=>x.id===id);if(!item)return;await moveAppointment(item,targetDay,clock(item.plannedStartAt,timeZone),item.postId||null);}
  async function saveEdit(){if(!edit)return;const requiresSlot=!["NO_SHOW","CANCELLED","COMPLETED"].includes(edit.status);if(requiresSlot&&(!edit.start||!edit.postId||!edit.mechanicId)){setMessage("Оберіть доступний час, пост і механіка.");return;}setSaving(true);const start=zonedDateTimeToDate(edit.date,edit.start||"09:00",timeZone);const end=new Date(start.getTime()+Number(edit.duration||60)*60000);await patch(edit.id,{status:edit.status,postId:edit.postId||null,mechanicId:edit.mechanicId||null,plannedStartAt:start.toISOString(),plannedEndAt:end.toISOString(),comment:edit.comment||null},"Запис оновлено.");setSaving(false);closeEdit();}
