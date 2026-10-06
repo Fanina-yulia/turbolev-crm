@@ -167,3 +167,33 @@
 }
 
 .modalWide{width:min(1180px,96vw)}
+
+
+/* OWNER OVERVIEW + PLAN/FACT MERGE V5 */
+.ownerOverview{display:grid;gap:12px;padding:14px;border:1px solid var(--line,#e1e4ea);border-radius:16px;background:var(--surface,#fff)}
+.ownerOverviewHeader{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap}
+.ownerOverviewHeader h2{margin:2px 0 4px}
+.ownerOverviewHeader p{margin:0;max-width:900px;color:var(--muted);font-size:12px;line-height:1.45}
+.ownerKpiGrid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px}
+.ownerKpi{display:grid;gap:6px;min-width:0;text-align:left;border:1px solid var(--line,#e1e4ea);border-radius:13px;background:var(--surface,#fff);color:inherit;padding:12px;cursor:pointer;font:inherit}
+.ownerKpi:hover{border-color:color-mix(in srgb,var(--accent,#1f6feb) 35%,var(--line));box-shadow:0 4px 18px rgba(15,23,42,.06)}
+.ownerKpi>span{font-size:12px;font-weight:700;color:var(--muted)}
+.ownerKpi>strong{font-size:22px;line-height:1.08;font-variant-numeric:tabular-nums}
+.ownerKpi>small{min-height:30px;font-size:11px;line-height:1.35;color:var(--muted)}
+.ownerKpiPrimary{border-color:color-mix(in srgb,var(--accent,#1f6feb) 38%,var(--line));background:color-mix(in srgb,var(--accent,#1f6feb) 5%,var(--surface,#fff))}
+.ownerKpiPrimary>strong{font-size:26px}
+.ownerKpiPlan{display:flex;align-items:center;justify-content:space-between;gap:8px;padding-top:7px;border-top:1px solid var(--line,#edf0f4);font-size:11px}
+.ownerKpiPlan b{font-variant-numeric:tabular-nums}
+.ownerPlanNeutral,.ownerPlanGood,.ownerPlanWarn,.ownerPlanBad{display:inline-flex;align-items:center;justify-content:center;min-width:42px;padding:3px 6px;border-radius:999px;font-size:11px;font-weight:800}
+.ownerPlanNeutral{background:rgba(127,127,127,.10);color:var(--muted)}
+.ownerPlanGood{background:rgba(20,128,74,.12);color:#14804a}
+.ownerPlanWarn{background:rgba(181,119,0,.13);color:#8a5b00}
+.ownerPlanBad{background:rgba(180,35,24,.12);color:#b42318}
+.ownerProgress{height:6px;border-radius:999px;overflow:hidden;background:rgba(127,127,127,.13)}
+.ownerProgress i{display:block;height:100%;border-radius:inherit}
+.ownerProgressGood{background:#14804a}
+.ownerProgressWarn{background:#b57700}
+.ownerProgressBad{background:#b42318}
+@media(max-width:1100px){.ownerKpiGrid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:720px){.ownerOverviewHeader{display:grid}.ownerOverviewHeader .primaryButton{width:100%}.ownerKpiGrid{grid-template-columns:1fr 1fr}.ownerKpi>strong{font-size:20px}.ownerKpiPrimary>strong{font-size:22px}}
+@media(max-width:460px){.ownerKpiGrid{grid-template-columns:1fr}}
