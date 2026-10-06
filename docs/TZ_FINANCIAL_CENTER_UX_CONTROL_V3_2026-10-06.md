@@ -376,3 +376,6 @@ Summary повинен оновлюватися після:
 17. Новий contract-smoke захищає tab-context rules.
 18. TypeScript/Next build проходять.
 19. Exact-commit preview READY.
+
+
+**Release validation:** exact-commit preview required before merge.
