@@ -118,12 +118,12 @@ async function inspectState(client: Client) {
     && columns.rows.find((row) => row.name === "updatedAt")?.default_expr == null;
 
   const primaryKeyExact = constraints.rows.some((row) =>
-    row.name === "FinancialCashClose_pkey" && row.type === "p" && /PRIMARY KEY \("id"\)/.test(row.definition),
+    row.name === "FinancialCashClose_pkey" && row.type === "p" && /PRIMARY KEY \("?id"?\)/.test(row.definition),
   );
   const foreignKeyExact = constraints.rows.some((row) =>
     row.name === "FinancialCashClose_moneyAccountId_fkey"
     && row.type === "f"
-    && /FOREIGN KEY \("moneyAccountId"\) REFERENCES "MoneyAccount"\("id"\) ON UPDATE CASCADE ON DELETE RESTRICT/.test(row.definition),
+    && /FOREIGN KEY \("moneyAccountId"\) REFERENCES "MoneyAccount"\("?id"?\) ON UPDATE CASCADE ON DELETE RESTRICT/.test(row.definition),
   );
   const uniqueExact = indexes.rows.some((row) =>
     row.indexname === "FinancialCashClose_account_businessDate_key"
