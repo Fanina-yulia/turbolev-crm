@@ -381,9 +381,9 @@ export function PaymentsQueue() {
           ["custom", "Період"],
         ] as Array<[Preset, string]>).map(([id, label]) => <button key={id} type="button" className={preset === id ? styles.activePreset : ""} onClick={() => applyPreset(id)}>{label}</button>)}
       </div>
-      <label className={styles.dateField}><span>Від</span><input type="date" value={from} max={to} onChange={(event) => { setPreset("custom"); setFrom(event.target.value); }} /></label>
-      <label className={styles.dateField}><span>До</span><input type="date" value={to} min={from} onChange={(event) => { setPreset("custom"); setTo(event.target.value); }} /></label>
-      {locations.length > 0 && <label className={styles.locationField}><span>СТО</span><select value={locationId} onChange={(event) => setLocationId(event.target.value)}><option value="">Уся доступна мережа</option>{locations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}</select></label>}
+      <label className={styles.dateField}><input aria-label="Від" title="Від" type="date" value={from} max={to} onChange={(event) => { setPreset("custom"); setFrom(event.target.value); }} /></label>
+      <label className={styles.dateField}><input aria-label="До" title="До" type="date" value={to} min={from} onChange={(event) => { setPreset("custom"); setTo(event.target.value); }} /></label>
+      {locations.length > 0 && <label className={styles.locationField}><select aria-label="СТО" title="СТО" value={locationId} onChange={(event) => setLocationId(event.target.value)}><option value="">Уся доступна мережа</option>{locations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}</select></label>}
     </section>
 
     <nav className={styles.tabs} aria-label="Статуси оплат">
