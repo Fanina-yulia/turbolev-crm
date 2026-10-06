@@ -97,6 +97,8 @@ export function PlannerDetailDrawer({
   const isReserve = appointment.status === "RESERVE";
   const canArrive = appointment.status === "BOOKED";
   const isClosed = ["COMPLETED", "NO_SHOW", "CANCELLED"].includes(appointment.status);
+  const isWorkflowActive = ["ARRIVED","DIAGNOSTICS","WAITING_PARTS_SELECTION","WAITING_CALCULATION","WAITING_APPROVAL","WAITING_PARTS","READY_FOR_REPAIR","IN_REPAIR","PAUSED","WAITING_QC","WAITING_PAYMENT","READY_FOR_PICKUP","WARRANTY"].includes(appointment.status);
+  const canCompleteFlow = ["DIAGNOSTICS","IN_REPAIR","WAITING_QC"].includes(appointment.status);
 
   const history = useMemo(() => [
     { label: "Заплановано", value: clock(appointment.plannedStartAt, timeZone), done: true },
@@ -171,8 +173,8 @@ export function PlannerDetailDrawer({
 
     <footer className={styles.footer}>
       {canArrive && <button className={styles.primary} disabled={busy} onClick={onArrive}>✓ Авто прибуло</button>}
-      {!isClosed && !isReserve && <button className={styles.primary} disabled={busy} onClick={onOpenWork}>▶ Почати роботу</button>}
-      {!isClosed && !isReserve && <button className={styles.secondary} disabled={busy} onClick={onCompleteFlow}>✓ Завершити</button>}
+      {!isClosed && !isReserve && appointment.status!=="BOOKED" && <button className={styles.primary} disabled={busy} onClick={onOpenWork}>{appointment.status==="ARRIVED" ? "▶ Почати роботу" : isWorkflowActive ? "↗ Відкрити роботу" : "▶ Почати роботу"}</button>}
+      {canCompleteFlow && <button className={styles.secondary} disabled={busy} onClick={onCompleteFlow}>✓ Завершити</button>}
       <button className={styles.secondary} disabled={busy || isClosed} onClick={onEdit}>▣ Перенести</button>
       <div className={styles.more}>
         <button className={styles.secondary} onClick={() => setMoreOpen((value) => !value)}>••• Ще дії</button>
