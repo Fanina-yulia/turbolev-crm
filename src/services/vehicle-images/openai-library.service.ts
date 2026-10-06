@@ -450,7 +450,7 @@ export async function enqueueVehicleImageGeneration(vehicleId: string, options?:
   try {
     await client.query("BEGIN");
     await client.query(
-      "SELECT pg_advisory_xact_lock(hashtext($1))",
+      "SELECT 1::int AS locked FROM pg_advisory_xact_lock(hashtext($1))",
       [`vehicle-image-template:${identity.templateKey}:${identity.variantKey}`],
     );
 

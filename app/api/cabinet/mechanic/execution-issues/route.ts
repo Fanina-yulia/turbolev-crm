@@ -64,7 +64,7 @@ export async function POST(request: Request) {
     const now = new Date();
     const actorName = access.context.user.employeeName || access.context.user.name || mechanic.name;
     const issue = await prisma.$transaction(async (tx) => {
-      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`execution-issue:${line.id}`}))`;
+      await tx.$queryRaw`SELECT 1::int AS locked FROM pg_advisory_xact_lock(hashtext(${`execution-issue:${line.id}`}))`;
       const active = await tx.workExecutionIssue.findFirst({ where: { assignmentId: line.id, status: { in: ["OPEN", "VIEWED", "NEEDS_CLARIFICATION"] } } });
       if (active) return { duplicate: true as const, issue: active };
       const created = await tx.workExecutionIssue.create({ data: { assignmentId: line.id, workOrderId: line.workOrderId, vehicleId: line.workOrder.vehicleId, clientId: line.workOrder.clientId, mechanicId: mechanic.id, locationId: mechanic.locationId, reasonCode, comment: comment || null, attachments: attachments.length ? { create: attachments } : undefined } });

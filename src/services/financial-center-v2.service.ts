@@ -1,3 +1,4 @@
+import { PRISMA_TRANSACTION_ADVISORY_LOCK_SQL } from "@/src/lib/advisory-lock";
 import { Prisma } from "@/src/generated/prisma/client";
 import { calculatePnl, decimalToNumber, outstandingAmount, roundMoney } from "@/src/domain/finance";
 import { getPrisma } from "@/src/lib/prisma";
@@ -762,7 +763,7 @@ export async function createManualIncome(input: Record<string, unknown>, actor: 
   const idempotencyKey = text(input.idempotencyKey, 96) || `income:${Date.now()}:${Math.random().toString(36).slice(2)}`;
 
   return prisma.$transaction(async (tx) => {
-    await tx.$queryRawUnsafe("SELECT pg_advisory_xact_lock(hashtext($1))", `finance-income:${idempotencyKey}`);
+    await tx.$queryRawUnsafe(PRISMA_TRANSACTION_ADVISORY_LOCK_SQL, `finance-income:${idempotencyKey}`);
     const existing = await tx.cashTransaction.findFirst({ where: { sourceEntity: "MANUAL_INCOME", sourceEntityId: idempotencyKey } });
     if (existing) return { cash: existing, reused: true };
     const account = await tx.moneyAccount.findUnique({ where: { id: moneyAccountId } });
@@ -801,7 +802,7 @@ export async function createTransfer(input: Record<string, unknown>, actor: Fina
   const description = text(input.description, 4000) || "Внутрішній переказ";
 
   return prisma.$transaction(async (tx) => {
-    await tx.$queryRawUnsafe("SELECT pg_advisory_xact_lock(hashtext($1))", `finance-transfer:${idempotencyKey}`);
+    await tx.$queryRawUnsafe(PRISMA_TRANSACTION_ADVISORY_LOCK_SQL, `finance-transfer:${idempotencyKey}`);
     const existing = await tx.cashTransaction.findFirst({ where: { sourceEntity: "INTERNAL_TRANSFER", sourceEntityId: idempotencyKey } });
     if (existing) return { transfer: existing, reused: true };
     const [fromAccount, toAccount] = await Promise.all([tx.moneyAccount.findUnique({ where: { id: fromAccountId } }), tx.moneyAccount.findUnique({ where: { id: toAccountId } })]);
@@ -954,7 +955,7 @@ export async function createCustomerAdvance(input: Record<string, unknown>, acto
   const currency = (text(input.currency, 3) || "UAH").toUpperCase();
   const idempotencyKey = text(input.idempotencyKey, 96) || `advance:${clientId}:${Date.now()}`;
   return prisma.$transaction(async (tx) => {
-    await tx.$queryRawUnsafe("SELECT pg_advisory_xact_lock(hashtext($1))", `customer-advance:${idempotencyKey}`);
+    await tx.$queryRawUnsafe(PRISMA_TRANSACTION_ADVISORY_LOCK_SQL, `customer-advance:${idempotencyKey}`);
     const existingCash = await tx.cashTransaction.findFirst({ where: { sourceEntity: "CUSTOMER_ADVANCE", sourceEntityId: idempotencyKey } });
     if (existingCash) {
       const advance = await tx.customerAdvance.findUnique({ where: { cashTransactionId: existingCash.id } });

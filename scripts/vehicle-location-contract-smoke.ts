@@ -9,7 +9,7 @@ const route = await readFile(join(process.cwd(), "app/api/vehicles/[id]/location
 
 assert.match(service, /VEHICLE_LOCATION_CODES = \[/);
 assert.match(service, /moveVehicleLocation/);
-assert.match(service, /pg_advisory_xact_lock/);
+assert.match(service, /PRISMA_TRANSACTION_ADVISORY_LOCK_SQL|pg_advisory_xact_lock/);
 assert.match(service, /VEHICLE_POST_OCCUPIED/);
 assert.match(service, /VehicleLocationEvent/);
 assert.match(service, /syncVehicleLocationFromAppointment/);

@@ -47,7 +47,8 @@
     "ui:screen-contracts:check": "node scripts/check-one-screen-contracts.mjs",
     "ui:scale:check": "node scripts/check-crm-ui-scale.mjs",
     "ui:header:check": "node scripts/check-unified-page-header.mjs",
-    "payments:v2:check": "node scripts/check-payments-register-v2.mjs"
+    "payments:v2:check": "node scripts/check-payments-register-v2.mjs",
+    "db:advisory-locks:check": "node scripts/check-prisma-advisory-locks.mjs"
   },
   "dependencies": {
     "@neondatabase/auth": "0.4.2-beta",

@@ -146,7 +146,7 @@ export async function saveDiagnosticCardPdf(
 
   const prisma = getPrisma();
   const saved = await prisma.$transaction(async (tx) => {
-    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`diagnostic-card-pdf:${diagnosticRequestId}`}))`;
+    await tx.$executeRaw`SELECT 1::int AS locked FROM pg_advisory_xact_lock(hashtext(${`diagnostic-card-pdf:${diagnosticRequestId}`}))`;
     const existing = await tx.diagnosticCardPdf.findUnique({
       where: { diagnosticCardRevisionId: ensured.revision.id },
       select: { id: true, fileName: true, mimeType: true, fileSize: true, generatedAt: true, revision: { select: { revision: true } } },

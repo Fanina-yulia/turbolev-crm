@@ -135,7 +135,8 @@
         "app/api/dashboard/**",
         "src/components/work-order-cockpit*",
         "src/services/*analytics*",
-        "src/services/station-vehicle-attention*"
+        "src/services/station-vehicle-attention*",
+        "src/services/management-*"
       ],
       "dependencies": [
         "finance",
@@ -375,7 +376,8 @@
         "src/services/document-control.service.ts",
         "app/work-journal.module.css",
         "app/work-orders.module.css",
-        "app/work-journal.tsx"
+        "app/work-journal.tsx",
+        "src/services/direct-repair-commercial.service.ts"
       ],
       "dependencies": [
         "diagnostics",

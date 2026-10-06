@@ -1,3 +1,4 @@
+import { PRISMA_TRANSACTION_ADVISORY_LOCK_SQL } from "@/src/lib/advisory-lock";
 import { Prisma } from "@/src/generated/prisma/client";
 import { getPrisma } from "@/src/lib/prisma";
 import { toPrismaJson } from "@/src/lib/prisma-json";
@@ -92,7 +93,7 @@ export async function confirmMixedEstimateApproval(
 ) {
   const prisma = getPrisma();
   return prisma.$transaction(async (tx) => {
-    await tx.$queryRawUnsafe("SELECT pg_advisory_xact_lock(hashtext($1))", "mixed-estimate-approval:" + workOrderId);
+    await tx.$queryRawUnsafe(PRISMA_TRANSACTION_ADVISORY_LOCK_SQL, "mixed-estimate-approval:" + workOrderId);
     const state = await assertMixedPending(tx, workOrderId);
     if (!state.estimate) throw new MixedEstimateApprovalError("ESTIMATE_NOT_FOUND", "Кошторис не знайдено.", 404);
     const estimate = state.estimate;
@@ -188,7 +189,7 @@ export async function requestMixedEstimateRevision(
 ) {
   const prisma = getPrisma();
   return prisma.$transaction(async (tx) => {
-    await tx.$queryRawUnsafe("SELECT pg_advisory_xact_lock(hashtext($1))", "mixed-estimate-revision:" + workOrderId);
+    await tx.$queryRawUnsafe(PRISMA_TRANSACTION_ADVISORY_LOCK_SQL, "mixed-estimate-revision:" + workOrderId);
     const state = await assertMixedPending(tx, workOrderId);
     if (!state.estimate) throw new MixedEstimateApprovalError("ESTIMATE_NOT_FOUND", "Кошторис не знайдено.", 404);
     const estimate = state.estimate;

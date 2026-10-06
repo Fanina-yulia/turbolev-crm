@@ -106,7 +106,7 @@ export async function PATCH(request: Request) {
 
   try {
     const result = await prisma.$transaction(async (tx) => {
-      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`execution-issue-decision:${issueId}`}))`;
+      await tx.$queryRaw`SELECT 1::int AS locked FROM pg_advisory_xact_lock(hashtext(${`execution-issue-decision:${issueId}`}))`;
       const issue = await tx.workExecutionIssue.findUnique({ where: { id: issueId } });
       if (!issue || !ACTIVE.includes(issue.status as typeof ACTIVE[number])) throw new Error("ISSUE_NOT_ACTIVE");
       const line = await tx.workOrderLine.findUnique({ where: { id: issue.assignmentId }, select: { id: true, status: true, metadata: true } });
