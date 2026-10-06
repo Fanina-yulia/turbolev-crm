@@ -48,6 +48,8 @@ if(/if \(q\)[\s\S]{0,500}return NextResponse\.json\(\{ ok: true[^}]*counts: \{ d
   failures.push("Search must not short-circuit global KPI/counts to zero.");
 }
 
+if(/<span>Від<\/span>|<span>До<\/span>|<span>СТО<\/span>/.test(ui)) failures.push("Payments toolbar must not render visible Від/До/СТО captions.");
+if(!css.includes("align-items:center") || !css.includes("height:36px")) failures.push("Payments toolbar controls must share one aligned 36px row.");
 if(!ui.includes('numericAmount > paymentRow.outstanding')) failures.push("Overpayment guard missing.");
 if(!docs.includes("Payments Register V2")) failures.push("Payments V2 technical specification missing.");
 
