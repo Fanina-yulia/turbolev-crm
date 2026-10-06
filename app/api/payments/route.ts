@@ -50,12 +50,42 @@ function kyivDateStartUtc(year: number, month: number, day: number) {
   return new Date(Date.UTC(year, month - 1, day, 0, -offset));
 }
 
-function todayRange(now = new Date()) {
-  const parts = kyivParts(now);
-  const from = kyivDateStartUtc(parts.year, parts.month, parts.day);
-  const nextProbe = new Date(Date.UTC(parts.year, parts.month - 1, parts.day + 1, 12));
-  const next = kyivParts(nextProbe);
-  return { from, to: kyivDateStartUtc(next.year, next.month, next.day) };
+function dayKey(date: Date) {
+  const parts = kyivParts(date);
+  return `${parts.year}-${String(parts.month).padStart(2, "0")}-${String(parts.day).padStart(2, "0")}`;
+}
+
+function parseDay(value: string | null) {
+  const match = value?.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return null;
+  return kyivDateStartUtc(Number(match[1]), Number(match[2]), Number(match[3]));
+}
+
+function addLocalDays(start: Date, days: number) {
+  const parts = kyivParts(new Date(start.getTime() + days * 86_400_000 + 43_200_000));
+  return kyivDateStartUtc(parts.year, parts.month, parts.day);
+}
+
+function dateRange(request: NextRequest) {
+  const now = new Date();
+  const todayParts = kyivParts(now);
+  const today = kyivDateStartUtc(todayParts.year, todayParts.month, todayParts.day);
+  const defaultFrom = addLocalDays(today, -29);
+  let from = parseDay(request.nextUrl.searchParams.get("from")) || defaultFrom;
+  const inclusiveTo = parseDay(request.nextUrl.searchParams.get("to")) || today;
+  let to = addLocalDays(inclusiveTo, 1);
+  if (to <= from) {
+    const swap = from;
+    from = inclusiveTo;
+    to = addLocalDays(swap, 1);
+  }
+  return { from, to, fromKey: dayKey(from), toKey: dayKey(addLocalDays(to, -1)) };
+}
+
+function paymentStatus(total: number, paid: number, outstanding: number) {
+  if (outstanding <= 0.009 && total > 0) return "PAID" as const;
+  if (paid > 0.009 && outstanding > 0.009) return "PARTIAL" as const;
+  return "DUE" as const;
 }
 
 export async function GET(request: NextRequest) {
@@ -67,101 +97,128 @@ export async function GET(request: NextRequest) {
   const q = (request.nextUrl.searchParams.get("q") || "").trim().slice(0, 120);
   const requestedWorkOrderId = request.nextUrl.searchParams.get("workOrderId")?.trim() || null;
   const scopedLocation = access.locationWhere;
-  const { from, to } = todayRange();
+  const range = dateRange(request);
 
   try {
-    let searchedWorkOrderIds: string[] | null = requestedWorkOrderId ? [requestedWorkOrderId] : null;
-    if (!requestedWorkOrderId && q) {
+    let searchedWorkOrderIds: string[] = [];
+    if (q && !requestedWorkOrderId) {
       const parsedNumber = parseWorkOrderNumber(q);
       const exactNumber = parsedNumber == null
         ? null
         : await prisma.workOrderNumber.findUnique({ where: { number: parsedNumber }, select: { workOrderId: true } });
+      const phoneNeedle = q.replace(/\D+/g, "");
       const matches = await prisma.workOrder.findMany({
         where: {
           OR: [
             ...(exactNumber ? [{ id: exactNumber.workOrderId }] : []),
             { client: { is: { name: { contains: q, mode: "insensitive" } } } },
-            { client: { is: { phone: { contains: q.replace(/\D+/g, "") || q } } } },
+            ...(phoneNeedle ? [{ client: { is: { phone: { contains: phoneNeedle } } } }] : []),
             { vehicle: { is: { plateNumber: { contains: q, mode: "insensitive" } } } },
             { vehicle: { is: { vin: { contains: q, mode: "insensitive" } } } },
           ],
         },
         select: { id: true },
-        take: 120,
+        take: 160,
       });
       searchedWorkOrderIds = Array.from(new Set(matches.map((row) => row.id)));
-      if (!searchedWorkOrderIds.length) {
-        return NextResponse.json({ ok: true, timezone: KYIV_TZ, accounts: [], rows: [], counts: { due: 0, partial: 0, paidToday: 0, debt: 0 } }, { headers: { "Cache-Control": "no-store" } });
-      }
     }
 
-    const todayGroups = await prisma.cashTransaction.groupBy({
-      by: ["workOrderId"],
-      where: {
-        status: "POSTED",
-        sourceEntity: SOURCE_PAYMENT,
-        occurredAt: { gte: from, lt: to },
-        workOrderId: { not: null },
-        ...scopedLocation,
-        ...(searchedWorkOrderIds ? { workOrderId: { in: searchedWorkOrderIds } } : {}),
-      },
-      _sum: { amount: true },
-      _max: { occurredAt: true },
-    });
-    const todayPaid = new Map(todayGroups.filter((row) => row.workOrderId).map((row) => [row.workOrderId as string, {
-      amount: decimal(row._sum.amount),
-      at: row._max.occurredAt,
-    }]));
+    const baseWhere = {
+      direction: "RECEIVABLE" as const,
+      workOrderId: { not: null },
+      status: { not: "CANCELLED" as const },
+      ...scopedLocation,
+    };
 
-    const obligations = await prisma.financialObligation.findMany({
-      where: {
-        direction: "RECEIVABLE",
-        workOrderId: { not: null },
-        ...scopedLocation,
-        ...(searchedWorkOrderIds ? { workOrderId: { in: searchedWorkOrderIds } } : {}),
-        OR: [
-          { status: { in: [...OPEN_STATUSES] } },
-          ...(todayPaid.size ? [{ workOrderId: { in: Array.from(todayPaid.keys()) } }] : []),
-        ],
-      },
-      orderBy: [{ dueAt: "asc" }, { updatedAt: "desc" }],
-      take: 300,
-      select: {
-        id: true,
-        status: true,
-        amount: true,
-        settledAmount: true,
-        currency: true,
-        issuedAt: true,
-        dueAt: true,
-        settledAt: true,
-        workOrderId: true,
-        clientId: true,
-        locationId: true,
-        counterpartyName: true,
-        updatedAt: true,
-      },
-    });
-
-    const workOrderIds = obligations.map((row) => row.workOrderId).filter((id): id is string => Boolean(id));
-    const [workOrders, numberRows, latestPayments, accounts] = await Promise.all([
-      workOrderIds.length ? prisma.workOrder.findMany({
-        where: { id: { in: workOrderIds } },
-        select: {
-          id: true,
-          status: true,
-          updatedAt: true,
-          client: { select: { id: true, name: true, phone: true } },
-          vehicle: { select: { id: true, plateNumber: true, vin: true, brand: true, model: true, year: true } },
+    const [baseObligations, searchObligations] = await Promise.all([
+      prisma.financialObligation.findMany({
+        where: {
+          ...baseWhere,
+          ...(requestedWorkOrderId
+            ? { workOrderId: requestedWorkOrderId }
+            : {
+                OR: [
+                  { status: { in: [...OPEN_STATUSES] } },
+                  { status: "PAID", settledAt: { gte: range.from, lt: range.to } },
+                ],
+              }),
         },
-      }) : Promise.resolve([]),
-      workOrderIds.length ? prisma.workOrderNumber.findMany({ where: { workOrderId: { in: workOrderIds } }, select: { workOrderId: true, number: true } }) : Promise.resolve([]),
-      workOrderIds.length ? prisma.cashTransaction.findMany({
-        where: { status: "POSTED", sourceEntity: SOURCE_PAYMENT, workOrderId: { in: workOrderIds }, ...scopedLocation },
-        orderBy: { occurredAt: "desc" },
+        orderBy: [{ dueAt: "asc" }, { updatedAt: "desc" }],
         take: 600,
-        select: { id: true, workOrderId: true, amount: true, occurredAt: true, toAccountId: true },
-      }) : Promise.resolve([]),
+      }),
+      q && searchedWorkOrderIds.length
+        ? prisma.financialObligation.findMany({
+            where: {
+              ...baseWhere,
+              workOrderId: { in: searchedWorkOrderIds },
+            },
+            orderBy: { updatedAt: "desc" },
+            take: 240,
+          })
+        : Promise.resolve([]),
+    ]);
+
+    const obligationMap = new Map([...baseObligations, ...searchObligations].map((row) => [row.id, row]));
+    const obligations = Array.from(obligationMap.values());
+    const baseIds = new Set(baseObligations.map((row) => row.id));
+    const workOrderIds = Array.from(new Set(obligations.map((row) => row.workOrderId).filter((id): id is string => Boolean(id))));
+
+    const allowedLocationWhere = access.grantedScope === "LOCATION"
+      ? { id: { in: access.allowedLocationIds || [] } }
+      : {};
+
+    const [workOrders, numberRows, paymentRows, todayPayments, accounts, locations] = await Promise.all([
+      workOrderIds.length
+        ? prisma.workOrder.findMany({
+            where: { id: { in: workOrderIds } },
+            select: {
+              id: true,
+              status: true,
+              client: { select: { id: true, name: true, phone: true } },
+              vehicle: { select: { id: true, plateNumber: true, vin: true, brand: true, model: true, year: true } },
+            },
+          })
+        : Promise.resolve([]),
+      workOrderIds.length
+        ? prisma.workOrderNumber.findMany({
+            where: { workOrderId: { in: workOrderIds } },
+            select: { workOrderId: true, number: true },
+          })
+        : Promise.resolve([]),
+      workOrderIds.length
+        ? prisma.cashTransaction.findMany({
+            where: {
+              status: "POSTED",
+              sourceEntity: SOURCE_PAYMENT,
+              workOrderId: { in: workOrderIds },
+              ...scopedLocation,
+            },
+            orderBy: { occurredAt: "desc" },
+            take: 1800,
+            select: {
+              id: true,
+              workOrderId: true,
+              amount: true,
+              occurredAt: true,
+              toAccountId: true,
+              sourceEntityId: true,
+              description: true,
+              toAccount: { select: { id: true, name: true, type: true } },
+            },
+          })
+        : Promise.resolve([]),
+      prisma.cashTransaction.findMany({
+        where: {
+          status: "POSTED",
+          sourceEntity: SOURCE_PAYMENT,
+          occurredAt: {
+            gte: kyivDateStartUtc(kyivParts().year, kyivParts().month, kyivParts().day),
+            lt: addLocalDays(kyivDateStartUtc(kyivParts().year, kyivParts().month, kyivParts().day), 1),
+          },
+          ...scopedLocation,
+        },
+        select: { workOrderId: true, amount: true },
+      }),
       prisma.moneyAccount.findMany({
         where: {
           isActive: true,
@@ -173,66 +230,141 @@ export async function GET(request: NextRequest) {
         orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
         select: { id: true, name: true, type: true, currency: true, locationId: true },
       }),
+      prisma.serviceLocation.findMany({
+        where: { isActive: true, ...allowedLocationWhere },
+        orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
+        select: { id: true, name: true },
+      }),
     ]);
 
-    const wo = new Map(workOrders.map((row) => [row.id, row]));
+    const workOrderMap = new Map(workOrders.map((row) => [row.id, row]));
     const numbers = new Map(numberRows.map((row) => [row.workOrderId, row.number]));
-    const lastPayment = new Map<string, (typeof latestPayments)[number]>();
-    for (const payment of latestPayments) {
-      if (payment.workOrderId && !lastPayment.has(payment.workOrderId)) lastPayment.set(payment.workOrderId, payment);
+    const historyByWorkOrder = new Map<string, Array<{
+      id: string;
+      amount: number;
+      occurredAt: Date;
+      accountId: string | null;
+      accountName: string | null;
+      accountType: string | null;
+      description: string | null;
+    }>>();
+
+    for (const payment of paymentRows) {
+      if (!payment.workOrderId) continue;
+      const history = historyByWorkOrder.get(payment.workOrderId) || [];
+      if (history.length < 12) {
+        history.push({
+          id: payment.id,
+          amount: decimal(payment.amount),
+          occurredAt: payment.occurredAt,
+          accountId: payment.toAccountId,
+          accountName: payment.toAccount?.name || null,
+          accountType: payment.toAccount?.type || null,
+          description: payment.description,
+        });
+        historyByWorkOrder.set(payment.workOrderId, history);
+      }
     }
 
     const now = new Date();
-    const rows = obligations.flatMap((obligation) => {
+    const builtRows = obligations.flatMap((obligation) => {
       const workOrderId = obligation.workOrderId;
       if (!workOrderId) return [];
-      const workOrder = wo.get(workOrderId);
+      const workOrder = workOrderMap.get(workOrderId);
       if (!workOrder) return [];
       const total = decimal(obligation.amount);
       const paid = decimal(obligation.settledAmount);
       const outstanding = Math.max(0, Math.round((total - paid) * 100) / 100);
+      const status = paymentStatus(total, paid, outstanding);
       const overdue = outstanding > 0 && (obligation.status === "OVERDUE" || Boolean(obligation.dueAt && obligation.dueAt < now));
-      const today = todayPaid.get(workOrderId);
-      const latest = lastPayment.get(workOrderId);
-      return [{
+      const history = historyByWorkOrder.get(workOrderId) || [];
+      const latest = history[0] || null;
+      const row = {
         obligationId: obligation.id,
         workOrderId,
         workOrderNumber: numbers.get(workOrderId) ?? null,
         workOrderLabel: formatWorkOrderNumber(numbers.get(workOrderId)),
         workOrderStatus: workOrder.status,
         workOrderStatusLabel: getWorkflowStatusLabel("WORK_ORDER", workOrder.status),
+        paymentStatus: status,
         currency: obligation.currency,
         total,
         paid,
         outstanding,
         issuedAt: obligation.issuedAt,
         dueAt: obligation.dueAt,
+        settledAt: obligation.settledAt,
         overdue,
-        todayPaid: today?.amount ?? 0,
         lastPaymentAt: latest?.occurredAt ?? null,
-        lastPaymentAmount: latest ? decimal(latest.amount) : 0,
-        lastPaymentAccountId: latest?.toAccountId ?? null,
+        lastPaymentAmount: latest?.amount ?? 0,
         client: workOrder.client,
         vehicle: workOrder.vehicle,
-        flags: {
-          due: outstanding > 0 && paid <= 0 && !overdue,
-          partial: outstanding > 0 && paid > 0 && !overdue,
-          debt: overdue,
-          paidToday: (today?.amount ?? 0) > 0,
-        },
-      }];
+        history,
+        _base: baseIds.has(obligation.id),
+      };
+      return [row];
     });
 
+    const metricRows = builtRows.filter((row) => row._base);
+    const paidTodayTotal = todayPayments.reduce((sum, row) => sum + decimal(row.amount), 0);
     const counts = {
-      due: rows.filter((row) => row.flags.due).length,
-      partial: rows.filter((row) => row.flags.partial).length,
-      paidToday: rows.filter((row) => row.flags.paidToday).length,
-      debt: rows.filter((row) => row.flags.debt).length,
+      all: metricRows.length,
+      paid: metricRows.filter((row) => row.paymentStatus === "PAID").length,
+      partial: metricRows.filter((row) => row.paymentStatus === "PARTIAL").length,
+      due: metricRows.filter((row) => row.paymentStatus === "DUE").length,
+      overdue: metricRows.filter((row) => row.overdue).length,
+    };
+    const kpis = {
+      toReceive: metricRows.reduce((sum, row) => sum + row.outstanding, 0),
+      paidToday: paidTodayTotal,
+      partialCount: counts.partial,
+      partialOutstanding: metricRows.filter((row) => row.paymentStatus === "PARTIAL").reduce((sum, row) => sum + row.outstanding, 0),
+      dueCount: counts.due,
+      dueOutstanding: metricRows.filter((row) => row.paymentStatus === "DUE").reduce((sum, row) => sum + row.outstanding, 0),
+      overdueCount: counts.overdue,
+      overdueOutstanding: metricRows.filter((row) => row.overdue).reduce((sum, row) => sum + row.outstanding, 0),
     };
 
-    return NextResponse.json({ ok: true, timezone: KYIV_TZ, accounts, rows, counts }, { headers: { "Cache-Control": "no-store" } });
+    const normalizedNeedle = q.toLocaleLowerCase("uk-UA");
+    const phoneNeedle = q.replace(/\D+/g, "");
+    const rows = builtRows
+      .filter((row) => {
+        if (requestedWorkOrderId) return row.workOrderId === requestedWorkOrderId;
+        if (!q) return row._base;
+        const haystack = [
+          row.workOrderLabel,
+          row.workOrderNumber == null ? "" : String(row.workOrderNumber),
+          row.client.name || "",
+          row.client.phone,
+          row.vehicle.plateNumber || "",
+          row.vehicle.vin || "",
+          row.vehicle.brand || "",
+          row.vehicle.model || "",
+          row.vehicle.year || "",
+        ].join(" ").toLocaleLowerCase("uk-UA");
+        const phone = row.client.phone.replace(/\D+/g, "");
+        return haystack.includes(normalizedNeedle) || Boolean(phoneNeedle && phone.includes(phoneNeedle));
+      })
+      .sort((a, b) => {
+        const rank = (row: typeof a) => row.overdue ? 0 : row.paymentStatus === "DUE" ? 1 : row.paymentStatus === "PARTIAL" ? 2 : 3;
+        const diff = rank(a) - rank(b);
+        if (diff) return diff;
+        return new Date(b.lastPaymentAt || b.issuedAt).getTime() - new Date(a.lastPaymentAt || a.issuedAt).getTime();
+      })
+      .map(({ _base, ...row }) => row);
+
+    return NextResponse.json({
+      ok: true,
+      timezone: KYIV_TZ,
+      range: { from: range.fromKey, to: range.toKey },
+      accounts,
+      locations,
+      rows,
+      counts,
+      kpis,
+    }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
     console.error("GET /api/payments failed", { message: error instanceof Error ? error.message : "unknown" });
-    return NextResponse.json({ ok: false, error: "Не вдалося завантажити касову чергу." }, { status: 500 });
+    return NextResponse.json({ ok: false, error: "Не вдалося завантажити реєстр оплат." }, { status: 500 });
   }
 }
