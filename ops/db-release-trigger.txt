@@ -1,0 +1,3 @@
+Compensation + Financial Truth V3
+Requested migration: prisma/migrations/20261006224500_compensation_finance_v3/migration.sql
+Release reason: recognize live payroll accruals in P&L/payroll payable and enable compensation reconciliation.
