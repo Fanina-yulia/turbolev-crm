@@ -11,10 +11,6 @@
     {
       "path": "/api/internal/database-observability-snapshot",
       "schedule": "17 2 * * *"
-    },
-    {
-      "path": "/api/internal/compensation-reconcile",
-      "schedule": "25 2 * * *"
     }
   ]
 }
