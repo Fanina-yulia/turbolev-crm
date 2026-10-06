@@ -28,7 +28,7 @@ type FinanceV2 = {
   currency: string;
   range: { from: string; to: string; timezone: string };
   settings: { scopeKey: string; locationId: string | null; defaultCurrency: string; minimumCashReserve: number; fixedMonthlyCosts: number; targetGrossMarginPercent: number; warningGrossMarginPercent: number; forecastHorizonDays: number };
-  kpi: { currentCash: number; revenue: number; grossProfit: number; netProfit: number; cashFlow: number; grossMarginPercent: number | null; receivables: number; payables: number; overdueReceivables: number; overduePayables: number };
+  kpi: { currentCash: number; revenue: number; grossProfit: number; directCosts: number; opex: number; netProfit: number; cashFlow: number; grossMarginPercent: number | null; receivables: number; payables: number; overdueReceivables: number; overduePayables: number };
   comparison: { revenue: { previous: number; changePercent: number | null }; grossProfit: { previous: number; changePercent: number | null }; netProfit: { previous: number; changePercent: number | null }; opex: { previous: number; changePercent: number | null } };
   pnl: { revenue: number; cogs: number; grossProfit: number; grossMarginPercent: number | null; opex: number; operatingProfit: number; otherIncome: number; otherExpense: number; tax: number; netProfit: number; netMarginPercent: number | null; categories: Array<{ id: string; code: string; name: string; section: string; amount: number; count: number }>; events: Array<{ id: string; pnlSection: string; amount: number; recognizedAt: string; description: string | null; workOrderId: string | null; category: { name: string } | null }> };
   cashFlow: { inflow: number; outflow: number; net: number; operating: number; investing: number; financing: number; internalTransfer: number; transactions: Array<{ id: string; kind: string; flowSection: string; amount: number; occurredAt: string; description: string | null; fromAccountId: string | null; toAccountId: string | null }> };
@@ -48,6 +48,13 @@ type FinanceV2 = {
     parts: Array<{ name: string; brand: string | null; article: string | null; supplierId: string | null; quantity: number; revenue: number; directCost: number; profit: number; markupPercent: number | null; marginPercent: number | null }>;
     mechanics: Array<{ mechanicId: string; name: string; position: string | null; revenue: number; directCost: number; profit: number; laborHours: number; lines: number; marginPercent: number | null }>;
     suppliers: Array<{ supplierId: string; name: string; revenue: number; directCost: number; profit: number; parts: number; markupPercent: number | null; marginPercent: number | null }>;
+  };
+  financeCompleteness: {
+    score: number;
+    status: "COMPLETE" | "PARTIAL" | "LOW";
+    preliminaryNetProfit: boolean;
+    issues: Array<{ code: string; level: "INFO" | "WARNING" | "CRITICAL"; title: string; message: string; count: number }>;
+    checks: { missingLaborAccruals: number; missingWalkInLabor: number; missingPartCosts: number; missingBaseAccrualEmployees: number };
   };
   alerts: Alert[];
 };
@@ -174,8 +181,10 @@ export function FinancialCenter() {
     {data && <section className={styles.kpiGrid}>
       <KpiCard term="currentCash" label="Залишок коштів зараз" value={money(data.kpi.currentCash)} note={currentCashNote(data)} onClick={() => chooseTab("accounts")} />
       <KpiCard term="revenue" label="Виручка" value={money(data.kpi.revenue)} delta={data.comparison.revenue.changePercent} note="до попереднього періоду" onClick={() => chooseTab("pnl")} />
+      <KpiCard term="cogs" label="Прямі витрати" value={money(data.kpi.directCosts)} note="роботи · деталі · матеріали" onClick={() => chooseTab("pnl")} />
       <KpiCard term="grossProfit" label="Валовий прибуток" value={money(data.kpi.grossProfit)} delta={data.comparison.grossProfit.changePercent} note={`маржа ${percent(data.kpi.grossMarginPercent)}`} onClick={() => chooseTab("pnl")} />
-      <KpiCard term="netProfit" label="Чистий прибуток" value={money(data.kpi.netProfit)} delta={data.comparison.netProfit.changePercent} note="управлінський" onClick={() => chooseTab("pnl")} />
+      <KpiCard term="opex" label="Операційні витрати" value={money(data.kpi.opex)} delta={data.comparison.opex.changePercent} note="зарплати · оренда · реклама · інше" onClick={() => chooseTab("pnl")} />
+      <KpiCard term="netProfit" label="Чистий прибуток" value={money(data.kpi.netProfit)} delta={data.comparison.netProfit.changePercent} note={data.financeCompleteness.preliminaryNetProfit ? `попередній · повнота ${data.financeCompleteness.score}%` : "управлінський · дані повні"} onClick={() => chooseTab("pnl")} />
       <KpiCard term="cashFlow" label="Рух грошей за період" value={money(data.kpi.cashFlow)} note={`Надійшло ${money(data.cashFlow.inflow)} · сплачено ${money(data.cashFlow.outflow)}`} onClick={() => chooseTab("cash")} />
       <KpiCard term="receivables" label="Дебіторка" value={money(data.kpi.receivables)} note={`прострочено ${money(data.kpi.overdueReceivables)}`} onClick={() => chooseTab("debts")} />
       <KpiCard term="payables" label="Кредиторка" value={money(data.kpi.payables)} note={`прострочено ${money(data.kpi.overduePayables)}`} onClick={() => chooseTab("debts")} />
@@ -205,6 +214,12 @@ export function FinancialCenter() {
 function Overview({ data, onTab }: { data: FinanceV2; onTab: (tab: Tab) => void }) {
   const topAlerts = data.alerts.slice(0, 5);
   return <>
+    <section className={styles.panel}>
+      <div className={styles.panelHeader}><div><span className={styles.eyebrow}>DATA QUALITY</span><h2>Повнота фінансових даних</h2><p>CRM перевіряє, чи всі витрати, що впливають на прибуток, потрапили у фінансовий результат.</p></div><span className={`${styles.completenessBadge} ${data.financeCompleteness.status === "COMPLETE" ? styles.completenessGood : data.financeCompleteness.status === "LOW" ? styles.completenessBad : styles.completenessWarn}`}>{data.financeCompleteness.score}%</span></div>
+      <div className={styles.completenessBar}><span style={{ width: `${data.financeCompleteness.score}%` }} /></div>
+      {data.financeCompleteness.issues.length ? <div className={styles.qualityIssues}>{data.financeCompleteness.issues.map((issue) => <div key={issue.code} className={issue.level === "CRITICAL" ? styles.qualityCritical : styles.qualityWarning}><strong>{issue.title}</strong><span>{issue.message}</span></div>)}</div> : <div className={styles.qualityComplete}>✓ Фінансові дані за доступними контрольними правилами повні.</div>}
+      {data.financeCompleteness.preliminaryNetProfit && <p className={styles.hint}><strong>Чистий прибуток зараз попередній.</strong> Після усунення пунктів вище CRM перерахує його автоматично.</p>}
+    </section>
     <div className={styles.grid2}>
       <section className={styles.panel}><div className={styles.panelHeader}><div><span className={styles.eyebrow}>FINANCIAL PULSE</span><h2>Що потребує уваги</h2><p>Найкритичніші фінансові сигнали за поточними даними.</p></div></div><div className={styles.alertStack}>{topAlerts.length ? topAlerts.map((alert) => <div key={`${alert.code}:${alert.date || ""}`} className={`${styles.alert} ${alert.level === "CRITICAL" ? styles.alertCritical : alert.level === "WARNING" ? styles.alertWarning : styles.alertInfo}`}><span className={styles.alertDot}/><div><strong>{alert.title}</strong><div className={styles.hint}>{alert.message}{alert.date ? ` · ${dateText(alert.date)}` : ""}</div></div>{alert.amount != null && <strong>{money(alert.amount)}</strong>}</div>) : <div className={styles.empty}>Критичних фінансових сигналів немає.</div>}</div></section>
       <section className={styles.panel}><div className={styles.panelHeader}><div><span className={styles.eyebrow}>BREAK-EVEN</span><h2><FinanceInfoTooltip term="breakEven" label="Точка беззбитковості" /></h2><p>Скільки виручки потрібно для покриття постійних витрат.</p></div></div><div className={styles.summaryRow}><span>Постійні витрати</span><strong>{money(data.breakEven.fixedCosts)}</strong></div><div className={styles.summaryRow}><span>Валова маржа</span><strong>{percent(data.breakEven.grossMarginPercent)}</strong></div><div className={`${styles.summaryRow} ${styles.summaryTotal}`}><span>Точка беззбитковості</span><strong>{money(data.breakEven.breakEvenRevenue)}</strong></div><div className={styles.summaryRow}><span>Поточна виручка</span><strong>{money(data.breakEven.currentRevenue)}</strong></div><div className={styles.summaryRow}><span>Залишилося</span><strong>{money(data.breakEven.remainingRevenue)}</strong></div><div className={styles.summaryRow}><span>Потрібно на робочий день</span><strong>{money(data.breakEven.requiredRevenuePerDay)}</strong></div></section>
