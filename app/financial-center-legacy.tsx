@@ -4,14 +4,20 @@ import { CrmPageHeader } from "./crm-page-header";
 
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { navigateCrm, readCrmRoute } from "./crm-route";
-import { FinanceExpensesV2 } from "./finance-expenses-v2";
+import { FinanceExpensesV2, type FinanceExpenseSummary } from "./finance-expenses-v2";
+import {
+  FinanceContextKpis,
+  FinanceDrilldownModal,
+  FinancialControlPanel,
+  type FinancialDrilldownKey,
+} from "./financial-center-v3-panels";
 import { FinanceOperationDrawer } from "./finance-operation-drawer";
 import { FinanceInfoTooltip } from "./finance-info-tooltip";
 import type { FinanceGlossaryKey } from "@/src/domain/finance-glossary";
 import styles from "./financial-center-v2.module.css";
 
-type Tab = "overview" | "pnl" | "cash" | "plan" | "calendar" | "debts" | "profitability" | "expenses" | "accounts" | "settings";
-type ProfitTab = "workOrders" | "services" | "mechanics" | "parts" | "suppliers";
+export type Tab = "overview" | "pnl" | "cash" | "plan" | "calendar" | "debts" | "profitability" | "expenses" | "accounts" | "settings";
+export type ProfitTab = "workOrders" | "services" | "mechanics" | "parts" | "suppliers";
 type Preset = "today" | "week" | "month" | "quarter" | "year" | "custom";
 type OperationType = "EXPENSE" | "INCOME" | "TRANSFER";
 
@@ -23,7 +29,7 @@ type Obligation = { id: string; direction: "RECEIVABLE" | "PAYABLE"; status: str
 type CalendarItem = { id: string; sourceType: string; direction: "INFLOW" | "OUTFLOW"; amount: number; weightedAmount: number; expectedAt: string; status: string; counterparty: string | null; description: string | null; sourceId: string | null };
 type Alert = { level: "INFO" | "WARNING" | "CRITICAL"; code: string; title: string; message: string; amount?: number; date?: string };
 
-type FinanceV2 = {
+export type FinanceV2 = {
   ok: boolean;
   currency: string;
   range: { from: string; to: string; timezone: string };
@@ -52,7 +58,9 @@ type FinanceV2 = {
   alerts: Alert[];
 };
 
-const TAB_LABEL: Record<Tab, string> = { overview: "Огляд", pnl: "P&L", cash: "Cash Flow", plan: "План / факт", calendar: "Платіжний календар", debts: "Борги", profitability: "Прибутковість", expenses: "Витрати", accounts: "Рахунки", settings: "Налаштування" };
+const TAB_LABEL: Record<Tab, string> = { overview: "Огляд", pnl: "Прибуток (P&L)", cash: "Рух грошей", plan: "План / факт", calendar: "Платіжний календар", debts: "Борги", profitability: "Прибутковість", expenses: "Витрати", accounts: "Рахунки", settings: "Налаштування" };
+const PRIMARY_TABS: Tab[] = ["overview", "pnl", "cash", "plan", "calendar", "debts", "profitability", "expenses", "accounts"];
+const EMPTY_EXPENSE_SUMMARY: FinanceExpenseSummary = { totalAmount: 0, paidAmount: 0, outstanding: 0, overdueOutstanding: 0, pendingApprovalCount: 0, rowsCount: 0 };
 const AGING_LABEL: Record<string, string> = { "0_7": "0–7", "8_14": "8–14", "15_30": "15–30", "31_60": "31–60", "60_PLUS": "60+" };
 
 function money(value: number | null | undefined, currency = "UAH") { return value == null ? "—" : new Intl.NumberFormat("uk-UA", { style: "currency", currency, maximumFractionDigits: 0 }).format(value); }
@@ -116,6 +124,8 @@ export function FinancialCenter() {
   const [recurringOpen, setRecurringOpen] = useState(false);
   const [categoryOpen, setCategoryOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [drilldown, setDrilldown] = useState<FinancialDrilldownKey | null>(null);
+  const [expenseSummary, setExpenseSummary] = useState<FinanceExpenseSummary>(EMPTY_EXPENSE_SUMMARY);
 
   const query = useMemo(() => { const q = new URLSearchParams({ from, to }); if (locationId) q.set("locationId", locationId); return q.toString(); }, [from, to, locationId]);
   const load = useCallback(async () => {
@@ -146,6 +156,7 @@ export function FinancialCenter() {
     return Array.from(map.entries()).map(([id, name]) => ({ id, name }));
   }, [data]);
   const periodLabel = `${dateText(`${from}T12:00:00+03:00`)} — ${dateText(`${to}T12:00:00+03:00`)}`;
+  const periodSensitive = tab !== "accounts" && tab !== "settings";
 
   function route(nextTab = tab, nextFrom = from, nextTo = to, nextLocation = locationId) { navigateCrm("Фінансовий центр", { from: nextFrom, to: nextTo, scope: nextTab, ...(nextLocation ? { locationId: nextLocation } : {}) }); }
   function choosePreset(next: Exclude<Preset, "custom">) { const range = rangeFor(next); setPreset(next); setFrom(range.from); setTo(range.to); route(tab, range.from, range.to); }
