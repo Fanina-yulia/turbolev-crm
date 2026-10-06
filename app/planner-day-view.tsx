@@ -609,7 +609,7 @@ export function PlannerDayView<TAppointment extends AppointmentBase>({ day, loca
     finishSelection(row, slotIndex, { rowId: row.id, startIndex: slotIndex, endIndex: slotIndex });
   }
 
-  const resourceWidth = 164;
+  const resourceWidth = 184;
   const gridStyle = { gridTemplateColumns: `${resourceWidth}px repeat(${slots.length}, minmax(0, 1fr))` } as CSSProperties;
   const now = new Date();
   const nowParts = localParts(now.toISOString(), timeZone);
