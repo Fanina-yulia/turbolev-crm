@@ -1,6 +1,7 @@
 import "server-only";
 
 import { Prisma } from "@/src/generated/prisma/client";
+import { acquireTransactionAdvisoryLock } from "@/src/lib/advisory-lock";
 import { decimalToNumber, roundMoney } from "@/src/domain/finance";
 import { getPrisma } from "@/src/lib/prisma";
 import { toPrismaJson } from "@/src/lib/prisma-json";
@@ -564,7 +565,7 @@ export async function closeFinanceCashDay(
   const note = typeof input.note === "string" && input.note.trim() ? input.note.trim().slice(0, 4000) : null;
 
   return prisma.$transaction(async (tx) => {
-    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`finance-cash-close:${moneyAccountId}:${businessDateKey}`}))`;
+    await acquireTransactionAdvisoryLock(tx, `finance-cash-close:${moneyAccountId}:${businessDateKey}`);
     const account = await tx.moneyAccount.findUnique({ where: { id: moneyAccountId } });
     if (!account || !account.isActive) throw new FinancialCenterV2Error("ACCOUNT_NOT_FOUND", "Активну касу не знайдено.", 404);
     if (account.type !== "CASH") throw new FinancialCenterV2Error("CASH_ACCOUNT_REQUIRED", "Закриття дня доступне тільки для каси.", 409);
