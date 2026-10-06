@@ -827,7 +827,7 @@ export async function getFinancialCenterV2(scope: FinancialCenterScope) {
     alerts.push({ level: "WARNING", code: "OPEX_GROWTH", title: "Операційні витрати зросли", message: `OPEX зріс на ${changePercent(pnl.opex, previousPnl.opex)!.toFixed(1)}% до попереднього аналогічного періоду.` });
   }
   for (const issue of qualityIssues) alerts.push({ level: issue.level, code: issue.code, title: issue.title, message: issue.message });
-  alerts.sort((a, b) => ({ CRITICAL: 0, WARNING: 1, INFO: 2 }[a.level] - ({ CRITICAL: 0, WARNING: 1, INFO: 2 }[b.level]));
+  const alertRank = { CRITICAL: 0, WARNING: 1, INFO: 2 } as const;\n  alerts.sort((a, b) => alertRank[a.level] - alertRank[b.level]);
 
   const periodCashFlow = roundMoney(cashSection.inflow - cashSection.outflow);
   return {
