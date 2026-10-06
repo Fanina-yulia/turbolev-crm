@@ -73,7 +73,7 @@ export async function distributePlanBetweenStations(input: {
   if (input.actor.role !== "OWNER" && input.actor.role !== "EXECUTIVE_DIRECTOR") throw new ManagementResultError("EXECUTIVE_REQUIRED", "Розподіляти план між станціями може Власник або Виконавчий директор.", 403);
   const prisma = getPrisma();
   return prisma.$transaction(async (tx) => {
-    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`management-distribute:${input.planId}`}))`;
+    await tx.$executeRaw`SELECT 1::int AS locked FROM pg_advisory_xact_lock(hashtext(${`management-distribute:${input.planId}`}))`;
     const plan = await tx.managementPlan.findUnique({ where: { id: input.planId }, include: { allocations: true } });
     if (!plan) throw new ManagementResultError("PLAN_NOT_FOUND", "План не знайдено.", 404);
     if (!["OWNER_APPROVED", "EXECUTIVE_DISTRIBUTED", "STATION_ACCEPTED"].includes(plan.status)) throw new ManagementResultError("PLAN_NOT_DISTRIBUTABLE", "Цей стан плану не можна перерозподіляти.", 409);
