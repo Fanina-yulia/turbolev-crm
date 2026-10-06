@@ -7,6 +7,7 @@ import { getPrisma } from "@/src/lib/prisma";
 import { toPrismaJson } from "@/src/lib/prisma-json";
 import { transitionWorkOrder, WorkOrderNotFoundError, WorkOrderTransitionError } from "@/src/services/work-orders.service";
 import { normalizeRegistrationPlate } from "@/src/domain/registration-plate";
+import { postMechanicLaborCompensationForLine } from "@/src/services/compensation-engine.service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -114,7 +115,7 @@ export async function PATCH(request: Request, context: { params: Promise<{ lineI
     const prisma = getPrisma();
     const mechanic = await prisma.serviceMechanic.findFirst({
       where: { userId: access.context.user.id, isActive: true },
-      select: { id: true, name: true, locationId: true },
+      select: { id: true, name: true, locationId: true, employeeId: true },
     });
     if (!mechanic) return error("Кабінет механіка не прив’язаний до ресурсу автомеханіка.", "MECHANIC_RESOURCE_NOT_LINKED", 409);
 
@@ -378,6 +379,23 @@ export async function PATCH(request: Request, context: { params: Promise<{ lineI
         metadata: toPrismaJson({ workOrderId: mutation.line.workOrderId, reasonCode: action === "STOP" ? reasonCode : null, note: action === "STOP" ? note || null : null }),
       },
     }).catch(() => undefined);
+
+    if (action === "COMPLETE") {
+      await postMechanicLaborCompensationForLine(mutation.line.id, mechanic.employeeId).catch(async (compensationError) => {
+        console.error("mechanic compensation posting failed", compensationError);
+        await prisma.auditEvent.create({
+          data: {
+            actorId: access.context.user!.id,
+            actorName,
+            entityType: "WorkOrderLine",
+            entityId: mutation.line.id,
+            action: "COMPENSATION_POST_FAILED",
+            metadata: toPrismaJson({ workOrderId: mutation.line.workOrderId, error: compensationError instanceof Error ? compensationError.message : "UNKNOWN" }),
+          },
+        }).catch(() => undefined);
+      });
+    }
+
     const finalWorkflow = workflowMeta(mutation.line.metadata);
     const effective = finalWorkflow.stopAt && mutation.line.status === "IN_PROGRESS"
       ? "STOPPED"
