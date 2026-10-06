@@ -159,7 +159,7 @@ export async function runMechanicWalkInSmoke() {
     );
     const recognizedAt = chargeBeforePayment.recognizedAt.getTime();
 
-    const paid = await payWalkInDiagnostic(mechanicUserId, created.diagnosticRequestId, input.paymentMethod, input.paymentMethod === "CASH" ? "600" : "725.50");
+    const paid = await payWalkInDiagnostic(mechanicUserId, created.diagnosticRequestId, input.paymentMethod, input.paymentMethod === "CASH" ? "600" : "725.50", true);
     assert.equal(paid.paid, true);
     assert(paid.payment, "payment must create a posted CashTransaction");
     assert.equal(paid.payment?.account?.type, input.paymentMethod === "CASH" ? "CASH" : "ACQUIRING");

@@ -1,5 +1,6 @@
 import { Prisma } from "@/src/generated/prisma/client";
 import { getPrisma } from "@/src/lib/prisma";
+import { mechanicPaymentBlockReason } from "@/src/domain/mechanic-payment-policy";
 import { toPrismaJson } from "@/src/lib/prisma-json";
 
 const WALK_IN_SOURCE = "WALK_IN";
@@ -7,7 +8,7 @@ const WALK_IN_MARKER = "WALK_IN_DIAGNOSTIC:";
 const FINANCE_SOURCE = "WALK_IN_DIAGNOSTIC";
 const PAYMENT_SOURCE = "WALK_IN_DIAGNOSTIC_PAYMENT";
 
-export type WalkInPaymentMethod = "CASH" | "TERMINAL" | "ONLINE";
+export type WalkInPaymentMethod = "CASH" | "TERMINAL";
 
 export class WalkInDiagnosticSettlementError extends Error {
   readonly code: string;
@@ -49,9 +50,9 @@ async function findWalkInAppointment(diagnosticRequestId: string) {
 
   // The visit link is the canonical relation. The comment lookup remains as a
   // compatibility fallback for walk-ins created before the link was persisted.
-  if (link?.source === WALK_IN_SOURCE) {
+  if (link) {
     const linked = await prisma.serviceAppointment.findFirst({
-      where: { id: link.appointmentId, source: WALK_IN_SOURCE, status: { not: "CANCELLED" } },
+      where: { id: link.appointmentId, status: { not: "CANCELLED" } },
     });
     if (linked) return linked;
   }
@@ -102,8 +103,8 @@ async function resolveMoneyAccount(locationId: string, method: WalkInPaymentMeth
     where: {
       isActive: true,
       currency: "UAH",
-      OR: [{ locationId }, { locationId: null }],
-      type: method === "CASH" ? "CASH" : { in: ["ACQUIRING", "CARD", "BANK"] },
+      locationId,
+      type: method === "CASH" ? "CASH" : "ACQUIRING",
     },
     orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
   });
@@ -211,7 +212,7 @@ async function ensureWalkInCharge(
         locationId: input.locationId,
         sourceEntity: FINANCE_SOURCE,
         sourceEntityId: `${input.diagnosticRequestId}:revenue`,
-        description: `Позапланова діагностика · ${input.plateNumber || input.diagnosticRequestId}`,
+        description: `Діагностика · ${input.plateNumber || input.diagnosticRequestId}`,
         metadata,
         createdById: input.userId,
         postedAt: new Date(),
@@ -279,6 +280,7 @@ export async function markWalkInDiagnosticCompleted(userId: string, diagnosticRe
     prisma.diagnosticRequest.findUnique({
       where: { id: diagnosticRequestId },
       include: {
+        workOrder: { select: { id: true } },
         client: { select: { name: true } },
         vehicle: { select: { plateNumber: true } },
       },
@@ -297,12 +299,19 @@ export async function markWalkInDiagnosticCompleted(userId: string, diagnosticRe
     const recognizedAt = existingAudit?.createdAt || completedAt;
 
     await tx.serviceAppointment.updateMany({
-      where: { id: appointment.id, source: WALK_IN_SOURCE, status: { in: ["ARRIVED", "DIAGNOSTICS"] } },
+      where: { id: appointment.id, status: { in: ["ARRIVED", "DIAGNOSTICS"] } },
       data: { status: "WAITING_PAYMENT" },
     });
 
     let chargeFormed = false;
-    if (price?.amount && price.amount.greaterThan(0) && price.currency === "UAH") {
+    const paymentBlockReason = mechanicPaymentBlockReason({
+      purpose: appointment.purpose, appointmentWorkOrderId: appointment.workOrderId,
+      diagnosticWorkOrderId: diagnostic.workOrder?.id || null,
+      requiresDiagnosticFirst: appointment.requiresDiagnosticFirst, status: appointment.status,
+      locationId: appointment.locationId, mechanicLocationId: mechanic.locationId,
+      vehicleMatches: appointment.vehicleId === diagnostic.vehicleId,
+    });
+    if (!paymentBlockReason && price?.amount && price.amount.greaterThan(0) && price.currency === "UAH") {
       await ensureWalkInCharge(tx, {
         diagnosticRequestId,
         appointmentId: appointment.id,
@@ -353,6 +362,7 @@ export async function getWalkInDiagnosticSettlement(userId: string, diagnosticRe
     prisma.diagnosticRequest.findUnique({
       where: { id: diagnosticRequestId },
       include: {
+        workOrder: { select: { id: true } },
         client: { select: { id: true, name: true, phone: true } },
         vehicle: { select: { id: true, plateNumber: true, brand: true, model: true, year: true, mileageKm: true } },
       },
@@ -369,6 +379,16 @@ export async function getWalkInDiagnosticSettlement(userId: string, diagnosticRe
   ]);
   if (!diagnostic) throw new WalkInDiagnosticSettlementError("DIAGNOSTIC_NOT_FOUND", "Діагностику не знайдено.", 404);
 
+  const paymentBlockReason = mechanicPaymentBlockReason({
+    purpose: appointment.purpose,
+    appointmentWorkOrderId: appointment.workOrderId,
+    diagnosticWorkOrderId: diagnostic.workOrder?.id || null,
+    requiresDiagnosticFirst: appointment.requiresDiagnosticFirst,
+    status: appointment.status,
+    locationId: appointment.locationId,
+    mechanicLocationId: mechanic.locationId,
+    vehicleMatches: appointment.vehicleId === diagnostic.vehicleId,
+  });
   const submitted = review?.state === "SUBMITTED" || review?.state === "CONFIRMED";
   const paid = Boolean(payment) || obligation?.status === "PAID";
   const amount = obligation ? decimal(obligation.amount) : price?.amount ?? null;
@@ -399,7 +419,8 @@ export async function getWalkInDiagnosticSettlement(userId: string, diagnosticRe
     client: diagnostic.client,
     mechanic: { id: mechanic.id, name: mechanic.name },
     chargeFormed: Boolean(obligation),
-    canPay: submitted && !paid,
+    paymentBlockReason,
+    canPay: submitted && !paid && !paymentBlockReason,
     canChooseRoute: submitted && paid && appointment.status === "WAITING_PAYMENT",
   };
 }
@@ -409,14 +430,16 @@ export async function payWalkInDiagnostic(
   diagnosticRequestId: string,
   method: WalkInPaymentMethod,
   amountInput?: unknown,
+  paymentConfirmed = false,
 ) {
-  if (method !== "CASH" && method !== "TERMINAL" && method !== "ONLINE") {
+  if (method !== "CASH" && method !== "TERMINAL") {
     throw new WalkInDiagnosticSettlementError("PAYMENT_METHOD_REQUIRED", "Оберіть готівку або термінал.");
   }
+  if (!paymentConfirmed) throw new WalkInDiagnosticSettlementError("PAYMENT_CONFIRMATION_REQUIRED", "Підтвердьте фактичне отримання готівки або успішну оплату на POS-терміналі.", 409);
   const { mechanic } = await mechanicContext(userId, diagnosticRequestId);
   const prisma = getPrisma();
   const appointment = await findWalkInAppointment(diagnosticRequestId);
-  if (!appointment) throw new WalkInDiagnosticSettlementError("NOT_WALK_IN", "Це не позаплановий заїзд.", 404);
+  if (!appointment) throw new WalkInDiagnosticSettlementError("NOT_WALK_IN", "Не знайдено пов’язаний візит діагностики. Зверніться до старшого станції.", 404);
 
   const [diagnostic, review, price, existingObligation, completionAudit] = await Promise.all([
     prisma.diagnosticRequest.findUnique({ where: { id: diagnosticRequestId }, include: { client: true, vehicle: true } }),
@@ -454,7 +477,7 @@ export async function payWalkInDiagnostic(
 
   const currency = existingObligation?.currency || price?.currency || "UAH";
   if (currency !== "UAH") {
-    throw new WalkInDiagnosticSettlementError("DIAGNOSTIC_CURRENCY_UNSUPPORTED", "Оплата позапланової діагностики зараз підтримує суму у гривні.", 409);
+    throw new WalkInDiagnosticSettlementError("DIAGNOSTIC_CURRENCY_UNSUPPORTED", "Оплата діагностики підтримує суму у гривні.", 409);
   }
   const account = await resolveMoneyAccount(mechanic.locationId, method);
   if (!account) {
@@ -472,6 +495,32 @@ export async function payWalkInDiagnostic(
       where: { sourceEntity: PAYMENT_SOURCE, sourceEntityId: `${diagnosticRequestId}:payment`, status: "POSTED" },
     });
     if (existingPayment) return;
+
+    // Serialize against appointment changes and creation of its diagnostic WorkOrder.
+    await tx.$queryRaw`SELECT id FROM "DiagnosticRequest" WHERE id = ${diagnosticRequestId} FOR UPDATE`;
+    await tx.$queryRaw`SELECT id FROM "ServiceAppointment" WHERE id = ${appointment.id} FOR UPDATE`;
+    const fresh = await tx.serviceAppointment.findUnique({ where: { id: appointment.id } });
+    const repair = await tx.workOrder.findUnique({ where: { diagnosticRequestId }, select: { id: true } });
+    const freshReview = await tx.diagnosticReview.findUnique({ where: { diagnosticRequestId } });
+    const reason = fresh ? mechanicPaymentBlockReason({
+      purpose: fresh.purpose,
+      appointmentWorkOrderId: fresh.workOrderId,
+      diagnosticWorkOrderId: repair?.id || null,
+      requiresDiagnosticFirst: fresh.requiresDiagnosticFirst,
+      status: fresh.status,
+      locationId: fresh.locationId,
+      mechanicLocationId: mechanic.locationId,
+      vehicleMatches: fresh.vehicleId === diagnostic.vehicleId,
+    }) : "Візит не знайдено. Зверніться до старшого станції.";
+    if (reason) throw new WalkInDiagnosticSettlementError("STATION_MANAGER_PAYMENT_REQUIRED", reason, 403);
+    if (freshReview?.state !== "SUBMITTED" && freshReview?.state !== "CONFIRMED") {
+      throw new WalkInDiagnosticSettlementError("DIAGNOSTIC_NOT_COMPLETED", "Спочатку завершіть діагностику.", 409);
+    }
+    const freshAccount = await tx.moneyAccount.findFirst({ where: {
+      id: account.id, isActive: true, locationId: mechanic.locationId, currency: "UAH",
+      type: method === "CASH" ? "CASH" : "ACQUIRING",
+    } });
+    if (!freshAccount) throw new WalkInDiagnosticSettlementError("MONEY_ACCOUNT_NOT_CONFIGURED", "Перевірте касу або рахунок еквайрингу станції.", 409);
 
     const recognizedAt = completionAudit?.createdAt || appointment.actualStartAt || new Date();
     const charge = await ensureWalkInCharge(tx, {
@@ -508,11 +557,14 @@ export async function payWalkInDiagnostic(
         locationId: mechanic.locationId,
         sourceEntity: PAYMENT_SOURCE,
         sourceEntityId: `${diagnosticRequestId}:payment`,
-        description: `Оплата позапланової діагностики · ${diagnostic.vehicle.plateNumber || diagnosticRequestId}`,
+        description: `Оплата діагностики · ${diagnostic.vehicle.plateNumber || diagnosticRequestId}`,
         metadata: toPrismaJson({
           diagnosticRequestId,
           appointmentId: appointment.id,
-          paymentMethod: method === "ONLINE" ? "TERMINAL" : method,
+          paymentMethod: method,
+          collectedByMechanicId: mechanic.id,
+          collectedByName: mechanic.name,
+          paymentConfirmed: true,
           serviceCatalogItemId: price?.itemId || null,
           revenueRecognizedAt: recognizedAt,
         }),
@@ -526,7 +578,7 @@ export async function payWalkInDiagnostic(
       data: { settledAmount: amount, status: "PAID", settledAt: now },
     });
     await tx.serviceAppointment.updateMany({
-      where: { id: appointment.id, source: WALK_IN_SOURCE, status: { in: ["DIAGNOSTICS", "WAITING_PAYMENT"] } },
+      where: { id: appointment.id, status: { in: ["DIAGNOSTICS", "WAITING_PAYMENT"] } },
       data: { status: "WAITING_PAYMENT" },
     });
     await tx.auditEvent.create({
@@ -542,7 +594,7 @@ export async function payWalkInDiagnostic(
           paymentId: payment.id,
           appointmentId: appointment.id,
           amount: amount.toFixed(2),
-          method: method === "ONLINE" ? "TERMINAL" : method,
+          method: method,
           moneyAccountId: account.id,
           revenueRecognizedAt: recognizedAt,
         }),
@@ -561,7 +613,7 @@ export async function chooseWalkInPostPaymentRoute(
   const { mechanic } = await mechanicContext(userId, diagnosticRequestId);
   const prisma = getPrisma();
   const appointment = await findWalkInAppointment(diagnosticRequestId);
-  if (!appointment) throw new WalkInDiagnosticSettlementError("NOT_WALK_IN", "Це не позаплановий заїзд.", 404);
+  if (!appointment) throw new WalkInDiagnosticSettlementError("NOT_WALK_IN", "Не знайдено пов’язаний візит діагностики. Зверніться до старшого станції.", 404);
 
   return prisma.$transaction(async (tx) => {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`walk-in-route:${diagnosticRequestId}`}))`;
@@ -573,6 +625,11 @@ export async function chooseWalkInPostPaymentRoute(
     const fresh = await tx.serviceAppointment.findUnique({ where: { id: appointment.id } });
     if (!fresh) throw new WalkInDiagnosticSettlementError("APPOINTMENT_NOT_FOUND", "Позаплановий візит не знайдено.", 404);
 
+    const repair = await tx.workOrder.findUnique({ where: { diagnosticRequestId }, select: { id: true } });
+    if (fresh.purpose !== "DIAGNOSTICS" || fresh.workOrderId || repair || fresh.requiresDiagnosticFirst
+      || fresh.locationId !== mechanic.locationId || fresh.status === "CANCELLED") {
+      throw new WalkInDiagnosticSettlementError("STATION_MANAGER_PAYMENT_REQUIRED", "Подальші дії та оплату контролює старший станції.", 403);
+    }
     if (action === "COMPLETE_VISIT") {
       if (fresh.status !== "COMPLETED") {
         await tx.serviceAppointment.update({
