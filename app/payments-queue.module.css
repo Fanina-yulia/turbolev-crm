@@ -51,16 +51,19 @@
 
 .toolbar{
   flex:0 0 auto;
-  display:grid;
-  grid-template-columns:minmax(260px,1fr) max-content 112px 112px minmax(150px,190px);
-  gap:6px;
+  display:flex;
   align-items:center;
+  gap:5px;
   min-height:36px;
   overflow-x:auto;
   overflow-y:hidden;
   scrollbar-width:thin;
+  white-space:nowrap;
 }
-.search{
+ .search{
+  flex:1 1 240px;
+  min-width:220px;
+  max-width:360px;
   height:36px;
   display:flex;
   align-items:center;
@@ -74,7 +77,8 @@
 .search input{min-width:0;flex:1;border:0;outline:0;background:transparent;color:var(--text);font:inherit;font-size:12px}
 .search button{border:0;background:transparent;color:var(--muted);font-size:16px;cursor:pointer}
 
-.presets{
+ .presets{
+  flex:0 0 auto;
   min-height:36px;
   display:flex;
   align-items:center;
@@ -102,12 +106,15 @@
   background:color-mix(in srgb,var(--orange) 8%,var(--panel-2));
   box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--orange) 34%,var(--line));
 }
-.dateField,.locationField{
+ .dateField,.locationField{
+  flex:0 0 auto;
   min-width:0;
   height:36px;
   display:flex;
   align-items:center;
 }
+ .dateField{width:104px}
+.locationField{width:118px}
 .dateField input,.locationField select{
   width:100%;
   height:36px;
@@ -125,17 +132,18 @@
   flex:0 0 auto;
   display:flex;
   align-items:center;
-  gap:5px;
-  overflow-x:auto;
-  overflow-y:hidden;
-  padding:0 0 1px;
+  gap:3px;
+  min-width:max-content;
+  overflow:visible;
+  padding:0;
 }
-.tabs button{
+ .tabs button{
   min-height:34px;
   display:flex;
   align-items:center;
-  gap:7px;
-  padding:0 10px;
+  gap:5px;
+  padding:0 7px;
+  font-size:11px;
   white-space:nowrap;
 }
 .tabs button>b{
@@ -378,25 +386,22 @@
 .modalBody input,.modalBody select{width:100%;min-height:38px;border:1px solid var(--line);border-radius:9px;background:var(--panel);color:var(--text);padding:0 10px;font:inherit;font-size:12px}
 
 @media(max-width:1180px) and (min-width:761px){
-  .toolbar{grid-template-columns:minmax(220px,1fr) max-content 102px 102px minmax(135px,160px)}
-  .presets button{padding:0 6px}
+  .search{min-width:200px;max-width:280px}
+  .presets button{padding:0 5px}
+  .tabs button{padding:0 6px;gap:4px}
+  .dateField{width:100px}
+  .locationField{width:110px}
   .kpis strong{font-size:16px}
-}
-@media(max-width:900px) and (min-width:761px){
-  .toolbar{
-    grid-template-columns:minmax(220px,1fr) max-content 100px 100px 145px;
-    overflow-x:auto;
-  }
-  .locationField{grid-column:auto}
 }
 @media(max-width:760px){
   .page{height:auto;min-height:100%;overflow:visible;padding:5px 10px 24px}
   .kpis{grid-template-columns:1fr 1fr}
-  .toolbar{display:flex;flex-wrap:wrap;align-items:stretch}
-  .search{flex:1 1 100%}
-  .presets{flex:1 1 100%;overflow-x:auto}
-  .dateField{flex:1 1 140px}
-  .locationField{flex:1 1 100%}
+  .toolbar{display:flex;flex-wrap:nowrap;align-items:center;overflow-x:auto}
+  .search{flex:0 0 250px;min-width:250px;max-width:none}
+  .tabs{flex:0 0 auto}
+  .presets{flex:0 0 auto;overflow:visible}
+  .dateField{flex:0 0 104px;width:104px}
+  .locationField{flex:0 0 118px;width:118px}
   .register{min-height:480px;overflow:auto}
   .tableHead,.tableRow{min-width:1180px}
   .drawer{width:100%}
