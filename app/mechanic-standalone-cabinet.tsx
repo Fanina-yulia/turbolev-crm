@@ -762,15 +762,15 @@ export function MechanicStandaloneCabinet({ userName }: { userName?: string | nu
     }
     setNotificationFeed(notificationsBody);
     if (findingsResponse.ok && findingsBody?.ok) setClarifications(findingsBody.items ?? []);
-  }, [])  const loadPayroll = useCallback(async () => {
+  }, []);
+
+  const loadPayroll = useCallback(async () => {
     const response = await fetch("/api/me/compensation", { cache: "no-store", credentials: "include" });
     const body = await response.json().catch(() => null) as Payroll | null;
     if (!response.ok || !body?.ok) throw new Error((body as { message?: string; error?: string } | null)?.message || (body as { message?: string; error?: string } | null)?.error || "Не вдалося завантажити зарплату");
     setPayroll(body);
     return body;
   }, []);
-
-;
 
   useEffect(() => {
     const stored = window.localStorage.getItem("turbolev:mechanic-theme");
