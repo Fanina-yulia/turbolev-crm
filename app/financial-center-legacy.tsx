@@ -68,6 +68,16 @@ function rangeFor(preset: Exclude<Preset, "custom">) {
 }
 function deltaClass(value: number | null | undefined) { return value == null ? "" : value >= 0 ? styles.deltaUp : styles.deltaDown; }
 function sourceLabel(source: string) { return ({ OBLIGATION: "Зобов'язання", RECURRING: "Регулярний", FORECAST: "Прогноз", WORK_ORDER_FINANCE: "Замовлення" } as Record<string, string>)[source] || source; }
+function accountShortLabel(account: Account) {
+  if (account.type === "CASH") return "Каса";
+  if (["ACQUIRING", "CARD"].includes(account.type)) return "POS";
+  if (account.type === "BANK") return "Банк";
+  return account.name;
+}
+function currentCashNote(data: FinanceV2) {
+  const breakdown = data.accounts.slice(0, 3).map((account) => `${accountShortLabel(account)} ${money(account.balance)}`).join(" · ");
+  return `${breakdown || `${data.accounts.length} рахунків`} · не залежить від періоду`;
+}
 
 function KpiCard({ label, value, note, delta, onClick }: { label: string; value: string; note?: string; delta?: number | null; onClick?: () => void }) {
   const content = <><span>{label}</span><strong>{value}</strong><small>{delta != null ? <span className={deltaClass(delta)}>{delta >= 0 ? "+" : ""}{delta.toFixed(1)}% · </span> : null}{note || ""}</small></>;
@@ -148,11 +158,11 @@ export function FinancialCenter() {
     {message && <div className={styles.success}>{message}</div>}
 
     {data && <section className={styles.kpiGrid}>
-      <KpiCard label="Гроші зараз" value={money(data.kpi.currentCash)} note={`${data.accounts.length} рахунків`} onClick={() => chooseTab("accounts")} />
+      <KpiCard label="Залишок коштів зараз" value={money(data.kpi.currentCash)} note={currentCashNote(data)} onClick={() => chooseTab("accounts")} />
       <KpiCard label="Виручка" value={money(data.kpi.revenue)} delta={data.comparison.revenue.changePercent} note="до попереднього періоду" onClick={() => chooseTab("pnl")} />
       <KpiCard label="Валовий прибуток" value={money(data.kpi.grossProfit)} delta={data.comparison.grossProfit.changePercent} note={`маржа ${percent(data.kpi.grossMarginPercent)}`} onClick={() => chooseTab("pnl")} />
       <KpiCard label="Чистий прибуток" value={money(data.kpi.netProfit)} delta={data.comparison.netProfit.changePercent} note="управлінський" onClick={() => chooseTab("pnl")} />
-      <KpiCard label="Cash Flow" value={money(data.kpi.cashFlow)} note={`${money(data.cashFlow.inflow)} вхід · ${money(data.cashFlow.outflow)} вихід`} onClick={() => chooseTab("cash")} />
+      <KpiCard label="Рух грошей за період" value={money(data.kpi.cashFlow)} note={`Надійшло ${money(data.cashFlow.inflow)} · сплачено ${money(data.cashFlow.outflow)}`} onClick={() => chooseTab("cash")} />
       <KpiCard label="Дебіторка" value={money(data.kpi.receivables)} note={`прострочено ${money(data.kpi.overdueReceivables)}`} onClick={() => chooseTab("debts")} />
       <KpiCard label="Кредиторка" value={money(data.kpi.payables)} note={`прострочено ${money(data.kpi.overduePayables)}`} onClick={() => chooseTab("debts")} />
       <KpiCard label="Мін. прогноз грошей" value={money(data.forecast.minimumForecastCash)} note={`${data.forecast.horizonDays} днів · резерв ${money(data.forecast.minimumReserve)}`} onClick={() => chooseTab("calendar")} />
