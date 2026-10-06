@@ -1,3 +1,4 @@
+import { PRISMA_TRANSACTION_ADVISORY_LOCK_SQL } from "@/src/lib/advisory-lock";
 import "server-only";
 
 import { VehicleLocationCode as PrismaVehicleLocationCode } from "@/src/generated/prisma/client";
@@ -108,9 +109,9 @@ export async function moveVehicleLocation(input: MoveVehicleLocationInput) {
   const prisma = getPrisma();
 
   return prisma.$transaction(async (tx) => {
-    await tx.$queryRawUnsafe("SELECT pg_advisory_xact_lock(hashtext($1))", "vehicle-location:" + vehicleId);
+    await tx.$queryRawUnsafe(PRISMA_TRANSACTION_ADVISORY_LOCK_SQL, "vehicle-location:" + vehicleId);
     if (requestedPostId) {
-      await tx.$queryRawUnsafe("SELECT pg_advisory_xact_lock(hashtext($1))", "vehicle-location-post:" + requestedPostId);
+      await tx.$queryRawUnsafe(PRISMA_TRANSACTION_ADVISORY_LOCK_SQL, "vehicle-location-post:" + requestedPostId);
     }
 
     if (idempotencyKey) {
