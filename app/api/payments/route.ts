@@ -297,7 +297,7 @@ export async function GET(request: NextRequest) {
     }
 
     const now = new Date();
-    const builtRows = obligations.flatMap((obligation) => {
+    const builtRows = obligations.flatMap((obligation): any[] => {
       const total = decimal(obligation.amount);
       const paid = decimal(obligation.settledAmount);
       const outstanding = Math.max(0, Math.round((total - paid) * 100) / 100);
