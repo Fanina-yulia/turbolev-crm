@@ -4,7 +4,7 @@
 CREATE TABLE "FinancialCashClose" (
   "id" TEXT NOT NULL,
   "businessDate" DATE NOT NULL,
-  "moneyAccountId" VARCHAR(64) NOT NULL,
+  "moneyAccountId" TEXT NOT NULL,
   "locationId" VARCHAR(64),
   "currency" VARCHAR(3) NOT NULL DEFAULT 'UAH',
   "systemAmount" DECIMAL(14,2) NOT NULL,
