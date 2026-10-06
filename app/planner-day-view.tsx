@@ -30,6 +30,10 @@ type AppointmentBase = {
   estimatedAmount?: string | number | null;
   plannedStartAt: string;
   plannedEndAt: string;
+  source?: string | null;
+  actualArrivalAt?: string | null;
+  actualStartAt?: string | null;
+  actualEndAt?: string | null;
   post?: Post | null;
   mechanic?: Mechanic | null;
 };
@@ -116,6 +120,26 @@ function localParts(iso: string, timeZone: string) {
   };
 }
 
+function displayWindow(item: AppointmentBase, timeZone: string) {
+  const plannedDuration = Math.max(
+    SLOT,
+    Math.round((new Date(item.plannedEndAt).getTime() - new Date(item.plannedStartAt).getTime()) / 60000),
+  );
+  const actualStart = item.source === "WALK_IN" ? (item.actualStartAt || item.actualArrivalAt) : null;
+  const startIso = actualStart || item.plannedStartAt;
+  const start = localParts(startIso, timeZone);
+  return {
+    day: start.day,
+    start: start.minute,
+    end: start.minute + plannedDuration,
+    actualWalkIn: Boolean(item.source === "WALK_IN" && actualStart),
+  };
+}
+
+function isActualWalkIn(item: AppointmentBase) {
+  return Boolean(item.source === "WALK_IN" && (item.actualStartAt || item.actualArrivalAt));
+}
+
 function postType(post: Post) {
   const type = post.capabilities?.find((item) => item.startsWith("TYPE:"))?.slice(5);
   return type === "PIT" ? "Яма" : type === "ALIGNMENT" ? "Розвал-сходження" : type === "NO_LIFT" ? "Без підйомника" : "Підйомник";
@@ -158,8 +182,27 @@ export function PlannerDayView<TAppointment extends AppointmentBase>({ day, loca
   const dropTargetRef = useRef<{ rowId: string; slotIndex: number } | null>(null);
   const suppressDragClickRef = useRef(false);
   const timeZone = location.timezone || "Europe/Kyiv";
-  const openMinute = Number.isFinite(location.openMinute) ? location.openMinute : 540;
-  const closeMinute = Number.isFinite(location.closeMinute) ? location.closeMinute : 1260;
+  const baseOpenMinute = Number.isFinite(location.openMinute) ? location.openMinute : 540;
+  const baseCloseMinute = Number.isFinite(location.closeMinute) ? location.closeMinute : 1260;
+
+  const dayAppointments = useMemo(() => appointments
+    .filter((item) => item.locationId === location.id && displayWindow(item, timeZone).day === day && item.status !== "CANCELLED")
+    .sort((a, b) => displayWindow(a, timeZone).start - displayWindow(b, timeZone).start), [appointments, location.id, timeZone, day]);
+
+  const visibleRange = useMemo(() => {
+    const actualWalkIns = dayAppointments
+      .map((item) => displayWindow(item, timeZone))
+      .filter((window) => window.actualWalkIn);
+    const minStart = actualWalkIns.length ? Math.min(...actualWalkIns.map((window) => window.start)) : baseOpenMinute;
+    const maxEnd = actualWalkIns.length ? Math.max(...actualWalkIns.map((window) => window.end)) : baseCloseMinute;
+    return {
+      openMinute: Math.max(0, Math.floor(Math.min(baseOpenMinute, minStart) / SLOT) * SLOT),
+      closeMinute: Math.min(24 * 60, Math.ceil(Math.max(baseCloseMinute, maxEnd) / SLOT) * SLOT),
+    };
+  }, [dayAppointments, timeZone, baseOpenMinute, baseCloseMinute]);
+
+  const openMinute = visibleRange.openMinute;
+  const closeMinute = visibleRange.closeMinute;
   const totalDayMinutes = Math.max(SLOT, closeMinute - openMinute);
 
   const slots = useMemo(() => {
@@ -205,10 +248,6 @@ export function PlannerDayView<TAppointment extends AppointmentBase>({ day, loca
     dropTargetRef.current = null;
     setDropTarget(null);
   }, [day, location.id]);
-
-  const dayAppointments = useMemo(() => appointments
-    .filter((item) => item.locationId === location.id && localParts(item.plannedStartAt, timeZone).day === day && item.status !== "CANCELLED")
-    .sort((a, b) => +new Date(a.plannedStartAt) - +new Date(b.plannedStartAt)), [appointments, location.id, timeZone, day]);
 
   const draggedAppointment = useMemo(
     () => draggingAppointmentId ? dayAppointments.find((item) => item.id === draggingAppointmentId) || null : null,
@@ -285,8 +324,9 @@ export function PlannerDayView<TAppointment extends AppointmentBase>({ day, loca
     return dayAppointments.some((item) => {
       if (item.id === ignoreId) return false;
       if (row.reception ? Boolean(item.postId) : item.postId !== row.id) return false;
-      const start = localParts(item.plannedStartAt, timeZone).minute;
-      const end = localParts(item.plannedEndAt, timeZone).minute;
+      const window = displayWindow(item, timeZone);
+      const start = window.start;
+      const end = window.end;
       return start < slotEnd && end > minute;
     });
   }
@@ -297,8 +337,9 @@ export function PlannerDayView<TAppointment extends AppointmentBase>({ day, loca
     if (row.reception) return true;
     const ignored = ignoreId ? dayAppointments.find((item) => item.id === ignoreId) : null;
     if (ignored && ignored.postId === row.id) {
-      const ignoredStart = localParts(ignored.plannedStartAt, timeZone).minute;
-      const ignoredEnd = localParts(ignored.plannedEndAt, timeZone).minute;
+      const ignoredWindow = displayWindow(ignored, timeZone);
+      const ignoredStart = ignoredWindow.start;
+      const ignoredEnd = ignoredWindow.end;
       if (ignoredStart < minute + SLOT && ignoredEnd > minute) return true;
     }
     return availabilityMap.get(`${minuteLabel(minute)}:${row.id}`) === true;
@@ -314,7 +355,23 @@ export function PlannerDayView<TAppointment extends AppointmentBase>({ day, loca
   }
 
   function appointmentDuration(item: TAppointment) {
-    return Math.max(SLOT, Math.round((new Date(item.plannedEndAt).getTime() - new Date(item.plannedStartAt).getTime()) / 60000));
+    const window = displayWindow(item, timeZone);
+    return Math.max(SLOT, window.end - window.start);
+  }
+
+  function collisionLayout(item: TAppointment) {
+    const itemWindow = displayWindow(item, timeZone);
+    const collisions = dayAppointments
+      .filter((other) => {
+        if (other.postId !== item.postId) return false;
+        const otherWindow = displayWindow(other, timeZone);
+        return otherWindow.start < itemWindow.end && otherWindow.end > itemWindow.start;
+      })
+      .sort((a, b) => {
+        const startDiff = displayWindow(a, timeZone).start - displayWindow(b, timeZone).start;
+        return startDiff || a.id.localeCompare(b.id);
+      });
+    return { lane: Math.max(0, collisions.findIndex((other) => other.id === item.id)), count: Math.max(1, collisions.length) };
   }
 
   function canDropRange(row: Row, startIndex: number, durationMinutes: number, ignoreId: string) {
@@ -328,7 +385,7 @@ export function PlannerDayView<TAppointment extends AppointmentBase>({ day, loca
   }
 
   function dragAppointment(event: ReactDragEvent<HTMLButtonElement>, item: TAppointment) {
-    if (NON_DRAGGABLE.has(item.status)) {
+    if (NON_DRAGGABLE.has(item.status) || isActualWalkIn(item)) {
       event.preventDefault();
       return;
     }
@@ -375,6 +432,7 @@ export function PlannerDayView<TAppointment extends AppointmentBase>({ day, loca
   }
 
   function canResizeAppointment(item: TAppointment, startMinute: number, endMinute: number) {
+    if (isActualWalkIn(item)) return false;
     if (startMinute < openMinute || endMinute > closeMinute || endMinute - startMinute < SLOT) return false;
     return !dayAppointments.some((other) => {
       if (other.id === item.id || NON_BLOCKING.has(other.status)) return false;
@@ -397,7 +455,7 @@ export function PlannerDayView<TAppointment extends AppointmentBase>({ day, loca
   }
 
   function startResize(event: ReactPointerEvent<HTMLSpanElement>, item: TAppointment, edge: ResizeEdge) {
-    if (NON_BLOCKING.has(item.status)) return;
+    if (NON_BLOCKING.has(item.status) || isActualWalkIn(item)) return;
     event.preventDefault();
     event.stopPropagation();
     try {
@@ -601,8 +659,9 @@ export function PlannerDayView<TAppointment extends AppointmentBase>({ day, loca
         {dayAppointments.map((item) => {
           const rowIndex = item.postId ? rows.findIndex((row) => row.id === item.postId) : rows.findIndex((row) => row.reception);
           if (rowIndex < 0) return null;
-          const originalStart = localParts(item.plannedStartAt, timeZone).minute;
-          const originalEnd = localParts(item.plannedEndAt, timeZone).minute;
+          const originalWindow = displayWindow(item, timeZone);
+          const originalStart = originalWindow.start;
+          const originalEnd = originalWindow.end;
           const preview = resize?.id === item.id ? resize : null;
           const start = preview?.startMinute ?? originalStart;
           const end = preview?.endMinute ?? originalEnd;
@@ -614,18 +673,27 @@ export function PlannerDayView<TAppointment extends AppointmentBase>({ day, loca
           const done = item.status === "COMPLETED";
           const row = rows[rowIndex];
           const status = STATUS_META[item.status] || { label: item.status, tone: "gray" as const };
+          const collision = collisionLayout(item);
+          const collisionStyle: CSSProperties = collision.count > 1
+            ? {
+                width: `calc((100% - ${(collision.count - 1) * 4}px) / ${collision.count})`,
+                marginLeft: `calc(${(100 / collision.count) * collision.lane}% + ${collision.lane * 4}px)`,
+                marginRight: 0,
+                justifySelf: "start",
+              }
+            : {};
           return <button
             type="button"
             key={item.id}
             className={`${styles.event} ${styles[`event_${status.tone}`]} ${done ? styles.eventDone : ""} ${compact ? compactStyles.event : ""} ${preview ? styles.eventResizing : ""} ${preview && !preview.valid ? styles.eventResizeInvalid : ""} ${draggingAppointmentId === item.id ? styles.eventDragging : ""}`}
-            style={{ gridColumn: `${startIndex + 2} / span ${span}`, gridRow: rowIndex + 2, "--event-color": row.color } as CSSProperties}
-            draggable={Boolean(onMove) && !NON_DRAGGABLE.has(item.status)}
+            style={{ gridColumn: `${startIndex + 2} / span ${span}`, gridRow: rowIndex + 2, "--event-color": row.color, ...collisionStyle } as CSSProperties}
+            draggable={Boolean(onMove) && !NON_DRAGGABLE.has(item.status) && !isActualWalkIn(item)}
             onDragStart={(event) => dragAppointment(event, item)}
             onDragEnd={endAppointmentDrag}
             onClick={() => { if (!suppressDragClickRef.current) onOpen(item); }}
             title={`${item.plateNumber || "Без номера"} · ${minuteLabel(start)}–${minuteLabel(end)}`}
           >
-            {!NON_BLOCKING.has(item.status) && <>
+            {!NON_BLOCKING.has(item.status) && !isActualWalkIn(item) && <>
               <span
                 className={`${styles.resizeHandle} ${styles.resizeHandleStart}`}
                 role="slider"
@@ -651,7 +719,7 @@ export function PlannerDayView<TAppointment extends AppointmentBase>({ day, loca
                 onClick={(event) => event.stopPropagation()}
               />
             </>}
-            <small className={styles.eventTime}>{minuteLabel(start)}–{minuteLabel(end)}</small>
+            <small className={styles.eventTime}>{isActualWalkIn(item) ? "ПОЗАПЛАНОВИЙ · " : ""}{minuteLabel(start)}–{minuteLabel(Math.min(end, 24 * 60))}</small>
             <VehiclePlate value={item.plateNumber} size="xs" />
             <b>{item.vehicleLabel || "Автомобіль"}</b>
             <span>{item.problem || item.customerName || item.mechanic?.name || "Запис на СТО"}</span>
