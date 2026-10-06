@@ -36,6 +36,20 @@ function labelOf(label: string) {
   return label === "Мої задачі" ? "Центр уваги" : label;
 }
 
+function dockLabelOfGroup(group: string) {
+  return ({
+    "Робочий стіл": "Головна",
+    "Комунікація": "Заявки",
+    "Планувальник": "Планувальник",
+    "Клієнти та авто": "Клієнти / Авто",
+    "Сервіс": "Сервіс",
+    "Запчастини": "Склад",
+    "Фінанси": "Фінанси",
+    "Аналітика": "Аналітика",
+    "Налаштування": "Налаштування",
+  } as Record<string, string>)[group] ?? group;
+}
+
 function step(value: number, velocity: number, target: number, stiffness: number, damping: number, dt: number) {
   let v = velocity + (target - value) * stiffness * dt;
   v *= Math.pow(damping, dt);
@@ -275,7 +289,7 @@ export function SidebarRailV7() {
               onPointerEnter={() => { if (!wideOpen) setOpenGroup(group.label); }}
               onFocus={() => setOpenGroup(group.label)}
               onClick={() => setOpenGroup((current) => current === group.label ? null : group.label)}
-            ><span className="crmDockGlyph7"><GroupIcon group={group.label}/></span></button>
+            ><span className="crmDockGlyph7"><GroupIcon group={group.label}/></span><span className="crmDockLabel7">{dockLabelOfGroup(group.label)}</span></button>
 
             <div
               className={`crmDockFlyout7 ${show ? "crmDockFlyoutShow7" : ""}`}
@@ -417,7 +431,10 @@ export function SidebarRailV7() {
           filter:none;
         }
         body:has([data-planner-page="true"]) .crmDockGlyph7 svg{width:24px;height:24px}
-        body:has([data-planner-page="true"]) .crmDockButton7::after{
+        .crmDockLabel7{
+          display:none;
+        }
+        body:has([data-planner-page="true"]) .crmDockLabel7{
           display:block;
           max-width:84px;
           overflow:hidden;
@@ -426,16 +443,9 @@ export function SidebarRailV7() {
           line-height:1.05;
           font-weight:750;
           text-align:center;
-          white-space:pre-line;
+          white-space:normal;
           text-overflow:ellipsis;
         }
-        body:has([data-planner-page="true"]) .crmDockSlot7:nth-child(1) .crmDockButton7::after{content:"Головна"}
-        body:has([data-planner-page="true"]) .crmDockSlot7:nth-child(2) .crmDockButton7::after{content:"Заявки"}
-        body:has([data-planner-page="true"]) .crmDockSlot7:nth-child(3) .crmDockButton7::after{content:"Клієнти / Авто"}
-        body:has([data-planner-page="true"]) .crmDockSlot7:nth-child(4) .crmDockButton7::after{content:"Планувальник"}
-        body:has([data-planner-page="true"]) .crmDockSlot7:nth-child(5) .crmDockButton7::after{content:"Склад"}
-        body:has([data-planner-page="true"]) .crmDockSlot7:nth-child(6) .crmDockButton7::after{content:"Фінанси"}
-        body:has([data-planner-page="true"]) .crmDockSlot7:nth-child(7) .crmDockButton7::after{content:"Налаштування"}
         body:has([data-planner-page="true"]) .crmDockActive7{
           background:color-mix(in srgb,var(--orange) 8%,transparent)!important;
         }
@@ -446,7 +456,7 @@ export function SidebarRailV7() {
           border-radius:0 6px 6px 0;
           box-shadow:none;
         }
-        body:has([data-planner-page="true"]) .crmDockActive7::after{color:var(--orange)}
+        body:has([data-planner-page="true"]) .crmDockActive7 .crmDockLabel7{color:var(--orange)}
         body:has([data-planner-page="true"]) .crmDockFlyout7{
           left:98px;
         }
