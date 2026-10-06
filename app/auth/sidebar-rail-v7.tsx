@@ -422,7 +422,7 @@ export function SidebarRailV7() {
           max-width:84px;
           overflow:hidden;
           color:var(--muted);
-          font-size:10px;
+          font-size:11px;
           line-height:1.05;
           font-weight:750;
           text-align:center;
