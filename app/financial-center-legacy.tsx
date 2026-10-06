@@ -182,16 +182,17 @@ export function FinancialCenter() {
     {error && <div className={styles.errorBox}><strong>Фінансовий центр не оновлено.</strong> {error}</div>}
     {message && <div className={styles.success}>{message}</div>}
 
-    {data && <section className={styles.kpiGrid}>
-      <KpiCard term="currentCash" label="Залишок коштів зараз" value={money(data.kpi.currentCash)} note={currentCashNote(data)} onClick={() => chooseTab("accounts")} />
-      <KpiCard term="revenue" label="Виручка" value={money(data.kpi.revenue)} delta={data.comparison.revenue.changePercent} note="до попереднього періоду" onClick={() => chooseTab("pnl")} />
-      <KpiCard term="grossProfit" label="Валовий прибуток" value={money(data.kpi.grossProfit)} delta={data.comparison.grossProfit.changePercent} note={`маржа ${percent(data.kpi.grossMarginPercent)}`} onClick={() => chooseTab("pnl")} />
-      <KpiCard term="netProfit" label="Чистий прибуток" value={money(data.kpi.netProfit)} delta={data.comparison.netProfit.changePercent} note="управлінський" onClick={() => chooseTab("pnl")} />
-      <KpiCard term="cashFlow" label="Рух грошей за період" value={money(data.kpi.cashFlow)} note={`Надійшло ${money(data.cashFlow.inflow)} · сплачено ${money(data.cashFlow.outflow)}`} onClick={() => chooseTab("cash")} />
-      <KpiCard term="receivables" label="Дебіторка" value={money(data.kpi.receivables)} note={`прострочено ${money(data.kpi.overdueReceivables)}`} onClick={() => chooseTab("debts")} />
-      <KpiCard term="payables" label="Кредиторка" value={money(data.kpi.payables)} note={`прострочено ${money(data.kpi.overduePayables)}`} onClick={() => chooseTab("debts")} />
-      <KpiCard term="minimumForecastCash" label="Мін. прогноз грошей" value={money(data.forecast.minimumForecastCash)} note={`${data.forecast.horizonDays} днів · резерв ${money(data.forecast.minimumReserve)}`} onClick={() => chooseTab("calendar")} />
+    {data && tab === "overview" && <section className={styles.kpiGrid}>
+      <KpiCard term="currentCash" label="Залишок коштів зараз" value={money(data.kpi.currentCash)} note={currentCashNote(data)} onClick={() => setDrilldown("currentCash")} />
+      <KpiCard term="revenue" label="Виручка" value={money(data.kpi.revenue)} delta={data.comparison.revenue.changePercent} note="натисніть, щоб побачити джерела" onClick={() => setDrilldown("revenue")} />
+      <KpiCard term="grossProfit" label="Валовий прибуток" value={money(data.kpi.grossProfit)} delta={data.comparison.grossProfit.changePercent} note={`маржа ${percent(data.kpi.grossMarginPercent)}`} onClick={() => setDrilldown("grossProfit")} />
+      <KpiCard term="netProfit" label="Чистий прибуток" value={money(data.kpi.netProfit)} delta={data.comparison.netProfit.changePercent} note="управлінський" onClick={() => setDrilldown("netProfit")} />
+      <KpiCard term="cashFlow" label="Рух грошей за період" value={money(data.kpi.cashFlow)} note={`Надійшло ${money(data.cashFlow.inflow)} · сплачено ${money(data.cashFlow.outflow)}`} onClick={() => setDrilldown("cashNet")} />
+      <KpiCard term="receivables" label="Дебіторка" value={money(data.kpi.receivables)} note={`прострочено ${money(data.kpi.overdueReceivables)}`} onClick={() => setDrilldown("receivables")} />
+      <KpiCard term="payables" label="Кредиторка" value={money(data.kpi.payables)} note={`прострочено ${money(data.kpi.overduePayables)}`} onClick={() => setDrilldown("payables")} />
+      <KpiCard term="minimumForecastCash" label="Мін. прогноз грошей" value={money(data.forecast.minimumForecastCash)} note={`${data.forecast.horizonDays} днів · резерв ${money(data.forecast.minimumReserve)}`} onClick={() => setDrilldown("forecastMinimum")} />
     </section>}
+    {data && <FinanceContextKpis data={data} tab={tab} profitTab={profitTab} expenseSummary={expenseSummary} onDrilldown={setDrilldown} />}
 
     {!data && !loading && <div className={styles.empty}>Фінансові дані недоступні.</div>}
     {data && tab === "overview" && <Overview data={data} onTab={chooseTab} />}
@@ -201,7 +202,7 @@ export function FinancialCenter() {
     {data && tab === "calendar" && <CalendarView data={data} onNewRecurring={() => setRecurringOpen(true)} />}
     {data && tab === "debts" && <DebtView data={data} />}
     {data && tab === "profitability" && <ProfitabilityView data={data} active={profitTab} onChange={setProfitTab} />}
-    {data && tab === "expenses" && <FinanceExpensesV2 from={from} to={to} locationId={locationId} categories={data.categories} accounts={data.accounts} onCreate={() => openOperation("EXPENSE")} onChanged={() => void load()} />}
+    {data && tab === "expenses" && <FinanceExpensesV2 from={from} to={to} locationId={locationId} categories={data.categories} accounts={data.accounts} onCreate={() => openOperation("EXPENSE")} onChanged={() => void load()} onSummary={setExpenseSummary} />}
     {data && tab === "accounts" && <AccountsView data={data} onOperation={openOperation} />}
     {data && tab === "settings" && <SettingsView data={data} onCategory={() => setCategoryOpen(true)} onRecurring={() => setRecurringOpen(true)} onSettings={() => setSettingsOpen(true)} />}
 
