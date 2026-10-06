@@ -16,6 +16,10 @@ import {
   type FinanceActor,
 } from "@/src/services/financial-center-v2.service";
 import {
+  closeFinanceCashDay,
+  getFinancialCenterV3Control,
+} from "@/src/services/financial-center-v3-control.service";
+import {
   approvalRequirementForExpense,
   approveExpense,
   listExpenseAttachments,
@@ -84,6 +88,16 @@ function actor(access: { context: { user?: { id?: string; employeeName?: string 
   };
 }
 
+function financePersona(roles: Array<{ code: string; isPrimary: boolean }>) {
+  const codes = roles.map((role) => role.code.toUpperCase());
+  const primary = roles.find((role) => role.isPrimary)?.code || roles[0]?.code || null;
+  if (codes.some((code) => ["OWNER", "EXECUTIVE", "DIRECTOR"].includes(code))) return { code: "OWNER", primaryRole: primary };
+  if (codes.some((code) => ["CASHIER", "KASIR"].includes(code))) return { code: "CASHIER", primaryRole: primary };
+  if (codes.some((code) => ["STATION_MANAGER", "ADMINISTRATOR", "SERVICE_MANAGER", "MASTER"].includes(code))) return { code: "STATION_MANAGER", primaryRole: primary };
+  if (codes.some((code) => ["FINANCE", "ACCOUNTANT", "CHIEF_ACCOUNTANT", "FINANCIAL_MANAGER"].includes(code))) return { code: "FINANCE", primaryRole: primary };
+  return { code: "STANDARD", primaryRole: primary };
+}
+
 function errorResponse(error: unknown) {
   if (error instanceof FinancialCenterV2Error) return NextResponse.json({ ok: false, code: error.code, error: error.message }, { status: error.status });
   console.error("[financial-center-v2]", error);
@@ -102,6 +116,13 @@ async function targetLocationForAction(action: string, body: Record<string, unkn
   if (advanceId) {
     const advance = await getPrisma().customerAdvance.findUnique({ where: { id: advanceId }, select: { locationId: true } });
     return advance?.locationId || null;
+  }
+  if (action === "CLOSE_CASH_DAY") {
+    const moneyAccountId = text(body.moneyAccountId, 64);
+    if (moneyAccountId) {
+      const account = await getPrisma().moneyAccount.findUnique({ where: { id: moneyAccountId }, select: { locationId: true } });
+      return account?.locationId || null;
+    }
   }
   return null;
 }
@@ -141,14 +162,26 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ ok: true, advances: advances.map((row) => ({ ...row, amount: Number(row.amount), appliedAmount: Number(row.appliedAmount), remainingAmount: Math.max(0, Number(row.amount) - Number(row.appliedAmount)) })) }, { headers: { "Cache-Control": "no-store" } });
     }
 
-    const data = await getFinancialCenterV2({
+    const scope = {
       from,
       to,
       currency: request.nextUrl.searchParams.get("currency") || "UAH",
       locationId: requestedLocationId,
       allowedLocationIds: access.grantedScope === "LOCATION" && !requestedLocationId ? access.allowedLocationIds : null,
-    });
-    return NextResponse.json(data, { headers: { "Cache-Control": "no-store" } });
+    };
+    const data = await getFinancialCenterV2(scope);
+    const control = await getFinancialCenterV3Control(scope, data);
+    const persona = financePersona(access.context.roles);
+    return NextResponse.json({
+      ...data,
+      control,
+      viewer: {
+        roles: access.context.roles.map((role) => ({ code: role.code, name: role.name, isPrimary: role.isPrimary })),
+        primaryRole: persona.primaryRole,
+        persona: persona.code,
+        userName: access.context.user?.employeeName || access.context.user?.name || null,
+      },
+    }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
     return errorResponse(error);
   }
@@ -194,6 +227,9 @@ export async function POST(request: NextRequest) {
         break;
       case "SAVE_SETTINGS":
         result = await saveFinancialSettings({ ...body, locationId: requestedLocationId }, identity);
+        break;
+      case "CLOSE_CASH_DAY":
+        result = await closeFinanceCashDay({ ...body, locationId: requestedLocationId }, identity);
         break;
       case "SAVE_APPROVAL_RULE":
         result = await saveApprovalRule({ ...body, locationId: requestedLocationId }, identity);
