@@ -327,38 +327,6 @@ function InteractiveDonut({ rows, total }: { rows: ChartRow[]; total: number }) 
   </div>;
 }
 
-function OwnerFinanceCard({
-  label,
-  value,
-  note,
-  plan,
-  mode,
-  primary = false,
-  onClick,
-}: {
-  label: string;
-  value: number | null;
-  note: string;
-  plan?: { amount: number } | null;
-  mode: "HIGHER" | "LOWER" | "MINIMUM";
-  primary?: boolean;
-  onClick: () => void;
-}) {
-  const ratio = value != null && plan?.amount && plan.amount > 0 ? value / plan.amount * 100 : null;
-  const good = ratio == null ? null : mode === "LOWER" ? ratio <= 100 : ratio >= 100;
-  const warn = ratio == null ? false : mode === "LOWER" ? ratio > 100 && ratio <= 115 : ratio >= 80 && ratio < 100;
-  return <button type="button" className={`${styles.financeTruthCard} ${primary ? styles.financeTruthPrimary : ""}`} onClick={onClick}>
-    <span>{label}</span>
-    <strong>{money(value)}</strong>
-    <small>{note}</small>
-    <div className={styles.financeTruthPlan}>
-      <span>{plan ? <>План <b>{money(plan.amount)}</b></> : "План не заданий"}</span>
-      <em className={ratio == null ? styles.financePlanNeutral : good ? styles.financePlanGood : warn ? styles.financePlanWarn : styles.financePlanBad}>{ratio == null ? "—" : `${ratio.toFixed(0)}%`}</em>
-    </div>
-    {ratio != null && <div className={styles.financeTruthProgress}><i className={good ? styles.financeProgressGood : warn ? styles.financeProgressWarn : styles.financeProgressBad} style={{ width: `${Math.min(100, Math.max(0, ratio))}%` }} /></div>}
-  </button>;
-}
-
 function SimpleMetricCard({ title, value, icon, subtitle, onClick }: { title: string; value: string; icon: string; subtitle: string; onClick: () => void }) {
   return <button type="button" className={styles.metricCard} onClick={onClick} aria-label={`${title}: ${value}`}>
     <div className={styles.metricHead}><MetricIcon>{icon}</MetricIcon><span>{title}</span><em>›</em></div>
@@ -366,30 +334,6 @@ function SimpleMetricCard({ title, value, icon, subtitle, onClick }: { title: st
     <small className={styles.metricSubtitle}>{subtitle}</small>
     <span className={styles.deltaNeutral}>факт за вибраний період</span>
   </button>;
-}
-
-function DualFinanceTrend({ rows }: { rows: Array<{ date: string; recognizedRevenue: number; cashIn: number }> }) {
-  const width = 520;
-  const height = 120;
-  const pad = 8;
-  const values = rows.flatMap((row) => [Math.max(0, row.recognizedRevenue), Math.max(0, row.cashIn)]);
-  const max = Math.max(1, ...values);
-  const points = (key: "recognizedRevenue" | "cashIn") => rows.map((row, index) => {
-    const x = rows.length <= 1 ? width / 2 : pad + index / (rows.length - 1) * (width - pad * 2);
-    const y = height - pad - Math.max(0, row[key]) / max * (height - pad * 2);
-    return `${x.toFixed(1)},${y.toFixed(1)}`;
-  }).join(" ");
-  return <div className={styles.financeTrend}>
-    <div className={styles.financeTrendLegend}><span><i className={styles.financeRecognizedDot} />Визнана виручка</span><span><i className={styles.financeCashDot} />Отримано грошей</span></div>
-    <svg viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" aria-label="Визнана виручка та отримані гроші">
-      <polyline points={points("recognizedRevenue")} className={styles.financeRecognizedLine} />
-      <polyline points={points("cashIn")} className={styles.financeCashLine} />
-    </svg>
-  </div>;
-}
-
-function planFor(finance: OwnerFinancePayload | null, metric: string) {
-  return finance?.plans?.find((row) => row.metric === metric) || null;
 }
 
 function issueCount(attention: AttentionItem[], code: string) {
@@ -400,7 +344,6 @@ export function OwnerDashboardVisual({ analytics }: Props) {
   const [control, setControl] = useState<OwnerControlSnapshot>(EMPTY_CONTROL);
   const [facts, setFacts] = useState<OwnerFactsPayload>(EMPTY_FACTS);
   const [finance, setFinance] = useState<OwnerFinancePayload | null>(null);
-  const [financeError, setFinanceError] = useState("");
   const [controlLoading, setControlLoading] = useState(true);
 
   useEffect(() => {
@@ -427,7 +370,6 @@ export function OwnerDashboardVisual({ analytics }: Props) {
         const warranty = issueCount(attention, "WARRANTY_OPEN");
         const paused = issueCount(attention, "PAUSED_STALLED");
         setFinance(ownerFinance?.available === false ? null : ownerFinance);
-        setFinanceError(ownerFinance?.ok ? "" : ownerFinance?.error || "Фінансові дані тимчасово недоступні.");
         setControl({
           receivables: ownerFinance?.receivables ? {
             total: ownerFinance.receivables.total,
@@ -482,7 +424,6 @@ export function OwnerDashboardVisual({ analytics }: Props) {
   const pipeline = facts.pipeline;
   const dataQuality = facts.dataQuality;
   const financeAvailable = Boolean(finance?.ok && finance.summary);
-  const financeQualityIssues = finance?.dataQuality?.issues ?? [];
 
   const pipelineRows = useMemo<ChartRow[]>(() => [
     { label: "Заплановано", value: pipeline?.scheduledAmount ?? 0, tone: "orange", formatted: money(pipeline?.scheduledAmount ?? 0), detail: `${pipeline?.scheduledCount ?? 0} записів` },
@@ -513,27 +454,6 @@ export function OwnerDashboardVisual({ analytics }: Props) {
   ], [noShow, waitingApproval, control.risk.paused]);
 
   return <section className={styles.visualDashboard} aria-label="Ключова аналітика власника">
-    <div className={styles.financeTruthHeader}>
-      <div><span>ФІНАНСОВЕ ЯДРО</span><strong>Одна цифра в Пульті та Фінансовому центрі</strong><small>Результат — з FinancialEvent, гроші — з CashTransaction, борги — з FinancialObligation. Аванс не стає виручкою до визнання послуги.</small></div>
-      <b className={finance?.integrity?.ok ? styles.financeQualityGood : styles.financeQualityBad}>{controlLoading && !finance && !financeError ? "Оновлюю фінанси…" : financeError || !financeAvailable ? "Дані недоступні" : finance?.integrity?.ok ? `✓ Узгоджено · ${finance.dataQuality?.score ?? 100}%` : `⚠ Розбіжностей: ${finance?.integrity?.issueCount ?? 0}`}</b>
-    </div>
-
-    <div className={styles.financeTruthGrid}>
-      <OwnerFinanceCard primary label="Чистий дохід" value={finance?.summary?.netIncome ?? null} note="валовий дохід − всі витрати" plan={planFor(finance, "NET_INCOME")} mode="HIGHER" onClick={() => navigateCrm("Фінансовий центр", { scope: "overview" })} />
-      <OwnerFinanceCard label="Оборотка з послуг" value={finance?.summary?.serviceTurnover ?? null} note="роботи та діагностики, без продажу деталей" plan={planFor(finance, "SERVICE_REVENUE")} mode="HIGHER" onClick={() => navigateCrm("Фінансовий центр", { scope: "overview" })} />
-      <OwnerFinanceCard label="Маржа по деталях" value={finance?.summary?.partsMargin ?? null} note="продаж деталей − фактична собівартість" plan={planFor(finance, "PARTS_MARGIN")} mode="HIGHER" onClick={() => navigateCrm("Фінансовий центр", { scope: "overview" })} />
-      <OwnerFinanceCard label="ЗП персоналу" value={finance?.summary?.payrollAccrued ?? null} note={finance?.summary ? `нараховано · до виплати ${money(finance.summary.payrollDue)}` : "дані недоступні"} plan={planFor(finance, "PAYROLL")} mode="LOWER" onClick={() => navigateCrm("Фінансовий центр", { scope: "expenses" })} />
-      <OwnerFinanceCard label="Валовий дохід" value={finance?.summary?.grossIncome ?? null} note="оборотка послуг + маржа деталей" plan={planFor(finance, "GROSS_INCOME")} mode="HIGHER" onClick={() => navigateCrm("Фінансовий центр", { scope: "overview" })} />
-      <OwnerFinanceCard label="Всі витрати" value={finance?.summary?.totalExpenses ?? null} note="включно із ЗП; закупівля складу не дублює COGS" plan={planFor(finance, "TOTAL_EXPENSES")} mode="LOWER" onClick={() => navigateCrm("Фінансовий центр", { scope: "expenses" })} />
-      <OwnerFinanceCard label="Грошей у касі" value={finance?.summary?.cash ?? null} note="фактичний баланс кас і рахунків · станом на зараз" plan={planFor(finance, "CASH_BALANCE")} mode="MINIMUM" onClick={() => navigateCrm("Фінансовий центр", { scope: "accounts" })} />
-    </div>
-
-    <div className={styles.financeTrendPanel}>
-      <div className={styles.financeTrendHead}><div><span>РЕЗУЛЬТАТ ≠ ГРОШІ</span><strong>Визнана виручка та Cash In</strong><small>Дві окремі лінії: виконана/визнана послуга не змішується з датою фактичної оплати.</small></div><div><b>{money(finance?.cashFlow?.inflow)}</b><small>отримано за період</small></div></div>
-      {finance?.trend?.length ? <DualFinanceTrend rows={finance.trend} /> : <div className={styles.financeTrendEmpty}>{financeError || "За вибраний період фінансового руху ще немає."}</div>}
-    </div>
-    {financeQualityIssues.length > 0 && <div className={styles.financeQualityIssues}><strong>Якість фінансових даних потребує уваги</strong><span>{financeQualityIssues.slice(0, 2).map((issue) => issue.title).join(" · ")}{financeQualityIssues.length > 2 ? ` · ще ${financeQualityIssues.length - 2}` : ""}</span></div>}
-
     <div className={styles.operationalSectionHead}><span>ОПЕРАЦІЙНІ KPI</span><strong>Сервіс, клієнти та потужність</strong></div>
     <div className={styles.metricGrid}>
       <SimpleMetricCard title="Середній чек" value={money(averageCheckForDisplay)} icon="₴" subtitle={finance?.averageCheck ? `${finance.averageCheck.visits} завершених оплачуваних візитів · визнана виручка` : "не підміняємо середнім платежем"} onClick={() => navigateCrm("Аналітика")} />

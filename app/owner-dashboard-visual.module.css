@@ -86,62 +86,8 @@
   .controlCard{min-height:226px}
 }
 
-
-/* OWNER DASHBOARD FINANCE TRUTH V7 */
-.financeTruthHeader{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;padding:13px 14px;border:1px solid var(--owner-line);border-radius:16px;background:var(--owner-card);margin-bottom:9px}
-.financeTruthHeader>div{display:grid;gap:3px;min-width:0}
-.financeTruthHeader span,.operationalSectionHead span{font-size:11px;font-weight:900;letter-spacing:.08em;color:var(--owner-orange)}
-.financeTruthHeader strong,.operationalSectionHead strong{font-size:16px}
-.financeTruthHeader small{font-size:11px;line-height:1.4;color:var(--owner-muted);max-width:900px}
-.financeQualityGood,.financeQualityBad{display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;border-radius:999px;padding:7px 10px;font-size:11px}
-.financeQualityGood{background:color-mix(in srgb,var(--owner-green) 12%,transparent);color:var(--owner-green)}
-.financeQualityBad{background:color-mix(in srgb,var(--owner-red) 12%,transparent);color:var(--owner-red)}
-.financeTruthGrid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px;margin-bottom:9px}
-.financeTruthCard{display:grid;gap:5px;min-width:0;text-align:left;padding:12px;border:1px solid var(--owner-line);border-radius:14px;background:var(--owner-card);color:inherit;font:inherit;cursor:pointer}
-.financeTruthCard:hover{border-color:color-mix(in srgb,var(--owner-orange) 45%,var(--owner-line));box-shadow:0 5px 18px rgba(15,23,42,.07)}
-.financeTruthCard>span{font-size:12px;font-weight:800;color:var(--owner-muted)}
-.financeTruthCard>strong{font-size:22px;line-height:1.08;font-variant-numeric:tabular-nums}
-.financeTruthCard>small{min-height:30px;font-size:11px;line-height:1.35;color:var(--owner-muted)}
-.financeTruthPrimary{border-color:color-mix(in srgb,var(--owner-orange) 45%,var(--owner-line));background:color-mix(in srgb,var(--owner-orange) 5%,var(--owner-card))}
-.financeTruthPrimary>strong{font-size:26px}
-.financeTruthPlan{display:flex;align-items:center;justify-content:space-between;gap:8px;padding-top:7px;border-top:1px solid var(--owner-line);font-size:11px;color:var(--owner-muted)}
-.financeTruthPlan b{color:var(--owner-text);font-variant-numeric:tabular-nums}
-.financeTruthPlan em{min-width:42px;text-align:center;padding:3px 6px;border-radius:999px;font-style:normal;font-size:11px;font-weight:900}
-.financePlanNeutral{background:var(--owner-chart-track);color:var(--owner-muted)}
-.financePlanGood{background:color-mix(in srgb,var(--owner-green) 13%,transparent);color:var(--owner-green)}
-.financePlanWarn{background:color-mix(in srgb,var(--owner-orange) 14%,transparent);color:var(--owner-orange)}
-.financePlanBad{background:color-mix(in srgb,var(--owner-red) 13%,transparent);color:var(--owner-red)}
-.financeTruthProgress{height:6px;border-radius:999px;overflow:hidden;background:var(--owner-chart-track)}
-.financeTruthProgress i{display:block;height:100%;border-radius:inherit}
-.financeProgressGood{background:var(--owner-green)}
-.financeProgressWarn{background:var(--owner-orange)}
-.financeProgressBad{background:var(--owner-red)}
-.financeTrendPanel{display:grid;gap:9px;padding:13px 14px;border:1px solid var(--owner-line);border-radius:16px;background:var(--owner-card);margin-bottom:10px}
-.financeTrendHead{display:flex;justify-content:space-between;align-items:flex-start;gap:16px}
-.financeTrendHead>div:first-child{display:grid;gap:3px}
-.financeTrendHead span{font-size:11px;font-weight:900;letter-spacing:.08em;color:var(--owner-orange)}
-.financeTrendHead strong{font-size:15px}
-.financeTrendHead small{font-size:11px;line-height:1.35;color:var(--owner-muted)}
-.financeTrendHead>div:last-child{display:grid;text-align:right;gap:2px}
-.financeTrendHead>div:last-child b{font-size:18px}
-.financeTrend{display:grid;gap:6px}
-.financeTrendLegend{display:flex;gap:14px;align-items:center;font-size:11px;color:var(--owner-muted)}
-.financeTrendLegend span{display:flex;align-items:center;gap:5px}
-.financeTrendLegend i{width:8px;height:8px;border-radius:999px}
-.financeRecognizedDot{background:var(--owner-orange)}
-.financeCashDot{background:var(--owner-green)}
-.financeTrend svg{width:100%;height:118px;overflow:visible}
-.financeTrend svg polyline{fill:none;stroke-width:2.4;vector-effect:non-scaling-stroke}
-.financeRecognizedLine{stroke:var(--owner-orange)}
-.financeCashLine{stroke:var(--owner-green)}
-.financeTrendEmpty{padding:22px;border:1px dashed var(--owner-line);border-radius:12px;text-align:center;font-size:11px;color:var(--owner-muted)}
+/* OWNER DASHBOARD — operational section */
 .operationalSectionHead{display:flex;align-items:baseline;gap:9px;margin:3px 1px 8px}
-@media(max-width:1180px){.financeTruthGrid{grid-template-columns:repeat(2,minmax(0,1fr))}}
-@media(max-width:720px){.financeTruthHeader,.financeTrendHead{display:grid}.financeQualityGood,.financeQualityBad{justify-self:start}.financeTruthGrid{grid-template-columns:1fr 1fr}.financeTruthCard>strong{font-size:20px}.financeTruthPrimary>strong{font-size:22px}}
-@media(max-width:460px){.financeTruthGrid{grid-template-columns:1fr}}
-
-.financeQualityIssues{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:-2px 0 10px;padding:9px 12px;border:1px solid color-mix(in srgb,var(--owner-orange) 34%,var(--owner-line));border-radius:12px;background:color-mix(in srgb,var(--owner-orange) 7%,var(--owner-card));font-size:11px}
-.financeQualityIssues strong{font-size:11px;color:var(--owner-text)}
-.financeQualityIssues span{color:var(--owner-muted);text-align:right}
+.operationalSectionHead span{font-size:11px;font-weight:900;letter-spacing:.08em;color:var(--owner-orange)}
+.operationalSectionHead strong{font-size:16px}
 .financeControlUnavailable{display:grid;place-items:center;min-height:58px;margin:0 0 8px;border:1px dashed var(--owner-line);border-radius:10px;color:var(--owner-muted);font-size:11px;text-align:center;padding:8px}
-@media(max-width:720px){.financeQualityIssues{display:grid}.financeQualityIssues span{text-align:left}}
