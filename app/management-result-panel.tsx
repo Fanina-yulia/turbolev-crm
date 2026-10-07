@@ -111,6 +111,10 @@ function progressTone(value: number | null) {
 
 export function ManagementResultPanel({ mode, locationId }: { mode: ManagementMode; locationId?: string | null }) {
   if (mode === "OWNER") return <OwnerFinancialResultPanel locationId={locationId} />;
+  return <OperationalManagementResultPanel mode={mode} locationId={locationId} />;
+}
+
+function OperationalManagementResultPanel({ mode, locationId }: { mode: Exclude<ManagementMode, "OWNER">; locationId?: string | null }) {
   const [weekAnchor, setWeekAnchor] = useState(currentKyivDateKey);
   const [data, setData] = useState<ResultPayload | null>(null);
   const [loading, setLoading] = useState(true);

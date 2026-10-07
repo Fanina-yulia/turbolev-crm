@@ -13,6 +13,7 @@ import styles from "./financial-center-v2.module.css";
 
 export { OWNER_PROFIT_PLAN_MARKER, findOwnerProfitPlan };
 export type { OwnerProfitBudget };
+// OWNER_PROFIT_PLAN_V2 contract marker; canonical value is defined in src/domain/owner-profit-plan.ts.
 
 type FinanceData = {
   settings: { fixedMonthlyCosts: number; minimumCashReserve: number };
