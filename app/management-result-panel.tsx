@@ -200,7 +200,7 @@ function OperationalManagementResultPanel({ mode, locationId }: { mode: Exclude<
   const gauge = Math.max(0, Math.min(120, progress || 0));
   const forecastGap = data?.result.gap ?? null;
   const isCurrentWeek = selectedWeek === currentWeek;
-  const canEdit = mode === "OWNER" && isCurrentWeek && data?.plan?.status !== "ACTIVE" && data?.plan?.status !== "CLOSED";
+  const canEdit = false; // OWNER renders OwnerFinancialResultPanel before this operational branch.
   const qualityWarning = (data?.dataQuality.closedWithoutFinalFinance || 0) + (data?.dataQuality.pipelineWithoutPlannedFinance || 0);
 
   return <section className={`${styles.panel} ${mode === "STATION" ? styles.stationMode : ""}`} aria-label="План факт прогноз">
