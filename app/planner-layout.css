@@ -97,3 +97,29 @@
   [class*="planner-v2_dayRangeNav"]{grid-template-columns:36px minmax(0,1fr) 36px!important}
   [class*="planner-v2_weekBoard"]{padding-bottom:8px}
 }
+
+
+/* WEEK VIEW — approved clean composition, 2026-10-07.
+   Week mode keeps only the page header, week navigation and seven-day board. */
+[class*="planner-v2_page"]:has([class*="planner-v2_weekBoard"]) > [class*="planner-v2_toolbar"],
+[class*="planner-v2_page"]:has([class*="planner-v2_weekBoard"]) > [class*="planner-v2_resourceLegend"],
+[class*="planner-v2_page"]:has([class*="planner-v2_weekBoard"]) > [class*="planner-v2_systemBanner"],
+[class*="planner-v2_page"]:has([class*="planner-v2_weekBoard"]) > [class*="planner-v2_rule"]{
+  display:none!important;
+}
+
+[class*="planner-v2_page"]:has([class*="planner-v2_weekBoard"]) > [class*="planner-v2_rangeNav"]{
+  margin-top:8px!important;
+  margin-bottom:8px!important;
+}
+
+[class*="planner-v2_page"]:has([class*="planner-v2_weekBoard"]) > [class*="planner-v2_weekBoard"]{
+  margin-top:0!important;
+  flex:1 1 auto!important;
+  min-height:0!important;
+}
+
+/* Week cards intentionally omit the customer/owner name. */
+[class*="planner-v2_weekBoard"] [class*="planner-v2_workCard"] > span{
+  display:none!important;
+}
