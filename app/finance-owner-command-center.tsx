@@ -40,12 +40,21 @@ type FinanceData = {
     partsCost: number;
     expenseBreakdown: { payroll: number; otherDirect: number; otherOperating: number; otherExpense: number; tax: number };
   };
+  ownerComparison?: {
+    previousNetIncome: number;
+    change: number;
+    changePercent: number | null;
+    drivers: Array<{ code: string; label: string; current: number; previous: number; impact: number }>;
+  };
   control?: {
     today?: { date: string; revenue: number; cashIn: number; cashOut: number; netCashFlow: number };
     forecast?: {
       currentCash: number;
       in7Days: number;
       in30Days: number;
+      in60Days?: number | null;
+      in90Days?: number | null;
+      forecastHorizonDate?: string | null;
       minimum: { date: string; closingCash: number } | null;
       firstGap: { date: string; closingCash: number } | null;
       firstReserveWarning: { date: string; closingCash: number } | null;
@@ -326,6 +335,23 @@ export function FinanceOwnerCommandCenter({
       <section className={styles.ownerCommandPanel}>
         <div className={styles.panelHeader}><div><span className={styles.eyebrow}>ЩО РОБИТИ ЗАРАЗ</span><h2>Дії для власника</h2></div></div>
         <div className={styles.ownerActionList}>{actionRows.length ? actionRows.map((row, index) => <div key={`${index}:${row}`}><b>{index + 1}</b><span>{row}</span></div>) : <div className={styles.ownerActionGood}>Критичних відхилень не виявлено. Контролюйте план, маржу і Cash In.</div>}</div>
+      </section>
+    </div>
+
+    <div className={styles.ownerInsightGrid}>
+      <section className={styles.ownerCommandPanel}>
+        <div className={styles.panelHeader}><div><span className={styles.eyebrow}>ЧОМУ ЗМІНИВСЯ ПРИБУТОК</span><h2>{data.ownerComparison ? `${money(data.ownerComparison.previousNetIncome)} → ${money(facts?.netIncome)}` : "Порівняння з попереднім періодом"}</h2><p>Не припущення: кожен вплив розрахований з тих самих ledger-фактів, що формують чистий управлінський результат.</p></div></div>
+        {data.ownerComparison?.drivers?.length ? <div className={styles.ownerRankList}>{[...data.ownerComparison.drivers].sort((a,b) => Math.abs(b.impact)-Math.abs(a.impact)).map((row,index) => <div key={row.code}><b>#{index+1}</b><span><strong>{row.label}</strong><small>{money(row.previous)} → {money(row.current)}</small></span><strong className={row.impact >= 0 ? styles.positive : styles.negative}>{row.impact >= 0 ? "+" : ""}{money(row.impact)}</strong></div>)}</div> : <div className={styles.empty}>Для точного порівняння ще недостатньо даних попереднього періоду.</div>}
+      </section>
+      <section className={styles.ownerCommandPanel}>
+        <div className={styles.panelHeader}><div><span className={styles.eyebrow}>CASH 30 / 60 / 90</span><h2>Запас грошей уперед</h2><p>Прогноз із платіжного календаря; непокритий горизонт не підмінюється останньою відомою цифрою.</p></div></div>
+        <div className={styles.ownerPulseGrid}>
+          <div><span>Через 30 днів</span><strong>{money(data.control?.forecast?.in30Days)}</strong></div>
+          <div><span>Через 60 днів</span><strong>{money(data.control?.forecast?.in60Days)}</strong></div>
+          <div><span>Через 90 днів</span><strong>{money(data.control?.forecast?.in90Days)}</strong></div>
+          <div><span>Горизонт прогнозу</span><strong>{data.control?.forecast?.forecastHorizonDate ? dateOnly(data.control.forecast.forecastHorizonDate) : "—"}</strong></div>
+        </div>
+        {data.control?.forecast?.firstGap && <div className={styles.ownerWarningLine}>Касовий розрив: {dateOnly(data.control.forecast.firstGap.date)} · прогнозний залишок {money(data.control.forecast.firstGap.closingCash)}.</div>}
       </section>
     </div>
 
