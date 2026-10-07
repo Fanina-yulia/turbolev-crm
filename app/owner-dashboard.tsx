@@ -273,7 +273,7 @@ export function OwnerControlCenter({ userName, mode = "OWNER" }: { userName?: st
 
     {error && <div className={styles.error}><strong>{isExecutive ? "Не вдалося оновити пульт виконавчого директора" : "Не вдалося оновити пульт власника"}</strong><span>{error}</span><button type="button" onClick={() => void load()}>Повторити</button></div>}
 
-    <OwnerDashboardVisual analytics={analytics} loading={loading} />
+    <OwnerDashboardVisual analytics={analytics} />
 
     {workspaceTab === "RESULT" && <ManagementResultPanel mode={isExecutive ? "EXECUTIVE" : "OWNER"} />}
 
