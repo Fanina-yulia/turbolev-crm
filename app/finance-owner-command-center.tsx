@@ -2,22 +2,17 @@
 
 import { useMemo, useState } from "react";
 import type { FinanceDrilldownMetric } from "./financial-center-v3-control";
+import {
+  OWNER_PROFIT_PLAN_MARKER,
+  calculateOwnerProfitPlanSummary,
+  findOwnerProfitPlan,
+  parseOwnerProfitPlanMeta,
+  type OwnerProfitBudget,
+} from "@/src/domain/owner-profit-plan";
 import styles from "./financial-center-v2.module.css";
 
-export const OWNER_PROFIT_PLAN_MARKER = "OWNER_PROFIT_PLAN_V2|";
-
-export type OwnerProfitBudget = {
-  id: string;
-  name: string;
-  metric: string;
-  amount: number;
-  actual: number;
-  variance: number;
-  completionPercent: number | null;
-  periodStart: string;
-  periodEnd: string;
-  notes?: string | null;
-};
+export { OWNER_PROFIT_PLAN_MARKER, findOwnerProfitPlan };
+export type { OwnerProfitBudget };
 
 type FinanceData = {
   settings: { fixedMonthlyCosts: number; minimumCashReserve: number };
@@ -96,12 +91,6 @@ export type FinanceManagementPulse = {
   quality?: { grossMarginPct: number | null; partsMarginPct: number | null; warrantyRatePct: number | null; overdueReceivablePct: number; dataQualityPct: number };
 };
 
-type ProfitPlanMeta = {
-  periodType: "MONTH" | "QUARTER";
-  minimum: number | null;
-  stretch: number | null;
-};
-
 function money(value: number | null | undefined) {
   return value == null ? "—" : new Intl.NumberFormat("uk-UA", { style: "currency", currency: "UAH", maximumFractionDigits: 0 }).format(value);
 }
@@ -155,24 +144,6 @@ function weekBounds(anchor: string) {
   const start = date.toISOString().slice(0, 10);
   return { start, end: addDays(start, 6) };
 }
-function parsePlanMeta(plan: OwnerProfitBudget | null): ProfitPlanMeta {
-  if (!plan?.notes?.startsWith(OWNER_PROFIT_PLAN_MARKER)) return { periodType: daysInclusive(dateOnly(plan?.periodStart || dayKey()), dateOnly(plan?.periodEnd || dayKey())) > 45 ? "QUARTER" : "MONTH", minimum: null, stretch: null };
-  try {
-    const parsed = JSON.parse(plan.notes.slice(OWNER_PROFIT_PLAN_MARKER.length)) as Partial<ProfitPlanMeta>;
-    return {
-      periodType: parsed.periodType === "QUARTER" ? "QUARTER" : "MONTH",
-      minimum: typeof parsed.minimum === "number" ? parsed.minimum : null,
-      stretch: typeof parsed.stretch === "number" ? parsed.stretch : null,
-    };
-  } catch {
-    return { periodType: "MONTH", minimum: null, stretch: null };
-  }
-}
-export function findOwnerProfitPlan(budgets: OwnerProfitBudget[] | undefined) {
-  const candidates = (budgets || []).filter((row) => row.metric === "NET_INCOME" && row.notes?.startsWith(OWNER_PROFIT_PLAN_MARKER));
-  return candidates.sort((a, b) => daysInclusive(dateOnly(a.periodStart), dateOnly(a.periodEnd)) - daysInclusive(dateOnly(b.periodStart), dateOnly(b.periodEnd)))[0] || null;
-}
-
 function toneClass(state: "good" | "warn" | "bad" | "neutral") {
   return state === "good" ? styles.ownerQuestionGood : state === "warn" ? styles.ownerQuestionWarn : state === "bad" ? styles.ownerQuestionBad : "";
 }
@@ -196,44 +167,19 @@ export function FinanceOwnerCommandCenter({
 }) {
   const facts = data.ownerSummary;
   const plan = findOwnerProfitPlan(data.budgets);
-  const meta = parsePlanMeta(plan);
+  const meta = parseOwnerProfitPlanMeta(plan);
   const today = dayKey();
   const currentPlanFacts = planData?.ownerSummary || facts;
   const planMath = useMemo(() => {
     if (!plan) return null;
-    const start = dateOnly(plan.periodStart);
-    const end = dateOnly(plan.periodEnd);
-    const totalDays = Math.max(1, daysInclusive(start, end));
-    const elapsedDays = today < start ? 0 : today > end ? totalDays : daysInclusive(start, today);
-    const remainingDays = Math.max(0, totalDays - elapsedDays);
-    const actual = currentPlanFacts?.netIncome || 0;
-    const expectedToNow = Math.round(plan.amount * elapsedDays / totalDays);
-    const gapToPace = actual - expectedToNow;
-    const remaining = Math.max(0, plan.amount - actual);
-    const requiredPerDay = remainingDays > 0 ? remaining / remainingDays : remaining;
-    const paceForecast = elapsedDays > 0 ? actual / elapsedDays * totalDays : 0;
-    const month = monthBounds(clampDate(today, start, end));
-    const week = weekBounds(clampDate(today, start, end));
-    const monthDays = intersectionDays(start, end, month.start, month.end);
-    const weekDays = intersectionDays(start, end, week.start, week.end);
-    const monthTarget = plan.amount * monthDays / totalDays;
-    const weekTarget = plan.amount * weekDays / totalDays;
-    const dayTarget = plan.amount / totalDays;
-
-    const sharedActual = currentPlanFacts
-      ? currentPlanFacts.expenseBreakdown.otherOperating + currentPlanFacts.expenseBreakdown.otherExpense + currentPlanFacts.expenseBreakdown.tax
-      : 0;
-    const projectedShared = elapsedDays > 0
-      ? sharedActual / elapsedDays * totalDays
-      : data.settings.fixedMonthlyCosts * (totalDays / 30);
-    const requiredContributionTotal = plan.amount + Math.max(0, projectedShared);
-    const weekContributionTarget = requiredContributionTotal * weekDays / totalDays;
-    return {
-      start, end, totalDays, elapsedDays, remainingDays, actual, expectedToNow, gapToPace, remaining,
-      requiredPerDay, paceForecast, monthTarget, weekTarget, dayTarget, weekContributionTarget,
-      projectedShared,
-    };
-  }, [plan?.id, plan?.periodStart, plan?.periodEnd, plan?.amount, currentPlanFacts?.netIncome, currentPlanFacts?.expenseBreakdown.otherOperating, currentPlanFacts?.expenseBreakdown.otherExpense, currentPlanFacts?.expenseBreakdown.tax, data.settings.fixedMonthlyCosts, today]);
+    return calculateOwnerProfitPlanSummary({
+      plan,
+      facts: currentPlanFacts,
+      comparison: planData?.ownerComparison || data.ownerComparison,
+      fixedMonthlyCosts: data.settings.fixedMonthlyCosts,
+      today,
+    });
+  }, [plan, currentPlanFacts, planData?.ownerComparison, data.ownerComparison, data.settings.fixedMonthlyCosts, today]);
 
   const due30 = useMemo(() => {
     const horizon = addDays(today, 30);
