@@ -379,7 +379,7 @@ export function OwnerProfitPlanDialog({
   onSave: (payload: Record<string, unknown>) => Promise<void>;
 }) {
   const existing = findOwnerProfitPlan(budgets);
-  const existingMeta = parsePlanMeta(existing);
+  const existingMeta = parseOwnerProfitPlanMeta(existing);
   const [periodType, setPeriodType] = useState<"MONTH" | "QUARTER">(existingMeta.periodType);
   const [anchor, setAnchor] = useState(existing ? dateOnly(existing.periodStart) : dayKey());
   const [target, setTarget] = useState(existing ? String(existing.amount) : "");
