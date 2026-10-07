@@ -36,20 +36,6 @@ function labelOf(label: string) {
   return label === "Мої задачі" ? "Центр уваги" : label;
 }
 
-function dockLabelOfGroup(group: string) {
-  return ({
-    "Робочий стіл": "Головна",
-    "Комунікація": "Заявки",
-    "Планувальник": "Планувальник",
-    "Клієнти та авто": "Клієнти / Авто",
-    "Сервіс": "Сервіс",
-    "Запчастини": "Склад",
-    "Фінанси": "Фінанси",
-    "Аналітика": "Аналітика",
-    "Налаштування": "Налаштування",
-  } as Record<string, string>)[group] ?? group;
-}
-
 function step(value: number, velocity: number, target: number, stiffness: number, damping: number, dt: number) {
   let v = velocity + (target - value) * stiffness * dt;
   v *= Math.pow(damping, dt);
@@ -289,7 +275,7 @@ export function SidebarRailV7() {
               onPointerEnter={() => { if (!wideOpen) setOpenGroup(group.label); }}
               onFocus={() => setOpenGroup(group.label)}
               onClick={() => setOpenGroup((current) => current === group.label ? null : group.label)}
-            ><span className="crmDockGlyph7"><GroupIcon group={group.label}/></span><span className="crmDockLabel7">{dockLabelOfGroup(group.label)}</span></button>
+            ><span className="crmDockGlyph7"><GroupIcon group={group.label}/></span></button>
 
             <div
               className={`crmDockFlyout7 ${show ? "crmDockFlyoutShow7" : ""}`}
@@ -368,103 +354,6 @@ export function SidebarRailV7() {
         @keyframes crmWideIn7{from{opacity:0;transform:translateX(-14px) scale(.985)}to{opacity:1;transform:translateX(0) scale(1)}}
         .crmWideHeader7{height:74px;flex:0 0 74px;display:flex;align-items:center;justify-content:space-between;padding:12px 14px 10px;border-bottom:1px solid color-mix(in srgb,var(--line) 65%,transparent)}.crmWideBrand7{position:relative;width:176px;height:42px}.crmWideBrand7 img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;object-position:left center}.crmWideBrandDark7{display:none}:root[data-theme="dark"] .crmWideBrandLight7{display:none}:root[data-theme="dark"] .crmWideBrandDark7{display:block}.crmWideClose7{width:34px!important;height:34px!important;min-height:34px!important;padding:0!important;border:0!important;border-radius:10px!important;background:var(--panel-2)!important;color:var(--muted)!important;font-size:22px!important;line-height:1!important;cursor:pointer!important}.crmWideClose7:hover{color:var(--text)!important;background:color-mix(in srgb,var(--panel-2) 70%,var(--orange) 8%)!important}
         .crmWideGroups7{min-height:0;overflow:auto;padding:10px 10px 18px;display:grid;gap:8px}.crmWideGroup7{padding:7px;border:1px solid transparent;border-radius:14px}.crmWideGroupActive7{border-color:color-mix(in srgb,var(--orange) 24%,var(--line));background:color-mix(in srgb,var(--orange) 5%,transparent)}.crmWideGroupTitle7{height:34px;display:flex;align-items:center;gap:10px;padding:0 5px 5px}.crmWideGroupIcon7{width:26px;height:26px;display:grid;place-items:center;border-radius:8px;background:linear-gradient(145deg,#fff,#edf0f4);border:1px solid rgba(176,185,194,.42);box-shadow:0 2px 5px rgba(29,39,49,.10)}.crmWideGroupIcon7 svg{width:21px;height:21px}.crmWideGroupTitle7 strong{font-size:12px;letter-spacing:.025em}.crmWideGroupItems7{display:grid;gap:2px}.crmWideGroupItems7 button{width:100%;min-height:36px;padding:8px 11px 8px 42px!important;border:0!important;border-radius:9px!important;background:transparent!important;color:var(--soft-text)!important;text-align:left!important;font-size:12px!important;font-weight:600!important;cursor:pointer!important}.crmWideGroupItems7 button:hover,.crmWideGroupItems7 button:focus-visible{background:var(--panel-2)!important;color:var(--text)!important}.crmWideGroupItems7 .crmWideItemActive7{background:rgba(255,102,0,.10)!important;color:var(--orange)!important;font-weight:800!important;box-shadow:inset 3px 0 0 var(--orange)}
-      }
-      /* Planner approved mockup: labeled compact navigation rail only on Planner. */
-      @media(min-width:761px){
-        body:has([data-planner-page="true"]) .shell:has(>.sidebar){
-          --crm-sidebar-width:108px!important;
-          grid-template-columns:108px minmax(0,1fr)!important;
-        }
-        body:has([data-planner-page="true"]) .sidebar{
-          width:108px!important;
-          min-width:108px!important;
-          max-width:108px!important;
-        }
-        body:has([data-planner-page="true"]) .crmDock7{
-          width:104px;
-          inset:4px auto 4px 4px;
-          padding:8px 6px 10px;
-          border-radius:18px;
-          background:color-mix(in srgb,var(--sidebar) 96%,transparent);
-          box-shadow:0 12px 30px rgba(15,23,42,.08);
-        }
-        body:has([data-planner-page="true"]) .crmDockBrand7{
-          width:82px!important;
-          height:48px!important;
-          min-height:48px!important;
-          flex-basis:48px!important;
-          margin-bottom:6px!important;
-        }
-        body:has([data-planner-page="true"]) .crmDockBrand7 span{
-          width:43px;
-          height:43px;
-        }
-        body:has([data-planner-page="true"]) .crmDockItems7{
-          justify-content:flex-start;
-          gap:2px;
-        }
-        body:has([data-planner-page="true"]) .crmDockSlot7{
-          --dock-scale:1!important;
-          --dock-x:0px!important;
-          width:90px;
-          height:67px;
-          flex:0 0 67px;
-        }
-        body:has([data-planner-page="true"]) .crmDockGroupStart7::before{display:none}
-        body:has([data-planner-page="true"]) .crmDockButton7{
-          width:88px!important;
-          min-width:88px!important;
-          max-width:88px!important;
-          height:63px!important;
-          min-height:63px!important;
-          display:flex!important;
-          flex-direction:column!important;
-          justify-content:center!important;
-          gap:4px!important;
-          border-radius:12px!important;
-          transform:none!important;
-        }
-        body:has([data-planner-page="true"]) .crmDockGlyph7{
-          width:31px;
-          height:31px;
-          transform:none!important;
-          filter:none;
-        }
-        body:has([data-planner-page="true"]) .crmDockGlyph7 svg{width:24px;height:24px}
-        .crmDockLabel7{
-          display:none;
-        }
-        body:has([data-planner-page="true"]) .crmDockLabel7{
-          display:block;
-          max-width:84px;
-          overflow:hidden;
-          color:var(--muted);
-          font-size:11px;
-          line-height:1.05;
-          font-weight:750;
-          text-align:center;
-          white-space:normal;
-          text-overflow:ellipsis;
-        }
-        body:has([data-planner-page="true"]) .crmDockActive7{
-          background:color-mix(in srgb,var(--orange) 8%,transparent)!important;
-        }
-        body:has([data-planner-page="true"]) .crmDockActive7::before{
-          left:-8px;
-          width:4px;
-          height:34px;
-          border-radius:0 6px 6px 0;
-          box-shadow:none;
-        }
-        body:has([data-planner-page="true"]) .crmDockActive7 .crmDockLabel7{color:var(--orange)}
-        body:has([data-planner-page="true"]) .crmDockFlyout7{
-          left:98px;
-        }
-        body:has([data-planner-page="true"]) .crmDockStatus7{
-          width:80px;
-          height:24px;
-          flex-basis:24px;
-        }
       }
       @media(max-width:760px){.crmDock7,.crmWideBackdrop7{display:none!important}}
       @media(prefers-reduced-motion:reduce) and (min-width:761px){.crmWideMenu7,.crmDockFlyout7{animation:none!important;transition:none!important}}
