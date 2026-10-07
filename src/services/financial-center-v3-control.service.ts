@@ -451,7 +451,7 @@ async function cashCloseState(scope: FinancialCenterScope, base: BaseView) {
   };
 }
 
-async function capacityState(scope: FinancialCenterScope) {
+async function capacityState(scope: FinancialCenterScope, base: BaseView) {
   const prisma = getPrisma();
   const posts = await prisma.servicePost.findMany({
     where: { isActive: true, ...locationWhere(scope) },
@@ -464,16 +464,44 @@ async function capacityState(scope: FinancialCenterScope) {
     },
     orderBy: [{ locationId: "asc" }, { sortOrder: "asc" }, { name: "asc" }],
   });
-  const view = posts.map((post) => ({
-    id: post.id,
-    name: post.name,
-    locationId: post.locationId,
-    locationName: post.location.name,
-    dailyMinutes: Math.max(0, post.location.closeMinute - post.location.openMinute),
-  }));
+  const workOrderProfit = new Map(base.profitability.workOrders.map((row) => [row.workOrderId, row.grossProfit]));
+  const workOrderIds = Array.from(workOrderProfit.keys());
+  const appointments = workOrderIds.length ? await prisma.serviceAppointment.findMany({
+    where: { workOrderId: { in: workOrderIds }, postId: { not: null }, ...locationWhere(scope) },
+    select: { workOrderId: true, postId: true, updatedAt: true },
+    orderBy: { updatedAt: "desc" },
+  }) : [];
+  // A work order may have several planner appointments. Attribute the financial result
+  // once, to its latest known lift, so a reschedule never double-counts contribution.
+  const postByWorkOrder = new Map<string, string>();
+  for (const appointment of appointments) {
+    if (appointment.workOrderId && appointment.postId && !postByWorkOrder.has(appointment.workOrderId)) {
+      postByWorkOrder.set(appointment.workOrderId, appointment.postId);
+    }
+  }
+  const contributionByPost = new Map<string, { grossContribution: number; workOrders: number }>();
+  for (const [workOrderId, postId] of postByWorkOrder.entries()) {
+    const current = contributionByPost.get(postId) || { grossContribution: 0, workOrders: 0 };
+    current.grossContribution += workOrderProfit.get(workOrderId) || 0;
+    current.workOrders += 1;
+    contributionByPost.set(postId, current);
+  }
+  const view = posts.map((post) => {
+    const contribution = contributionByPost.get(post.id) || { grossContribution: 0, workOrders: 0 };
+    return {
+      id: post.id,
+      name: post.name,
+      locationId: post.locationId,
+      locationName: post.location.name,
+      dailyMinutes: Math.max(0, post.location.closeMinute - post.location.openMinute),
+      grossContribution: roundMoney(contribution.grossContribution),
+      workOrders: contribution.workOrders,
+    };
+  });
   return {
     activePosts: view.length,
     totalDailyMinutes: view.reduce((sum, post) => sum + post.dailyMinutes, 0),
+    grossContribution: roundMoney(view.reduce((sum, post) => sum + post.grossContribution, 0)),
     posts: view,
   };
 }
@@ -483,7 +511,7 @@ export async function getFinancialCenterV3Control(scope: FinancialCenterScope, b
     today(scope),
     reconciliation(scope),
     cashCloseState(scope, base),
-    capacityState(scope),
+    capacityState(scope, base),
   ]);
 
   const warning = base.settings.warningGrossMarginPercent;
