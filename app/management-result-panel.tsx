@@ -200,7 +200,7 @@ function OperationalManagementResultPanel({ mode, locationId }: { mode: Exclude<
   const gauge = Math.max(0, Math.min(120, progress || 0));
   const forecastGap = data?.result.gap ?? null;
   const isCurrentWeek = selectedWeek === currentWeek;
-  const canEdit = mode === "OWNER" && isCurrentWeek && data?.plan?.status !== "ACTIVE" && data?.plan?.status !== "CLOSED";
+  const canEdit = false;
   const qualityWarning = (data?.dataQuality.closedWithoutFinalFinance || 0) + (data?.dataQuality.pipelineWithoutPlannedFinance || 0);
 
   return <section className={`${styles.panel} ${mode === "STATION" ? styles.stationMode : ""}`} aria-label="План факт прогноз">
@@ -266,7 +266,7 @@ function OperationalManagementResultPanel({ mode, locationId }: { mode: Exclude<
       <ManagementIntelligencePanels data={data} mode={mode} weekAnchor={weekAnchor} locationId={locationId} onRefresh={load} />
 
       <div className={styles.actions}>
-        {data.plan && (mode === "OWNER" || mode === "EXECUTIVE") && !["ACTIVE", "CLOSED"].includes(data.plan.status) && <button type="button" onClick={() => void planAction("ACTIVATE")} disabled={saving}>Активувати план</button>}
+        {data.plan && mode === "EXECUTIVE" && !["ACTIVE", "CLOSED"].includes(data.plan.status) && <button type="button" onClick={() => void planAction("ACTIVATE")} disabled={saving}>Активувати план</button>}
         {data.plan && mode === "STATION" && !["ACTIVE", "CLOSED"].includes(data.plan.status) && <button type="button" onClick={() => void planAction("ACCEPT")} disabled={saving}>Прийняти план станції</button>}
         <span>Факт ≠ Cash In: виробничий результат і реально отримані гроші показуються окремо.</span>
       </div>
