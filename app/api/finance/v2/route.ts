@@ -164,6 +164,8 @@ function redactFinanceForPersona(data: any, control: any, persona: string) {
           suppliers: [],
         },
         ownerSummary: undefined,
+
+        ownerComparison: undefined,
         financeCompleteness: {
           ...data.financeCompleteness,
           issues: [],
@@ -229,6 +231,8 @@ function redactFinanceForPersona(data: any, control: any, persona: string) {
       },
       profitability: { workOrders: [], services: [], parts: [], mechanics: [], suppliers: [] },
       ownerSummary: undefined,
+
+      ownerComparison: undefined,
       financeCompleteness: {
         ...data.financeCompleteness,
         issues: [],
