@@ -139,3 +139,9 @@
 @media(max-width:1180px){.financeTruthGrid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:720px){.financeTruthHeader,.financeTrendHead{display:grid}.financeQualityGood,.financeQualityBad{justify-self:start}.financeTruthGrid{grid-template-columns:1fr 1fr}.financeTruthCard>strong{font-size:20px}.financeTruthPrimary>strong{font-size:22px}}
 @media(max-width:460px){.financeTruthGrid{grid-template-columns:1fr}}
+
+.financeQualityIssues{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:-2px 0 10px;padding:9px 12px;border:1px solid color-mix(in srgb,var(--owner-orange) 34%,var(--owner-line));border-radius:12px;background:color-mix(in srgb,var(--owner-orange) 7%,var(--owner-card));font-size:11px}
+.financeQualityIssues strong{font-size:11px;color:var(--owner-text)}
+.financeQualityIssues span{color:var(--owner-muted);text-align:right}
+.financeControlUnavailable{display:grid;place-items:center;min-height:58px;margin:0 0 8px;border:1px dashed var(--owner-line);border-radius:10px;color:var(--owner-muted);font-size:11px;text-align:center;padding:8px}
+@media(max-width:720px){.financeQualityIssues{display:grid}.financeQualityIssues span{text-align:left}}

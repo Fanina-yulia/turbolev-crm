@@ -481,6 +481,8 @@ export function OwnerDashboardVisual({ analytics }: Props) {
   const revenueRiskCount = noShow + waitingApproval + control.risk.paused;
   const pipeline = facts.pipeline;
   const dataQuality = facts.dataQuality;
+  const financeAvailable = Boolean(finance?.ok && finance.summary);
+  const financeQualityIssues = finance?.dataQuality?.issues ?? [];
 
   const pipelineRows = useMemo<ChartRow[]>(() => [
     { label: "Заплановано", value: pipeline?.scheduledAmount ?? 0, tone: "orange", formatted: money(pipeline?.scheduledAmount ?? 0), detail: `${pipeline?.scheduledCount ?? 0} записів` },
@@ -513,7 +515,7 @@ export function OwnerDashboardVisual({ analytics }: Props) {
   return <section className={styles.visualDashboard} aria-label="Ключова аналітика власника">
     <div className={styles.financeTruthHeader}>
       <div><span>ФІНАНСОВЕ ЯДРО</span><strong>Одна цифра в Пульті та Фінансовому центрі</strong><small>Результат — з FinancialEvent, гроші — з CashTransaction, борги — з FinancialObligation. Аванс не стає виручкою до визнання послуги.</small></div>
-      <b className={finance?.integrity?.ok ? styles.financeQualityGood : styles.financeQualityBad}>{financeError ? "Дані недоступні" : finance?.integrity?.ok ? `✓ Узгоджено · ${finance.dataQuality?.score ?? 100}%` : `⚠ Розбіжностей: ${finance?.integrity?.issueCount ?? 0}`}</b>
+      <b className={finance?.integrity?.ok ? styles.financeQualityGood : styles.financeQualityBad}>{controlLoading && !finance && !financeError ? "Оновлюю фінанси…" : financeError || !financeAvailable ? "Дані недоступні" : finance?.integrity?.ok ? `✓ Узгоджено · ${finance.dataQuality?.score ?? 100}%` : `⚠ Розбіжностей: ${finance?.integrity?.issueCount ?? 0}`}</b>
     </div>
 
     <div className={styles.financeTruthGrid}>
@@ -530,6 +532,7 @@ export function OwnerDashboardVisual({ analytics }: Props) {
       <div className={styles.financeTrendHead}><div><span>РЕЗУЛЬТАТ ≠ ГРОШІ</span><strong>Визнана виручка та Cash In</strong><small>Дві окремі лінії: виконана/визнана послуга не змішується з датою фактичної оплати.</small></div><div><b>{money(finance?.cashFlow?.inflow)}</b><small>отримано за період</small></div></div>
       {finance?.trend?.length ? <DualFinanceTrend rows={finance.trend} /> : <div className={styles.financeTrendEmpty}>{financeError || "За вибраний період фінансового руху ще немає."}</div>}
     </div>
+    {financeQualityIssues.length > 0 && <div className={styles.financeQualityIssues}><strong>Якість фінансових даних потребує уваги</strong><span>{financeQualityIssues.slice(0, 2).map((issue) => issue.title).join(" · ")}{financeQualityIssues.length > 2 ? ` · ще ${financeQualityIssues.length - 2}` : ""}</span></div>}
 
     <div className={styles.operationalSectionHead}><span>ОПЕРАЦІЙНІ KPI</span><strong>Сервіс, клієнти та потужність</strong></div>
     <div className={styles.metricGrid}>
@@ -552,11 +555,11 @@ export function OwnerDashboardVisual({ analytics }: Props) {
         <div className={styles.controlFoot}><span>{pipeline?.pendingApprovalCount ? `На погодженні: ${pipeline.pendingApprovalCount}` : "Поточний портфель"}</span><b className={(dataQuality?.pipelineUnpricedCount ?? 0) > 0 ? pipelineStyles.dataGap : ""}>{(dataQuality?.pipelineUnpricedCount ?? 0) > 0 ? `${dataQuality?.pipelineUnpricedCount} без суми` : "оцінено"}</b></div>
       </button>
 
-      <button type="button" className={`${styles.controlCard} ${pipelineStyles.controlCardFinance}`} onClick={() => navigateCrm("Оплати", { scope: "due" })} aria-label={`Дебіторка: ${money(control.receivables.total)}`}>
+      <button type="button" className={`${styles.controlCard} ${pipelineStyles.controlCardFinance}`} onClick={() => navigateCrm("Оплати", { scope: "due" })} aria-label={`Дебіторка: ${money(financeAvailable ? control.receivables.total : null)}`}>
         <div className={styles.controlHead}><div><MetricIcon>₴</MetricIcon><span>Дебіторка</span></div><em>›</em></div>
-        <div className={styles.controlValue}><strong>{money(control.receivables.total)}</strong><span>{control.receivables.count} відкритих фінансових зобов'язань</span></div>
-        <InteractiveStackedBar rows={receivableRows} />
-        <div className={styles.controlFoot}><span>Прострочений борг</span><b className={(dataQuality?.waitingPaymentUnpricedCount ?? 0) > 0 ? pipelineStyles.dataGap : control.receivables.debt > 0 ? styles.textDanger : ""}>{(dataQuality?.waitingPaymentUnpricedCount ?? 0) > 0 ? `${dataQuality?.waitingPaymentUnpricedCount} очікують оплату без суми` : money(control.receivables.debt)}</b></div>
+        <div className={styles.controlValue}><strong>{money(financeAvailable ? control.receivables.total : null)}</strong><span>{financeAvailable ? `${control.receivables.count} відкритих фінансових зобов'язань` : "фінансові дані недоступні"}</span></div>
+        {financeAvailable ? <InteractiveStackedBar rows={receivableRows} /> : <div className={styles.financeControlUnavailable}>Не підміняємо помилку нульовим боргом.</div>}
+        <div className={styles.controlFoot}><span>Прострочений борг</span><b className={(dataQuality?.waitingPaymentUnpricedCount ?? 0) > 0 ? pipelineStyles.dataGap : control.receivables.debt > 0 ? styles.textDanger : ""}>{!financeAvailable ? "—" : (dataQuality?.waitingPaymentUnpricedCount ?? 0) > 0 ? `${dataQuality?.waitingPaymentUnpricedCount} очікують оплату без суми` : money(control.receivables.debt)}</b></div>
       </button>
 
       <button type="button" className={`${styles.controlCard} ${control.decisions.total > 0 ? styles.controlAttention : ""}`} onClick={() => navigateCrm("Фінансовий центр")} aria-label={`Потрібне моє рішення: ${control.decisions.total}`}>
