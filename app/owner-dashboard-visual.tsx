@@ -48,14 +48,6 @@ type Props = {
 type Tone = "orange" | "green" | "red" | "neutral";
 type ChartRow = { label: string; value: number; tone: Tone; formatted?: string; detail?: string };
 
-type PaymentRow = {
-  outstanding: number;
-  paid: number;
-  overdue: boolean;
-  flags: { due: boolean; partial: boolean; debt: boolean; paidToday: boolean };
-};
-
-type PaymentsPayload = { ok?: boolean; rows?: PaymentRow[] };
 type MarginApprovalRow = { workOrderId?: string; revenue?: number; grossMarginPercent?: number; warningMarginPercent?: number };
 type MarginApprovalsPayload = { ok?: boolean; pending?: MarginApprovalRow[] };
 type AttentionItem = { id?: string; issues?: Array<{ code: string }> };
@@ -98,6 +90,34 @@ type OwnerFactsPayload = {
     pipelineUnpricedCount: number;
     waitingPaymentUnpricedCount: number;
   } | null;
+};
+
+type OwnerFinancePayload = {
+  ok?: boolean;
+  available?: boolean;
+  error?: string;
+  summary?: {
+    netIncome: number;
+    serviceTurnover: number;
+    partsMargin: number;
+    payrollAccrued: number;
+    payrollDue: number;
+    grossIncome: number;
+    totalExpenses: number;
+    cash: number;
+    partsRevenue: number;
+    partsCost: number;
+    serviceBreakdown: { labor: number; diagnostics: number; external: number; other: number };
+    expenseBreakdown: { payroll: number; otherDirect: number; otherOperating: number; otherExpense: number; tax: number };
+  };
+  cashFlow?: { inflow: number; outflow: number; net: number };
+  receivables?: { total: number; count: number; due: number; dueCount: number; partial: number; partialCount: number; overdue: number; overdueCount: number };
+  payables?: { total: number; count: number; due: number; dueCount: number; partial: number; partialCount: number; overdue: number; overdueCount: number };
+  averageCheck?: { value: number | null; recognizedRevenue: number; visits: number };
+  plans?: Array<{ id: string; name: string; metric: string; amount: number; actual: number; completionPercent: number | null; periodStart: string; periodEnd: string }>;
+  trend?: Array<{ date: string; recognizedRevenue: number; cashIn: number }>;
+  integrity?: { ok: boolean; issueCount: number; checks: Array<{ code: string; label: string; actual: number; expected: number; diff: number; ok: boolean }> };
+  dataQuality?: { score: number; status: "COMPLETE" | "PARTIAL" | "LOW"; issues: Array<{ code: string; level: string; title: string; message: string; count: number }> };
 };
 
 type OwnerControlSnapshot = {
@@ -307,8 +327,69 @@ function InteractiveDonut({ rows, total }: { rows: ChartRow[]; total: number }) 
   </div>;
 }
 
-function sumRows(rows: PaymentRow[], predicate: (row: PaymentRow) => boolean) {
-  return rows.filter(predicate).reduce((sum, row) => sum + Math.max(0, safeNumber(row.outstanding)), 0);
+function OwnerFinanceCard({
+  label,
+  value,
+  note,
+  plan,
+  mode,
+  primary = false,
+  onClick,
+}: {
+  label: string;
+  value: number | null;
+  note: string;
+  plan?: { amount: number } | null;
+  mode: "HIGHER" | "LOWER" | "MINIMUM";
+  primary?: boolean;
+  onClick: () => void;
+}) {
+  const ratio = value != null && plan?.amount && plan.amount > 0 ? value / plan.amount * 100 : null;
+  const good = ratio == null ? null : mode === "LOWER" ? ratio <= 100 : ratio >= 100;
+  const warn = ratio == null ? false : mode === "LOWER" ? ratio > 100 && ratio <= 115 : ratio >= 80 && ratio < 100;
+  return <button type="button" className={`${styles.financeTruthCard} ${primary ? styles.financeTruthPrimary : ""}`} onClick={onClick}>
+    <span>{label}</span>
+    <strong>{money(value)}</strong>
+    <small>{note}</small>
+    <div className={styles.financeTruthPlan}>
+      <span>{plan ? <>План <b>{money(plan.amount)}</b></> : "План не заданий"}</span>
+      <em className={ratio == null ? styles.financePlanNeutral : good ? styles.financePlanGood : warn ? styles.financePlanWarn : styles.financePlanBad}>{ratio == null ? "—" : `${ratio.toFixed(0)}%`}</em>
+    </div>
+    {ratio != null && <div className={styles.financeTruthProgress}><i className={good ? styles.financeProgressGood : warn ? styles.financeProgressWarn : styles.financeProgressBad} style={{ width: `${Math.min(100, Math.max(0, ratio))}%` }} /></div>}
+  </button>;
+}
+
+function SimpleMetricCard({ title, value, icon, subtitle, onClick }: { title: string; value: string; icon: string; subtitle: string; onClick: () => void }) {
+  return <button type="button" className={styles.metricCard} onClick={onClick} aria-label={`${title}: ${value}`}>
+    <div className={styles.metricHead}><MetricIcon>{icon}</MetricIcon><span>{title}</span><em>›</em></div>
+    <strong>{value}</strong>
+    <small className={styles.metricSubtitle}>{subtitle}</small>
+    <span className={styles.deltaNeutral}>факт за вибраний період</span>
+  </button>;
+}
+
+function DualFinanceTrend({ rows }: { rows: Array<{ date: string; recognizedRevenue: number; cashIn: number }> }) {
+  const width = 520;
+  const height = 120;
+  const pad = 8;
+  const values = rows.flatMap((row) => [Math.max(0, row.recognizedRevenue), Math.max(0, row.cashIn)]);
+  const max = Math.max(1, ...values);
+  const points = (key: "recognizedRevenue" | "cashIn") => rows.map((row, index) => {
+    const x = rows.length <= 1 ? width / 2 : pad + index / (rows.length - 1) * (width - pad * 2);
+    const y = height - pad - Math.max(0, row[key]) / max * (height - pad * 2);
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  }).join(" ");
+  return <div className={styles.financeTrend}>
+    <div className={styles.financeTrendLegend}><span><i className={styles.financeRecognizedDot} />Визнана виручка</span><span><i className={styles.financeCashDot} />Отримано грошей</span></div>
+    <svg viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" aria-label="Визнана виручка та отримані гроші">
+      <polyline points={points("recognizedRevenue")} className={styles.financeRecognizedLine} />
+      <polyline points={points("cashIn")} className={styles.financeCashLine} />
+    </svg>
+  </div>;
+}
+
+function planFor(finance: OwnerFinancePayload | null, metric: string) {
+  return finance?.plans?.find((row) => row.metric === metric) || null;
 }
 
 function issueCount(attention: AttentionItem[], code: string) {
@@ -318,6 +399,8 @@ function issueCount(attention: AttentionItem[], code: string) {
 export function OwnerDashboardVisual({ analytics }: Props) {
   const [control, setControl] = useState<OwnerControlSnapshot>(EMPTY_CONTROL);
   const [facts, setFacts] = useState<OwnerFactsPayload>(EMPTY_FACTS);
+  const [finance, setFinance] = useState<OwnerFinancePayload | null>(null);
+  const [financeError, setFinanceError] = useState("");
   const [controlLoading, setControlLoading] = useState(true);
 
   useEffect(() => {
@@ -328,34 +411,34 @@ export function OwnerDashboardVisual({ analytics }: Props) {
         ? `?from=${encodeURIComponent(analytics.range.from)}&to=${encodeURIComponent(analytics.range.to)}`
         : "";
       const responses = await Promise.allSettled([
-        fetch("/api/payments", { cache: "no-store", credentials: "include" }),
         fetch("/api/finance/margin-approvals", { cache: "no-store", credentials: "include" }),
         fetch("/api/dashboard", { cache: "no-store", credentials: "include" }),
         fetch(`/api/analytics/owner-dashboard-facts${factsQuery}`, { cache: "no-store", credentials: "include" }),
+        fetch(`/api/analytics/owner-dashboard-finance${factsQuery}`, { cache: "no-store", credentials: "include" }),
       ]);
       if (cancelled) return;
       try {
-        const payments = responses[0].status === "fulfilled" && responses[0].value.ok ? await responses[0].value.json() as PaymentsPayload : null;
-        const margins = responses[1].status === "fulfilled" && responses[1].value.ok ? await responses[1].value.json() as MarginApprovalsPayload : null;
-        const dashboard = responses[2].status === "fulfilled" && responses[2].value.ok ? await responses[2].value.json() as DashboardPayload : null;
-        const ownerFacts = responses[3].status === "fulfilled" && responses[3].value.ok ? await responses[3].value.json() as OwnerFactsPayload : EMPTY_FACTS;
-        const paymentRows = payments?.rows ?? [];
-        const openRows = paymentRows.filter((row) => safeNumber(row.outstanding) > 0);
+        const margins = responses[0].status === "fulfilled" && responses[0].value.ok ? await responses[0].value.json() as MarginApprovalsPayload : null;
+        const dashboard = responses[1].status === "fulfilled" && responses[1].value.ok ? await responses[1].value.json() as DashboardPayload : null;
+        const ownerFacts = responses[2].status === "fulfilled" && responses[2].value.ok ? await responses[2].value.json() as OwnerFactsPayload : EMPTY_FACTS;
+        const ownerFinance = responses[3].status === "fulfilled" && responses[3].value.ok ? await responses[3].value.json() as OwnerFinancePayload : null;
         const attention = dashboard?.attention ?? [];
         const marginRows = margins?.pending ?? [];
         const warranty = issueCount(attention, "WARRANTY_OPEN");
         const paused = issueCount(attention, "PAUSED_STALLED");
+        setFinance(ownerFinance?.available === false ? null : ownerFinance);
+        setFinanceError(ownerFinance?.ok ? "" : ownerFinance?.error || "Фінансові дані тимчасово недоступні.");
         setControl({
-          receivables: {
-            total: openRows.reduce((sum, row) => sum + Math.max(0, safeNumber(row.outstanding)), 0),
-            count: openRows.length,
-            due: sumRows(openRows, (row) => row.flags?.due),
-            dueCount: openRows.filter((row) => row.flags?.due).length,
-            partial: sumRows(openRows, (row) => row.flags?.partial),
-            partialCount: openRows.filter((row) => row.flags?.partial).length,
-            debt: sumRows(openRows, (row) => row.flags?.debt || row.overdue),
-            debtCount: openRows.filter((row) => row.flags?.debt || row.overdue).length,
-          },
+          receivables: ownerFinance?.receivables ? {
+            total: ownerFinance.receivables.total,
+            count: ownerFinance.receivables.count,
+            due: ownerFinance.receivables.due,
+            dueCount: ownerFinance.receivables.dueCount,
+            partial: ownerFinance.receivables.partial,
+            partialCount: ownerFinance.receivables.partialCount,
+            debt: ownerFinance.receivables.overdue,
+            debtCount: ownerFinance.receivables.overdueCount,
+          } : EMPTY_CONTROL.receivables,
           decisions: {
             total: marginRows.length + warranty + paused,
             margin: marginRows.length,
@@ -387,25 +470,9 @@ export function OwnerDashboardVisual({ analytics }: Props) {
   const kpi = analytics?.kpi;
   const previous = analytics?.previous;
   const operations = analytics?.operations;
-  const trend = analytics?.trend ?? [];
-  const directRevenue = facts.directRevenue?.current ?? 0;
-  const previousDirectRevenue = facts.directRevenue?.previous ?? 0;
-  const displayedRevenue = kpi?.grossRevenue == null ? null : safeNumber(kpi.grossRevenue) + directRevenue;
-  const displayedPreviousRevenue = previous?.grossRevenue == null ? null : safeNumber(previous.grossRevenue) + previousDirectRevenue;
-  const revenueTrend = useMemo(() => {
-    const map = new Map<string, number>();
-    for (const item of trend) map.set(item.date, safeNumber(item.revenue));
-    for (const item of facts.directRevenue?.trend ?? []) map.set(item.date, (map.get(item.date) || 0) + safeNumber(item.amount));
-    return [...map.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([, value]) => value);
-  }, [trend, facts.directRevenue]);
-  const profitTrend = trend.map((item) => item.grossProfit);
-  const hasClosedOrderRevenue = safeNumber(kpi?.grossRevenue) > 0;
-  const grossProfitForDisplay = hasClosedOrderRevenue && directRevenue === 0 ? kpi?.grossProfit : null;
-  const grossMarginForDisplay = hasClosedOrderRevenue && directRevenue === 0 ? kpi?.grossMarginPct : null;
-  const averageCheckForDisplay = hasClosedOrderRevenue && directRevenue === 0
-    ? kpi?.averageCheck
-    : facts.directRevenue?.averageCheck ?? null;
   const repeatClientPct = facts.retention?.repeatClientPct ?? null;
+  const averageCheckForDisplay = finance?.averageCheck?.value ?? null;
+
   const servedClients = facts.retention?.servedClients ?? 0;
   const overdue = operations?.overdueNow ?? 0;
   const delayReasons = operations?.delayReasons?.slice(0, 4) ?? [];
@@ -444,11 +511,30 @@ export function OwnerDashboardVisual({ analytics }: Props) {
   ], [noShow, waitingApproval, control.risk.paused]);
 
   return <section className={styles.visualDashboard} aria-label="Ключова аналітика власника">
+    <div className={styles.financeTruthHeader}>
+      <div><span>ФІНАНСОВЕ ЯДРО</span><strong>Одна цифра в Пульті та Фінансовому центрі</strong><small>Результат — з FinancialEvent, гроші — з CashTransaction, борги — з FinancialObligation. Аванс не стає виручкою до визнання послуги.</small></div>
+      <b className={finance?.integrity?.ok ? styles.financeQualityGood : styles.financeQualityBad}>{financeError ? "Дані недоступні" : finance?.integrity?.ok ? `✓ Узгоджено · ${finance.dataQuality?.score ?? 100}%` : `⚠ Розбіжностей: ${finance?.integrity?.issueCount ?? 0}`}</b>
+    </div>
+
+    <div className={styles.financeTruthGrid}>
+      <OwnerFinanceCard primary label="Чистий дохід" value={finance?.summary?.netIncome ?? null} note="валовий дохід − всі витрати" plan={planFor(finance, "NET_INCOME")} mode="HIGHER" onClick={() => navigateCrm("Фінансовий центр", { scope: "overview" })} />
+      <OwnerFinanceCard label="Оборотка з послуг" value={finance?.summary?.serviceTurnover ?? null} note="роботи та діагностики, без продажу деталей" plan={planFor(finance, "SERVICE_REVENUE")} mode="HIGHER" onClick={() => navigateCrm("Фінансовий центр", { scope: "overview" })} />
+      <OwnerFinanceCard label="Маржа по деталях" value={finance?.summary?.partsMargin ?? null} note="продаж деталей − фактична собівартість" plan={planFor(finance, "PARTS_MARGIN")} mode="HIGHER" onClick={() => navigateCrm("Фінансовий центр", { scope: "overview" })} />
+      <OwnerFinanceCard label="ЗП персоналу" value={finance?.summary?.payrollAccrued ?? null} note={finance?.summary ? `нараховано · до виплати ${money(finance.summary.payrollDue)}` : "дані недоступні"} plan={planFor(finance, "PAYROLL")} mode="LOWER" onClick={() => navigateCrm("Фінансовий центр", { scope: "expenses" })} />
+      <OwnerFinanceCard label="Валовий дохід" value={finance?.summary?.grossIncome ?? null} note="оборотка послуг + маржа деталей" plan={planFor(finance, "GROSS_INCOME")} mode="HIGHER" onClick={() => navigateCrm("Фінансовий центр", { scope: "overview" })} />
+      <OwnerFinanceCard label="Всі витрати" value={finance?.summary?.totalExpenses ?? null} note="включно із ЗП; закупівля складу не дублює COGS" plan={planFor(finance, "TOTAL_EXPENSES")} mode="LOWER" onClick={() => navigateCrm("Фінансовий центр", { scope: "expenses" })} />
+      <OwnerFinanceCard label="Грошей у касі" value={finance?.summary?.cash ?? null} note="фактичний баланс кас і рахунків · станом на зараз" plan={planFor(finance, "CASH_BALANCE")} mode="MINIMUM" onClick={() => navigateCrm("Фінансовий центр", { scope: "accounts" })} />
+    </div>
+
+    <div className={styles.financeTrendPanel}>
+      <div className={styles.financeTrendHead}><div><span>РЕЗУЛЬТАТ ≠ ГРОШІ</span><strong>Визнана виручка та Cash In</strong><small>Дві окремі лінії: виконана/визнана послуга не змішується з датою фактичної оплати.</small></div><div><b>{money(finance?.cashFlow?.inflow)}</b><small>отримано за період</small></div></div>
+      {finance?.trend?.length ? <DualFinanceTrend rows={finance.trend} /> : <div className={styles.financeTrendEmpty}>{financeError || "За вибраний період фінансового руху ще немає."}</div>}
+    </div>
+
+    <div className={styles.operationalSectionHead}><span>ОПЕРАЦІЙНІ KPI</span><strong>Сервіс, клієнти та потужність</strong></div>
     <div className={styles.metricGrid}>
-      <TrendMetricCard title="Виручка за період" value={money(displayedRevenue)} icon="₴" values={revenueTrend} current={displayedRevenue} previous={displayedPreviousRevenue} chart="line" subtitle={directRevenue > 0 ? `включно з ${money(directRevenue)} прямих оплат` : undefined} onClick={() => navigateCrm("Фінансовий центр")} />
-      <TrendMetricCard title="Валовий прибуток" value={money(grossProfitForDisplay)} icon="▥" values={profitTrend} current={grossProfitForDisplay} previous={previous?.grossProfit} chart="bars" subtitle={grossProfitForDisplay == null ? "немає повних даних про собівартість" : undefined} onClick={() => navigateCrm("Фінансовий центр")} />
-      <GaugeMetricCard title="Валова маржа" value={percent(grossMarginForDisplay)} icon="%" gaugeValue={grossMarginForDisplay} current={grossMarginForDisplay} previous={previous?.grossMarginPct} subtitle={`середній чек ${money(averageCheckForDisplay)}`} gaugeLabel="маржа" onClick={() => navigateCrm("Аналітика")} />
-      <GaugeMetricCard title="Завантаження постів" value={percent(kpi?.postUtilizationPct)} icon="⌁" gaugeValue={kpi?.postUtilizationPct} current={kpi?.postUtilizationPct} previous={previous?.postUtilizationPct} gaugeLabel="зайнято" onClick={() => navigateCrm("Аналітика")} />
+      <SimpleMetricCard title="Середній чек" value={money(averageCheckForDisplay)} icon="₴" subtitle={finance?.averageCheck ? `${finance.averageCheck.visits} завершених оплачуваних візитів · визнана виручка` : "не підміняємо середнім платежем"} onClick={() => navigateCrm("Аналітика")} />
+      <GaugeMetricCard title="Завантаження постів" value={percent(kpi?.postUtilizationPct)} icon="⌁" gaugeValue={kpi?.postUtilizationPct} current={kpi?.postUtilizationPct} previous={previous?.postUtilizationPct} gaugeLabel="робочий час" onClick={() => navigateCrm("Аналітика")} />
       <RetentionMetricCard value={repeatClientPct} servedClients={servedClients} onClick={() => navigateCrm("Аналітика")} />
       <GaugeMetricCard title="Запис → приїзд" value={percent(kpi?.bookingToArrivalPct)} icon="✓" gaugeValue={kpi?.bookingToArrivalPct} current={kpi?.bookingToArrivalPct} previous={previous?.bookingToArrivalPct} tone="green" gaugeLabel="конверсія" onClick={() => navigateCrm("Планувальник")} />
     </div>
