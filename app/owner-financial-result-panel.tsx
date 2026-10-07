@@ -60,7 +60,7 @@ export function OwnerFinancialResultPanel({locationId}:{locationId?:string|null}
   if(!summary)return <section className={styles.panel}><div className={styles.head}><div><span className={styles.eyebrow}>ФІНАНСОВИЙ РЕЗУЛЬТАТ</span><h2>План → Факт → Прогноз</h2><small>{error||"Завантажую дані Фінансового центру…"}</small></div>{error&&<button type="button" onClick={()=>void load()}>Повторити</button>}</div></section>;
 
   const plan=summary.plan,route={from:summary.start,to:summary.end,...(locationId?{locationId}:{})};
-  const openPlan=()=>navigateCrm("Фінансовий центр",{...route,scope:"plan"});
+  const openPlan=()=>navigateCrm("Фінансовий центр",{...route,scope:"overview"});
   const openFact=()=>navigateCrm("Фінансовий центр",{...route,scope:"pnl"});
   const tone=summary.completionPercent==null?"neutral":summary.completionPercent>=100?"good":summary.completionPercent>=85?"warning":"danger";
 
@@ -76,6 +76,6 @@ export function OwnerFinancialResultPanel({locationId}:{locationId?:string|null}
     </div>
     {plan&&<div className={styles.progressBlock}><div className={styles.progressMeta}><span>Виконання фактом</span><strong className={styles[`tone_${tone}`]}>{percent(summary.completionPercent)}</strong></div><div className={styles.track}><i className={styles[`bar_${tone}`]} style={{width:`${Math.min(100,Math.max(0,summary.completionPercent||0))}%`}}/></div></div>}
     <div className={styles.foot}><div><span>До попереднього періоду</span><b>{percent(summary.previous.changePercent)}</b></div>{summary.preliminary?<div className={styles.dataWarning}><span>Якість даних</span><b>попередній результат · повнота {summary.dataQualityScore==null?"—":`${summary.dataQualityScore}%`}</b></div>:<div className={styles.dataOk}><span>Якість даних</span><b>фінансовий факт синхронізований</b></div>}</div>
-    {summary.drivers.length>0&&<div className={styles.locations}><div className={styles.subhead}><strong>Що найбільше впливає на результат</strong><button type="button" onClick={openFact}>Детальніше →</button></div>{summary.drivers.map(d=><div className={styles.locationRow} key={d.code}><div><strong>{d.label}</strong><small>{money(d.previous)} → {money(d.current)}</small></div><span><small>Вплив</small><b>{d.impact>=0?"+":"−"}{money(Math.abs(d.impact))}</b></span></div>)}</div>}
+    {summary.drivers.length>0&&<div className={styles.locations}><div className={styles.subhead}><strong>Що найбільше впливає на результат</strong><button type="button" onClick={openFact}>Детальніше →</button></div>{summary.drivers.map(d=><div className={styles.locationRow} style={{gridTemplateColumns:"minmax(0,1fr) auto"}} key={d.code}><div><strong>{d.label}</strong><small>{money(d.previous)} → {money(d.current)}</small></div><span><small>Вплив</small><b>{d.impact>=0?"+":"−"}{money(Math.abs(d.impact))}</b></span></div>)}</div>}
   </section>;
 }

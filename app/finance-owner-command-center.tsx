@@ -173,13 +173,25 @@ export function FinanceOwnerCommandCenter({
   const currentPlanFacts = planData?.ownerSummary || facts;
   const planMath = useMemo(() => {
     if (!plan) return null;
-    return calculateOwnerProfitPlanSummary({
+    const summary = calculateOwnerProfitPlanSummary({
       plan,
       facts: currentPlanFacts,
       comparison: planData?.ownerComparison || data.ownerComparison,
       fixedMonthlyCosts: data.settings.fixedMonthlyCosts,
       today,
     });
+    return {
+      ...summary,
+      expectedToNow: summary.expectedToNow ?? 0,
+      gapToPace: summary.gapToPace ?? 0,
+      remaining: summary.remaining ?? 0,
+      requiredPerDay: summary.requiredPerDay ?? 0,
+      paceForecast: summary.paceForecast ?? 0,
+      monthTarget: summary.monthTarget ?? 0,
+      weekTarget: summary.weekTarget ?? 0,
+      dayTarget: summary.dayTarget ?? 0,
+      weekContributionTarget: summary.weekContributionTarget ?? 0,
+    };
   }, [plan, currentPlanFacts, planData?.ownerComparison, data.ownerComparison, data.settings.fixedMonthlyCosts, today]);
 
   const due30 = useMemo(() => {
