@@ -48,6 +48,11 @@ type Control = {
     topMechanic: { mechanicId: string; name: string; profit: number; marginPercent: number | null } | null;
     topSupplier: { supplierId: string; name: string; profit: number; marginPercent: number | null } | null;
   };
+  capacity: {
+    activePosts: number;
+    totalDailyMinutes: number;
+    posts: Array<{ id: string; name: string; locationId: string; locationName: string; dailyMinutes: number }>;
+  };
   cashClose: {
     businessDate: string;
     accounts: Array<Account & { close: { id: string; systemAmount: number; countedAmount: number; difference: number; note: string | null; closedAt: string } | null }>;
