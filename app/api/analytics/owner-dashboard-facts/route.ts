@@ -198,28 +198,27 @@ export async function GET(request: NextRequest) {
   const moneyInWorkTotal = mixedCurrency ? null : round(scheduledAmount + diagnosticsAmount + approvedAmount);
 
   const directRevenueWhere = {
-    kind: "INFLOW" as const,
     status: "POSTED" as const,
-    flowSection: "OPERATING" as const,
-    workOrderId: null,
-    clientId: { not: null },
-    ...cashLocationWhere,
+    pnlSection: "REVENUE" as const,
+    sourceEntity: "WALK_IN_DIAGNOSTIC",
+    ...(scopedLocationIds ? { locationId: { in: scopedLocationIds } } : {}),
   };
   const [currentDirectRevenueRows, previousDirectRevenueRows] = await Promise.all([
-    prisma.cashTransaction.findMany({
-      where: { ...directRevenueWhere, occurredAt: { gte: from, lt: to } },
-      select: { amount: true, occurredAt: true, clientId: true },
+    prisma.financialEvent.findMany({
+      where: { ...directRevenueWhere, recognizedAt: { gte: from, lt: to } },
+      select: { amount: true, recognizedAt: true, clientId: true, sourceEntityId: true },
     }),
-    prisma.cashTransaction.findMany({
-      where: { ...directRevenueWhere, occurredAt: { gte: previousFrom, lt: previousTo } },
-      select: { amount: true, occurredAt: true, clientId: true },
+    prisma.financialEvent.findMany({
+      where: { ...directRevenueWhere, recognizedAt: { gte: previousFrom, lt: previousTo } },
+      select: { amount: true, recognizedAt: true, clientId: true, sourceEntityId: true },
     }),
   ]);
   const directCurrent = currentDirectRevenueRows.reduce((sum, row) => sum + numberOf(row.amount), 0);
   const directPrevious = previousDirectRevenueRows.reduce((sum, row) => sum + numberOf(row.amount), 0);
+  const currentDirectVisits = new Set(currentDirectRevenueRows.map((row) => row.sourceEntityId?.replace(/:revenue$/, "")).filter(Boolean));
   const directTrendMap = new Map<string, number>();
   for (const row of currentDirectRevenueRows) {
-    const key = dayKey(row.occurredAt);
+    const key = dayKey(row.recognizedAt);
     directTrendMap.set(key, (directTrendMap.get(key) || 0) + numberOf(row.amount));
   }
 
@@ -237,8 +236,8 @@ export async function GET(request: NextRequest) {
           select: { clientId: true },
           distinct: ["clientId"],
         }).then((rows) => rows.map((row) => row.clientId)),
-    prisma.cashTransaction.findMany({
-      where: { ...directRevenueWhere, occurredAt: { lt: from } },
+    prisma.financialEvent.findMany({
+      where: { ...directRevenueWhere, recognizedAt: { lt: from } },
       select: { clientId: true },
       distinct: ["clientId"],
     }),
