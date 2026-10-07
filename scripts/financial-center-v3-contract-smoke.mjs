@@ -27,7 +27,7 @@ assert.match(ui,/metric: "serviceTurnover" as FinanceDrilldownMetric/);
 assert.match(ui,/metric: "partsMargin" as FinanceDrilldownMetric/);
 assert.match(ui,/metric: "ownerGrossIncome" as FinanceDrilldownMetric/);
 assert.match(ui,/metric: "ownerNetIncome" as FinanceDrilldownMetric/);
-assert.match(ui,/Планування тепер частина «Огляду»/);
+assert.match(ui,/Додаткові фінансові бюджети/,"standalone Plan / fact remains merged into Overview as supplementary budgets");
 assert.equal(/data && <section className=\{styles\.kpiGrid\}>[\s\S]*currentCash/.test(ui), false, "global eight-KPI block must not be rendered outside tab context");
 assert.match(ui,/tab !== "accounts"/,"Accounts must not inherit period controls");
 assert.match(ui,/⚙ Налаштування/);
