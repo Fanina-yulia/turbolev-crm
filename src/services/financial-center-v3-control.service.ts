@@ -217,6 +217,14 @@ function dayPoint(points: BaseView["forecast"]["points"], days: number) {
   return points.find((point) => point.date >= key) || points[points.length - 1] || null;
 }
 
+function dayPointIfCovered(points: BaseView["forecast"]["points"], days: number) {
+  if (!points.length) return null;
+  const target = new Date();
+  target.setUTCDate(target.getUTCDate() + days);
+  const key = target.toISOString().slice(0, 10);
+  return points.find((point) => point.date >= key) || null;
+}
+
 async function reconciliation(scope: FinancialCenterScope) {
   const prisma = getPrisma();
   const currency = (scope.currency || "UAH").toUpperCase();
@@ -501,6 +509,8 @@ export async function getFinancialCenterV3Control(scope: FinancialCenterScope, b
     : [];
   const in7 = dayPoint(base.forecast.points, 7);
   const in30 = dayPoint(base.forecast.points, 30);
+  const in60 = dayPointIfCovered(base.forecast.points, 60);
+  const in90 = dayPointIfCovered(base.forecast.points, 90);
 
   const workOrdersByProfit = [...base.profitability.workOrders].sort((a, b) => b.grossProfit - a.grossProfit);
   const losingOrders = base.profitability.workOrders.filter((row) => row.grossProfit < 0).sort((a, b) => a.grossProfit - b.grossProfit);
@@ -520,6 +530,9 @@ export async function getFinancialCenterV3Control(scope: FinancialCenterScope, b
       currentCash: base.kpi.currentCash,
       in7Days: in7?.closingCash ?? base.kpi.currentCash,
       in30Days: in30?.closingCash ?? in7?.closingCash ?? base.kpi.currentCash,
+      in60Days: in60?.closingCash ?? null,
+      in90Days: in90?.closingCash ?? null,
+      forecastHorizonDate: base.forecast.points[base.forecast.points.length - 1]?.date || null,
       minimum: minPoint ? { date: minPoint.date, closingCash: minPoint.closingCash } : null,
       firstGap: base.forecast.firstGap,
       firstReserveWarning: base.forecast.firstReserveWarning,

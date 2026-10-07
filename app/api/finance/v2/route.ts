@@ -164,6 +164,8 @@ function redactFinanceForPersona(data: any, control: any, persona: string) {
           suppliers: [],
         },
         ownerSummary: undefined,
+
+        ownerComparison: undefined,
         financeCompleteness: {
           ...data.financeCompleteness,
           issues: [],
@@ -229,6 +231,8 @@ function redactFinanceForPersona(data: any, control: any, persona: string) {
       },
       profitability: { workOrders: [], services: [], parts: [], mechanics: [], suppliers: [] },
       ownerSummary: undefined,
+
+      ownerComparison: undefined,
       financeCompleteness: {
         ...data.financeCompleteness,
         issues: [],
@@ -252,6 +256,9 @@ function redactFinanceForPersona(data: any, control: any, persona: string) {
         ...control.forecast,
         in7Days: data.kpi.currentCash,
         in30Days: data.kpi.currentCash,
+        in60Days: null,
+        in90Days: null,
+        forecastHorizonDate: null,
         minimum: null,
         firstGap: null,
         firstReserveWarning: null,

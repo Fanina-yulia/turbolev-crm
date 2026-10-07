@@ -40,12 +40,21 @@ type FinanceData = {
     partsCost: number;
     expenseBreakdown: { payroll: number; otherDirect: number; otherOperating: number; otherExpense: number; tax: number };
   };
+  ownerComparison?: {
+    previousNetIncome: number;
+    change: number;
+    changePercent: number | null;
+    drivers: Array<{ code: string; label: string; current: number; previous: number; impact: number }>;
+  };
   control?: {
     today?: { date: string; revenue: number; cashIn: number; cashOut: number; netCashFlow: number };
     forecast?: {
       currentCash: number;
       in7Days: number;
       in30Days: number;
+      in60Days?: number | null;
+      in90Days?: number | null;
+      forecastHorizonDate?: string | null;
       minimum: { date: string; closingCash: number } | null;
       firstGap: { date: string; closingCash: number } | null;
       firstReserveWarning: { date: string; closingCash: number } | null;
@@ -233,17 +242,19 @@ export function FinanceOwnerCommandCenter({
       .reduce((sum, row) => sum + row.outstanding, 0);
   }, [data.obligations, today]);
   const freeCash = data.kpi.currentCash - due30;
+  const spendableCash = freeCash - data.settings.minimumCashReserve;
   const topService = [...data.profitability.services].sort((a, b) => b.profit - a.profit)[0] || null;
   const forecast30 = data.control?.forecast?.in30Days ?? data.kpi.currentCash;
   const firstGap = data.control?.forecast?.firstGap || null;
+  const firstGapWithin30 = firstGap && dateOnly(firstGap.date) <= addDays(today, 30) ? firstGap : null;
 
   const questions = [
     { label: "Скільки СТО реально заробило?", value: facts?.netIncome || 0, note: "чистий управлінський результат за вибраний період", tone: (facts?.netIncome || 0) >= 0 ? "good" as const : "bad" as const, metric: "ownerNetIncome" as FinanceDrilldownMetric },
-    { label: "Де зараз гроші?", value: data.kpi.currentCash, note: `вільно після зобов’язань 30 днів ≈ ${money(freeCash)}`, tone: freeCash >= data.settings.minimumCashReserve ? "good" as const : freeCash >= 0 ? "warn" as const : "bad" as const, metric: "currentCash" as FinanceDrilldownMetric },
+    { label: "Де зараз гроші?", value: data.kpi.currentCash, note: `можна витратити після зобов’язань 30 днів і резерву ≈ ${money(spendableCash)}`, tone: spendableCash >= 0 ? "good" as const : freeCash >= 0 ? "warn" as const : "bad" as const, metric: "currentCash" as FinanceDrilldownMetric },
     { label: "Кому ми винні?", value: data.kpi.payables, note: `прострочено ${money(data.kpi.overduePayables)}`, tone: data.kpi.overduePayables > 0 ? "warn" as const : "neutral" as const, metric: "payables" as FinanceDrilldownMetric },
     { label: "Хто винен нам?", value: data.kpi.receivables, note: `прострочено ${money(data.kpi.overdueReceivables)}`, tone: data.kpi.overdueReceivables > 0 ? "warn" as const : "neutral" as const, metric: "receivables" as FinanceDrilldownMetric },
     { label: "На чому заробляємо найбільше?", value: topService?.profit || 0, note: topService ? `${topService.name} · маржа ${percent(topService.marginPercent)}` : "ще немає достатньо закритих робіт", tone: "good" as const },
-    { label: "Чи вистачить грошей через 30 днів?", value: forecast30, note: firstGap ? `касовий розрив прогнозується ${dateOnly(firstGap.date)}` : "касового розриву в 30-денному горизонті не видно", tone: forecast30 < 0 || firstGap ? "bad" as const : forecast30 < data.settings.minimumCashReserve ? "warn" as const : "good" as const, metric: "currentCash" as FinanceDrilldownMetric },
+    { label: "Чи вистачить грошей через 30 днів?", value: forecast30, note: firstGapWithin30 ? `касовий розрив прогнозується ${dateOnly(firstGapWithin30.date)}` : "касового розриву в 30-денному горизонті не видно", tone: forecast30 < 0 || firstGapWithin30 ? "bad" as const : forecast30 < data.settings.minimumCashReserve ? "warn" as const : "good" as const, metric: "currentCash" as FinanceDrilldownMetric },
   ];
 
   const actionRows = useMemo(() => {
@@ -326,6 +337,24 @@ export function FinanceOwnerCommandCenter({
       <section className={styles.ownerCommandPanel}>
         <div className={styles.panelHeader}><div><span className={styles.eyebrow}>ЩО РОБИТИ ЗАРАЗ</span><h2>Дії для власника</h2></div></div>
         <div className={styles.ownerActionList}>{actionRows.length ? actionRows.map((row, index) => <div key={`${index}:${row}`}><b>{index + 1}</b><span>{row}</span></div>) : <div className={styles.ownerActionGood}>Критичних відхилень не виявлено. Контролюйте план, маржу і Cash In.</div>}</div>
+      </section>
+    </div>
+
+    <div className={styles.ownerInsightGrid}>
+      <section className={styles.ownerCommandPanel}>
+        <div className={styles.panelHeader}><div><span className={styles.eyebrow}>ЧОМУ ЗМІНИВСЯ ПРИБУТОК</span><h2>{data.ownerComparison ? `${money(data.ownerComparison.previousNetIncome)} → ${money(facts?.netIncome)}` : "Порівняння з попереднім періодом"}</h2><p>Не припущення: кожен вплив розрахований з тих самих ledger-фактів, що формують чистий управлінський результат.</p></div></div>
+        {data.ownerComparison?.drivers?.length ? <div className={styles.ownerRankList}>{[...data.ownerComparison.drivers].sort((a,b) => Math.abs(b.impact)-Math.abs(a.impact)).map((row,index) => <div key={row.code}><b>#{index+1}</b><span><strong>{row.label}</strong><small>{money(row.previous)} → {money(row.current)}</small></span><strong className={row.impact >= 0 ? styles.positive : styles.negative}>{row.impact >= 0 ? "+" : ""}{money(row.impact)}</strong></div>)}</div> : <div className={styles.empty}>Для точного порівняння ще недостатньо даних попереднього періоду.</div>}
+      </section>
+      <section className={styles.ownerCommandPanel}>
+        <div className={styles.panelHeader}><div><span className={styles.eyebrow}>CASH 30 / 60 / 90</span><h2>Запас грошей уперед</h2><p>Прогноз із платіжного календаря; непокритий горизонт не підмінюється останньою відомою цифрою.</p></div></div>
+        <div className={styles.ownerPulseGrid}>
+          <div><span>Через 30 днів</span><strong>{money(data.control?.forecast?.in30Days)}</strong></div>
+          <div><span>Через 60 днів</span><strong>{money(data.control?.forecast?.in60Days)}</strong></div>
+          <div><span>Через 90 днів</span><strong>{money(data.control?.forecast?.in90Days)}</strong></div>
+          <div><span>Можна витратити зараз</span><strong className={spendableCash >= 0 ? styles.positive : styles.negative}>{money(spendableCash)}</strong></div>
+        </div>
+        <div className={styles.ownerInsightLine}><span>Горизонт підтвердженого прогнозу</span><strong>{data.control?.forecast?.forecastHorizonDate ? dateOnly(data.control.forecast.forecastHorizonDate) : "—"}</strong></div>
+        {data.control?.forecast?.firstGap && <div className={styles.ownerWarningLine}>Касовий розрив: {dateOnly(data.control.forecast.firstGap.date)} · прогнозний залишок {money(data.control.forecast.firstGap.closingCash)}.</div>}
       </section>
     </div>
 

@@ -277,7 +277,10 @@ export async function getFinancialCenterV2(scope: FinancialCenterScope) {
     }),
     prisma.financialEvent.findMany({
       where: { status: "POSTED", currency, recognizedAt: { gte: previous.from, lt: previous.to }, ...location },
-      select: { pnlSection: true, amount: true },
+      select: {
+        pnlSection: true, amount: true, sourceEntity: true, description: true,
+        category: { select: { code: true } },
+      },
     }),
     prisma.cashTransaction.findMany({
       where: { status: "POSTED", currency, occurredAt: { gte: scope.from, lt: scope.to }, ...location },
@@ -479,6 +482,43 @@ export async function getFinancialCenterV2(scope: FinancialCenterScope) {
       tax: pnl.tax,
     },
     payrollEmployees,
+  };
+
+  // Exact owner-profit bridge to the immediately preceding period.
+  // Drivers reconcile to the same management formula used by ownerSummary:
+  // services + parts margin - payroll - other expenses.
+  const previousPayrollEvents = previousEvents.filter(isPayrollFinancialEvent);
+  const previousPayrollAccrued = roundMoney(previousPayrollEvents.reduce((sum, event) => sum + decimalToNumber(event.amount), 0));
+  const previousPayrollDirect = roundMoney(previousPayrollEvents.filter((event) => event.pnlSection === "COGS").reduce((sum, event) => sum + decimalToNumber(event.amount), 0));
+  const previousPayrollOpex = roundMoney(previousPayrollEvents.filter((event) => event.pnlSection === "OPEX").reduce((sum, event) => sum + decimalToNumber(event.amount), 0));
+  const previousServiceTurnover = roundMoney(previousEvents
+    .filter((event) => event.pnlSection === "REVENUE" && (serviceRevenueCodes.has(event.category?.code || "") || event.sourceEntity === "WALK_IN_DIAGNOSTIC"))
+    .reduce((sum, event) => sum + decimalToNumber(event.amount), 0));
+  const previousPartsRevenue = roundMoney(previousEvents
+    .filter((event) => event.pnlSection === "REVENUE" && event.category?.code === "REV_PARTS")
+    .reduce((sum, event) => sum + decimalToNumber(event.amount), 0));
+  const previousPartsCost = roundMoney(previousEvents
+    .filter((event) => event.pnlSection === "COGS" && event.category?.code === "COGS_PARTS")
+    .reduce((sum, event) => sum + decimalToNumber(event.amount), 0));
+  const previousPartsMargin = roundMoney(previousPartsRevenue - previousPartsCost);
+  const previousNonPartsDirectCosts = roundMoney(Math.max(0, previousPnl.cogs - previousPartsCost));
+  const previousOtherDirectCosts = roundMoney(Math.max(0, previousNonPartsDirectCosts - previousPayrollDirect));
+  const previousOtherOperatingCosts = roundMoney(Math.max(0, previousPnl.opex - previousPayrollOpex));
+  const previousOtherExpenses = roundMoney(previousOtherDirectCosts + previousOtherOperatingCosts + previousPnl.otherExpense + previousPnl.tax);
+  const currentOtherExpenses = roundMoney(totalExpenses - payrollAccrued);
+  const previousTotalExpenses = roundMoney(previousPayrollAccrued + previousOtherExpenses);
+  const previousGrossIncome = roundMoney(previousServiceTurnover + previousPartsMargin);
+  const previousNetIncome = roundMoney(previousGrossIncome - previousTotalExpenses);
+  const ownerComparison = {
+    previousNetIncome,
+    change: roundMoney(netIncome - previousNetIncome),
+    changePercent: changePercent(netIncome, previousNetIncome),
+    drivers: [
+      { code: "SERVICES", label: "Послуги", current: serviceTurnover, previous: previousServiceTurnover, impact: roundMoney(serviceTurnover - previousServiceTurnover) },
+      { code: "PARTS_MARGIN", label: "Маржа деталей", current: partsMargin, previous: previousPartsMargin, impact: roundMoney(partsMargin - previousPartsMargin) },
+      { code: "PAYROLL", label: "ЗП персоналу", current: payrollAccrued, previous: previousPayrollAccrued, impact: roundMoney(-(payrollAccrued - previousPayrollAccrued)) },
+      { code: "OTHER_EXPENSES", label: "Інші витрати", current: currentOtherExpenses, previous: previousOtherExpenses, impact: roundMoney(-(currentOtherExpenses - previousOtherExpenses)) },
+    ],
   };
 
   const categoryActual = new Map<string, number>();
@@ -1047,6 +1087,7 @@ export async function getFinancialCenterV2(scope: FinancialCenterScope) {
       suppliers: supplierProfitability,
     },
     ownerSummary,
+    ownerComparison,
     financeCompleteness,
     alerts: alerts.slice(0, 20),
   };

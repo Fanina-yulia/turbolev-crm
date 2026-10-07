@@ -74,6 +74,9 @@ assert.match(controlUi,/ownerNetIncome/);
 assert.match(controlUi,/totalExpenses/);
 
 assert.match(service,/getFinancialCenterV3Control/);
+assert.match(service,/in60Days/);
+assert.match(service,/in90Days/);
+assert.match(service,/dayPointIfCovered/);
 assert.match(service,/WALKIN_PAYMENT_WITHOUT_REVENUE/);
 assert.match(service,/WALKIN_REVENUE_WITHOUT_RECEIVABLE/);
 assert.match(service,/WALKIN_PAID_WITHOUT_CASH/);
@@ -93,6 +96,10 @@ assert.match(financeCore,/category\?\.code !== "COGS_PARTS"|partsCost/);
 assert.match(financeCore,/payrollDue/);
 assert.match(financeCore,/\"NET_INCOME\"/,"owner net-income plan must be accepted by finance budget service");
 assert.match(financeCore,/metric === \"NET_INCOME\"/,"owner net-income budgets must use the authoritative owner summary actual");
+assert.match(financeCore,/ownerComparison/,"owner overview must expose an exact owner-profit comparison bridge");
+assert.match(financeCore,/previousServiceTurnover/);
+assert.match(financeCore,/previousPartsMargin/);
+assert.match(financeCore,/previousPayrollAccrued/);
 
 assert.match(ownerCommand,/Скільки СТО реально заробило\?/);
 assert.match(ownerCommand,/Де зараз гроші\?/);
@@ -106,6 +113,11 @@ assert.match(ownerCommand,/Квартал/);
 assert.match(ownerCommand,/операційний внесок/);
 assert.match(ownerCommand,/ЩО РОБИТИ ЗАРАЗ/);
 assert.match(ownerCommand,/ЩО БУДЕ, ЯКЩО/);
+assert.match(ownerCommand,/ЧОМУ ЗМІНИВСЯ ПРИБУТОК/);
+assert.match(ownerCommand,/CASH 30 \/ 60 \/ 90/);
+assert.match(ownerCommand,/forecastHorizonDate/);
+assert.match(ownerCommand,/firstGapWithin30/,"30-day cash answer must not use a gap outside its horizon");
+assert.match(ownerCommand,/spendableCash/,"owner cash card must reserve near-term obligations and minimum cash reserve");
 assert.match(ui,/\/api\/management\/result/,"owner overview must reuse management intelligence for lift contribution and recommendations");
 assert.match(ui,/OwnerProfitPlanDialog/);
 
@@ -120,6 +132,9 @@ assert.match(api,/CASHIER/);
 assert.match(api,/grossProfit: 0/);
 assert.match(api,/obligations,/);
 assert.match(api,/ownerSummary: undefined/,"employee payroll drilldowns must be redacted from non-owner finance responses");
+assert.match(api,/ownerComparison: undefined/,"owner comparison must be redacted from non-owner finance responses");
+assert.match(api,/in60Days: null/,"restricted roles must not receive long-horizon owner cash forecasts");
+assert.match(api,/in90Days: null/,"restricted roles must not receive long-horizon owner cash forecasts");
 
 assert.match(schema,/model FinancialCashClose/);
 assert.match(schema,/@@unique\(\[moneyAccountId, businessDate\]/);
