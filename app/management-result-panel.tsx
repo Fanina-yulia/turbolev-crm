@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { weekKeys } from "@/src/domain/management-result";
 import styles from "./management-result-panel.module.css";
 import { ManagementIntelligencePanels, type ManagementIntelligenceUiPayload } from "./management-intelligence-panels";
+import { OwnerFinancialResultPanel } from "./owner-financial-result-panel";
 
 type ManagementMode = "OWNER" | "EXECUTIVE" | "STATION";
 
@@ -109,6 +110,7 @@ function progressTone(value: number | null) {
 }
 
 export function ManagementResultPanel({ mode, locationId }: { mode: ManagementMode; locationId?: string | null }) {
+  if (mode === "OWNER") return <OwnerFinancialResultPanel locationId={locationId} />;
   const [weekAnchor, setWeekAnchor] = useState(currentKyivDateKey);
   const [data, setData] = useState<ResultPayload | null>(null);
   const [loading, setLoading] = useState(true);
