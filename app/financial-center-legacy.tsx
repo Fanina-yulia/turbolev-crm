@@ -420,7 +420,7 @@ function ownerControl(data: FinanceV2) {
       today: { date: string; revenue: number; cashIn: number; cashOut: number; netCashFlow: number };
       forecast: { in30Days: number; firstGap: { date: string; closingCash: number } | null; firstReserveWarning: { date: string; closingCash: number } | null };
       profitability: { losingCount: number; lowMarginPartsCount: number; topMechanic: { name: string; profit: number; marginPercent: number | null } | null };
-      capacity?: { activePosts: number; totalDailyMinutes: number; posts: Array<{ id: string; name: string; locationId: string; locationName: string; dailyMinutes: number }> };
+      capacity?: { activePosts: number; totalDailyMinutes: number; grossContribution: number; posts: Array<{ id: string; name: string; locationId: string; locationName: string; dailyMinutes: number; grossContribution: number; workOrders: number }> };
     };
   }).control;
 }
@@ -473,10 +473,12 @@ function OwnerOverview({ data, onCreatePlan, onMetric }: { data: FinanceV2; onCr
   const capacity = control?.capacity;
   const liftCount = capacity?.activePosts || 0;
   const totalLiftMinutes = capacity?.totalDailyMinutes || 0;
-  const liftTargets = (capacity?.posts || []).map((post) => ({
-    ...post,
-    target: dayTarget > 0 && totalLiftMinutes > 0 ? dayTarget * post.dailyMinutes / totalLiftMinutes : liftCount > 0 ? dayTarget / liftCount : 0,
-  }));
+  const totalLiftContribution = capacity?.grossContribution || 0;
+  const liftTargets = (capacity?.posts || []).map((post) => {
+    const target = dayTarget > 0 && totalLiftMinutes > 0 ? dayTarget * post.dailyMinutes / totalLiftMinutes : liftCount > 0 ? dayTarget / liftCount : 0;
+    const allocatedNetActual = totalLiftContribution !== 0 ? facts.netIncome * post.grossContribution / totalLiftContribution : null;
+    return { ...post, target, allocatedNetActual, gap: allocatedNetActual == null ? null : allocatedNetActual - target };
+  });
 
   const selectedDays = dayCount(data.range.from, data.range.to);
   const scopeStartMs = dateMs(data.range.from);
@@ -569,7 +571,7 @@ function OwnerOverview({ data, onCreatePlan, onMetric }: { data: FinanceV2; onCr
         </div>
         <div className={styles.ownerLiftPlan}>
           <div className={styles.sectionTitle}><h3>Розкладка на підйомники</h3><span className={styles.badge}>{liftCount ? `${liftCount} активних` : "немає активних"}</span></div>
-          {liftTargets.length ? <div className={styles.ownerLiftGrid}>{liftTargets.map((post) => <div key={post.id}><span>{post.name}</span><strong>{money(post.target)} / день</strong><small>{post.locationName} · {Math.round(post.dailyMinutes / 60 * 10) / 10} год доступності</small></div>)}</div> : <div className={styles.empty}>Активні підйомники не знайдені — план на підйомник з'явиться після налаштування ServicePost.</div>}
+          {liftTargets.length ? <div className={styles.ownerLiftGrid}>{liftTargets.map((post) => <div key={post.id}><span>{post.name}</span><strong>{money(post.target)} / день</strong><small>{post.locationName} · {Math.round(post.dailyMinutes / 60 * 10) / 10} год доступності</small><small>Внесок: {money(post.grossContribution)} · ЗН: {post.workOrders}</small>{post.allocatedNetActual != null && <small className={post.gap != null && post.gap < 0 ? styles.negative : styles.positive}>Розрах. чистий: {money(post.allocatedNetActual)} · {post.gap != null && post.gap < 0 ? `gap ${money(Math.abs(post.gap))}` : "у темпі"}</small>}</div>)}</div> : <div className={styles.empty}>Активні підйомники не знайдені — план на підйомник з'явиться після налаштування ServicePost.</div>}
         </div>
       </> : <div className={styles.empty}>План чистого прибутку ще не заданий. Створіть місячний або квартальний Target — CRM сама порахує потрібний темп і план на кожен підйомник.<div style={{marginTop:10}}><button type="button" className={styles.primaryButton} onClick={onCreatePlan}>Створити план</button></div></div>}
     </section>
@@ -730,12 +732,13 @@ function AccountsView({data,onOperation}:{data:FinanceV2;onOperation:(type:Opera
 function SettingsView({data,onCategory,onRecurring,onSettings}:{data:FinanceV2;onCategory:()=>void;onRecurring:()=>void;onSettings:()=>void}) { return <><section className={styles.panel}><div className={styles.panelHeader}><div><span className={styles.eyebrow}>ФІНАНСОВІ ПРАВИЛА</span><h2>Правила управління</h2></div><button className={styles.primaryButton} onClick={onSettings}>Змінити</button></div><div className={styles.settingsGrid}><div className={styles.miniCard}><span>Мінімальний резерв</span><strong>{money(data.settings.minimumCashReserve)}</strong></div><div className={styles.miniCard}><span>Постійні витрати / міс.</span><strong>{money(data.settings.fixedMonthlyCosts)}</strong></div><div className={styles.miniCard}><span>Цільова маржа</span><strong>{percent(data.settings.targetGrossMarginPercent)}</strong></div><div className={styles.miniCard}><span>Поріг уваги</span><strong>{percent(data.settings.warningGrossMarginPercent)}</strong></div><div className={styles.miniCard}><span>Прогноз</span><strong>{data.settings.forecastHorizonDays} днів</strong></div></div></section><div className={styles.grid2}><section className={styles.panel}><div className={styles.panelHeader}><div><span className={styles.eyebrow}>КАТЕГОРІЇ</span><h2>Категорії та підкатегорії</h2></div><button className={styles.primaryButton} onClick={onCategory}>+ Категорія</button></div><div className={styles.tableWrap}><table className={styles.table}><thead><tr><th>Назва</th><th>P&L</th><th>Cash Flow</th><th>Тип</th></tr></thead><tbody>{data.categories.map(row=><tr key={row.id}><td><strong>{row.name}</strong><small>{row.code}{row.parentId?" · підкатегорія":""}</small></td><td>{row.pnlSection||"—"}</td><td>{row.cashFlowSection||"—"}</td><td>{row.isSystem?"Системна":"Власна"}</td></tr>)}</tbody></table></div></section><section className={styles.panel}><div className={styles.panelHeader}><div><span className={styles.eyebrow}>РЕГУЛЯРНІ ОПЕРАЦІЇ</span><h2>Регулярні операції</h2></div><button className={styles.primaryButton} onClick={onRecurring}>+ Правило</button></div>{data.recurring.map(row=><div className={styles.summaryRow} key={row.id}><span><strong>{row.name}</strong><small>{row.frequency} · наступна {dateText(row.nextOccurrenceAt)}</small></span><strong>{money(row.amount)}</strong></div>)}</section></div></>; }
 
 function BudgetDialog({data,locationId,onClose,onSave}:{data:FinanceV2;locationId:string;onClose:()=>void;onSave:(payload:Record<string,unknown>)=>void}) {
-  const [name,setName]=useState("План чистого прибутку");
-  const [metric,setMetric]=useState("NET_INCOME");
-  const [amount,setAmount]=useState("");
+  const currentNetPlan=data.budgets.find((item)=>item.metric==="NET_INCOME"||item.metric==="NET_PROFIT")||null;
+  const [name,setName]=useState(currentNetPlan?.name||"План чистого прибутку");
+  const [metric,setMetric]=useState(currentNetPlan?.metric==="NET_PROFIT"?"NET_PROFIT":"NET_INCOME");
+  const [amount,setAmount]=useState(currentNetPlan?String(currentNetPlan.fullAmount??currentNetPlan.amount):"");
   const [categoryId,setCategoryId]=useState("");
-  const [start,setStart]=useState(data.range.from.slice(0,10));
-  const [end,setEnd]=useState(data.range.to.slice(0,10));
+  const [start,setStart]=useState(currentNetPlan?.periodStart.slice(0,10)||data.range.from.slice(0,10));
+  const [end,setEnd]=useState(currentNetPlan?.periodEnd.slice(0,10)||data.range.to.slice(0,10));
   const applyPeriod=(mode:"month"|"quarter")=>{
     const now=new Date();
     if(mode==="month"){
@@ -762,7 +765,7 @@ function BudgetDialog({data,locationId,onClose,onSave}:{data:FinanceV2;locationI
       <label>Кінець періоду (не включно)<input type="date" value={end} onChange={e=>setEnd(e.target.value)}/></label>
     </div>
     <div className={styles.drawerNote}>Для квартального плану CRM автоматично розрахує частку на місяць, тиждень, день і кожен активний підйомник. Кінець періоду зберігається як перший день після планового інтервалу.</div>
-    <div className={styles.modalActions}><button className={styles.primaryButton} onClick={()=>onSave({name:name.trim()||"Фінансовий план",metric,amount:Number(amount.replace(",",".")),categoryId:categoryId||null,locationId:locationId||null,periodStart:start,periodEnd:end})}>Зберегти план</button></div>
+    <div className={styles.modalActions}><button className={styles.primaryButton} onClick={()=>onSave({id:(metric==="NET_INCOME"||metric==="NET_PROFIT")?currentNetPlan?.id:undefined,name:name.trim()||"Фінансовий план",metric,amount:Number(amount.replace(",",".")),categoryId:categoryId||null,locationId:locationId||null,periodStart:start,periodEnd:end})}>Зберегти план</button></div>
   </Modal>;
 }
 
