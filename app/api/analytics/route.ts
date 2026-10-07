@@ -8,6 +8,7 @@ import {
   findLocationScopedClosedWorkOrders,
   findLocationScopedCompletedLaborLines,
 } from "@/src/services/location-work-order-query.service";
+import { normalizePlannerSchedule } from "@/src/services/planner-availability.service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -92,6 +93,33 @@ function minutesBetween(start: Date, end: Date) {
 }
 function periodDeltaStart(from: Date, to: Date) {
   return new Date(from.getTime() - Math.max(DAY_MS, to.getTime() - from.getTime()));
+}
+function weekdayNumber(date: Date, timeZone: string) {
+  const short = new Intl.DateTimeFormat("en-US", { timeZone, weekday: "short" }).format(date);
+  return ({ Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6, Sun: 7 } as Record<string, number>)[short] || 1;
+}
+function availableMinutesForRange(
+  from: Date,
+  to: Date,
+  location: { timezone: string; openMinute: number; closeMinute: number },
+  scheduleValue: unknown,
+) {
+  const schedule = normalizePlannerSchedule(scheduleValue, location.openMinute, location.closeMinute);
+  let total = 0;
+  const cursor = new Date(from.getTime() + 12 * 60 * 60 * 1000);
+  while (cursor < to) {
+    const day = schedule.find((row) => row.day === weekdayNumber(cursor, location.timezone || KYIV_TZ));
+    if (day?.enabled) total += Math.max(0, day.closeMinute - day.openMinute);
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+  }
+  return total;
+}
+function delayReasonCode(row: { status: string; mechanicId: string | null }) {
+  if (row.status === "WAITING_APPROVAL" || row.status === "WAITING_CALCULATION") return "APPROVAL";
+  if (row.status === "WAITING_PARTS" || row.status === "WAITING_PARTS_SELECTION") return "PARTS";
+  if (row.status === "PAUSED") return "PAUSED";
+  if (!row.mechanicId) return "NO_MECHANIC";
+  return "OTHER";
 }
 function compactStatus(status: string) {
   const labels: Record<string, string> = {
@@ -328,20 +356,26 @@ export async function GET(request: NextRequest) {
     ? allowedLocations.filter((location) => effectiveLocationIds.includes(location.id))
     : allowedLocations;
   const locationById = new Map(locationsForCapacity.map((location) => [location.id, location]));
-  const capacityMinutes = posts.reduce((sum, post) => {
-    const location = locationById.get(post.locationId);
-    return sum + (location ? Math.max(0, location.closeMinute - location.openMinute) * days : 0);
-  }, 0);
-  const previousCapacityMinutes = posts.reduce((sum, post) => {
-    const location = locationById.get(post.locationId);
-    return sum + (location ? Math.max(0, location.closeMinute - location.openMinute) * previousDays : 0);
-  }, 0);
+  const workScheduleSetting = await prisma.crmSetting.findUnique({
+    where: { key: "work_schedule" },
+    select: { value: true },
+  });
+  const capacityByLocation = new Map(locationsForCapacity.map((location) => [
+    location.id,
+    availableMinutesForRange(from, to, location, workScheduleSetting?.value),
+  ]));
+  const previousCapacityByLocation = new Map(locationsForCapacity.map((location) => [
+    location.id,
+    availableMinutesForRange(previousFrom, previousTo, location, workScheduleSetting?.value),
+  ]));
+  const capacityMinutes = posts.reduce((sum, post) => sum + (capacityByLocation.get(post.locationId) || 0), 0);
+  const previousCapacityMinutes = posts.reduce((sum, post) => sum + (previousCapacityByLocation.get(post.locationId) || 0), 0);
   const bookedMinutes = appointments.reduce((sum, row) => sum + minutesBetween(row.plannedStartAt, row.plannedEndAt), 0);
   const previousBookedMinutes = previousAppointments.reduce((sum, row) => sum + minutesBetween(row.plannedStartAt, row.plannedEndAt), 0);
 
   const postUtilization = posts.map((post) => {
     const location = locationById.get(post.locationId);
-    const postCapacityMinutes = location ? Math.max(0, location.closeMinute - location.openMinute) * days : 0;
+    const postCapacityMinutes = capacityByLocation.get(post.locationId) || 0;
     const rows = appointments.filter((row) => row.postId === post.id);
     const usedMinutes = rows.reduce((sum, row) => sum + minutesBetween(row.plannedStartAt, row.plannedEndAt), 0);
     return {
@@ -445,35 +479,21 @@ export async function GET(request: NextRequest) {
   const cycles = appointments.flatMap((row) => row.actualArrivalAt && row.actualEndAt ? [minutesBetween(row.actualArrivalAt, row.actualEndAt)] : []);
   const averageCycleMinutes = cycles.length ? round(cycles.reduce((sum, value) => sum + value, 0) / cycles.length) : 0;
 
-  const delayReasons = [
-    {
-      code: "PARTS",
-      label: "Запчастини",
-      count: overdueAppointments.filter((row) => row.status === "WAITING_PARTS" || row.status === "WAITING_PARTS_SELECTION").length,
-    },
-    {
-      code: "APPROVAL",
-      label: "Погодження / калькуляція",
-      count: overdueAppointments.filter((row) => row.status === "WAITING_APPROVAL" || row.status === "WAITING_CALCULATION").length,
-    },
-    {
-      code: "NO_MECHANIC",
-      label: "Не призначено механіка",
-      count: overdueAppointments.filter((row) => !row.mechanicId).length,
-    },
-    {
-      code: "PAUSED",
-      label: "Пауза",
-      count: overdueAppointments.filter((row) => row.status === "PAUSED").length,
-    },
-    {
-      code: "OTHER",
-      label: "Робота / інше",
-      count: overdueAppointments.filter((row) => ![
-        "WAITING_PARTS", "WAITING_PARTS_SELECTION", "WAITING_APPROVAL", "WAITING_CALCULATION", "PAUSED",
-      ].includes(row.status) && Boolean(row.mechanicId)).length,
-    },
-  ].filter((row) => row.count > 0).sort((a, b) => b.count - a.count);
+  const delayReasonLabels: Record<string, string> = {
+    APPROVAL: "Погодження / калькуляція",
+    PARTS: "Запчастини",
+    PAUSED: "Пауза",
+    NO_MECHANIC: "Не призначено механіка",
+    OTHER: "Робота / інше",
+  };
+  const delayReasonCounts = new Map<string, number>();
+  for (const row of overdueAppointments) {
+    const code = delayReasonCode(row);
+    delayReasonCounts.set(code, (delayReasonCounts.get(code) || 0) + 1);
+  }
+  const delayReasons = [...delayReasonCounts.entries()]
+    .map(([code, count]) => ({ code, label: delayReasonLabels[code] || code, count }))
+    .sort((a, b) => b.count - a.count);
 
   const statusMap = new Map<string, number>();
   for (const row of liveAppointments) statusMap.set(row.status, (statusMap.get(row.status) || 0) + 1);
