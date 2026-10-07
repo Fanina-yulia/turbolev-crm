@@ -219,7 +219,7 @@
 .ownerPlanHeadline>div,.ownerCascadeGrid>div,.ownerLiftGrid>div{display:grid;gap:4px;min-width:0;padding:11px;border:1px solid var(--line);border-radius:12px;background:var(--panel-2,var(--surface,#fff))}
 .ownerPlanHeadline span,.ownerCascadeGrid span,.ownerLiftGrid span{font-size:11px;color:var(--muted)}
 .ownerPlanHeadline strong,.ownerCascadeGrid strong,.ownerLiftGrid strong{font-size:18px;font-variant-numeric:tabular-nums}
-.ownerPlanHeadline small,.ownerCascadeGrid small,.ownerLiftGrid small{font-size:10px;line-height:1.35;color:var(--muted)}
+.ownerPlanHeadline small,.ownerCascadeGrid small,.ownerLiftGrid small{font-size:11px;line-height:1.35;color:var(--muted)}
 .ownerTargetBands{display:grid;grid-template-columns:repeat(3,1fr);border:1px solid var(--line);border-radius:12px;overflow:hidden}
 .ownerTargetBands span{display:flex;justify-content:center;gap:6px;padding:9px;font-size:11px;background:var(--panel-2,var(--surface,#fff));border-right:1px solid var(--line)}
 .ownerTargetBands span:last-child{border-right:0}
@@ -240,9 +240,9 @@
 .ownerDriverList>div:last-child,.ownerRankList>div:last-child{border-bottom:0}
 .ownerDriverList span,.ownerRankList span{font-size:11px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .ownerDriverList strong,.ownerRankList strong{font-size:12px;font-variant-numeric:tabular-nums}
-.ownerDriverList small,.ownerRankList small{grid-column:1/-1;color:var(--muted);font-size:10px}
+.ownerDriverList small,.ownerRankList small{grid-column:1/-1;color:var(--muted);font-size:11px}
 .ownerScenarioGrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px}
-.ownerScenarioGrid label{display:grid;gap:4px;font-size:10px;color:var(--muted)}
+.ownerScenarioGrid label{display:grid;gap:4px;font-size:11px;color:var(--muted)}
 .ownerScenarioGrid input{width:100%;height:34px;border:1px solid var(--line);border-radius:9px;background:var(--surface,#fff);color:inherit;padding:0 8px;font:inherit}
 .ownerScenarioResult{display:grid;gap:3px;margin-top:10px;padding:11px;border:1px solid color-mix(in srgb,var(--accent,#1f6feb) 20%,var(--line));border-radius:12px;background:color-mix(in srgb,var(--accent,#1f6feb) 4%,var(--surface,#fff))}
 .ownerScenarioResult span{font-size:11px;color:var(--muted)}
