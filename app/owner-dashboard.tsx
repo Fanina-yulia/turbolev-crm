@@ -147,6 +147,20 @@ function analyticsQuery(period: OwnerPeriodKey) {
   return `?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`;
 }
 
+const OWNER_PERIODS: Array<{ key: OwnerPeriodKey; label: string }> = [
+  { key: "TODAY", label: "Сьогодні" },
+  { key: "7D", label: "7 днів" },
+  { key: "30D", label: "30 днів" },
+  { key: "90D", label: "90 днів" },
+  { key: "YEAR", label: "Рік" },
+];
+
+function ownerRangeLabel(range: AnalyticsPayload["range"]) {
+  if (!range) return "Поточний період";
+  if (range.days <= 1) return dateLabel(range.from);
+  return `${dateLabel(range.from)} — ${dateLabel(range.to)}`;
+}
+
 function routeAttention(item: DashboardAttention) {
   const workOrderId = item.workOrderId;
   if (workOrderId) return () => navigateCrm("Комерційна пропозиція", { workOrderId });
@@ -243,13 +257,23 @@ export function OwnerControlCenter({ userName, mode = "OWNER" }: { userName?: st
       eyebrow={isExecutive ? "TURBO LEV · ВИКОНАВЧИЙ ЦЕНТР" : "TURBO LEV · ПУЛЬТ ВЛАСНИКА"}
       title={isExecutive ? "Пульт виконавчого директора" : "Пульт власника"}
       description={`${userName || (isExecutive ? "Виконавчий директор" : "Власник")} · ${scopeLabel} · ${loading ? "оновлюю дані…" : "живі управлінські дані"}`}
-      actions={<button type="button" className={styles.primary} onClick={() => window.dispatchEvent(new CustomEvent("turbolev:open-new-request", { detail: { source: "OWNER_DASHBOARD" } }))}>+ Нова заявка</button>}
-      tabs={<nav className={styles.workspaceTabs} aria-label="Розділи пульта власника"><button type="button" className={workspaceTab === "RESULT" ? styles.workspaceTabActive : ""} onClick={() => setWorkspaceTab("RESULT")}>Результат</button><button type="button" className={workspaceTab === "SERVICE" ? styles.workspaceTabActive : ""} onClick={() => setWorkspaceTab("SERVICE")}>Сервіс</button><button type="button" className={workspaceTab === "RISKS" ? styles.workspaceTabActive : ""} onClick={() => setWorkspaceTab("RISKS")}>Ризики <b>{ownerAttention.length + teamAttention.length}</b></button><button type="button" className={workspaceTab === "TRENDS" ? styles.workspaceTabActive : ""} onClick={() => setWorkspaceTab("TRENDS")}>Тренди</button></nav>}
+      tabs={<div className={styles.dashboardNavRow}>
+        <nav className={styles.workspaceTabs} aria-label="Розділи пульта власника">
+          <button type="button" className={workspaceTab === "RESULT" ? styles.workspaceTabActive : ""} onClick={() => setWorkspaceTab("RESULT")}>Результат</button>
+          <button type="button" className={workspaceTab === "SERVICE" ? styles.workspaceTabActive : ""} onClick={() => setWorkspaceTab("SERVICE")}>Сервіс</button>
+          <button type="button" className={workspaceTab === "RISKS" ? styles.workspaceTabActive : ""} onClick={() => setWorkspaceTab("RISKS")}>Ризики <b>{ownerAttention.length + teamAttention.length}</b></button>
+          <button type="button" className={workspaceTab === "TRENDS" ? styles.workspaceTabActive : ""} onClick={() => setWorkspaceTab("TRENDS")}>Тренди</button>
+        </nav>
+        <div className={styles.periodToolbar} role="group" aria-label="Період аналітики">
+          {OWNER_PERIODS.map((item) => <button key={item.key} type="button" aria-pressed={period === item.key} className={period === item.key ? styles.periodActive : ""} onClick={() => setPeriod(item.key)}>{item.label}</button>)}
+          <span className={styles.periodRange}>{loading ? "Оновлюю…" : ownerRangeLabel(analytics?.range)}</span>
+        </div>
+      </div>}
     />
 
     {error && <div className={styles.error}><strong>{isExecutive ? "Не вдалося оновити пульт виконавчого директора" : "Не вдалося оновити пульт власника"}</strong><span>{error}</span><button type="button" onClick={() => void load()}>Повторити</button></div>}
 
-    <OwnerDashboardVisual analytics={analytics} period={period} onPeriodChange={setPeriod} loading={loading} />
+    <OwnerDashboardVisual analytics={analytics} loading={loading} />
 
     {workspaceTab === "RESULT" && <ManagementResultPanel mode={isExecutive ? "EXECUTIVE" : "OWNER"} />}
 
