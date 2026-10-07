@@ -475,9 +475,11 @@ function OwnerOverview({ data, onCreatePlan, onMetric }: { data: FinanceV2; onCr
   const totalLiftMinutes = capacity?.totalDailyMinutes || 0;
   const totalLiftContribution = capacity?.grossContribution || 0;
   const liftTargets = (capacity?.posts || []).map((post) => {
-    const target = dayTarget > 0 && totalLiftMinutes > 0 ? dayTarget * post.dailyMinutes / totalLiftMinutes : liftCount > 0 ? dayTarget / liftCount : 0;
+    const weight = totalLiftMinutes > 0 ? post.dailyMinutes / totalLiftMinutes : liftCount > 0 ? 1 / liftCount : 0;
+    const dailyTarget = dayTarget * weight;
+    const periodTarget = expectedPlan * weight;
     const allocatedNetActual = totalLiftContribution !== 0 ? facts.netIncome * post.grossContribution / totalLiftContribution : null;
-    return { ...post, target, allocatedNetActual, gap: allocatedNetActual == null ? null : allocatedNetActual - target };
+    return { ...post, dailyTarget, periodTarget, allocatedNetActual, gap: allocatedNetActual == null ? null : allocatedNetActual - periodTarget };
   });
 
   const selectedDays = dayCount(data.range.from, data.range.to);
@@ -571,7 +573,7 @@ function OwnerOverview({ data, onCreatePlan, onMetric }: { data: FinanceV2; onCr
         </div>
         <div className={styles.ownerLiftPlan}>
           <div className={styles.sectionTitle}><h3>Розкладка на підйомники</h3><span className={styles.badge}>{liftCount ? `${liftCount} активних` : "немає активних"}</span></div>
-          {liftTargets.length ? <div className={styles.ownerLiftGrid}>{liftTargets.map((post) => <div key={post.id}><span>{post.name}</span><strong>{money(post.target)} / день</strong><small>{post.locationName} · {Math.round(post.dailyMinutes / 60 * 10) / 10} год доступності</small><small>Внесок: {money(post.grossContribution)} · ЗН: {post.workOrders}</small>{post.allocatedNetActual != null && <small className={post.gap != null && post.gap < 0 ? styles.negative : styles.positive}>Розрах. чистий: {money(post.allocatedNetActual)} · {post.gap != null && post.gap < 0 ? `gap ${money(Math.abs(post.gap))}` : "у темпі"}</small>}</div>)}</div> : <div className={styles.empty}>Активні підйомники не знайдені — план на підйомник з'явиться після налаштування ServicePost.</div>}
+          {liftTargets.length ? <div className={styles.ownerLiftGrid}>{liftTargets.map((post) => <div key={post.id}><span>{post.name}</span><strong>{money(post.dailyTarget)} / день</strong><small>План вибраного періоду: {money(post.periodTarget)}</small><small>{post.locationName} · {Math.round(post.dailyMinutes / 60 * 10) / 10} год доступності · ЗН: {post.workOrders}</small><small>Валовий внесок: {money(post.grossContribution)}</small>{post.allocatedNetActual != null && <small className={post.gap != null && post.gap < 0 ? styles.negative : styles.positive}>Розрах. чистий: {money(post.allocatedNetActual)} · {post.gap != null && post.gap < 0 ? `gap ${money(Math.abs(post.gap))}` : `+ ${money(post.gap || 0)} до плану`}</small>}</div>)}</div> : <div className={styles.empty}>Активні підйомники не знайдені — план на підйомник з'явиться після налаштування ServicePost.</div>}
         </div>
       </> : <div className={styles.empty}>План чистого прибутку ще не заданий. Створіть місячний або квартальний Target — CRM сама порахує потрібний темп і план на кожен підйомник.<div style={{marginTop:10}}><button type="button" className={styles.primaryButton} onClick={onCreatePlan}>Створити план</button></div></div>}
     </section>
