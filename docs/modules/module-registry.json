@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated": "2026-10-06",
+  "updated": "2026-10-07",
   "rule": "Every production change must be assigned to at least one module. Start analysis from the module passport, then inspect declared dependencies only when the change can affect them.",
   "globalRules": [
     {
@@ -46,10 +46,10 @@
     {
       "id": "CRM-UI-006",
       "status": "ACTIVE",
-      "title": "Unified Page Header",
+      "title": "Unified Page Header V2",
       "source": "docs/TZ_CRM_UNIFIED_PAGE_HEADER.md",
       "trigger": "Усі top-level internal CRM pages у canonical CrmShell.",
-      "requiredScope": "CrmPageHeader з H1 28px, eyebrow 11px orange, description 12px, actions/tabs/controls у єдиному порядку; standalone Mechanic Cabinet та public/auth виключені.",
+      "requiredScope": "CrmPageHeader V2: H1 28px, eyebrow 11px orange, description 12px; actions 40px; tabs/context controls 36px, 12px/800, radius 10px; workspace owns outer gutter, page roots cannot add a second header inset; standalone Mechanic Cabinet та public/auth виключені.",
       "enforcedBy": "scripts/check-unified-page-header.mjs"
     },
     {
