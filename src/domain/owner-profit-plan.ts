@@ -206,7 +206,8 @@ export function calculateOwnerProfitPlanSummary(input: {
   fallbackPeriod?: { from: string; to: string };
 }): OwnerProfitPlanSummary {
   const today = input.today || ownerFinanceDayKey();
-  const bounds = ownerCurrentMonthBounds(today);\n  const fallback = input.fallbackPeriod || { from: bounds.start, to: bounds.end };
+  const bounds = ownerCurrentMonthBounds(today);
+  const fallback = input.fallbackPeriod || { from: bounds.start, to: bounds.end };
   const plan = input.plan;
   const start = plan ? ownerDateOnly(plan.periodStart) : fallback.from;
   const end = plan ? ownerDateOnly(plan.periodEnd) : fallback.to;
