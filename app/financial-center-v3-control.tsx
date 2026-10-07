@@ -51,7 +51,8 @@ type Control = {
   capacity: {
     activePosts: number;
     totalDailyMinutes: number;
-    posts: Array<{ id: string; name: string; locationId: string; locationName: string; dailyMinutes: number }>;
+    grossContribution: number;
+    posts: Array<{ id: string; name: string; locationId: string; locationName: string; dailyMinutes: number; grossContribution: number; workOrders: number }>;
   };
   cashClose: {
     businessDate: string;
