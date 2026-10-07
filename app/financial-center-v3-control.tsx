@@ -326,31 +326,103 @@ export function FinanceDrilldown({ data, metric, onClose }: { data: FinanceV3Dat
     currentCash: "Залишок коштів зараз", revenue: "Виручка", grossProfit: "Валовий прибуток", netProfit: "Чистий прибуток",
     cashIn: "Надходження", cashOut: "Виплати", cashNet: "Net Cash Flow", receivables: "Дебіторка", payables: "Кредиторка",
     cogs: "Собівартість", opex: "Операційні витрати", overdueReceivables: "Прострочена дебіторка", overduePayables: "Прострочена кредиторка",
+    ownerNetIncome: "Чистий дохід", serviceTurnover: "Оборотка з послуг", partsMargin: "Маржа по деталях",
+    payroll: "ЗП персоналу", ownerGrossIncome: "Валовий дохід", totalExpenses: "Всі витрати",
   };
+  const owner = data.ownerSummary;
+  const serviceCodes = new Set(["REV_LABOR", "REV_DIAGNOSTIC", "REV_DIAGNOSTICS", "REV_EXTERNAL"]);
   const eventSections = metric === "revenue" ? ["REVENUE"] : metric === "cogs" ? ["COGS"] : metric === "opex" ? ["OPEX","OTHER_EXPENSE","TAX"] : [];
-  const events = eventSections.length ? data.pnl.events.filter((event) => eventSections.includes(event.pnlSection)) : [];
+  const genericEvents = eventSections.length ? data.pnl.events.filter((event) => eventSections.includes(event.pnlSection)) : [];
+  const serviceEvents = metric === "serviceTurnover"
+    ? data.pnl.events.filter((event) => event.pnlSection === "REVENUE" && (serviceCodes.has(event.category?.code || "") || event.sourceEntity === "WALK_IN_DIAGNOSTIC"))
+    : [];
+  const partsEvents = metric === "partsMargin"
+    ? data.pnl.events.filter((event) => (event.pnlSection === "REVENUE" && event.category?.code === "REV_PARTS") || (event.pnlSection === "COGS" && event.category?.code === "COGS_PARTS"))
+    : [];
+  const totalExpenseEvents = metric === "totalExpenses"
+    ? data.pnl.events.filter((event) => ["COGS","OPEX","OTHER_EXPENSE","TAX"].includes(event.pnlSection) && event.category?.code !== "COGS_PARTS")
+    : [];
+  const events = genericEvents.length ? genericEvents : serviceEvents.length ? serviceEvents : partsEvents.length ? partsEvents : totalExpenseEvents;
   const cash = metric === "cashIn" ? data.cashFlow.transactions.filter((tx) => tx.kind === "INFLOW") : metric === "cashOut" ? data.cashFlow.transactions.filter((tx) => tx.kind === "OUTFLOW") : [];
   const obligations = ["receivables","overdueReceivables"].includes(metric)
     ? data.obligations.filter((row) => row.direction === "RECEIVABLE" && (metric !== "overdueReceivables" || row.isOverdue))
     : ["payables","overduePayables"].includes(metric)
       ? data.obligations.filter((row) => row.direction === "PAYABLE" && (metric !== "overduePayables" || row.isOverdue))
       : [];
+  const ownerMetric = ["ownerNetIncome","serviceTurnover","partsMargin","payroll","ownerGrossIncome","totalExpenses"].includes(metric);
 
   return <div className={styles.drawerBackdrop} onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
     <aside className={styles.drawer}>
       <header><div><span>ДЕТАЛІЗАЦІЯ</span><h2>{titles[metric]}</h2></div><button type="button" onClick={onClose}>✕</button></header>
+
       {metric === "currentCash" && <div className={styles.drawerList}>{data.accounts.map((row) => <div key={row.id}><span><strong>{row.name}</strong><small>{row.type} · початково {money(row.openingBalance)}</small></span><strong>{money(row.balance)}</strong></div>)}</div>}
       {metric === "cashNet" && <div className={styles.drawerList}><div><span>Надійшло</span><strong>{money(data.cashFlow.inflow)}</strong></div><div><span>− Витрачено</span><strong>{money(data.cashFlow.outflow)}</strong></div><div><span>= Net Cash Flow</span><strong>{money(data.cashFlow.net)}</strong></div></div>}
+
       {(metric === "grossProfit" || metric === "netProfit") && <div className={styles.drawerList}>
         <div><span>Виручка</span><strong>{money(data.pnl.revenue)}</strong></div>
         <div><span>− Собівартість</span><strong>{money(data.pnl.cogs)}</strong></div>
         <div><span>= Валовий прибуток</span><strong>{money(data.pnl.grossProfit)}</strong></div>
         {metric === "netProfit" && <><div><span>− OPEX</span><strong>{money(data.pnl.opex)}</strong></div><div><span>= Чистий прибуток</span><strong>{money(data.pnl.netProfit)}</strong></div></>}
       </div>}
-      {events.length > 0 && <div className={styles.drawerList}>{events.map((row) => <button type="button" key={row.id} onClick={() => row.workOrderId && navigateCrm("Замовлення-наряди", { workOrderId: row.workOrderId })}><span><strong>{row.category?.name || row.pnlSection}</strong><small>{dateText(row.recognizedAt)} · {row.description || "без опису"}{row.workOrderId ? ` · ЗН ${row.workOrderId}` : ""}</small></span><strong>{money(row.amount)}</strong></button>)}</div>}
+
+      {owner && metric === "ownerNetIncome" && <div className={styles.drawerList}>
+        <div><span><strong>Валовий дохід</strong><small>послуги + маржа деталей</small></span><strong>{money(owner.grossIncome)}</strong></div>
+        <div><span><strong>− Всі витрати</strong><small>без повторного врахування собівартості деталей</small></span><strong>{money(owner.totalExpenses)}</strong></div>
+        <div><span><strong>= Чистий дохід</strong></span><strong>{money(owner.netIncome)}</strong></div>
+      </div>}
+
+      {owner && metric === "serviceTurnover" && <div className={styles.drawerList}>
+        <div><span>Роботи</span><strong>{money(owner.serviceBreakdown.labor)}</strong></div>
+        <div><span>Діагностика</span><strong>{money(owner.serviceBreakdown.diagnostics)}</strong></div>
+        <div><span>Сторонні роботи</span><strong>{money(owner.serviceBreakdown.external)}</strong></div>
+        {owner.serviceBreakdown.other !== 0 && <div><span>Інші послуги</span><strong>{money(owner.serviceBreakdown.other)}</strong></div>}
+        <div><span><strong>= Оборотка з послуг</strong></span><strong>{money(owner.serviceTurnover)}</strong></div>
+      </div>}
+
+      {owner && metric === "partsMargin" && <div className={styles.drawerList}>
+        <div><span>Продаж деталей</span><strong>{money(owner.partsRevenue)}</strong></div>
+        <div><span>− Собівартість деталей</span><strong>{money(owner.partsCost)}</strong></div>
+        <div><span><strong>= Маржа по деталях</strong></span><strong>{money(owner.partsMargin)}</strong></div>
+      </div>}
+
+      {owner && metric === "ownerGrossIncome" && <div className={styles.drawerList}>
+        <div><span>Оборотка з послуг</span><strong>{money(owner.serviceTurnover)}</strong></div>
+        <div><span>+ Маржа по деталях</span><strong>{money(owner.partsMargin)}</strong></div>
+        <div><span><strong>= Валовий дохід</strong></span><strong>{money(owner.grossIncome)}</strong></div>
+      </div>}
+
+      {owner && metric === "totalExpenses" && <div className={styles.drawerList}>
+        <div><span><strong>ЗП персоналу</strong><small>усі нарахування, що увійшли у витрати періоду</small></span><strong>{money(owner.expenseBreakdown.payroll)}</strong></div>
+        <div><span><strong>Інші прямі витрати</strong><small>без собівартості деталей і без ЗП</small></span><strong>{money(owner.expenseBreakdown.otherDirect)}</strong></div>
+        <div><span><strong>Операційні витрати</strong><small>оренда, зв’язок, реклама, інше · без ЗП</small></span><strong>{money(owner.expenseBreakdown.otherOperating)}</strong></div>
+        {owner.expenseBreakdown.otherExpense !== 0 && <div><span>Інші витрати</span><strong>{money(owner.expenseBreakdown.otherExpense)}</strong></div>}
+        {owner.expenseBreakdown.tax !== 0 && <div><span>Податки</span><strong>{money(owner.expenseBreakdown.tax)}</strong></div>}
+        <div><span><strong>= Всі витрати</strong><small>ця сума завжди дорівнює картці на «Огляді»</small></span><strong>{money(owner.totalExpenses)}</strong></div>
+      </div>}
+
+      {owner && metric === "payroll" && <>
+        <div className={styles.drawerList}>
+          <div><span><strong>Нараховано за вибраний період</strong><small>витрата вже врахована у фінрезультаті</small></span><strong>{money(owner.payrollAccrued)}</strong></div>
+          <div><span><strong>До виплати зараз</strong><small>відкриті зарплатні зобов’язання, включно з попередніми періодами</small></span><strong>{money(owner.payrollDue)}</strong></div>
+        </div>
+        <div className={styles.drawerList}>
+          {owner.payrollEmployees.map((employee) => <div key={employee.employeeId}>
+            <span>
+              <strong>{employee.name}</strong>
+              <small>{employee.position || "Працівник"} · нараховано {money(employee.accrued)} · роботи {money(employee.labor)}{employee.sales ? " · деталі " + money(employee.sales) : ""}{employee.baseAndOther ? " · ставка/інші " + money(employee.baseAndOther) : ""}{employee.profitShare ? " · від прибутку " + money(employee.profitShare) : ""}</small>
+            </span>
+            <span><strong>{money(employee.due)}</strong><small>до виплати</small></span>
+          </div>)}
+          {!owner.payrollEmployees.length && <div><span>Нарахувань персоналу за вибраний період немає.</span><strong>{money(0)}</strong></div>}
+        </div>
+      </>}
+
+      {events.length > 0 && <div className={styles.drawerList}>{events.map((row) => <button type="button" key={row.id} onClick={() => row.workOrderId && navigateCrm("Замовлення-наряди", { workOrderId: row.workOrderId })}><span><strong>{row.category?.name || row.pnlSection}</strong><small>{dateText(row.recognizedAt)} · {row.description || "без опису"}{row.workOrderId ? " · ЗН " + row.workOrderId : ""}</small></span><strong>{money(row.amount)}</strong></button>)}</div>}
       {cash.length > 0 && <div className={styles.drawerList}>{cash.map((row) => <div key={row.id}><span><strong>{row.description || row.flowSection}</strong><small>{dateText(row.occurredAt)}</small></span><strong>{money(row.amount)}</strong></div>)}</div>}
-      {obligations.length > 0 && <div className={styles.drawerList}>{obligations.map((row) => <button type="button" key={row.id} onClick={() => row.workOrderId && navigateCrm("Замовлення-наряди", { workOrderId: row.workOrderId })}><span><strong>{row.counterpartyName || row.description || "Зобов'язання"}</strong><small>{row.status} · до {dateText(row.dueAt)}{row.isOverdue ? ` · прострочено ${row.overdueDays} дн.` : ""}</small></span><strong>{money(row.outstanding)}</strong></button>)}</div>}
-      {!events.length && !cash.length && !obligations.length && metric !== "currentCash" && metric !== "grossProfit" && metric !== "netProfit" && metric !== "cashNet" && <div className={styles.empty}>Для цього показника немає окремих фактичних рядків у вибраному періоді.</div>}
+      {obligations.length > 0 && <div className={styles.drawerList}>{obligations.map((row) => <button type="button" key={row.id} onClick={() => row.workOrderId && navigateCrm("Замовлення-наряди", { workOrderId: row.workOrderId })}><span><strong>{row.counterpartyName || row.description || "Зобов'язання"}</strong><small>{row.status} · до {dateText(row.dueAt)}{row.isOverdue ? " · прострочено " + row.overdueDays + " дн." : ""}</small></span><strong>{money(row.outstanding)}</strong></button>)}</div>}
+
+      {!events.length && !cash.length && !obligations.length && !ownerMetric && metric !== "currentCash" && metric !== "grossProfit" && metric !== "netProfit" && metric !== "cashNet" && <div className={styles.empty}>Для цього показника немає окремих фактичних рядків у вибраному періоді.</div>}
+      {ownerMetric && !owner && <div className={styles.empty}>Деталізація власника недоступна для цієї ролі.</div>}
     </aside>
   </div>;
 }
