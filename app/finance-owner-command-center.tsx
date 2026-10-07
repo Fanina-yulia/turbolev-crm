@@ -242,13 +242,14 @@ export function FinanceOwnerCommandCenter({
       .reduce((sum, row) => sum + row.outstanding, 0);
   }, [data.obligations, today]);
   const freeCash = data.kpi.currentCash - due30;
+  const spendableCash = freeCash - data.settings.minimumCashReserve;
   const topService = [...data.profitability.services].sort((a, b) => b.profit - a.profit)[0] || null;
   const forecast30 = data.control?.forecast?.in30Days ?? data.kpi.currentCash;
   const firstGap = data.control?.forecast?.firstGap || null;
 
   const questions = [
     { label: "Скільки СТО реально заробило?", value: facts?.netIncome || 0, note: "чистий управлінський результат за вибраний період", tone: (facts?.netIncome || 0) >= 0 ? "good" as const : "bad" as const, metric: "ownerNetIncome" as FinanceDrilldownMetric },
-    { label: "Де зараз гроші?", value: data.kpi.currentCash, note: `вільно після зобов’язань 30 днів ≈ ${money(freeCash)}`, tone: freeCash >= data.settings.minimumCashReserve ? "good" as const : freeCash >= 0 ? "warn" as const : "bad" as const, metric: "currentCash" as FinanceDrilldownMetric },
+    { label: "Де зараз гроші?", value: data.kpi.currentCash, note: `можна витратити після зобов’язань 30 днів і резерву ≈ ${money(spendableCash)}`, tone: spendableCash >= 0 ? "good" as const : freeCash >= 0 ? "warn" as const : "bad" as const, metric: "currentCash" as FinanceDrilldownMetric },
     { label: "Кому ми винні?", value: data.kpi.payables, note: `прострочено ${money(data.kpi.overduePayables)}`, tone: data.kpi.overduePayables > 0 ? "warn" as const : "neutral" as const, metric: "payables" as FinanceDrilldownMetric },
     { label: "Хто винен нам?", value: data.kpi.receivables, note: `прострочено ${money(data.kpi.overdueReceivables)}`, tone: data.kpi.overdueReceivables > 0 ? "warn" as const : "neutral" as const, metric: "receivables" as FinanceDrilldownMetric },
     { label: "На чому заробляємо найбільше?", value: topService?.profit || 0, note: topService ? `${topService.name} · маржа ${percent(topService.marginPercent)}` : "ще немає достатньо закритих робіт", tone: "good" as const },
@@ -349,8 +350,9 @@ export function FinanceOwnerCommandCenter({
           <div><span>Через 30 днів</span><strong>{money(data.control?.forecast?.in30Days)}</strong></div>
           <div><span>Через 60 днів</span><strong>{money(data.control?.forecast?.in60Days)}</strong></div>
           <div><span>Через 90 днів</span><strong>{money(data.control?.forecast?.in90Days)}</strong></div>
-          <div><span>Горизонт прогнозу</span><strong>{data.control?.forecast?.forecastHorizonDate ? dateOnly(data.control.forecast.forecastHorizonDate) : "—"}</strong></div>
+          <div><span>Можна витратити зараз</span><strong className={spendableCash >= 0 ? styles.positive : styles.negative}>{money(spendableCash)}</strong></div>
         </div>
+        <div className={styles.ownerInsightLine}><span>Горизонт підтвердженого прогнозу</span><strong>{data.control?.forecast?.forecastHorizonDate ? dateOnly(data.control.forecast.forecastHorizonDate) : "—"}</strong></div>
         {data.control?.forecast?.firstGap && <div className={styles.ownerWarningLine}>Касовий розрив: {dateOnly(data.control.forecast.firstGap.date)} · прогнозний залишок {money(data.control.forecast.firstGap.closingCash)}.</div>}
       </section>
     </div>
