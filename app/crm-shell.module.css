@@ -291,28 +291,40 @@
 }
 
 
-/* CRM-UI-004 POLISH V2 */
+/* CRM-UI-004 + CRM-UI-006 V2 */
 @media (min-width:761px){
   .workspaceWithFloatingAction{
     position:relative;
     display:flex;
     flex-direction:column;
     min-height:0;
-    padding-top:8px!important;
+    padding-top:var(--crm-screen-pad-y)!important;
   }
   .globalNewRequest{
-    position:static;
-    flex:0 0 auto;
-    min-height:48px;
-    margin:0 0 4px;
+    position:absolute;
+    top:var(--crm-screen-pad-y);
+    right:24px;
+    z-index:35;
+    min-height:0;
+    margin:0;
     display:flex;
-    align-items:center;
+    align-items:flex-start;
     justify-content:flex-end;
   }
-  .globalNewRequest > :global(button){min-height:42px;box-shadow:none}
+  .globalNewRequest > :global(button){
+    min-height:40px;
+    border-radius:10px;
+    padding:0 14px;
+    font-size:12px;
+    font-weight:800;
+    box-shadow:none;
+  }
+  .workspaceWithFloatingAction :global([data-crm-page-header="true"] > div:first-child){
+    padding-right:150px;
+  }
   .workspaceWithFloatingAction > :global([data-crm-screen-frame="true"]){
     flex:1 1 auto;
-    height:auto;
+    height:100%;
     min-height:0;
   }
 }
