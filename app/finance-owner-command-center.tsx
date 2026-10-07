@@ -246,6 +246,7 @@ export function FinanceOwnerCommandCenter({
   const topService = [...data.profitability.services].sort((a, b) => b.profit - a.profit)[0] || null;
   const forecast30 = data.control?.forecast?.in30Days ?? data.kpi.currentCash;
   const firstGap = data.control?.forecast?.firstGap || null;
+  const firstGapWithin30 = firstGap && dateOnly(firstGap.date) <= addDays(today, 30) ? firstGap : null;
 
   const questions = [
     { label: "Скільки СТО реально заробило?", value: facts?.netIncome || 0, note: "чистий управлінський результат за вибраний період", tone: (facts?.netIncome || 0) >= 0 ? "good" as const : "bad" as const, metric: "ownerNetIncome" as FinanceDrilldownMetric },
@@ -253,7 +254,7 @@ export function FinanceOwnerCommandCenter({
     { label: "Кому ми винні?", value: data.kpi.payables, note: `прострочено ${money(data.kpi.overduePayables)}`, tone: data.kpi.overduePayables > 0 ? "warn" as const : "neutral" as const, metric: "payables" as FinanceDrilldownMetric },
     { label: "Хто винен нам?", value: data.kpi.receivables, note: `прострочено ${money(data.kpi.overdueReceivables)}`, tone: data.kpi.overdueReceivables > 0 ? "warn" as const : "neutral" as const, metric: "receivables" as FinanceDrilldownMetric },
     { label: "На чому заробляємо найбільше?", value: topService?.profit || 0, note: topService ? `${topService.name} · маржа ${percent(topService.marginPercent)}` : "ще немає достатньо закритих робіт", tone: "good" as const },
-    { label: "Чи вистачить грошей через 30 днів?", value: forecast30, note: firstGap ? `касовий розрив прогнозується ${dateOnly(firstGap.date)}` : "касового розриву в 30-денному горизонті не видно", tone: forecast30 < 0 || firstGap ? "bad" as const : forecast30 < data.settings.minimumCashReserve ? "warn" as const : "good" as const, metric: "currentCash" as FinanceDrilldownMetric },
+    { label: "Чи вистачить грошей через 30 днів?", value: forecast30, note: firstGapWithin30 ? `касовий розрив прогнозується ${dateOnly(firstGapWithin30.date)}` : "касового розриву в 30-денному горизонті не видно", tone: forecast30 < 0 || firstGapWithin30 ? "bad" as const : forecast30 < data.settings.minimumCashReserve ? "warn" as const : "good" as const, metric: "currentCash" as FinanceDrilldownMetric },
   ];
 
   const actionRows = useMemo(() => {
