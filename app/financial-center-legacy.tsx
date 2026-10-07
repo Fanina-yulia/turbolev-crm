@@ -24,6 +24,7 @@ import {
   FinancePlanPace,
   FinanceProfitabilityHighlights,
   type FinanceDrilldownMetric,
+  type FinanceV3Data,
 } from "./financial-center-v3-control";
 import type { FinanceGlossaryKey } from "@/src/domain/finance-glossary";
 import styles from "./financial-center-v2.module.css";
@@ -68,10 +69,7 @@ type FinanceV2 = {
     mechanics: Array<{ mechanicId: string; name: string; position: string | null; revenue: number; directCost: number; profit: number; laborHours: number; lines: number; marginPercent: number | null }>;
     suppliers: Array<{ supplierId: string; name: string; revenue: number; directCost: number; profit: number; parts: number; markupPercent: number | null; marginPercent: number | null }>;
   };
-  control?: {
-    today?: { date: string; revenue: number; cashIn: number; cashOut: number; netCashFlow: number; receivablesCreated: number; receivablesCollected: number };
-    forecast?: { currentCash: number; in7Days: number; in30Days: number; minimum: { date: string; closingCash: number } | null; firstGap: { date: string; closingCash: number } | null; firstReserveWarning: { date: string; closingCash: number } | null };
-  };
+  control?: FinanceV3Data["control"];
   ownerSummary?: {
     netIncome: number;
     serviceTurnover: number;
