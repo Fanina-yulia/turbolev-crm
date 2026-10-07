@@ -43,7 +43,7 @@ type FinanceV2 = {
   settings: { scopeKey: string; locationId: string | null; defaultCurrency: string; minimumCashReserve: number; fixedMonthlyCosts: number; targetGrossMarginPercent: number; warningGrossMarginPercent: number; forecastHorizonDays: number };
   kpi: { currentCash: number; revenue: number; grossProfit: number; directCosts: number; opex: number; netProfit: number; cashFlow: number; grossMarginPercent: number | null; receivables: number; payables: number; overdueReceivables: number; overduePayables: number };
   comparison: { revenue: { previous: number; changePercent: number | null }; grossProfit: { previous: number; changePercent: number | null }; netProfit: { previous: number; changePercent: number | null }; opex: { previous: number; changePercent: number | null } };
-  pnl: { revenue: number; cogs: number; grossProfit: number; grossMarginPercent: number | null; opex: number; operatingProfit: number; otherIncome: number; otherExpense: number; tax: number; netProfit: number; netMarginPercent: number | null; categories: Array<{ id: string; code: string; name: string; section: string; amount: number; count: number }>; events: Array<{ id: string; pnlSection: string; amount: number; recognizedAt: string; description: string | null; workOrderId: string | null; categoryId?: string | null; supplierId?: string | null; employeeId?: string | null; sourceEntity?: string | null; sourceEntityId?: string | null; category: { name: string } | null }> };
+  pnl: { revenue: number; cogs: number; grossProfit: number; grossMarginPercent: number | null; opex: number; operatingProfit: number; otherIncome: number; otherExpense: number; tax: number; netProfit: number; netMarginPercent: number | null; categories: Array<{ id: string; code: string; name: string; section: string; amount: number; count: number }>; events: Array<{ id: string; pnlSection: string; amount: number; recognizedAt: string; description: string | null; workOrderId: string | null; categoryId?: string | null; supplierId?: string | null; employeeId?: string | null; sourceEntity?: string | null; sourceEntityId?: string | null; category: { name: string; code?: string | null } | null }> };
   cashFlow: { inflow: number; outflow: number; net: number; operating: number; investing: number; financing: number; internalTransfer: number; transactions: Array<{ id: string; kind: string; flowSection: string; amount: number; occurredAt: string; description: string | null; fromAccountId: string | null; toAccountId: string | null; categoryId?: string | null; supplierId?: string | null; workOrderId?: string | null; sourceEntity?: string | null; sourceEntityId?: string | null }> };
   accounts: Account[];
   obligations: Obligation[];
@@ -61,6 +61,21 @@ type FinanceV2 = {
     parts: Array<{ name: string; brand: string | null; article: string | null; supplierId: string | null; quantity: number; revenue: number; directCost: number; profit: number; markupPercent: number | null; marginPercent: number | null }>;
     mechanics: Array<{ mechanicId: string; name: string; position: string | null; revenue: number; directCost: number; profit: number; laborHours: number; lines: number; marginPercent: number | null }>;
     suppliers: Array<{ supplierId: string; name: string; revenue: number; directCost: number; profit: number; parts: number; markupPercent: number | null; marginPercent: number | null }>;
+  };
+  ownerSummary?: {
+    netIncome: number;
+    serviceTurnover: number;
+    partsMargin: number;
+    payrollAccrued: number;
+    payrollDue: number;
+    grossIncome: number;
+    totalExpenses: number;
+    cash: number;
+    partsRevenue: number;
+    partsCost: number;
+    serviceBreakdown: { labor: number; diagnostics: number; external: number; other: number };
+    expenseBreakdown: { payroll: number; otherDirect: number; otherOperating: number; otherExpense: number; tax: number };
+    payrollEmployees: Array<{ employeeId: string; name: string; position: string | null; accrued: number; due: number; labor: number; sales: number; baseAndOther: number; profitShare: number }>;
   };
   financeCompleteness: {
     score: number;
@@ -341,16 +356,6 @@ function FinanceSectionHero({ tab }: { tab: Tab }) {
 }
 
 
-function isPayrollEvent(event: FinanceV2["pnl"]["events"][number]) {
-  const source = (event.sourceEntity || "").toUpperCase();
-  const description = (event.description || "").toLowerCase();
-  return source === "SALARY_ACCRUAL"
-    || source.startsWith("PAYROLL_PERIOD_EMPLOYEE")
-    || source.includes("PAYROLL")
-    || description.includes("зарплат")
-    || description.includes("нарахування працівнику");
-}
-
 function budgetFor(data: FinanceV2, ...metrics: string[]) {
   for (const metric of metrics) {
     const item = data.budgets.find((row) => row.metric === metric);
@@ -360,19 +365,33 @@ function budgetFor(data: FinanceV2, ...metrics: string[]) {
 }
 
 function managementFacts(data: FinanceV2) {
-  const serviceTurnover = data.profitability.workOrders.reduce((sum, row) => sum + row.laborRevenue, 0)
-    + data.pnl.events
-      .filter((row) => row.pnlSection === "REVENUE" && row.sourceEntity === "WALK_IN_DIAGNOSTIC")
-      .reduce((sum, row) => sum + row.amount, 0);
-  const partsRevenue = data.profitability.workOrders.reduce((sum, row) => sum + row.partsRevenue, 0);
-  const partsCost = data.profitability.workOrders.reduce((sum, row) => sum + row.partsCost, 0);
+  if (data.ownerSummary) return {
+    serviceTurnover: data.ownerSummary.serviceTurnover,
+    partsMargin: data.ownerSummary.partsMargin,
+    payroll: data.ownerSummary.payrollAccrued,
+    payrollDue: data.ownerSummary.payrollDue,
+    grossIncome: data.ownerSummary.grossIncome,
+    allExpenses: data.ownerSummary.totalExpenses,
+    netIncome: data.ownerSummary.netIncome,
+    cash: data.ownerSummary.cash,
+  };
+
+  const serviceTurnover = data.pnl.events
+    .filter((row) => row.pnlSection === "REVENUE" && ["REV_LABOR", "REV_DIAGNOSTIC", "REV_DIAGNOSTICS", "REV_EXTERNAL"].includes(row.category?.code || ""))
+    .reduce((sum, row) => sum + row.amount, 0);
+  const partsRevenue = data.pnl.events.filter((row) => row.pnlSection === "REVENUE" && row.category?.code === "REV_PARTS").reduce((sum, row) => sum + row.amount, 0);
+  const partsCost = data.pnl.events.filter((row) => row.pnlSection === "COGS" && row.category?.code === "COGS_PARTS").reduce((sum, row) => sum + row.amount, 0);
   const partsMargin = partsRevenue - partsCost;
-  const payroll = data.pnl.events.filter(isPayrollEvent).reduce((sum, row) => sum + row.amount, 0);
+  const payrollEvents = data.pnl.events.filter((row) => {
+    const source = (row.sourceEntity || "").toUpperCase();
+    return source === "SALARY_ACCRUAL" || source.startsWith("PAYROLL_PERIOD_EMPLOYEE") || source.includes("PAYROLL");
+  });
+  const payroll = payrollEvents.reduce((sum, row) => sum + row.amount, 0);
   const nonPartsDirectCosts = Math.max(0, data.pnl.cogs - partsCost);
   const allExpenses = nonPartsDirectCosts + data.pnl.opex + data.pnl.otherExpense + data.pnl.tax;
   const grossIncome = serviceTurnover + partsMargin;
   const netIncome = grossIncome - allExpenses;
-  return { serviceTurnover, partsMargin, payroll, grossIncome, allExpenses, netIncome, cash: data.kpi.currentCash };
+  return { serviceTurnover, partsMargin, payroll, payrollDue: 0, grossIncome, allExpenses, netIncome, cash: data.kpi.currentCash };
 }
 
 function managementActualForBudget(metric: string, facts: ReturnType<typeof managementFacts>) {
@@ -391,12 +410,12 @@ function managementActualForBudget(metric: string, facts: ReturnType<typeof mana
 function OwnerOverview({ data, onCreatePlan, onMetric }: { data: FinanceV2; onCreatePlan: () => void; onMetric: (metric: FinanceDrilldownMetric) => void }) {
   const facts = managementFacts(data);
   const cards = [
-    { key: "NET_INCOME", label: "Чистий дохід", value: facts.netIncome, plan: budgetFor(data, "NET_INCOME", "NET_PROFIT"), mode: "HIGHER" as const, metric: "netProfit" as FinanceDrilldownMetric, note: "валовий дохід − всі витрати" },
-    { key: "SERVICE_REVENUE", label: "Оборотка з послуг", value: facts.serviceTurnover, plan: budgetFor(data, "SERVICE_REVENUE"), mode: "HIGHER" as const, metric: "revenue" as FinanceDrilldownMetric, note: "роботи та діагностики, без продажу деталей" },
-    { key: "PARTS_MARGIN", label: "Маржа по деталях", value: facts.partsMargin, plan: budgetFor(data, "PARTS_MARGIN"), mode: "HIGHER" as const, metric: "grossProfit" as FinanceDrilldownMetric, note: "продаж деталей − їх собівартість" },
-    { key: "PAYROLL", label: "ЗП персоналу", value: facts.payroll, plan: budgetFor(data, "PAYROLL"), mode: "LOWER" as const, metric: "opex" as FinanceDrilldownMetric, note: "усі POSTED нарахування персоналу" },
-    { key: "GROSS_INCOME", label: "Валовий дохід", value: facts.grossIncome, plan: budgetFor(data, "GROSS_INCOME"), mode: "HIGHER" as const, metric: "grossProfit" as FinanceDrilldownMetric, note: "послуги + маржа деталей" },
-    { key: "TOTAL_EXPENSES", label: "Всі витрати", value: facts.allExpenses, plan: budgetFor(data, "TOTAL_EXPENSES"), mode: "LOWER" as const, metric: "opex" as FinanceDrilldownMetric, note: "без повторного врахування закупівельної вартості деталей" },
+    { key: "NET_INCOME", label: "Чистий дохід", value: facts.netIncome, plan: budgetFor(data, "NET_INCOME", "NET_PROFIT"), mode: "HIGHER" as const, metric: "ownerNetIncome" as FinanceDrilldownMetric, note: "валовий дохід − всі витрати" },
+    { key: "SERVICE_REVENUE", label: "Оборотка з послуг", value: facts.serviceTurnover, plan: budgetFor(data, "SERVICE_REVENUE"), mode: "HIGHER" as const, metric: "serviceTurnover" as FinanceDrilldownMetric, note: "роботи та діагностики, без продажу деталей" },
+    { key: "PARTS_MARGIN", label: "Маржа по деталях", value: facts.partsMargin, plan: budgetFor(data, "PARTS_MARGIN"), mode: "HIGHER" as const, metric: "partsMargin" as FinanceDrilldownMetric, note: "продаж деталей − їх собівартість" },
+    { key: "PAYROLL", label: "ЗП персоналу", value: facts.payroll, plan: budgetFor(data, "PAYROLL"), mode: "LOWER" as const, metric: "payroll" as FinanceDrilldownMetric, note: "нараховано за період · до виплати " + money(facts.payrollDue) },
+    { key: "GROSS_INCOME", label: "Валовий дохід", value: facts.grossIncome, plan: budgetFor(data, "GROSS_INCOME"), mode: "HIGHER" as const, metric: "ownerGrossIncome" as FinanceDrilldownMetric, note: "послуги + маржа деталей" },
+    { key: "TOTAL_EXPENSES", label: "Всі витрати", value: facts.allExpenses, plan: budgetFor(data, "TOTAL_EXPENSES"), mode: "LOWER" as const, metric: "totalExpenses" as FinanceDrilldownMetric, note: "зарплати + прямі + операційні + інші витрати + податки; без собівартості деталей" },
     { key: "CASH_BALANCE", label: "Грошей у касі", value: facts.cash, plan: budgetFor(data, "CASH_BALANCE"), mode: "MINIMUM" as const, metric: "currentCash" as FinanceDrilldownMetric, note: currentCashNote(data) },
   ];
 
