@@ -43,8 +43,6 @@ type AnalyticsVisualPayload = {
 
 type Props = {
   analytics: AnalyticsVisualPayload | null;
-  period: OwnerPeriodKey;
-  onPeriodChange: (period: OwnerPeriodKey) => void;
   loading?: boolean;
 };
 
@@ -131,14 +129,6 @@ const EMPTY_FACTS: OwnerFactsPayload = {
   dataQuality: null,
 };
 
-const PERIODS: Array<{ key: OwnerPeriodKey; label: string }> = [
-  { key: "TODAY", label: "Сьогодні" },
-  { key: "7D", label: "7 днів" },
-  { key: "30D", label: "30 днів" },
-  { key: "90D", label: "90 днів" },
-  { key: "YEAR", label: "Рік" },
-];
-
 function money(value: number | null | undefined) {
   if (value == null) return "—";
   return new Intl.NumberFormat("uk-UA", { style: "currency", currency: "UAH", maximumFractionDigits: 0 }).format(value);
@@ -167,25 +157,6 @@ function DeltaLabel({ current, previous, invert = false }: { current: number | n
   if (value == null) return <span className={styles.deltaNeutral}>поточний період</span>;
   const good = invert ? value <= 0 : value >= 0;
   return <span className={good ? styles.deltaGood : styles.deltaBad}>{value > 0 ? "↑" : value < 0 ? "↓" : "•"} {Math.abs(value).toFixed(1)}% <small>до попереднього</small></span>;
-}
-
-function compactDate(value: string | undefined, withYear = false) {
-  if (!value) return "";
-  const date = new Date(`${value}T00:00:00Z`);
-  if (!Number.isFinite(date.getTime())) return value;
-  return new Intl.DateTimeFormat("uk-UA", {
-    timeZone: "UTC",
-    day: "2-digit",
-    month: "short",
-    ...(withYear ? { year: "numeric" } : {}),
-  }).format(date);
-}
-
-function rangeLabel(range: AnalyticsVisualPayload["range"]) {
-  if (!range) return "Поточний період";
-  if (range.days <= 1) return compactDate(range.from);
-  const crossesYear = range.from.slice(0, 4) !== range.to.slice(0, 4);
-  return `${compactDate(range.from, crossesYear)} — ${compactDate(range.to, crossesYear)}`;
 }
 
 function chartValues(values: Array<number | null | undefined>) {
@@ -345,7 +316,7 @@ function issueCount(attention: AttentionItem[], code: string) {
   return attention.filter((item) => item.issues?.some((issue) => issue.code === code)).length;
 }
 
-export function OwnerDashboardVisual({ analytics, period, onPeriodChange, loading = false }: Props) {
+export function OwnerDashboardVisual({ analytics, loading = false }: Props) {
   const [control, setControl] = useState<OwnerControlSnapshot>(EMPTY_CONTROL);
   const [facts, setFacts] = useState<OwnerFactsPayload>(EMPTY_FACTS);
   const [controlLoading, setControlLoading] = useState(true);
@@ -474,13 +445,6 @@ export function OwnerDashboardVisual({ analytics, period, onPeriodChange, loadin
   ], [noShow, waitingApproval, control.risk.paused]);
 
   return <section className={styles.visualDashboard} aria-label="Ключова аналітика власника">
-    <div className={styles.periodRow}>
-      <div className={styles.periodTabs} role="group" aria-label="Період аналітики">
-        {PERIODS.map((item) => <button key={item.key} type="button" aria-pressed={period === item.key} className={period === item.key ? styles.periodActive : ""} onClick={() => onPeriodChange(item.key)}>{item.label}</button>)}
-      </div>
-      <span className={styles.rangeLabel}>{loading ? "Оновлюю…" : rangeLabel(analytics?.range)}</span>
-    </div>
-
     <div className={styles.metricGrid}>
       <TrendMetricCard title="Виручка за період" value={money(displayedRevenue)} icon="₴" values={revenueTrend} current={displayedRevenue} previous={displayedPreviousRevenue} chart="line" subtitle={directRevenue > 0 ? `включно з ${money(directRevenue)} прямих оплат` : undefined} onClick={() => navigateCrm("Фінансовий центр")} />
       <TrendMetricCard title="Валовий прибуток" value={money(grossProfitForDisplay)} icon="▥" values={profitTrend} current={grossProfitForDisplay} previous={previous?.grossProfit} chart="bars" subtitle={grossProfitForDisplay == null ? "немає повних даних про собівартість" : undefined} onClick={() => navigateCrm("Фінансовий центр")} />
