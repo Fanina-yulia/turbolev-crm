@@ -43,7 +43,6 @@ type AnalyticsVisualPayload = {
 
 type Props = {
   analytics: AnalyticsVisualPayload | null;
-  loading?: boolean;
 };
 
 type Tone = "orange" | "green" | "red" | "neutral";
@@ -316,7 +315,7 @@ function issueCount(attention: AttentionItem[], code: string) {
   return attention.filter((item) => item.issues?.some((issue) => issue.code === code)).length;
 }
 
-export function OwnerDashboardVisual({ analytics, loading = false }: Props) {
+export function OwnerDashboardVisual({ analytics }: Props) {
   const [control, setControl] = useState<OwnerControlSnapshot>(EMPTY_CONTROL);
   const [facts, setFacts] = useState<OwnerFactsPayload>(EMPTY_FACTS);
   const [controlLoading, setControlLoading] = useState(true);
