@@ -218,6 +218,29 @@ function pnlFromEvents(events: Array<{ pnlSection: string; amount: Prisma.Decima
   };
 }
 
+function isPayrollFinancialEvent(event: { sourceEntity: string | null; description: string | null }) {
+  const source = (event.sourceEntity || "").toUpperCase();
+  const description = (event.description || "").toLowerCase();
+  return source === "SALARY_ACCRUAL"
+    || source.startsWith("PAYROLL_PERIOD_EMPLOYEE")
+    || source.includes("PAYROLL")
+    || description.includes("зарплат")
+    || description.includes("нарахування працівнику");
+}
+
+function payrollEmployeeIdFromObligation(obligation: { sourceEntity: string | null; sourceEntityId: string | null; metadata?: Prisma.JsonValue | null }) {
+  if (!obligation.sourceEntity?.startsWith("PAYROLL_PERIOD_EMPLOYEE")) return null;
+  const metadata = obligation.metadata;
+  if (metadata && typeof metadata === "object" && !Array.isArray(metadata)) {
+    const employeeId = (metadata as Prisma.JsonObject).employeeId;
+    if (typeof employeeId === "string" && employeeId.trim()) return employeeId.trim();
+  }
+  const parts = (obligation.sourceEntityId || "").split(":").filter(Boolean);
+  if (!parts.length) return null;
+  if (obligation.sourceEntity === "PAYROLL_PERIOD_EMPLOYEE_LIVE" && parts.length >= 2) return parts[parts.length - 2] || null;
+  return parts[parts.length - 1] || null;
+}
+
 async function resolveSettings(scope: FinancialCenterScope) {
   const prisma = getPrisma();
   if (scope.locationId) {
@@ -270,7 +293,7 @@ export async function getFinancialCenterV2(scope: FinancialCenterScope) {
     }) : Promise.resolve([]),
     prisma.financialObligation.findMany({
       where: { status: { in: [...OPEN_OBLIGATION_STATUSES] }, currency, ...location },
-      select: { id: true, direction: true, status: true, amount: true, settledAmount: true, issuedAt: true, dueAt: true, settledAt: true, categoryId: true, costCenterId: true, workOrderId: true, clientId: true, supplierId: true, locationId: true, counterpartyName: true, sourceEntity: true, sourceEntityId: true, description: true },
+      select: { id: true, direction: true, status: true, amount: true, settledAmount: true, issuedAt: true, dueAt: true, settledAt: true, categoryId: true, costCenterId: true, workOrderId: true, clientId: true, supplierId: true, locationId: true, counterpartyName: true, sourceEntity: true, sourceEntityId: true, description: true, metadata: true },
       orderBy: [{ dueAt: "asc" }, { issuedAt: "asc" }],
     }),
     prisma.financialCategory.findMany({
@@ -353,6 +376,110 @@ export async function getFinancialCenterV2(scope: FinancialCenterScope) {
     aging.receivables.buckets[key] = roundMoney(aging.receivables.buckets[key]);
     aging.payables.buckets[key] = roundMoney(aging.payables.buckets[key]);
   });
+
+  // Owner dashboard values and drill-downs are calculated once from the same ledger facts.
+  // This prevents a card from showing one number while its drawer explains a different metric.
+  const payrollEvents = events.filter(isPayrollFinancialEvent);
+  const payrollAccrued = roundMoney(payrollEvents.reduce((sum, event) => sum + decimalToNumber(event.amount), 0));
+  const payrollDirect = roundMoney(payrollEvents.filter((event) => event.pnlSection === "COGS").reduce((sum, event) => sum + decimalToNumber(event.amount), 0));
+  const payrollOpex = roundMoney(payrollEvents.filter((event) => event.pnlSection === "OPEX").reduce((sum, event) => sum + decimalToNumber(event.amount), 0));
+
+  const serviceRevenueCodes = new Set(["REV_LABOR", "REV_DIAGNOSTIC", "REV_DIAGNOSTICS", "REV_EXTERNAL"]);
+  const serviceEvents = events.filter((event) =>
+    event.pnlSection === "REVENUE"
+    && (serviceRevenueCodes.has(event.category?.code || "") || event.sourceEntity === "WALK_IN_DIAGNOSTIC"),
+  );
+  const serviceLabor = roundMoney(serviceEvents.filter((event) => event.category?.code === "REV_LABOR").reduce((sum, event) => sum + decimalToNumber(event.amount), 0));
+  const serviceDiagnostics = roundMoney(serviceEvents.filter((event) => ["REV_DIAGNOSTIC", "REV_DIAGNOSTICS"].includes(event.category?.code || "") || event.sourceEntity === "WALK_IN_DIAGNOSTIC").reduce((sum, event) => sum + decimalToNumber(event.amount), 0));
+  const serviceExternal = roundMoney(serviceEvents.filter((event) => event.category?.code === "REV_EXTERNAL").reduce((sum, event) => sum + decimalToNumber(event.amount), 0));
+  const serviceTurnover = roundMoney(serviceEvents.reduce((sum, event) => sum + decimalToNumber(event.amount), 0));
+
+  const partsRevenue = roundMoney(events.filter((event) => event.pnlSection === "REVENUE" && event.category?.code === "REV_PARTS").reduce((sum, event) => sum + decimalToNumber(event.amount), 0));
+  const partsCost = roundMoney(events.filter((event) => event.pnlSection === "COGS" && event.category?.code === "COGS_PARTS").reduce((sum, event) => sum + decimalToNumber(event.amount), 0));
+  const partsMargin = roundMoney(partsRevenue - partsCost);
+
+  const nonPartsDirectCosts = roundMoney(Math.max(0, pnl.cogs - partsCost));
+  const otherDirectCosts = roundMoney(Math.max(0, nonPartsDirectCosts - payrollDirect));
+  const otherOperatingCosts = roundMoney(Math.max(0, pnl.opex - payrollOpex));
+  const totalExpenses = roundMoney(payrollAccrued + otherDirectCosts + otherOperatingCosts + pnl.otherExpense + pnl.tax);
+  const grossIncome = roundMoney(serviceTurnover + partsMargin);
+  const netIncome = roundMoney(grossIncome - totalExpenses);
+
+  const accruedByEmployee = new Map<string, { accrued: number; labor: number; sales: number; baseAndOther: number; profitShare: number }>();
+  for (const event of payrollEvents) {
+    if (!event.employeeId) continue;
+    const current = accruedByEmployee.get(event.employeeId) || { accrued: 0, labor: 0, sales: 0, baseAndOther: 0, profitShare: 0 };
+    const amount = decimalToNumber(event.amount);
+    current.accrued += amount;
+    if (event.category?.code === "COGS_LABOR") current.labor += amount;
+    else if (event.category?.code === "COGS_STAFF_SALES") current.sales += amount;
+    else if (event.category?.code === "OPEX_PROFIT_SHARE") current.profitShare += amount;
+    else current.baseAndOther += amount;
+    accruedByEmployee.set(event.employeeId, current);
+  }
+
+  const dueByEmployee = new Map<string, { due: number; name: string | null }>();
+  for (const obligation of obligationRows) {
+    if (obligation.direction !== "PAYABLE" || !obligation.sourceEntity?.startsWith("PAYROLL_PERIOD_EMPLOYEE")) continue;
+    const employeeId = payrollEmployeeIdFromObligation(obligation);
+    if (!employeeId) continue;
+    const current = dueByEmployee.get(employeeId) || { due: 0, name: null };
+    current.due += obligation.outstanding;
+    current.name = current.name || obligation.counterpartyName || null;
+    dueByEmployee.set(employeeId, current);
+  }
+
+  const payrollEmployeeIds = Array.from(new Set([...accruedByEmployee.keys(), ...dueByEmployee.keys()]));
+  const payrollProfiles = payrollEmployeeIds.length ? await prisma.employeeProfile.findMany({
+    where: { id: { in: payrollEmployeeIds } },
+    select: { id: true, firstName: true, lastName: true, position: true },
+  }) : [];
+  const payrollProfileMap = new Map(payrollProfiles.map((employee) => [employee.id, employee]));
+  const payrollEmployees = payrollEmployeeIds.map((employeeId) => {
+    const profile = payrollProfileMap.get(employeeId);
+    const accrued = accruedByEmployee.get(employeeId) || { accrued: 0, labor: 0, sales: 0, baseAndOther: 0, profitShare: 0 };
+    const due = dueByEmployee.get(employeeId);
+    const profileName = profile ? [profile.lastName, profile.firstName].filter(Boolean).join(" ").trim() : "";
+    return {
+      employeeId,
+      name: profileName || due?.name || "Працівник",
+      position: profile?.position || null,
+      accrued: roundMoney(accrued.accrued),
+      due: roundMoney(due?.due || 0),
+      labor: roundMoney(accrued.labor),
+      sales: roundMoney(accrued.sales),
+      baseAndOther: roundMoney(accrued.baseAndOther),
+      profitShare: roundMoney(accrued.profitShare),
+    };
+  }).sort((a, b) => b.due - a.due || b.accrued - a.accrued || a.name.localeCompare(b.name, "uk"));
+
+  const payrollDue = roundMoney(payrollEmployees.reduce((sum, employee) => sum + employee.due, 0));
+  const ownerSummary = {
+    netIncome,
+    serviceTurnover,
+    partsMargin,
+    payrollAccrued,
+    payrollDue,
+    grossIncome,
+    totalExpenses,
+    cash: currentCash,
+    partsRevenue,
+    partsCost,
+    serviceBreakdown: {
+      labor: serviceLabor,
+      diagnostics: serviceDiagnostics,
+      external: serviceExternal,
+      other: roundMoney(Math.max(0, serviceTurnover - serviceLabor - serviceDiagnostics - serviceExternal)),
+    },
+    expenseBreakdown: {
+      payroll: payrollAccrued,
+      otherDirect: otherDirectCosts,
+      otherOperating: otherOperatingCosts,
+      otherExpense: pnl.otherExpense,
+      tax: pnl.tax,
+    },
+    payrollEmployees,
+  };
 
   const categoryActual = new Map<string, number>();
   for (const event of events) {
@@ -912,6 +1039,7 @@ export async function getFinancialCenterV2(scope: FinancialCenterScope) {
       mechanics,
       suppliers: supplierProfitability,
     },
+    ownerSummary,
     financeCompleteness,
     alerts: alerts.slice(0, 20),
   };
