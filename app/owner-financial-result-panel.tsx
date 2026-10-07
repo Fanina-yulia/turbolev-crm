@@ -41,7 +41,7 @@ export function OwnerFinancialResultPanel({locationId}:{locationId?:string|null}
       const fallback=ownerCurrentMonthBounds();
       const first=await finance(fallback.start,fallback.end,locationId);
       const plan=findOwnerProfitPlan(first.budgets);
-      const period=plan?{from:plan.periodStart.slice(0,10),to:plan.periodEnd.slice(0,10)}:fallback;
+      const period=plan?{from:plan.periodStart.slice(0,10),to:plan.periodEnd.slice(0,10)}:{from:fallback.start,to:fallback.end};
       const data=plan&&(period.from!==fallback.start||period.to!==fallback.end)?await finance(period.from,period.to,locationId):first;
       setSummary(calculateOwnerProfitPlanSummary({
         plan:plan||findOwnerProfitPlan(data.budgets),facts:data.ownerSummary,comparison:data.ownerComparison,
