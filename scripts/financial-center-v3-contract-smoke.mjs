@@ -125,7 +125,10 @@ assert.match(ownerCommand,/firstGapWithin30/,"30-day cash answer must not use a 
 assert.match(ownerCommand,/spendableCash/,"owner cash card must reserve near-term obligations and minimum cash reserve");
 assert.match(ownerDashboard,/\/api\/analytics\/owner-dashboard-finance/,"canonical owner dashboard must use the Financial Center ledger");
 assert.equal(/fetch\("\/api\/payments"/.test(ownerDashboard),false,"owner dashboard must not rebuild receivables from the payments UI contract");
-for (const marker of ["Чистий дохід","Оборотка з послуг","Маржа по деталях","ЗП персоналу","Валовий дохід","Всі витрати","Грошей у касі","Визнана виручка та Cash In"]) assert.match(ownerDashboard,new RegExp(marker));
+assert.equal(/financeTruthHeader/.test(ownerDashboard),false,"Owner Dashboard must not render the duplicate Financial Core block");
+assert.equal(/financeTruthGrid/.test(ownerDashboard),false,"Owner Dashboard must not render the duplicate finance KPI grid");
+assert.equal(/financeTrendPanel/.test(ownerDashboard),false,"Owner Dashboard must not render the Result != Cash chart block");
+assert.match(ownerDashboard,/ОПЕРАЦІЙНІ KPI/,"Owner Dashboard must start its content with operational KPIs after finance blocks are removed");
 assert.match(ownerDashboard,/finance\?\.averageCheck\?\.value/,"average check must use recognized visit revenue, not average cash transaction");
 assert.match(ownerDashboard,/Не підміняємо помилку нульовим боргом/,"finance failures must never render as zero debt");
 assert.match(ownerDashboardFinance,/getFinancialCenterV2/,"owner dashboard finance must reuse the canonical Financial Center engine");
