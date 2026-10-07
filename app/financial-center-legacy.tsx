@@ -30,7 +30,7 @@ type OperationType = "EXPENSE" | "INCOME" | "TRANSFER";
 type Category = { id: string; code: string; name: string; pnlSection: string | null; cashFlowSection: string | null; parentId: string | null; isSystem: boolean; sortOrder: number };
 type CostCenter = { id: string; code: string; name: string; locationId: string | null; sortOrder: number };
 type Account = { id: string; name: string; type: string; locationId: string | null; openingBalance: number; balance: number };
-type Budget = { id: string; name: string; metric: string; amount: number; actual: number; variance: number; completionPercent: number | null; categoryName: string | null; periodStart: string; periodEnd: string };
+type Budget = { id: string; name: string; metric: string; amount: number; fullAmount?: number; derivedFromLongerPeriod?: boolean; actual: number; variance: number; completionPercent: number | null; categoryName: string | null; periodStart: string; periodEnd: string };
 type Obligation = { id: string; direction: "RECEIVABLE" | "PAYABLE"; status: string; amount: number; settledAmount: number; outstanding: number; issuedAt: string; dueAt: string | null; counterpartyName: string | null; description: string | null; workOrderId: string | null; sourceEntity: string | null; overdueDays: number; isOverdue: boolean };
 type CalendarItem = { id: string; sourceType: string; direction: "INFLOW" | "OUTFLOW"; amount: number; weightedAmount: number; expectedAt: string; status: string; counterparty: string | null; description: string | null; sourceId: string | null };
 type Alert = { level: "INFO" | "WARNING" | "CRITICAL"; code: string; title: string; message: string; amount?: number; date?: string };
@@ -76,6 +76,12 @@ type FinanceV2 = {
     serviceBreakdown: { labor: number; diagnostics: number; external: number; other: number };
     expenseBreakdown: { payroll: number; otherDirect: number; otherOperating: number; otherExpense: number; tax: number };
     payrollEmployees: Array<{ employeeId: string; name: string; position: string | null; accrued: number; due: number; labor: number; sales: number; baseAndOther: number; profitShare: number }>;
+  };
+  ownerComparison?: {
+    previousNetIncome: number;
+    change: number;
+    changePercent: number | null;
+    drivers: Array<{ code: string; label: string; current: number; previous: number; impact: number }>;
   };
   financeCompleteness: {
     score: number;
@@ -282,7 +288,7 @@ export function FinancialCenter() {
       tabs={<div className={styles.financeToolbar}>
         <nav className={styles.financeSections} aria-label="Фінансові розділи">{visibleTabs.map((item) => <button type="button" key={item} className={tab === item ? styles.activeTab : ""} onClick={() => chooseTab(item)}>{TAB_LABEL[item]}</button>)}</nav>
         {tab !== "accounts" && <>
-          <div className={styles.financePeriods}>{(["today", "week", "month"] as const).map((item) => <button key={item} type="button" className={preset === item ? styles.activeTab : ""} onClick={() => choosePreset(item)}>{{ today: "Сьогодні", week: "Тиждень", month: "Місяць" }[item]}</button>)}</div>
+          <div className={styles.financePeriods}>{(["today", "week", "month", "quarter"] as const).map((item) => <button key={item} type="button" className={preset === item ? styles.activeTab : ""} onClick={() => choosePreset(item)}>{{ today: "Сьогодні", week: "Тиждень", month: "Місяць", quarter: "Квартал" }[item]}</button>)}</div>
           <label className={styles.financeDate}><input aria-label="Від" title="Від" type="date" value={from} max={to} onChange={(event) => { setPreset("custom"); setFrom(event.target.value); route(tab, event.target.value, to); }} /></label>
           <label className={styles.financeDate}><input aria-label="До" title="До" type="date" value={to} min={from} onChange={(event) => { setPreset("custom"); setTo(event.target.value); route(tab, from, event.target.value); }} /></label>
         </>}
@@ -397,6 +403,7 @@ function managementFacts(data: FinanceV2) {
 function managementActualForBudget(metric: string, facts: ReturnType<typeof managementFacts>) {
   const values: Record<string, number> = {
     NET_INCOME: facts.netIncome,
+    NET_PROFIT: facts.netIncome,
     SERVICE_REVENUE: facts.serviceTurnover,
     PARTS_MARGIN: facts.partsMargin,
     PAYROLL: facts.payroll,
@@ -407,8 +414,107 @@ function managementActualForBudget(metric: string, facts: ReturnType<typeof mana
   return Object.prototype.hasOwnProperty.call(values, metric) ? values[metric] : null;
 }
 
+function ownerControl(data: FinanceV2) {
+  return (data as FinanceV2 & {
+    control?: {
+      today: { date: string; revenue: number; cashIn: number; cashOut: number; netCashFlow: number };
+      forecast: { in30Days: number; firstGap: { date: string; closingCash: number } | null; firstReserveWarning: { date: string; closingCash: number } | null };
+      profitability: { losingCount: number; lowMarginPartsCount: number; topMechanic: { name: string; profit: number; marginPercent: number | null } | null };
+      capacity?: { activePosts: number; totalDailyMinutes: number; posts: Array<{ id: string; name: string; locationId: string; locationName: string; dailyMinutes: number }> };
+    };
+  }).control;
+}
+
+function dateMs(value: string) {
+  const parsed = new Date(value).getTime();
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function dayCount(from: string, to: string) {
+  const diff = dateMs(to) - dateMs(from);
+  return Math.max(1, Math.round(diff / 86_400_000));
+}
+
+function overlapDayCount(fromA: string, toA: string, fromB: string, toB: string) {
+  const from = Math.max(dateMs(fromA), dateMs(fromB));
+  const to = Math.min(dateMs(toA), dateMs(toB));
+  return Math.max(0, Math.round((to - from) / 86_400_000));
+}
+
+function forecastCashAt(data: FinanceV2, days: number) {
+  const target = new Date();
+  target.setDate(target.getDate() + days);
+  const key = isoDate(target);
+  const point = data.forecast.points.find((item) => item.date >= key) || data.forecast.points[data.forecast.points.length - 1];
+  return point?.closingCash ?? data.kpi.currentCash;
+}
+
 function OwnerOverview({ data, onCreatePlan, onMetric }: { data: FinanceV2; onCreatePlan: () => void; onMetric: (metric: FinanceDrilldownMetric) => void }) {
   const facts = managementFacts(data);
+  const control = ownerControl(data);
+  const netBudget = budgetFor(data, "NET_INCOME", "NET_PROFIT");
+  const sourcePlan = netBudget ? (netBudget.fullAmount ?? netBudget.amount) : 0;
+  const expectedPlan = netBudget?.amount ?? 0;
+  const planActual = facts.netIncome;
+  const onTrackGap = netBudget ? planActual - expectedPlan : null;
+  const onTrackPct = netBudget && expectedPlan > 0 ? planActual / expectedPlan * 100 : null;
+  const sourceDays = netBudget ? dayCount(netBudget.periodStart, netBudget.periodEnd) : 0;
+  const sourceDailyTarget = netBudget && sourceDays > 0 ? sourcePlan / sourceDays : 0;
+
+  const now = new Date();
+  const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01T00:00:00.000Z`;
+  const monthEndDate = new Date(Date.UTC(now.getFullYear(), now.getMonth() + 1, 1));
+  const monthEnd = monthEndDate.toISOString();
+  const currentMonthDays = netBudget ? overlapDayCount(netBudget.periodStart, netBudget.periodEnd, monthStart, monthEnd) : 0;
+  const monthTarget = sourceDailyTarget * currentMonthDays;
+  const weekTarget = sourceDailyTarget * 7;
+  const dayTarget = sourceDailyTarget;
+
+  const capacity = control?.capacity;
+  const liftCount = capacity?.activePosts || 0;
+  const totalLiftMinutes = capacity?.totalDailyMinutes || 0;
+  const liftTargets = (capacity?.posts || []).map((post) => ({
+    ...post,
+    target: dayTarget > 0 && totalLiftMinutes > 0 ? dayTarget * post.dailyMinutes / totalLiftMinutes : liftCount > 0 ? dayTarget / liftCount : 0,
+  }));
+
+  const selectedDays = dayCount(data.range.from, data.range.to);
+  const scopeStartMs = dateMs(data.range.from);
+  const scopeEndMs = dateMs(data.range.to);
+  const nowMs = Date.now();
+  const elapsedDays = Math.max(1, Math.min(selectedDays, Math.ceil((Math.min(scopeEndMs, nowMs) - scopeStartMs) / 86_400_000)));
+  const selectedForecast = netBudget && elapsedDays > 0 ? planActual / elapsedDays * selectedDays : null;
+  const remainingDays = Math.max(1, selectedDays - elapsedDays);
+  const requiredPerDay = netBudget ? Math.max(0, expectedPlan - planActual) / remainingDays : null;
+
+  const freeCash = facts.cash - data.kpi.payables - data.settings.minimumCashReserve;
+  const cash30 = control?.forecast.in30Days ?? forecastCashAt(data, 30);
+  const cash60 = forecastCashAt(data, 60);
+  const cash90 = forecastCashAt(data, 90);
+  const cash30Safe = cash30 >= data.settings.minimumCashReserve && !control?.forecast.firstGap;
+  const bestService = data.profitability.services[0] || null;
+  const topMechanics = data.profitability.mechanics.slice(0, 3);
+  const comparisonDrivers = [...(data.ownerComparison?.drivers || [])].sort((a, b) => Math.abs(b.impact) - Math.abs(a.impact));
+
+  const questions = [
+    { label: "Скільки СТО реально заробило?", value: facts.netIncome, note: `чистий дохід за період · ${data.financeCompleteness.preliminaryNetProfit ? "попередній" : "підтверджений даними"}`, metric: "ownerNetIncome" as FinanceDrilldownMetric, tone: facts.netIncome < 0 ? "bad" : "good" },
+    { label: "Де зараз гроші?", value: facts.cash, note: `${currentCashNote(data)} · вільно після боргів і резерву ${money(freeCash)}`, metric: "currentCash" as FinanceDrilldownMetric, tone: freeCash < 0 ? "bad" : "default" },
+    { label: "Кому ми винні?", value: data.kpi.payables, note: `прострочено ${money(data.kpi.overduePayables)} · ЗП до виплати ${money(facts.payrollDue)}`, metric: "payables" as FinanceDrilldownMetric, tone: data.kpi.overduePayables > 0 ? "warn" : "default" },
+    { label: "Хто винен нам?", value: data.kpi.receivables, note: `прострочено ${money(data.kpi.overdueReceivables)}`, metric: "receivables" as FinanceDrilldownMetric, tone: data.kpi.overdueReceivables > 0 ? "warn" : "default" },
+    { label: "На чому заробляємо найбільше?", value: bestService?.profit ?? control?.profitability.topMechanic?.profit ?? 0, note: bestService ? `${bestService.name} · маржа ${percent(bestService.marginPercent)}` : control?.profitability.topMechanic ? `механік: ${control.profitability.topMechanic.name}` : "ще недостатньо даних", metric: "grossProfit" as FinanceDrilldownMetric, tone: "good" },
+    { label: "Чи вистачить грошей через 30 днів?", value: cash30, note: control?.forecast.firstGap ? `касовий розрив: ${dateText(control.forecast.firstGap.date)}` : cash30Safe ? `вище резерву ${money(data.settings.minimumCashReserve)}` : `нижче резерву ${money(data.settings.minimumCashReserve)}`, metric: "currentCash" as FinanceDrilldownMetric, tone: control?.forecast.firstGap ? "bad" : cash30Safe ? "good" : "warn" },
+  ];
+
+  const actions: Array<{ title: string; detail: string; tone: "bad" | "warn" | "good" }> = [];
+  if (netBudget && onTrackGap != null && onTrackGap < 0) actions.push({ title: `Відставання від плану: ${money(Math.abs(onTrackGap))}`, detail: `Щоб наздогнати вибраний період, потрібно орієнтовно ${money(requiredPerDay)} чистого прибутку на день.`, tone: "bad" });
+  if (data.kpi.overdueReceivables > 0) actions.push({ title: `Повернути прострочену дебіторку: ${money(data.kpi.overdueReceivables)}`, detail: "Ці гроші вже мали бути в СТО. Відкрийте борги та пройдіть прострочені позиції.", tone: "warn" });
+  if (freeCash < 0) actions.push({ title: `Дефіцит вільних грошей: ${money(Math.abs(freeCash))}`, detail: "Поточний залишок не перекриває відкриті зобов'язання та мінімальний резерв.", tone: "bad" });
+  if (control?.forecast.firstGap) actions.push({ title: `Касовий розрив прогнозується на ${dateText(control.forecast.firstGap.date)}`, detail: `Прогнозований залишок ${money(control.forecast.firstGap.closingCash)}. Перевірте платіжний календар до цієї дати.`, tone: "bad" });
+  if ((control?.profitability.lowMarginPartsCount || 0) > 0) actions.push({ title: `Низька маржа у ${control!.profitability.lowMarginPartsCount} позиціях деталей`, detail: `Поріг уваги — ${percent(data.settings.warningGrossMarginPercent)}. Перевірте націнку та закупівельні ціни.`, tone: "warn" });
+  if ((control?.profitability.losingCount || 0) > 0) actions.push({ title: `Збиткових замовлень: ${control!.profitability.losingCount}`, detail: "Перевірте роботи, знижки, собівартість деталей та оплату праці по цих ЗН.", tone: "warn" });
+  if (data.financeCompleteness.status !== "COMPLETE") actions.push({ title: `Повнота фінданих: ${data.financeCompleteness.score}%`, detail: "Чистий прибуток поки попередній: є фінансові події, які потребують перевірки.", tone: "warn" });
+  if (!actions.length) actions.push({ title: "Критичних фінансових дій зараз немає", detail: "План, борги, маржа та прогноз не показують критичного відхилення.", tone: "good" });
+
   const cards = [
     { key: "NET_INCOME", label: "Чистий дохід", value: facts.netIncome, plan: budgetFor(data, "NET_INCOME", "NET_PROFIT"), mode: "HIGHER" as const, metric: "ownerNetIncome" as FinanceDrilldownMetric, note: "валовий дохід − всі витрати" },
     { key: "SERVICE_REVENUE", label: "Оборотка з послуг", value: facts.serviceTurnover, plan: budgetFor(data, "SERVICE_REVENUE"), mode: "HIGHER" as const, metric: "serviceTurnover" as FinanceDrilldownMetric, note: "роботи та діагностики, без продажу деталей" },
@@ -420,10 +526,88 @@ function OwnerOverview({ data, onCreatePlan, onMetric }: { data: FinanceV2; onCr
   ];
 
   return <>
+    <section className={styles.ownerCommand}>
+      <div className={styles.ownerOverviewHeader}>
+        <div><span className={styles.eyebrow}>ФІНАНСОВА КАРТИНА СТО</span><h2>Шість відповідей власнику</h2><p>Не звіт заради звіту: прибуток, доступні гроші, борги, джерела заробітку та ризик касового розриву.</p></div>
+      </div>
+      <div className={styles.ownerQuestionGrid}>
+        {questions.map((card) => <button type="button" key={card.label} className={`${styles.ownerQuestion} ${styles[`ownerQuestion_${card.tone}`] || ""}`} onClick={() => onMetric(card.metric)}>
+          <span>{card.label}</span><strong>{money(card.value)}</strong><small>{card.note}</small>
+        </button>)}
+      </div>
+      {control?.today && <div className={styles.ownerTodayStrip}>
+        <b>Сьогодні</b>
+        <span>Нараховано <strong>{money(control.today.revenue)}</strong></span>
+        <span>Отримано <strong>{money(control.today.cashIn)}</strong></span>
+        <span>Витрачено <strong>{money(control.today.cashOut)}</strong></span>
+        <span>Net Cash Flow <strong>{money(control.today.netCashFlow)}</strong></span>
+      </div>}
+    </section>
+
+    <section className={styles.ownerPlanCommand}>
+      <div className={styles.ownerOverviewHeader}>
+        <div><span className={styles.eyebrow}>ПЛАН ЧИСТОГО ПРИБУТКУ</span><h2>План → факт → прогноз → потрібний темп</h2><p>Квартальний або місячний Target автоматично розкладається на місяць, тиждень, день і активні підйомники за їх доступною потужністю.</p></div>
+        <button type="button" className={styles.primaryButton} onClick={onCreatePlan}>{netBudget ? "Змінити / додати план" : "+ Задати план"}</button>
+      </div>
+      {netBudget ? <>
+        <div className={styles.ownerPlanHeadline}>
+          <div><span>Target джерела</span><strong>{money(sourcePlan)}</strong><small>{dateText(netBudget.periodStart)} — {dateText(netBudget.periodEnd)}{netBudget.derivedFromLongerPeriod ? " · поточний екран показує частку плану" : ""}</small></div>
+          <div><span>План до вибраної дати</span><strong>{money(expectedPlan)}</strong><small>автоматично пропорційно періоду</small></div>
+          <div><span>Факт</span><strong>{money(planActual)}</strong><small>{onTrackGap == null ? "—" : onTrackGap >= 0 ? `випередження ${money(onTrackGap)}` : `відставання ${money(Math.abs(onTrackGap))}`}</small></div>
+          <div><span>Темп / прогноз</span><strong>{money(selectedForecast)}</strong><small>{onTrackPct == null ? "—" : `виконання до плану ${onTrackPct.toFixed(0)}%`}</small></div>
+        </div>
+        <div className={styles.ownerTargetBands}>
+          <span>Minimum <b>{money(sourcePlan * .8)}</b></span>
+          <span className={styles.ownerTargetMain}>Target <b>{money(sourcePlan)}</b></span>
+          <span>Stretch <b>{money(sourcePlan * 1.2)}</b></span>
+        </div>
+        <div className={styles.ownerCascadeGrid}>
+          <div><span>План поточного місяця</span><strong>{money(monthTarget)}</strong><small>частка довгого плану за календарними днями</small></div>
+          <div><span>План на 7 днів</span><strong>{money(weekTarget)}</strong><small>автоматичний темп</small></div>
+          <div><span>План на день</span><strong>{money(dayTarget)}</strong><small>чистий прибуток</small></div>
+          <div><span>Потрібно / день зараз</span><strong>{money(requiredPerDay)}</strong><small>щоб закрити gap вибраного періоду</small></div>
+        </div>
+        <div className={styles.ownerLiftPlan}>
+          <div className={styles.sectionTitle}><h3>Розкладка на підйомники</h3><span className={styles.badge}>{liftCount ? `${liftCount} активних` : "немає активних"}</span></div>
+          {liftTargets.length ? <div className={styles.ownerLiftGrid}>{liftTargets.map((post) => <div key={post.id}><span>{post.name}</span><strong>{money(post.target)} / день</strong><small>{post.locationName} · {Math.round(post.dailyMinutes / 60 * 10) / 10} год доступності</small></div>)}</div> : <div className={styles.empty}>Активні підйомники не знайдені — план на підйомник з'явиться після налаштування ServicePost.</div>}
+        </div>
+      </> : <div className={styles.empty}>План чистого прибутку ще не заданий. Створіть місячний або квартальний Target — CRM сама порахує потрібний темп і план на кожен підйомник.<div style={{marginTop:10}}><button type="button" className={styles.primaryButton} onClick={onCreatePlan}>Створити план</button></div></div>}
+    </section>
+
+    <div className={styles.ownerDecisionGrid}>
+      <section className={styles.panel}>
+        <div className={styles.panelHeader}><div><span className={styles.eyebrow}>ЩО ЗРОБИТИ ЗАРАЗ</span><h2>Фінансові пріоритети</h2><p>CRM піднімає тільки те, що впливає на гроші, план або ризик.</p></div></div>
+        <div className={styles.ownerActionList}>{actions.slice(0, 5).map((item, index) => <div key={index} className={`${styles.ownerAction} ${styles[`ownerAction_${item.tone}`] || ""}`}><strong>{item.title}</strong><span>{item.detail}</span></div>)}</div>
+      </section>
+      <section className={styles.panel}>
+        <div className={styles.panelHeader}><div><span className={styles.eyebrow}>ЧОМУ ЗМІНИВСЯ ПРИБУТОК</span><h2>{data.ownerComparison ? `${money(data.ownerComparison.previousNetIncome)} → ${money(facts.netIncome)}` : "Порівняння з попереднім періодом"}</h2><p>Вплив по тих самих формулах, якими рахується чистий дохід власника.</p></div></div>
+        {comparisonDrivers.length ? <div className={styles.ownerDriverList}>{comparisonDrivers.map((driver) => <div key={driver.code}><span>{driver.label}</span><strong className={driver.impact >= 0 ? styles.positive : styles.negative}>{driver.impact >= 0 ? "+" : ""}{money(driver.impact)}</strong><small>{money(driver.previous)} → {money(driver.current)}</small></div>)}</div> : <div className={styles.empty}>Порівняльних даних ще недостатньо.</div>}
+      </section>
+    </div>
+
+    <div className={styles.ownerDecisionGrid}>
+      <section className={styles.panel}>
+        <div className={styles.panelHeader}><div><span className={styles.eyebrow}>CASH 30 / 60 / 90</span><h2>Чи вистачить грошей</h2><p>Прогнозний залишок з урахуванням платіжного календаря.</p></div></div>
+        <div className={styles.miniCards}><div className={styles.miniCard}><span>Через 30 днів</span><strong>{money(cash30)}</strong></div><div className={styles.miniCard}><span>Через 60 днів</span><strong>{money(cash60)}</strong></div><div className={styles.miniCard}><span>Через 90 днів</span><strong>{money(cash90)}</strong></div><div className={styles.miniCard}><span>Вільні гроші зараз</span><strong className={freeCash < 0 ? styles.negative : styles.positive}>{money(freeCash)}</strong></div></div>
+      </section>
+      <OwnerWhatIf data={data} facts={facts} />
+    </div>
+
+    <div className={styles.ownerDecisionGrid}>
+      <section className={styles.panel}>
+        <div className={styles.panelHeader}><div><span className={styles.eyebrow}>НА ЧОМУ ЗАРОБЛЯЄМО</span><h2>ТОП послуг</h2><p>Прибуток до розподілу загальних OPEX.</p></div></div>
+        <div className={styles.ownerRankList}>{data.profitability.services.slice(0, 5).map((row, index) => <div key={`${row.type}:${row.name}:${index}`}><span><b>#{index + 1}</b> {row.name}</span><strong>{money(row.profit)}</strong><small>маржа {percent(row.marginPercent)} · {row.count} робіт</small></div>)}</div>
+      </section>
+      <section className={styles.panel}>
+        <div className={styles.panelHeader}><div><span className={styles.eyebrow}>КОМАНДА</span><h2>ТОП механіків за внеском</h2><p>Виручка робіт мінус прямі витрати; це внесок, а не бухгалтерський чистий прибуток механіка.</p></div></div>
+        <div className={styles.ownerRankList}>{topMechanics.map((row, index) => <div key={row.mechanicId}><span><b>#{index + 1}</b> {row.name}</span><strong>{money(row.profit)}</strong><small>{row.laborHours.toFixed(1)} год · маржа {percent(row.marginPercent)}</small></div>)}</div>
+      </section>
+    </div>
+
     <section className={styles.ownerOverview}>
       <div className={styles.ownerOverviewHeader}>
-        <div><span className={styles.eyebrow}>ГОЛОВНІ ЦИФРИ ВЛАСНИКА</span><h2>Факт і план на одному екрані</h2><p>Сім показників, які відповідають на питання: скільки заробили, де заробили, скільки витратили та скільки грошей є зараз.</p></div>
-        <button type="button" className={styles.primaryButton} onClick={onCreatePlan}>+ Задати план</button>
+        <div><span className={styles.eyebrow}>СТРУКТУРА ФІНАНСОВОГО РЕЗУЛЬТАТУ</span><h2>Факт і план на одному екрані</h2><p>Деталізація чистого доходу, послуг, деталей, зарплати, витрат та залишку грошей.</p></div>
+        <button type="button" className={styles.secondaryButton} onClick={onCreatePlan}>+ Додати бюджет</button>
       </div>
       <div className={styles.ownerKpiGrid}>
         {cards.map((card, index) => {
@@ -431,7 +615,7 @@ function OwnerOverview({ data, onCreatePlan, onMetric }: { data: FinanceV2; onCr
           const ratio = planValue && planValue > 0 ? card.value / planValue * 100 : null;
           const good = ratio == null ? false : card.mode === "LOWER" ? ratio <= 100 : ratio >= 100;
           const warning = ratio == null ? false : card.mode === "LOWER" ? ratio > 100 && ratio <= 115 : ratio >= 80 && ratio < 100;
-          const planLabel = card.key === "CASH_BALANCE" && !card.plan && planValue ? "Мінімум" : "План";
+          const planLabel = card.key === "CASH_BALANCE" && !card.plan && planValue ? "Мінімум" : card.plan?.derivedFromLongerPeriod ? "План до дати" : "План";
           return <button type="button" key={card.key} className={`${styles.ownerKpi} ${index === 0 ? styles.ownerKpiPrimary : ""}`} onClick={() => onMetric(card.metric)}>
             <span>{card.label}</span>
             <strong className={card.key === "NET_INCOME" && card.value < 0 ? styles.negative : ""}>{money(card.value)}</strong>
@@ -447,15 +631,36 @@ function OwnerOverview({ data, onCreatePlan, onMetric }: { data: FinanceV2; onCr
     </section>
 
     <section className={styles.panel}>
-      <div className={styles.panelHeader}><div><span className={styles.eyebrow}>ПЛАН / ФАКТ</span><h2>Планування тепер частина «Огляду»</h2><p>Окремого екрана «План / факт» більше немає. Усі бюджети та відхилення контролюються тут.</p></div><button type="button" className={styles.primaryButton} onClick={onCreatePlan}>+ Додати бюджет</button></div>
-      {data.budgets.length ? <div className={styles.grid3}>{data.budgets.map((item) => <BudgetCard key={item.id} item={item} actualOverride={managementActualForBudget(item.metric, facts)}/>)}</div> : <div className={styles.empty}>План на цей період ще не заданий.<div style={{marginTop:10}}><button type="button" className={styles.primaryButton} onClick={onCreatePlan}>Створити перший план</button></div></div>}
+      <div className={styles.panelHeader}><div><span className={styles.eyebrow}>ІНШІ БЮДЖЕТИ</span><h2>Планування повністю в «Огляді»</h2><p>Квартальний бюджет автоматично масштабується до вибраного періоду. Окремого екрана «План / факт» немає.</p></div><button type="button" className={styles.primaryButton} onClick={onCreatePlan}>+ Додати бюджет</button></div>
+      {data.budgets.length ? <div className={styles.grid3}>{data.budgets.map((item) => <BudgetCard key={item.id} item={item} actualOverride={managementActualForBudget(item.metric, facts)}/>)}</div> : <div className={styles.empty}>Інших бюджетів на цей період немає.</div>}
     </section>
 
     <section className={styles.panel}>
-      <div className={styles.panelHeader}><div><span className={styles.eyebrow}>ТЕМП МІСЯЦЯ</span><h2>Точка беззбитковості та темп</h2><p>Скільки ще потрібно заробити, щоб перекрити постійні витрати.</p></div></div>
+      <div className={styles.panelHeader}><div><span className={styles.eyebrow}>ТОЧКА БЕЗЗБИТКОВОСТІ</span><h2>Скільки треба заробити, щоб не працювати в мінус</h2><p>Окремо від плану чистого прибутку.</p></div></div>
       <div className={styles.miniCards}><div className={styles.miniCard}><span>Точка беззбитковості</span><strong>{money(data.breakEven.breakEvenRevenue)}</strong></div><div className={styles.miniCard}><span>Факт виручки</span><strong>{money(data.breakEven.currentRevenue)}</strong></div><div className={styles.miniCard}><span>Залишилось</span><strong>{money(data.breakEven.remainingRevenue)}</strong></div><div className={styles.miniCard}><span>Робочих днів</span><strong>{data.breakEven.remainingWorkingDays}</strong></div><div className={styles.miniCard}><span>Потрібно / день</span><strong>{money(data.breakEven.requiredRevenuePerDay)}</strong></div></div>
     </section>
   </>;
+}
+
+function OwnerWhatIf({ data, facts }: { data: FinanceV2; facts: ReturnType<typeof managementFacts> }) {
+  const [serviceGrowth, setServiceGrowth] = useState("0");
+  const [partsMarginLift, setPartsMarginLift] = useState("0");
+  const [extraExpense, setExtraExpense] = useState("0");
+  const servicePct = Number(serviceGrowth.replace(",", ".")) || 0;
+  const marginPoints = Number(partsMarginLift.replace(",", ".")) || 0;
+  const expense = Number(extraExpense.replace(",", ".")) || 0;
+  const partsRevenue = data.ownerSummary?.partsRevenue || 0;
+  const effect = facts.serviceTurnover * servicePct / 100 + partsRevenue * marginPoints / 100 - expense;
+  const simulated = facts.netIncome + effect;
+  return <section className={styles.panel}>
+    <div className={styles.panelHeader}><div><span className={styles.eyebrow}>ЩО БУДЕ, ЯКЩО…</span><h2>Швидкий сценарій</h2><p>Локальна модель для рішення; фактичні дані CRM вона не змінює.</p></div></div>
+    <div className={styles.ownerScenarioGrid}>
+      <label>Послуги, зміна %<input inputMode="decimal" value={serviceGrowth} onChange={(event) => setServiceGrowth(event.target.value)} /></label>
+      <label>Маржа деталей, + п.п.<input inputMode="decimal" value={partsMarginLift} onChange={(event) => setPartsMarginLift(event.target.value)} /></label>
+      <label>Додаткові витрати, грн<input inputMode="decimal" value={extraExpense} onChange={(event) => setExtraExpense(event.target.value)} /></label>
+    </div>
+    <div className={styles.ownerScenarioResult}><span>Прогнозний чистий дохід</span><strong>{money(simulated)}</strong><small className={effect >= 0 ? styles.positive : styles.negative}>{effect >= 0 ? "+" : ""}{money(effect)} до поточного факту</small></div>
+  </section>;
 }
 
 function Overview({ data, onTab }: { data: FinanceV2; onTab: (tab: Tab) => void }) {
@@ -524,7 +729,43 @@ function AccountsView({data,onOperation}:{data:FinanceV2;onOperation:(type:Opera
 
 function SettingsView({data,onCategory,onRecurring,onSettings}:{data:FinanceV2;onCategory:()=>void;onRecurring:()=>void;onSettings:()=>void}) { return <><section className={styles.panel}><div className={styles.panelHeader}><div><span className={styles.eyebrow}>ФІНАНСОВІ ПРАВИЛА</span><h2>Правила управління</h2></div><button className={styles.primaryButton} onClick={onSettings}>Змінити</button></div><div className={styles.settingsGrid}><div className={styles.miniCard}><span>Мінімальний резерв</span><strong>{money(data.settings.minimumCashReserve)}</strong></div><div className={styles.miniCard}><span>Постійні витрати / міс.</span><strong>{money(data.settings.fixedMonthlyCosts)}</strong></div><div className={styles.miniCard}><span>Цільова маржа</span><strong>{percent(data.settings.targetGrossMarginPercent)}</strong></div><div className={styles.miniCard}><span>Поріг уваги</span><strong>{percent(data.settings.warningGrossMarginPercent)}</strong></div><div className={styles.miniCard}><span>Прогноз</span><strong>{data.settings.forecastHorizonDays} днів</strong></div></div></section><div className={styles.grid2}><section className={styles.panel}><div className={styles.panelHeader}><div><span className={styles.eyebrow}>КАТЕГОРІЇ</span><h2>Категорії та підкатегорії</h2></div><button className={styles.primaryButton} onClick={onCategory}>+ Категорія</button></div><div className={styles.tableWrap}><table className={styles.table}><thead><tr><th>Назва</th><th>P&L</th><th>Cash Flow</th><th>Тип</th></tr></thead><tbody>{data.categories.map(row=><tr key={row.id}><td><strong>{row.name}</strong><small>{row.code}{row.parentId?" · підкатегорія":""}</small></td><td>{row.pnlSection||"—"}</td><td>{row.cashFlowSection||"—"}</td><td>{row.isSystem?"Системна":"Власна"}</td></tr>)}</tbody></table></div></section><section className={styles.panel}><div className={styles.panelHeader}><div><span className={styles.eyebrow}>РЕГУЛЯРНІ ОПЕРАЦІЇ</span><h2>Регулярні операції</h2></div><button className={styles.primaryButton} onClick={onRecurring}>+ Правило</button></div>{data.recurring.map(row=><div className={styles.summaryRow} key={row.id}><span><strong>{row.name}</strong><small>{row.frequency} · наступна {dateText(row.nextOccurrenceAt)}</small></span><strong>{money(row.amount)}</strong></div>)}</section></div></>; }
 
-function BudgetDialog({data,locationId,onClose,onSave}:{data:FinanceV2;locationId:string;onClose:()=>void;onSave:(payload:Record<string,unknown>)=>void}) { const [name,setName]=useState(""); const [metric,setMetric]=useState("REVENUE"); const [amount,setAmount]=useState(""); const [categoryId,setCategoryId]=useState(""); const [start,setStart]=useState(data.range.from.slice(0,10)); const [end,setEnd]=useState(data.range.to.slice(0,10)); return <Modal title="Новий бюджет" onClose={onClose}><div className={styles.modalGrid}><label>Назва<input value={name} onChange={e=>setName(e.target.value)}/></label><label>Показник<select value={metric} onChange={e=>setMetric(e.target.value)}><option value="NET_INCOME">Чистий дохід</option><option value="SERVICE_REVENUE">Оборотка з послуг</option><option value="PARTS_MARGIN">Маржа по деталях</option><option value="PAYROLL">ЗП персоналу</option><option value="GROSS_INCOME">Валовий дохід</option><option value="TOTAL_EXPENSES">Всі витрати</option><option value="CASH_BALANCE">Грошей у касі</option><option value="REVENUE">Загальна виручка (P&L)</option><option value="COGS">COGS</option><option value="OPEX">OPEX</option><option value="GROSS_PROFIT">Валовий прибуток (P&L)</option><option value="NET_PROFIT">Чистий прибуток (P&L)</option><option value="CASH_FLOW">Cash Flow</option><option value="CATEGORY">Категорія</option></select></label><label>План, грн<input value={amount} onChange={e=>setAmount(e.target.value)} inputMode="decimal"/></label>{metric==="CATEGORY"&&<label>Категорія<select value={categoryId} onChange={e=>setCategoryId(e.target.value)}><option value="">Оберіть</option>{data.categories.map(c=><option value={c.id} key={c.id}>{c.name}</option>)}</select></label>}<label>Початок<input type="date" value={start} onChange={e=>setStart(e.target.value)}/></label><label>Кінець<input type="date" value={end} onChange={e=>setEnd(e.target.value)}/></label></div><div className={styles.modalActions}><button className={styles.primaryButton} onClick={()=>onSave({name,metric,amount:Number(amount.replace(",",".")),categoryId:categoryId||null,locationId:locationId||null,periodStart:start,periodEnd:end})}>Зберегти бюджет</button></div></Modal>; }
+function BudgetDialog({data,locationId,onClose,onSave}:{data:FinanceV2;locationId:string;onClose:()=>void;onSave:(payload:Record<string,unknown>)=>void}) {
+  const [name,setName]=useState("План чистого прибутку");
+  const [metric,setMetric]=useState("NET_INCOME");
+  const [amount,setAmount]=useState("");
+  const [categoryId,setCategoryId]=useState("");
+  const [start,setStart]=useState(data.range.from.slice(0,10));
+  const [end,setEnd]=useState(data.range.to.slice(0,10));
+  const applyPeriod=(mode:"month"|"quarter")=>{
+    const now=new Date();
+    if(mode==="month"){
+      const first=new Date(Date.UTC(now.getFullYear(),now.getMonth(),1));
+      const next=new Date(Date.UTC(now.getFullYear(),now.getMonth()+1,1));
+      setStart(first.toISOString().slice(0,10)); setEnd(next.toISOString().slice(0,10));
+      if(metric==="NET_INCOME") setName(`План чистого прибутку · ${String(now.getMonth()+1).padStart(2,"0")}.${now.getFullYear()}`);
+      return;
+    }
+    const qStart=Math.floor(now.getMonth()/3)*3;
+    const first=new Date(Date.UTC(now.getFullYear(),qStart,1));
+    const next=new Date(Date.UTC(now.getFullYear(),qStart+3,1));
+    setStart(first.toISOString().slice(0,10)); setEnd(next.toISOString().slice(0,10));
+    if(metric==="NET_INCOME") setName(`План чистого прибутку · Q${Math.floor(now.getMonth()/3)+1} ${now.getFullYear()}`);
+  };
+  return <Modal title="Новий фінансовий план" onClose={onClose}>
+    <div className={styles.budgetQuickPeriods}><button type="button" className={styles.secondaryButton} onClick={()=>applyPeriod("month")}>Поточний місяць</button><button type="button" className={styles.secondaryButton} onClick={()=>applyPeriod("quarter")}>Поточний квартал</button></div>
+    <div className={styles.modalGrid}>
+      <label>Назва<input value={name} onChange={e=>setName(e.target.value)}/></label>
+      <label>Показник<select value={metric} onChange={e=>{setMetric(e.target.value);if(e.target.value==="NET_INCOME"&&!name.trim())setName("План чистого прибутку");}}><option value="NET_INCOME">Чистий дохід</option><option value="SERVICE_REVENUE">Оборотка з послуг</option><option value="PARTS_MARGIN">Маржа по деталях</option><option value="PAYROLL">ЗП персоналу</option><option value="GROSS_INCOME">Валовий дохід</option><option value="TOTAL_EXPENSES">Всі витрати</option><option value="CASH_BALANCE">Грошей у касі</option><option value="REVENUE">Загальна виручка (P&L)</option><option value="COGS">COGS</option><option value="OPEX">OPEX</option><option value="GROSS_PROFIT">Валовий прибуток (P&L)</option><option value="NET_PROFIT">Чистий прибуток (P&L)</option><option value="CASH_FLOW">Cash Flow</option><option value="CATEGORY">Категорія</option></select></label>
+      <label>План, грн<input value={amount} onChange={e=>setAmount(e.target.value)} inputMode="decimal"/></label>
+      {metric==="CATEGORY"&&<label>Категорія<select value={categoryId} onChange={e=>setCategoryId(e.target.value)}><option value="">Оберіть</option>{data.categories.map(c=><option value={c.id} key={c.id}>{c.name}</option>)}</select></label>}
+      <label>Початок<input type="date" value={start} onChange={e=>setStart(e.target.value)}/></label>
+      <label>Кінець періоду (не включно)<input type="date" value={end} onChange={e=>setEnd(e.target.value)}/></label>
+    </div>
+    <div className={styles.drawerNote}>Для квартального плану CRM автоматично розрахує частку на місяць, тиждень, день і кожен активний підйомник. Кінець періоду зберігається як перший день після планового інтервалу.</div>
+    <div className={styles.modalActions}><button className={styles.primaryButton} onClick={()=>onSave({name:name.trim()||"Фінансовий план",metric,amount:Number(amount.replace(",",".")),categoryId:categoryId||null,locationId:locationId||null,periodStart:start,periodEnd:end})}>Зберегти план</button></div>
+  </Modal>;
+}
+
 function RecurringDialog({data,locationId,onClose,onSave}:{data:FinanceV2;locationId:string;onClose:()=>void;onSave:(payload:Record<string,unknown>)=>void}) { const [name,setName]=useState(""); const [direction,setDirection]=useState("OUTFLOW"); const [amount,setAmount]=useState(""); const [frequency,setFrequency]=useState("MONTHLY"); const [categoryId,setCategoryId]=useState(""); const [date,setDate]=useState(isoDate(new Date())); const [counterparty,setCounterparty]=useState(""); return <Modal title="Регулярна операція" onClose={onClose}><div className={styles.modalGrid}><label>Назва<input value={name} onChange={e=>setName(e.target.value)}/></label><label>Напрям<select value={direction} onChange={e=>setDirection(e.target.value)}><option value="OUTFLOW">Виплата</option><option value="INFLOW">Надходження</option></select></label><label>Сума<input value={amount} onChange={e=>setAmount(e.target.value)} inputMode="decimal"/></label><label>Періодичність<select value={frequency} onChange={e=>setFrequency(e.target.value)}><option value="WEEKLY">Щотижня</option><option value="MONTHLY">Щомісяця</option><option value="QUARTERLY">Щокварталу</option><option value="YEARLY">Щороку</option></select></label><label>Наступна дата<input type="date" value={date} onChange={e=>setDate(e.target.value)}/></label><label>Категорія<select value={categoryId} onChange={e=>setCategoryId(e.target.value)}><option value="">Без категорії</option>{data.categories.map(c=><option value={c.id} key={c.id}>{c.name}</option>)}</select></label><label>Контрагент<input value={counterparty} onChange={e=>setCounterparty(e.target.value)}/></label></div><div className={styles.modalActions}><button className={styles.primaryButton} onClick={()=>onSave({name,direction,amount:Number(amount.replace(",",".")),frequency,startAt:date,nextOccurrenceAt:date,categoryId:categoryId||null,counterpartyName:counterparty||null,locationId:locationId||null})}>Зберегти правило</button></div></Modal>; }
 function CategoryDialog({data,onClose,onSave}:{data:FinanceV2;onClose:()=>void;onSave:(payload:Record<string,unknown>)=>void}) { const [name,setName]=useState(""); const [pnl,setPnl]=useState("OPEX"); const [cash,setCash]=useState("OPERATING"); const [parent,setParent]=useState(""); return <Modal title="Нова категорія" onClose={onClose}><div className={styles.modalGrid}><label>Назва<input value={name} onChange={e=>setName(e.target.value)}/></label><label>Батьківська<select value={parent} onChange={e=>setParent(e.target.value)}><option value="">Немає</option>{data.categories.filter(c=>!c.parentId).map(c=><option value={c.id} key={c.id}>{c.name}</option>)}</select></label><label>Секція P&L<select value={pnl} onChange={e=>setPnl(e.target.value)}><option value="">Не впливає на P&L</option><option value="COGS">COGS</option><option value="OPEX">OPEX</option><option value="OTHER_EXPENSE">Інші витрати</option><option value="TAX">Податки</option><option value="REVENUE">Виручка</option><option value="OTHER_INCOME">Інші доходи</option></select></label><label>Секція Cash Flow<select value={cash} onChange={e=>setCash(e.target.value)}><option value="OPERATING">Operating</option><option value="INVESTING">Investing</option><option value="FINANCING">Financing</option><option value="INTERNAL_TRANSFER">Internal transfer</option></select></label></div><div className={styles.modalActions}><button className={styles.primaryButton} onClick={()=>onSave({name,pnlSection:pnl||null,cashFlowSection:cash,parentId:parent||null})}>Створити категорію</button></div></Modal>; }
 function SettingsDialog({data,locationId,onClose,onSave}:{data:FinanceV2;locationId:string;onClose:()=>void;onSave:(payload:Record<string,unknown>)=>void}) { const [reserve,setReserve]=useState(String(data.settings.minimumCashReserve)); const [fixed,setFixed]=useState(String(data.settings.fixedMonthlyCosts)); const [target,setTarget]=useState(String(data.settings.targetGrossMarginPercent)); const [warning,setWarning]=useState(String(data.settings.warningGrossMarginPercent)); const [horizon,setHorizon]=useState(String(data.settings.forecastHorizonDays)); return <Modal title="Фінансові налаштування" onClose={onClose}><div className={styles.modalGrid}><label>Мінімальний резерв<input value={reserve} onChange={e=>setReserve(e.target.value)} inputMode="decimal"/></label><label>Постійні витрати / місяць<input value={fixed} onChange={e=>setFixed(e.target.value)} inputMode="decimal"/></label><label>Цільова валова маржа, %<input value={target} onChange={e=>setTarget(e.target.value)} inputMode="decimal"/></label><label>Поріг уваги маржі, %<input value={warning} onChange={e=>setWarning(e.target.value)} inputMode="decimal"/></label><label>Горизонт прогнозу, днів<input value={horizon} onChange={e=>setHorizon(e.target.value)} inputMode="numeric"/></label></div><div className={styles.modalActions}><button className={styles.primaryButton} onClick={()=>onSave({locationId:locationId||null,minimumCashReserve:Number(reserve.replace(",",".")),fixedMonthlyCosts:Number(fixed.replace(",",".")),targetGrossMarginPercent:Number(target.replace(",",".")),warningGrossMarginPercent:Number(warning.replace(",",".")),forecastHorizonDays:Number(horizon)})}>Зберегти</button></div></Modal>; }
