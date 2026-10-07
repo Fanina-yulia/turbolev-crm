@@ -3,7 +3,7 @@
 **Проєкт:** Turbo LEV CRM  
 **Стандарт:** `CRM-UI-006`  
 **Статус:** ACTIVE  
-**Дата:** 2026-10-05  
+**Дата:** 2026-10-07  
 **Область:** усі внутрішні сторінки CRM, що рендеряться через canonical `CrmShell`.  
 **Виключення:** standalone Кабінет механіка, auth, public/client surfaces.
 
@@ -90,9 +90,16 @@ Desktop internal CRM:
 - top row gap: 18px;
 - divider: **1px `var(--line)`**;
 - ніяких 2–3px чорних ліній у top-level header;
-- horizontal page padding визначається page frame, але canonical desktop workspace target — **18px**.
+- outer horizontal page padding належить тільки canonical workspace: **24px design token** (`--crm-page-gutter`; ~21.6px фізично після CRM-UI-005);
+- page/module root із `CrmPageHeader` **не має права** додавати другий `padding-top/left/right` навколо шапки.
 
 ## 6. Actions
+
+Canonical desktop geometry:
+- action height: **40px**;
+- action font: **12px / 800**;
+- radius: **10px**;
+- horizontal padding: **14px**.
 
 - primary action справа;
 - secondary actions справа перед primary;
@@ -102,6 +109,14 @@ Desktop internal CRM:
 - fixed/floating page-level buttons не замінюють header actions, якщо дія логічно належить сторінці.
 
 ## 7. Tabs
+
+Canonical desktop geometry:
+- primary/context tab height: **36px**;
+- tab/control font: **12px / 800**;
+- radius: **10px**;
+- horizontal padding: **12px**;
+- gap: **6px**;
+- active accent: canonical **orange**; модулі не вводять власний синій/інший accent для top-level header navigation.
 
 Primary module tabs розташовуються **після title/description**.
 
@@ -114,6 +129,8 @@ Primary module tabs розташовуються **після title/description*
 Допускається secondary segmented control усередині context controls, якщо це режим представлення, а не module tab.
 
 ## 8. Context controls
+
+Input/select/button у header context controls мають ту саму design-height **36px**, radius **10px**, font-size **12px**. На mobile touch-height = **40px**.
 
 Після primary tabs:
 
@@ -212,3 +229,19 @@ Auth/public/client pages також не входять у стандарт.
 8. Mechanic Cabinet не змінений.
 9. Public/auth surfaces не змінені.
 10. Production checks проходять.
+
+
+## 14. V2 — visual lock (2026-10-07)
+
+CRM-UI-006 V2 усуває ситуацію, коли сторінки технічно використовують `CrmPageHeader`, але локальні CSS модулів усе одно роблять шапки візуально різними.
+
+Обов'язкові правила V2:
+
+1. `CrmPageHeader` має `data-crm-page-header-version="2"`.
+2. H1 / eyebrow / description задаються тільки canonical header stylesheet.
+3. Header actions, primary tabs і context controls отримують canonical height/font/radius на рівні shared component; локальні модулі визначають лише semantic tone/active state.
+4. Workspace володіє outer gutter. Root конкретної сторінки не додає другий top/left/right inset навколо canonical header.
+5. Dashboard global `+ Нова заявка` не створює окремий вертикальний рядок і не зсуває H1; на desktop вона займає праву action-zone canonical header.
+6. Communications більше не використовує окремий segmented-control стиль для primary tabs.
+7. Financial Center top-level active tab використовує canonical orange accent.
+8. Ці правила застосовуються системно до всіх internal CRM pages у CrmShell; standalone mechanic/auth/public/client surfaces залишаються поза scope.
