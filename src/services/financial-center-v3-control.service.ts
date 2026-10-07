@@ -451,11 +451,39 @@ async function cashCloseState(scope: FinancialCenterScope, base: BaseView) {
   };
 }
 
+async function capacityState(scope: FinancialCenterScope) {
+  const prisma = getPrisma();
+  const posts = await prisma.servicePost.findMany({
+    where: { isActive: true, ...locationWhere(scope) },
+    select: {
+      id: true,
+      name: true,
+      locationId: true,
+      sortOrder: true,
+      location: { select: { name: true, openMinute: true, closeMinute: true } },
+    },
+    orderBy: [{ locationId: "asc" }, { sortOrder: "asc" }, { name: "asc" }],
+  });
+  const view = posts.map((post) => ({
+    id: post.id,
+    name: post.name,
+    locationId: post.locationId,
+    locationName: post.location.name,
+    dailyMinutes: Math.max(0, post.location.closeMinute - post.location.openMinute),
+  }));
+  return {
+    activePosts: view.length,
+    totalDailyMinutes: view.reduce((sum, post) => sum + post.dailyMinutes, 0),
+    posts: view,
+  };
+}
+
 export async function getFinancialCenterV3Control(scope: FinancialCenterScope, base: BaseView) {
-  const [todayView, reconciliationView, cashClose] = await Promise.all([
+  const [todayView, reconciliationView, cashClose, capacity] = await Promise.all([
     today(scope),
     reconciliation(scope),
     cashCloseState(scope, base),
+    capacityState(scope),
   ]);
 
   const warning = base.settings.warningGrossMarginPercent;
@@ -534,6 +562,7 @@ export async function getFinancialCenterV3Control(scope: FinancialCenterScope, b
       topMechanic,
       topSupplier,
     },
+    capacity,
     cashClose,
   };
 }
