@@ -116,6 +116,8 @@ assert.match(ownerCommand,/ЩО БУДЕ, ЯКЩО/);
 assert.match(ownerCommand,/ЧОМУ ЗМІНИВСЯ ПРИБУТОК/);
 assert.match(ownerCommand,/CASH 30 \/ 60 \/ 90/);
 assert.match(ownerCommand,/forecastHorizonDate/);
+assert.match(ownerCommand,/firstGapWithin30/,"30-day cash answer must not use a gap outside its horizon");
+assert.match(ownerCommand,/spendableCash/,"owner cash card must reserve near-term obligations and minimum cash reserve");
 assert.match(ui,/\/api\/management\/result/,"owner overview must reuse management intelligence for lift contribution and recommendations");
 assert.match(ui,/OwnerProfitPlanDialog/);
 
