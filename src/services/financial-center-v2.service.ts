@@ -7,7 +7,7 @@ import { toPrismaJson } from "@/src/lib/prisma-json";
 const DAY_MS = 86_400_000;
 const OPEN_OBLIGATION_STATUSES = ["OPEN", "PARTIALLY_PAID", "OVERDUE"] as const;
 const ACTIVE_FORECAST_STATUSES = ["PLANNED", "CONFIRMED"] as const;
-const BUDGET_METRICS = ["REVENUE", "COGS", "OPEX", "GROSS_PROFIT", "OPERATING_PROFIT", "NET_PROFIT", "CASH_FLOW", "CATEGORY"] as const;
+const BUDGET_METRICS = ["REVENUE", "COGS", "OPEX", "GROSS_PROFIT", "OPERATING_PROFIT", "NET_PROFIT", "CASH_FLOW", "CATEGORY", "NET_INCOME", "SERVICE_REVENUE", "PARTS_MARGIN", "PAYROLL", "GROSS_INCOME", "TOTAL_EXPENSES", "CASH_BALANCE"] as const;
 
 type BudgetMetric = (typeof BUDGET_METRICS)[number];
 
@@ -495,18 +495,35 @@ export async function getFinancialCenterV2(scope: FinancialCenterScope) {
     if (metric === "OPERATING_PROFIT") return pnl.operatingProfit;
     if (metric === "NET_PROFIT") return pnl.netProfit;
     if (metric === "CASH_FLOW") return roundMoney(cashSection.inflow - cashSection.outflow);
+    if (metric === "NET_INCOME") return netIncome;
+    if (metric === "SERVICE_REVENUE") return serviceTurnover;
+    if (metric === "PARTS_MARGIN") return partsMargin;
+    if (metric === "PAYROLL") return payrollAccrued;
+    if (metric === "GROSS_INCOME") return grossIncome;
+    if (metric === "TOTAL_EXPENSES") return totalExpenses;
+    if (metric === "CASH_BALANCE") return currentCash;
     if (metric === "CATEGORY" && categoryId) return roundMoney(categoryActual.get(categoryId) || 0);
     return 0;
   };
 
   const planFact = budgets.map((budget) => {
-    const plan = decimalToNumber(budget.amount);
+    const fullPlan = decimalToNumber(budget.amount);
+    const stockMetric = budget.metric === "CASH_BALANCE";
+    const budgetDuration = Math.max(1, budget.periodEnd.getTime() - budget.periodStart.getTime());
+    const overlapStart = budget.periodStart > scope.from ? budget.periodStart : scope.from;
+    const overlapEnd = budget.periodEnd < scope.to ? budget.periodEnd : scope.to;
+    const overlapDuration = Math.max(0, overlapEnd.getTime() - overlapStart.getTime());
+    // Flow budgets (including a quarterly net-income goal) are automatically prorated
+    // to the selected month/week/day. Stock targets such as minimum cash are not.
+    const plan = stockMetric ? fullPlan : roundMoney(fullPlan * overlapDuration / budgetDuration);
     const actual = actualForMetric(budget.metric, budget.categoryId);
     const variance = roundMoney(actual - plan);
     const completionPercent = plan === 0 ? null : roundMoney((actual / plan) * 100);
     return {
       ...budget,
       amount: plan,
+      fullAmount: fullPlan,
+      derivedFromLongerPeriod: !stockMetric && overlapDuration > 0 && overlapDuration < budgetDuration,
       categoryName: budget.categoryId ? categoryMap.get(budget.categoryId)?.name || null : null,
       actual,
       variance,
