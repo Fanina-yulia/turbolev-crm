@@ -1,4 +1,8 @@
 .root{
+  --crm-header-tab-height:36px;
+  --crm-header-action-height:40px;
+  --crm-header-control-radius:10px;
+  --crm-header-control-font:12px;
   width:100%;
   min-width:0;
   flex:0 0 auto;
@@ -97,5 +101,61 @@
     top:auto!important;
     margin-top:0!important;
     margin-bottom:0!important;
+  }
+}
+
+
+/* CRM-UI-006 V2 — hard visual contract for all internal page headers */
+.root,
+.root :global(button),
+.root :global(input),
+.root :global(select),
+.root :global(textarea){font-family:inherit}
+
+.actions :global(button){
+  min-height:var(--crm-header-action-height)!important;
+  border-radius:var(--crm-header-control-radius)!important;
+  padding:0 14px!important;
+  font-size:var(--crm-header-control-font)!important;
+  line-height:1!important;
+  font-weight:800!important;
+  white-space:nowrap;
+}
+
+.tabs :global(button),
+.controls :global(button){
+  min-height:var(--crm-header-tab-height)!important;
+  border-radius:var(--crm-header-control-radius)!important;
+  padding:0 12px!important;
+  font-size:var(--crm-header-control-font)!important;
+  line-height:1!important;
+  font-weight:800!important;
+  white-space:nowrap;
+}
+
+.tabs :global(input),
+.tabs :global(select),
+.controls :global(input),
+.controls :global(select){
+  height:var(--crm-header-tab-height)!important;
+  min-height:var(--crm-header-tab-height)!important;
+  border-radius:var(--crm-header-control-radius)!important;
+  font-size:var(--crm-header-control-font)!important;
+  line-height:1.2!important;
+}
+
+.tabs{gap:6px}
+.controls{gap:6px}
+
+@media(max-width:760px){
+  .actions :global(button){min-height:40px!important}
+  .tabs :global(button),
+  .controls :global(button),
+  .tabs :global(input),
+  .tabs :global(select),
+  .controls :global(input),
+  .controls :global(select){
+    min-height:40px!important;
+    height:40px;
   }
 }
