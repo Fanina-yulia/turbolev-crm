@@ -19,3 +19,69 @@
   .metricCard{min-height:138px}
   .controlCard{min-height:172px}
 }
+
+
+/* OWNER DASHBOARD UPPER V7 — schematic-aligned first screen only */
+@media (min-width:761px){
+  .visualDashboard{margin-top:0;margin-bottom:12px}
+  .periodRow{
+    position:relative;
+    top:auto;
+    z-index:1;
+    justify-content:flex-end;
+    gap:14px;
+    min-height:42px;
+    margin:0 0 10px;
+    padding:2px 0 4px;
+    background:transparent;
+  }
+  .periodTabs{justify-content:flex-end}
+  .periodTabs button{
+    min-height:40px;
+    padding:8px 15px;
+    border-radius:11px;
+    font-size:12px;
+    box-shadow:0 4px 12px rgba(15,23,42,.025);
+  }
+  .rangeLabel{
+    min-width:max-content;
+    font-size:11px;
+    font-weight:800;
+  }
+  .metricGrid{gap:9px;margin-bottom:14px}
+  .metricCard{
+    min-height:176px;
+    padding:13px 12px 12px;
+    border-radius:15px;
+    box-shadow:0 8px 24px rgba(15,23,42,.045);
+  }
+  .metricHead>span{font-size:12px;color:var(--text)}
+  .metricCard>strong{font-size:23px;margin:9px 0 4px}
+  .gaugeCardBody>div:first-child>strong{font-size:23px}
+  .metricSubtitle{font-size:11px}
+  .metricChart{padding-top:10px}
+  .sparkline,.miniBars{height:43px}
+  .controlSectionHead{
+    align-items:center;
+    margin:6px 2px 10px;
+  }
+  .controlSectionHead>div{gap:3px}
+  .controlSectionHead strong{font-size:17px}
+  .controlGrid{gap:9px}
+  .controlCard{
+    min-height:248px;
+    padding:13px 12px 12px;
+    border-radius:15px;
+    box-shadow:0 8px 24px rgba(15,23,42,.045);
+  }
+  .controlHead>div>span{font-size:13px;font-weight:850}
+  .controlValue{margin:11px 0 8px}
+  .controlValue strong{font-size:27px}
+  .controlValue span{font-size:11px}
+  .controlFoot{padding-top:10px}
+}
+@media (min-width:761px) and (max-height:768px){
+  .periodRow{top:auto}
+  .metricCard{min-height:160px}
+  .controlCard{min-height:226px}
+}

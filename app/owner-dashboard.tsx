@@ -243,7 +243,7 @@ export function OwnerControlCenter({ userName, mode = "OWNER" }: { userName?: st
       eyebrow={isExecutive ? "TURBO LEV · ВИКОНАВЧИЙ ЦЕНТР" : "TURBO LEV · ПУЛЬТ ВЛАСНИКА"}
       title={isExecutive ? "Пульт виконавчого директора" : "Пульт власника"}
       description={`${userName || (isExecutive ? "Виконавчий директор" : "Власник")} · ${scopeLabel} · ${loading ? "оновлюю дані…" : "живі управлінські дані"}`}
-      actions={<><button type="button" onClick={() => navigateCrm("Аналітика")}>Повна аналітика</button><button type="button" className={styles.primary} onClick={() => navigateCrm("Фінансовий центр")}>Фінансовий центр →</button></>}
+      actions={<button type="button" className={styles.primary} onClick={() => window.dispatchEvent(new CustomEvent("turbolev:open-new-request", { detail: { source: "OWNER_DASHBOARD" } }))}>+ Нова заявка</button>}
       tabs={<nav className={styles.workspaceTabs} aria-label="Розділи пульта власника"><button type="button" className={workspaceTab === "RESULT" ? styles.workspaceTabActive : ""} onClick={() => setWorkspaceTab("RESULT")}>Результат</button><button type="button" className={workspaceTab === "SERVICE" ? styles.workspaceTabActive : ""} onClick={() => setWorkspaceTab("SERVICE")}>Сервіс</button><button type="button" className={workspaceTab === "RISKS" ? styles.workspaceTabActive : ""} onClick={() => setWorkspaceTab("RISKS")}>Ризики <b>{ownerAttention.length + teamAttention.length}</b></button><button type="button" className={workspaceTab === "TRENDS" ? styles.workspaceTabActive : ""} onClick={() => setWorkspaceTab("TRENDS")}>Тренди</button></nav>}
     />
 
