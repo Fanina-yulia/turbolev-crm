@@ -42,3 +42,80 @@
 }
 .primary:hover{transform:translateY(-1px);box-shadow:0 11px 22px color-mix(in srgb,var(--orange) 24%,transparent);filter:saturate(1.05)}
 .primary:focus-visible{outline:2px solid var(--orange);outline-offset:2px}
+
+
+/* OWNER DASHBOARD TOP NAV — one line: sections left, periods right */
+.dashboardNavRow{
+  width:100%;
+  min-width:0;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:14px;
+  overflow-x:auto;
+  overflow-y:hidden;
+  padding:2px 0;
+  scrollbar-width:thin;
+}
+.dashboardNavRow .workspaceTabs{
+  position:static;
+  top:auto;
+  z-index:auto;
+  flex:0 0 auto;
+  display:flex;
+  align-items:center;
+  gap:7px;
+  margin:0;
+  padding:0;
+  border-bottom:0;
+  background:transparent;
+  overflow:visible;
+}
+.periodToolbar{
+  margin-left:auto;
+  flex:0 0 auto;
+  display:flex;
+  align-items:center;
+  justify-content:flex-end;
+  gap:6px;
+  min-width:max-content;
+}
+.periodToolbar button{
+  min-height:36px;
+  border:1px solid var(--border);
+  border-radius:10px;
+  background:var(--surface);
+  color:var(--text);
+  padding:0 12px;
+  font:inherit;
+  font-size:12px;
+  font-weight:800;
+  white-space:nowrap;
+  cursor:pointer;
+  transition:border-color .16s ease,background .16s ease,transform .16s ease;
+}
+.periodToolbar button:hover{
+  border-color:color-mix(in srgb,var(--orange) 55%,var(--border));
+  transform:translateY(-1px);
+}
+.periodToolbar button:focus-visible{
+  outline:2px solid var(--orange);
+  outline-offset:2px;
+}
+.periodToolbar .periodActive{
+  border-color:color-mix(in srgb,var(--orange) 60%,var(--border));
+  background:color-mix(in srgb,var(--orange) 10%,var(--surface));
+  color:var(--text);
+}
+.periodRange{
+  margin-left:6px;
+  color:var(--muted);
+  font-size:11px;
+  font-weight:800;
+  white-space:nowrap;
+}
+@media(max-width:900px){
+  .dashboardNavRow{gap:10px}
+  .periodToolbar button{padding:0 10px}
+  .periodRange{margin-left:2px}
+}
