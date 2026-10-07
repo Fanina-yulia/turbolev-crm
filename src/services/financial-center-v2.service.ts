@@ -7,7 +7,7 @@ import { toPrismaJson } from "@/src/lib/prisma-json";
 const DAY_MS = 86_400_000;
 const OPEN_OBLIGATION_STATUSES = ["OPEN", "PARTIALLY_PAID", "OVERDUE"] as const;
 const ACTIVE_FORECAST_STATUSES = ["PLANNED", "CONFIRMED"] as const;
-const BUDGET_METRICS = ["REVENUE", "COGS", "OPEX", "GROSS_PROFIT", "OPERATING_PROFIT", "NET_PROFIT", "CASH_FLOW", "CATEGORY"] as const;
+const BUDGET_METRICS = ["REVENUE", "COGS", "OPEX", "GROSS_PROFIT", "OPERATING_PROFIT", "NET_PROFIT", "CASH_FLOW", "CATEGORY", "NET_INCOME", "SERVICE_REVENUE", "PARTS_MARGIN", "PAYROLL", "GROSS_INCOME", "TOTAL_EXPENSES", "CASH_BALANCE"] as const;
 
 type BudgetMetric = (typeof BUDGET_METRICS)[number];
 
@@ -494,6 +494,13 @@ export async function getFinancialCenterV2(scope: FinancialCenterScope) {
     if (metric === "GROSS_PROFIT") return pnl.grossProfit;
     if (metric === "OPERATING_PROFIT") return pnl.operatingProfit;
     if (metric === "NET_PROFIT") return pnl.netProfit;
+    if (metric === "NET_INCOME") return ownerSummary.netIncome;
+    if (metric === "SERVICE_REVENUE") return ownerSummary.serviceTurnover;
+    if (metric === "PARTS_MARGIN") return ownerSummary.partsMargin;
+    if (metric === "PAYROLL") return ownerSummary.payrollAccrued;
+    if (metric === "GROSS_INCOME") return ownerSummary.grossIncome;
+    if (metric === "TOTAL_EXPENSES") return ownerSummary.totalExpenses;
+    if (metric === "CASH_BALANCE") return ownerSummary.cash;
     if (metric === "CASH_FLOW") return roundMoney(cashSection.inflow - cashSection.outflow);
     if (metric === "CATEGORY" && categoryId) return roundMoney(categoryActual.get(categoryId) || 0);
     return 0;

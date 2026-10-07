@@ -8,6 +8,12 @@ import { FinanceExpensesV2 } from "./finance-expenses-v2";
 import { FinanceOperationDrawer } from "./finance-operation-drawer";
 import { FinanceInfoTooltip } from "./finance-info-tooltip";
 import {
+  FinanceOwnerCommandCenter,
+  OwnerProfitPlanDialog,
+  findOwnerProfitPlan,
+  type FinanceManagementPulse,
+} from "./finance-owner-command-center";
+import {
   FinanceAccrualBridge,
   FinanceCashClosePanel,
   FinanceContextKpis,
@@ -18,6 +24,7 @@ import {
   FinancePlanPace,
   FinanceProfitabilityHighlights,
   type FinanceDrilldownMetric,
+  type FinanceV3Data,
 } from "./financial-center-v3-control";
 import type { FinanceGlossaryKey } from "@/src/domain/finance-glossary";
 import styles from "./financial-center-v2.module.css";
@@ -30,7 +37,7 @@ type OperationType = "EXPENSE" | "INCOME" | "TRANSFER";
 type Category = { id: string; code: string; name: string; pnlSection: string | null; cashFlowSection: string | null; parentId: string | null; isSystem: boolean; sortOrder: number };
 type CostCenter = { id: string; code: string; name: string; locationId: string | null; sortOrder: number };
 type Account = { id: string; name: string; type: string; locationId: string | null; openingBalance: number; balance: number };
-type Budget = { id: string; name: string; metric: string; amount: number; actual: number; variance: number; completionPercent: number | null; categoryName: string | null; periodStart: string; periodEnd: string };
+type Budget = { id: string; name: string; metric: string; amount: number; actual: number; variance: number; completionPercent: number | null; categoryName: string | null; periodStart: string; periodEnd: string; notes?: string | null };
 type Obligation = { id: string; direction: "RECEIVABLE" | "PAYABLE"; status: string; amount: number; settledAmount: number; outstanding: number; issuedAt: string; dueAt: string | null; counterpartyName: string | null; description: string | null; workOrderId: string | null; sourceEntity: string | null; overdueDays: number; isOverdue: boolean };
 type CalendarItem = { id: string; sourceType: string; direction: "INFLOW" | "OUTFLOW"; amount: number; weightedAmount: number; expectedAt: string; status: string; counterparty: string | null; description: string | null; sourceId: string | null };
 type Alert = { level: "INFO" | "WARNING" | "CRITICAL"; code: string; title: string; message: string; amount?: number; date?: string };
@@ -62,6 +69,7 @@ type FinanceV2 = {
     mechanics: Array<{ mechanicId: string; name: string; position: string | null; revenue: number; directCost: number; profit: number; laborHours: number; lines: number; marginPercent: number | null }>;
     suppliers: Array<{ supplierId: string; name: string; revenue: number; directCost: number; profit: number; parts: number; markupPercent: number | null; marginPercent: number | null }>;
   };
+  control?: FinanceV3Data["control"];
   ownerSummary?: {
     netIncome: number;
     serviceTurnover: number;
@@ -193,6 +201,9 @@ export function FinancialCenter() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsHubOpen, setSettingsHubOpen] = useState(false);
   const [drilldown, setDrilldown] = useState<FinanceDrilldownMetric | null>(null);
+  const [profitPlanOpen, setProfitPlanOpen] = useState(false);
+  const [profitPlanData, setProfitPlanData] = useState<FinanceV2 | null>(null);
+  const [managementPulse, setManagementPulse] = useState<FinanceManagementPulse | null>(null);
 
   const query = useMemo(() => { const q = new URLSearchParams({ from, to }); if (locationId) q.set("locationId", locationId); return q.toString(); }, [from, to, locationId]);
   const load = useCallback(async (options?: { silent?: boolean }) => {
@@ -248,6 +259,49 @@ export function FinancialCenter() {
     };
   }, [load]);
 
+  const selectedProfitPlan = useMemo(() => findOwnerProfitPlan(data?.budgets), [data?.budgets]);
+  useEffect(() => {
+    if (!selectedProfitPlan) { setProfitPlanData(null); return; }
+    let cancelled = false;
+    const planFrom = selectedProfitPlan.periodStart.slice(0, 10);
+    const planTo = selectedProfitPlan.periodEnd.slice(0, 10);
+    const loadPlan = async () => {
+      try {
+        const params = new URLSearchParams({ from: planFrom, to: planTo });
+        if (locationId) params.set("locationId", locationId);
+        const response = await fetch(`/api/finance/v2?${params.toString()}`, { cache: "no-store" });
+        const payload = await response.json();
+        if (!cancelled && response.ok && payload.ok) setProfitPlanData(payload);
+      } catch {
+        // Main finance refresh remains authoritative; plan-period refresh is best-effort.
+      }
+    };
+    void loadPlan();
+    const timer = window.setInterval(() => void loadPlan(), 30000);
+    return () => { cancelled = true; window.clearInterval(timer); };
+  }, [selectedProfitPlan?.id, selectedProfitPlan?.periodStart, selectedProfitPlan?.periodEnd, locationId]);
+
+  useEffect(() => {
+    if (data?.viewer?.persona !== "OWNER") { setManagementPulse(null); return; }
+    let cancelled = false;
+    const loadManagement = async () => {
+      try {
+        const params = new URLSearchParams({ week: isoDate(new Date()) });
+        if (locationId) params.set("locationId", locationId);
+        const response = await fetch(`/api/management/result?${params.toString()}`, { cache: "no-store" });
+        const payload = await response.json();
+        if (!cancelled && response.ok && payload.ok !== false) setManagementPulse(payload);
+      } catch {
+        // Financial Center must stay usable even if operational intelligence is temporarily unavailable.
+      }
+    };
+    void loadManagement();
+    const timer = window.setInterval(() => void loadManagement(), 30000);
+    const refresh = () => void loadManagement();
+    window.addEventListener("turbolev:data-changed", refresh);
+    return () => { cancelled = true; window.clearInterval(timer); window.removeEventListener("turbolev:data-changed", refresh); };
+  }, [data?.viewer?.persona, locationId]);
+
   const locations = useMemo(() => {
     const map = new Map<string, string>();
     data?.costCenters.forEach((item) => { if (item.locationId) map.set(item.locationId, item.name); });
@@ -293,7 +347,7 @@ export function FinancialCenter() {
     {error && <div className={styles.errorBox}><strong>Фінансовий центр не оновлено.</strong> {error}</div>}
     {message && <div className={styles.success}>{message}</div>}
 
-    {data && tab === "overview" && fullFinance && <OwnerOverview data={data} onCreatePlan={() => setBudgetOpen(true)} onMetric={setDrilldown} />}
+    {data && tab === "overview" && fullFinance && <OwnerOverview data={data} profitPlanData={profitPlanData} managementPulse={managementPulse} onCreatePlan={() => setBudgetOpen(true)} onCreateProfitPlan={() => setProfitPlanOpen(true)} onMetric={setDrilldown} />}
     {data && tab === "overview" && !fullFinance && <><FinanceContextKpis data={data} tab={tab} onMetric={setDrilldown} /><FinanceOverviewControl data={data} /><FinanceAccrualBridge data={data} /></>}
 
     {!data && !loading && <div className={styles.empty}>Фінансові дані недоступні.</div>}
@@ -334,6 +388,7 @@ export function FinancialCenter() {
     {data && tab === "accounts" && <><AccountsView data={data} onOperation={openOperation} /><FinanceCashClosePanel data={data} onCloseDay={async (payload) => { try { await v2Action("CLOSE_CASH_DAY", payload); setMessage("Касовий день збережено."); await load(); } catch (cause) { setError(cause instanceof Error ? cause.message : "Не вдалося закрити касовий день."); } }} /></>}
 
     {data && <FinanceOperationDrawer open={operationOpen} initialType={operationType} locationId={locationId} categories={data.categories} accounts={data.accounts} costCenters={data.costCenters} onClose={() => setOperationOpen(false)} onChanged={() => void load()} />}
+    {data && profitPlanOpen && <OwnerProfitPlanDialog budgets={data.budgets} onClose={() => setProfitPlanOpen(false)} onSave={async (payload) => { await v2Action("SAVE_BUDGET", payload); setProfitPlanOpen(false); setMessage("План чистого прибутку збережено та автоматично розкладено по періодах і підйомниках."); await load(); }} />}
     {data && budgetOpen && <BudgetDialog data={data} locationId={locationId} onClose={() => setBudgetOpen(false)} onSave={async (payload) => { try { await v2Action("SAVE_BUDGET", payload); setBudgetOpen(false); setMessage("Бюджет збережено."); await load(); } catch (cause) { setError(cause instanceof Error ? cause.message : "Не вдалося зберегти бюджет."); } }} />}
     {data && recurringOpen && <RecurringDialog data={data} locationId={locationId} onClose={() => setRecurringOpen(false)} onSave={async (payload) => { try { await v2Action("SAVE_RECURRING", payload); setRecurringOpen(false); setMessage("Регулярну операцію збережено."); await load(); } catch (cause) { setError(cause instanceof Error ? cause.message : "Не вдалося зберегти регулярну операцію."); } }} />}
     {data && categoryOpen && <CategoryDialog data={data} onClose={() => setCategoryOpen(false)} onSave={async (payload) => { try { await v2Action("CREATE_CATEGORY", payload); setCategoryOpen(false); setMessage("Категорію створено."); await load(); } catch (cause) { setError(cause instanceof Error ? cause.message : "Не вдалося створити категорію."); } }} />}
@@ -407,7 +462,7 @@ function managementActualForBudget(metric: string, facts: ReturnType<typeof mana
   return Object.prototype.hasOwnProperty.call(values, metric) ? values[metric] : null;
 }
 
-function OwnerOverview({ data, onCreatePlan, onMetric }: { data: FinanceV2; onCreatePlan: () => void; onMetric: (metric: FinanceDrilldownMetric) => void }) {
+function OwnerOverview({ data, profitPlanData, managementPulse, onCreatePlan, onCreateProfitPlan, onMetric }: { data: FinanceV2; profitPlanData: FinanceV2 | null; managementPulse: FinanceManagementPulse | null; onCreatePlan: () => void; onCreateProfitPlan: () => void; onMetric: (metric: FinanceDrilldownMetric) => void }) {
   const facts = managementFacts(data);
   const cards = [
     { key: "NET_INCOME", label: "Чистий дохід", value: facts.netIncome, plan: budgetFor(data, "NET_INCOME", "NET_PROFIT"), mode: "HIGHER" as const, metric: "ownerNetIncome" as FinanceDrilldownMetric, note: "валовий дохід − всі витрати" },
@@ -446,8 +501,10 @@ function OwnerOverview({ data, onCreatePlan, onMetric }: { data: FinanceV2; onCr
       </div>
     </section>
 
+    <FinanceOwnerCommandCenter data={data} planData={profitPlanData} management={managementPulse} onCreatePlan={onCreateProfitPlan} onMetric={onMetric} />
+
     <section className={styles.panel}>
-      <div className={styles.panelHeader}><div><span className={styles.eyebrow}>ПЛАН / ФАКТ</span><h2>Планування тепер частина «Огляду»</h2><p>Окремого екрана «План / факт» більше немає. Усі бюджети та відхилення контролюються тут.</p></div><button type="button" className={styles.primaryButton} onClick={onCreatePlan}>+ Додати бюджет</button></div>
+      <div className={styles.panelHeader}><div><span className={styles.eyebrow}>ІНШІ БЮДЖЕТИ / ФАКТ</span><h2>Додаткові фінансові бюджети</h2><p>Окремого екрана «План / факт» більше немає. Усі бюджети та відхилення контролюються тут.</p></div><button type="button" className={styles.primaryButton} onClick={onCreatePlan}>+ Додати бюджет</button></div>
       {data.budgets.length ? <div className={styles.grid3}>{data.budgets.map((item) => <BudgetCard key={item.id} item={item} actualOverride={managementActualForBudget(item.metric, facts)}/>)}</div> : <div className={styles.empty}>План на цей період ще не заданий.<div style={{marginTop:10}}><button type="button" className={styles.primaryButton} onClick={onCreatePlan}>Створити перший план</button></div></div>}
     </section>
 
