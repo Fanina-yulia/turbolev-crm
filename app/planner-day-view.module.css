@@ -210,11 +210,15 @@
   min-width:0;
   display:flex!important;
   align-items:center;
+  flex-wrap:wrap;
+  row-gap:2px;
   gap:5px;
   color:var(--text)!important;
 }
 .eventVehicle b{
   min-width:0;
+  flex:1 1 calc(100% - 24px);
+  max-width:calc(100% - 24px);
   overflow:hidden;
   text-overflow:ellipsis;
   white-space:nowrap;
@@ -222,8 +226,10 @@
   font-weight:900!important;
 }
 .eventVehicle strong{
-  flex:0 1 auto;
+  width:100%;
+  flex:1 0 100%;
   min-width:0;
+  margin-left:16px;
   overflow:hidden;
   text-overflow:ellipsis;
   white-space:nowrap;
@@ -302,122 +308,6 @@
 }
 @media(max-width:1180px) and (min-width:761px){
   .grid{min-width:1120px}
-}
-
-
-/* RECORD CARD PARITY — reference-safe short cards */
-.eventPlateStacked{
-  width:100%!important;
-  flex:1 0 100%!important;
-  margin-left:16px;
-  color:var(--soft-text)!important;
-}
-.eventShortVisual{
-  overflow:visible!important;
-  isolation:isolate;
-  background:transparent!important;
-  border-color:transparent!important;
-  border-left-color:transparent!important;
-  box-shadow:none!important;
-}
-.eventShortVisual::before{
-  content:"";
-  position:absolute;
-  inset:0 auto 0 0;
-  z-index:0;
-  width:max(100%,208px);
-  border:1px solid color-mix(in srgb,var(--event-color) 18%,var(--line));
-  border-left:4px solid var(--event-color);
-  border-radius:11px;
-  background:color-mix(in srgb,var(--event-color) 8%,var(--panel));
-  box-shadow:0 5px 16px rgba(15,23,42,.08);
-  pointer-events:none;
-}
-.eventShortVisual:hover::before{
-  border-color:color-mix(in srgb,var(--event-color) 40%,var(--line));
-  box-shadow:0 10px 26px rgba(15,23,42,.13);
-}
-.eventShortVisual.eventSelected::before{
-  box-shadow:0 0 0 2px color-mix(in srgb,var(--orange) 42%,transparent),0 12px 30px rgba(15,23,42,.14);
-}
-.eventShortVisual > :not(.resizeHandle){
-  position:relative;
-  z-index:1;
-  width:max(100%,188px);
-  max-width:none;
-  pointer-events:none;
-}
-.eventNarrow{
-  padding:6px 7px!important;
-  gap:2px!important;
-}
-.eventNarrow .eventStatus{
-  max-width:50%;
-  padding:2px 5px;
-  font-size:11px!important;
-}
-.eventNarrow .eventVehicle b{font-size:11px!important}
-.eventNarrow .eventVehicle strong,
-.eventNarrow .eventProblem,
-.eventNarrow .eventMechanic{display:none!important}
-.eventNarrow .eventAvatar{
-  width:18px;
-  height:18px;
-  flex-basis:18px;
-}
-.eventNarrow .eventFlags{
-  max-width:72px;
-  overflow:hidden;
-  text-overflow:ellipsis;
-  white-space:nowrap;
-}
-
-.eventShortVisual .eventVehicle{
-  width:max(100%,188px)!important;
-  flex-wrap:wrap!important;
-  align-content:flex-start;
-  row-gap:2px!important;
-}
-.eventShortVisual .eventVehicle b{
-  flex:1 1 calc(100% - 24px)!important;
-  max-width:calc(100% - 24px)!important;
-}
-.eventShortVisual .eventPlateStacked{
-  max-width:calc(100% - 18px)!important;
-  overflow:visible!important;
-  text-overflow:clip!important;
-  white-space:nowrap!important;
-}
-.eventShortVisual .eventProblem{
-  width:max(100%,188px)!important;
-  white-space:normal!important;
-  overflow:hidden!important;
-  text-overflow:ellipsis!important;
-  display:-webkit-box!important;
-  -webkit-line-clamp:2;
-  -webkit-box-orient:vertical;
-  line-height:1.25!important;
-}
-.eventShortVisual .eventFoot{
-  width:max(100%,188px)!important;
-}
-.eventShortVisual .eventMechanic{
-  overflow:visible!important;
-  text-overflow:clip!important;
-}
-.eventShortVisual .eventStatus{
-  max-width:92px!important;
-}
-
-
-/* Interactive geometry for visually expanded short cards */
-.eventShortVisual{
-  width:max(100%,208px)!important;
-  max-width:none!important;
-  z-index:6!important;
-}
-.eventShortVisual::before{
-  width:100%!important;
 }
 
 

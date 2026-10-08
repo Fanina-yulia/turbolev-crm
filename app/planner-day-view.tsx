@@ -474,14 +474,12 @@ export function PlannerDayView<TAppointment extends AppointmentBase>({ day, loca
   }
 
   function canResizeAppointment(item: TAppointment, startMinute: number, endMinute: number) {
-    if (isActualWalkIn(item)) return false;
     if (startMinute < openMinute || endMinute > closeMinute || endMinute - startMinute < SLOT) return false;
     return !dayAppointments.some((other) => {
       if (other.id === item.id || NON_BLOCKING.has(other.status)) return false;
       if (other.postId !== item.postId) return false;
-      const otherStart = localParts(other.plannedStartAt, timeZone).minute;
-      const otherEnd = localParts(other.plannedEndAt, timeZone).minute;
-      return otherStart < endMinute && otherEnd > startMinute;
+      const otherWindow = displayWindow(other, timeZone);
+      return otherWindow.start < endMinute && otherWindow.end > startMinute;
     });
   }
 
@@ -497,7 +495,7 @@ export function PlannerDayView<TAppointment extends AppointmentBase>({ day, loca
   }
 
   function startResize(event: ReactPointerEvent<HTMLSpanElement>, item: TAppointment, edge: ResizeEdge) {
-    if (NON_BLOCKING.has(item.status) || isActualWalkIn(item)) return;
+    if (NON_BLOCKING.has(item.status)) return;
     event.preventDefault();
     event.stopPropagation();
     try {
@@ -506,8 +504,9 @@ export function PlannerDayView<TAppointment extends AppointmentBase>({ day, loca
       // Pointer capture is not available in a few older embedded browsers;
       // the window-level listeners below still handle the drag in that case.
     }
-    const originalStartMinute = localParts(item.plannedStartAt, timeZone).minute;
-    const originalEndMinute = Math.max(originalStartMinute + SLOT, localParts(item.plannedEndAt, timeZone).minute);
+    const originalWindow = displayWindow(item, timeZone);
+    const originalStartMinute = originalWindow.start;
+    const originalEndMinute = Math.max(originalStartMinute + SLOT, originalWindow.end);
     const next: ResizeState = {
       id: item.id,
       edge,
@@ -735,15 +734,8 @@ export function PlannerDayView<TAppointment extends AppointmentBase>({ day, loca
             ? Math.max(0, nowMinute - originalEnd)
             : 0;
           const statusColor = lateMinutes > 0 ? "#dc2626" : STATUS_TONE_COLOR[status.tone];
-          const nextStartOnRow = dayAppointments
-            .filter((other) => other.id !== item.id && other.postId === item.postId)
-            .map((other) => displayWindow(other, timeZone).start)
-            .filter((otherStart) => otherStart > start)
-            .sort((a, b) => a - b)[0];
-          const canExpandShortCard = span < 3
-            && startIndex + 3 <= slots.length
-            && (nextStartOnRow === undefined || nextStartOnRow >= start + 90);
-          const isNarrowCard = span < 3 && !canExpandShortCard;
+          const visualSpan = Math.max(2, span);
+          const minimumVisualOverlap = span === 1;
           const collision = collisionLayout(item);
           const collisionStyle: CSSProperties = collision.count > 1
             ? {
@@ -756,15 +748,15 @@ export function PlannerDayView<TAppointment extends AppointmentBase>({ day, loca
           return <button
             type="button"
             key={item.id}
-            className={`${styles.event} ${styles[`event_${status.tone}`]} ${done ? styles.eventDone : ""} ${noShow ? styles.eventNoShow : ""} ${lateMinutes > 0 ? styles.eventLate : ""} ${selectedAppointmentId===item.id ? styles.eventSelected : ""} ${canExpandShortCard ? styles.eventShortVisual : ""} ${isNarrowCard ? styles.eventNarrow : ""} ${compact ? compactStyles.event : ""} ${preview ? styles.eventResizing : ""} ${preview && !preview.valid ? styles.eventResizeInvalid : ""} ${draggingAppointmentId === item.id ? styles.eventDragging : ""}`}
-            style={{ gridColumn: `${startIndex + 2} / span ${span}`, gridRow: rowIndex + 2, "--event-color": statusColor, "--resource-color": row.color, ...collisionStyle } as CSSProperties}
+            className={`${styles.event} ${styles[`event_${status.tone}`]} ${done ? styles.eventDone : ""} ${noShow ? styles.eventNoShow : ""} ${lateMinutes > 0 ? styles.eventLate : ""} ${selectedAppointmentId===item.id ? styles.eventSelected : ""} ${compact ? compactStyles.event : ""} ${preview ? styles.eventResizing : ""} ${preview && !preview.valid ? styles.eventResizeInvalid : ""} ${draggingAppointmentId === item.id ? styles.eventDragging : ""}`}
+            style={{ gridColumn: `${startIndex + 2} / span ${visualSpan}`, gridRow: rowIndex + 2, zIndex: minimumVisualOverlap ? 20 + (slots.length - startIndex) : undefined, "--event-color": statusColor, "--resource-color": row.color, ...collisionStyle } as CSSProperties}
             draggable={Boolean(onMove) && !NON_DRAGGABLE.has(item.status)}
             onDragStart={(event) => dragAppointment(event, item)}
             onDragEnd={endAppointmentDrag}
             onClick={() => { if (!suppressDragClickRef.current) onOpen(item); }}
             title={`${isActualWalkIn(item) ? "ПОЗАПЛАНОВИЙ ЗАЇЗД · " : ""}${item.vehicleLabel || "Автомобіль"} · ${item.plateNumber || "Без номера"} · ${minuteLabel(start)}–${minuteLabel(end)} · ${status.label}${lateMinutes > 0 ? ` · прострочено на ${lateMinutes} хв` : ""}`}
           >
-            {!NON_BLOCKING.has(item.status) && !isActualWalkIn(item) && <>
+            {!NON_BLOCKING.has(item.status) && <>
               <span
                 className={`${styles.resizeHandle} ${styles.resizeHandleStart}`}
                 role="slider"
@@ -797,7 +789,7 @@ export function PlannerDayView<TAppointment extends AppointmentBase>({ day, loca
             <div className={styles.eventVehicle}>
               <span className={styles.eventCarIcon}>▰</span>
               <b>{item.vehicleLabel || (item.status === "RESERVE" ? "Пост недоступний" : "Автомобіль")}</b>
-              {item.plateNumber&&<strong className={span <= 3 ? styles.eventPlateStacked : ""}>{span <= 3 ? item.plateNumber : `· ${item.plateNumber}`}</strong>}
+              {item.plateNumber&&<strong className={styles.eventPlateStacked}>{item.plateNumber}</strong>}
             </div>
             <span className={styles.eventProblem}>{item.problem || "Роботи не вказані"}</span>
             <div className={styles.eventFoot}>

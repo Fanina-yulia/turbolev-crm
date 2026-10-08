@@ -19,6 +19,12 @@ assert.match(day, /availability\?\.slots\?\.length/, "resource utilization must 
 assert.match(day, /Вільно \$\{minuteLabel\(slots\[index\]\)\}–/, "resource row must show a concrete free window");
 assert.match(day, /const noShow = item\.status === "NO_SHOW"/, "no-show cards must have an explicit visual state");
 assert.match(dayCss, /\.eventNoShow\{/, "no-show visual contract must exist");
+assert.match(day, /const visualSpan = Math\.max\(2, span\)/, "every planner card must have a minimum visual width of two 30-minute cells");
+assert.equal(/eventShortVisual|eventNarrow/.test(day), false, "planner must use one canonical card layout, not separate short/narrow card designs");
+assert.match(day, /gridColumn: `\$\{startIndex \+ 2\} \/ span \$\{visualSpan\}`/, "card width must follow the 30-minute grid");
+assert.match(day, /zIndex: minimumVisualOverlap \? 20 \+ \(slots\.length - startIndex\)/, "a 30-minute card must stay in front when its two-cell visual minimum overlaps the next record");
+assert.equal(/canResizeAppointment[\s\S]{0,160}isActualWalkIn/.test(day), false, "walk-in cards must keep resize support");
+assert.match(day, /!NON_BLOCKING\.has\(item\.status\) && <>/, "active cards must expose resize handles");
 
 assert.match(drawerCss, /height:100dvh/, "detail drawer must span the viewport height");
 assert.equal(/position:sticky/.test(drawerCss), false, "wide drawer must never fall back to inline sticky mode");
