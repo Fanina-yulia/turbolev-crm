@@ -142,12 +142,25 @@ function localParts(iso: string, timeZone: string) {
   };
 }
 
+function isActualWalkIn(item: AppointmentBase) {
+  return Boolean(item.source === "WALK_IN" && (item.actualStartAt || item.actualArrivalAt));
+}
+
+function walkInHasPlannerOverride(item: AppointmentBase) {
+  if (!isActualWalkIn(item)) return false;
+  const actualIso = item.actualStartAt || item.actualArrivalAt;
+  if (!actualIso) return false;
+  return Math.abs(new Date(item.plannedStartAt).getTime() - new Date(actualIso).getTime()) >= 60_000;
+}
+
 function displayWindow(item: AppointmentBase, timeZone: string) {
   const plannedDuration = Math.max(
     SLOT,
     Math.round((new Date(item.plannedEndAt).getTime() - new Date(item.plannedStartAt).getTime()) / 60000),
   );
-  const actualStart = item.source === "WALK_IN" ? (item.actualStartAt || item.actualArrivalAt) : null;
+  const actualStart = item.source === "WALK_IN" && !walkInHasPlannerOverride(item)
+    ? (item.actualStartAt || item.actualArrivalAt)
+    : null;
   const startIso = actualStart || item.plannedStartAt;
   const start = localParts(startIso, timeZone);
   return {
@@ -156,10 +169,6 @@ function displayWindow(item: AppointmentBase, timeZone: string) {
     end: start.minute + plannedDuration,
     actualWalkIn: Boolean(item.source === "WALK_IN" && actualStart),
   };
-}
-
-function isActualWalkIn(item: AppointmentBase) {
-  return Boolean(item.source === "WALK_IN" && (item.actualStartAt || item.actualArrivalAt));
 }
 
 function postType(post: Post) {
@@ -409,7 +418,7 @@ export function PlannerDayView<TAppointment extends AppointmentBase>({ day, loca
   }
 
   function dragAppointment(event: ReactDragEvent<HTMLButtonElement>, item: TAppointment) {
-    if (NON_DRAGGABLE.has(item.status) || isActualWalkIn(item)) {
+    if (NON_DRAGGABLE.has(item.status)) {
       event.preventDefault();
       return;
     }
@@ -735,11 +744,11 @@ export function PlannerDayView<TAppointment extends AppointmentBase>({ day, loca
             key={item.id}
             className={`${styles.event} ${styles[`event_${status.tone}`]} ${done ? styles.eventDone : ""} ${lateMinutes > 0 ? styles.eventLate : ""} ${selectedAppointmentId===item.id ? styles.eventSelected : ""} ${canExpandShortCard ? styles.eventShortVisual : ""} ${isNarrowCard ? styles.eventNarrow : ""} ${compact ? compactStyles.event : ""} ${preview ? styles.eventResizing : ""} ${preview && !preview.valid ? styles.eventResizeInvalid : ""} ${draggingAppointmentId === item.id ? styles.eventDragging : ""}`}
             style={{ gridColumn: `${startIndex + 2} / span ${span}`, gridRow: rowIndex + 2, "--event-color": statusColor, "--resource-color": row.color, ...collisionStyle } as CSSProperties}
-            draggable={Boolean(onMove) && !NON_DRAGGABLE.has(item.status) && !isActualWalkIn(item)}
+            draggable={Boolean(onMove) && !NON_DRAGGABLE.has(item.status)}
             onDragStart={(event) => dragAppointment(event, item)}
             onDragEnd={endAppointmentDrag}
             onClick={() => { if (!suppressDragClickRef.current) onOpen(item); }}
-            title={`${item.vehicleLabel || "Автомобіль"} · ${item.plateNumber || "Без номера"} · ${minuteLabel(start)}–${minuteLabel(end)} · ${item.processLabel || status.label}${lateMinutes > 0 ? ` · прострочено на ${lateMinutes} хв` : ""}`}
+            title={`${isActualWalkIn(item) ? "ПОЗАПЛАНОВИЙ ЗАЇЗД · " : ""}${item.vehicleLabel || "Автомобіль"} · ${item.plateNumber || "Без номера"} · ${minuteLabel(start)}–${minuteLabel(end)} · ${status.label}${lateMinutes > 0 ? ` · прострочено на ${lateMinutes} хв` : ""}`}
           >
             {!NON_BLOCKING.has(item.status) && !isActualWalkIn(item) && <>
               <span
@@ -768,7 +777,7 @@ export function PlannerDayView<TAppointment extends AppointmentBase>({ day, loca
               />
             </>}
             <div className={styles.eventHead}>
-              <small className={styles.eventTime}>{isActualWalkIn(item) ? "ПОЗАПЛАНОВИЙ · " : ""}{minuteLabel(start)}–{minuteLabel(Math.min(end, 24 * 60))}</small>
+              <small className={styles.eventTime}>{minuteLabel(start)}–{minuteLabel(Math.min(end, 24 * 60))}</small>
               <em className={styles.eventStatus}><i/>{lateMinutes > 0 ? "Прострочено" : status.label}</em>
             </div>
             <div className={styles.eventVehicle}>

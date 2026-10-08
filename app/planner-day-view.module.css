@@ -408,3 +408,14 @@
 .eventShortVisual .eventStatus{
   max-width:92px!important;
 }
+
+
+/* Interactive geometry for visually expanded short cards */
+.eventShortVisual{
+  width:max(100%,208px)!important;
+  max-width:none!important;
+  z-index:6!important;
+}
+.eventShortVisual::before{
+  width:100%!important;
+}
