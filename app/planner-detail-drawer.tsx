@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type {
   PlannerAppointmentContract as Appointment,
   PlannerLocationContract as Location,
@@ -84,6 +84,14 @@ export function PlannerDetailDrawer({
   const [tab, setTab] = useState<Tab>("details");
   const [moreOpen, setMoreOpen] = useState(false);
 
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [onClose]);
+
   const paymentTone = appointment.payment.status === "PAID"
     ? "paid"
     : appointment.payment.status === "PARTIAL"
@@ -114,7 +122,7 @@ export function PlannerDetailDrawer({
         <strong>{isReserve ? "Блокування поста" : appointment.vehicleLabel || "Автомобіль"}</strong>
         <span>{appointment.plateNumber || (isReserve ? appointment.post?.name || "Ресурс" : "Без держномера")}</span>
       </div>
-      <span className={styles.status}>{STATUS_LABEL[appointment.status] || appointment.status}</span>
+      <span className={`${styles.status} ${appointment.status === "NO_SHOW" ? styles.statusNoShow : appointment.status === "COMPLETED" ? styles.statusDone : ""}`}>{STATUS_LABEL[appointment.status] || appointment.status}</span>
       <button className={styles.close} onClick={onClose} aria-label="Закрити">×</button>
     </header>
 

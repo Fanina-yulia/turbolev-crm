@@ -385,7 +385,7 @@
 }
 @media(min-width:1500px){
   .operationalLayoutWithDrawer{
-    grid-template-columns:minmax(0,1fr) 390px;
+    grid-template-columns:minmax(0,1fr);
   }
 }
 @media(max-width:1499px) and (min-width:1181px){
@@ -443,3 +443,24 @@
     grid-template-columns:repeat(2,minmax(0,1fr))!important;
   }
 }
+
+
+/* PLANNER DISPATCH POLISH V11 — compact status KPIs + viewport drawer reserve */
+@media(min-width:1181px){
+  .toolbar{min-height:64px!important;padding:8px 9px!important;gap:8px!important}
+  .toolbar select{height:36px!important}
+  .toolbarDate>button{height:36px!important}
+  .toolbarDate .calendarControl{min-height:54px!important}
+  .toolbarDate .calendarControl>strong,.toolbarDate .calendarControl input{height:36px!important}
+  .toolbarDate .calendarControl:after{bottom:9px!important}
+  .toolbarEnd .searchBox{height:36px!important}
+  .searchBox button{height:30px!important}
+  .kpiBar{grid-template-columns:repeat(auto-fit,minmax(145px,1fr))!important;gap:7px!important;margin:7px 0 5px!important}
+  .kpiBar>button{min-height:48px!important;padding:6px 8px!important;gap:7px!important}
+  .kpiBar>button>i{width:27px!important;height:27px!important;flex-basis:27px!important}
+  .kpiBar b{font-size:12px!important}
+  .operationalLayoutWithDrawer{padding-right:clamp(360px,30vw,430px)}
+}
+.kpiNoShow{border-color:color-mix(in srgb,#dc2626 38%,var(--line))!important;background:color-mix(in srgb,#dc2626 5%,var(--panel))!important}
+.kpiNoShow>i{background:color-mix(in srgb,#dc2626 11%,var(--panel))!important;color:#dc2626!important}
+@media(max-width:1180px){.operationalLayoutWithDrawer{padding-right:0}}

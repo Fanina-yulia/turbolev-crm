@@ -419,3 +419,14 @@
 .eventShortVisual::before{
   width:100%!important;
 }
+
+
+/* PLANNER DISPATCH POLISH V11 */
+.eventNoShow{
+  border-color:color-mix(in srgb,#dc2626 48%,var(--line))!important;
+  border-left-color:#dc2626!important;
+  background:color-mix(in srgb,#dc2626 7%,var(--panel))!important;
+  box-shadow:0 0 0 1px color-mix(in srgb,#dc2626 8%,transparent),0 4px 12px rgba(220,38,38,.08)!important;
+}
+.eventNoShow .eventStatus{color:#dc2626!important;font-weight:950!important}
+.eventNoShow .eventProblem{color:color-mix(in srgb,#dc2626 62%,var(--text))!important}

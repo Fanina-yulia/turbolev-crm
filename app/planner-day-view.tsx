@@ -305,18 +305,27 @@ export function PlannerDayView<TAppointment extends AppointmentBase>({ day, loca
   const resourceLoad = useMemo(() => {
     const result = new Map<string, number>();
     for (const row of rows) {
+      if (!row.reception && availability?.slots?.length) {
+        const knownSlots = slots
+          .map((minute) => availabilityMap.get(`${minuteLabel(minute)}:${row.id}`))
+          .filter((value): value is boolean => value !== undefined);
+        if (knownSlots.length) {
+          const occupiedSlots = knownSlots.filter((value) => value === false).length;
+          result.set(row.id, Math.min(100, Math.round((occupiedSlots / knownSlots.length) * 100)));
+          continue;
+        }
+      }
       const occupied = dayAppointments
         .filter((item) => row.reception ? !item.postId : item.postId === row.id)
         .filter((item) => !NON_BLOCKING.has(item.status))
         .reduce((sum, item) => {
-          const start = localParts(item.plannedStartAt, timeZone).minute;
-          const end = localParts(item.plannedEndAt, timeZone).minute;
-          return sum + overlapMinutes(start, end, openMinute, closeMinute);
+          const window = displayWindow(item, timeZone);
+          return sum + overlapMinutes(window.start, window.end, openMinute, closeMinute);
         }, 0);
       result.set(row.id, Math.min(100, Math.round((occupied / totalDayMinutes) * 100)));
     }
     return result;
-  }, [rows, dayAppointments, timeZone, openMinute, closeMinute, totalDayMinutes]);
+  }, [rows, dayAppointments, timeZone, openMinute, closeMinute, totalDayMinutes, availability, availabilityMap, slots]);
 
   const metrics = useMemo(() => {
     const completed = dayAppointments.filter((item) => item.status === "COMPLETED").length;
@@ -634,10 +643,14 @@ export function PlannerDayView<TAppointment extends AppointmentBase>({ day, loca
   const nowStyle = { left: `calc(${resourceWidth}px + (100% - ${resourceWidth}px) * ${nowRatio})` } as CSSProperties;
 
   function nextFreeLabel(row: Row) {
-    const startIndex = Math.max(0, slots.findIndex((minute) => minute >= (nowParts.day === day ? nowMinute : openMinute)));
-    const from = startIndex < 0 ? 0 : startIndex;
+    const requestedMinute = nowParts.day === day ? Math.ceil(nowMinute / SLOT) * SLOT : openMinute;
+    const found = slots.findIndex((minute) => minute >= requestedMinute);
+    const from = found < 0 ? slots.length : found;
     for (let index = from; index < slots.length; index += 1) {
-      if (slotAvailable(row, index)) return `Вільний з ${minuteLabel(slots[index])}`;
+      if (!slotAvailable(row, index)) continue;
+      let endIndex = index;
+      while (endIndex + 1 < slots.length && slotAvailable(row, endIndex + 1)) endIndex += 1;
+      return `Вільно ${minuteLabel(slots[index])}–${minuteLabel(slots[endIndex] + SLOT)}`;
     }
     return "Без вільних вікон";
   }
@@ -715,6 +728,7 @@ export function PlannerDayView<TAppointment extends AppointmentBase>({ day, loca
           const span = Math.max(1, Math.ceil((clippedEnd - clippedStart) / SLOT));
           const operationalStatus = item.processStatus || item.status;
           const done = operationalStatus === "COMPLETED";
+          const noShow = item.status === "NO_SHOW";
           const row = rows[rowIndex];
           const status = STATUS_META[operationalStatus] || STATUS_META[item.status] || { label: item.processLabel || operationalStatus || "Статус", tone: "gray" as const };
           const lateMinutes = nowParts.day === day && !["COMPLETED","NO_SHOW","CANCELLED","RESERVE"].includes(operationalStatus)
@@ -742,7 +756,7 @@ export function PlannerDayView<TAppointment extends AppointmentBase>({ day, loca
           return <button
             type="button"
             key={item.id}
-            className={`${styles.event} ${styles[`event_${status.tone}`]} ${done ? styles.eventDone : ""} ${lateMinutes > 0 ? styles.eventLate : ""} ${selectedAppointmentId===item.id ? styles.eventSelected : ""} ${canExpandShortCard ? styles.eventShortVisual : ""} ${isNarrowCard ? styles.eventNarrow : ""} ${compact ? compactStyles.event : ""} ${preview ? styles.eventResizing : ""} ${preview && !preview.valid ? styles.eventResizeInvalid : ""} ${draggingAppointmentId === item.id ? styles.eventDragging : ""}`}
+            className={`${styles.event} ${styles[`event_${status.tone}`]} ${done ? styles.eventDone : ""} ${noShow ? styles.eventNoShow : ""} ${lateMinutes > 0 ? styles.eventLate : ""} ${selectedAppointmentId===item.id ? styles.eventSelected : ""} ${canExpandShortCard ? styles.eventShortVisual : ""} ${isNarrowCard ? styles.eventNarrow : ""} ${compact ? compactStyles.event : ""} ${preview ? styles.eventResizing : ""} ${preview && !preview.valid ? styles.eventResizeInvalid : ""} ${draggingAppointmentId === item.id ? styles.eventDragging : ""}`}
             style={{ gridColumn: `${startIndex + 2} / span ${span}`, gridRow: rowIndex + 2, "--event-color": statusColor, "--resource-color": row.color, ...collisionStyle } as CSSProperties}
             draggable={Boolean(onMove) && !NON_DRAGGABLE.has(item.status)}
             onDragStart={(event) => dragAppointment(event, item)}
