@@ -307,7 +307,8 @@
 
 /* RECORD CARD PARITY — reference-safe short cards */
 .eventPlateStacked{
-  flex-basis:100%!important;
+  width:100%!important;
+  flex:1 0 100%!important;
   margin-left:16px;
   color:var(--soft-text)!important;
 }
@@ -324,7 +325,7 @@
   position:absolute;
   inset:0 auto 0 0;
   z-index:0;
-  width:max(100%,148px);
+  width:max(100%,208px);
   border:1px solid color-mix(in srgb,var(--event-color) 18%,var(--line));
   border-left:4px solid var(--event-color);
   border-radius:11px;
@@ -342,7 +343,7 @@
 .eventShortVisual > :not(.resizeHandle){
   position:relative;
   z-index:1;
-  width:max(100%,128px);
+  width:max(100%,188px);
   max-width:none;
   pointer-events:none;
 }
@@ -369,4 +370,41 @@
   overflow:hidden;
   text-overflow:ellipsis;
   white-space:nowrap;
+}
+
+.eventShortVisual .eventVehicle{
+  width:max(100%,188px)!important;
+  flex-wrap:wrap!important;
+  align-content:flex-start;
+  row-gap:2px!important;
+}
+.eventShortVisual .eventVehicle b{
+  flex:1 1 calc(100% - 24px)!important;
+  max-width:calc(100% - 24px)!important;
+}
+.eventShortVisual .eventPlateStacked{
+  max-width:calc(100% - 18px)!important;
+  overflow:visible!important;
+  text-overflow:clip!important;
+  white-space:nowrap!important;
+}
+.eventShortVisual .eventProblem{
+  width:max(100%,188px)!important;
+  white-space:normal!important;
+  overflow:hidden!important;
+  text-overflow:ellipsis!important;
+  display:-webkit-box!important;
+  -webkit-line-clamp:2;
+  -webkit-box-orient:vertical;
+  line-height:1.25!important;
+}
+.eventShortVisual .eventFoot{
+  width:max(100%,188px)!important;
+}
+.eventShortVisual .eventMechanic{
+  overflow:visible!important;
+  text-overflow:clip!important;
+}
+.eventShortVisual .eventStatus{
+  max-width:92px!important;
 }
