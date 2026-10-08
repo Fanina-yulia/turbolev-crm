@@ -303,3 +303,70 @@
 @media(max-width:1180px) and (min-width:761px){
   .grid{min-width:1120px}
 }
+
+
+/* RECORD CARD PARITY — reference-safe short cards */
+.eventPlateStacked{
+  flex-basis:100%!important;
+  margin-left:16px;
+  color:var(--soft-text)!important;
+}
+.eventShortVisual{
+  overflow:visible!important;
+  isolation:isolate;
+  background:transparent!important;
+  border-color:transparent!important;
+  border-left-color:transparent!important;
+  box-shadow:none!important;
+}
+.eventShortVisual::before{
+  content:"";
+  position:absolute;
+  inset:0 auto 0 0;
+  z-index:0;
+  width:max(100%,148px);
+  border:1px solid color-mix(in srgb,var(--event-color) 18%,var(--line));
+  border-left:4px solid var(--event-color);
+  border-radius:11px;
+  background:color-mix(in srgb,var(--event-color) 8%,var(--panel));
+  box-shadow:0 5px 16px rgba(15,23,42,.08);
+  pointer-events:none;
+}
+.eventShortVisual:hover::before{
+  border-color:color-mix(in srgb,var(--event-color) 40%,var(--line));
+  box-shadow:0 10px 26px rgba(15,23,42,.13);
+}
+.eventShortVisual.eventSelected::before{
+  box-shadow:0 0 0 2px color-mix(in srgb,var(--orange) 42%,transparent),0 12px 30px rgba(15,23,42,.14);
+}
+.eventShortVisual > :not(.resizeHandle){
+  position:relative;
+  z-index:1;
+  width:max(100%,128px);
+  max-width:none;
+  pointer-events:none;
+}
+.eventNarrow{
+  padding:6px 7px!important;
+  gap:2px!important;
+}
+.eventNarrow .eventStatus{
+  max-width:50%;
+  padding:2px 5px;
+  font-size:11px!important;
+}
+.eventNarrow .eventVehicle b{font-size:11px!important}
+.eventNarrow .eventVehicle strong,
+.eventNarrow .eventProblem,
+.eventNarrow .eventMechanic{display:none!important}
+.eventNarrow .eventAvatar{
+  width:18px;
+  height:18px;
+  flex-basis:18px;
+}
+.eventNarrow .eventFlags{
+  max-width:72px;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}

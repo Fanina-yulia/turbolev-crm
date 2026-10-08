@@ -33,6 +33,8 @@ type AppointmentBase = {
   actualArrivalAt?: string | null;
   actualStartAt?: string | null;
   actualEndAt?: string | null;
+  processStatus?: string | null;
+  processLabel?: string | null;
   post?: Post | null;
   mechanic?: Mechanic | null;
   payment?: {
@@ -96,23 +98,27 @@ const STATUS_TONE_COLOR: Record<StatusMeta["tone"], string> = {
 };
 
 const STATUS_META: Record<string, StatusMeta> = {
-  BOOKED: { label: "Записаний", tone: "blue" },
-  ARRIVED: { label: "Приїхав", tone: "green" },
-  DIAGNOSTICS: { label: "Діагностика", tone: "violet" },
-  WAITING_PARTS_SELECTION: { label: "Очікує підбору", tone: "amber" },
-  WAITING_CALCULATION: { label: "Очікує калькуляції", tone: "amber" },
-  WAITING_APPROVAL: { label: "Очікує погодження", tone: "orange" },
-  WAITING_PARTS: { label: "Очікує запчастини", tone: "orange" },
-  READY_FOR_REPAIR: { label: "Готовий до ремонту", tone: "green" },
+  BOOKED: { label: "Заплановано", tone: "gray" },
+  ARRIVED: { label: "Очікує", tone: "amber" },
+  DIAGNOSTICS: { label: "В роботі", tone: "blue" },
+  PREPARATION: { label: "Очікує", tone: "amber" },
+  WAITING_PARTS_SELECTION: { label: "Очікує", tone: "amber" },
+  WAITING_CALCULATION: { label: "Очікує", tone: "amber" },
+  WAITING_APPROVAL: { label: "Очікує", tone: "amber" },
+  WAITING_PARTS: { label: "Очікує", tone: "amber" },
+  READY_FOR_REPAIR: { label: "Заплановано", tone: "gray" },
   IN_REPAIR: { label: "В роботі", tone: "blue" },
-  WAITING_QC: { label: "Контроль якості", tone: "cyan" },
-  READY_FOR_PICKUP: { label: "Очікує клієнта", tone: "amber" },
-  COMPLETED: { label: "Виконано", tone: "green" },
+  REWORK: { label: "В роботі", tone: "blue" },
+  WAITING_QC: { label: "В роботі", tone: "blue" },
+  WAITING_PAYMENT: { label: "Очікує", tone: "amber" },
+  READY_FOR_PICKUP: { label: "Очікує", tone: "amber" },
+  COMPLETED: { label: "Завершено", tone: "green" },
   WARRANTY: { label: "Гарантія", tone: "orange" },
   PAUSED: { label: "Пауза", tone: "gray" },
   NO_SHOW: { label: "Не приїхав", tone: "red" },
   CANCELLED: { label: "Скасовано", tone: "gray" },
   RESERVE: { label: "Резерв", tone: "gray" },
+  UNKNOWN: { label: "Статус", tone: "gray" },
 };
 
 function minuteLabel(value: number) {
@@ -698,13 +704,23 @@ export function PlannerDayView<TAppointment extends AppointmentBase>({ day, loca
           if (clippedStart >= closeMinute || clippedEnd <= openMinute) return null;
           const startIndex = Math.max(0, Math.floor((clippedStart - openMinute) / SLOT));
           const span = Math.max(1, Math.ceil((clippedEnd - clippedStart) / SLOT));
-          const done = item.status === "COMPLETED";
+          const operationalStatus = item.processStatus || item.status;
+          const done = operationalStatus === "COMPLETED";
           const row = rows[rowIndex];
-          const status = STATUS_META[item.status] || { label: item.status, tone: "gray" as const };
-          const lateMinutes = nowParts.day === day && !["COMPLETED","NO_SHOW","CANCELLED","RESERVE"].includes(item.status)
+          const status = STATUS_META[operationalStatus] || STATUS_META[item.status] || { label: item.processLabel || operationalStatus || "Статус", tone: "gray" as const };
+          const lateMinutes = nowParts.day === day && !["COMPLETED","NO_SHOW","CANCELLED","RESERVE"].includes(operationalStatus)
             ? Math.max(0, nowMinute - originalEnd)
             : 0;
           const statusColor = lateMinutes > 0 ? "#dc2626" : STATUS_TONE_COLOR[status.tone];
+          const nextStartOnRow = dayAppointments
+            .filter((other) => other.id !== item.id && other.postId === item.postId)
+            .map((other) => displayWindow(other, timeZone).start)
+            .filter((otherStart) => otherStart > start)
+            .sort((a, b) => a - b)[0];
+          const canExpandShortCard = span < 3
+            && startIndex + 3 <= slots.length
+            && (nextStartOnRow === undefined || nextStartOnRow >= start + 90);
+          const isNarrowCard = span < 3 && !canExpandShortCard;
           const collision = collisionLayout(item);
           const collisionStyle: CSSProperties = collision.count > 1
             ? {
@@ -717,13 +733,13 @@ export function PlannerDayView<TAppointment extends AppointmentBase>({ day, loca
           return <button
             type="button"
             key={item.id}
-            className={`${styles.event} ${styles[`event_${status.tone}`]} ${done ? styles.eventDone : ""} ${lateMinutes > 0 ? styles.eventLate : ""} ${selectedAppointmentId===item.id ? styles.eventSelected : ""} ${compact ? compactStyles.event : ""} ${preview ? styles.eventResizing : ""} ${preview && !preview.valid ? styles.eventResizeInvalid : ""} ${draggingAppointmentId === item.id ? styles.eventDragging : ""}`}
+            className={`${styles.event} ${styles[`event_${status.tone}`]} ${done ? styles.eventDone : ""} ${lateMinutes > 0 ? styles.eventLate : ""} ${selectedAppointmentId===item.id ? styles.eventSelected : ""} ${canExpandShortCard ? styles.eventShortVisual : ""} ${isNarrowCard ? styles.eventNarrow : ""} ${compact ? compactStyles.event : ""} ${preview ? styles.eventResizing : ""} ${preview && !preview.valid ? styles.eventResizeInvalid : ""} ${draggingAppointmentId === item.id ? styles.eventDragging : ""}`}
             style={{ gridColumn: `${startIndex + 2} / span ${span}`, gridRow: rowIndex + 2, "--event-color": statusColor, "--resource-color": row.color, ...collisionStyle } as CSSProperties}
             draggable={Boolean(onMove) && !NON_DRAGGABLE.has(item.status) && !isActualWalkIn(item)}
             onDragStart={(event) => dragAppointment(event, item)}
             onDragEnd={endAppointmentDrag}
             onClick={() => { if (!suppressDragClickRef.current) onOpen(item); }}
-            title={`${item.plateNumber || "Без номера"} · ${minuteLabel(start)}–${minuteLabel(end)}`}
+            title={`${item.vehicleLabel || "Автомобіль"} · ${item.plateNumber || "Без номера"} · ${minuteLabel(start)}–${minuteLabel(end)} · ${item.processLabel || status.label}${lateMinutes > 0 ? ` · прострочено на ${lateMinutes} хв` : ""}`}
           >
             {!NON_BLOCKING.has(item.status) && !isActualWalkIn(item) && <>
               <span
@@ -753,18 +769,18 @@ export function PlannerDayView<TAppointment extends AppointmentBase>({ day, loca
             </>}
             <div className={styles.eventHead}>
               <small className={styles.eventTime}>{isActualWalkIn(item) ? "ПОЗАПЛАНОВИЙ · " : ""}{minuteLabel(start)}–{minuteLabel(Math.min(end, 24 * 60))}</small>
-              <em className={styles.eventStatus}><i/>{lateMinutes > 0 ? `+${lateMinutes} хв` : status.label}</em>
+              <em className={styles.eventStatus}><i/>{lateMinutes > 0 ? "Прострочено" : status.label}</em>
             </div>
             <div className={styles.eventVehicle}>
               <span className={styles.eventCarIcon}>▰</span>
               <b>{item.vehicleLabel || (item.status === "RESERVE" ? "Пост недоступний" : "Автомобіль")}</b>
-              {item.plateNumber&&<strong>· {item.plateNumber}</strong>}
+              {item.plateNumber&&<strong className={span <= 3 ? styles.eventPlateStacked : ""}>{span <= 3 ? item.plateNumber : `· ${item.plateNumber}`}</strong>}
             </div>
-            <span className={styles.eventProblem}>{item.problem || item.customerName || "Запис на СТО"}</span>
+            <span className={styles.eventProblem}>{item.problem || "Роботи не вказані"}</span>
             <div className={styles.eventFoot}>
-              <span className={styles.eventAvatar}>{(item.mechanic?.name||item.customerName||"СТО").trim().slice(0,1).toUpperCase()}</span>
+              <span className={styles.eventAvatar}>{(item.mechanic?.name||"СТО").trim().slice(0,1).toUpperCase()}</span>
               <span className={styles.eventMechanic}>{item.mechanic?.name||"Без майстра"}</span>
-              <span className={styles.eventFlags}>{lateMinutes > 0 ? "!" : ""}{item.payment?.status === "PAID" ? " ₴✓" : item.payment?.status === "PARTIAL" ? " ₴½" : item.payment?.status === "UNPAID" ? " ₴" : ""}</span>
+              <span className={styles.eventFlags}>{lateMinutes > 0 ? `+${lateMinutes} хв ` : ""}{item.payment?.status === "PAID" ? "₴✓" : item.payment?.status === "PARTIAL" ? "₴½" : item.payment?.status === "UNPAID" ? "₴" : ""}</span>
             </div>
           </button>;
         })}
