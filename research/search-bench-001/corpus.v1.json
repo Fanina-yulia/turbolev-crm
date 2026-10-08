@@ -1,0 +1,38 @@
+{
+  "version": "1.0.0-draft",
+  "frozen": false,
+  "minimums": { "queries": 100, "vehicles": 20, "partFamilies": 10 },
+  "vehicles": [
+    { "id": "veh-geely-emgrand-x7-2014", "make": "Geely", "model": "Emgrand X7", "year": 2014 }
+  ],
+  "entities": [
+    { "id": "part-stabilizer-bushing-rear-1014012805", "family": "STABILIZER_BUSHING", "position": "REAR", "oe": ["1014012805"] },
+    { "id": "part-brake-pad-front-synthetic", "family": "BRAKE_PAD", "position": "FRONT", "oe": ["SYNTH-BP-001"] }
+  ],
+  "queries": [
+    {
+      "id": "regression-brake-pad-not-bushing",
+      "vehicleId": "veh-geely-emgrand-x7-2014",
+      "text": "гальмівні колодки передні",
+      "type": "natural_language",
+      "expectedCompatible": ["part-brake-pad-front-synthetic"],
+      "forbidden": ["part-stabilizer-bushing-rear-1014012805"],
+      "relevance": { "part-brake-pad-front-synthetic": 3, "part-stabilizer-bushing-rear-1014012805": 0 },
+      "position": { "axle": "FRONT" },
+      "allowedFallback": false,
+      "safetyTrap": true
+    },
+    {
+      "id": "exact-oe-stabilizer-bushing",
+      "vehicleId": "veh-geely-emgrand-x7-2014",
+      "text": "1014012805",
+      "type": "oe",
+      "expectedCompatible": ["part-stabilizer-bushing-rear-1014012805"],
+      "forbidden": ["part-brake-pad-front-synthetic"],
+      "relevance": { "part-stabilizer-bushing-rear-1014012805": 3 },
+      "position": { "axle": "REAR" },
+      "allowedFallback": false,
+      "safetyTrap": true
+    }
+  ]
+}
