@@ -54,6 +54,7 @@ runNodeScript("scripts/financial-center-v3-contract-smoke.mjs");
 run(["tsx", "scripts/api-security-policy-smoke.ts"]);
 run(["tsx", "scripts/mechanic-process-card-contract-smoke.ts"]);
 run(["tsx", "scripts/finance-expense-center-contract-smoke.ts"]);
+run(["tsx", "scripts/planner-dispatch-contract-smoke.ts"]);
 run(["tsx", "scripts/parts-picker-cart-v4-smoke.ts"]);
 run(["tsx", "scripts/parts-oe-first-search-contract-smoke.ts"]);
 
