@@ -31,6 +31,13 @@ for (const id of requiredTabs) {
   if (!shell.includes(`id:"${id}"`)) throw new Error(`[settings-submenu] CRM shell Settings submenu is missing ${id}`);
 }
 
+if (shell.indexOf('id:"crmDictionary"') > shell.indexOf('id:"posts"')) {
+  throw new Error("[settings-submenu] CRM dictionary must stay high enough in Settings submenu to be visible without scrolling");
+}
+if (bridge.indexOf('id: "crmDictionary"') > bridge.indexOf('id: "posts"')) {
+  throw new Error("[settings-submenu] CRM dictionary must stay high enough in V7 Settings flyout to be visible without scrolling");
+}
+
 const requiredBridgeFragments = [
   'navigateCrm("Налаштування", { settingsTab: id })',
   '.crmDockButton7[aria-label="Налаштування"]',

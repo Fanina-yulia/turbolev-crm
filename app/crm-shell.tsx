@@ -59,6 +59,8 @@ const SETTINGS_SUBMENU:Array<{id:SettingsTab;label:string}>=[
   {id:"suppliers",label:"Постачальники"},
   {id:"warehouse",label:"Склад"},
   {id:"workPrices",label:"Прайс робіт"},
+  {id:"partsCatalog",label:"Каталог запчастин"},
+  {id:"crmDictionary",label:"Словник CRM"},
   {id:"posts",label:"Пости"},
   {id:"markup",label:"Націнка"},
   {id:"cash",label:"Каса"},
@@ -68,8 +70,6 @@ const SETTINGS_SUBMENU:Array<{id:SettingsTab;label:string}>=[
   {id:"appearance",label:"Оформлення"},
   {id:"workflow",label:"Процеси та статуси"},
   {id:"security",label:"Ролі та доступи"},
-  {id:"partsCatalog",label:"Каталог запчастин"},
-  {id:"crmDictionary",label:"Словник CRM"},
 ];
 
 function groupForSection(section:CrmSectionLabel){
