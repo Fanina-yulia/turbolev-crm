@@ -32,6 +32,7 @@ const SETTINGS: readonly SettingsItem[] = [
   { id: "workflow", label: "Процеси та статуси" },
   { id: "security", label: "Ролі та доступи" },
   { id: "partsCatalog", label: "Каталог запчастин" },
+  { id: "crmDictionary", label: "Словник CRM" },
 ] as const;
 
 function text(value: Element | null | undefined) {

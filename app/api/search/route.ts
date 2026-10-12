@@ -6,6 +6,7 @@ import { hasPermission, type AccessContext } from "@/src/security/access-context
 import { authorize } from "@/src/security/authorize";
 import { PERMISSIONS, type AccessScopeCode, type PermissionCode } from "@/src/security/permissions";
 import { identitySearchValues } from "@/src/lib/search-identity";
+import { findCrmDictionaryMatches, loadCrmDictionary, observeUnknownCrmDictionaryTerm } from "@/src/services/crm-dictionary.service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -45,6 +46,13 @@ function appointmentStatusLabel(status: string) {
     RESERVE: "Резерв",
   };
   return labels[status] || status;
+}
+
+function shouldObserveUnknownDictionaryTerm(query: string, identity: ReturnType<typeof identitySearchValues>) {
+  const hasLetters = /[a-zа-яіїєґ]{2,}/iu.test(query);
+  if (!hasLetters) return false;
+  if (identity.vin || identity.phoneValues.length || identity.plateValues.length || identity.plateNormalized) return false;
+  return true;
 }
 
 function permissionScope(context: AccessContext, permission: PermissionCode) {
@@ -173,10 +181,12 @@ export async function GET(request: NextRequest) {
   const exactEntityId = ENTITY_ID.test(q) ? q : null;
 
   try {
-    const [plannerWhere, diagnosticWhere] = await Promise.all([
+    const [plannerWhere, diagnosticWhere, dictionary] = await Promise.all([
       canPlanner ? plannerScopeWhere(context) : Promise.resolve({ id: { in: [] as string[] } }),
       canDiagnostics ? diagnosticScopeWhere(context) : Promise.resolve({ id: { in: [] as string[] } }),
+      loadCrmDictionary(),
     ]);
+    const dictionaryMatches = findCrmDictionaryMatches(q, dictionary, 5);
 
     const clientsPromise = canClients
       ? prisma.client.findMany({
@@ -358,11 +368,27 @@ export async function GET(request: NextRequest) {
         })
       : [];
     const numbers = new Map(numberRows.map((row) => [row.workOrderId, row.number]));
+    const primaryResultCount = clients.length + vehicles.length + diagnostics.length + appointments.length + workOrders.length;
+    if (!dictionaryMatches.length && primaryResultCount === 0 && shouldObserveUnknownDictionaryTerm(q, identity)) {
+      await observeUnknownCrmDictionaryTerm(q, "GLOBAL_SEARCH").catch((error) => {
+        console.warn("CRM dictionary unknown term observation failed", error instanceof Error ? error.message : "unknown");
+      });
+    }
 
     return NextResponse.json({
       ok: true,
       query: q,
       capabilities: { clients: canClients, workOrders: canWorkOrders, diagnostics: canDiagnostics, planner: canPlanner },
+      dictionary: dictionaryMatches.map((match) => ({
+        id: match.entry.id,
+        type: match.entry.type,
+        category: match.entry.category,
+        canonicalName: match.entry.canonicalName,
+        canonicalCode: match.entry.canonicalCode || null,
+        matchedAlias: match.matchedAlias,
+        matchType: match.matchType,
+        requiresFitmentCheck: Boolean(match.entry.requiresFitmentCheck),
+      })),
       clients: clients.map((client) => ({
         id: client.id,
         name: client.name,

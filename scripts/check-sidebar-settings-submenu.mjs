@@ -21,6 +21,7 @@ const requiredTabs = [
   "workflow",
   "security",
   "partsCatalog",
+  "crmDictionary",
 ];
 
 for (const id of requiredTabs) {
