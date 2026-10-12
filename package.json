@@ -42,6 +42,7 @@
     "parts:search:cascade-ui:smoke": "node --import tsx scripts/parts-cascade-ui-contract-smoke.ts",
     "parts:search:fallback:smoke": "node --import tsx scripts/parts-search-fallback-contract-smoke.ts",
     "parts:search:v3:smoke": "node --import tsx scripts/parts-search-v3-contract-smoke.ts",
+    "crm:dictionary:smoke": "node --import tsx scripts/crm-dictionary-contract-smoke.ts",
     "db:release": "node scripts/release-database.mjs",
     "optimization:smoke": "node scripts/deployment-pipeline-contract-smoke.mjs && node scripts/access-context-cache-contract-smoke.mjs && node scripts/polling-performance-contract-smoke.mjs && node scripts/sql-scope-performance-contract-smoke.mjs && node scripts/db-hotpath-performance-contract-smoke.mjs && node scripts/database-observability-contract-smoke.mjs && node scripts/warranty-scope-performance-contract-smoke.mjs && node scripts/walkin-lifecycle-finance-contract-smoke.mjs && node scripts/financial-center-v3-contract-smoke.mjs",
     "ui:screen-contracts:check": "node scripts/check-one-screen-contracts.mjs",

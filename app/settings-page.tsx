@@ -9,6 +9,7 @@ import { PersonnelRegistryShell } from "./personnel-registry-shell";
 import { PriceCatalogSettingsPanel } from "./price-catalog-settings-panel";
 import { SecurityEnforcementControl } from "./security-enforcement-control";
 import { SecuritySettingsPanelV2 } from "./security-settings-panel-v2";
+import { CrmDictionarySettingsPanel } from "./crm-dictionary-settings-panel";
 import { SettingsOperationsPage } from "./settings-operations-page";
 import { SettingsRouteFocusBridge } from "./settings-route-focus-bridge";
 import type { SettingsTab } from "./settings-tabs";
@@ -25,5 +26,6 @@ export function SettingsPage({ tab }: { tab: SettingsTab }) {
   if (tab === "workPrices") return <div className={styles.directPage}><PriceCatalogSettingsPanel/></div>;
   if (tab === "integrations") return <div className={styles.directPage}><SettingsRouteFocusBridge tab={tab}/><IntegrationsSettingsHub/><MetaAccountSelectionPrompt/></div>;
   if (tab === "partsCatalog") return <div className={styles.directPage}><PartsCatalogSettingsPanel/></div>;
+  if (tab === "crmDictionary") return <div className={styles.directPage}><CrmDictionarySettingsPanel/></div>;
   return <><SettingsRouteFocusBridge tab={tab}/><SettingsOperationsPage tab={tab}/></>;
 }

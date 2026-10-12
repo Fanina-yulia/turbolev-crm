@@ -14,6 +14,7 @@ export const SETTINGS_TABS = [
   "workflow",
   "security",
   "partsCatalog",
+  "crmDictionary",
 ] as const;
 
 export type SettingsTab = (typeof SETTINGS_TABS)[number];

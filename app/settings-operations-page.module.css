@@ -21,7 +21,8 @@
   .page[data-settings-tab="posts"],
   .page[data-settings-tab="cash"],
   .page[data-settings-tab="integrations"],
-  .page[data-settings-tab="partsCatalog"]{
+  .page[data-settings-tab="partsCatalog"],
+  .page[data-settings-tab="crmDictionary"]{
     overflow-y:auto;
     scrollbar-gutter:stable;
     overscroll-behavior:contain;
@@ -55,4 +56,3 @@
   .page[data-settings-tab="schedule"] .scheduleRow input[type=time]{min-height:36px}
   .page[data-settings-tab="schedule"] .footerAction{min-height:44px}
 }
-
