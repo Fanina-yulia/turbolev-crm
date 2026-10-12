@@ -69,6 +69,7 @@ const SETTINGS_SUBMENU:Array<{id:SettingsTab;label:string}>=[
   {id:"workflow",label:"Процеси та статуси"},
   {id:"security",label:"Ролі та доступи"},
   {id:"partsCatalog",label:"Каталог запчастин"},
+  {id:"crmDictionary",label:"Словник CRM"},
 ];
 
 function groupForSection(section:CrmSectionLabel){
