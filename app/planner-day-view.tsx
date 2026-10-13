@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent as ReactDragEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { zonedDateTimeToDate } from "@/src/lib/zoned-time";
+import { VehiclePlate } from "./vehicle-plate";
 import styles from "./planner-day-view.module.css";
 import compactStyles from "./planner-day-view-compact.module.css";
 
@@ -33,16 +34,8 @@ type AppointmentBase = {
   actualArrivalAt?: string | null;
   actualStartAt?: string | null;
   actualEndAt?: string | null;
-  processStatus?: string | null;
-  processLabel?: string | null;
   post?: Post | null;
   mechanic?: Mechanic | null;
-  payment?: {
-    status?: string | null;
-    amount?: string | number | null;
-    paid?: string | number | null;
-    outstanding?: string | number | null;
-  } | null;
 };
 type AvailabilitySlot = { time: string; posts: Array<{ id: string; available: boolean }> };
 type AvailabilityResponse = { status: string; slots?: AvailabilitySlot[]; message?: string };
@@ -86,40 +79,35 @@ const NON_DRAGGABLE = new Set(["COMPLETED", "NO_SHOW", "CANCELLED", "RESERVE"]);
 const IN_PROGRESS = new Set(["ARRIVED", "DIAGNOSTICS", "IN_REPAIR", "WAITING_QC"]);
 const WAITING = new Set(["WAITING_PARTS_SELECTION", "WAITING_CALCULATION", "WAITING_APPROVAL", "WAITING_PARTS", "READY_FOR_REPAIR", "READY_FOR_PICKUP", "PAUSED"]);
 const POST_COLORS = ["#ff6600", "#2f80ed", "#7c3aed", "#16a34a", "#d97706", "#0891b2"];
-const STATUS_TONE_COLOR: Record<StatusMeta["tone"], string> = {
-  blue: "#2f80ed",
-  green: "#16a34a",
-  orange: "#f97316",
-  amber: "#d97706",
-  red: "#dc2626",
-  gray: "#64748b",
-  violet: "#7c3aed",
-  cyan: "#0891b2",
-};
-
 const STATUS_META: Record<string, StatusMeta> = {
-  BOOKED: { label: "Заплановано", tone: "gray" },
-  ARRIVED: { label: "Очікує", tone: "amber" },
-  DIAGNOSTICS: { label: "В роботі", tone: "blue" },
-  PREPARATION: { label: "Очікує", tone: "amber" },
-  WAITING_PARTS_SELECTION: { label: "Очікує", tone: "amber" },
-  WAITING_CALCULATION: { label: "Очікує", tone: "amber" },
-  WAITING_APPROVAL: { label: "Очікує", tone: "amber" },
-  WAITING_PARTS: { label: "Очікує", tone: "amber" },
-  READY_FOR_REPAIR: { label: "Заплановано", tone: "gray" },
+  BOOKED: { label: "Записаний", tone: "blue" },
+  ARRIVED: { label: "Приїхав", tone: "green" },
+  DIAGNOSTICS: { label: "Діагностика", tone: "violet" },
+  WAITING_PARTS_SELECTION: { label: "Очікує підбору", tone: "amber" },
+  WAITING_CALCULATION: { label: "Очікує калькуляції", tone: "amber" },
+  WAITING_APPROVAL: { label: "Очікує погодження", tone: "orange" },
+  WAITING_PARTS: { label: "Очікує запчастини", tone: "orange" },
+  READY_FOR_REPAIR: { label: "Готовий до ремонту", tone: "green" },
   IN_REPAIR: { label: "В роботі", tone: "blue" },
-  REWORK: { label: "В роботі", tone: "blue" },
-  WAITING_QC: { label: "В роботі", tone: "blue" },
-  WAITING_PAYMENT: { label: "Очікує", tone: "amber" },
-  READY_FOR_PICKUP: { label: "Очікує", tone: "amber" },
-  COMPLETED: { label: "Завершено", tone: "green" },
+  WAITING_QC: { label: "Контроль якості", tone: "cyan" },
+  READY_FOR_PICKUP: { label: "Очікує клієнта", tone: "amber" },
+  COMPLETED: { label: "Виконано", tone: "green" },
   WARRANTY: { label: "Гарантія", tone: "orange" },
   PAUSED: { label: "Пауза", tone: "gray" },
   NO_SHOW: { label: "Не приїхав", tone: "red" },
   CANCELLED: { label: "Скасовано", tone: "gray" },
   RESERVE: { label: "Резерв", tone: "gray" },
-  UNKNOWN: { label: "Статус", tone: "gray" },
 };
+
+function normalizePlannerTimeZone(value?: string | null) {
+  const zone = value && !["UTC", "Etc/UTC", "GMT"].includes(value) ? value : "Europe/Kyiv";
+  try {
+    new Intl.DateTimeFormat("en-CA", { timeZone: zone }).format(new Date());
+    return zone;
+  } catch {
+    return "Europe/Kyiv";
+  }
+}
 
 function minuteLabel(value: number) {
   return `${String(Math.floor(value / 60)).padStart(2, "0")}:${String(value % 60).padStart(2, "0")}`;
@@ -142,25 +130,12 @@ function localParts(iso: string, timeZone: string) {
   };
 }
 
-function isActualWalkIn(item: AppointmentBase) {
-  return Boolean(item.source === "WALK_IN" && (item.actualStartAt || item.actualArrivalAt));
-}
-
-function walkInHasPlannerOverride(item: AppointmentBase) {
-  if (!isActualWalkIn(item)) return false;
-  const actualIso = item.actualStartAt || item.actualArrivalAt;
-  if (!actualIso) return false;
-  return Math.abs(new Date(item.plannedStartAt).getTime() - new Date(actualIso).getTime()) >= 60_000;
-}
-
 function displayWindow(item: AppointmentBase, timeZone: string) {
   const plannedDuration = Math.max(
     SLOT,
     Math.round((new Date(item.plannedEndAt).getTime() - new Date(item.plannedStartAt).getTime()) / 60000),
   );
-  const actualStart = item.source === "WALK_IN" && !walkInHasPlannerOverride(item)
-    ? (item.actualStartAt || item.actualArrivalAt)
-    : null;
+  const actualStart = item.source === "WALK_IN" ? (item.actualStartAt || item.actualArrivalAt) : null;
   const startIso = actualStart || item.plannedStartAt;
   const start = localParts(startIso, timeZone);
   return {
@@ -169,6 +144,10 @@ function displayWindow(item: AppointmentBase, timeZone: string) {
     end: start.minute + plannedDuration,
     actualWalkIn: Boolean(item.source === "WALK_IN" && actualStart),
   };
+}
+
+function isActualWalkIn(item: AppointmentBase) {
+  return Boolean(item.source === "WALK_IN" && (item.actualStartAt || item.actualArrivalAt));
 }
 
 function postType(post: Post) {
@@ -188,18 +167,16 @@ function currency(value: number) {
   return new Intl.NumberFormat("uk-UA", { style: "currency", currency: "UAH", maximumFractionDigits: 0 }).format(value);
 }
 
-export function PlannerDayView<TAppointment extends AppointmentBase>({ day, location, appointments, selectedAppointmentId, onOpen, onCreate, onSelection, onResize, onMove, onMetrics, onPostMenu, showMetrics = true, compact = false }: {
+export function PlannerDayView<TAppointment extends AppointmentBase>({ day, location, appointments, onOpen, onCreate, onSelection, onResize, onMove, onMetrics, showMetrics = true, compact = false }: {
   day: string;
   location: Location;
   appointments: TAppointment[];
-  selectedAppointmentId?: string | null;
   onOpen: (appointment: TAppointment) => void;
   onCreate: (day: string, time: string, postId: string) => void;
   onSelection?: (selection: PlannerTimeSelection) => void;
   onResize?: (appointment: TAppointment, day: string, startTime: string, endTime: string) => Promise<boolean>;
   onMetrics?: (metrics: PlannerDayMetrics) => void;
   onMove?: (appointment: TAppointment, day: string, time: string, postId: string, durationMinutes: number) => void;
-  onPostMenu?: (postId: string) => void;
   showMetrics?: boolean;
   compact?: boolean;
 }) {
@@ -210,11 +187,12 @@ export function PlannerDayView<TAppointment extends AppointmentBase>({ day, loca
   const resizeRef = useRef<ResizeState | null>(null);
   const gridRef = useRef<HTMLDivElement | null>(null);
   const skipNextClickRef = useRef(false);
+  const [nowTick, setNowTick] = useState(() => new Date());
   const [draggingAppointmentId, setDraggingAppointmentId] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<{ rowId: string; slotIndex: number } | null>(null);
   const dropTargetRef = useRef<{ rowId: string; slotIndex: number } | null>(null);
   const suppressDragClickRef = useRef(false);
-  const timeZone = location.timezone || "Europe/Kyiv";
+  const timeZone = normalizePlannerTimeZone(location.timezone);
   const baseOpenMinute = Number.isFinite(location.openMinute) ? location.openMinute : 540;
   const baseCloseMinute = Number.isFinite(location.closeMinute) ? location.closeMinute : 1260;
 
@@ -274,6 +252,13 @@ export function PlannerDayView<TAppointment extends AppointmentBase>({ day, loca
   }, []);
 
   useEffect(() => {
+    const refreshNow = () => setNowTick(new Date());
+    refreshNow();
+    const timer = window.setInterval(refreshNow, 30_000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
     setSelection(null);
     skipNextClickRef.current = false;
     setResize(null);
@@ -305,27 +290,18 @@ export function PlannerDayView<TAppointment extends AppointmentBase>({ day, loca
   const resourceLoad = useMemo(() => {
     const result = new Map<string, number>();
     for (const row of rows) {
-      if (!row.reception && availability?.slots?.length) {
-        const knownSlots = slots
-          .map((minute) => availabilityMap.get(`${minuteLabel(minute)}:${row.id}`))
-          .filter((value): value is boolean => value !== undefined);
-        if (knownSlots.length) {
-          const occupiedSlots = knownSlots.filter((value) => value === false).length;
-          result.set(row.id, Math.min(100, Math.round((occupiedSlots / knownSlots.length) * 100)));
-          continue;
-        }
-      }
       const occupied = dayAppointments
         .filter((item) => row.reception ? !item.postId : item.postId === row.id)
         .filter((item) => !NON_BLOCKING.has(item.status))
         .reduce((sum, item) => {
-          const window = displayWindow(item, timeZone);
-          return sum + overlapMinutes(window.start, window.end, openMinute, closeMinute);
+          const start = localParts(item.plannedStartAt, timeZone).minute;
+          const end = localParts(item.plannedEndAt, timeZone).minute;
+          return sum + overlapMinutes(start, end, openMinute, closeMinute);
         }, 0);
       result.set(row.id, Math.min(100, Math.round((occupied / totalDayMinutes) * 100)));
     }
     return result;
-  }, [rows, dayAppointments, timeZone, openMinute, closeMinute, totalDayMinutes, availability, availabilityMap, slots]);
+  }, [rows, dayAppointments, timeZone, openMinute, closeMinute, totalDayMinutes]);
 
   const metrics = useMemo(() => {
     const completed = dayAppointments.filter((item) => item.status === "COMPLETED").length;
@@ -427,7 +403,7 @@ export function PlannerDayView<TAppointment extends AppointmentBase>({ day, loca
   }
 
   function dragAppointment(event: ReactDragEvent<HTMLButtonElement>, item: TAppointment) {
-    if (NON_DRAGGABLE.has(item.status)) {
+    if (NON_DRAGGABLE.has(item.status) || isActualWalkIn(item)) {
       event.preventDefault();
       return;
     }
@@ -474,12 +450,14 @@ export function PlannerDayView<TAppointment extends AppointmentBase>({ day, loca
   }
 
   function canResizeAppointment(item: TAppointment, startMinute: number, endMinute: number) {
+    if (isActualWalkIn(item)) return false;
     if (startMinute < openMinute || endMinute > closeMinute || endMinute - startMinute < SLOT) return false;
     return !dayAppointments.some((other) => {
       if (other.id === item.id || NON_BLOCKING.has(other.status)) return false;
       if (other.postId !== item.postId) return false;
-      const otherWindow = displayWindow(other, timeZone);
-      return otherWindow.start < endMinute && otherWindow.end > startMinute;
+      const otherStart = localParts(other.plannedStartAt, timeZone).minute;
+      const otherEnd = localParts(other.plannedEndAt, timeZone).minute;
+      return otherStart < endMinute && otherEnd > startMinute;
     });
   }
 
@@ -495,7 +473,7 @@ export function PlannerDayView<TAppointment extends AppointmentBase>({ day, loca
   }
 
   function startResize(event: ReactPointerEvent<HTMLSpanElement>, item: TAppointment, edge: ResizeEdge) {
-    if (NON_BLOCKING.has(item.status)) return;
+    if (NON_BLOCKING.has(item.status) || isActualWalkIn(item)) return;
     event.preventDefault();
     event.stopPropagation();
     try {
@@ -504,9 +482,8 @@ export function PlannerDayView<TAppointment extends AppointmentBase>({ day, loca
       // Pointer capture is not available in a few older embedded browsers;
       // the window-level listeners below still handle the drag in that case.
     }
-    const originalWindow = displayWindow(item, timeZone);
-    const originalStartMinute = originalWindow.start;
-    const originalEndMinute = Math.max(originalStartMinute + SLOT, originalWindow.end);
+    const originalStartMinute = localParts(item.plannedStartAt, timeZone).minute;
+    const originalEndMinute = Math.max(originalStartMinute + SLOT, localParts(item.plannedEndAt, timeZone).minute);
     const next: ResizeState = {
       id: item.id,
       edge,
@@ -632,27 +609,14 @@ export function PlannerDayView<TAppointment extends AppointmentBase>({ day, loca
     finishSelection(row, slotIndex, { rowId: row.id, startIndex: slotIndex, endIndex: slotIndex });
   }
 
-  const resourceWidth = 184;
+  const resourceWidth = 164;
   const gridStyle = { gridTemplateColumns: `${resourceWidth}px repeat(${slots.length}, minmax(0, 1fr))` } as CSSProperties;
-  const now = new Date();
+  const now = nowTick;
   const nowParts = localParts(now.toISOString(), timeZone);
   const nowMinute = nowParts.minute;
   const showNow = nowParts.day === day && nowMinute >= openMinute && nowMinute < closeMinute;
   const nowRatio = showNow ? (nowMinute - openMinute) / totalDayMinutes : 0;
   const nowStyle = { left: `calc(${resourceWidth}px + (100% - ${resourceWidth}px) * ${nowRatio})` } as CSSProperties;
-
-  function nextFreeLabel(row: Row) {
-    const requestedMinute = nowParts.day === day ? Math.ceil(nowMinute / SLOT) * SLOT : openMinute;
-    const found = slots.findIndex((minute) => minute >= requestedMinute);
-    const from = found < 0 ? slots.length : found;
-    for (let index = from; index < slots.length; index += 1) {
-      if (!slotAvailable(row, index)) continue;
-      let endIndex = index;
-      while (endIndex + 1 < slots.length && slotAvailable(row, endIndex + 1)) endIndex += 1;
-      return `Вільно ${minuteLabel(slots[index])}–${minuteLabel(slots[endIndex] + SLOT)}`;
-    }
-    return "Без вільних вікон";
-  }
 
   return <div className={`${styles.wrap} ${compact ? compactStyles.root : ""}`}>
     {showMetrics && <section className={styles.kpis} aria-label="Показники дня">
@@ -669,18 +633,17 @@ export function PlannerDayView<TAppointment extends AppointmentBase>({ day, loca
     <div className={`${styles.board} ${compact ? compactStyles.board : ""}`}>
       <div ref={gridRef} className={`${styles.grid} ${compact ? compactStyles.grid : ""}`} style={gridStyle} onMouseLeave={() => selection && setSelection(selection)}>
         <div className={`${styles.corner} ${compact ? compactStyles.corner : ""}`} style={{ gridColumn: 1, gridRow: 1 }}>Пости / ресурси</div>
-        {slots.map((minute, index) => <div className={`${styles.time} ${minute % 60 === 0 ? styles.fullHour : ""} ${compact ? compactStyles.time : ""}`} key={minute} style={{ gridColumn: index + 2, gridRow: 1 }}>{minuteLabel(minute)}</div>)}
+        {slots.map((minute, index) => <div className={`${styles.time} ${compact ? compactStyles.time : ""}`} key={minute} style={{ gridColumn: index + 2, gridRow: 1 }}>{minuteLabel(minute)}</div>)}
 
         {rows.map((row, rowIndex) => {
           const gridRow = rowIndex + 2;
           const loadPercent = resourceLoad.get(row.id) || 0;
           return <div key={row.id} style={{ display: "contents" }}>
             <div className={`${styles.resource} ${compact ? compactStyles.resource : ""}`} style={{ gridColumn: 1, gridRow, "--resource-color": row.color } as CSSProperties}>
-              <div className={styles.resourceTitle}><i/><b>{row.name}</b><button type="button" disabled={row.reception || !onPostMenu} onClick={() => !row.reception && onPostMenu?.(row.id)} aria-label={row.reception ? "Зона приймання" : `Дії з ресурсом ${row.name}`}>⋮</button></div>
+              <div className={styles.resourceTitle}><i/><b>{row.name}</b><button type="button" tabIndex={-1} aria-hidden="true">⋮</button></div>
               <span>{row.type}</span>
               <div className={styles.resourceProgress}><i style={{ width: `${loadPercent}%` }}/></div>
               <small>{loadPercent}% зайнято</small>
-              <small className={styles.resourceFree}>{nextFreeLabel(row)}</small>
             </div>
             {slots.map((minute, slotIndex) => {
               const available = slotAvailable(row, slotIndex);
@@ -695,7 +658,7 @@ export function PlannerDayView<TAppointment extends AppointmentBase>({ day, loca
                 type="button"
                 aria-label={`${row.name} ${time}: ${available || dragAvailable ? (selected ? `обрано ${selectionLabel}` : "вільно") : "зайнято"}`}
                 title={available || dragAvailable ? `${row.name} · ${time} · вільно` : `${row.name} · ${time} · зайнято`}
-                className={`${styles.cell} ${cellClass} ${minute % 60 === 0 ? styles.fullHourCell : ""} ${selected ? styles.selected : ""} ${dropTarget?.rowId === row.id && dropTarget.slotIndex === slotIndex ? styles.dropTarget : ""} ${compact ? compactStyles.cell : ""}`}
+                className={`${styles.cell} ${cellClass} ${selected ? styles.selected : ""} ${dropTarget?.rowId === row.id && dropTarget.slotIndex === slotIndex ? styles.dropTarget : ""} ${compact ? compactStyles.cell : ""}`}
                 key={`${row.id}-${minute}`}
                 style={{ gridColumn: slotIndex + 2, gridRow }}
                 aria-disabled={!available && !dragAvailable}
@@ -725,17 +688,9 @@ export function PlannerDayView<TAppointment extends AppointmentBase>({ day, loca
           if (clippedStart >= closeMinute || clippedEnd <= openMinute) return null;
           const startIndex = Math.max(0, Math.floor((clippedStart - openMinute) / SLOT));
           const span = Math.max(1, Math.ceil((clippedEnd - clippedStart) / SLOT));
-          const operationalStatus = item.processStatus || item.status;
-          const done = operationalStatus === "COMPLETED";
-          const noShow = item.status === "NO_SHOW";
+          const done = item.status === "COMPLETED";
           const row = rows[rowIndex];
-          const status = STATUS_META[operationalStatus] || STATUS_META[item.status] || { label: item.processLabel || operationalStatus || "Статус", tone: "gray" as const };
-          const lateMinutes = nowParts.day === day && !["COMPLETED","NO_SHOW","CANCELLED","RESERVE"].includes(operationalStatus)
-            ? Math.max(0, nowMinute - originalEnd)
-            : 0;
-          const statusColor = lateMinutes > 0 ? "#dc2626" : STATUS_TONE_COLOR[status.tone];
-          const visualSpan = Math.max(2, span);
-          const minimumVisualOverlap = span === 1;
+          const status = STATUS_META[item.status] || { label: item.status, tone: "gray" as const };
           const collision = collisionLayout(item);
           const collisionStyle: CSSProperties = collision.count > 1
             ? {
@@ -748,15 +703,15 @@ export function PlannerDayView<TAppointment extends AppointmentBase>({ day, loca
           return <button
             type="button"
             key={item.id}
-            className={`${styles.event} ${styles[`event_${status.tone}`]} ${done ? styles.eventDone : ""} ${noShow ? styles.eventNoShow : ""} ${lateMinutes > 0 ? styles.eventLate : ""} ${selectedAppointmentId===item.id ? styles.eventSelected : ""} ${compact ? compactStyles.event : ""} ${preview ? styles.eventResizing : ""} ${preview && !preview.valid ? styles.eventResizeInvalid : ""} ${draggingAppointmentId === item.id ? styles.eventDragging : ""}`}
-            style={{ gridColumn: `${startIndex + 2} / span ${visualSpan}`, gridRow: rowIndex + 2, zIndex: minimumVisualOverlap ? 20 + (slots.length - startIndex) : undefined, "--event-color": statusColor, "--resource-color": row.color, ...collisionStyle } as CSSProperties}
-            draggable={Boolean(onMove) && !NON_DRAGGABLE.has(item.status)}
+            className={`${styles.event} ${styles[`event_${status.tone}`]} ${done ? styles.eventDone : ""} ${compact ? compactStyles.event : ""} ${preview ? styles.eventResizing : ""} ${preview && !preview.valid ? styles.eventResizeInvalid : ""} ${draggingAppointmentId === item.id ? styles.eventDragging : ""}`}
+            style={{ gridColumn: `${startIndex + 2} / span ${span}`, gridRow: rowIndex + 2, "--event-color": row.color, ...collisionStyle } as CSSProperties}
+            draggable={Boolean(onMove) && !NON_DRAGGABLE.has(item.status) && !isActualWalkIn(item)}
             onDragStart={(event) => dragAppointment(event, item)}
             onDragEnd={endAppointmentDrag}
             onClick={() => { if (!suppressDragClickRef.current) onOpen(item); }}
-            title={`${isActualWalkIn(item) ? "ПОЗАПЛАНОВИЙ ЗАЇЗД · " : ""}${item.vehicleLabel || "Автомобіль"} · ${item.plateNumber || "Без номера"} · ${minuteLabel(start)}–${minuteLabel(end)} · ${status.label}${lateMinutes > 0 ? ` · прострочено на ${lateMinutes} хв` : ""}`}
+            title={`${item.plateNumber || "Без номера"} · ${minuteLabel(start)}–${minuteLabel(end)}`}
           >
-            {!NON_BLOCKING.has(item.status) && <>
+            {!NON_BLOCKING.has(item.status) && !isActualWalkIn(item) && <>
               <span
                 className={`${styles.resizeHandle} ${styles.resizeHandleStart}`}
                 role="slider"
@@ -782,24 +737,14 @@ export function PlannerDayView<TAppointment extends AppointmentBase>({ day, loca
                 onClick={(event) => event.stopPropagation()}
               />
             </>}
-            <div className={styles.eventHead}>
-              <small className={styles.eventTime}>{minuteLabel(start)}–{minuteLabel(Math.min(end, 24 * 60))}</small>
-              <em className={styles.eventStatus}><i/>{lateMinutes > 0 ? "Прострочено" : status.label}</em>
-            </div>
-            <div className={styles.eventVehicle}>
-              <span className={styles.eventCarIcon}>▰</span>
-              <b>{item.vehicleLabel || (item.status === "RESERVE" ? "Пост недоступний" : "Автомобіль")}</b>
-              {item.plateNumber&&<strong className={styles.eventPlateStacked}>{item.plateNumber}</strong>}
-            </div>
-            <span className={styles.eventProblem}>{item.problem || "Роботи не вказані"}</span>
-            <div className={styles.eventFoot}>
-              <span className={styles.eventAvatar}>{(item.mechanic?.name||"СТО").trim().slice(0,1).toUpperCase()}</span>
-              <span className={styles.eventMechanic}>{item.mechanic?.name||"Без майстра"}</span>
-              <span className={styles.eventFlags}>{lateMinutes > 0 ? `+${lateMinutes} хв ` : ""}{item.payment?.status === "PAID" ? "₴✓" : item.payment?.status === "PARTIAL" ? "₴½" : item.payment?.status === "UNPAID" ? "₴" : ""}</span>
-            </div>
+            <small className={styles.eventTime}>{isActualWalkIn(item) ? "ПОЗАПЛАНОВИЙ · " : ""}{minuteLabel(start)}–{minuteLabel(Math.min(end, 24 * 60))}</small>
+            <VehiclePlate value={item.plateNumber} size="xs" />
+            <b>{item.vehicleLabel || "Автомобіль"}</b>
+            <span>{item.problem || item.customerName || item.mechanic?.name || "Запис на СТО"}</span>
+            <em><i/>{status.label}</em>
           </button>;
         })}
-        {showNow && <div className={styles.now} style={nowStyle} aria-hidden="true"><span>{minuteLabel(nowMinute)}</span></div>}
+        {showNow && <div className={styles.now} style={nowStyle} data-time={minuteLabel(nowMinute)} aria-label={`Поточний час ${minuteLabel(nowMinute)}`} />}
       </div>
       {!location.posts.length && <div className={styles.empty}>У локації ще не створено жодного сервісного поста.</div>}
     </div>
