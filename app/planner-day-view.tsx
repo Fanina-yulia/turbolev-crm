@@ -281,7 +281,8 @@ export function PlannerDayView<TAppointment extends AppointmentBase>({ day, loca
 
   const availabilityMap = useMemo(() => {
     const map = new Map<string, boolean>();
-    for (const slot of availability?.slots || []) {
+    if (!availability?.slots?.length) return map;
+    for (const slot of availability.slots) {
       for (const post of slot.posts) map.set(`${slot.time}:${post.id}`, post.available);
     }
     return map;
