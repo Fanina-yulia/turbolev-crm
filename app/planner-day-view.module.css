@@ -11,7 +11,7 @@
 
 .now{z-index:25!important;width:2px!important;background:var(--orange)!important;box-shadow:0 0 0 1px rgba(255,255,255,.82),0 0 10px color-mix(in srgb,var(--orange) 60%,transparent)}
 .now::before{top:-5px!important;left:-5px!important;border-left:6px solid transparent!important;border-right:6px solid transparent!important;border-top:8px solid var(--orange)!important}
-.now::after{content:attr(data-time);position:absolute;top:-27px;left:50%;transform:translateX(-50%);padding:3px 6px;border-radius:999px;background:var(--orange);color:#fff;font-size:10px;font-weight:900;line-height:1;letter-spacing:.02em;box-shadow:0 3px 8px rgba(0,0,0,.14);white-space:nowrap}
+.now::after{content:attr(data-time);position:absolute;top:-27px;left:50%;transform:translateX(-50%);padding:3px 6px;border-radius:999px;background:var(--orange);color:#fff;font-size:11px;font-weight:900;line-height:1;letter-spacing:.02em;box-shadow:0 3px 8px rgba(0,0,0,.14);white-space:nowrap}
 
 /* CRM-UI-004 POLISH V2 */
 @media (min-width:761px){
