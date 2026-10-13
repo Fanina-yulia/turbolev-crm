@@ -464,3 +464,15 @@
 .kpiNoShow{border-color:color-mix(in srgb,#dc2626 38%,var(--line))!important;background:color-mix(in srgb,#dc2626 5%,var(--panel))!important}
 .kpiNoShow>i{background:color-mix(in srgb,#dc2626 11%,var(--panel))!important;color:#dc2626!important}
 @media(max-width:1180px){.operationalLayoutWithDrawer{padding-right:0}}
+
+
+/* Planner current-day callout */
+.todayJump{
+  border-color:color-mix(in srgb,var(--orange) 58%,var(--line))!important;
+  background:color-mix(in srgb,var(--orange) 9%,var(--panel))!important;
+  color:var(--orange)!important;
+  box-shadow:0 6px 16px color-mix(in srgb,var(--orange) 14%,transparent);
+}
+.todayJump:hover{
+  background:color-mix(in srgb,var(--orange) 15%,var(--panel))!important;
+}

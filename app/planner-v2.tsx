@@ -136,7 +136,7 @@ export function PlannerV2(){
         <button type="button" className={`${layoutStyles.viewButton} ${view==="day"?layoutStyles.viewActive:""}`} onClick={()=>chooseView("day")}>День · пости</button>
         <button type="button" className={`${layoutStyles.viewButton} ${view==="week"?layoutStyles.viewActive:""}`} onClick={()=>chooseView("week")}>Тиждень</button>
       </div>
-      <button type="button" className={styles.secondary} onClick={()=>goDay(today)} disabled={anchorDay===today}>Сьогодні</button>
+      <button type="button" className={`${styles.secondary} ${anchorDay!==today?styles.todayJump:""}`} onClick={()=>goDay(today)} disabled={anchorDay===today} title={anchorDay===today?"Відкрито сьогодні":"Повернутися на сьогодні — там показується вертикальна лінія поточного часу"}>{anchorDay===today?"Сьогодні":"Сьогодні · показати лінію"}</button>
       <button type="button" className={styles.primary} onClick={()=>openNewRequest(anchorDay)}>+ Нова заявка</button>
     </div>}
   />
