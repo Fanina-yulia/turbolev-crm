@@ -66,7 +66,6 @@ export function CrmDictionarySettingsPanel() {
   const [unknownTerms, setUnknownTerms] = useState<UnknownTerm[]>([]);
   const [query, setQuery] = useState("");
   const [message, setMessage] = useState("");
-  const [saving, setSaving] = useState(false);
 
   const load = useCallback(async () => {
     setMessage("");
@@ -94,54 +93,13 @@ export function CrmDictionarySettingsPanel() {
     return [...map.entries()].sort(([a], [b]) => a.localeCompare(b, "uk"));
   }, [filtered]);
 
-  const stats = useMemo(() => ({
-    entries: entries.length,
-    aliases: entries.reduce((sum, entry) => sum + entry.aliases.length + 1, 0),
-    parts: entries.filter((entry) => entry.type === "PART").length,
-    fitmentGuarded: entries.filter((entry) => entry.requiresFitmentCheck).length,
-    unknown: unknownTerms.length,
-  }), [entries, unknownTerms]);
-
-  async function save() {
-    if (!dictionary) return;
-    setSaving(true); setMessage("");
-    try {
-      const response = await fetch("/api/settings/operations", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "SAVE_SETTING", key: "crm_dictionary", value: dictionary }),
-      });
-      const body = await response.json() as { ok?: boolean; error?: string };
-      if (!response.ok || !body.ok) throw new Error(body.error || "Не вдалося зберегти словник");
-      setMessage("CRM-словник збережено в налаштуваннях.");
-      await load();
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Помилка збереження");
-    } finally {
-      setSaving(false);
-    }
-  }
-
   return <div className={styles.page} data-settings-tab="crmDictionary">
     <CrmPageHeader eyebrow="TURBO LEV · НАЛАШТУВАННЯ · СЛОВНИК" title="Словник CRM" description="Тотожні назви, російські/українські варіанти, помилки введення, симптоми та CRM-скорочення."/>
     {message ? <div className={styles.message}>{message}</div> : null}
-    <div className={styles.stats}>
-      <Stat label="Канонічних назв" value={stats.entries}/>
-      <Stat label="Синонімів і помилок" value={stats.aliases}/>
-      <Stat label="Деталей" value={stats.parts}/>
-    </div>
-    <div className={styles.stats}>
-      <Stat label="Потребують VIN/сумісності" value={stats.fitmentGuarded}/>
-      <Stat label="Невідомих термінів у черзі" value={stats.unknown}/>
-      <Stat label="Збігів за фільтром" value={filtered.length}/>
-    </div>
     <div className={styles.formBox}>
       <div className={styles.formGrid}>
         <label><span>Перевірити слово або фразу</span><input value={query} placeholder="Наприклад: рычаг, рьічаг, торможа, накінечник" onChange={(event) => setQuery(event.target.value)}/></label>
-        <label><span>Правило безпеки</span><input readOnly value={`${stats.fitmentGuarded} позицій вимагають перевірку VIN/авто/сторони`}/></label>
-        <label><span>Статус</span><input readOnly value={dictionary ? "Базовий словник завантажено" : "Завантаження..."}/></label>
       </div>
-      <div className={styles.actions}><button disabled={saving || !dictionary} onClick={() => void save()}>Зберегти словник у CRM</button></div>
     </div>
     {unknownTerms.length > 0 && <section>
       <h2 className={styles.sectionTitle}>Черга невідомих термінів</h2>
@@ -165,8 +123,4 @@ export function CrmDictionarySettingsPanel() {
       </article>)}</div>
     </section>) : <div className={styles.empty}>Нічого не знайдено за цим запитом.</div>}
   </div>;
-}
-
-function Stat({ label, value }: { label: string; value: number }) {
-  return <div><span>{label}</span><strong>{value}</strong></div>;
 }

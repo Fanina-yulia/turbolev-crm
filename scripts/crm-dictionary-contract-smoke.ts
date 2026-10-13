@@ -55,8 +55,12 @@ for (const marker of ["Словник CRM", "matchedAlias", "requiresFitmentChec
   assert.ok(searchUi.includes(marker), `Global search UI must include dictionary hint marker: ${marker}`);
 }
 
-for (const marker of ["Черга невідомих термінів", "crm_dictionary_unknown_terms", "Потребують VIN/сумісності"]) {
+for (const marker of ["Черга невідомих термінів", "crm_dictionary_unknown_terms", "Перевірити слово або фразу"]) {
   assert.ok(settingsPanel.includes(marker), `Settings dictionary panel must include unknown queue marker: ${marker}`);
+}
+
+for (const marker of ["Канонічних назв", "Правило безпеки", "Зберегти словник у CRM"]) {
+  assert.ok(!settingsPanel.includes(marker), `Settings dictionary panel must keep top check area compact: ${marker}`);
 }
 
 for (const marker of ["не повинна автоматично змінювати", "Черга невідомих термінів", "Не входить у перший етап"]) {

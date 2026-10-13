@@ -56,3 +56,7 @@
   .page[data-settings-tab="schedule"] .scheduleRow input[type=time]{min-height:36px}
   .page[data-settings-tab="schedule"] .footerAction{min-height:44px}
 }
+
+.page[data-settings-tab="crmDictionary"] .formBox{padding:12px 14px}
+.page[data-settings-tab="crmDictionary"] .formGrid{grid-template-columns:minmax(0,1fr)}
+
