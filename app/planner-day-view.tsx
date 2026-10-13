@@ -657,7 +657,7 @@ export function PlannerDayView<TAppointment extends AppointmentBase>({ day, loca
   const now = nowTick;
   const nowParts = localParts(now.toISOString(), timeZone);
   const nowMinute = nowParts.minute;
-  const showNow = nowParts.day === day && nowMinute >= openMinute && nowMinute < closeMinute;
+  const showNow = nowMinute >= openMinute && nowMinute < closeMinute;
   const nowRatio = showNow ? (nowMinute - openMinute) / totalDayMinutes : 0;
   const nowStyle = { left: `calc(${resourceWidth}px + (100% - ${resourceWidth}px) * ${nowRatio})` } as CSSProperties;
 
