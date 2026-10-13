@@ -656,7 +656,7 @@ export function PlannerDayView<TAppointment extends AppointmentBase>({ day, loca
   const gridStyle = { gridTemplateColumns: `${resourceWidth}px repeat(${slots.length}, minmax(0, 1fr))` } as CSSProperties;
   const now = nowTick;
   const nowParts = localParts(now.toISOString(), timeZone);
-  const nowMinute = nowParts.minute;
+  const nowMinute = now.getHours() * 60 + now.getMinutes();
   const showNow = nowMinute >= openMinute && nowMinute < closeMinute;
   const nowRatio = showNow ? (nowMinute - openMinute) / totalDayMinutes : 0;
   const nowStyle = { left: `calc(${resourceWidth}px + (100% - ${resourceWidth}px) * ${nowRatio})` } as CSSProperties;
