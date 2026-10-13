@@ -646,30 +646,31 @@ export function PlannerDayView<TAppointment extends AppointmentBase>({ day, loca
               <div className={styles.resourceProgress}><i style={{ width: `${loadPercent}%` }}/></div>
               <small>{loadPercent}% зайнято</small>
             </div>
-            {slots.map((minute, slotIndex) => {
-              const available = slotAvailable(row, slotIndex);
-              const dragAvailable = draggedAppointment ? canDropRange(row, slotIndex, appointmentDuration(draggedAppointment), draggedAppointment.id) : false;
-              const selected = selection?.rowId === row.id && slotIndex >= Math.min(selection.startIndex, selection.endIndex) && slotIndex <= Math.max(selection.startIndex, selection.endIndex);
+            {slots.map((minute, index) => {
+              const available = slotAvailable(row, index);
+              const dragAvailable = draggedAppointment ? canDropRange(row, index, appointmentDuration(draggedAppointment), draggedAppointment.id) : false;
+              const selected = selection?.rowId === row.id && index >= Math.min(selection.startIndex, selection.endIndex) && index <= Math.max(selection.startIndex, selection.endIndex);
               const cellClass = available ? styles.free : styles.busy;
-              const time = minuteLabel(minute);
               const selectedStart = selection && selection.rowId === row.id ? Math.min(selection.startIndex, selection.endIndex) : -1;
               const selectedEnd = selection && selection.rowId === row.id ? Math.max(selection.startIndex, selection.endIndex) : -1;
-              const selectionLabel = selected && slotIndex === selectedStart ? `${minuteLabel(slots[selectedStart])}–${minuteLabel(slots[selectedEnd] + SLOT)}` : "";
+              const selectionLabel = selected && index === selectedStart ? `${minuteLabel(slots[selectedStart])}–${minuteLabel(slots[selectedEnd] + SLOT)}` : "";
+              const freeWindowLabel = `Вільно ${minuteLabel(slots[index])}–${minuteLabel(slots[index] + SLOT)}`;
+              const busyWindowLabel = `Зайнято ${minuteLabel(slots[index])}–${minuteLabel(slots[index] + SLOT)}`;
               return <button
                 type="button"
-                aria-label={`${row.name} ${time}: ${available || dragAvailable ? (selected ? `обрано ${selectionLabel}` : "вільно") : "зайнято"}`}
-                title={available || dragAvailable ? `${row.name} · ${time} · вільно` : `${row.name} · ${time} · зайнято`}
-                className={`${styles.cell} ${cellClass} ${selected ? styles.selected : ""} ${dropTarget?.rowId === row.id && dropTarget.slotIndex === slotIndex ? styles.dropTarget : ""} ${compact ? compactStyles.cell : ""}`}
+                aria-label={`${row.name}: ${available || dragAvailable ? (selected ? `обрано ${selectionLabel}` : freeWindowLabel) : busyWindowLabel}`}
+                title={`${row.name} · ${available || dragAvailable ? freeWindowLabel : busyWindowLabel}`}
+                className={`${styles.cell} ${cellClass} ${selected ? styles.selected : ""} ${dropTarget?.rowId === row.id && dropTarget.slotIndex === index ? styles.dropTarget : ""} ${compact ? compactStyles.cell : ""}`}
                 key={`${row.id}-${minute}`}
-                style={{ gridColumn: slotIndex + 2, gridRow }}
+                style={{ gridColumn: index + 2, gridRow }}
                 aria-disabled={!available && !dragAvailable}
-                onPointerDown={(event) => beginSelection(event, row, slotIndex)}
-                onPointerEnter={(event) => extendSelection(event, row, slotIndex)}
-                onPointerUp={(event) => commitSelection(event, row, slotIndex)}
-                onClick={() => clickSelection(row, slotIndex)}
-                onDragOver={(event) => dragOverCell(event, row, slotIndex)}
-                onDrop={(event) => dropOnCell(event, row, slotIndex)}
-                aria-dropeffect={dropTarget?.rowId === row.id && dropTarget.slotIndex === slotIndex ? "move" : undefined}
+                onPointerDown={(event) => beginSelection(event, row, index)}
+                onPointerEnter={(event) => extendSelection(event, row, index)}
+                onPointerUp={(event) => commitSelection(event, row, index)}
+                onClick={() => clickSelection(row, index)}
+                onDragOver={(event) => dragOverCell(event, row, index)}
+                onDrop={(event) => dropOnCell(event, row, index)}
+                aria-dropeffect={dropTarget?.rowId === row.id && dropTarget.slotIndex === index ? "move" : undefined}
               >{selectionLabel && <span className={compactStyles.selectionLabel}>{selectionLabel}</span>}</button>;
             })}
           </div>;
