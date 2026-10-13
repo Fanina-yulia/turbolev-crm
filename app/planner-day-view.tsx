@@ -219,8 +219,10 @@ export function PlannerDayView<TAppointment extends AppointmentBase>({ day, loca
   const [resize, setResize] = useState<ResizeState | null>(null);
   const resizeRef = useRef<ResizeState | null>(null);
   const gridRef = useRef<HTMLDivElement | null>(null);
+  const boardRef = useRef<HTMLDivElement | null>(null);
   const skipNextClickRef = useRef(false);
   const [nowTick, setNowTick] = useState(() => new Date());
+  const [nowOverlayStyle, setNowOverlayStyle] = useState<CSSProperties | null>(null);
   const [draggingAppointmentId, setDraggingAppointmentId] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<{ rowId: string; slotIndex: number } | null>(null);
   const dropTargetRef = useRef<{ rowId: string; slotIndex: number } | null>(null);
@@ -659,6 +661,36 @@ export function PlannerDayView<TAppointment extends AppointmentBase>({ day, loca
   const nowRatio = showNow ? (nowMinute - openMinute) / totalDayMinutes : 0;
   const nowStyle = { left: `calc(${resourceWidth}px + (100% - ${resourceWidth}px) * ${nowRatio})` } as CSSProperties;
 
+  useEffect(() => {
+    const grid = gridRef.current;
+    const board = boardRef.current;
+    if (!showNow || !grid || !board) {
+      setNowOverlayStyle(null);
+      return;
+    }
+
+    const updateNowOverlay = () => {
+      const headerHeight = 42;
+      const gridWidth = grid.scrollWidth || grid.getBoundingClientRect().width;
+      const gridHeight = grid.scrollHeight || grid.getBoundingClientRect().height;
+      const left = resourceWidth + Math.max(0, gridWidth - resourceWidth) * nowRatio;
+      setNowOverlayStyle({
+        left: `${left}px`,
+        top: `${headerHeight}px`,
+        height: `${Math.max(40, gridHeight - headerHeight)}px`,
+      } as CSSProperties);
+    };
+
+    updateNowOverlay();
+    const resizeObserver = typeof ResizeObserver !== "undefined" ? new ResizeObserver(updateNowOverlay) : null;
+    resizeObserver?.observe(grid);
+    window.addEventListener("resize", updateNowOverlay);
+    return () => {
+      resizeObserver?.disconnect();
+      window.removeEventListener("resize", updateNowOverlay);
+    };
+  }, [showNow, nowRatio, resourceWidth, slots.length, rows.length, dayAppointments.length]);
+
   function nextFreeLabel(row: Row) {
     const requestedMinute = nowParts.day === day ? Math.ceil(nowMinute / SLOT) * SLOT : openMinute;
     const found = slots.findIndex((minute) => minute >= requestedMinute);
@@ -684,7 +716,8 @@ export function PlannerDayView<TAppointment extends AppointmentBase>({ day, loca
 
     {error && <div className={styles.inlineError} role="status">{error}</div>}
 
-    <div className={`${styles.board} ${compact ? compactStyles.board : ""}`}>
+    <div ref={boardRef} className={`${styles.board} ${compact ? compactStyles.board : ""}`}>
+      {showNow && <div className={`${styles.now} ${styles.nowOverlay}`} style={nowOverlayStyle ?? nowStyle} aria-label={`Поточний час ${minuteLabel(nowMinute)}`}><span>{minuteLabel(nowMinute)}</span></div>}
       <div ref={gridRef} className={`${styles.grid} ${compact ? compactStyles.grid : ""}`} style={gridStyle} onMouseLeave={() => selection && setSelection(selection)}>
         <div className={`${styles.corner} ${compact ? compactStyles.corner : ""}`} style={{ gridColumn: 1, gridRow: 1 }}>Пости / ресурси</div>
         {slots.map((minute, index) => <div className={`${styles.time} ${minute % 60 === 0 ? styles.fullHour : ""} ${compact ? compactStyles.time : ""}`} key={minute} style={{ gridColumn: index + 2, gridRow: 1 }}>{minuteLabel(minute)}</div>)}
@@ -817,7 +850,6 @@ export function PlannerDayView<TAppointment extends AppointmentBase>({ day, loca
             </div>
           </button>;
         })}
-        {showNow && <div className={styles.now} style={nowStyle} aria-label={`Поточний час ${minuteLabel(nowMinute)}`}><span>{minuteLabel(nowMinute)}</span></div>}
       </div>
       {!location.posts.length && <div className={styles.empty}>У локації ще не створено жодного сервісного поста.</div>}
     </div>
