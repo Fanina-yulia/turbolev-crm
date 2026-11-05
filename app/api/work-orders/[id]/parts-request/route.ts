@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { guardWorkOrder } from "@/src/security/work-order-route-guard";
+import { PERMISSIONS } from "@/src/security/permissions";
 import {
   getWorkOrderCommercialState,
   openPartsRequest,
@@ -11,8 +13,10 @@ export const maxDuration = 30;
 
 type RouteContext = { params: Promise<{ id: string }> };
 
-export async function GET(_request: Request, context: RouteContext) {
+export async function GET(request: Request, context: RouteContext) {
   const { id } = await context.params;
+  const guard = await guardWorkOrder(request, id, PERMISSIONS.PROCUREMENT_READ, "LOCATION");
+  if (!guard.ok) return guard.response;
   try {
     const commercial = await getWorkOrderCommercialState(id);
     return NextResponse.json({ ok: true, partsRequest: commercial.partsRequest, commercial }, { headers: { "Cache-Control": "no-store" } });
@@ -25,9 +29,10 @@ export async function GET(_request: Request, context: RouteContext) {
 
 export async function POST(request: Request, context: RouteContext) {
   const { id } = await context.params;
+  const guard = await guardWorkOrder(request, id, PERMISSIONS.PROCUREMENT_WRITE, "LOCATION");
+  if (!guard.ok) return guard.response;
   try {
-    const body = await request.json().catch(() => ({})) as Record<string, unknown>;
-    const actorName = typeof body.actorName === "string" && body.actorName.trim() ? body.actorName.trim().slice(0, 160) : "CRM / Підбір запчастин";
+    const actorName = guard.actorName;
     const partsRequest = await openPartsRequest(id, actorName);
     return NextResponse.json({ ok: true, partsRequest }, { status: 201 });
   } catch (error) {

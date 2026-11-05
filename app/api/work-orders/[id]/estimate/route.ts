@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { guardWorkOrder } from "@/src/security/work-order-route-guard";
+import { PERMISSIONS } from "@/src/security/permissions";
 import {
   sendEstimate,
   WorkOrderCommercialError,
@@ -20,8 +22,10 @@ function commercialError(error: WorkOrderCommercialError) {
   );
 }
 
-export async function GET(_request: Request, context: RouteContext) {
+export async function GET(request: Request, context: RouteContext) {
   const { id } = await context.params;
+  const guard = await guardWorkOrder(request, id, PERMISSIONS.WORK_ORDERS_READ, "ASSIGNED");
+  if (!guard.ok) return guard.response;
   try {
     const cycle = await getWorkOrderCycleState(id);
     return NextResponse.json({ ok: true, commercial: cycle.commercial }, { headers: { "Cache-Control": "no-store" } });
@@ -34,9 +38,10 @@ export async function GET(_request: Request, context: RouteContext) {
 
 export async function POST(request: Request, context: RouteContext) {
   const { id } = await context.params;
+  const guard = await guardWorkOrder(request, id, PERMISSIONS.WORK_ORDERS_ESTIMATE, "LOCATION");
+  if (!guard.ok) return guard.response;
   try {
-    const body = await request.json().catch(() => ({})) as Record<string, unknown>;
-    const actorName = typeof body.actorName === "string" && body.actorName.trim() ? body.actorName.trim().slice(0, 160) : "CRM / Сервіс-менеджер";
+    const actorName = guard.actorName;
     await assertEstimateMarginApprovedBeforeSend(id, actorName);
     const result = await sendEstimate(id, actorName);
     return NextResponse.json({ ok: true, estimate: result.estimate, created: result.created });

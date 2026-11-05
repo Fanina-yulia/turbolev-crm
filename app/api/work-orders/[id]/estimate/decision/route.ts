@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { guardWorkOrder } from "@/src/security/work-order-route-guard";
+import { PERMISSIONS } from "@/src/security/permissions";
 import { normalizeApprovedEstimateFingerprint } from "@/src/services/work-order-estimate-fingerprint.service";
 import { decideEstimate, WorkOrderCommercialError } from "@/src/services/work-order-commercial.service";
 
@@ -10,13 +12,16 @@ type RouteContext = { params: Promise<{ id: string }> };
 
 export async function POST(request: Request, context: RouteContext) {
   const { id } = await context.params;
+  const guard = await guardWorkOrder(request, id, PERMISSIONS.WORK_ORDERS_ESTIMATE, "LOCATION");
+  if (!guard.ok) return guard.response;
   try {
-    const body = await request.json() as Record<string, unknown>;
+    const body = await request.json().catch(() => null) as Record<string, unknown> | null;
+    if (!body || typeof body !== "object") return NextResponse.json({ ok: false, error: "Некоректне тіло запиту." }, { status: 400 });
     const rawDecision = typeof body.decision === "string" ? body.decision.trim().toUpperCase() : "";
     if (rawDecision !== "APPROVE" && rawDecision !== "REJECT") {
       return NextResponse.json({ ok: false, error: "Передайте decision APPROVE або REJECT." }, { status: 400 });
     }
-    const actorName = typeof body.actorName === "string" ? body.actorName : "CRM / Сервіс-менеджер";
+    const actorName = guard.actorName;
     const estimate = await decideEstimate(id, {
       decision: rawDecision,
       approvedByName: typeof body.approvedByName === "string" ? body.approvedByName : undefined,

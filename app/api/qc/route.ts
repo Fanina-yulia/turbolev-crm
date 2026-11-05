@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getPrisma } from "@/src/lib/prisma";
 import { getAccessContext, hasPermission, type AccessContext } from "@/src/security/access-context";
+import { requireQcApproval } from "@/src/security/work-order-route-guard";
 import { PERMISSIONS, type AccessScopeCode } from "@/src/security/permissions";
 import { updateQualityControl, WorkOrderQualityError } from "@/src/services/work-order-qc.service";
 import { transitionWorkOrder, WorkOrderNotFoundError, WorkOrderTransitionError } from "@/src/services/work-orders.service";
@@ -28,11 +29,10 @@ function vehicleLabel(vehicle: { brand: string | null; model: string | null; yea
 async function verifyQcAccess(request: Request, write = false) {
   const context = await getAccessContext(request);
   const permission = write ? PERMISSIONS.QC_WRITE : PERMISSIONS.QC_READ;
-  if (context.enforcementMode === "ENFORCED") {
-    if (!context.authenticated) return { context, error: NextResponse.json({ ok: false, error: "UNAUTHENTICATED" }, { status: 401 }) };
-    if (context.provisioningState !== "ACTIVE" || !context.user) return { context, error: NextResponse.json({ ok: false, error: "ACCESS_PROFILE_INACTIVE" }, { status: 403 }) };
-    if (!hasPermission(context, permission)) return { context, error: NextResponse.json({ ok: false, error: "FORBIDDEN" }, { status: 403 }) };
-  }
+  // Fail closed in every enforcement mode (SEC-R1): the QC queue was previously open in SHADOW mode.
+  if (!context.authenticated) return { context, error: NextResponse.json({ ok: false, error: "UNAUTHENTICATED" }, { status: 401 }) };
+  if (context.provisioningState !== "ACTIVE" || !context.user) return { context, error: NextResponse.json({ ok: false, error: "ACCESS_PROFILE_INACTIVE" }, { status: 403 }) };
+  if (!hasPermission(context, permission)) return { context, error: NextResponse.json({ ok: false, error: "FORBIDDEN" }, { status: 403 }) };
   return { context, error: null };
 }
 
@@ -102,7 +102,7 @@ export async function GET(request: Request) {
     }
     const workOrderIds = [...appointmentMap.keys()];
     if (!workOrderIds.length) {
-      return NextResponse.json({ ok: true, location, locations: scope.locations, cards: [], canWrite: access.context.enforcementMode !== "ENFORCED" || hasPermission(access.context, PERMISSIONS.QC_WRITE) }, { headers: { "Cache-Control": "no-store" } });
+      return NextResponse.json({ ok: true, location, locations: scope.locations, cards: [], canWrite: hasPermission(access.context, PERMISSIONS.QC_WRITE) }, { headers: { "Cache-Control": "no-store" } });
     }
 
     const [workOrders, attempts, numberRows] = await Promise.all([
@@ -171,7 +171,7 @@ export async function GET(request: Request) {
       location,
       locations: scope.locations,
       cards,
-      canWrite: access.context.enforcementMode !== "ENFORCED" || hasPermission(access.context, PERMISSIONS.QC_WRITE),
+      canWrite: hasPermission(access.context, PERMISSIONS.QC_WRITE),
     }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
     console.error("GET /api/qc failed", error instanceof Error ? error.message : "unknown");
@@ -194,7 +194,12 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: false, error: "Цей ЗН не входить до Вашого контуру контролю якості." }, { status: 403 });
     }
     const actorName = access.context.user?.employeeName || access.context.user?.name || "CRM / Контроль якості";
-    const performedByName = typeof body.performedByName === "string" ? body.performedByName.trim().slice(0, 160) : actorName;
+    // The checker identity is the verified session, not a client-supplied name.
+    const performedByName = actorName.slice(0, 160);
+    if (["PASS", "FAIL", "MOVE_PAYMENT", "MOVE_PICKUP", "MOVE_REWORK"].includes(action)) {
+      const denied = await requireQcApproval(request, access.context, workOrderId);
+      if (denied) return denied;
+    }
     const note = typeof body.note === "string" ? body.note.trim().slice(0, 4000) : "";
 
     if (action === "MOVE_PAYMENT" || action === "MOVE_PICKUP" || action === "MOVE_REWORK") {
