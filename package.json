@@ -24,6 +24,7 @@
     "rbac:readiness": "tsx scripts/rbac-production-readiness.ts",
     "rbac:enforced:readiness": "tsx scripts/rbac-production-readiness.ts --require-enforced",
     "sec:03:smoke": "tsx scripts/sec03-pii-routes-contract-smoke.ts",
+    "ui:viewport:audit": "node scripts/ui-viewport-audit.mjs",
     "crm:hardening:smoke": "node scripts/crm-hardening-smoke.mjs",
     "e2e:real:readiness": "tsx scripts/real-vehicle-e2e-readiness.ts",
     "db:generate": "prisma generate",
