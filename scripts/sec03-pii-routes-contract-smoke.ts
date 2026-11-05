@@ -44,4 +44,12 @@ for (const r of routes) {
 // station isolation of edit-context
 const ec = readFileSync("app/api/planner/edit-context/route.ts", "utf8");
 assert.ok(ec.includes("...access.locationWhere"), "edit-context must filter appointments by allowed stations");
+// Iteration 2: executor identity only from session + station isolation for parts requests
+for (const file of ["parts-requests/[id]", "parts-requests/[id]/items/[itemId]"]) {
+  const src = readFileSync(`app/api/${file}/route.ts`, "utf8");
+  assert.ok(!/body\.actorName|body\.actorId|body\.userId/.test(src), `${file}: actor must not come from request body`);
+  assert.ok(src.includes("access.context.user?.employeeName"), `${file}: actor must come from the session`);
+  assert.ok(src.includes("canAccessWorkOrder(access.context, access.grantedScope"), `${file}: missing work-order/station check`);
+  assert.ok(src.indexOf("await authorize(") < src.indexOf("request.json()"), `${file}: authorize must precede body parsing`);
+}
 console.log(`SEC-03 batch-1 contract smoke passed (${routes.length} routes)`);

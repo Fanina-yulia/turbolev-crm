@@ -41,6 +41,8 @@ const checks = [
   { path: "app/api/vehicles/configurations/route.ts", all: ["OVERVIEW_READ", "authorize("] },
   { path: "app/api/planner/availability/route.ts", all: ["PLANNER_READ", "authorizeScopedLocation("] },
   { path: "app/api/planner/edit-context/route.ts", all: ["PLANNER_READ", "authorizeScopedLocation("] },
+  { path: "app/api/parts-requests/[id]/route.ts", all: ["PROCUREMENT_WRITE", "canAccessWorkOrder("] },
+  { path: "app/api/parts-requests/[id]/items/[itemId]/route.ts", all: ["PROCUREMENT_WRITE", "canAccessWorkOrder("] },
   { path: "app/api/finance/summary/route.ts", all: ["FINANCE_READ"], any: ["authorize(", "authorizeScopedLocation("] },
   { path: "app/api/finance/details/route.ts", all: ["FINANCE_READ"], any: ["authorize(", "authorizeScopedLocation("] },
   { path: "app/api/finance/accounts/route.ts", all: ["FINANCE_READ", "FINANCE_WRITE"], any: ["authorize(", "authorizeScopedLocation("] },
