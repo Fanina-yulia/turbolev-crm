@@ -165,12 +165,18 @@
   }
 
   [class*="parts-selection-workspace-v4_pickerHeader__"] p {
-    font-size: 0 !important;
+    font-size: 11px !important;
+    line-height: 0 !important;
+    overflow: hidden !important;
+    text-indent: -9999px !important;
     letter-spacing: 0 !important;
   }
 
   [class*="parts-selection-workspace-v4_pickerHeader__"] p::after {
     content: "ПРОПОЗИЦІЇ ПОСТАЧАЛЬНИКІВ" !important;
+    display: block !important;
+    text-indent: 0 !important;
+    line-height: 16px !important;
     color: var(--orange) !important;
     font-size: 11px !important;
     font-weight: 900 !important;
