@@ -39,6 +39,18 @@ const checks = [
   { path: "app/api/analytics/finance/route.ts", all: ["getAccessContext", "ANALYTICS_READ", "ANALYTICS_FINANCIAL_READ"] },
   { path: "app/api/analytics/parts/route.ts", all: ["getAccessContext", "ANALYTICS_READ"] },
   { path: "app/api/analytics/funnel-visuals/route.ts", all: ["ANALYTICS_READ", "authorizeScopedLocation("] },
+  { path: "app/api/settings/operations/route.ts", all: ["guardSettings("] },
+  { path: "app/api/settings/work-prices/[id]/route.ts", all: ["guardSettings("] },
+  { path: "app/api/settings/work-prices/catalog/route.ts", all: ["guardSettings("] },
+  { path: "app/api/settings/work-prices/export/route.ts", all: ["guardSettings("] },
+  { path: "app/api/settings/work-prices/import/route.ts", all: ["guardSettings("] },
+  { path: "app/api/workflow/presentation/route.ts", all: ["guardSettings("] },
+  { path: "app/api/workflow/statuses/route.ts", all: ["guardSettings("] },
+  { path: "app/api/workflow/transition/validate/route.ts", all: ["guardSettings("] },
+  { path: "app/api/suppliers/status/route.ts", all: ["guardIntegrations("] },
+  { path: "app/api/suppliers/test/route.ts", all: ["guardIntegrations("] },
+  { path: "app/api/work-prices/route.ts", all: ["guardPricingCalculator("] },
+  { path: "app/api/parts/free-catalog/route.ts", all: ["PARTS_READ", "authorize("] },
 ];
 
 const failures = [];

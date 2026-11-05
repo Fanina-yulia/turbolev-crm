@@ -8,6 +8,7 @@ import {
 import { getPrisma } from "@/src/lib/prisma";
 import { toPrismaJson } from "@/src/lib/prisma-json";
 import { buildServiceDisplayName, buildServiceSearchAliases, calculatorOperationLabel, normalizeServiceCatalogName } from "@/src/services/service-catalog-name-builder.service";
+import { guardSettings } from "@/src/security/settings-route-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -54,6 +55,9 @@ function normalizedCatalogName(row: {
 }
 
 export async function GET(request: NextRequest) {
+  const guard = await guardSettings(request, false);
+  if (!guard.ok) return guard.response;
+
   const prisma = getPrisma();
   const params = request.nextUrl.searchParams;
   const q = text(params.get("q"), 120);
@@ -152,6 +156,9 @@ export async function GET(request: NextRequest) {
 }
 
 export async function PATCH(request: NextRequest) {
+  const guard = await guardSettings(request, true);
+  if (!guard.ok) return guard.response;
+
   const prisma = getPrisma();
   try {
     const body = await request.json() as Record<string, unknown>;
@@ -217,7 +224,7 @@ export async function PATCH(request: NextRequest) {
     };
 
     const after = await prisma.serviceCatalogItem.update({ where: { id }, data, include: { category: true } });
-    await prisma.auditEvent.create({ data: { actorName: "CRM / Налаштування прайсу", entityType: "ServiceCatalogItem", entityId: id, action: "CATALOG_ITEM_UPDATED", before: toPrismaJson(before), after: toPrismaJson(after) } });
+    await prisma.auditEvent.create({ data: { actorName: guard.actorName, entityType: "ServiceCatalogItem", entityId: id, action: "CATALOG_ITEM_UPDATED", before: toPrismaJson(before), after: toPrismaJson(after) } });
     return NextResponse.json({ ok: true, item: { ...after, basePrice: after.basePrice?.toString() ?? null } });
   } catch (error) {
     console.error("service catalog PATCH failed", error);
@@ -226,6 +233,9 @@ export async function PATCH(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  const guard = await guardSettings(request, true);
+  if (!guard.ok) return guard.response;
+
   const prisma = getPrisma();
   try {
     const body = await request.json() as Record<string, unknown>;
@@ -239,7 +249,7 @@ export async function POST(request: NextRequest) {
         ...(source ? { source } : {}),
       };
       const result = await prisma.serviceCatalogItem.updateMany({ where, data: { isActive: true, showToOperator: true } });
-      await prisma.auditEvent.create({ data: { actorName: "CRM / Налаштування прайсу", entityType: "ServiceCatalog", entityId: source || "ALL", action: "ACTIVATE_READY", after: toPrismaJson({ count: result.count, source }) } });
+      await prisma.auditEvent.create({ data: { actorName: guard.actorName, entityType: "ServiceCatalog", entityId: source || "ALL", action: "ACTIVATE_READY", after: toPrismaJson({ count: result.count, source }) } });
       return NextResponse.json({ ok: true, count: result.count, message: `Активовано ${result.count} перевірених позицій.` });
     }
     if (action === "SET_ACTIVE") {

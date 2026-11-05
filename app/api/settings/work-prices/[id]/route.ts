@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getPrisma } from "@/src/lib/prisma";
+import { guardSettings } from "@/src/security/settings-route-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -28,6 +29,9 @@ async function getWorkPrice(id:string){
 }
 
 export async function PUT(request:Request,{params}:{params:Promise<{id:string}>}){
+  const guard = await guardSettings(request, true);
+  if (!guard.ok) return guard.response;
+
   const prisma=getPrisma();
   try{
     const {id}=await params;
@@ -66,6 +70,9 @@ export async function PUT(request:Request,{params}:{params:Promise<{id:string}>}
 }
 
 export async function PATCH(request:Request,{params}:{params:Promise<{id:string}>}){
+  const guard = await guardSettings(request, true);
+  if (!guard.ok) return guard.response;
+
   const prisma=getPrisma();
   try{
     const {id}=await params;
@@ -84,7 +91,10 @@ export async function PATCH(request:Request,{params}:{params:Promise<{id:string}
   }
 }
 
-export async function DELETE(_:Request,{params}:{params:Promise<{id:string}>}){
+export async function DELETE(request:Request,{params}:{params:Promise<{id:string}>}){
+  const guard = await guardSettings(request, true);
+  if (!guard.ok) return guard.response;
+
   const prisma=getPrisma();
   try{
     const {id}=await params;

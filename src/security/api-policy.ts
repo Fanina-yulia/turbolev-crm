@@ -153,8 +153,8 @@ const RULES: Rule[] = [
     ? internal(PERMISSIONS.SETTINGS_READ, "ALL", "Parts terminology and catalog knowledge status, including explicit dual-write operations.")
     : internal(PERMISSIONS.SETTINGS_WRITE, "ALL", "Parts knowledge seed, explicit dual-write operations, and legacy Google Sheets import.", true) },
   { match: prefix("/api/settings"), resolve: (method) => readWrite(method, PERMISSIONS.SETTINGS_READ, PERMISSIONS.SETTINGS_WRITE, "ALL", "CRM operational settings.") },
-  { match: exact("/api/work-prices"), resolve: (method) => readWrite(method, PERMISSIONS.SETTINGS_READ, PERMISSIONS.SETTINGS_WRITE, "ALL", "Labor price catalog is controlled configuration.") },
-  { match: prefix("/api/workflow"), resolve: () => internal(PERMISSIONS.SETTINGS_READ, "ALL", "Workflow/status architecture presentation and validation metadata.") },
+  { match: exact("/api/work-prices"), resolve: () => internal(PERMISSIONS.WORK_ORDERS_ESTIMATE, "LOCATION", "Labor price calculator for estimates and new requests; also open to LEADS.WRITE and SETTINGS.READ holders (guardPricingCalculator). Price catalog edits live under /api/settings/work-prices (SETTINGS.WRITE).") },
+  { match: prefix("/api/workflow"), resolve: (method) => readWrite(method, PERMISSIONS.SETTINGS_READ, PERMISSIONS.SETTINGS_WRITE, "ALL", "Workflow/status architecture presentation and validation metadata; changes need SETTINGS.WRITE.") },
   { match: exact("/api/users/active"), resolve: () => internal(PERMISSIONS.PERSONNEL_READ, "LOCATION", "Operational picker of active staff; response must remain minimal.") },
 ];
 

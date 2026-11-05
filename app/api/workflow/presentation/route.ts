@@ -5,11 +5,15 @@ import {
   updateWorkflowStatusPresentation,
   workflowPresentationErrorMessage,
 } from "@/src/services/workflow-presentation.service";
+import { guardSettings } from "@/src/security/settings-route-guard";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-export async function GET() {
+export async function GET(request: Request) {
+  const guard = await guardSettings(request, false);
+  if (!guard.ok) return guard.response;
+
   try {
     const settings = await loadWorkflowPresentationSettings();
     return NextResponse.json({ ok: true, settings }, { headers: { "Cache-Control": "no-store" } });
@@ -20,6 +24,9 @@ export async function GET() {
 }
 
 export async function PUT(request: NextRequest) {
+  const guard = await guardSettings(request, true);
+  if (!guard.ok) return guard.response;
+
   try {
     const body = await request.json() as Record<string, unknown>;
     const entity = typeof body.entity === "string" ? body.entity : "";
@@ -35,6 +42,9 @@ export async function PUT(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
+  const guard = await guardSettings(request, true);
+  if (!guard.ok) return guard.response;
+
   try {
     const entity = request.nextUrl.searchParams.get("entity") ?? "";
     const status = request.nextUrl.searchParams.get("status") ?? "";

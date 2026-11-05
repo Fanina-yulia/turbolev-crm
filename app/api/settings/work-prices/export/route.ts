@@ -1,11 +1,15 @@
 import { NextResponse } from "next/server";
 import { buildActiveServiceCatalogExport } from "@/src/services/service-catalog-export.service";
+import { guardSettings } from "@/src/security/settings-route-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
 
-export async function GET() {
+export async function GET(request: Request) {
+  const guard = await guardSettings(request, false);
+  if (!guard.ok) return guard.response;
+
   try {
     const { bytes } = await buildActiveServiceCatalogExport();
     const date = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Kyiv" }).format(new Date());
