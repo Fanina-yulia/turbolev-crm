@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getPrisma } from "@/src/lib/prisma";
+import { authorizeScopedLocation } from "@/src/security/scoped-location-access";
+import { PERMISSIONS } from "@/src/security/permissions";
 import { getPlannerAvailability } from "@/src/services/planner-availability.service";
 
 export const runtime = "nodejs";
@@ -28,6 +30,9 @@ function localDateTime(date: Date, timeZone: string) {
 }
 
 export async function GET(request: NextRequest) {
+  // Fail closed: session + PLANNER.READ; LOCATION scope is restricted to its own stations below.
+  const access = await authorizeScopedLocation(PERMISSIONS.PLANNER_READ, request, null);
+  if (!access.ok) return access.response;
   const date = (request.nextUrl.searchParams.get("date") || "").trim();
   const start = (request.nextUrl.searchParams.get("start") || "").trim();
   const plate = normalizePlate(request.nextUrl.searchParams.get("plate"));
@@ -47,6 +52,7 @@ export async function GET(request: NextRequest) {
     const candidates = await prisma.serviceAppointment.findMany({
       where: {
         plannedStartAt: { gte: from, lt: to },
+        ...access.locationWhere,
       },
       include: {
         post: true,

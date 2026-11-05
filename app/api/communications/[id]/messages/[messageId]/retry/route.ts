@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { retryCommunicationMessage } from "@/src/services/communication-delivery.service";
+import { authorize } from "@/src/security/authorize";
+import { PERMISSIONS } from "@/src/security/permissions";
 
 export const runtime = "nodejs";
 
@@ -15,7 +17,9 @@ function statusForError(error: unknown) {
   return 502;
 }
 
-export async function POST(_request: NextRequest, context: { params: Promise<{ id: string; messageId: string }> }) {
+export async function POST(request: NextRequest, context: { params: Promise<{ id: string; messageId: string }> }) {
+  const access = await authorize(PERMISSIONS.COMMUNICATIONS_WRITE, { request, strict: true, minimumScope: "TEAM" });
+  if (!access.allowed) return access.response!;
   try {
     const { id, messageId } = await context.params;
     const result = await retryCommunicationMessage(id, messageId);

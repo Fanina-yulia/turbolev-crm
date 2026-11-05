@@ -2,6 +2,8 @@ import { after } from "next/server";
 import { NextRequest, NextResponse } from "next/server";
 import { markVehicleImageFailure, resolveVehicleImage } from "@/src/services/vehicle-images/vehicle-image.service";
 import { enqueueVehicleImageGeneration, getVehicleLibraryAsset } from "@/src/services/vehicle-images/openai-library.service";
+import { authorize } from "@/src/security/authorize";
+import { PERMISSIONS } from "@/src/security/permissions";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -28,6 +30,8 @@ function missingImageResponse() {
 }
 
 export async function GET(request: NextRequest, context: { params: Promise<{ id: string }> }) {
+  const access = await authorize(PERMISSIONS.OVERVIEW_READ, { request, strict: true, minimumScope: "SELF" });
+  if (!access.allowed) return access.response!;
   const { id } = await context.params;
   const themePaint = request.nextUrl.searchParams.get("theme");
 

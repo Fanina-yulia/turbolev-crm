@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { getPrisma } from "@/src/lib/prisma";
 import type { VehicleStatusItem, VehicleStatusSummary, VehicleStatusTone } from "@/src/lib/contracts/crm-core";
 import { getDiagnosticVehicleStatuses } from "@/src/services/diagnostic-vehicle-status.service";
+import { authorize } from "@/src/security/authorize";
+import { PERMISSIONS } from "@/src/security/permissions";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -84,6 +86,8 @@ function workStatus(
 }
 
 export async function GET(request: NextRequest) {
+  const access = await authorize(PERMISSIONS.CLIENTS_READ, { request, strict: true, minimumScope: "TEAM" });
+  if (!access.allowed) return access.response!;
   const ids = [...new Set((request.nextUrl.searchParams.get("ids") || "")
     .split(",")
     .map((id) => id.trim())
