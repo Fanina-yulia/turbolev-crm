@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getPrisma } from "@/src/lib/prisma";
 import { CRM_DICTIONARY_SETTING_KEY, CRM_DICTIONARY_UNKNOWN_TERMS_SETTING_KEY, DEFAULT_CRM_DICTIONARY } from "@/src/services/crm-dictionary.service";
+import { guardSettings } from "@/src/security/settings-route-guard";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -91,7 +92,10 @@ async function getDirectory(id: string) {
   return rows[0] ?? null;
 }
 
-export async function GET() {
+export async function GET(request: Request) {
+  const guard = await guardSettings(request, false);
+  if (!guard.ok) return guard.response;
+
   const prisma = getPrisma();
   try {
     const [location, settingsRows, directory, clientCount, recentClients] = await Promise.all([
@@ -123,6 +127,9 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  const guard = await guardSettings(request, true);
+  if (!guard.ok) return guard.response;
+
   const prisma = getPrisma();
   try {
     const body = await request.json() as Record<string, unknown>;

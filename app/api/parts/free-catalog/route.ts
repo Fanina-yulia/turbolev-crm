@@ -1,10 +1,14 @@
 import { NextResponse } from "next/server";
+import { authorize } from "@/src/security/authorize";
+import { PERMISSIONS } from "@/src/security/permissions";
 import { FREE_PARTS_SOURCE, searchReferenceParts } from "@/src/services/free-parts-catalog.service";
 
 export const runtime = "nodejs";
 export const maxDuration = 20;
 
 export async function GET(request: Request) {
+  const access = await authorize(PERMISSIONS.PARTS_READ, { strict: true, request, minimumScope: "LOCATION" });
+  if (!access.allowed) return access.response!;
   const { searchParams } = new URL(request.url);
   const q = (searchParams.get("q") ?? "").trim();
 

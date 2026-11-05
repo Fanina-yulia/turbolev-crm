@@ -14,6 +14,7 @@ import { applyDuplicateNameReview } from "@/src/services/service-catalog-duplica
 import { parseServiceCatalogWorkbook, type ParsedCatalogRow } from "@/src/services/service-catalog-import.service";
 import { bodySideLabel, buildServiceSearchAliases, calculatorOperationLabel, normalizeServiceCatalogName } from "@/src/services/service-catalog-name-builder.service";
 import { normalizePartTerminology, resolvePartTerminology } from "@/src/services/parts-terminology.service";
+import { guardSettings } from "@/src/security/settings-route-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -145,6 +146,9 @@ function sampleRow(row: ParsedCatalogRow) {
 }
 
 export async function POST(request: Request) {
+  const guard = await guardSettings(request, true);
+  if (!guard.ok) return guard.response;
+
   try {
     const form = await request.formData();
     const file = form.get("file");

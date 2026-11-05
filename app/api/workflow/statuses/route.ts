@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getWorkflowCatalog, getWorkflowDefinition } from "@/src/domain/workflow";
 import type { WorkflowEntity } from "@/src/domain/workflow";
 import { loadWorkflowPresentationSettings } from "@/src/services/workflow-presentation.service";
+import { guardSettings } from "@/src/security/settings-route-guard";
 
 export const dynamic = "force-dynamic";
 
@@ -11,6 +12,9 @@ const ENTITIES = new Set<WorkflowEntity>([
 ]);
 
 export async function GET(request: NextRequest) {
+  const guard = await guardSettings(request, false);
+  if (!guard.ok) return guard.response;
+
   const raw = request.nextUrl.searchParams.get("entity")?.trim().toUpperCase();
   const presentation = await loadWorkflowPresentationSettings();
   if (raw) {

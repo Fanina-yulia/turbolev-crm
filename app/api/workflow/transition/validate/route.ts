@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { evaluateWorkflowTransition, getWorkflowCatalog, type HardGateCode, type WorkflowEntity } from "@/src/domain/workflow";
+import { guardSettings } from "@/src/security/settings-route-guard";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -19,6 +20,9 @@ function asGateState(value: unknown): Partial<Record<HardGateCode, boolean>> {
 }
 
 export async function POST(request: NextRequest) {
+  const guard = await guardSettings(request, false);
+  if (!guard.ok) return guard.response;
+
   try {
     const body = await request.json() as Record<string, unknown>;
     const rawEntity = typeof body.entity === "string" ? body.entity.trim().toUpperCase() : "";

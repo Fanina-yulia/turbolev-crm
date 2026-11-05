@@ -4,6 +4,7 @@ import { getPrisma } from "@/src/lib/prisma";
 import { resolveLaborPricing } from "@/src/services/labor-pricing.service";
 import { calculatorOperationLabel, normalizeServiceCatalogName } from "@/src/services/service-catalog-name-builder.service";
 import { normalizePartTerminology, resolvePartTerminology, listPartTerminology, type PartTerminologyDefinition } from "@/src/services/parts-terminology.service";
+import { guardPricingCalculator } from "@/src/security/settings-route-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -126,6 +127,9 @@ function resolvePartForSearch(query: string) {
 }
 
 export async function GET(request: NextRequest) {
+  const guard = await guardPricingCalculator(request);
+  if (!guard.ok) return guard.response;
+
   const prisma = getPrisma();
   const params = request.nextUrl.searchParams;
   const q = text(params.get("q"));
@@ -208,6 +212,9 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  const guard = await guardPricingCalculator(request);
+  if (!guard.ok) return guard.response;
+
   try {
     const body = await request.json() as Record<string, unknown>;
     const input = body.vehicle && typeof body.vehicle === "object" ? body.vehicle as Record<string, string> : {};
