@@ -14,6 +14,7 @@ export type WalkInSettlementPayload = {
   completed?: boolean;
   sentToRepair?: boolean;
   canPay?: boolean;
+  paymentBlockReason?: string | null;
   canChooseRoute?: boolean;
   price?: { amount: string; currency: string; label: string; configured: boolean } | null;
   payment?: { id: string; amount: string; occurredAt: string; account: { id: string; name: string; type: string } | null } | null;
@@ -23,7 +24,7 @@ export type WalkInSettlementPayload = {
   error?: string;
 };
 
-type PaymentMethod = "CASH" | "TERMINAL" | "ONLINE";
+type PaymentMethod = "CASH" | "TERMINAL";
 
 function vehicleLabel(data: WalkInSettlementPayload) {
   const vehicle = data.vehicle;
@@ -46,6 +47,7 @@ export function MechanicWalkInSettlement({ diagnosticId, data, onRefresh, onBack
 }) {
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
+  const [paymentConfirmed, setPaymentConfirmed] = useState(false);
   const [amount, setAmount] = useState(data.price?.amount ? String(Number(data.price.amount)) : "");
   const [localData, setLocalData] = useState<WalkInSettlementPayload | null>(null);
   const view = localData || data;
@@ -70,7 +72,7 @@ export function MechanicWalkInSettlement({ diagnosticId, data, onRefresh, onBack
   }
 
   async function pay(paymentMethod: PaymentMethod) {
-    if (busy) return;
+    if (busy || !view.canPay || !paymentConfirmed) return;
     const normalizedAmount = Number(amount.replace(",", "."));
     if (!Number.isFinite(normalizedAmount) || normalizedAmount <= 0) {
       setError("Введіть суму оплати більше 0 грн.");
@@ -80,8 +82,9 @@ export function MechanicWalkInSettlement({ diagnosticId, data, onRefresh, onBack
     setBusy(`PAY${paymentMethod}`);
     setError("");
     try {
-      const next = await postAction({ action: "PAY", paymentMethod, amount: normalizedAmount.toFixed(2) });
+      const next = await postAction({ action: "PAY", paymentMethod, amount: normalizedAmount.toFixed(2), paymentConfirmed });
       setLocalData(next);
+      setPaymentConfirmed(false);
       await onRefresh().catch(() => undefined);
       announce("walk-in-paid");
       // Важливо: після оплати не повертаємо механіка автоматично.
@@ -122,7 +125,7 @@ export function MechanicWalkInSettlement({ diagnosticId, data, onRefresh, onBack
 
   if (view.completed) {
     return <div className={styles.page}>
-      <header className={styles.top}><button type="button" onClick={onBack}>‹</button><strong>Позаплановий заїзд</strong><span /></header>
+      <header className={styles.top}><button type="button" onClick={onBack}>‹</button><strong>Діагностика</strong><span /></header>
       <main className={styles.center}>
         <div className={styles.successIcon}>✓</div>
         <h1>Візит завершено</h1>
@@ -135,7 +138,7 @@ export function MechanicWalkInSettlement({ diagnosticId, data, onRefresh, onBack
 
   if (view.sentToRepair) {
     return <div className={styles.page}>
-      <header className={styles.top}><button type="button" onClick={onBack}>‹</button><strong>Позаплановий заїзд</strong><span /></header>
+      <header className={styles.top}><button type="button" onClick={onBack}>‹</button><strong>Діагностика</strong><span /></header>
       <main className={styles.center}>
         <div className={styles.successIcon}>→</div>
         <h1>Передано на розрахунок</h1>
@@ -146,7 +149,7 @@ export function MechanicWalkInSettlement({ diagnosticId, data, onRefresh, onBack
   }
 
   return <div className={styles.page}>
-    <header className={styles.top}><button type="button" onClick={onBack}>‹</button><strong>Позаплановий заїзд</strong><span /></header>
+    <header className={styles.top}><button type="button" onClick={onBack}>‹</button><strong>Діагностика</strong><span /></header>
     <main className={styles.content}>
       <section className={styles.vehicle}>
         <small>ДІАГНОСТИКУ ЗАВЕРШЕНО</small>
@@ -155,17 +158,24 @@ export function MechanicWalkInSettlement({ diagnosticId, data, onRefresh, onBack
         {view.client && <span>{view.client.name || "Клієнт"} · {view.client.phone}</span>}
       </section>
 
-      {!view.paid ? <section className={styles.paymentCard}>
+      {view.paymentBlockReason && !view.completed && !view.sentToRepair ? <section className={styles.paymentCard}>
+        <h2>Оплату контролює старший станції</h2>
+        <p>{view.paymentBlockReason}</p>
+        <p>Діагностика збережена. За ремонт, запчастини, передплату та змішані замовлення розрахунок проводить старший станції.</p>
+        <button type="button" className={styles.primary} onClick={onBack}>До кабінету механіка</button>
+      </section> : !view.paid ? <section className={styles.paymentCard}>
         <span>До сплати</span>
         <label className={styles.amountField}>
           <span>Сума діагностики, грн</span>
           <input type="number" inputMode="decimal" min="0.01" step="0.01" value={amount} onChange={(event) => setAmount(event.target.value)} placeholder={view.price?.amount || "Введіть суму"} disabled={!view.canPay || Boolean(busy)} />
         </label>
         <small>{view.price?.label || "Механік вносить фактичну суму діагностики."} · Дохід за послугу фіксується після завершення діагностики, тут фіксується факт отримання грошей.</small>
+        <p>Готівка — каса цієї станції. POS-термінал — рахунок еквайрингу цієї станції. CRM зберігає суму, час і механіка, який прийняв оплату.</p>
+        <label><input type="checkbox" checked={paymentConfirmed} onChange={(event) => setPaymentConfirmed(event.target.checked)} disabled={Boolean(busy)} /> Я отримав готівку або перевірив успішний платіж на POS-терміналі</label>
+        <small>CRM реєструє оплату, але не проводить платіж через термінал. Якщо платіж неуспішний, не підтверджуйте його.</small>
         <div className={styles.methods}>
-          <button type="button" disabled={!view.canPay || Boolean(busy)} onClick={() => void pay("CASH")}><b>💵</b><strong>Готівка</strong><span>{busy === "PAYCASH" ? "Фіксую оплату…" : "Прийняти оплату"}</span></button>
-          <button type="button" disabled={!view.canPay || Boolean(busy)} onClick={() => void pay("TERMINAL")}><b>💳</b><strong>POS-термінал</strong><span>{busy === "PAYTERMINAL" ? "Фіксую оплату…" : "Оплата карткою"}</span></button>
-          <button type="button" disabled={!view.canPay || Boolean(busy)} onClick={() => void pay("ONLINE")}><b>📲</b><strong>Онлайн</strong><span>{busy === "PAYONLINE" ? "Фіксую оплату…" : "Онлайн / переказ"}</span></button>
+          <button type="button" disabled={!view.canPay || !paymentConfirmed || Boolean(busy)} onClick={() => void pay("CASH")}><b>💵</b><strong>Готівка</strong><span>{busy === "PAYCASH" ? "Фіксую оплату…" : "Прийняти оплату"}</span></button>
+          <button type="button" disabled={!view.canPay || !paymentConfirmed || Boolean(busy)} onClick={() => void pay("TERMINAL")}><b>💳</b><strong>POS-термінал</strong><span>{busy === "PAYTERMINAL" ? "Фіксую оплату…" : "Оплата карткою"}</span></button>
         </div>
       </section> : <section className={styles.paymentCard}>
         <div className={styles.paidBadge}>✓ ОПЛАЧЕНО</div>
