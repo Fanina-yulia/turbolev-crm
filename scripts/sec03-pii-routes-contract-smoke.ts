@@ -14,7 +14,6 @@ const routes: Array<{ file: string; method: string; permission: string; scoped?:
   { file: "supplier-quotes", method: "GET", permission: "PROCUREMENT_READ" },
   { file: "vehicles/status-summary", method: "GET", permission: "CLIENTS_READ" },
   { file: "vehicles/[id]/appearance", method: "PATCH", permission: "CLIENTS_WRITE" },
-  { file: "vehicles/[id]/image/render", method: "GET", permission: "OVERVIEW_READ" },
   { file: "vehicles/vin", method: "GET", permission: "OVERVIEW_READ" },
   { file: "vehicles/vin/batch", method: "POST", permission: "OVERVIEW_READ" },
   { file: "vehicles/lookup", method: "GET", permission: "OVERVIEW_READ" },

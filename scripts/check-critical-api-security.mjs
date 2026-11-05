@@ -33,7 +33,6 @@ const checks = [
   { path: "app/api/supplier-quotes/route.ts", all: ["PROCUREMENT_READ", "authorize("] },
   { path: "app/api/vehicles/status-summary/route.ts", all: ["CLIENTS_READ", "authorize("] },
   { path: "app/api/vehicles/[id]/appearance/route.ts", all: ["CLIENTS_WRITE", "authorize("] },
-  { path: "app/api/vehicles/[id]/image/render/route.ts", all: ["OVERVIEW_READ", "authorize("] },
   { path: "app/api/vehicles/vin/route.ts", all: ["OVERVIEW_READ", "authorize("] },
   { path: "app/api/vehicles/vin/batch/route.ts", all: ["OVERVIEW_READ", "authorize("] },
   { path: "app/api/vehicles/lookup/route.ts", all: ["OVERVIEW_READ", "authorize("] },
