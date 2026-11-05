@@ -394,7 +394,7 @@
 @media(max-width:760px){
   .page{height:auto;min-height:100%;overflow:visible;padding:5px 10px 24px}
   .kpis{grid-template-columns:1fr 1fr}
-  .toolbar{display:flex;flex-wrap:nowrap;align-items:center;overflow:visible}
+  .toolbar{display:flex;flex-wrap:wrap;align-items:center;row-gap:4px;overflow:visible;white-space:normal}
   .search{flex:1 1 120px;min-width:110px;max-width:150px}
   .tabs{flex:0 1 auto}
   .presets{flex:0 0 auto;overflow:visible}
