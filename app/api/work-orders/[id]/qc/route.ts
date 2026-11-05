@@ -1,5 +1,8 @@
 import { NextResponse } from "next/server";
 import { VehicleIssueStatus } from "@/src/generated/prisma/client";
+import { guardWorkOrder } from "@/src/security/work-order-route-guard";
+import { PERMISSIONS } from "@/src/security/permissions";
+import { requireQcApproval } from "@/src/security/work-order-route-guard";
 import {
   ensureQualityControlTask,
   getQualityControlState,
@@ -44,8 +47,10 @@ function transitionWarning(error: unknown, action: string) {
   return { code: "TRANSITION_FAILED", message: `Результат QC збережено, але ЗН не вдалося автоматично перевести у ${targetLabel}.` };
 }
 
-export async function GET(_request: Request, context: RouteContext) {
+export async function GET(request: Request, context: RouteContext) {
   const { id } = await context.params;
+  const guard = await guardWorkOrder(request, id, PERMISSIONS.QC_READ, "ASSIGNED");
+  if (!guard.ok) return guard.response;
   try {
     const qualityControl = await getQualityControlState(id);
     return NextResponse.json({ ok: true, qualityControl }, { headers: { "Cache-Control": "no-store" } });
@@ -57,13 +62,19 @@ export async function GET(_request: Request, context: RouteContext) {
 
 export async function POST(request: Request, context: RouteContext) {
   const { id } = await context.params;
+  const guard = await guardWorkOrder(request, id, PERMISSIONS.QC_WRITE, "LOCATION");
+  if (!guard.ok) return guard.response;
   try {
     const body = await request.json().catch(() => ({})) as Record<string, unknown>;
-    const actorName = typeof body.actorName === "string" && body.actorName.trim()
-      ? body.actorName.trim().slice(0, 160)
-      : "CRM / Контроль якості";
+    const actorName = guard.actorName;
     if (typeof body.action === "string" && body.action.trim()) {
       const action = body.action.trim().toUpperCase();
+      if (action === "PASS" || action === "FAIL") {
+        const denied = await requireQcApproval(request, guard.context, id);
+        if (denied) return denied;
+      }
+      // The checker identity is always the verified session, never the request body.
+      body.performedByName = actorName;
       const qualityControl = await updateQualityControl(id, body, actorName);
       let issueSync: Awaited<ReturnType<typeof markWorkOrderIssues>> | null = null;
       let issueSyncWarning: string | null = null;

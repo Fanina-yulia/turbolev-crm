@@ -108,7 +108,7 @@ export const TURBO_LEV_ACCESS_ROLES: AccessRolePreset[] = [
         name: "Керівник станції",
         sortOrder: 30,
         description: "Керує операційною роботою конкретної станції, персоналом станції та контролем якості без глобальної фінансової адміністрації.",
-        add: [grant(PERMISSIONS.QC_WRITE, "LOCATION")],
+        add: [grant(PERMISSIONS.QC_WRITE, "LOCATION"), grant(PERMISSIONS.WORK_ORDERS_QC_APPROVE, "LOCATION")],
       });
     }
     if (role.code === "SERVICE_ADVISOR") {

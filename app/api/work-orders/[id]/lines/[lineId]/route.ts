@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { guardWorkOrder } from "@/src/security/work-order-route-guard";
+import { PERMISSIONS } from "@/src/security/permissions";
 import {
   cancelWorkOrderLine,
   updateWorkOrderLine,
@@ -13,12 +15,6 @@ function asRecord(value: unknown): Record<string, unknown> | null {
   return value !== null && typeof value === "object" && !Array.isArray(value)
     ? value as Record<string, unknown>
     : null;
-}
-
-function actor(body: Record<string, unknown>) {
-  return typeof body.actorName === "string" && body.actorName.trim()
-    ? body.actorName.trim().slice(0, 120)
-    : "CRM / Сервіс-менеджер";
 }
 
 function errorResponse(error: unknown) {
@@ -46,12 +42,14 @@ async function reconcileIssues(workOrderId: string) {
 
 export async function PATCH(request: Request, context: { params: Promise<{ id: string; lineId: string }> }) {
   const { id, lineId } = await context.params;
+  const guard = await guardWorkOrder(request, id, PERMISSIONS.WORK_ORDERS_WRITE, "LOCATION");
+  if (!guard.ok) return guard.response;
   try {
     const body = asRecord(await request.json().catch(() => null));
     if (!body) {
       return NextResponse.json({ ok: false, code: "INVALID_JSON_BODY", error: "Request body must be a JSON object" }, { status: 400 });
     }
-    const result = await updateWorkOrderLine(id, lineId, body, actor(body));
+    const result = await updateWorkOrderLine(id, lineId, body, guard.actorName);
     const issueState = await reconcileIssues(id);
     return NextResponse.json({ ok: true, ...result, ...issueState });
   } catch (error) {
@@ -61,10 +59,10 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
 
 export async function DELETE(request: Request, context: { params: Promise<{ id: string; lineId: string }> }) {
   const { id, lineId } = await context.params;
+  const guard = await guardWorkOrder(request, id, PERMISSIONS.WORK_ORDERS_WRITE, "LOCATION");
+  if (!guard.ok) return guard.response;
   try {
-    const parsed = await request.json().catch(() => undefined);
-    const body = asRecord(parsed) ?? {};
-    const result = await cancelWorkOrderLine(id, lineId, actor(body));
+    const result = await cancelWorkOrderLine(id, lineId, guard.actorName);
     const issueState = await reconcileIssues(id);
     return NextResponse.json({ ok: true, ...result, ...issueState });
   } catch (error) {

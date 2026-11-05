@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { guardWorkOrder } from "@/src/security/work-order-route-guard";
+import { PERMISSIONS } from "@/src/security/permissions";
 import { WorkOrderFinanceValidationError } from "@/src/domain/work-order-finance";
 import {
   createWorkOrderLine,
@@ -21,12 +23,6 @@ function asRecord(value: unknown): Record<string, unknown> | null {
     : null;
 }
 
-function actor(body: Record<string, unknown>) {
-  return typeof body.actorName === "string" && body.actorName.trim()
-    ? body.actorName.trim().slice(0, 120)
-    : "CRM / Сервіс-менеджер";
-}
-
 function errorResponse(error: unknown) {
   if (error instanceof WorkOrderFinanceValidationError) {
     return NextResponse.json({ ok: false, code: error.code, error: error.message }, { status: 400 });
@@ -47,8 +43,10 @@ function errorResponse(error: unknown) {
   return NextResponse.json({ ok: false, code: "INTERNAL_ERROR", error: "WorkOrder line operation failed" }, { status: 500 });
 }
 
-export async function GET(_request: Request, context: { params: Promise<{ id: string }> }) {
+export async function GET(request: Request, context: { params: Promise<{ id: string }> }) {
   const { id } = await context.params;
+  const guard = await guardWorkOrder(request, id, PERMISSIONS.WORK_ORDERS_READ, "ASSIGNED");
+  if (!guard.ok) return guard.response;
   try {
     const result = await getWorkOrderLines(id);
     const warranties = result.lines.map(buildWorkOrderLineWarranty).filter(Boolean);
@@ -60,13 +58,15 @@ export async function GET(_request: Request, context: { params: Promise<{ id: st
 
 export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
   const { id } = await context.params;
+  const guard = await guardWorkOrder(request, id, PERMISSIONS.WORK_ORDERS_WRITE, "LOCATION");
+  if (!guard.ok) return guard.response;
   try {
     const body = asRecord(await request.json().catch(() => null));
     if (!body) {
       return NextResponse.json({ ok: false, code: "INVALID_JSON_BODY", error: "Request body must be a JSON object" }, { status: 400 });
     }
     const prepared = await prepareCatalogWorkOrderLineInput(body);
-    const result = await createWorkOrderLine(id, prepared, actor(body));
+    const result = await createWorkOrderLine(id, prepared, guard.actorName);
     let issueSync = null;
     let issueSyncWarning: string | null = null;
     try {
