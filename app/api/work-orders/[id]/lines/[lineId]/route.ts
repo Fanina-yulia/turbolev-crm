@@ -62,8 +62,6 @@ export async function DELETE(request: Request, context: { params: Promise<{ id: 
   const guard = await guardWorkOrder(request, id, PERMISSIONS.WORK_ORDERS_WRITE, "LOCATION");
   if (!guard.ok) return guard.response;
   try {
-    const parsed = await request.json().catch(() => undefined);
-    const body = asRecord(parsed) ?? {};
     const result = await cancelWorkOrderLine(id, lineId, guard.actorName);
     const issueState = await reconcileIssues(id);
     return NextResponse.json({ ok: true, ...result, ...issueState });

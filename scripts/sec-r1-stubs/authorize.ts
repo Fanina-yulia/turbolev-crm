@@ -1,4 +1,4 @@
-import { state } from "./state.ts";
+import { state } from "./state";
 const RANK: Record<string, number> = { SELF: 1, ASSIGNED: 2, TEAM: 3, LOCATION: 4, ALL: 5 };
 export async function authorize(permission: string, options: { minimumScope?: string; request?: Request } = {}) {
   const s = state.__session;

@@ -1,4 +1,4 @@
-import { state } from "./state.ts";
+import { state } from "./state";
 // Executors are modelled as ServiceMechanic rows; mechanic id == "m:" + user id.
 export function getPrisma() {
   const rows = (id: string) => (state.__executors[id] ?? []).map((u) => ({ mechanicId: "m:" + u }));

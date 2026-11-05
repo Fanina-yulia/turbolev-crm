@@ -51,7 +51,9 @@ export async function getWorkOrderExecutorUserIds(workOrderId: string): Promise<
   const mechanicIds = [...new Set([...appointments, ...lines].map((row) => row.mechanicId).filter((value): value is string => Boolean(value)))];
   if (!mechanicIds.length) return [];
   const mechanics = await prisma.serviceMechanic.findMany({ where: { id: { in: mechanicIds } }, select: { userId: true } });
-  return [...new Set(mechanics.map((row) => row.userId).filter((value): value is string => Boolean(value)))];
+  const userIds: string[] = [];
+  for (const row of mechanics as Array<{ userId: string | null }>) if (row.userId) userIds.push(row.userId);
+  return [...new Set(userIds)];
 }
 
 export async function isWorkOrderExecutor(context: AccessContext, workOrderId: string) {

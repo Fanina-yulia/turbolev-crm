@@ -1,4 +1,4 @@
-import { state } from "./state.ts";
+import { state } from "./state";
 const rec = (fn: string, ret: unknown = {}) => async (...args: unknown[]) => { state.__calls.push({ fn, args }); return typeof ret === "function" ? (ret as any)(...args) : ret; };
 class Err extends Error { code = "X"; details: unknown; decision = { code: "X", missingGates: [] as string[] }; status = 409; }
 export class WorkOrderFinanceValidationError extends Err {}

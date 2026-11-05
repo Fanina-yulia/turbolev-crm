@@ -1,4 +1,4 @@
-import { state } from "./state.ts";
+import { state } from "./state";
 export async function canAccessWorkOrder(ctx: any, scope: string | null, id: string) {
   if (scope === "ALL") return true;
   const s = ctx.session; if (!s || !scope) return false;

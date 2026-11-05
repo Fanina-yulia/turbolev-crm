@@ -5,8 +5,8 @@
  * Database, session and services are in-memory fakes (scripts/sec-r1-stubs); no real data is touched.
  */
 import assert from "node:assert/strict";
-import { state, type Session } from "./sec-r1-stubs/state.ts";
-import { PERMISSIONS as P } from "../src/security/permissions.ts";
+import { state, type Session } from "./sec-r1-stubs/state";
+import { PERMISSIONS as P } from "../src/security/permissions";
 
 const W1 = "wo-1"; const W_OTHER = "wo-s2";
 state.__workOrderStation = { [W1]: "S1", [W_OTHER]: "S2" };
@@ -24,13 +24,13 @@ const sessions: Record<string, Session> = {
 };
 
 const routes = {
-  lines: await import("../app/api/work-orders/[id]/lines/route.ts"),
-  line: await import("../app/api/work-orders/[id]/lines/[lineId]/route.ts"),
-  estimate: await import("../app/api/work-orders/[id]/estimate/route.ts"),
-  decision: await import("../app/api/work-orders/[id]/estimate/decision/route.ts"),
-  parts: await import("../app/api/work-orders/[id]/parts-request/route.ts"),
-  qc: await import("../app/api/work-orders/[id]/qc/route.ts"),
-  numbers: await import("../app/api/work-orders/numbers/route.ts"),
+  lines: await import("../app/api/work-orders/[id]/lines/route"),
+  line: await import("../app/api/work-orders/[id]/lines/[lineId]/route"),
+  estimate: await import("../app/api/work-orders/[id]/estimate/route"),
+  decision: await import("../app/api/work-orders/[id]/estimate/decision/route"),
+  parts: await import("../app/api/work-orders/[id]/parts-request/route"),
+  qc: await import("../app/api/work-orders/[id]/qc/route"),
+  numbers: await import("../app/api/work-orders/numbers/route"),
 };
 
 type Case = { name: string; run: (id: string, body?: unknown) => Promise<Response> };
