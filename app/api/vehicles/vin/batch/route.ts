@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { validateVin } from "@/src/domain/vin";
 import { decodeVinIntelligence } from "@/src/services/vin-intelligence.service";
+import { authorize } from "@/src/security/authorize";
+import { PERMISSIONS } from "@/src/security/permissions";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -10,6 +12,8 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 export async function POST(request: Request) {
+  const access = await authorize(PERMISSIONS.OVERVIEW_READ, { request, strict: true, minimumScope: "SELF" });
+  if (!access.allowed) return access.response!;
   let parsed: unknown;
   try {
     parsed = await request.json();

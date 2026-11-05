@@ -5,11 +5,15 @@ import {
   MVS_OPEN_DATA_RESOURCES,
   MVS_OPEN_DATA_SOURCE_URL,
 } from "@/src/services/mvs-open-data.provider";
+import { authorize } from "@/src/security/authorize";
+import { PERMISSIONS } from "@/src/security/permissions";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
 
 export async function GET(request: Request) {
+  const access = await authorize(PERMISSIONS.OVERVIEW_READ, { request, strict: true, minimumScope: "SELF" });
+  if (!access.allowed) return access.response!;
   const { searchParams } = new URL(request.url);
   const plate = normalizeRegistrationPlate(searchParams.get("plate") ?? "");
   const year = Number.parseInt(searchParams.get("year") ?? "", 10);

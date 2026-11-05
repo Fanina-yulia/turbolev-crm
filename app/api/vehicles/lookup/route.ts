@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { lookupVehicleByPlate, normalizeRegistrationPlate } from "@/src/services/vehicle-lookup.service";
 import { resolveVehicleColorByPlate } from "@/src/services/vehicle-registry-color.service";
+import { authorize } from "@/src/security/authorize";
+import { PERMISSIONS } from "@/src/security/permissions";
 
 export const runtime = "nodejs";
 // Vehicle lookup reads the fast Neon registry index first; deep MVS scans are opt-in only.
@@ -24,6 +26,8 @@ function canonicalMake(rawMake: string, rawModel: string) {
 }
 
 export async function GET(request: Request) {
+  const access = await authorize(PERMISSIONS.OVERVIEW_READ, { request, strict: true, minimumScope: "SELF" });
+  if (!access.allowed) return access.response!;
   const { searchParams } = new URL(request.url);
   const plate = normalizeRegistrationPlate(searchParams.get("plate") ?? "");
 

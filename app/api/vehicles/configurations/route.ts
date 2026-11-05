@@ -1,10 +1,14 @@
 import { NextResponse } from "next/server";
 import { listVehicleConfigurations } from "@/src/services/vehicle-configurations.service";
+import { authorize } from "@/src/security/authorize";
+import { PERMISSIONS } from "@/src/security/permissions";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
 
 export async function GET(request: Request) {
+  const access = await authorize(PERMISSIONS.OVERVIEW_READ, { request, strict: true, minimumScope: "SELF" });
+  if (!access.allowed) return access.response!;
   const { searchParams } = new URL(request.url);
   const make = (searchParams.get("make") ?? "").trim();
   const model = (searchParams.get("model") ?? "").trim();
