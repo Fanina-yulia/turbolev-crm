@@ -43,6 +43,7 @@ const SETTINGS_CONTRACTS: Record<SettingsTab, CrmScreenContract> = {
   workflow: "one-scroll",
   security: "one-scroll",
   partsCatalog: "one-scroll",
+  crmDictionary: "one-scroll",
 };
 
 export type CrmScreenRouteShape = {

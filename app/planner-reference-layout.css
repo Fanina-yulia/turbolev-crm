@@ -202,7 +202,7 @@
 
   [class*="planner-day-view_resource__"],
   [class*="planner-day-view_cell__"] {
-    min-height: 105px !important;
+    min-height: 118px !important;
   }
 
   [class*="planner-day-view_resource__"] {
@@ -223,7 +223,7 @@
   }
 
   [class*="planner-day-view_event__"] {
-    min-height: 92px !important;
+    min-height: 102px !important;
     margin: 5px 3px !important;
     padding: 6px 7px !important;
     border-radius: 8px !important;

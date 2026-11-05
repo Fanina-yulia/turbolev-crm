@@ -181,7 +181,7 @@ export async function savePlannedWorkOrderFinance(
   const prisma = getPrisma();
 
   return prisma.$transaction(async (tx) => {
-    await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`wo-finance-plan:${workOrderId}`}))`;
+    await tx.$queryRaw`SELECT 1::int AS locked FROM pg_advisory_xact_lock(hashtext(${`wo-finance-plan:${workOrderId}`}))`;
     const context = await resolveWorkOrderContext(tx, workOrderId);
     const actual = await tx.workOrderFinanceSnapshot.findUnique({
       where: { workOrderId_kind: { workOrderId, kind: "ACTUAL" } },
@@ -267,7 +267,7 @@ export async function finalizeWorkOrderFinance(
   const prisma = getPrisma();
 
   return prisma.$transaction(async (tx) => {
-    await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`wo-finance-finalize:${workOrderId}`}))`;
+    await tx.$queryRaw`SELECT 1::int AS locked FROM pg_advisory_xact_lock(hashtext(${`wo-finance-finalize:${workOrderId}`}))`;
     const context = await resolveWorkOrderContext(tx, workOrderId);
     const existingActual = await tx.workOrderFinanceSnapshot.findUnique({
       where: { workOrderId_kind: { workOrderId, kind: "ACTUAL" } },
@@ -362,9 +362,23 @@ export async function finalizeWorkOrderFinance(
       });
     }
 
+    const liveLaborCompensation = await tx.financialEvent.aggregate({
+      where: {
+        status: "POSTED",
+        workOrderId,
+        sourceEntity: "SALARY_ACCRUAL",
+        category: { code: "COGS_LABOR" },
+      },
+      _sum: { amount: true },
+    });
+    const liveLaborAmount = toDecimal(liveLaborCompensation._sum.amount);
+    const residualLaborCost = calculation.laborCost.greaterThan(liveLaborAmount)
+      ? calculation.laborCost.minus(liveLaborAmount)
+      : new Prisma.Decimal(0);
+
     const costLines = [
       ["COGS_PARTS", "Собівартість запчастин", calculation.partsCost],
-      ["COGS_LABOR", "Пряма вартість праці", calculation.laborCost],
+      ["COGS_LABOR", "Пряма вартість праці (залишок після live-нарахувань)", residualLaborCost],
       ["COGS_EXTERNAL", "Сторонні роботи", calculation.externalCost],
       ["COGS_CONSUMABLES", "Витратні матеріали", calculation.consumablesCost],
       ["COGS_OTHER", "Інші прямі витрати", calculation.otherDirectCost],
@@ -447,7 +461,7 @@ export async function recordWorkOrderPayment(
 
   const prisma = getPrisma();
   return prisma.$transaction(async (tx) => {
-    await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`wo-payment:${workOrderId}:${idempotencyKey}`}))`;
+    await tx.$queryRaw`SELECT 1::int AS locked FROM pg_advisory_xact_lock(hashtext(${`wo-payment:${workOrderId}:${idempotencyKey}`}))`;
 
     const existingPayment = await tx.cashTransaction.findFirst({
       where: { sourceEntity: SOURCE_PAYMENT, sourceEntityId: idempotencyKey, workOrderId },

@@ -57,8 +57,20 @@ type AppointmentResult = {
   location: { id: string; name: string };
 };
 
+type DictionaryResult = {
+  id: string;
+  type: "PART" | "SERVICE" | "SYMPTOM" | "PROCESS";
+  category: string;
+  canonicalName: string;
+  canonicalCode: string | null;
+  matchedAlias: string;
+  matchType: "EXACT" | "CONTAINS";
+  requiresFitmentCheck: boolean;
+};
+
 type SearchResponse = {
   ok: boolean;
+  dictionary?: DictionaryResult[];
   clients?: ClientResult[];
   vehicles?: VehicleResult[];
   workOrders?: WorkOrderResult[];
@@ -95,6 +107,13 @@ function appointmentDate(value: string) {
   }).format(date);
 }
 
+function dictionaryTypeLabel(value: DictionaryResult["type"]) {
+  if (value === "PART") return "Деталь";
+  if (value === "SERVICE") return "Робота";
+  if (value === "SYMPTOM") return "Симптом";
+  return "CRM";
+}
+
 export function GlobalSmartSearch() {
   const inputRef = useRef<HTMLInputElement>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
@@ -126,7 +145,7 @@ export function GlobalSmartSearch() {
   useEffect(() => {
     const trimmed = query.trim();
     if (!trimmed) {
-      setData({ ok: true, clients: [], vehicles: [], workOrders: [], diagnostics: [], appointments: [] });
+      setData({ ok: true, dictionary: [], clients: [], vehicles: [], workOrders: [], diagnostics: [], appointments: [] });
       setLoading(false);
       setActiveIndex(-1);
       return;
@@ -143,7 +162,7 @@ export function GlobalSmartSearch() {
         setActiveIndex(-1);
       } catch (error) {
         if ((error as Error).name !== "AbortError") {
-          setData({ ok: false, clients: [], vehicles: [], workOrders: [], diagnostics: [], appointments: [], error: error instanceof Error ? error.message : "Помилка пошуку" });
+          setData({ ok: false, dictionary: [], clients: [], vehicles: [], workOrders: [], diagnostics: [], appointments: [], error: error instanceof Error ? error.message : "Помилка пошуку" });
         }
       } finally {
         if (!controller.signal.aborted) setLoading(false);
@@ -195,7 +214,8 @@ export function GlobalSmartSearch() {
   };
 
   const hasQuery = query.trim().length > 0;
-  const empty = hasQuery && !loading && data.ok && flat.length === 0;
+  const dictionary = data.dictionary || [];
+  const empty = hasQuery && !loading && data.ok && flat.length === 0 && dictionary.length === 0;
 
   return <div className={styles.root} ref={wrapperRef}>
     <div className={`${styles.inputWrap} ${open ? styles.inputWrapOpen : ""}`}>
@@ -218,6 +238,17 @@ export function GlobalSmartSearch() {
     {open && hasQuery && <div className={styles.panel} id="crm-global-search-results" role="listbox">
       {!data.ok && <div className={styles.message}>{data.error || "Пошук недоступний"}</div>}
       {empty && <div className={styles.message}><b>Нічого не знайдено</b><span>Перевірте ПІБ, телефон, держномер, VIN, номер КП, діагностику або запис.</span></div>}
+
+      {dictionary.length > 0 && <ResultGroup title="Словник CRM">
+        {dictionary.map((row) => <button key={`${row.id}-${row.matchedAlias}`} type="button" className={`${styles.result} ${styles.dictionaryResult}`} onClick={() => navigateCrm("Налаштування", { settingsTab: "crmDictionary" })}>
+          <span className={styles.badge}>СЛ</span>
+          <span className={styles.resultBody}>
+            <strong>{row.matchedAlias} → {row.canonicalName}</strong>
+            <small>{dictionaryTypeLabel(row.type)} · {row.category}{row.requiresFitmentCheck ? " · потрібна перевірка VIN/авто/сторони" : ""}</small>
+          </span>
+          <span className={styles.status}>{row.matchType === "EXACT" ? "точний збіг" : "підказка"}</span>
+        </button>)}
+      </ResultGroup>}
 
       {(data.workOrders || []).length > 0 && <ResultGroup title="Комерційна пропозиція">
         {(data.workOrders || []).map((row) => {

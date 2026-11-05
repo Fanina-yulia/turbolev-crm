@@ -1,11 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getPrisma } from "@/src/lib/prisma";
+import { authorize } from "@/src/security/authorize";
+import { PERMISSIONS } from "@/src/security/permissions";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
 
 export async function GET(request: NextRequest) {
+  const access = await authorize(PERMISSIONS.PROCUREMENT_READ, { request, strict: true, minimumScope: "SELF" });
+  if (!access.allowed) return access.response!;
   const q = (request.nextUrl.searchParams.get("q") || "").trim();
   if (q.length < 2) return NextResponse.json({ ok: true, count: 0, items: [] }, { headers: { "Cache-Control": "no-store" } });
   const prisma = getPrisma();

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getPrisma } from "@/src/lib/prisma";
+import { CRM_DICTIONARY_SETTING_KEY, CRM_DICTIONARY_UNKNOWN_TERMS_SETTING_KEY, DEFAULT_CRM_DICTIONARY } from "@/src/services/crm-dictionary.service";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -20,7 +21,7 @@ type SettingRow = { key: string; value: unknown; updatedAt: Date };
 type ScheduleDay = { day: number; label: string; enabled: boolean; open: string; close: string };
 
 const DIRECTORY_CATEGORIES = new Set<DirectoryCategory>(["PERSONNEL", "SUPPLIER", "WAREHOUSE", "WORK_PRICE", "CASH"]);
-const SETTING_KEYS = new Set(["work_schedule", "markup", "client_rules", "cash_rules"]);
+const SETTING_KEYS = new Set(["work_schedule", "markup", "client_rules", "cash_rules", CRM_DICTIONARY_SETTING_KEY, CRM_DICTIONARY_UNKNOWN_TERMS_SETTING_KEY]);
 const POST_TYPES = new Set(["LIFT", "NO_LIFT", "PIT", "ALIGNMENT"]);
 
 function clean(value: unknown, max = 180) {
@@ -112,6 +113,8 @@ export async function GET() {
       }),
     ]);
     const settings = Object.fromEntries(settingsRows.map((row) => [row.key, row.value]));
+    if (!settings[CRM_DICTIONARY_SETTING_KEY]) settings[CRM_DICTIONARY_SETTING_KEY] = DEFAULT_CRM_DICTIONARY;
+    if (!settings[CRM_DICTIONARY_UNKNOWN_TERMS_SETTING_KEY]) settings[CRM_DICTIONARY_UNKNOWN_TERMS_SETTING_KEY] = { version: 1, terms: [] };
     return NextResponse.json({ ok: true, location, settings, directory, clientCount, recentClients }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
     console.error("Operational settings GET failed", error);

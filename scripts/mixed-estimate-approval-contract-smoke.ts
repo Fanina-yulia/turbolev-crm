@@ -18,7 +18,7 @@ assert.match(service, /confirmMixedEstimateApproval/);
 assert.match(service, /requestMixedEstimateRevision/);
 assert.match(service, /status: "CANCELLED"/);
 assert.match(service, /ensureEstimateSnapshotTx/);
-assert.match(service, /pg_advisory_xact_lock/);
+assert.match(service, /PRISMA_TRANSACTION_ADVISORY_LOCK_SQL|pg_advisory_xact_lock/);
 assert.match(route, /REQUEST_REVISION/);
 assert.match(route, /PERMISSIONS\.WORK_ORDERS_ESTIMATE/);
 assert.match(portal, /managerReviewRequired/);

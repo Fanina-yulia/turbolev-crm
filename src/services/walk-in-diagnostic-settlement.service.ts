@@ -2,6 +2,7 @@ import { Prisma } from "@/src/generated/prisma/client";
 import { getPrisma } from "@/src/lib/prisma";
 import { mechanicPaymentBlockReason } from "@/src/domain/mechanic-payment-policy";
 import { toPrismaJson } from "@/src/lib/prisma-json";
+import { postWalkInDiagnosticCompensation } from "@/src/services/compensation-engine.service";
 
 const WALK_IN_SOURCE = "WALK_IN";
 const WALK_IN_MARKER = "WALK_IN_DIAGNOSTIC:";
@@ -29,7 +30,7 @@ async function mechanicContext(userId: string, diagnosticRequestId: string) {
   const prisma = getPrisma();
   const mechanic = await prisma.serviceMechanic.findFirst({
     where: { userId, isActive: true },
-    select: { id: true, name: true, locationId: true },
+    select: { id: true, name: true, locationId: true, employeeId: true },
     orderBy: { updatedAt: "desc" },
   });
   if (!mechanic) throw new WalkInDiagnosticSettlementError("MECHANIC_NOT_LINKED", "Профіль механіка не прив’язаний до станції.", 403);
@@ -291,7 +292,7 @@ export async function markWalkInDiagnosticCompleted(userId: string, diagnosticRe
 
   const completedAt = new Date();
   await prisma.$transaction(async (tx) => {
-    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`walk-in-complete:${diagnosticRequestId}`}))`;
+    await tx.$executeRaw`SELECT 1::int AS locked FROM pg_advisory_xact_lock(hashtext(${`walk-in-complete:${diagnosticRequestId}`}))`;
     const existingAudit = await tx.auditEvent.findFirst({
       where: { entityType: "DiagnosticRequest", entityId: diagnosticRequestId, action: "WALK_IN_DIAGNOSTIC_COMPLETED" },
       select: { id: true, createdAt: true },
@@ -488,8 +489,10 @@ export async function payWalkInDiagnostic(
     );
   }
 
+  const recognizedAt = completionAudit?.createdAt || appointment.actualStartAt || new Date();
+
   await prisma.$transaction(async (tx) => {
-    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`walk-in-payment:${diagnosticRequestId}`}))`;
+    await tx.$executeRaw`SELECT 1::int AS locked FROM pg_advisory_xact_lock(hashtext(${`walk-in-payment:${diagnosticRequestId}`}))`;
 
     const existingPayment = await tx.cashTransaction.findFirst({
       where: { sourceEntity: PAYMENT_SOURCE, sourceEntityId: `${diagnosticRequestId}:payment`, status: "POSTED" },
@@ -522,7 +525,6 @@ export async function payWalkInDiagnostic(
     } });
     if (!freshAccount) throw new WalkInDiagnosticSettlementError("MONEY_ACCOUNT_NOT_CONFIGURED", "Перевірте касу або рахунок еквайрингу станції.", 409);
 
-    const recognizedAt = completionAudit?.createdAt || appointment.actualStartAt || new Date();
     const charge = await ensureWalkInCharge(tx, {
       diagnosticRequestId,
       appointmentId: appointment.id,
@@ -602,6 +604,28 @@ export async function payWalkInDiagnostic(
     });
   });
 
+  await postWalkInDiagnosticCompensation({
+    diagnosticRequestId,
+    employeeId: mechanic.employeeId,
+    mechanicRef: mechanic.id,
+    amount: Number(amount),
+    occurredAt: recognizedAt,
+    appointmentId: appointment.id,
+    locationId: mechanic.locationId,
+  }).catch(async (compensationError) => {
+    console.error("walk-in diagnostic compensation posting failed", compensationError);
+    await prisma.auditEvent.create({
+      data: {
+        actorId: userId,
+        actorName: mechanic.name,
+        entityType: "DiagnosticRequest",
+        entityId: diagnosticRequestId,
+        action: "COMPENSATION_POST_FAILED",
+        metadata: toPrismaJson({ appointmentId: appointment.id, error: compensationError instanceof Error ? compensationError.message : "UNKNOWN" }),
+      },
+    }).catch(() => undefined);
+  });
+
   return getWalkInDiagnosticSettlement(userId, diagnosticRequestId);
 }
 
@@ -616,7 +640,7 @@ export async function chooseWalkInPostPaymentRoute(
   if (!appointment) throw new WalkInDiagnosticSettlementError("NOT_WALK_IN", "Не знайдено пов’язаний візит діагностики. Зверніться до старшого станції.", 404);
 
   return prisma.$transaction(async (tx) => {
-    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`walk-in-route:${diagnosticRequestId}`}))`;
+    await tx.$executeRaw`SELECT 1::int AS locked FROM pg_advisory_xact_lock(hashtext(${`walk-in-route:${diagnosticRequestId}`}))`;
     const payment = await tx.cashTransaction.findFirst({
       where: { sourceEntity: PAYMENT_SOURCE, sourceEntityId: `${diagnosticRequestId}:payment`, status: "POSTED" },
     });

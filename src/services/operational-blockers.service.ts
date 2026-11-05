@@ -143,7 +143,7 @@ export async function createOperationalBlocker(input: OpenOperationalBlockerInpu
   const prisma = getPrisma();
 
   return prisma.$transaction(async (tx) => {
-    await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`operational-blocker:${sourceType}:${sourceId}:${code}`}))`;
+    await tx.$queryRaw`SELECT 1::int AS locked FROM pg_advisory_xact_lock(hashtext(${`operational-blocker:${sourceType}:${sourceId}:${code}`}))`;
     const existing = await tx.operationalBlocker.findFirst({
       where: { sourceType: sourceType as OperationalBlockerSourceType, sourceId, code, status: { in: [...ACTIVE_STATUSES] } },
       orderBy: { createdAt: "desc" },
@@ -221,7 +221,7 @@ export async function transitionOperationalBlocker(input: {
   const prisma = getPrisma();
   const comment = clean(input.resolutionComment, 4000);
   return prisma.$transaction(async (tx) => {
-    await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`operational-blocker-transition:${input.id}`}))`;
+    await tx.$queryRaw`SELECT 1::int AS locked FROM pg_advisory_xact_lock(hashtext(${`operational-blocker-transition:${input.id}`}))`;
     const current = await tx.operationalBlocker.findUnique({ where: { id: input.id } });
     if (!current) throw new Error("OPERATIONAL_BLOCKER_NOT_FOUND");
     const status = nextStatus(current.status, input.action);

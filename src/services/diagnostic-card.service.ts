@@ -245,7 +245,7 @@ export async function ensureDiagnosticCardReviewRevision(
   const prisma = getPrisma();
   const built = await buildCardSource(diagnosticRequestId);
   return prisma.$transaction(async (tx) => {
-    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`diagnostic-card:${diagnosticRequestId}`}))`;
+    await tx.$executeRaw`SELECT 1::int AS locked FROM pg_advisory_xact_lock(hashtext(${`diagnostic-card:${diagnosticRequestId}`}))`;
     let card = await tx.diagnosticCard.findUnique({ where: { diagnosticRequestId } });
     if (!card) {
       const number = await nextCardNumber(tx);
@@ -296,7 +296,7 @@ export async function finalizeDiagnosticCard(
   const actorName = clean(input.actorName) || "CRM / Сервіс-менеджер";
 
   return prisma.$transaction(async (tx) => {
-    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`diagnostic-card:${diagnosticRequestId}`}))`;
+    await tx.$executeRaw`SELECT 1::int AS locked FROM pg_advisory_xact_lock(hashtext(${`diagnostic-card:${diagnosticRequestId}`}))`;
     let card = await tx.diagnosticCard.findUnique({ where: { diagnosticRequestId } });
     if (!card) {
       const number = await nextCardNumber(tx);

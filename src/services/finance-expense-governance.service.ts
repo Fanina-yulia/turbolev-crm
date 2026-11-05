@@ -1,3 +1,4 @@
+import { PRISMA_TRANSACTION_ADVISORY_LOCK_SQL } from "@/src/lib/advisory-lock";
 import { Prisma } from "@/src/generated/prisma/client";
 import { getPrisma } from "@/src/lib/prisma";
 import { toPrismaJson } from "@/src/lib/prisma-json";
@@ -27,7 +28,7 @@ export async function approvalRequirementForExpense(expenseId: string) {
 export async function requestExpenseApproval(expenseId: string, actor: FinanceActor) {
   const prisma = getPrisma();
   return prisma.$transaction(async (tx) => {
-    await tx.$queryRawUnsafe("SELECT pg_advisory_xact_lock(hashtext($1))", `expense-approval-request:${expenseId}`);
+    await tx.$queryRawUnsafe(PRISMA_TRANSACTION_ADVISORY_LOCK_SQL, `expense-approval-request:${expenseId}`);
     const current = await tx.expenseDocument.findUnique({ where: { id: expenseId } });
     if (!current) throw new FinancialCenterV2Error("EXPENSE_NOT_FOUND", "Витрату не знайдено.", 404);
     if (!["DRAFT", "REJECTED"].includes(current.status)) throw new FinancialCenterV2Error("EXPENSE_NOT_SUBMITTABLE", "На погодження можна подати лише чернетку або відхилену витрату.", 409);
@@ -40,7 +41,7 @@ export async function requestExpenseApproval(expenseId: string, actor: FinanceAc
 export async function approveExpense(expenseId: string, actor: FinanceActor) {
   const prisma = getPrisma();
   return prisma.$transaction(async (tx) => {
-    await tx.$queryRawUnsafe("SELECT pg_advisory_xact_lock(hashtext($1))", `expense-approve:${expenseId}`);
+    await tx.$queryRawUnsafe(PRISMA_TRANSACTION_ADVISORY_LOCK_SQL, `expense-approve:${expenseId}`);
     const current = await tx.expenseDocument.findUnique({ where: { id: expenseId } });
     if (!current) throw new FinancialCenterV2Error("EXPENSE_NOT_FOUND", "Витрату не знайдено.", 404);
     if (!["PENDING_APPROVAL", "DRAFT"].includes(current.status)) throw new FinancialCenterV2Error("EXPENSE_NOT_APPROVABLE", "Витрата не очікує погодження.", 409);
@@ -55,7 +56,7 @@ export async function rejectExpense(expenseId: string, reason: unknown, actor: F
   const prisma = getPrisma();
   const rejectionReason = text(reason) || "Відхилено без коментаря";
   return prisma.$transaction(async (tx) => {
-    await tx.$queryRawUnsafe("SELECT pg_advisory_xact_lock(hashtext($1))", `expense-reject:${expenseId}`);
+    await tx.$queryRawUnsafe(PRISMA_TRANSACTION_ADVISORY_LOCK_SQL, `expense-reject:${expenseId}`);
     const current = await tx.expenseDocument.findUnique({ where: { id: expenseId } });
     if (!current) throw new FinancialCenterV2Error("EXPENSE_NOT_FOUND", "Витрату не знайдено.", 404);
     if (!["PENDING_APPROVAL", "APPROVED"].includes(current.status)) throw new FinancialCenterV2Error("EXPENSE_NOT_REJECTABLE", "Витрата не перебуває у стані погодження.", 409);
@@ -71,7 +72,7 @@ export async function reverseExpense(expenseId: string, reason: unknown, actor: 
   if (!reversalReason) throw new FinancialCenterV2Error("REVERSAL_REASON_REQUIRED", "Для сторно вкажіть причину.");
 
   return prisma.$transaction(async (tx) => {
-    await tx.$queryRawUnsafe("SELECT pg_advisory_xact_lock(hashtext($1))", `expense-reverse:${expenseId}`);
+    await tx.$queryRawUnsafe(PRISMA_TRANSACTION_ADVISORY_LOCK_SQL, `expense-reverse:${expenseId}`);
     const current = await tx.expenseDocument.findUnique({ where: { id: expenseId } });
     if (!current) throw new FinancialCenterV2Error("EXPENSE_NOT_FOUND", "Витрату не знайдено.", 404);
     if (current.status === "REVERSED") return { expense: current, reused: true };

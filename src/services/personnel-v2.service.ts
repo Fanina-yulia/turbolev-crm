@@ -76,10 +76,17 @@ function clean(value: unknown, max = 500) {
   const next = value.trim();
   return next ? next.slice(0, max) : null;
 }
-function numberOrNull(value: unknown) {
+function moneyRuleOrNull(value: unknown, fieldLabel: string) {
   if (value === "" || value == null) return null;
   const next = Number(value);
-  return Number.isFinite(next) ? next : null;
+  if (!Number.isFinite(next) || next < 0) throw new PersonnelV2Error("INVALID_COMPENSATION_RULE", `${fieldLabel} має бути числом від 0 грн.`);
+  return Math.round((next + Number.EPSILON) * 100) / 100;
+}
+function percentRuleOrNull(value: unknown, fieldLabel: string) {
+  if (value === "" || value == null) return null;
+  const next = Number(value);
+  if (!Number.isFinite(next) || next < 0 || next > 100) throw new PersonnelV2Error("INVALID_COMPENSATION_PERCENT", `${fieldLabel} має бути від 0% до 100%.`);
+  return Math.round((next + Number.EPSILON) * 10000) / 10000;
 }
 function roleSet(context: AccessContext) {
   return new Set(context.roles.map((role) => role.code));
@@ -361,12 +368,12 @@ export async function savePersonnelV2(input: ProfileInput, context: AccessContex
       crmLogin: crmLogin || null,
       crmPasswordHash,
       isActive,
-      baseSalary: numberOrNull(input.baseSalary),
-      minimumSalary: numberOrNull(input.minimumSalary),
-      workPercent: numberOrNull(input.workPercent),
-      partsSalesPercent: numberOrNull(input.partsSalesPercent),
-      partsMarginPercent: numberOrNull(input.partsMarginPercent),
-      netProfitPercent: numberOrNull(input.netProfitPercent),
+      baseSalary: moneyRuleOrNull(input.baseSalary, "Базова ставка"),
+      minimumSalary: moneyRuleOrNull(input.minimumSalary, "Мінімальна зарплата"),
+      workPercent: percentRuleOrNull(input.workPercent, "% від робіт"),
+      partsSalesPercent: percentRuleOrNull(input.partsSalesPercent, "% від продажу деталей"),
+      partsMarginPercent: percentRuleOrNull(input.partsMarginPercent, "% від маржі деталей"),
+      netProfitPercent: percentRuleOrNull(input.netProfitPercent, "% від чистого прибутку"),
       payrollRuleNote: clean(input.payrollRuleNote, 4000),
     };
     const employee = input.id
@@ -393,6 +400,15 @@ export async function savePersonnelV2(input: ProfileInput, context: AccessContex
       employmentType,
       userId: result.user?.id || null,
       localLoginConfigured: Boolean(result.employee.crmLogin && result.employee.crmPasswordHash),
+      compensationRule: {
+        baseSalary: result.employee.baseSalary?.toString() ?? null,
+        minimumSalary: result.employee.minimumSalary?.toString() ?? null,
+        workPercent: result.employee.workPercent?.toString() ?? null,
+        partsSalesPercent: result.employee.partsSalesPercent?.toString() ?? null,
+        partsMarginPercent: result.employee.partsMarginPercent?.toString() ?? null,
+        netProfitPercent: result.employee.netProfitPercent?.toString() ?? null,
+        payrollRuleNote: result.employee.payrollRuleNote ?? null,
+      },
     },
   });
   invalidateAccessContextCache();

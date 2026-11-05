@@ -1,10 +1,14 @@
 import { NextResponse } from "next/server";
 import { getPrisma } from "@/src/lib/prisma";
+import { authorize } from "@/src/security/authorize";
+import { PERMISSIONS } from "@/src/security/permissions";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+export async function GET(request: Request) {
+  const access = await authorize(PERMISSIONS.OVERVIEW_READ, { request, strict: true, minimumScope: "SELF" });
+  if (!access.allowed) return access.response!;
   try {
     const items = await getPrisma().user.findMany({
       where: { isActive: true },

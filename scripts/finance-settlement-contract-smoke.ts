@@ -16,7 +16,7 @@ assert.match(service, /reverseFinancialSettlement/);
 assert.match(service, /receiveCustomerAdvance/);
 assert.match(service, /applyCustomerAdvanceSettlement/);
 assert.match(service, /refundCustomerAdvanceSettlement/);
-assert.match(service, /pg_advisory_xact_lock/);
+assert.match(service, /PRISMA_TRANSACTION_ADVISORY_LOCK_SQL|pg_advisory_xact_lock/);
 assert.match(service, /financialSettlementAllocation/);
 assert.match(settlementsRoute, /PERMISSIONS\.FINANCE_WRITE/);
 assert.match(settlementsRoute, /REVERSE/);

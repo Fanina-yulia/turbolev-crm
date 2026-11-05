@@ -173,7 +173,7 @@ export async function incrementLeadAttempt(id: string, actorName = "CRM") {
 export async function convertLead(id: string, actorName = "CRM") {
   const prisma = getPrisma();
   return prisma.$transaction(async (tx) => {
-    await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`lead-convert:${id}`}))`;
+    await tx.$queryRaw`SELECT 1::int AS locked FROM pg_advisory_xact_lock(hashtext(${`lead-convert:${id}`}))`;
 
     const lead = await tx.lead.findUnique({ where: { id } });
     if (!lead) throw new LeadNotFoundError(id);

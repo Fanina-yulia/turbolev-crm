@@ -7,16 +7,24 @@ const failures=[];
 
 const component=read("app/crm-page-header.tsx");
 const css=read("app/crm-page-header.module.css");
+const frameCss=read("app/crm-one-screen-standard.css");
+const shellCss=read("app/crm-shell.module.css");
+const communicationsCss=read("app/communications-contact-inbox.module.css");
+const financeCss=read("app/financial-center-v2.module.css");
 const docs=read("docs/TZ_CRM_UNIFIED_PAGE_HEADER.md");
 const registry=JSON.parse(read("docs/modules/module-registry.json"));
 
-for(const marker of ["data-crm-page-header","data-crm-page-eyebrow","data-crm-page-title","data-crm-page-actions","data-crm-page-tabs","data-crm-page-controls"]){
+for(const marker of ["data-crm-page-header","data-crm-page-header-version=\"2\"","data-crm-page-eyebrow","data-crm-page-title","data-crm-page-actions","data-crm-page-tabs","data-crm-page-controls"]){
   if(!component.includes(marker)) failures.push(`Canonical header missing marker: ${marker}`);
 }
-for(const marker of ["font-size:28px","font-size:11px","letter-spacing:.11em","border-bottom:1px solid var(--line)"]){
+for(const marker of ["font-size:28px","font-size:11px","letter-spacing:.11em","border-bottom:1px solid var(--line)","--crm-header-tab-height:36px","--crm-header-action-height:40px","--crm-header-control-font:12px"]){
   if(!css.includes(marker)) failures.push(`Canonical header CSS missing: ${marker}`);
 }
-if(!docs.includes("CRM-UI-006")) failures.push("CRM-UI-006 specification missing");
+if(!frameCss.includes(':has(> [data-crm-page-header="true"])')||!frameCss.includes("padding-left: 0 !important")||!frameCss.includes("padding-top: 0 !important")) failures.push("Canonical page-root inset reset missing");
+if(!shellCss.includes("position:absolute")||!shellCss.includes("padding-right:150px")) failures.push("Dashboard global action still shifts the canonical header");
+if(!communicationsCss.includes(".tabs{display:flex;align-items:center;gap:6px;padding:0;border:0")) failures.push("Communications primary tabs still use module-specific header geometry");
+if(!financeCss.includes("border-color:color-mix(in srgb,var(--orange) 60%")) failures.push("Finance top-level tabs are not on canonical orange active accent");
+if(!docs.includes("CRM-UI-006")||!docs.includes("V2 — visual lock")) failures.push("CRM-UI-006 V2 specification missing");
 const rule=registry.globalRules?.find((item)=>item.id==="CRM-UI-006");
 if(!rule||rule.status!=="ACTIVE") failures.push("module-registry missing active CRM-UI-006");
 

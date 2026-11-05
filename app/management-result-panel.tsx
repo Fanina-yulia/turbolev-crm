@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { weekKeys } from "@/src/domain/management-result";
 import styles from "./management-result-panel.module.css";
 import { ManagementIntelligencePanels, type ManagementIntelligenceUiPayload } from "./management-intelligence-panels";
+import { OwnerFinancialResultPanel } from "./owner-financial-result-panel";
 
 type ManagementMode = "OWNER" | "EXECUTIVE" | "STATION";
 
@@ -109,6 +110,11 @@ function progressTone(value: number | null) {
 }
 
 export function ManagementResultPanel({ mode, locationId }: { mode: ManagementMode; locationId?: string | null }) {
+  if (mode === "OWNER") return <OwnerFinancialResultPanel locationId={locationId} />;
+  return <OperationalManagementResultPanel mode={mode} locationId={locationId} />;
+}
+
+function OperationalManagementResultPanel({ mode, locationId }: { mode: Exclude<ManagementMode, "OWNER">; locationId?: string | null }) {
   const [weekAnchor, setWeekAnchor] = useState(currentKyivDateKey);
   const [data, setData] = useState<ResultPayload | null>(null);
   const [loading, setLoading] = useState(true);
@@ -194,7 +200,7 @@ export function ManagementResultPanel({ mode, locationId }: { mode: ManagementMo
   const gauge = Math.max(0, Math.min(120, progress || 0));
   const forecastGap = data?.result.gap ?? null;
   const isCurrentWeek = selectedWeek === currentWeek;
-  const canEdit = mode === "OWNER" && isCurrentWeek && data?.plan?.status !== "ACTIVE" && data?.plan?.status !== "CLOSED";
+  const canEdit = false;
   const qualityWarning = (data?.dataQuality.closedWithoutFinalFinance || 0) + (data?.dataQuality.pipelineWithoutPlannedFinance || 0);
 
   return <section className={`${styles.panel} ${mode === "STATION" ? styles.stationMode : ""}`} aria-label="План факт прогноз">
@@ -260,7 +266,7 @@ export function ManagementResultPanel({ mode, locationId }: { mode: ManagementMo
       <ManagementIntelligencePanels data={data} mode={mode} weekAnchor={weekAnchor} locationId={locationId} onRefresh={load} />
 
       <div className={styles.actions}>
-        {data.plan && (mode === "OWNER" || mode === "EXECUTIVE") && !["ACTIVE", "CLOSED"].includes(data.plan.status) && <button type="button" onClick={() => void planAction("ACTIVATE")} disabled={saving}>Активувати план</button>}
+        {data.plan && mode === "EXECUTIVE" && !["ACTIVE", "CLOSED"].includes(data.plan.status) && <button type="button" onClick={() => void planAction("ACTIVATE")} disabled={saving}>Активувати план</button>}
         {data.plan && mode === "STATION" && !["ACTIVE", "CLOSED"].includes(data.plan.status) && <button type="button" onClick={() => void planAction("ACCEPT")} disabled={saving}>Прийняти план станції</button>}
         <span>Факт ≠ Cash In: виробничий результат і реально отримані гроші показуються окремо.</span>
       </div>

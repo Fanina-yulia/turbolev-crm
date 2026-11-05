@@ -1,3 +1,4 @@
+import { PRISMA_TRANSACTION_ADVISORY_LOCK_SQL } from "@/src/lib/advisory-lock";
 import { Prisma } from "@/src/generated/prisma/client";
 import { calculatePnl, decimalToNumber, outstandingAmount, roundMoney } from "@/src/domain/finance";
 import { getPrisma } from "@/src/lib/prisma";
@@ -6,7 +7,7 @@ import { toPrismaJson } from "@/src/lib/prisma-json";
 const DAY_MS = 86_400_000;
 const OPEN_OBLIGATION_STATUSES = ["OPEN", "PARTIALLY_PAID", "OVERDUE"] as const;
 const ACTIVE_FORECAST_STATUSES = ["PLANNED", "CONFIRMED"] as const;
-const BUDGET_METRICS = ["REVENUE", "COGS", "OPEX", "GROSS_PROFIT", "OPERATING_PROFIT", "NET_PROFIT", "CASH_FLOW", "CATEGORY"] as const;
+const BUDGET_METRICS = ["REVENUE", "COGS", "OPEX", "GROSS_PROFIT", "OPERATING_PROFIT", "NET_PROFIT", "CASH_FLOW", "CATEGORY", "NET_INCOME", "SERVICE_REVENUE", "PARTS_MARGIN", "PAYROLL", "GROSS_INCOME", "TOTAL_EXPENSES", "CASH_BALANCE"] as const;
 
 type BudgetMetric = (typeof BUDGET_METRICS)[number];
 
@@ -217,6 +218,29 @@ function pnlFromEvents(events: Array<{ pnlSection: string; amount: Prisma.Decima
   };
 }
 
+function isPayrollFinancialEvent(event: { sourceEntity: string | null; description: string | null }) {
+  const source = (event.sourceEntity || "").toUpperCase();
+  const description = (event.description || "").toLowerCase();
+  return source === "SALARY_ACCRUAL"
+    || source.startsWith("PAYROLL_PERIOD_EMPLOYEE")
+    || source.includes("PAYROLL")
+    || description.includes("зарплат")
+    || description.includes("нарахування працівнику");
+}
+
+function payrollEmployeeIdFromObligation(obligation: { sourceEntity: string | null; sourceEntityId: string | null; metadata?: Prisma.JsonValue | null }) {
+  if (!obligation.sourceEntity?.startsWith("PAYROLL_PERIOD_EMPLOYEE")) return null;
+  const metadata = obligation.metadata;
+  if (metadata && typeof metadata === "object" && !Array.isArray(metadata)) {
+    const employeeId = (metadata as Prisma.JsonObject).employeeId;
+    if (typeof employeeId === "string" && employeeId.trim()) return employeeId.trim();
+  }
+  const parts = (obligation.sourceEntityId || "").split(":").filter(Boolean);
+  if (!parts.length) return null;
+  if (obligation.sourceEntity === "PAYROLL_PERIOD_EMPLOYEE_LIVE" && parts.length >= 2) return parts[parts.length - 2] || null;
+  return parts[parts.length - 1] || null;
+}
+
 async function resolveSettings(scope: FinancialCenterScope) {
   const prisma = getPrisma();
   if (scope.locationId) {
@@ -253,7 +277,10 @@ export async function getFinancialCenterV2(scope: FinancialCenterScope) {
     }),
     prisma.financialEvent.findMany({
       where: { status: "POSTED", currency, recognizedAt: { gte: previous.from, lt: previous.to }, ...location },
-      select: { pnlSection: true, amount: true },
+      select: {
+        pnlSection: true, amount: true, sourceEntity: true, description: true,
+        category: { select: { code: true } },
+      },
     }),
     prisma.cashTransaction.findMany({
       where: { status: "POSTED", currency, occurredAt: { gte: scope.from, lt: scope.to }, ...location },
@@ -269,7 +296,7 @@ export async function getFinancialCenterV2(scope: FinancialCenterScope) {
     }) : Promise.resolve([]),
     prisma.financialObligation.findMany({
       where: { status: { in: [...OPEN_OBLIGATION_STATUSES] }, currency, ...location },
-      select: { id: true, direction: true, status: true, amount: true, settledAmount: true, issuedAt: true, dueAt: true, settledAt: true, categoryId: true, costCenterId: true, workOrderId: true, clientId: true, supplierId: true, locationId: true, counterpartyName: true, sourceEntity: true, sourceEntityId: true, description: true },
+      select: { id: true, direction: true, status: true, amount: true, settledAmount: true, issuedAt: true, dueAt: true, settledAt: true, categoryId: true, costCenterId: true, workOrderId: true, clientId: true, supplierId: true, locationId: true, counterpartyName: true, sourceEntity: true, sourceEntityId: true, description: true, metadata: true },
       orderBy: [{ dueAt: "asc" }, { issuedAt: "asc" }],
     }),
     prisma.financialCategory.findMany({
@@ -353,6 +380,147 @@ export async function getFinancialCenterV2(scope: FinancialCenterScope) {
     aging.payables.buckets[key] = roundMoney(aging.payables.buckets[key]);
   });
 
+  // Owner dashboard values and drill-downs are calculated once from the same ledger facts.
+  // This prevents a card from showing one number while its drawer explains a different metric.
+  const payrollEvents = events.filter(isPayrollFinancialEvent);
+  const payrollAccrued = roundMoney(payrollEvents.reduce((sum, event) => sum + decimalToNumber(event.amount), 0));
+  const payrollDirect = roundMoney(payrollEvents.filter((event) => event.pnlSection === "COGS").reduce((sum, event) => sum + decimalToNumber(event.amount), 0));
+  const payrollOpex = roundMoney(payrollEvents.filter((event) => event.pnlSection === "OPEX").reduce((sum, event) => sum + decimalToNumber(event.amount), 0));
+
+  const serviceRevenueCodes = new Set(["REV_LABOR", "REV_DIAGNOSTIC", "REV_DIAGNOSTICS", "REV_EXTERNAL"]);
+  const serviceEvents = events.filter((event) =>
+    event.pnlSection === "REVENUE"
+    && (serviceRevenueCodes.has(event.category?.code || "") || event.sourceEntity === "WALK_IN_DIAGNOSTIC"),
+  );
+  const serviceLabor = roundMoney(serviceEvents.filter((event) => event.category?.code === "REV_LABOR").reduce((sum, event) => sum + decimalToNumber(event.amount), 0));
+  const serviceDiagnostics = roundMoney(serviceEvents.filter((event) => ["REV_DIAGNOSTIC", "REV_DIAGNOSTICS"].includes(event.category?.code || "") || event.sourceEntity === "WALK_IN_DIAGNOSTIC").reduce((sum, event) => sum + decimalToNumber(event.amount), 0));
+  const serviceExternal = roundMoney(serviceEvents.filter((event) => event.category?.code === "REV_EXTERNAL").reduce((sum, event) => sum + decimalToNumber(event.amount), 0));
+  const serviceTurnover = roundMoney(serviceEvents.reduce((sum, event) => sum + decimalToNumber(event.amount), 0));
+
+  const partsRevenue = roundMoney(events.filter((event) => event.pnlSection === "REVENUE" && event.category?.code === "REV_PARTS").reduce((sum, event) => sum + decimalToNumber(event.amount), 0));
+  const partsCost = roundMoney(events.filter((event) => event.pnlSection === "COGS" && event.category?.code === "COGS_PARTS").reduce((sum, event) => sum + decimalToNumber(event.amount), 0));
+  const partsMargin = roundMoney(partsRevenue - partsCost);
+
+  const nonPartsDirectCosts = roundMoney(Math.max(0, pnl.cogs - partsCost));
+  const otherDirectCosts = roundMoney(Math.max(0, nonPartsDirectCosts - payrollDirect));
+  const otherOperatingCosts = roundMoney(Math.max(0, pnl.opex - payrollOpex));
+  const totalExpenses = roundMoney(payrollAccrued + otherDirectCosts + otherOperatingCosts + pnl.otherExpense + pnl.tax);
+  const grossIncome = roundMoney(serviceTurnover + partsMargin);
+  const netIncome = roundMoney(grossIncome - totalExpenses);
+
+  const accruedByEmployee = new Map<string, { accrued: number; labor: number; sales: number; baseAndOther: number; profitShare: number }>();
+  for (const event of payrollEvents) {
+    if (!event.employeeId) continue;
+    const current = accruedByEmployee.get(event.employeeId) || { accrued: 0, labor: 0, sales: 0, baseAndOther: 0, profitShare: 0 };
+    const amount = decimalToNumber(event.amount);
+    current.accrued += amount;
+    if (event.category?.code === "COGS_LABOR") current.labor += amount;
+    else if (event.category?.code === "COGS_STAFF_SALES") current.sales += amount;
+    else if (event.category?.code === "OPEX_PROFIT_SHARE") current.profitShare += amount;
+    else current.baseAndOther += amount;
+    accruedByEmployee.set(event.employeeId, current);
+  }
+
+  const dueByEmployee = new Map<string, { due: number; name: string | null }>();
+  for (const obligation of obligationRows) {
+    if (obligation.direction !== "PAYABLE" || !obligation.sourceEntity?.startsWith("PAYROLL_PERIOD_EMPLOYEE")) continue;
+    const employeeId = payrollEmployeeIdFromObligation(obligation);
+    if (!employeeId) continue;
+    const current = dueByEmployee.get(employeeId) || { due: 0, name: null };
+    current.due += obligation.outstanding;
+    current.name = current.name || obligation.counterpartyName || null;
+    dueByEmployee.set(employeeId, current);
+  }
+
+  const payrollEmployeeIds = Array.from(new Set([...accruedByEmployee.keys(), ...dueByEmployee.keys()]));
+  const payrollProfiles = payrollEmployeeIds.length ? await prisma.employeeProfile.findMany({
+    where: { id: { in: payrollEmployeeIds } },
+    select: { id: true, firstName: true, lastName: true, position: true },
+  }) : [];
+  const payrollProfileMap = new Map(payrollProfiles.map((employee) => [employee.id, employee]));
+  const payrollEmployees = payrollEmployeeIds.map((employeeId) => {
+    const profile = payrollProfileMap.get(employeeId);
+    const accrued = accruedByEmployee.get(employeeId) || { accrued: 0, labor: 0, sales: 0, baseAndOther: 0, profitShare: 0 };
+    const due = dueByEmployee.get(employeeId);
+    const profileName = profile ? [profile.lastName, profile.firstName].filter(Boolean).join(" ").trim() : "";
+    return {
+      employeeId,
+      name: profileName || due?.name || "Працівник",
+      position: profile?.position || null,
+      accrued: roundMoney(accrued.accrued),
+      due: roundMoney(due?.due || 0),
+      labor: roundMoney(accrued.labor),
+      sales: roundMoney(accrued.sales),
+      baseAndOther: roundMoney(accrued.baseAndOther),
+      profitShare: roundMoney(accrued.profitShare),
+    };
+  }).sort((a, b) => b.due - a.due || b.accrued - a.accrued || a.name.localeCompare(b.name, "uk"));
+
+  const payrollDue = roundMoney(payrollEmployees.reduce((sum, employee) => sum + employee.due, 0));
+  const ownerSummary = {
+    netIncome,
+    serviceTurnover,
+    partsMargin,
+    payrollAccrued,
+    payrollDue,
+    grossIncome,
+    totalExpenses,
+    cash: currentCash,
+    partsRevenue,
+    partsCost,
+    serviceBreakdown: {
+      labor: serviceLabor,
+      diagnostics: serviceDiagnostics,
+      external: serviceExternal,
+      other: roundMoney(Math.max(0, serviceTurnover - serviceLabor - serviceDiagnostics - serviceExternal)),
+    },
+    expenseBreakdown: {
+      payroll: payrollAccrued,
+      otherDirect: otherDirectCosts,
+      otherOperating: otherOperatingCosts,
+      otherExpense: pnl.otherExpense,
+      tax: pnl.tax,
+    },
+    payrollEmployees,
+  };
+
+  // Exact owner-profit bridge to the immediately preceding period.
+  // Drivers reconcile to the same management formula used by ownerSummary:
+  // services + parts margin - payroll - other expenses.
+  const previousPayrollEvents = previousEvents.filter(isPayrollFinancialEvent);
+  const previousPayrollAccrued = roundMoney(previousPayrollEvents.reduce((sum, event) => sum + decimalToNumber(event.amount), 0));
+  const previousPayrollDirect = roundMoney(previousPayrollEvents.filter((event) => event.pnlSection === "COGS").reduce((sum, event) => sum + decimalToNumber(event.amount), 0));
+  const previousPayrollOpex = roundMoney(previousPayrollEvents.filter((event) => event.pnlSection === "OPEX").reduce((sum, event) => sum + decimalToNumber(event.amount), 0));
+  const previousServiceTurnover = roundMoney(previousEvents
+    .filter((event) => event.pnlSection === "REVENUE" && (serviceRevenueCodes.has(event.category?.code || "") || event.sourceEntity === "WALK_IN_DIAGNOSTIC"))
+    .reduce((sum, event) => sum + decimalToNumber(event.amount), 0));
+  const previousPartsRevenue = roundMoney(previousEvents
+    .filter((event) => event.pnlSection === "REVENUE" && event.category?.code === "REV_PARTS")
+    .reduce((sum, event) => sum + decimalToNumber(event.amount), 0));
+  const previousPartsCost = roundMoney(previousEvents
+    .filter((event) => event.pnlSection === "COGS" && event.category?.code === "COGS_PARTS")
+    .reduce((sum, event) => sum + decimalToNumber(event.amount), 0));
+  const previousPartsMargin = roundMoney(previousPartsRevenue - previousPartsCost);
+  const previousNonPartsDirectCosts = roundMoney(Math.max(0, previousPnl.cogs - previousPartsCost));
+  const previousOtherDirectCosts = roundMoney(Math.max(0, previousNonPartsDirectCosts - previousPayrollDirect));
+  const previousOtherOperatingCosts = roundMoney(Math.max(0, previousPnl.opex - previousPayrollOpex));
+  const previousOtherExpenses = roundMoney(previousOtherDirectCosts + previousOtherOperatingCosts + previousPnl.otherExpense + previousPnl.tax);
+  const currentOtherExpenses = roundMoney(totalExpenses - payrollAccrued);
+  const previousTotalExpenses = roundMoney(previousPayrollAccrued + previousOtherExpenses);
+  const previousGrossIncome = roundMoney(previousServiceTurnover + previousPartsMargin);
+  const previousNetIncome = roundMoney(previousGrossIncome - previousTotalExpenses);
+  const ownerComparison = {
+    previousNetIncome,
+    change: roundMoney(netIncome - previousNetIncome),
+    changePercent: changePercent(netIncome, previousNetIncome),
+    drivers: [
+      { code: "SERVICES", label: "Послуги", current: serviceTurnover, previous: previousServiceTurnover, impact: roundMoney(serviceTurnover - previousServiceTurnover) },
+      { code: "PARTS_MARGIN", label: "Маржа деталей", current: partsMargin, previous: previousPartsMargin, impact: roundMoney(partsMargin - previousPartsMargin) },
+      { code: "PAYROLL", label: "ЗП персоналу", current: payrollAccrued, previous: previousPayrollAccrued, impact: roundMoney(-(payrollAccrued - previousPayrollAccrued)) },
+      { code: "OTHER_EXPENSES", label: "Інші витрати", current: currentOtherExpenses, previous: previousOtherExpenses, impact: roundMoney(-(currentOtherExpenses - previousOtherExpenses)) },
+    ],
+  };
+
   const categoryActual = new Map<string, number>();
   for (const event of events) {
     if (!event.categoryId) continue;
@@ -366,6 +534,13 @@ export async function getFinancialCenterV2(scope: FinancialCenterScope) {
     if (metric === "GROSS_PROFIT") return pnl.grossProfit;
     if (metric === "OPERATING_PROFIT") return pnl.operatingProfit;
     if (metric === "NET_PROFIT") return pnl.netProfit;
+    if (metric === "NET_INCOME") return ownerSummary.netIncome;
+    if (metric === "SERVICE_REVENUE") return ownerSummary.serviceTurnover;
+    if (metric === "PARTS_MARGIN") return ownerSummary.partsMargin;
+    if (metric === "PAYROLL") return ownerSummary.payrollAccrued;
+    if (metric === "GROSS_INCOME") return ownerSummary.grossIncome;
+    if (metric === "TOTAL_EXPENSES") return ownerSummary.totalExpenses;
+    if (metric === "CASH_BALANCE") return ownerSummary.cash;
     if (metric === "CASH_FLOW") return roundMoney(cashSection.inflow - cashSection.outflow);
     if (metric === "CATEGORY" && categoryId) return roundMoney(categoryActual.get(categoryId) || 0);
     return 0;
@@ -656,6 +831,170 @@ export async function getFinancialCenterV2(scope: FinancialCenterScope) {
     marginPercent: row.revenue > 0 ? roundMoney(row.profit / row.revenue * 100) : null,
   })).sort((a, b) => b.profit - a.profit);
 
+  const qualityIssues: Array<{ code: string; level: "INFO" | "WARNING" | "CRITICAL"; title: string; message: string; count: number }> = [];
+  const scopedLocationIds = scope.locationId
+    ? [scope.locationId]
+    : (scope.allowedLocationIds?.filter(Boolean) || []);
+  const workOrderLocationScopeSql = scopedLocationIds.length
+    ? Prisma.sql`AND EXISTS (
+        SELECT 1
+          FROM "ServiceAppointment" sa
+         WHERE sa."workOrderId" = wol."workOrderId"
+           AND sa."locationId" IN (${Prisma.join(scopedLocationIds)})
+      )`
+    : Prisma.sql``;
+
+  const missingLaborRows = await prisma.$queryRaw<Array<{ count: bigint }>>(Prisma.sql`
+    SELECT COUNT(*)::bigint AS "count"
+      FROM "WorkOrderLine" wol
+     WHERE wol."status"::text = 'COMPLETED'
+       AND wol."type"::text = 'LABOR'
+       AND wol."completedAt" >= ${scope.from}
+       AND wol."completedAt" < ${scope.to}
+       AND wol."mechanicId" IS NOT NULL
+       AND GREATEST(
+         0,
+         COALESCE(wol."actualQuantity", wol."plannedQuantity", 0)
+           * COALESCE(wol."actualUnitPrice", wol."plannedUnitPrice", 0)
+           - COALESCE(wol."actualDiscount", wol."plannedDiscount", 0)
+       ) > 0
+       ${workOrderLocationScopeSql}
+       AND EXISTS (
+         SELECT 1
+           FROM "EmployeeProfile" ep
+          WHERE COALESCE(ep."workPercent", 0) > 0
+            AND (
+              ep."id" = wol."mechanicId"
+              OR ep."userId" = wol."mechanicId"
+              OR EXISTS (
+                SELECT 1
+                  FROM "ServiceMechanic" sm
+                 WHERE sm."employeeId" = ep."id"
+                   AND (
+                     sm."id" = wol."mechanicId"
+                     OR sm."userId" = wol."mechanicId"
+                     OR sm."employeeId" = wol."mechanicId"
+                   )
+              )
+            )
+       )
+       AND NOT EXISTS (
+         SELECT 1
+           FROM "SalaryAccrual" a
+          WHERE a."status"::text = 'POSTED'
+            AND a."sourceType" = 'WORK_ORDER_LABOR'
+            AND a."sourceId" = wol."id"
+       )
+  `);
+  const missingLaborAccruals = Number(missingLaborRows[0]?.count || 0n);
+  if (missingLaborAccruals > 0) qualityIssues.push({
+    code: "MISSING_LABOR_COMPENSATION",
+    level: "CRITICAL",
+    title: "Не врахована пряма оплата праці",
+    message: `${missingLaborAccruals} виконаних робіт мають % працівника, але ще не мають зарплатного нарахування.`,
+    count: missingLaborAccruals,
+  });
+
+  const missingPartCostRows = await prisma.$queryRaw<Array<{ count: bigint }>>(Prisma.sql`
+    SELECT COUNT(*)::bigint AS "count"
+      FROM "WorkOrderLine" wol
+     WHERE wol."status"::text = 'COMPLETED'
+       AND wol."type"::text = 'PART'
+       AND wol."completedAt" >= ${scope.from}
+       AND wol."completedAt" < ${scope.to}
+       AND GREATEST(
+         0,
+         COALESCE(wol."actualQuantity", wol."plannedQuantity", 0)
+           * COALESCE(wol."actualUnitPrice", wol."plannedUnitPrice", 0)
+           - COALESCE(wol."actualDiscount", wol."plannedDiscount", 0)
+       ) > 0
+       AND COALESCE(wol."actualQuantity", wol."plannedQuantity", 0)
+           * COALESCE(wol."actualUnitCost", wol."plannedUnitCost", 0) <= 0
+       ${workOrderLocationScopeSql}
+  `);
+  const missingPartCosts = Number(missingPartCostRows[0]?.count || 0n);
+  if (missingPartCosts > 0) qualityIssues.push({
+    code: "MISSING_PART_COST",
+    level: "WARNING",
+    title: "Продані деталі без закупівельної собівартості",
+    message: `${missingPartCosts} завершених позицій деталей мають продаж, але нульову/відсутню собівартість.`,
+    count: missingPartCosts,
+  });
+
+  const walkInRevenueEvents = events.filter((event) => event.sourceEntity === "WALK_IN_DIAGNOSTIC" && String(event.sourceEntityId || "").endsWith(":revenue"));
+  const diagnosticIds = walkInRevenueEvents.map((event) => String(event.sourceEntityId).replace(/:revenue$/, ""));
+  const walkInAccruals = diagnosticIds.length ? await prisma.salaryAccrual.findMany({
+    where: { status: "POSTED", sourceType: "WALK_IN_DIAGNOSTIC_LABOR", sourceId: { in: diagnosticIds } },
+    select: { sourceId: true },
+  }) : [];
+  const walkInAccrualIds = new Set(walkInAccruals.map((row) => row.sourceId).filter(Boolean));
+  const missingWalkInLabor = diagnosticIds.filter((id) => !walkInAccrualIds.has(id)).length;
+  if (missingWalkInLabor > 0) qualityIssues.push({
+    code: "MISSING_WALK_IN_LABOR",
+    level: "CRITICAL",
+    title: "Діагностика без собівартості механіка",
+    message: `${missingWalkInLabor} діагностик мають виручку, але не мають live-нарахування виконавцю.`,
+    count: missingWalkInLabor,
+  });
+
+  const currentMonthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+  const currentMonthNext = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
+  let missingBaseAccrualEmployees = 0;
+  if (scope.to > currentMonthStart && scope.from < currentMonthNext) {
+    const employeeLocationScopeSql = scopedLocationIds.length
+      ? Prisma.sql`AND EXISTS (
+          SELECT 1
+            FROM "EmployeeRoleAssignment" era
+           WHERE era."employeeId" = ep."id"
+             AND era."locationId" IN (${Prisma.join(scopedLocationIds)})
+             AND era."startsAt" < ${currentMonthNext}
+             AND (era."endsAt" IS NULL OR era."endsAt" >= ${currentMonthStart})
+        )`
+      : Prisma.sql``;
+    const missingBaseRows = await prisma.$queryRaw<Array<{ count: bigint }>>(Prisma.sql`
+      SELECT COUNT(*)::bigint AS "count"
+        FROM "EmployeeProfile" ep
+       WHERE ep."isActive" = true
+         AND COALESCE(ep."baseSalary", 0) > 0
+         ${employeeLocationScopeSql}
+         AND NOT EXISTS (
+           SELECT 1
+             FROM "SalaryAccrual" a
+            WHERE a."employeeId" = ep."id"
+              AND a."status"::text = 'POSTED'
+              AND a."sourceType" = 'BASE_DAILY'
+              AND a."occurredAt" >= ${currentMonthStart}
+              AND a."occurredAt" < ${currentMonthNext}
+         )
+    `);
+    missingBaseAccrualEmployees = Number(missingBaseRows[0]?.count || 0n);
+    if (missingBaseAccrualEmployees > 0) qualityIssues.push({
+      code: "MISSING_BASE_ACCRUAL",
+      level: "WARNING",
+      title: "Не нарахована базова ставка",
+      message: `${missingBaseAccrualEmployees} активних працівників зі ставкою ще не мають live-нарахування за поточний місяць.`,
+      count: missingBaseAccrualEmployees,
+    });
+  }
+
+  const hasSpecificDirectCostGap = missingLaborAccruals > 0 || missingWalkInLabor > 0 || missingPartCosts > 0;
+  if (!hasSpecificDirectCostGap && pnl.revenue > 0 && (pnl.grossMarginPercent ?? 0) >= 99.5) qualityIssues.push({
+    code: "SUSPICIOUS_FULL_MARGIN",
+    level: "CRITICAL",
+    title: "Підозріло висока валова маржа",
+    message: "Маржа близька до 100% і CRM не бачить конкретної відсутньої прямої собівартості. Перевірте інші прямі витрати.",
+    count: 1,
+  });
+
+  const qualityPenalty = qualityIssues.reduce((sum, issue) => sum + (issue.level === "CRITICAL" ? 25 : issue.level === "WARNING" ? 12 : 5), 0);
+  const financeCompleteness = {
+    score: Math.max(0, 100 - qualityPenalty),
+    status: qualityIssues.some((issue) => issue.level === "CRITICAL") ? "LOW" as const : qualityIssues.length ? "PARTIAL" as const : "COMPLETE" as const,
+    preliminaryNetProfit: qualityIssues.length > 0,
+    issues: qualityIssues,
+    checks: { missingLaborAccruals, missingWalkInLabor, missingPartCosts, missingBaseAccrualEmployees },
+  };
+
   const alerts: Array<{ level: "INFO" | "WARNING" | "CRITICAL"; code: string; title: string; message: string; amount?: number; date?: string }> = [];
   if (firstGap) alerts.push({ level: "CRITICAL", code: "CASH_GAP", title: "Прогнозований касовий розрив", message: `Прогнозований залишок ${firstGap.closingCash.toFixed(0)} грн.`, amount: firstGap.closingCash, date: firstGap.date });
   else if (firstReserveWarning) alerts.push({ level: "WARNING", code: "CASH_RESERVE", title: "Залишок нижче резерву", message: `Прогнозований залишок знизиться нижче резерву ${settingsView.minimumCashReserve.toFixed(0)} грн.`, amount: firstReserveWarning.closingCash, date: firstReserveWarning.date });
@@ -669,7 +1008,9 @@ export async function getFinancialCenterV2(scope: FinancialCenterScope) {
   if (previousPnl.opex > 0 && pnl.opex > previousPnl.opex && changePercent(pnl.opex, previousPnl.opex)! > 20) {
     alerts.push({ level: "WARNING", code: "OPEX_GROWTH", title: "Операційні витрати зросли", message: `OPEX зріс на ${changePercent(pnl.opex, previousPnl.opex)!.toFixed(1)}% до попереднього аналогічного періоду.` });
   }
-  alerts.sort((a, b) => ({ CRITICAL: 0, WARNING: 1, INFO: 2 }[a.level] - ({ CRITICAL: 0, WARNING: 1, INFO: 2 }[b.level])));
+  for (const issue of qualityIssues) alerts.push({ level: issue.level, code: issue.code, title: issue.title, message: issue.message });
+  const alertRank = { CRITICAL: 0, WARNING: 1, INFO: 2 } as const;
+  alerts.sort((a, b) => alertRank[a.level] - alertRank[b.level]);
 
   const periodCashFlow = roundMoney(cashSection.inflow - cashSection.outflow);
   return {
@@ -681,6 +1022,8 @@ export async function getFinancialCenterV2(scope: FinancialCenterScope) {
       currentCash,
       revenue: pnl.revenue,
       grossProfit: pnl.grossProfit,
+      directCosts: pnl.cogs,
+      opex: pnl.opex,
       netProfit: pnl.netProfit,
       cashFlow: periodCashFlow,
       grossMarginPercent: pnl.grossMarginPercent,
@@ -743,6 +1086,9 @@ export async function getFinancialCenterV2(scope: FinancialCenterScope) {
       mechanics,
       suppliers: supplierProfitability,
     },
+    ownerSummary,
+    ownerComparison,
+    financeCompleteness,
     alerts: alerts.slice(0, 20),
   };
 }
@@ -762,7 +1108,7 @@ export async function createManualIncome(input: Record<string, unknown>, actor: 
   const idempotencyKey = text(input.idempotencyKey, 96) || `income:${Date.now()}:${Math.random().toString(36).slice(2)}`;
 
   return prisma.$transaction(async (tx) => {
-    await tx.$queryRawUnsafe("SELECT pg_advisory_xact_lock(hashtext($1))", `finance-income:${idempotencyKey}`);
+    await tx.$queryRawUnsafe(PRISMA_TRANSACTION_ADVISORY_LOCK_SQL, `finance-income:${idempotencyKey}`);
     const existing = await tx.cashTransaction.findFirst({ where: { sourceEntity: "MANUAL_INCOME", sourceEntityId: idempotencyKey } });
     if (existing) return { cash: existing, reused: true };
     const account = await tx.moneyAccount.findUnique({ where: { id: moneyAccountId } });
@@ -801,7 +1147,7 @@ export async function createTransfer(input: Record<string, unknown>, actor: Fina
   const description = text(input.description, 4000) || "Внутрішній переказ";
 
   return prisma.$transaction(async (tx) => {
-    await tx.$queryRawUnsafe("SELECT pg_advisory_xact_lock(hashtext($1))", `finance-transfer:${idempotencyKey}`);
+    await tx.$queryRawUnsafe(PRISMA_TRANSACTION_ADVISORY_LOCK_SQL, `finance-transfer:${idempotencyKey}`);
     const existing = await tx.cashTransaction.findFirst({ where: { sourceEntity: "INTERNAL_TRANSFER", sourceEntityId: idempotencyKey } });
     if (existing) return { transfer: existing, reused: true };
     const [fromAccount, toAccount] = await Promise.all([tx.moneyAccount.findUnique({ where: { id: fromAccountId } }), tx.moneyAccount.findUnique({ where: { id: toAccountId } })]);
@@ -954,7 +1300,7 @@ export async function createCustomerAdvance(input: Record<string, unknown>, acto
   const currency = (text(input.currency, 3) || "UAH").toUpperCase();
   const idempotencyKey = text(input.idempotencyKey, 96) || `advance:${clientId}:${Date.now()}`;
   return prisma.$transaction(async (tx) => {
-    await tx.$queryRawUnsafe("SELECT pg_advisory_xact_lock(hashtext($1))", `customer-advance:${idempotencyKey}`);
+    await tx.$queryRawUnsafe(PRISMA_TRANSACTION_ADVISORY_LOCK_SQL, `customer-advance:${idempotencyKey}`);
     const existingCash = await tx.cashTransaction.findFirst({ where: { sourceEntity: "CUSTOMER_ADVANCE", sourceEntityId: idempotencyKey } });
     if (existingCash) {
       const advance = await tx.customerAdvance.findUnique({ where: { cashTransactionId: existingCash.id } });

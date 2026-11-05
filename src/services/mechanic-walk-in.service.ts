@@ -85,7 +85,7 @@ function activeAppointmentWindow(now: Date, timezone: string) {
 }
 
 async function findCurrentWalkInPlacement(tx: Prisma.TransactionClient, locationId: string, now: Date) {
-  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`mechanic-walk-in-placement:${locationId}`}))`;
+  await tx.$executeRaw`SELECT 1::int AS locked FROM pg_advisory_xact_lock(hashtext(${`mechanic-walk-in-placement:${locationId}`}))`;
 
   const location = await tx.serviceLocation.findUnique({
     where: { id: locationId },
@@ -219,7 +219,7 @@ export async function startMechanicWalkInDiagnostic(userId: string, input: Mecha
   const candidates = plateCandidates(rawPlate, plate);
 
   const created = await prisma.$transaction(async (tx) => {
-    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`mechanic-walk-in:${mechanic.locationId}:${plate}`}))`;
+    await tx.$executeRaw`SELECT 1::int AS locked FROM pg_advisory_xact_lock(hashtext(${`mechanic-walk-in:${mechanic.locationId}:${plate}`}))`;
 
     const window = activeAppointmentWindow(new Date(), mechanic.location.timezone || "Europe/Kyiv");
     const activeAppointments = await tx.serviceAppointment.findMany({

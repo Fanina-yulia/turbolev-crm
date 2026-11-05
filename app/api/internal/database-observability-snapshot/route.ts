@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { captureDatabaseQueryStatSnapshot } from "@/src/services/database-observability.service";
+import { reconcileCompensation } from "@/src/services/compensation-engine.service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -20,10 +21,11 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ ok: false }, { status: 404, headers: { "Cache-Control": "no-store" } });
   }
   try {
+    const compensation = await reconcileCompensation(new Date());
     const result = await captureDatabaseQueryStatSnapshot();
-    return NextResponse.json({ ok: true, result }, { headers: { "Cache-Control": "no-store" } });
+    return NextResponse.json({ ok: true, result, compensation }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
-    console.error("database observability snapshot failed", error);
-    return NextResponse.json({ ok: false, error: "snapshot_failed" }, { status: 500 });
+    console.error("daily maintenance snapshot failed", error);
+    return NextResponse.json({ ok: false, error: "daily_maintenance_failed" }, { status: 500 });
   }
 }

@@ -63,7 +63,7 @@ export async function finalizeStationManagerBonus(input: { actor: ManagementActo
   if (input.actor.role !== "OWNER" && input.actor.role !== "EXECUTIVE_DIRECTOR") throw new ManagementResultError("MANAGEMENT_ROLE_REQUIRED", "Фіналізувати бонус може Власник або Виконавчий директор.", 403);
   const prisma = getPrisma();
   return prisma.$transaction(async (tx) => {
-    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`station-bonus-final:${input.planId}:${input.locationId}`}))`;
+    await tx.$executeRaw`SELECT 1::int AS locked FROM pg_advisory_xact_lock(hashtext(${`station-bonus-final:${input.planId}:${input.locationId}`}))`;
     const plan = await tx.managementPlan.findUnique({ where: { id: input.planId } });
     if (!plan) throw new ManagementResultError("PLAN_NOT_FOUND", "План не знайдено.", 404);
     if (plan.status !== "CLOSED") throw new ManagementResultError("PLAN_NOT_CLOSED", "Фінальний бонус формується тільки після закриття тижня.", 409);

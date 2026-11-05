@@ -3,11 +3,15 @@ import { decodeVinIntelligence } from "@/src/services/vin-intelligence.service";
 import { validateVin } from "@/src/domain/vin";
 import { classifyVehicle, TURBO_LEV_CLASS_LABELS } from "@/src/domain/vehicle-intelligence";
 import { MVS_OPEN_DATA_SOURCE_URL } from "@/src/services/mvs-open-data.provider";
+import { authorize } from "@/src/security/authorize";
+import { PERMISSIONS } from "@/src/security/permissions";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
 
 export async function GET(request: Request) {
+  const access = await authorize(PERMISSIONS.OVERVIEW_READ, { request, strict: true, minimumScope: "SELF" });
+  if (!access.allowed) return access.response!;
   const { searchParams } = new URL(request.url);
   const vin = searchParams.get("vin") ?? "";
   const forceRefresh = searchParams.get("refresh") === "1";

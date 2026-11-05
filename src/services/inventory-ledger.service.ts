@@ -1,3 +1,4 @@
+import { PRISMA_TRANSACTION_ADVISORY_LOCK_SQL } from "@/src/lib/advisory-lock";
 import "server-only";
 
 import {
@@ -107,7 +108,7 @@ function stockValues(input: CommonStockInput) {
 
 async function lockStock(tx: Prisma.TransactionClient, warehouseKey: string, stockKey: string) {
   await tx.$queryRawUnsafe(
-    "SELECT pg_advisory_xact_lock(hashtext($1))",
+    PRISMA_TRANSACTION_ADVISORY_LOCK_SQL,
     "inventory:" + warehouseKey + ":" + stockKey,
   );
 }

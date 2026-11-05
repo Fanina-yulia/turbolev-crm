@@ -1,0 +1,51 @@
+name: Controlled Production DB Release
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "ops/db-release-trigger.txt"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-db-release
+  cancel-in-progress: false
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      DATABASE_URL_UNPOOLED: ${{ secrets.DATABASE_URL_UNPOOLED }}
+      ALLOW_PRODUCTION_DB_RELEASE: "1"
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Verify production DB secret
+        shell: bash
+        run: |
+          if [ -z "$DATABASE_URL" ] && [ -z "$DATABASE_URL_UNPOOLED" ]; then
+            echo "DATABASE_URL/DATABASE_URL_UNPOOLED secret is not configured."
+            exit 1
+          fi
+
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Validate Prisma schema
+        run: npx prisma validate
+
+      - name: Apply controlled production migrations
+        run: npm run db:release

@@ -26,7 +26,7 @@ export async function saveDraftManagementPlan(input: { anchor?: string | null; t
   const week = weekKeys(input.anchor);
   const prisma = getPrisma();
   return prisma.$transaction(async (tx) => {
-    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`management-plan-draft:${week.start}`}))`;
+    await tx.$executeRaw`SELECT 1::int AS locked FROM pg_advisory_xact_lock(hashtext(${`management-plan-draft:${week.start}`}))`;
     const current = await tx.managementPlan.findFirst({ where: { periodStart: dateOnly(week.start), periodEnd: dateOnly(week.end), metric: "MANAGEMENT_GROSS_PROFIT" } });
     if (current && !["DRAFT", "OWNER_APPROVED", "EXECUTIVE_DISTRIBUTED", "STATION_ACCEPTED"].includes(current.status)) throw new ManagementResultError("PLAN_LOCKED", "Активний або закритий план не можна переписати чернеткою.", 409);
     const before = current ? snapshot(current) : null;

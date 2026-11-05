@@ -43,22 +43,11 @@ type AnalyticsVisualPayload = {
 
 type Props = {
   analytics: AnalyticsVisualPayload | null;
-  period: OwnerPeriodKey;
-  onPeriodChange: (period: OwnerPeriodKey) => void;
-  loading?: boolean;
 };
 
 type Tone = "orange" | "green" | "red" | "neutral";
 type ChartRow = { label: string; value: number; tone: Tone; formatted?: string; detail?: string };
 
-type PaymentRow = {
-  outstanding: number;
-  paid: number;
-  overdue: boolean;
-  flags: { due: boolean; partial: boolean; debt: boolean; paidToday: boolean };
-};
-
-type PaymentsPayload = { ok?: boolean; rows?: PaymentRow[] };
 type MarginApprovalRow = { workOrderId?: string; revenue?: number; grossMarginPercent?: number; warningMarginPercent?: number };
 type MarginApprovalsPayload = { ok?: boolean; pending?: MarginApprovalRow[] };
 type AttentionItem = { id?: string; issues?: Array<{ code: string }> };
@@ -103,6 +92,34 @@ type OwnerFactsPayload = {
   } | null;
 };
 
+type OwnerFinancePayload = {
+  ok?: boolean;
+  available?: boolean;
+  error?: string;
+  summary?: {
+    netIncome: number;
+    serviceTurnover: number;
+    partsMargin: number;
+    payrollAccrued: number;
+    payrollDue: number;
+    grossIncome: number;
+    totalExpenses: number;
+    cash: number;
+    partsRevenue: number;
+    partsCost: number;
+    serviceBreakdown: { labor: number; diagnostics: number; external: number; other: number };
+    expenseBreakdown: { payroll: number; otherDirect: number; otherOperating: number; otherExpense: number; tax: number };
+  };
+  cashFlow?: { inflow: number; outflow: number; net: number };
+  receivables?: { total: number; count: number; due: number; dueCount: number; partial: number; partialCount: number; overdue: number; overdueCount: number };
+  payables?: { total: number; count: number; due: number; dueCount: number; partial: number; partialCount: number; overdue: number; overdueCount: number };
+  averageCheck?: { value: number | null; recognizedRevenue: number; visits: number };
+  plans?: Array<{ id: string; name: string; metric: string; amount: number; actual: number; completionPercent: number | null; periodStart: string; periodEnd: string }>;
+  trend?: Array<{ date: string; recognizedRevenue: number; cashIn: number }>;
+  integrity?: { ok: boolean; issueCount: number; checks: Array<{ code: string; label: string; actual: number; expected: number; diff: number; ok: boolean }> };
+  dataQuality?: { score: number; status: "COMPLETE" | "PARTIAL" | "LOW"; issues: Array<{ code: string; level: string; title: string; message: string; count: number }> };
+};
+
 type OwnerControlSnapshot = {
   receivables: {
     total: number;
@@ -130,14 +147,6 @@ const EMPTY_FACTS: OwnerFactsPayload = {
   retention: null,
   dataQuality: null,
 };
-
-const PERIODS: Array<{ key: OwnerPeriodKey; label: string }> = [
-  { key: "TODAY", label: "Сьогодні" },
-  { key: "7D", label: "7 днів" },
-  { key: "30D", label: "30 днів" },
-  { key: "90D", label: "90 днів" },
-  { key: "YEAR", label: "Рік" },
-];
 
 function money(value: number | null | undefined) {
   if (value == null) return "—";
@@ -167,25 +176,6 @@ function DeltaLabel({ current, previous, invert = false }: { current: number | n
   if (value == null) return <span className={styles.deltaNeutral}>поточний період</span>;
   const good = invert ? value <= 0 : value >= 0;
   return <span className={good ? styles.deltaGood : styles.deltaBad}>{value > 0 ? "↑" : value < 0 ? "↓" : "•"} {Math.abs(value).toFixed(1)}% <small>до попереднього</small></span>;
-}
-
-function compactDate(value: string | undefined, withYear = false) {
-  if (!value) return "";
-  const date = new Date(`${value}T00:00:00Z`);
-  if (!Number.isFinite(date.getTime())) return value;
-  return new Intl.DateTimeFormat("uk-UA", {
-    timeZone: "UTC",
-    day: "2-digit",
-    month: "short",
-    ...(withYear ? { year: "numeric" } : {}),
-  }).format(date);
-}
-
-function rangeLabel(range: AnalyticsVisualPayload["range"]) {
-  if (!range) return "Поточний період";
-  if (range.days <= 1) return compactDate(range.from);
-  const crossesYear = range.from.slice(0, 4) !== range.to.slice(0, 4);
-  return `${compactDate(range.from, crossesYear)} — ${compactDate(range.to, crossesYear)}`;
 }
 
 function chartValues(values: Array<number | null | undefined>) {
@@ -337,17 +327,23 @@ function InteractiveDonut({ rows, total }: { rows: ChartRow[]; total: number }) 
   </div>;
 }
 
-function sumRows(rows: PaymentRow[], predicate: (row: PaymentRow) => boolean) {
-  return rows.filter(predicate).reduce((sum, row) => sum + Math.max(0, safeNumber(row.outstanding)), 0);
+function SimpleMetricCard({ title, value, icon, subtitle, onClick }: { title: string; value: string; icon: string; subtitle: string; onClick: () => void }) {
+  return <button type="button" className={styles.metricCard} onClick={onClick} aria-label={`${title}: ${value}`}>
+    <div className={styles.metricHead}><MetricIcon>{icon}</MetricIcon><span>{title}</span><em>›</em></div>
+    <strong>{value}</strong>
+    <small className={styles.metricSubtitle}>{subtitle}</small>
+    <span className={styles.deltaNeutral}>факт за вибраний період</span>
+  </button>;
 }
 
 function issueCount(attention: AttentionItem[], code: string) {
   return attention.filter((item) => item.issues?.some((issue) => issue.code === code)).length;
 }
 
-export function OwnerDashboardVisual({ analytics, period, onPeriodChange, loading = false }: Props) {
+export function OwnerDashboardVisual({ analytics }: Props) {
   const [control, setControl] = useState<OwnerControlSnapshot>(EMPTY_CONTROL);
   const [facts, setFacts] = useState<OwnerFactsPayload>(EMPTY_FACTS);
+  const [finance, setFinance] = useState<OwnerFinancePayload | null>(null);
   const [controlLoading, setControlLoading] = useState(true);
 
   useEffect(() => {
@@ -358,34 +354,33 @@ export function OwnerDashboardVisual({ analytics, period, onPeriodChange, loadin
         ? `?from=${encodeURIComponent(analytics.range.from)}&to=${encodeURIComponent(analytics.range.to)}`
         : "";
       const responses = await Promise.allSettled([
-        fetch("/api/payments", { cache: "no-store", credentials: "include" }),
         fetch("/api/finance/margin-approvals", { cache: "no-store", credentials: "include" }),
         fetch("/api/dashboard", { cache: "no-store", credentials: "include" }),
         fetch(`/api/analytics/owner-dashboard-facts${factsQuery}`, { cache: "no-store", credentials: "include" }),
+        fetch(`/api/analytics/owner-dashboard-finance${factsQuery}`, { cache: "no-store", credentials: "include" }),
       ]);
       if (cancelled) return;
       try {
-        const payments = responses[0].status === "fulfilled" && responses[0].value.ok ? await responses[0].value.json() as PaymentsPayload : null;
-        const margins = responses[1].status === "fulfilled" && responses[1].value.ok ? await responses[1].value.json() as MarginApprovalsPayload : null;
-        const dashboard = responses[2].status === "fulfilled" && responses[2].value.ok ? await responses[2].value.json() as DashboardPayload : null;
-        const ownerFacts = responses[3].status === "fulfilled" && responses[3].value.ok ? await responses[3].value.json() as OwnerFactsPayload : EMPTY_FACTS;
-        const paymentRows = payments?.rows ?? [];
-        const openRows = paymentRows.filter((row) => safeNumber(row.outstanding) > 0);
+        const margins = responses[0].status === "fulfilled" && responses[0].value.ok ? await responses[0].value.json() as MarginApprovalsPayload : null;
+        const dashboard = responses[1].status === "fulfilled" && responses[1].value.ok ? await responses[1].value.json() as DashboardPayload : null;
+        const ownerFacts = responses[2].status === "fulfilled" && responses[2].value.ok ? await responses[2].value.json() as OwnerFactsPayload : EMPTY_FACTS;
+        const ownerFinance = responses[3].status === "fulfilled" && responses[3].value.ok ? await responses[3].value.json() as OwnerFinancePayload : null;
         const attention = dashboard?.attention ?? [];
         const marginRows = margins?.pending ?? [];
         const warranty = issueCount(attention, "WARRANTY_OPEN");
         const paused = issueCount(attention, "PAUSED_STALLED");
+        setFinance(ownerFinance?.available === false ? null : ownerFinance);
         setControl({
-          receivables: {
-            total: openRows.reduce((sum, row) => sum + Math.max(0, safeNumber(row.outstanding)), 0),
-            count: openRows.length,
-            due: sumRows(openRows, (row) => row.flags?.due),
-            dueCount: openRows.filter((row) => row.flags?.due).length,
-            partial: sumRows(openRows, (row) => row.flags?.partial),
-            partialCount: openRows.filter((row) => row.flags?.partial).length,
-            debt: sumRows(openRows, (row) => row.flags?.debt || row.overdue),
-            debtCount: openRows.filter((row) => row.flags?.debt || row.overdue).length,
-          },
+          receivables: ownerFinance?.receivables ? {
+            total: ownerFinance.receivables.total,
+            count: ownerFinance.receivables.count,
+            due: ownerFinance.receivables.due,
+            dueCount: ownerFinance.receivables.dueCount,
+            partial: ownerFinance.receivables.partial,
+            partialCount: ownerFinance.receivables.partialCount,
+            debt: ownerFinance.receivables.overdue,
+            debtCount: ownerFinance.receivables.overdueCount,
+          } : EMPTY_CONTROL.receivables,
           decisions: {
             total: marginRows.length + warranty + paused,
             margin: marginRows.length,
@@ -417,25 +412,9 @@ export function OwnerDashboardVisual({ analytics, period, onPeriodChange, loadin
   const kpi = analytics?.kpi;
   const previous = analytics?.previous;
   const operations = analytics?.operations;
-  const trend = analytics?.trend ?? [];
-  const directRevenue = facts.directRevenue?.current ?? 0;
-  const previousDirectRevenue = facts.directRevenue?.previous ?? 0;
-  const displayedRevenue = kpi?.grossRevenue == null ? null : safeNumber(kpi.grossRevenue) + directRevenue;
-  const displayedPreviousRevenue = previous?.grossRevenue == null ? null : safeNumber(previous.grossRevenue) + previousDirectRevenue;
-  const revenueTrend = useMemo(() => {
-    const map = new Map<string, number>();
-    for (const item of trend) map.set(item.date, safeNumber(item.revenue));
-    for (const item of facts.directRevenue?.trend ?? []) map.set(item.date, (map.get(item.date) || 0) + safeNumber(item.amount));
-    return [...map.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([, value]) => value);
-  }, [trend, facts.directRevenue]);
-  const profitTrend = trend.map((item) => item.grossProfit);
-  const hasClosedOrderRevenue = safeNumber(kpi?.grossRevenue) > 0;
-  const grossProfitForDisplay = hasClosedOrderRevenue && directRevenue === 0 ? kpi?.grossProfit : null;
-  const grossMarginForDisplay = hasClosedOrderRevenue && directRevenue === 0 ? kpi?.grossMarginPct : null;
-  const averageCheckForDisplay = hasClosedOrderRevenue && directRevenue === 0
-    ? kpi?.averageCheck
-    : facts.directRevenue?.averageCheck ?? null;
   const repeatClientPct = facts.retention?.repeatClientPct ?? null;
+  const averageCheckForDisplay = finance?.averageCheck?.value ?? null;
+
   const servedClients = facts.retention?.servedClients ?? 0;
   const overdue = operations?.overdueNow ?? 0;
   const delayReasons = operations?.delayReasons?.slice(0, 4) ?? [];
@@ -444,6 +423,7 @@ export function OwnerDashboardVisual({ analytics, period, onPeriodChange, loadin
   const revenueRiskCount = noShow + waitingApproval + control.risk.paused;
   const pipeline = facts.pipeline;
   const dataQuality = facts.dataQuality;
+  const financeAvailable = Boolean(finance?.ok && finance.summary);
 
   const pipelineRows = useMemo<ChartRow[]>(() => [
     { label: "Заплановано", value: pipeline?.scheduledAmount ?? 0, tone: "orange", formatted: money(pipeline?.scheduledAmount ?? 0), detail: `${pipeline?.scheduledCount ?? 0} записів` },
@@ -474,18 +454,10 @@ export function OwnerDashboardVisual({ analytics, period, onPeriodChange, loadin
   ], [noShow, waitingApproval, control.risk.paused]);
 
   return <section className={styles.visualDashboard} aria-label="Ключова аналітика власника">
-    <div className={styles.periodRow}>
-      <div className={styles.periodTabs} role="group" aria-label="Період аналітики">
-        {PERIODS.map((item) => <button key={item.key} type="button" aria-pressed={period === item.key} className={period === item.key ? styles.periodActive : ""} onClick={() => onPeriodChange(item.key)}>{item.label}</button>)}
-      </div>
-      <span className={styles.rangeLabel}>{loading ? "Оновлюю…" : rangeLabel(analytics?.range)}</span>
-    </div>
-
+    <div className={styles.operationalSectionHead}><span>ОПЕРАЦІЙНІ KPI</span><strong>Сервіс, клієнти та потужність</strong></div>
     <div className={styles.metricGrid}>
-      <TrendMetricCard title="Виручка за період" value={money(displayedRevenue)} icon="₴" values={revenueTrend} current={displayedRevenue} previous={displayedPreviousRevenue} chart="line" subtitle={directRevenue > 0 ? `включно з ${money(directRevenue)} прямих оплат` : undefined} onClick={() => navigateCrm("Фінансовий центр")} />
-      <TrendMetricCard title="Валовий прибуток" value={money(grossProfitForDisplay)} icon="▥" values={profitTrend} current={grossProfitForDisplay} previous={previous?.grossProfit} chart="bars" subtitle={grossProfitForDisplay == null ? "немає повних даних про собівартість" : undefined} onClick={() => navigateCrm("Фінансовий центр")} />
-      <GaugeMetricCard title="Валова маржа" value={percent(grossMarginForDisplay)} icon="%" gaugeValue={grossMarginForDisplay} current={grossMarginForDisplay} previous={previous?.grossMarginPct} subtitle={`середній чек ${money(averageCheckForDisplay)}`} gaugeLabel="маржа" onClick={() => navigateCrm("Аналітика")} />
-      <GaugeMetricCard title="Завантаження постів" value={percent(kpi?.postUtilizationPct)} icon="⌁" gaugeValue={kpi?.postUtilizationPct} current={kpi?.postUtilizationPct} previous={previous?.postUtilizationPct} gaugeLabel="зайнято" onClick={() => navigateCrm("Аналітика")} />
+      <SimpleMetricCard title="Середній чек" value={money(averageCheckForDisplay)} icon="₴" subtitle={finance?.averageCheck ? `${finance.averageCheck.visits} завершених оплачуваних візитів · визнана виручка` : "не підміняємо середнім платежем"} onClick={() => navigateCrm("Аналітика")} />
+      <GaugeMetricCard title="Завантаження постів" value={percent(kpi?.postUtilizationPct)} icon="⌁" gaugeValue={kpi?.postUtilizationPct} current={kpi?.postUtilizationPct} previous={previous?.postUtilizationPct} gaugeLabel="робочий час" onClick={() => navigateCrm("Аналітика")} />
       <RetentionMetricCard value={repeatClientPct} servedClients={servedClients} onClick={() => navigateCrm("Аналітика")} />
       <GaugeMetricCard title="Запис → приїзд" value={percent(kpi?.bookingToArrivalPct)} icon="✓" gaugeValue={kpi?.bookingToArrivalPct} current={kpi?.bookingToArrivalPct} previous={previous?.bookingToArrivalPct} tone="green" gaugeLabel="конверсія" onClick={() => navigateCrm("Планувальник")} />
     </div>
@@ -503,11 +475,11 @@ export function OwnerDashboardVisual({ analytics, period, onPeriodChange, loadin
         <div className={styles.controlFoot}><span>{pipeline?.pendingApprovalCount ? `На погодженні: ${pipeline.pendingApprovalCount}` : "Поточний портфель"}</span><b className={(dataQuality?.pipelineUnpricedCount ?? 0) > 0 ? pipelineStyles.dataGap : ""}>{(dataQuality?.pipelineUnpricedCount ?? 0) > 0 ? `${dataQuality?.pipelineUnpricedCount} без суми` : "оцінено"}</b></div>
       </button>
 
-      <button type="button" className={`${styles.controlCard} ${pipelineStyles.controlCardFinance}`} onClick={() => navigateCrm("Оплати", { scope: "due" })} aria-label={`Дебіторка: ${money(control.receivables.total)}`}>
+      <button type="button" className={`${styles.controlCard} ${pipelineStyles.controlCardFinance}`} onClick={() => navigateCrm("Оплати", { scope: "due" })} aria-label={`Дебіторка: ${money(financeAvailable ? control.receivables.total : null)}`}>
         <div className={styles.controlHead}><div><MetricIcon>₴</MetricIcon><span>Дебіторка</span></div><em>›</em></div>
-        <div className={styles.controlValue}><strong>{money(control.receivables.total)}</strong><span>{control.receivables.count} відкритих фінансових зобов'язань</span></div>
-        <InteractiveStackedBar rows={receivableRows} />
-        <div className={styles.controlFoot}><span>Прострочений борг</span><b className={(dataQuality?.waitingPaymentUnpricedCount ?? 0) > 0 ? pipelineStyles.dataGap : control.receivables.debt > 0 ? styles.textDanger : ""}>{(dataQuality?.waitingPaymentUnpricedCount ?? 0) > 0 ? `${dataQuality?.waitingPaymentUnpricedCount} очікують оплату без суми` : money(control.receivables.debt)}</b></div>
+        <div className={styles.controlValue}><strong>{money(financeAvailable ? control.receivables.total : null)}</strong><span>{financeAvailable ? `${control.receivables.count} відкритих фінансових зобов'язань` : "фінансові дані недоступні"}</span></div>
+        {financeAvailable ? <InteractiveStackedBar rows={receivableRows} /> : <div className={styles.financeControlUnavailable}>Не підміняємо помилку нульовим боргом.</div>}
+        <div className={styles.controlFoot}><span>Прострочений борг</span><b className={(dataQuality?.waitingPaymentUnpricedCount ?? 0) > 0 ? pipelineStyles.dataGap : control.receivables.debt > 0 ? styles.textDanger : ""}>{!financeAvailable ? "—" : (dataQuality?.waitingPaymentUnpricedCount ?? 0) > 0 ? `${dataQuality?.waitingPaymentUnpricedCount} очікують оплату без суми` : money(control.receivables.debt)}</b></div>
       </button>
 
       <button type="button" className={`${styles.controlCard} ${control.decisions.total > 0 ? styles.controlAttention : ""}`} onClick={() => navigateCrm("Фінансовий центр")} aria-label={`Потрібне моє рішення: ${control.decisions.total}`}>

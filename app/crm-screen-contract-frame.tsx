@@ -30,6 +30,7 @@ const LOCAL_SCROLL_SCREENS = new Set([
   "settings-workflow",
   "settings-security",
   "settings-partsCatalog",
+  "settings-crmDictionary",
 ]);
 
 function readRoute(): CrmScreenRouteShape {

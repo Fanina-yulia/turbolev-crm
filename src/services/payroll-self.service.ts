@@ -1,4 +1,6 @@
 import { getPrisma } from "@/src/lib/prisma";
+import { compensationProjection } from "@/src/domain/compensation";
+import { estimateProfitShareForEmployee } from "@/src/services/compensation-engine.service";
 
 const DEFAULT_TIMEZONE = "Europe/Kyiv";
 
@@ -124,7 +126,11 @@ export async function getOwnSalaryOverview(args: {
   const [employee, today, week, month, monthDetails] = await Promise.all([
     prisma.employeeProfile.findUnique({
       where: { id: args.employeeId },
-      select: { id: true, firstName: true, lastName: true, position: true, isActive: true },
+      select: {
+        id: true, firstName: true, lastName: true, position: true, isActive: true,
+        baseSalary: true, minimumSalary: true, workPercent: true, partsSalesPercent: true,
+        partsMarginPercent: true, netProfitPercent: true,
+      },
     }),
     aggregateRange(args.employeeId, todayStart, tomorrowStart),
     aggregateRange(args.employeeId, weekStart, weekEnd),
@@ -156,6 +162,29 @@ export async function getOwnSalaryOverview(args: {
     categoryTotals.set(row.category, money((categoryTotals.get(row.category) ?? 0) + Number(row.amount)));
   }
 
+  const [estimatedProfitShare, lifetimeAccrual, lifetimePayment] = await Promise.all([
+    estimateProfitShareForEmployee(args.employeeId, now),
+    prisma.salaryAccrual.aggregate({
+      where: { employeeId: args.employeeId, status: "POSTED" },
+      _sum: { amount: true },
+    }),
+    prisma.salaryPayment.aggregate({
+      where: { employeeId: args.employeeId },
+      _sum: { amount: true },
+    }),
+  ]);
+
+  const postedBase = money(categoryTotals.get("BASE") ?? 0);
+  const projection = compensationProjection({
+    postedAccrued: month.accrued,
+    postedBase,
+    baseSalary: money(employee.baseSalary),
+    minimumSalary: money(employee.minimumSalary),
+    estimatedProfitShare,
+  });
+  const lifetimeAccrued = money(lifetimeAccrual._sum.amount);
+  const lifetimePaid = money(lifetimePayment._sum.amount);
+
   const historyMonths = Math.max(1, Math.min(args.historyMonths ?? 12, 36));
   const history: Array<{ key: string; start: Date; end: Date; accrued: number; paid: number; due: number }> = [];
   for (let index = historyMonths - 1; index >= 0; index -= 1) {
@@ -173,7 +202,27 @@ export async function getOwnSalaryOverview(args: {
   }
 
   return {
-    employee,
+    employee: {
+      id: employee.id,
+      firstName: employee.firstName,
+      lastName: employee.lastName,
+      position: employee.position,
+      isActive: employee.isActive,
+    },
+    rules: {
+      baseSalary: money(employee.baseSalary),
+      minimumSalary: money(employee.minimumSalary),
+      workPercent: money(employee.workPercent),
+      partsSalesPercent: money(employee.partsSalesPercent),
+      partsMarginPercent: money(employee.partsMarginPercent),
+      netProfitPercent: money(employee.netProfitPercent),
+    },
+    balance: {
+      accrued: lifetimeAccrued,
+      paid: lifetimePaid,
+      due: money(lifetimeAccrued - lifetimePaid),
+    },
+    projection,
     timeZone,
     today: { start: todayStart, end: tomorrowStart, ...today },
     week: { start: weekStart, end: weekEnd, ...week },

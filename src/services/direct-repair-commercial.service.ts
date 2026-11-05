@@ -204,7 +204,7 @@ export async function setDirectRepairPartsMode(
   if (!isMode(mode)) throw new DirectRepairCommercialError("INVALID_PARTS_MODE", "Невідомий режим забезпечення запчастинами.");
   const prisma = getPrisma();
   const result = await prisma.$transaction(async (tx) => {
-    await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`direct-repair:${workOrderId}`}))`;
+    await tx.$queryRaw`SELECT 1::int AS locked FROM pg_advisory_xact_lock(hashtext(${`direct-repair:${workOrderId}`}))`;
     const workOrder = await ensureDirectRepairTx(tx, workOrderId, true);
     const partLines = await activePartLinesTx(tx, workOrderId);
     if (mode === "NO_PARTS" && partLines.length) {
@@ -272,7 +272,7 @@ export async function setDirectRepairPartSource(
   if (!isSource(source)) throw new DirectRepairCommercialError("INVALID_PART_SOURCE", "Невідоме джерело запчастини.");
   const prisma = getPrisma();
   const result = await prisma.$transaction(async (tx) => {
-    await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`direct-repair:${workOrderId}`}))`;
+    await tx.$queryRaw`SELECT 1::int AS locked FROM pg_advisory_xact_lock(hashtext(${`direct-repair:${workOrderId}`}))`;
     await ensureDirectRepairTx(tx, workOrderId, true);
     const [config, line, before] = await Promise.all([
       tx.directRepairCommercialConfig.findUnique({ where: { workOrderId } }),
@@ -327,7 +327,7 @@ export async function confirmCustomerPart(
 ) {
   const prisma = getPrisma();
   return prisma.$transaction(async (tx) => {
-    await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`direct-repair:${workOrderId}`}))`;
+    await tx.$queryRaw`SELECT 1::int AS locked FROM pg_advisory_xact_lock(hashtext(${`direct-repair:${workOrderId}`}))`;
     await ensureDirectRepairTx(tx, workOrderId, true);
     const context = await getDirectRepairPartContextTx(tx, workOrderId);
     if (context.sourceByLineId.get(lineId) !== "CUSTOMER") {

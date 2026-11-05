@@ -15,7 +15,7 @@ assert.match(service, /postInventoryMovement/);
 assert.match(service, /reserveInventory/);
 assert.match(service, /transitionInventoryReservation/);
 assert.match(service, /INVENTORY_INSUFFICIENT/);
-assert.match(service, /pg_advisory_xact_lock/);
+assert.match(service, /PRISMA_TRANSACTION_ADVISORY_LOCK_SQL|pg_advisory_xact_lock/);
 assert.match(service, /INVENTORY_MOVEMENT_POSTED/);
 assert.match(ledgerRoute, /PERMISSIONS\.PROCUREMENT_WRITE/);
 assert.match(reservationRoute, /PERMISSIONS\.PROCUREMENT_WRITE/);

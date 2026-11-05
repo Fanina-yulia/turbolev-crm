@@ -1,6 +1,7 @@
 import fs from "node:fs";
 
 const bridge = fs.readFileSync("app/auth/sidebar-settings-submenu-bridge.tsx", "utf8");
+const shell = fs.readFileSync("app/crm-shell.tsx", "utf8");
 const page = fs.readFileSync("app/page.tsx", "utf8");
 const settingsPage = fs.readFileSync("app/settings-page.tsx", "utf8");
 const settingsTabs = fs.readFileSync("app/settings-tabs.ts", "utf8");
@@ -21,11 +22,20 @@ const requiredTabs = [
   "workflow",
   "security",
   "partsCatalog",
+  "crmDictionary",
 ];
 
 for (const id of requiredTabs) {
   if (!settingsTabs.includes(`"${id}"`)) throw new Error(`[settings-submenu] settings-tabs.ts is missing ${id}`);
   if (!bridge.includes(`id: "${id}"`)) throw new Error(`[settings-submenu] V7 Settings flyout is missing ${id}`);
+  if (!shell.includes(`id:"${id}"`)) throw new Error(`[settings-submenu] CRM shell Settings submenu is missing ${id}`);
+}
+
+if (shell.indexOf('id:"crmDictionary"') > shell.indexOf('id:"posts"')) {
+  throw new Error("[settings-submenu] CRM dictionary must stay high enough in Settings submenu to be visible without scrolling");
+}
+if (bridge.indexOf('id: "crmDictionary"') > bridge.indexOf('id: "posts"')) {
+  throw new Error("[settings-submenu] CRM dictionary must stay high enough in V7 Settings flyout to be visible without scrolling");
 }
 
 const requiredBridgeFragments = [

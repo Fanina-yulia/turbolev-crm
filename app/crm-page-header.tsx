@@ -20,7 +20,7 @@ export function CrmPageHeader({
   controls?: ReactNode;
   className?: string;
 }) {
-  return <header className={[styles.root, className].filter(Boolean).join(" ")} data-crm-page-header="true">
+  return <header className={[styles.root, className].filter(Boolean).join(" ")} data-crm-page-header="true" data-crm-page-header-version="2">
     <div className={styles.topRow}>
       <div className={styles.copy}>
         <p className={styles.eyebrow} data-crm-page-eyebrow="true">{eyebrow}</p>

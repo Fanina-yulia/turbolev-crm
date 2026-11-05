@@ -111,7 +111,7 @@ export async function issueControlledDocumentRevision(input: ControlledDocumentR
   const prisma = getPrisma();
 
   return prisma.$transaction(async (tx) => {
-    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${documentKey}))`;
+    await tx.$executeRaw`SELECT 1::int AS locked FROM pg_advisory_xact_lock(hashtext(${documentKey}))`;
 
     const existing = await tx.controlledDocumentRevision.findUnique({
       where: { documentKey_contentHash: { documentKey, contentHash } },
@@ -196,7 +196,7 @@ export async function voidControlledDocumentRevision(
   return prisma.$transaction(async (tx) => {
     const current = await tx.controlledDocumentRevision.findUnique({ where: { id: revisionId } });
     if (!current) throw new ControlledDocumentError("DOCUMENT_REVISION_NOT_FOUND", "Ревізію документа не знайдено.", 404);
-    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${current.documentKey}))`;
+    await tx.$executeRaw`SELECT 1::int AS locked FROM pg_advisory_xact_lock(hashtext(${current.documentKey}))`;
     if (current.status === "VOIDED") return current;
     if (current.status !== "ISSUED") {
       throw new ControlledDocumentError("DOCUMENT_REVISION_NOT_CURRENT", "Можна анулювати лише актуальну ревізію документа.", 409);

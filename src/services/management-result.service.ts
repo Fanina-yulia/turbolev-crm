@@ -257,7 +257,7 @@ export async function saveAndApproveOwnerWeeklyPlan(input: {
   const week = weekKeys(input.anchor || dateKeyInTimezone());
   const prisma = getPrisma();
   return prisma.$transaction(async (tx) => {
-    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`management-plan:${week.start}`}))`;
+    await tx.$executeRaw`SELECT 1::int AS locked FROM pg_advisory_xact_lock(hashtext(${`management-plan:${week.start}`}))`;
     const existing = await tx.managementPlan.findFirst({
       where: { periodStart: dateOnlyUtc(week.start), periodEnd: dateOnlyUtc(week.end), metric: "MANAGEMENT_GROSS_PROFIT" },
       include: { allocations: true },

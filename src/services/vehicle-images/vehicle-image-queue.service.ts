@@ -111,7 +111,7 @@ async function claimNextQueueJob(): Promise<QueueJob | null> {
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
-    await client.query("SELECT pg_advisory_xact_lock(hashtext('vehicle-image-queue-worker'))");
+    await client.query("SELECT 1::int AS locked FROM pg_advisory_xact_lock(hashtext('vehicle-image-queue-worker'))");
     const result = await client.query<QueueJob>(
       `SELECT job."id",job."vehicleId",job."assetId",asset."theme",job."libraryKey"
          FROM public."VehicleImageGenerationJob" job

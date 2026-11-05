@@ -6,6 +6,8 @@ import {
 } from "@/src/services/work-order-commercial.service";
 import { authorize } from "@/src/security/authorize";
 import { PERMISSIONS } from "@/src/security/permissions";
+import { canAccessWorkOrder } from "@/src/security/work-order-scope";
+import { getPrisma } from "@/src/lib/prisma";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -18,8 +20,14 @@ export async function PATCH(request: Request, context: RouteContext) {
   if (!access.allowed) return access.response!;
   const { id } = await context.params;
   try {
+    // Station isolation: the parts request must belong to a work order the caller may access.
+    const owner = await getPrisma().partsRequest.findUnique({ where: { id }, select: { workOrderId: true } });
+    if (!owner || !(await canAccessWorkOrder(access.context, access.grantedScope, owner.workOrderId))) {
+      return NextResponse.json({ ok: false, error: "Запит на деталі не знайдено." }, { status: 404 });
+    }
     const body = await request.json() as Record<string, unknown>;
-    const actorName = typeof body.actorName === "string" && body.actorName.trim() ? body.actorName.trim().slice(0, 160) : "CRM / Підбір запчастин";
+    // Executor identity comes only from the verified session, never from the request body.
+    const actorName = (access.context.user?.employeeName || access.context.user?.name || "CRM").trim().slice(0, 160);
     if (typeof body.status === "string" && body.status.trim()) {
       const partsRequest = await transitionPartsRequest(id, body.status, actorName);
       return NextResponse.json({ ok: true, partsRequest });

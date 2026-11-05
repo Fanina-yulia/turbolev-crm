@@ -1,5 +1,6 @@
 import { getPrisma } from "@/src/lib/prisma";
 import { toPrismaJson } from "@/src/lib/prisma-json";
+import { postAttributedPartsCompensation } from "@/src/services/compensation-engine.service";
 
 export type AttributionInput = {
   employeeId: string;
@@ -86,7 +87,13 @@ export async function postPerformanceEvent(input: PerformanceEventInput) {
     where: { idempotencyKey: input.idempotencyKey },
     include: { attributions: true },
   });
-  if (existing) return existing;
+  if (existing) {
+    const existingPartAttributionIds = existing.attributions
+      .filter((item) => item.attributionType === "DIRECT" && ["PARTS_REVENUE", "PARTS_MARGIN"].includes(item.metricCode))
+      .map((item) => item.id);
+    if (existingPartAttributionIds.length) await postAttributedPartsCompensation(existingPartAttributionIds);
+    return existing;
+  }
 
   const payrollPeriodIds = [...new Set(
     input.attributions
@@ -101,7 +108,7 @@ export async function postPerformanceEvent(input: PerformanceEventInput) {
     if (closed) throw new Error(`Payroll period ${closed.key} is closed. Post an adjustment in a later open period.`);
   }
 
-  return prisma.performanceEvent.create({
+  const created = await prisma.performanceEvent.create({
     data: {
       idempotencyKey: input.idempotencyKey,
       eventType: input.eventType,
@@ -132,6 +139,13 @@ export async function postPerformanceEvent(input: PerformanceEventInput) {
     },
     include: { attributions: true },
   });
+
+  const partAttributionIds = created.attributions
+    .filter((item) => item.attributionType === "DIRECT" && ["PARTS_REVENUE", "PARTS_MARGIN"].includes(item.metricCode))
+    .map((item) => item.id);
+  if (partAttributionIds.length) await postAttributedPartsCompensation(partAttributionIds);
+
+  return created;
 }
 
 /** Payroll close freezes both salary facts and linked attribution facts for the period. */

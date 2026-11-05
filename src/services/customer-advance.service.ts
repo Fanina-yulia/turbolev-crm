@@ -1,3 +1,4 @@
+import { PRISMA_TRANSACTION_ADVISORY_LOCK_SQL } from "@/src/lib/advisory-lock";
 import { Prisma } from "@/src/generated/prisma/client";
 import { getPrisma } from "@/src/lib/prisma";
 import { outstandingAmount } from "@/src/domain/finance";
@@ -18,7 +19,7 @@ export async function applyCustomerAdvance(advanceId: string, workOrderId: strin
   const prisma = getPrisma();
   const amount = decimal(rawAmount, "ADVANCE_AMOUNT_REQUIRED", "Вкажіть суму зарахування авансу.");
   return prisma.$transaction(async (tx) => {
-    await tx.$queryRawUnsafe("SELECT pg_advisory_xact_lock(hashtext($1))", `customer-advance-apply:${advanceId}:${workOrderId}`);
+    await tx.$queryRawUnsafe(PRISMA_TRANSACTION_ADVISORY_LOCK_SQL, `customer-advance-apply:${advanceId}:${workOrderId}`);
     const advance = await tx.customerAdvance.findUnique({ where: { id: advanceId } });
     if (!advance) throw new FinancialCenterV2Error("ADVANCE_NOT_FOUND", "Аванс не знайдено.", 404);
     if (advance.status === "REFUNDED" || advance.status === "APPLIED") throw new FinancialCenterV2Error("ADVANCE_CLOSED", "Аванс уже закритий.", 409);
@@ -65,7 +66,7 @@ export async function applyCustomerAdvance(advanceId: string, workOrderId: strin
 export async function refundCustomerAdvance(advanceId: string, actor: FinanceActor) {
   const prisma = getPrisma();
   return prisma.$transaction(async (tx) => {
-    await tx.$queryRawUnsafe("SELECT pg_advisory_xact_lock(hashtext($1))", `customer-advance-refund:${advanceId}`);
+    await tx.$queryRawUnsafe(PRISMA_TRANSACTION_ADVISORY_LOCK_SQL, `customer-advance-refund:${advanceId}`);
     const advance = await tx.customerAdvance.findUnique({ where: { id: advanceId } });
     if (!advance) throw new FinancialCenterV2Error("ADVANCE_NOT_FOUND", "Аванс не знайдено.", 404);
     if (advance.status === "REFUNDED") return { advance, reused: true };

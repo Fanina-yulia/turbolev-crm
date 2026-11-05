@@ -84,7 +84,7 @@ async function continueAssignedAppointmentDiagnostic(input: {
 }) {
   const prisma = getPrisma();
   const diagnosticRequestId = await prisma.$transaction(async (tx) => {
-    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`mechanic-scan-continue:${input.appointmentId}`}))`;
+    await tx.$executeRaw`SELECT 1::int AS locked FROM pg_advisory_xact_lock(hashtext(${`mechanic-scan-continue:${input.appointmentId}`}))`;
     const appointment = await tx.serviceAppointment.findUnique({ where: { id: input.appointmentId } });
     if (!appointment || appointment.locationId !== input.mechanic.locationId || ["CANCELLED", "NO_SHOW", "RESERVE", "COMPLETED"].includes(appointment.status)) {
       throw new ScanContinuationError("APPOINTMENT_NOT_ACTIVE", "Актуальний запис автомобіля не знайдено.", 404);

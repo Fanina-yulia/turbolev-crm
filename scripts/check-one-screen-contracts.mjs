@@ -23,7 +23,7 @@ const sections = [
 const settings = [
   "schedule", "personnel", "suppliers", "warehouse", "workPrices", "posts",
   "markup", "cash", "integrations", "cameras", "diagnosticTemplates",
-  "appearance", "workflow", "security", "partsCatalog",
+  "appearance", "workflow", "security", "partsCatalog", "crmDictionary",
 ];
 
 const localScrollFiles = [
@@ -44,6 +44,7 @@ const localScrollFiles = [
   "app/camera-settings.module.css",
   "app/workflow-settings-panel.module.css",
   "app/security-settings-panel-v2.module.css",
+  "app/settings-operations-page.module.css",
   "app/parts-procurement-workspace.module.css",
   "app/parts-supplier-reconciliation.module.css",
 ];

@@ -501,7 +501,7 @@ export async function rebuildPlannedSnapshotFromLines(
 ) {
   const prisma = getPrisma();
   return prisma.$transaction(async (tx) => {
-    await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`wo-lines:${workOrderId}`}))`;
+    await tx.$queryRaw`SELECT 1::int AS locked FROM pg_advisory_xact_lock(hashtext(${`wo-lines:${workOrderId}`}))`;
     await ensureWorkOrder(tx, workOrderId);
     await ensureFinanceUnlocked(tx, workOrderId);
     const result = await syncPlannedSnapshotTx(tx, workOrderId, actorName);
@@ -526,7 +526,7 @@ export async function createWorkOrderLine(
 ) {
   const prisma = getPrisma();
   return prisma.$transaction(async (tx) => {
-    await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`wo-lines:${workOrderId}`}))`;
+    await tx.$queryRaw`SELECT 1::int AS locked FROM pg_advisory_xact_lock(hashtext(${`wo-lines:${workOrderId}`}))`;
     await ensureWorkOrder(tx, workOrderId);
     await ensureFinanceUnlocked(tx, workOrderId);
     const derived = await deriveCreateInput(tx, body);
@@ -562,7 +562,7 @@ export async function updateWorkOrderLine(
 ) {
   const prisma = getPrisma();
   return prisma.$transaction(async (tx) => {
-    await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`wo-lines:${workOrderId}`}))`;
+    await tx.$queryRaw`SELECT 1::int AS locked FROM pg_advisory_xact_lock(hashtext(${`wo-lines:${workOrderId}`}))`;
     await ensureWorkOrder(tx, workOrderId);
     await ensureFinanceUnlocked(tx, workOrderId);
     const current = await tx.workOrderLine.findFirst({ where: { id: lineId, workOrderId } });
@@ -665,7 +665,7 @@ export async function finalizeWorkOrderFinanceFromLines(
 ) {
   const prisma = getPrisma();
   const prepared = await prisma.$transaction(async (tx) => {
-    await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`wo-lines:${workOrderId}`}))`;
+    await tx.$queryRaw`SELECT 1::int AS locked FROM pg_advisory_xact_lock(hashtext(${`wo-lines:${workOrderId}`}))`;
     await ensureWorkOrder(tx, workOrderId);
     const lines = await tx.workOrderLine.findMany({
       where: { workOrderId },

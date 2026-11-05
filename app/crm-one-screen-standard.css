@@ -63,6 +63,15 @@
     min-height: 0;
   }
 
+  /* CRM-UI-006 V2: canonical workspace owns the outer page inset.
+     Legacy page roots must not add a second top/left/right padding around CrmPageHeader. */
+  [data-crm-screen-frame="true"] > [data-crm-scroll-mode] > :has(> [data-crm-page-header="true"]) {
+    padding-top: 0 !important;
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+    margin-top: 0 !important;
+  }
+
   [data-screen-contract="one"] > [data-crm-scroll-mode="one"] {
     overflow: hidden;
   }

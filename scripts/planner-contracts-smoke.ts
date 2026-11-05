@@ -93,6 +93,8 @@ assert.equal(parsePlannerBoardPayload({
 }), null);
 
 const compactWindowSource = readFileSync(new URL("../app/planner-appointment-window-enhancer.tsx", import.meta.url), "utf8");
+const dayViewSource = readFileSync(new URL("../app/planner-day-view.tsx", import.meta.url), "utf8");
+const dayViewCss = readFileSync(new URL("../app/planner-day-view.module.css", import.meta.url), "utf8");
 assert(compactWindowSource.includes("estimatedAmount"), "planner detail window should keep appointment estimate as fallback");
 assert(compactWindowSource.includes("Орієнтовна вартість"), "unapproved visit should show the unified estimated-cost label");
 assert(compactWindowSource.includes("Вартість"), "approved visit should show final cost label");
@@ -112,5 +114,10 @@ assert(compactWindowSource.includes("plannerEnhancerSignature"), "planner modal 
 assert(compactWindowSource.includes("new MutationObserver(scheduleTick)"), "DOM observer must schedule work instead of mutating synchronously");
 assert(compactWindowSource.includes("requestAnimationFrame(tick)"), "planner modal mutations must be coalesced to one animation-frame tick");
 assert(!compactWindowSource.includes("new MutationObserver(tick)"), "direct observer-to-mutation recursion must remain forbidden");
+assert(dayViewSource.includes("normalizePlannerTimeZone"), "day planner current-time marker must normalize station timezone");
+assert(dayViewSource.includes("setInterval(refreshNow, 30_000)"), "day planner current-time marker must refresh while the screen stays open");
+assert(dayViewSource.includes("data-time={minuteLabel(nowMinute)}"), "day planner current-time marker must render a visible time label");
+assert(dayViewSource.includes("Поточний час"), "day planner current-time marker must keep an accessibility label");
+assert(dayViewCss.includes(".now") && dayViewCss.includes("z-index:25"), "day planner current-time marker must stay above grid cells");
 
 console.log("Planner contracts smoke: OK");

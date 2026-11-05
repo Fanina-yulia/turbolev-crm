@@ -7,6 +7,8 @@ const plannerService = fs.readFileSync("src/services/planner.service.ts","utf8")
 const plannerDay = fs.readFileSync("app/planner-day-view.tsx","utf8");
 const planner = fs.readFileSync("app/planner-v2.tsx","utf8");
 const finance = fs.readFileSync("app/financial-center-legacy.tsx","utf8");
+const financeControl = fs.readFileSync("app/financial-center-v3-control.tsx","utf8");
+const financeSurface = finance + "\n" + financeControl;
 
 assert.match(walkIn,/findCurrentWalkInPlacement/);
 assert.match(walkIn,/postId: post\?\.id \|\| null/);
@@ -34,9 +36,9 @@ assert.match(planner,/function displayStartAt/);
 assert.match(planner,/ФАКТИЧНІ ДАТА ТА ЧАС/);
 assert.match(planner,/позаплановий заїзд/);
 
-assert.match(finance,/Залишок коштів зараз/);
-assert.match(finance,/не залежить від періоду/);
-assert.match(finance,/Рух грошей за період/);
-assert.match(finance,/Надійшло/);
+assert.match(financeSurface,/Залишок коштів зараз/);
+assert.match(financeSurface,/не залежить від періоду/);
+assert.match(financeSurface,/Рух грошей за період/);
+assert.match(financeSurface,/Надійшло/);
 
 console.log("[walkin-truth] factual planner timing, collision visibility and completion-based finance contracts OK.");

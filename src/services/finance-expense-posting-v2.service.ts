@@ -1,3 +1,4 @@
+import { PRISMA_TRANSACTION_ADVISORY_LOCK_SQL } from "@/src/lib/advisory-lock";
 import { Prisma } from "@/src/generated/prisma/client";
 import { getPrisma } from "@/src/lib/prisma";
 import { toPrismaJson } from "@/src/lib/prisma-json";
@@ -54,7 +55,7 @@ async function approvalRule(tx: Prisma.TransactionClient, locationId: string | n
 export async function postExpenseV2(id: string, input: ExpensePostingInput, actorId: string | null, actorName: string) {
   const prisma = getPrisma();
   return prisma.$transaction(async (tx) => {
-    await tx.$queryRawUnsafe("SELECT pg_advisory_xact_lock(hashtext($1))", `finance-expense-post-v2:${id}`);
+    await tx.$queryRawUnsafe(PRISMA_TRANSACTION_ADVISORY_LOCK_SQL, `finance-expense-post-v2:${id}`);
     const current = await tx.expenseDocument.findUnique({ where: { id }, include: { lines: true } });
     if (!current) throw new FinanceExpenseError("EXPENSE_NOT_FOUND", "Витрату не знайдено.", 404);
     if (current.status === "POSTED") return { expense: current, reused: true };

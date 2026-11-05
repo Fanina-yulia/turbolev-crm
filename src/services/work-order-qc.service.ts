@@ -72,7 +72,7 @@ export async function ensureQualityControlTaskTx(
 export async function ensureQualityControlTask(workOrderId: string, actorName = "CRM / Контроль якості") {
   const prisma = getPrisma();
   return prisma.$transaction(async (tx) => {
-    await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`work-order-qc:${workOrderId}`}))`;
+    await tx.$queryRaw`SELECT 1::int AS locked FROM pg_advisory_xact_lock(hashtext(${`work-order-qc:${workOrderId}`}))`;
     return ensureQualityControlTaskTx(tx, workOrderId, actorName);
   });
 }
@@ -84,7 +84,7 @@ export async function updateQualityControl(
 ) {
   const prisma = getPrisma();
   return prisma.$transaction(async (tx) => {
-    await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`work-order-qc:${workOrderId}`}))`;
+    await tx.$queryRaw`SELECT 1::int AS locked FROM pg_advisory_xact_lock(hashtext(${`work-order-qc:${workOrderId}`}))`;
     await ensureWorkOrder(tx, workOrderId);
     let latest = await tx.workOrderQualityControl.findFirst({
       where: { workOrderId },

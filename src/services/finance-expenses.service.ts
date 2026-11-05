@@ -1,3 +1,4 @@
+import { PRISMA_TRANSACTION_ADVISORY_LOCK_SQL } from "@/src/lib/advisory-lock";
 import { Prisma } from "@/src/generated/prisma/client";
 import { decimalToNumber, outstandingAmount, roundMoney } from "@/src/domain/finance";
 import { getPrisma } from "@/src/lib/prisma";
@@ -137,7 +138,7 @@ function numberYear(date: Date) {
 async function nextExpenseNumber(tx: Prisma.TransactionClient, date: Date) {
   const year = numberYear(date);
   const lockKey = "finance-expense-number:" + year;
-  await tx.$queryRawUnsafe("SELECT pg_advisory_xact_lock(hashtext($1))", lockKey);
+  await tx.$queryRawUnsafe(PRISMA_TRANSACTION_ADVISORY_LOCK_SQL, lockKey);
   const prefix = "ВТ-" + year + "-";
   const latest = await tx.expenseDocument.findFirst({
     where: { number: { startsWith: prefix } },
@@ -408,7 +409,7 @@ export async function postExpense(id: string, input: ExpensePostingInput, actorI
   const prisma = getPrisma();
   return prisma.$transaction(async (tx) => {
     const lockKey = "finance-expense-post:" + id;
-    await tx.$queryRawUnsafe("SELECT pg_advisory_xact_lock(hashtext($1))", lockKey);
+    await tx.$queryRawUnsafe(PRISMA_TRANSACTION_ADVISORY_LOCK_SQL, lockKey);
     const current = await tx.expenseDocument.findUnique({ where: { id }, include: { lines: true } });
     if (!current) throw new FinanceExpenseError("EXPENSE_NOT_FOUND", "Витрату не знайдено.", 404);
     if (current.status === "POSTED") return { expense: current, reused: true };
@@ -551,7 +552,7 @@ export async function payExpense(id: string, input: ExpensePaymentInput, actorId
   const prisma = getPrisma();
   return prisma.$transaction(async (tx) => {
     const lockKey = "finance-expense-payment:" + id + ":" + idempotencyKey;
-    await tx.$queryRawUnsafe("SELECT pg_advisory_xact_lock(hashtext($1))", lockKey);
+    await tx.$queryRawUnsafe(PRISMA_TRANSACTION_ADVISORY_LOCK_SQL, lockKey);
     const sourceEntityId = id + ":" + idempotencyKey;
     const existing = await tx.cashTransaction.findFirst({ where: { sourceEntity: EXPENSE_PAYMENT_SOURCE, sourceEntityId } });
     if (existing) return { payment: existing, reused: true };

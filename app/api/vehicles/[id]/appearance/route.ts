@@ -2,6 +2,8 @@ import { after, NextRequest, NextResponse } from "next/server";
 import { getPrisma } from "@/src/lib/prisma";
 import { enqueueVehicleImageGeneration } from "@/src/services/vehicle-images/openai-library.service";
 import { invalidateVehicleImages } from "@/src/services/vehicle-images/vehicle-image.service";
+import { authorize } from "@/src/security/authorize";
+import { PERMISSIONS } from "@/src/security/permissions";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -21,6 +23,8 @@ function cleanHex(value: unknown) {
 }
 
 export async function PATCH(request: NextRequest, context: { params: Promise<{ id: string }> }) {
+  const access = await authorize(PERMISSIONS.CLIENTS_WRITE, { request, strict: true, minimumScope: "TEAM" });
+  if (!access.allowed) return access.response!;
   const { id } = await context.params;
   const body = await request.json().catch(() => ({})) as Record<string, unknown>;
   const name = cleanText(body.exteriorColorName);

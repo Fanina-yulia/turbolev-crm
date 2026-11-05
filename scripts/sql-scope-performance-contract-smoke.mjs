@@ -8,6 +8,7 @@ const analytics = fs.readFileSync("app/api/analytics/route.ts", "utf8");
 const ownerFacts = fs.readFileSync("app/api/analytics/owner-dashboard-facts/route.ts", "utf8");
 const workOrdersRoute = fs.readFileSync("app/api/work-orders/route.ts", "utf8");
 const locationQueries = fs.readFileSync("src/services/location-work-order-query.service.ts", "utf8");
+const financeCenter = fs.readFileSync("src/services/financial-center-v2.service.ts", "utf8");
 
 assert.match(scope, /\$queryRaw/);
 assert.match(scope, /EXISTS \(/);
@@ -41,5 +42,11 @@ assert.match(ownerFacts, /findLocationScopedClosedClientIdsBefore/);
 
 assert.ok((locationQueries.match(/EXISTS \(/g) || []).length >= 4);
 assert.match(locationQueries, /Prisma\.join/);
+
+assert.equal(/const completedFinancialLines/.test(financeCenter), false);
+assert.equal(/take:\\s*5000/.test(financeCenter), false);
+assert.match(financeCenter, /FROM "WorkOrderLine" wol/);
+assert.match(financeCenter, /FROM "ServiceAppointment" sa/);
+assert.match(financeCenter, /FROM "EmployeeRoleAssignment" era/);
 
 console.log("[sql-scope-hotpaths] EXISTS/JOIN scopes, bounded ID pages and location-first hot paths OK.");
